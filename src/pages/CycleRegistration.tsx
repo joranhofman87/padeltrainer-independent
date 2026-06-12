@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { SEO } from '@/components/SEO';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,7 @@ import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
 import { SafeHtml } from '@/components/ui/SafeHtml';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 interface OwnerInfo {
   type: 'trainer' | 'club' | 'academy';
@@ -48,6 +49,7 @@ export default function CycleRegistration() {
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
@@ -56,179 +58,182 @@ export default function CycleRegistration() {
     }
   }, [cycleId]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!cycleId) return;
+  const fetchData = useCallback(async () => {
+    if (!cycleId) return;
 
-      setIsLoading(true);
-      try {
-        // Fetch cycle
-        const cycleData = await getCycle(cycleId);
-        if (!cycleData) {
-          setCycle(null);
-          return;
-        }
-        setCycle(cycleData);
-
-        // Fetch cycle location
-        if (cycleData.location_id) {
-          const { data: locData } = await supabase
-            .from('locations')
-            .select('name, city')
-            .eq('id', cycleData.location_id)
-            .maybeSingle();
-          if (locData) setCycleLocation(locData);
-        }
-
-        // Fetch owner info
-        if (cycleData.owner_type === 'trainer') {
-          const { data: trainerData } = await supabase
-            .from('trainer_profiles')
-            .select('id, user_id, welcome_message')
-            .eq('id', cycleData.owner_id)
-            .maybeSingle();
-
-          if (trainerData) {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('full_name, avatar_url')
-              .eq('user_id', trainerData.user_id)
-              .maybeSingle();
-
-            setOwner({
-              type: 'trainer',
-              name: profileData?.full_name || 'Trainer',
-              avatar_url: profileData?.avatar_url || undefined,
-              welcomeMessage: trainerData.welcome_message,
-            });
-            setTrainers([{ id: trainerData.id, name: profileData?.full_name || 'Trainer' }]);
-          }
-        } else if (cycleData.owner_type === 'academy') {
-          const { data: academyData } = await supabase
-            .from('academy_profiles')
-            .select('id, name, logo_url, welcome_message')
-            .eq('id', cycleData.owner_id)
-            .maybeSingle();
-
-          if (academyData) {
-            setOwner({
-              type: 'academy',
-              name: academyData.name,
-              avatar_url: academyData.logo_url || undefined,
-              welcomeMessage: academyData.welcome_message,
-            });
-
-            // Fetch academy trainers
-            const { data: academyTrainers } = await supabase
-              .from('academy_trainers')
-              .select('trainer_profile_id')
-              .eq('academy_profile_id', academyData.id)
-              .eq('status', 'active');
-
-            if (academyTrainers && academyTrainers.length > 0) {
-              const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
-              const { data: trainerProfiles } = await supabase
-                .from('trainer_profiles')
-                .select('id, user_id')
-                .in('id', trainerIds);
-
-              if (trainerProfiles) {
-                const userIds = trainerProfiles.map(tp => tp.user_id);
-                const { data: profiles } = await supabase
-                  .from('profiles')
-                  .select('user_id, full_name')
-                  .in('user_id', userIds);
-
-                if (profiles) {
-                  const trainersList = trainerProfiles.map(tp => {
-                    const prof = profiles.find(p => p.user_id === tp.user_id);
-                    return { id: tp.id, name: prof?.full_name || 'Trainer' };
-                  });
-                  setTrainers(trainersList);
-                }
-              }
-            }
-          }
-        } else {
-          // Club owner type
-          const { data: clubData } = await supabase
-            .from('club_profiles')
-            .select('id, location_id, welcome_message')
-            .eq('id', cycleData.owner_id)
-            .maybeSingle();
-
-          if (clubData) {
-            const { data: locationData } = await supabase
-              .from('locations')
-              .select('name')
-              .eq('id', clubData.location_id)
-              .maybeSingle();
-
-            setOwner({
-              type: 'club',
-              name: locationData?.name || 'Club',
-              welcomeMessage: clubData.welcome_message,
-            });
-
-            // Fetch club trainers
-            const { data: clubTrainers } = await supabase
-              .from('club_trainers' as any)
-              .select('trainer_profile_id')
-              .eq('club_profile_id', clubData.id)
-              .eq('status', 'active');
-
-            if (clubTrainers && clubTrainers.length > 0) {
-              const trainerIds = (clubTrainers as any[]).map(ct => ct.trainer_profile_id);
-              const { data: trainerProfiles } = await supabase
-                .from('trainer_profiles')
-                .select('id, user_id')
-                .in('id', trainerIds);
-
-              if (trainerProfiles) {
-                const userIds = trainerProfiles.map(tp => tp.user_id);
-                const { data: profiles } = await supabase
-                  .from('profiles')
-                  .select('user_id, full_name')
-                  .in('user_id', userIds);
-
-                if (profiles) {
-                  const trainersList = trainerProfiles.map(tp => {
-                    const prof = profiles.find(p => p.user_id === tp.user_id);
-                    return { id: tp.id, name: prof?.full_name || 'Trainer' };
-                  });
-                  setTrainers(trainersList);
-                }
-              }
-            }
-          }
-        }
-
-        // Fetch locations
-        const locationsData = await getActiveLocations();
-        setLocations(locationsData);
-
-        // Check if user has already applied
-        if (user) {
-          const { data: playerProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-          if (playerProfile) {
-            const applied = await hasPlayerApplied(cycleId, playerProfile.id);
-            setHasApplied(applied);
-          }
-        }
-      } catch (error) {
-        logger.error('Error fetching cycle data', error as Error, { component: 'CycleRegistration', cycleId });
-      } finally {
-        setIsLoading(false);
+    setIsLoading(true);
+    setLoadFailed(false);
+    try {
+      // Fetch cycle — getCycle resolves null only on a definitive "no such
+      // row"; failed requests (network/5xx) throw and surface the retry state.
+      const cycleData = await getCycle(cycleId);
+      if (!cycleData) {
+        setCycle(null);
+        return;
       }
-    };
+      setCycle(cycleData);
 
-    fetchData();
+      // Fetch cycle location
+      if (cycleData.location_id) {
+        const { data: locData } = await supabase
+          .from('locations')
+          .select('name, city')
+          .eq('id', cycleData.location_id)
+          .maybeSingle();
+        if (locData) setCycleLocation(locData);
+      }
+
+      // Fetch owner info
+      if (cycleData.owner_type === 'trainer') {
+        const { data: trainerData } = await supabase
+          .from('trainer_profiles')
+          .select('id, user_id, welcome_message')
+          .eq('id', cycleData.owner_id)
+          .maybeSingle();
+
+        if (trainerData) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('user_id', trainerData.user_id)
+            .maybeSingle();
+
+          setOwner({
+            type: 'trainer',
+            name: profileData?.full_name || 'Trainer',
+            avatar_url: profileData?.avatar_url || undefined,
+            welcomeMessage: trainerData.welcome_message,
+          });
+          setTrainers([{ id: trainerData.id, name: profileData?.full_name || 'Trainer' }]);
+        }
+      } else if (cycleData.owner_type === 'academy') {
+        const { data: academyData } = await supabase
+          .from('academy_profiles')
+          .select('id, name, logo_url, welcome_message')
+          .eq('id', cycleData.owner_id)
+          .maybeSingle();
+
+        if (academyData) {
+          setOwner({
+            type: 'academy',
+            name: academyData.name,
+            avatar_url: academyData.logo_url || undefined,
+            welcomeMessage: academyData.welcome_message,
+          });
+
+          // Fetch academy trainers
+          const { data: academyTrainers } = await supabase
+            .from('academy_trainers')
+            .select('trainer_profile_id')
+            .eq('academy_profile_id', academyData.id)
+            .eq('status', 'active');
+
+          if (academyTrainers && academyTrainers.length > 0) {
+            const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
+            const { data: trainerProfiles } = await supabase
+              .from('trainer_profiles')
+              .select('id, user_id')
+              .in('id', trainerIds);
+
+            if (trainerProfiles) {
+              const userIds = trainerProfiles.map(tp => tp.user_id);
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('user_id, full_name')
+                .in('user_id', userIds);
+
+              if (profiles) {
+                const trainersList = trainerProfiles.map(tp => {
+                  const prof = profiles.find(p => p.user_id === tp.user_id);
+                  return { id: tp.id, name: prof?.full_name || 'Trainer' };
+                });
+                setTrainers(trainersList);
+              }
+            }
+          }
+        }
+      } else {
+        // Club owner type
+        const { data: clubData } = await supabase
+          .from('club_profiles')
+          .select('id, location_id, welcome_message')
+          .eq('id', cycleData.owner_id)
+          .maybeSingle();
+
+        if (clubData) {
+          const { data: locationData } = await supabase
+            .from('locations')
+            .select('name')
+            .eq('id', clubData.location_id)
+            .maybeSingle();
+
+          setOwner({
+            type: 'club',
+            name: locationData?.name || 'Club',
+            welcomeMessage: clubData.welcome_message,
+          });
+
+          // Fetch club trainers
+          const { data: clubTrainers } = await supabase
+            .from('club_trainers' as any)
+            .select('trainer_profile_id')
+            .eq('club_profile_id', clubData.id)
+            .eq('status', 'active');
+
+          if (clubTrainers && clubTrainers.length > 0) {
+            const trainerIds = (clubTrainers as any[]).map(ct => ct.trainer_profile_id);
+            const { data: trainerProfiles } = await supabase
+              .from('trainer_profiles')
+              .select('id, user_id')
+              .in('id', trainerIds);
+
+            if (trainerProfiles) {
+              const userIds = trainerProfiles.map(tp => tp.user_id);
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('user_id, full_name')
+                .in('user_id', userIds);
+
+              if (profiles) {
+                const trainersList = trainerProfiles.map(tp => {
+                  const prof = profiles.find(p => p.user_id === tp.user_id);
+                  return { id: tp.id, name: prof?.full_name || 'Trainer' };
+                });
+                setTrainers(trainersList);
+              }
+            }
+          }
+        }
+      }
+
+      // Fetch locations
+      const locationsData = await getActiveLocations();
+      setLocations(locationsData);
+
+      // Check if user has already applied
+      if (user) {
+        const { data: playerProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (playerProfile) {
+          const applied = await hasPlayerApplied(cycleId, playerProfile.id);
+          setHasApplied(applied);
+        }
+      }
+    } catch (error) {
+      logger.error('Error fetching cycle data', error as Error, { component: 'CycleRegistration', cycleId });
+      setLoadFailed(true);
+    } finally {
+      setIsLoading(false);
+    }
   }, [cycleId, user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleSuccess = () => {
     setIsSuccess(true);
@@ -249,6 +254,21 @@ export default function CycleRegistration() {
             <Skeleton className="h-6 w-1/2" />
             <Skeleton className="h-[600px]" />
           </div>
+        </div>
+      </MarketingLayout>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <MarketingLayout>
+        <div className="container mx-auto px-4 py-12">
+          <QueryErrorState
+            onRetry={fetchData}
+            className="max-w-md mx-auto"
+            title={t('registration.loadFailedTitle', 'Could not load this registration')}
+            description={t('registration.loadFailedDescription', 'Something went wrong while loading. Your registration link is still valid — check your connection and try again.')}
+          />
         </div>
       </MarketingLayout>
     );

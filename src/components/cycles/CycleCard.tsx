@@ -30,7 +30,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { type Cycle, getIntakeRequestCounts, updateCycle, deleteCycle } from '@/lib/cycles';
+import { type Cycle, getIntakeRequestCounts, updateCycle } from '@/lib/cycles';
+import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 import { toast } from 'sonner';
 
 interface CycleCardProps {
@@ -45,6 +46,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const getBasePath = () => {
     if (location.pathname.startsWith('/club')) return '/club';
@@ -91,20 +93,8 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
     }
   };
 
-  const handleDelete = async () => {
-    const isRegistration = cycle.type === 'registration';
-    if (!confirm(isRegistration ? t('deleteRegistration', 'Delete this registration?') : t('deleteCycle') + '?')) return;
-    
-    try {
-      await deleteCycle(cycle.id);
-      toast.success(isRegistration ? t('common:deleted', 'Deleted') : 'Cycle deleted');
-      onDeleted?.();
-    } catch (error: any) {
-      toast.error(error.message);
-    }
-  };
-
   return (
+    <>
     <Card className="border-border/80 shadow-sm transition-colors hover:border-[hsl(var(--navy-200))]">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -210,8 +200,8 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                   
                   <DropdownMenuSeparator />
                   
-                  <DropdownMenuItem 
-                    onClick={handleDelete}
+                  <DropdownMenuItem
+                    onClick={() => setShowDeleteConfirm(true)}
                     className="text-destructive focus:text-destructive"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
@@ -259,5 +249,13 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
         </div>
       </CardContent>
     </Card>
+
+    <DeleteCycleDialog
+      cycle={cycle}
+      open={showDeleteConfirm}
+      onOpenChange={setShowDeleteConfirm}
+      onDeleted={() => onDeleted?.()}
+    />
+    </>
   );
 }

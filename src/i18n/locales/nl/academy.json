@@ -501,7 +501,10 @@
       "previewDescription": "Voorbeeld op basis van de eerste geselecteerde factuur.",
       "send": "Versturen",
       "sending": "Versturen...",
-      "emailDone": "Verstuurd: {{sent}}, geen e-mail: {{noEmail}}, mislukt: {{failed}}"
+      "emailDone": "Verstuurd: {{sent}}, geen e-mail: {{noEmail}}, mislukt: {{failed}}",
+      "resetAllPaid": "Betaalde facturen kunnen niet worden gereset",
+      "resetDone": "{{count}} facturen teruggezet naar concept",
+      "resetDonePartial": "{{count}} gereset, {{skipped}} betaalde overgeslagen"
     },
     "open": "Open",
     "cancelled": "Geannuleerd"

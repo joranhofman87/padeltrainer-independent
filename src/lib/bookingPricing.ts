@@ -183,6 +183,109 @@ export function applyFirstPayerDiscount(input: ApplyFirstPayerDiscountInput): nu
   return Math.max(0, round2(input.paymentAmount - input.discountAmount));
 }
 
+export type AddPlayerPricingPreviewSlot = {
+  /** Resolved session price (see resolveSlotSessionPrice). */
+  sessionPrice: number;
+  existingActiveBookingCount: number;
+};
+
+export type AddPlayerPricingPreviewInput = {
+  /** Slots that will be booked; the discount lands on the first one. */
+  slots: AddPlayerPricingPreviewSlot[];
+  splitPayment: boolean;
+  newPlayerCount: number;
+  /** Selection-order index of the invoice payer (defaults to the first player). */
+  payerIndex?: number;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+};
+
+export type AddPlayerPricingPreview = {
+  /** Sum of the payment_amounts the new bookings will get, before discount. */
+  subtotal: number;
+  /** Discount actually granted — clamped to the payer's first-slot amount, like booking. */
+  discountAmount: number;
+  /** subtotal − discountAmount: what the new players will owe in total. */
+  total: number;
+  /** Each new player's owed total across all slots (selection order), discount included. */
+  perPlayerTotals: number[];
+  /** Uniform per-player-per-session amount when identical everywhere, else null. */
+  perPlayerSessionAmount: number | null;
+  /** Pass as firstPlayerDiscount to build*AddPlayerBookings so booked rows equal this preview. */
+  firstPlayerDiscount: number;
+};
+
+/**
+ * Pure preview of what buildSingleSlot/CyclusSlotAddPlayerBookings will insert,
+ * for the booking dialog's price summary. Mirrors the booking-time model: the
+ * session price is charged ONCE per slot — split equally or carried by the
+ * payer — never multiplied by player count, and a percentage discount is taken
+ * over the real subtotal.
+ */
+export function calculateAddPlayerPricingPreview(
+  input: AddPlayerPricingPreviewInput,
+): AddPlayerPricingPreview {
+  const newCount = Math.max(0, input.newPlayerCount);
+  const payerIndex =
+    input.payerIndex != null && input.payerIndex >= 0 && input.payerIndex < newCount
+      ? input.payerIndex
+      : 0;
+
+  // amounts[slotIndex][playerIndex], identical to the build* insert rows.
+  const amountsPerSlot = input.slots.map((slot) => {
+    const pricing = calculateSlotBookingPricing({
+      sessionPrice: slot.sessionPrice,
+      splitPayment: input.splitPayment,
+      existingActiveBookingCount: slot.existingActiveBookingCount,
+      newPlayerCount: newCount,
+    });
+    if (input.splitPayment || slot.existingActiveBookingCount > 0) {
+      return pricing.newPlayerAmounts;
+    }
+    // Non-split empty slot: the chosen payer (not necessarily the first
+    // selected player) carries the full session price.
+    return Array.from({ length: newCount }, (_, i) =>
+      i === payerIndex ? pricing.sessionPrice : 0,
+    );
+  });
+
+  const perPlayerBaseTotals = Array.from({ length: newCount }, (_, playerIdx) =>
+    round2(amountsPerSlot.reduce((sum, amounts) => sum + (amounts[playerIdx] ?? 0), 0)),
+  );
+  const subtotal = round2(perPlayerBaseTotals.reduce((sum, amount) => sum + amount, 0));
+
+  const requestedDiscount =
+    input.discountValue > 0
+      ? input.discountType === "percentage"
+        ? subtotal * (input.discountValue / 100)
+        : input.discountValue
+      : 0;
+  // Booking subtracts the discount from the payer's first-slot row only and
+  // clamps it at €0 — it can never exceed what that single row carries.
+  const payerFirstSlotAmount = amountsPerSlot[0]?.[payerIndex] ?? 0;
+  const discountAmount = round2(Math.min(requestedDiscount, payerFirstSlotAmount));
+
+  const perPlayerTotals = perPlayerBaseTotals.map((playerTotal, idx) =>
+    idx === payerIndex ? round2(playerTotal - discountAmount) : playerTotal,
+  );
+  const total = round2(subtotal - discountAmount);
+
+  const flatAmounts = amountsPerSlot.flat();
+  const perPlayerSessionAmount =
+    flatAmounts.length > 0 && flatAmounts.every((amount) => amount === flatAmounts[0])
+      ? flatAmounts[0]
+      : null;
+
+  return {
+    subtotal,
+    discountAmount,
+    total,
+    perPlayerTotals,
+    perPlayerSessionAmount,
+    firstPlayerDiscount: discountAmount,
+  };
+}
+
 export function buildGuestBookingInsertRow(params: {
   slotId: string;
   guestPlayerId: string;

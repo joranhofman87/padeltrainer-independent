@@ -272,6 +272,30 @@ describe('PublicInvoicePay error UI', () => {
     expect(screen.queryByText('INV-')).not.toBeInTheDocument();
   });
 
+  it('shows a retryable error on network failure and recovers on retry', async () => {
+    invokeMock
+      .mockResolvedValueOnce({ data: null, error: { message: 'Failed to fetch' } })
+      .mockResolvedValueOnce({ data: { status: 'paid' }, error: null });
+
+    render(
+      <MemoryRouter initialEntries={['/pay/flaky-token']}>
+        <Routes>
+          <Route path="/pay/:token" element={<PublicInvoicePay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Factuur kon niet geladen worden' }),
+    ).toBeInTheDocument();
+    expect(trackInvoicePayPageLoadFailedMock).toHaveBeenCalledWith('transient');
+    // Network failures must never render the "not found / expired" dead end.
+    expect(screen.queryByText('Invoice not found')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Try again/i }));
+    expect(await screen.findByRole('heading', { name: 'Payment received' })).toBeInTheDocument();
+  });
+
   it('shows not found for 404-style errors', async () => {
     invokeMock.mockResolvedValue({
       data: { error: 'Invoice not found' },

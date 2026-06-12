@@ -39,6 +39,8 @@ import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTra
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import { Skeleton } from '@/components/ui/skeleton';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 interface EarningsBooking {
   id: string;
@@ -98,6 +100,7 @@ export default function TrainerEarnings() {
   
   const [bookings, setBookings] = useState<EarningsBooking[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
   const [trainerInfo, setTrainerInfo] = useState<TrainerBusinessInfo | null>(null);
@@ -164,13 +167,18 @@ export default function TrainerEarnings() {
   };
 
   const fetchEarnings = async () => {
-    const { data: trainerProfile } = await supabase
+    setLoadingData(true);
+    setLoadError(false);
+
+    const { data: trainerProfile, error: profileError } = await supabase
       .from('trainer_profiles')
       .select('id')
       .eq('user_id', user!.id)
       .single();
 
-    if (!trainerProfile) {
+    if (profileError || !trainerProfile) {
+      logger.error('Error fetching trainer profile for earnings', undefined, { error: profileError, component: 'TrainerEarnings' });
+      setLoadError(true);
       setLoadingData(false);
       return;
     }
@@ -195,7 +203,7 @@ export default function TrainerEarnings() {
 
     if (error) {
       logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });
-      toast({ title: t('earningsPage.title'), description: t('earningsPage.subtitle'), variant: 'destructive' });
+      setLoadError(true);
     } else {
       setBookings((data as any) || []);
     }
@@ -259,7 +267,11 @@ export default function TrainerEarnings() {
       .eq('user_id', user!.id);
 
     if (error) {
-      toast({ title: t('earningsPage.title'), description: t('earningsPage.subtitle'), variant: 'destructive' });
+      toast({
+        title: t('common:error', 'Error'),
+        description: getFriendlyErrorMessage(error, t('earningsPage.settingsUpdateError', 'Could not update your payment settings. Please try again.')),
+        variant: 'destructive',
+      });
     } else {
       setTrainerInfo(prev => prev ? { ...prev, use_manual_invoicing: checked } : null);
       toast({ 
@@ -282,7 +294,11 @@ export default function TrainerEarnings() {
       .eq('id', bookingId);
 
     if (error) {
-      toast({ title: t('earningsPage.title'), description: t('earningsPage.subtitle'), variant: 'destructive' });
+      toast({
+        title: t('common:error', 'Error'),
+        description: getFriendlyErrorMessage(error, t('earningsPage.markPaidError', 'Could not record the payment. Please try again.')),
+        variant: 'destructive',
+      });
     } else {
       toast({ title: t('earningsPage.paymentRecorded'), description: t('earningsPage.paymentRecordedDescription') });
       fetchEarnings();
@@ -631,6 +647,10 @@ export default function TrainerEarnings() {
           </Card>
         )}
 
+        {loadError ? (
+          <QueryErrorState onRetry={fetchEarnings} />
+        ) : (
+        <>
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <DashboardStatTile
             label={t('earningsPage.totalEarned')}
@@ -799,6 +819,8 @@ export default function TrainerEarnings() {
           )}
           </Tabs>
         </div>
+        </>
+        )}
 
       {/* CreateInvoiceDialog removed — using /app/trainer/invoices/new page */}
     </div>

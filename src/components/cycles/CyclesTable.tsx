@@ -41,7 +41,8 @@ import {
   Search,
   ArrowUpDown,
 } from 'lucide-react';
-import { type Cycle, updateCycle, deleteCycle } from '@/lib/cycles';
+import { type Cycle, updateCycle } from '@/lib/cycles';
+import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/format';
 
@@ -80,6 +81,8 @@ export default function CyclesTable({
   const [sortField, setSortField] = useState<SortField>('start_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
+  const [cycleToDelete, setCycleToDelete] = useState<Cycle | null>(null);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -95,17 +98,6 @@ export default function CyclesTable({
       await updateCycle(cycle.id, { status: newStatus });
       toast.success(t(`status.${newStatus}`));
       onDeleted(); // Refresh
-    } catch (error: any) {
-      toast.error(error.message);
-    }
-  };
-
-  const handleDelete = async (cycle: Cycle) => {
-    if (!confirm((cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')) + '?')) return;
-    try {
-      await deleteCycle(cycle.id);
-      toast.success(t('common:deleted', 'Deleted'));
-      onDeleted();
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -385,7 +377,7 @@ export default function CyclesTable({
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          onClick={() => handleDelete(cycle)}
+                          onClick={() => setCycleToDelete(cycle)}
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash className="h-4 w-4 mr-2" />
@@ -400,6 +392,15 @@ export default function CyclesTable({
           </TableBody>
         </Table>
       </div>
+
+      <DeleteCycleDialog
+        cycle={cycleToDelete}
+        open={!!cycleToDelete}
+        onOpenChange={(open) => {
+          if (!open) setCycleToDelete(null);
+        }}
+        onDeleted={onDeleted}
+      />
     </div>
   );
 }

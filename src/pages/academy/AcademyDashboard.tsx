@@ -31,6 +31,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { compactDataTableClass } from '@/components/ui/data-table';
 import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { StatTile } from '@/components/ui/stat-tile';
 import { DashboardSectionHeader } from '@/components/trainer/dashboard/DashboardActivityList';
 
@@ -46,7 +47,7 @@ export default function AcademyDashboard() {
   const academyId = activeAcademy?.id;
 
   // Stats query
-  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 }, isLoading: statsLoading } = useQuery({
+  const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 }, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['academy-stats', academyId],
     queryFn: async () => {
       const [trainersData, locationsData, viewStats, invoicesRes] = await Promise.all([
@@ -83,7 +84,7 @@ export default function AcademyDashboard() {
     .slice(0, 6);
 
   // Activity data query - consolidated into one query with parallelized sub-fetches
-  const { data: activity, isLoading: activityLoading } = useQuery({
+  const { data: activity, isLoading: activityLoading, isError: activityError, refetch: refetchActivity } = useQuery({
     queryKey: ['academy-activity', academyId],
     queryFn: async () => {
       const now = new Date().toISOString();
@@ -240,6 +241,25 @@ export default function AcademyDashboard() {
     return (
       <AppPage>
         <DashboardPageSkeleton />
+      </AppPage>
+    );
+  }
+
+  // A failed fetch must never render as "0 trainers / no players" — that reads
+  // as deleted data and invites duplicate entry.
+  if (statsError || activityError) {
+    return (
+      <AppPage>
+        <PageHeader
+          title={activeAcademy?.name ?? t('dashboard.title')}
+          description={t('dashboard.overview')}
+        />
+        <QueryErrorState
+          onRetry={() => {
+            if (statsError) refetchStats();
+            if (activityError) refetchActivity();
+          }}
+        />
       </AppPage>
     );
   }

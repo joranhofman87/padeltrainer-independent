@@ -382,7 +382,11 @@
     "reject": "Reject",
     "noRequests": "No pending requests",
     "noRequestsDescription": "Booking requests from players will appear here",
-    "booked": "booked"
+    "booked": "booked",
+    "deleteBookingError": "Could not remove the player. Please try again.",
+    "deletePaidInvoiceWarning": "This booking is on paid invoice {{number}}. Removing the player will not change the amount already paid — arrange compensation with the player separately.",
+    "deleteUnpaidInvoiceWarning": "Invoice {{number}} will be recalculated automatically after removal.",
+    "invoiceSyncFailed": "The player was removed, but a linked invoice could not be updated. Please check the invoice."
   },
   "players": {
     "title": "My Players",
@@ -966,7 +970,12 @@
     "skipInvoiceUpdates": "Do not update invoices",
     "paidUnchanged": "Paid invoices were not changed.",
     "sentUnchanged": "Sent invoices were not updated.",
-    "sentUpdated": "Sent invoices were updated."
+    "sentUpdated": "Sent invoices were updated.",
+    "bulk": {
+      "resetAllPaid": "Paid invoices cannot be reset",
+      "resetDone": "{{count}} invoices reset to draft",
+      "resetDonePartial": "{{count}} reset, {{skipped}} paid skipped"
+    }
   },
   "profileVisibility": {
     "title": "Marketplace visibility",
@@ -1163,7 +1172,9 @@
     "mollieConnectedToast": "Mollie Connected!",
     "mollieConnectedDescription": "Your account is now set up to receive payments",
     "paymentRecorded": "Payment Recorded",
-    "paymentRecordedDescription": "The booking has been marked as paid"
+    "paymentRecordedDescription": "The booking has been marked as paid",
+    "markPaidError": "Could not record the payment. Please try again.",
+    "settingsUpdateError": "Could not update your payment settings. Please try again."
   },
   "analyticsPage": {
     "title": "Analytics",

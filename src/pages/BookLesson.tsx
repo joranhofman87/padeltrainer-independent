@@ -21,6 +21,7 @@ import { BookingTrainerCard } from '@/components/booking/BookingTrainerCard';
 import { CycleBundleList } from '@/components/booking/CycleBundleList';
 import { SlotList } from '@/components/booking/SlotList';
 import { BookingSummary } from '@/components/booking/BookingSummary';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 interface BookedPlayerInfo {
   skillRating: number | null;
@@ -95,6 +96,7 @@ export default function BookLesson() {
   const [notes, setNotes] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [booking, setBooking] = useState(false);
   const [booked, setBooked] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
@@ -117,6 +119,19 @@ export default function BookLesson() {
   }, [trainerId]);
 
   const fetchData = async () => {
+    setLoadingData(true);
+    setLoadFailed(false);
+    try {
+      await loadBookingData();
+    } catch {
+      // Failed request (network/5xx) — retryable, distinct from "trainer not found".
+      setLoadFailed(true);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  const loadBookingData = async () => {
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trainerId!);
 
     const trainerResult = await supabase
@@ -125,8 +140,11 @@ export default function BookLesson() {
       .eq(isUUID ? 'user_id' : 'slug', trainerId!)
       .maybeSingle();
 
+    // A failed query is retryable — only a successful empty result means the
+    // trainer really doesn't exist.
+    if (trainerResult.error) throw trainerResult.error;
     const trainerData = trainerResult.data as any;
-    if (!trainerData) { setLoadingData(false); return; }
+    if (!trainerData) return;
 
     const resolvedUserId = trainerData.user_id;
     const [profileResult, profileWithEmailResult] = await Promise.all([
@@ -148,22 +166,26 @@ export default function BookLesson() {
       }
     } as unknown as TrainerWithProfile);
 
-    const { data: slotsData } = await supabase
+    const { data: slotsData, error: slotsError } = await supabase
       .from('availability_slots')
       .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, member_window_ends_at, public_release_status, source_cycle_id, locations:location_id(id, name, city, street_address)`)
       .eq('trainer_id', trainerData.id)
-      
+
       .eq('is_public', true)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true });
+    // Don't render "no availability" (or free spots that may not exist) off a
+    // failed query — surface the retryable error instead.
+    if (slotsError) throw slotsError;
 
     if (slotsData) {
       const slotIds = slotsData.map((s) => s.id);
-      const { data: bookingsData } = await supabase
+      const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select(`slot_id, status, profiles:player_id (skill_rating, rating_system), guest_players:guest_player_id (skill_rating, rating_system)`)
         .in('slot_id', slotIds)
         .in('status', ['pending', 'confirmed']);
+      if (bookingsError) throw bookingsError;
 
       const slotBookingInfo: Record<string, { count: number; ratings: { rating: number; system: string }[] }> = {};
       bookingsData?.forEach((b) => {
@@ -277,7 +299,6 @@ export default function BookLesson() {
         setTermsLoading(false);
       }
     }
-    setLoadingData(false);
   };
 
   const getSlotPrice = (slot: SlotWithDetails) => slot.price_per_session || trainer?.hourly_rate || 0;
@@ -458,6 +479,19 @@ export default function BookLesson() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <QueryErrorState
+          onRetry={fetchData}
+          className="max-w-md w-full"
+          title={t('bookLesson.loadFailedTitle', 'Aanbod kon niet geladen worden')}
+          description={t('bookLesson.loadFailedDescription', 'Er ging iets mis bij het laden van het lesaanbod. Controleer je internetverbinding en probeer het opnieuw.')}
+        />
       </div>
     );
   }

@@ -11,6 +11,8 @@ import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parse
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line } from 'recharts';
 import { getTrainerAverageRating, getTrainerReviews } from '@/lib/reviews';
 import { formatCurrency } from '@/lib/format';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
+import { logger } from '@/lib/logger';
 
 interface MonthlyStats {
   month: string;
@@ -31,6 +33,7 @@ export default function TrainerAnalytics() {
   const { t } = useTranslation('trainer');
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
   const [ratingTrends, setRatingTrends] = useState<RatingTrend[]>([]);
   const [summary, setSummary] = useState({
@@ -66,20 +69,25 @@ export default function TrainerAnalytics() {
   }, [trainerId]);
 
   const fetchTrainerId = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('trainer_profiles')
       .select('id')
       .eq('user_id', user!.id)
       .single();
-    
-    if (data) {
-      setTrainerId(data.id);
+
+    if (error || !data) {
+      logger.error('Error fetching trainer profile', undefined, { error, component: 'TrainerAnalytics' });
+      setLoadError(true);
+      setLoadingStats(false);
+      return;
     }
+    setTrainerId(data.id);
   };
 
   const fetchAnalytics = async () => {
     if (!trainerId) return;
     setLoadingStats(true);
+    setLoadError(false);
 
     const now = new Date();
     const sixMonthsAgo = subMonths(now, 5);
@@ -91,7 +99,7 @@ export default function TrainerAnalytics() {
       .select('id')
       .eq('trainer_id', trainerId);
 
-    const { data: bookings } = await supabase
+    const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
       .select(`
         id,
@@ -104,9 +112,23 @@ export default function TrainerAnalytics() {
       .eq('availability_slots.trainer_id', trainerId)
       .gte('created_at', sixMonthsAgo.toISOString());
 
+    if (bookingsError) {
+      logger.error('Error fetching analytics bookings', undefined, { error: bookingsError, component: 'TrainerAnalytics' });
+      setLoadError(true);
+      setLoadingStats(false);
+      return;
+    }
+
     // Fetch reviews
-    const { data: reviews } = await getTrainerReviews(trainerId);
-    const { average, count } = await getTrainerAverageRating(trainerId);
+    const { data: reviews, error: reviewsError } = await getTrainerReviews(trainerId);
+    const { average, count, error: ratingError } = await getTrainerAverageRating(trainerId);
+
+    if (reviewsError || ratingError) {
+      logger.error('Error fetching analytics reviews', undefined, { error: reviewsError || ratingError, component: 'TrainerAnalytics' });
+      setLoadError(true);
+      setLoadingStats(false);
+      return;
+    }
 
     // Calculate monthly stats
     const monthlyData: MonthlyStats[] = months.map(month => {
@@ -194,6 +216,37 @@ export default function TrainerAnalytics() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+            <Button variant="ghost" size="icon" aria-label="Go back" onClick={() => navigate('/trainer')}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold">{t('analyticsPage.title')}</h1>
+              <p className="text-sm text-muted-foreground">{t('analyticsPage.subtitle')}</p>
+            </div>
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-8">
+          <QueryErrorState
+            onRetry={() => {
+              setLoadError(false);
+              setLoadingStats(true);
+              if (trainerId) {
+                fetchAnalytics();
+              } else {
+                fetchTrainerId();
+              }
+            }}
+          />
+        </main>
       </div>
     );
   }

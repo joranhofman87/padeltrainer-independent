@@ -283,7 +283,13 @@
       "refunded": "Terugbetaald",
       "unpaid": "Onbetaald"
     },
-    "cancelBooking": "Boeking annuleren"
+    "cancelBooking": "Boeking annuleren",
+    "cancelDialog": {
+      "cancelling": "Annuleren...",
+      "keep": "Boeking behouden",
+      "paidWarning": "Deze les is al betaald. Annuleren geeft niet automatisch je geld terug — neem contact op met je trainer om een eventuele terugbetaling af te stemmen."
+    },
+    "cancelErrorRetry": "Probeer het later opnieuw of neem contact op met je trainer."
   },
   "bookingSuccess": {
     "verifying": "Betaling verifiëren",
@@ -316,13 +322,16 @@
     "title": "Boek een les",
     "with": "met {{name}}",
     "trainerNotFound": "Trainer niet gevonden",
+    "loadFailedTitle": "Aanbod kon niet geladen worden",
+    "loadFailedDescription": "Er ging iets mis bij het laden van het lesaanbod. Controleer je internetverbinding en probeer het opnieuw.",
     "browseTrainers": "Bekijk trainers",
     "requestSent": "Verzoek verzonden!",
     "requestSentDescription": "De trainer zal je boekingsverzoek beoordelen.",
     "termsRequired": "Voorwaarden vereist",
     "termsRequiredDescription": "Accepteer de algemene voorwaarden voordat je boekt.",
     "bookingFailed": "Boeking mislukt",
-    "paymentNotAvailable": "Betaling niet beschikbaar"
+    "paymentNotAvailable": "Betaling niet beschikbaar",
+    "paymentNotAvailablePlayer": "Deze trainer kan nog geen online betalingen ontvangen. Neem contact op met de trainer."
   },
   "followingList": {
     "title": "Trainers die je volgt",

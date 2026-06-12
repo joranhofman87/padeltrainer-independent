@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, CreditCard, RefreshCw, Trash2, Info, X } from "lucide-react";
+import { Loader2, CreditCard, RefreshCw, Trash2, Info, X, Receipt } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
+import { syncInvoicesAfterBookingRemoval } from "@/lib/invoiceSync";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -40,6 +42,11 @@ interface BookingDetails {
   guest_player_id: string | null;
 }
 
+interface AffectedInvoiceInfo {
+  invoice_number: string;
+  status: string;
+}
+
 interface InlineEditBookingProps {
   booking: BookingDetails;
   trainerId: string;
@@ -61,6 +68,28 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [affectedInvoices, setAffectedInvoices] = useState<AffectedInvoiceInfo[]>([]);
+  const [isCheckingInvoices, setIsCheckingInvoices] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setIsCheckingInvoices(true);
+      setAffectedInvoices([]);
+      try {
+        const { data, error } = await supabase
+          .from("invoices")
+          .select("invoice_number, status")
+          .in("status", ["draft", "sent", "pending", "paid"])
+          .overlaps("booking_ids", [booking.id]);
+        if (error) throw error;
+        setAffectedInvoices(data || []);
+      } catch (error) {
+        logger.error("Error checking invoices for booking", error as Error, { component: "InlineEditBooking" });
+      } finally {
+        setIsCheckingInvoices(false);
+      }
+    })();
+  }, [booking.id]);
 
   useEffect(() => {
     (async () => {
@@ -114,12 +143,29 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
     try {
       const { error } = await supabase.from("bookings").delete().eq("id", booking.id);
       if (error) throw error;
+      // Invoices reference bookings via a booking_ids array (no FK), so the
+      // deleted booking would keep being billed. Recalculate unpaid invoices;
+      // paid invoices are intentionally left untouched (trainer was warned).
+      try {
+        await syncInvoicesAfterBookingRemoval([booking.id]);
+      } catch (syncError) {
+        logger.error("Error recalculating invoices after booking removal", syncError as Error, { component: "InlineEditBooking" });
+        toast({
+          title: tCommon("error"),
+          description: t("bookings.invoiceSyncFailed", "The player was removed, but a linked invoice could not be updated. Please check the invoice."),
+          variant: "destructive",
+        });
+      }
       toast({ title: t("bookings.bookingDeleted", "Booking deleted") });
       onBookingUpdated();
       onClose();
-    } catch (error: any) {
+    } catch (error) {
       logger.error("Error deleting booking", error as Error, { component: "InlineEditBooking" });
-      toast({ title: tCommon("error"), description: error.message, variant: "destructive" });
+      toast({
+        title: tCommon("error"),
+        description: getFriendlyErrorMessage(error, t("bookings.deleteBookingError", "Could not remove the player. Please try again.")),
+        variant: "destructive",
+      });
     } finally {
       setIsDeleting(false);
     }
@@ -129,6 +175,8 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
   const playerName = booking.player?.full_name ||
     players.find(p => p.id === booking.guest_player_id)?.full_name ||
     "Unknown Player";
+  const paidInvoices = affectedInvoices.filter(i => i.status === "paid");
+  const unpaidInvoices = affectedInvoices.filter(i => i.status !== "paid");
 
   return (
     <div className="border rounded-lg p-4 space-y-4 bg-muted/30 mt-1">
@@ -202,9 +250,29 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
               <AlertDialogTitle>{t("bookings.deleteBookingConfirm", "Remove player?")}</AlertDialogTitle>
               <AlertDialogDescription>{t("bookings.deleteBookingWarning", "This cannot be undone.")}</AlertDialogDescription>
             </AlertDialogHeader>
+            {paidInvoices.length > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                <CreditCard className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-orange-800 dark:text-orange-200">
+                  {t("bookings.deletePaidInvoiceWarning", "This booking is on paid invoice {{number}}. Removing the player will not change the amount already paid — arrange compensation with the player separately.", {
+                    number: paidInvoices.map(i => i.invoice_number).join(", "),
+                  })}
+                </p>
+              </div>
+            )}
+            {unpaidInvoices.length > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <Receipt className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  {t("bookings.deleteUnpaidInvoiceWarning", "Invoice {{number}} will be recalculated automatically after removal.", {
+                    number: unpaidInvoices.map(i => i.invoice_number).join(", "),
+                  })}
+                </p>
+              </div>
+            )}
             <AlertDialogFooter>
               <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction onClick={handleDelete} disabled={isCheckingInvoices || isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t("bookings.removePlayer", "Remove")}
               </AlertDialogAction>

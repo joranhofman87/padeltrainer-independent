@@ -497,7 +497,10 @@
       "previewDescription": "Preview based on the first selected invoice.",
       "send": "Send",
       "sending": "Sending...",
-      "emailDone": "Sent: {{sent}}, no email: {{noEmail}}, failed: {{failed}}"
+      "emailDone": "Sent: {{sent}}, no email: {{noEmail}}, failed: {{failed}}",
+      "resetAllPaid": "Paid invoices cannot be reset",
+      "resetDone": "{{count}} invoices reset to draft",
+      "resetDonePartial": "{{count}} reset, {{skipped}} paid skipped"
     },
     "open": "Open",
     "cancelled": "Cancelled"

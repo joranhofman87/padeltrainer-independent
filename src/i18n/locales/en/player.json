@@ -283,7 +283,13 @@
       "refunded": "Refunded",
       "unpaid": "Unpaid"
     },
-    "cancelBooking": "Cancel Booking"
+    "cancelBooking": "Cancel Booking",
+    "cancelDialog": {
+      "cancelling": "Cancelling...",
+      "keep": "Keep booking",
+      "paidWarning": "This lesson has already been paid. Cancelling does not automatically refund you — contact your trainer to arrange a possible refund."
+    },
+    "cancelErrorRetry": "Please try again later or contact your trainer."
   },
   "bookingSuccess": {
     "verifying": "Verifying Payment",
@@ -316,13 +322,16 @@
     "title": "Book a Lesson",
     "with": "with {{name}}",
     "trainerNotFound": "Trainer not found",
+    "loadFailedTitle": "Could not load lesson offering",
+    "loadFailedDescription": "Something went wrong while loading the lesson offering. Check your connection and try again.",
     "browseTrainers": "Browse Trainers",
     "requestSent": "Request Sent!",
     "requestSentDescription": "The trainer will review your booking request.",
     "termsRequired": "Terms Required",
     "termsRequiredDescription": "Please accept the general terms before booking.",
     "bookingFailed": "Booking Failed",
-    "paymentNotAvailable": "Payment Not Available"
+    "paymentNotAvailable": "Payment Not Available",
+    "paymentNotAvailablePlayer": "This trainer cannot receive online payments yet. Please contact the trainer."
   },
   "followingList": {
     "title": "Trainers You Follow",

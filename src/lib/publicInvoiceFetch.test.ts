@@ -27,7 +27,22 @@ describe('resolvePublicInvoiceLoadError', () => {
 
   it('maps unknown errors to not_found', () => {
     expect(resolvePublicInvoiceLoadError({ error: 'Invoice not found' }, null)).toBe('not_found');
-    expect(resolvePublicInvoiceLoadError(null, { context: { status: 500 } })).toBe('not_found');
+    expect(resolvePublicInvoiceLoadError(null, { context: { status: 404 } })).toBe('not_found');
+  });
+
+  it('maps 403 invoke error (no body available) to draft_invoice', () => {
+    expect(resolvePublicInvoiceLoadError(null, { context: { status: 403 } })).toBe('draft_invoice');
+  });
+
+  it('maps 5xx to transient so the page can offer a retry', () => {
+    expect(resolvePublicInvoiceLoadError(null, { context: { status: 500 } })).toBe('transient');
+    expect(resolvePublicInvoiceLoadError(null, { context: { status: 503 } })).toBe('transient');
+    expect(resolvePublicInvoiceLoadError({ error: 'internal' }, { context: { status: 500 } })).toBe('transient');
+  });
+
+  it('maps network failures without an HTTP status to transient', () => {
+    expect(resolvePublicInvoiceLoadError(null, new TypeError('Failed to fetch'))).toBe('transient');
+    expect(resolvePublicInvoiceLoadError(null, { message: 'Failed to send a request to the Edge Function' })).toBe('transient');
   });
 });
 

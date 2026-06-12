@@ -29,6 +29,7 @@ import { logger } from '@/lib/logger';
 import { getCitiesWithTrainers, type CityWithTrainerCount } from '@/lib/cities';
 import { SeoFaq } from '@/components/seo/SeoFaq';
 import { cityFaqs } from '@/lib/seoFaqs';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 interface TrainerWithProfile {
   id: string;
@@ -61,6 +62,7 @@ export default function TrainersCity() {
   const [claimedLocationIds, setClaimedLocationIds] = useState<Set<string>>(new Set());
   const [nearbyCities, setNearbyCities] = useState<CityWithTrainerCount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('rating');
   const navigate = useNavigate();
@@ -85,9 +87,22 @@ export default function TrainersCity() {
     }
   }, [city]);
 
+  // Wrapper catches every rejection so a flaky request can never leave the
+  // page stuck on the loading skeleton (unhandled rejection skipped setLoading).
   const fetchData = async () => {
     setLoading(true);
+    setLoadError(false);
+    try {
+      await loadCityData();
+    } catch (err) {
+      logger.error('Error fetching city page data', err as Error, { component: 'TrainersCity', action: 'fetchData' });
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const loadCityData = async () => {
     const [allLocations, allTrainerCounts, allClaimedIds, allCities] = await Promise.all([
       getActiveLocations(),
       getLocationTrainerCounts(),
@@ -140,8 +155,7 @@ export default function TrainersCity() {
 
     if (trainerError) {
       logger.error('Error fetching trainers', trainerError as unknown as Error, { component: 'TrainersCity', action: 'fetchTrainers' });
-      setLoading(false);
-      return;
+      throw trainerError;
     }
 
     const allTrainerIds = (allPublicTrainers as any[]).map(t => t.id);
@@ -160,8 +174,7 @@ export default function TrainersCity() {
 
     if (profilesError) {
       logger.error('Error fetching profiles', profilesError as unknown as Error, { component: 'TrainersCity', action: 'fetchProfiles' });
-      setLoading(false);
-      return;
+      throw profilesError;
     }
 
     const locationIds = cityLocations.map(l => l.id);
@@ -193,7 +206,6 @@ export default function TrainersCity() {
     });
 
     setTrainers(trainersWithRatings);
-    setLoading(false);
   };
 
   const filteredAndSortedTrainers = useMemo(() => {
@@ -374,6 +386,8 @@ export default function TrainersCity() {
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
+        ) : loadError ? (
+          <QueryErrorState onRetry={fetchData} />
         ) : filteredAndSortedTrainers.length === 0 ? (
           <Card className="text-center py-12">
             <CardContent>

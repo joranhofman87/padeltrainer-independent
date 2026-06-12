@@ -383,7 +383,11 @@
     "reject": "Afwijzen",
     "noRequests": "Geen openstaande verzoeken",
     "noRequestsDescription": "Boekingsverzoeken van spelers verschijnen hier",
-    "booked": "geboekt"
+    "booked": "geboekt",
+    "deleteBookingError": "Kon de speler niet verwijderen. Probeer het opnieuw.",
+    "deletePaidInvoiceWarning": "Deze boeking staat op betaalde factuur {{number}}. De speler verwijderen verandert niets aan het al betaalde bedrag — regel een eventuele vergoeding apart met de speler.",
+    "deleteUnpaidInvoiceWarning": "Factuur {{number}} wordt na verwijdering automatisch herberekend.",
+    "invoiceSyncFailed": "De speler is verwijderd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur."
   },
   "players": {
     "title": "Mijn spelers",
@@ -969,7 +973,12 @@
     "skipInvoiceUpdates": "Facturen niet bijwerken",
     "paidUnchanged": "Betaalde facturen zijn niet gewijzigd.",
     "sentUnchanged": "Verstuurde facturen zijn niet bijgewerkt.",
-    "sentUpdated": "Verstuurde facturen zijn bijgewerkt."
+    "sentUpdated": "Verstuurde facturen zijn bijgewerkt.",
+    "bulk": {
+      "resetAllPaid": "Betaalde facturen kunnen niet worden gereset",
+      "resetDone": "{{count}} facturen gereset",
+      "resetDonePartial": "{{count}} gereset, {{skipped}} betaalde overgeslagen"
+    }
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",
@@ -1166,7 +1175,9 @@
     "mollieConnectedToast": "Mollie verbonden!",
     "mollieConnectedDescription": "Je account is nu ingesteld om betalingen te ontvangen",
     "paymentRecorded": "Betaling geregistreerd",
-    "paymentRecordedDescription": "De boeking is gemarkeerd als betaald"
+    "paymentRecordedDescription": "De boeking is gemarkeerd als betaald",
+    "markPaidError": "Kon de betaling niet opslaan. Probeer het opnieuw.",
+    "settingsUpdateError": "Kon je betalingsinstellingen niet bijwerken. Probeer het opnieuw."
   },
   "analyticsPage": {
     "title": "Statistieken",

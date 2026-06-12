@@ -46,6 +46,7 @@ import {
 } from "@/lib/invoicePayTracking";
 import { resolvePublicInvoiceContactEmail } from "@/lib/publicInvoiceContact";
 import { formatCurrency } from "@/lib/format";
+import { QueryErrorState } from "@/components/ui/QueryErrorState";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -450,15 +451,23 @@ export default function PublicInvoicePay() {
         /* analytics must not block page */
       }
     } catch {
-      setError("not_found");
+      // The invoke itself threw — request never completed, so the invoice may
+      // be fine. Show the retryable state, not "not found".
+      setError("transient");
       try {
-        trackInvoicePayPageLoadFailed("not_found");
+        trackInvoicePayPageLoadFailed("transient");
       } catch {
         /* analytics must not block page */
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryFetch = () => {
+    setError(null);
+    setLoading(true);
+    fetchInvoice();
   };
 
   const paymentRecipient: PublicInvoicePaymentRecipient =
@@ -585,6 +594,25 @@ export default function PublicInvoicePay() {
             <PostPaymentCTA playerId={data?.invoice.playerId} />
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (error === "transient") {
+    const transientTitle = t("invoice.loadFailedTitle", "Factuur kon niet geladen worden");
+    const transientDescription = t(
+      "invoice.loadFailedDescription",
+      "Er ging iets mis bij het ophalen van de factuur. De factuur is niet geannuleerd en de link werkt nog — controleer je internetverbinding en probeer het opnieuw.",
+    );
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <SEO title={transientTitle} description={transientDescription} noIndex={true} />
+        <QueryErrorState
+          onRetry={retryFetch}
+          className="max-w-md w-full"
+          title={transientTitle}
+          description={transientDescription}
+        />
       </div>
     );
   }

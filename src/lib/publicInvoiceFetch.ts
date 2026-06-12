@@ -11,7 +11,9 @@ export type PublicInvoiceErrorCode =
   | 'unavailable'
   | 'draft_invoice'
   | 'already_paid'
-  | 'cancelled';
+  | 'cancelled'
+  // Network drop or 5xx: the invoice may be fine — offer a retry, never "not found".
+  | 'transient';
 
 function getFnErrorStatus(fnError: unknown): number | undefined {
   const err = fnError as { context?: { status?: number }; status?: number };
@@ -27,10 +29,17 @@ export function resolvePublicInvoiceLoadError(
   if (result?.error === 'already_paid') return 'already_paid';
   if (result?.error === 'cancelled') return 'cancelled';
   if (result?.error === 'draft_invoice') return 'draft_invoice';
+  const status = getFnErrorStatus(fnError);
+  if (status === 401) return 'unavailable';
+  // get-public-invoice only returns 403 for drafts; the body is unavailable on
+  // non-2xx invoke errors, so map the status itself.
+  if (status === 403) return 'draft_invoice';
+  if (status !== undefined && status >= 500) return 'transient';
   if (result?.error) return 'not_found';
   if (fnError) {
-    if (getFnErrorStatus(fnError) === 401) return 'unavailable';
-    return 'not_found';
+    // Remaining 4xx is a definitive answer from the function; an error without
+    // any HTTP status means the request never completed (network failure).
+    return status !== undefined ? 'not_found' : 'transient';
   }
   return null;
 }

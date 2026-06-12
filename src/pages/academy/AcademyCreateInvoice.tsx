@@ -22,6 +22,7 @@ import { formatCurrency } from '@/lib/format';
 import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
 import { invalidateAllPlayerData, playerKeys } from '@/lib/playerQueryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useQueryClient } from '@tanstack/react-query';
@@ -199,6 +200,14 @@ export default function AcademyCreateInvoice() {
       vatBreakdown: hasMultipleRates ? breakdown : null,
     };
   }, [lineItems, pricesIncludeVat]);
+
+  // U-09: warn on tab close/refresh while there is unsaved typed input.
+  // Receiver fields are ignored when prefilled from a profile (no typing lost).
+  const hasUnsavedInput =
+    lineItems.some(li => li.description.trim() !== '' || li.unit_price !== 0) ||
+    notes.trim() !== '' ||
+    (!prefilledFromProfile && Object.values(receiver).some(v => v.trim() !== ''));
+  useUnsavedChangesGuard(hasUnsavedInput);
 
   const handleSave = async () => {
     if (!academyProfileId) return;

@@ -7,6 +7,8 @@
     "openCycles": "Open for Registration",
     "deadline": "Deadline",
     "notFound": "Registration Not Found",
+    "loadFailedTitle": "Could not load this registration",
+    "loadFailedDescription": "Something went wrong while loading. Your registration link is still valid — check your connection and try again.",
     "noCycles": "No open registrations",
     "checkBackLater": "Check back later for upcoming training cycles."
   },
@@ -128,7 +130,10 @@
     "alwaysOpen": {
       "label": "Open registration (no fixed dates)",
       "help": "This form stays open until you close it from the registrations list. Players can apply at any time."
-    }
+    },
+    "draftFound": "Unsaved draft found. Continue where you left off?",
+    "draftRestore": "Restore",
+    "draftDismiss": "Discard"
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",
@@ -573,7 +578,8 @@
     "inviteAll": "Send invites",
     "allInvited": "Invitations sent",
     "days": "days",
-    "openNow": "Open to public now"
+    "openNow": "Open to public now",
+    "inviteError": "Could not send the invitation. Please try again."
   },
   "fillRate": {
     "title": "Fill rate",
@@ -611,6 +617,8 @@
     "errorAlready": "You have already responded to this invitation.",
     "errorGeneric": "Something went wrong. Please try again.",
     "linkInvalid": "Link not found",
-    "linkInvalidDescription": "This claim link is invalid or has expired."
+    "linkInvalidDescription": "This claim link is invalid or has expired.",
+    "loadFailedTitle": "Could not load this page",
+    "loadFailedDescription": "Something went wrong while loading your invitation. Your link is still valid and your spot has not been released — check your connection and try again."
   }
 }

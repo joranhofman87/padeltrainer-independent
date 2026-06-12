@@ -7,6 +7,8 @@
     "openCycles": "Open voor inschrijving",
     "deadline": "Deadline",
     "notFound": "Inschrijving niet gevonden",
+    "loadFailedTitle": "Inschrijving kon niet geladen worden",
+    "loadFailedDescription": "Er ging iets mis bij het laden. Je inschrijflink is nog geldig — controleer je internetverbinding en probeer het opnieuw.",
     "noCycles": "Geen open inschrijvingen",
     "checkBackLater": "Kom later terug voor aankomende trainings-cycli."
   },
@@ -138,7 +140,10 @@
     "alwaysOpen": {
       "label": "Open inschrijving (geen vaste data)",
       "help": "Dit formulier blijft open totdat je het sluit. Spelers kunnen op elk moment aanmelden."
-    }
+    },
+    "draftFound": "Niet-opgeslagen concept gevonden. Wil je verdergaan waar je gebleven was?",
+    "draftRestore": "Herstellen",
+    "draftDismiss": "Verwijderen"
   },
   "detail": {
     "priceTable": "Tarieven",
@@ -702,7 +707,8 @@
     "inviteAll": "Stuur uitnodigingen",
     "allInvited": "Uitnodigingen verstuurd",
     "days": "dagen",
-    "openNow": "Nu openstellen"
+    "openNow": "Nu openstellen",
+    "inviteError": "Kon de uitnodiging niet versturen. Probeer het opnieuw."
   },
   "fillRate": {
     "title": "Bezettingsgraad",
@@ -740,7 +746,9 @@
     "errorAlready": "Je hebt al gereageerd op deze uitnodiging.",
     "errorGeneric": "Er ging iets mis. Probeer het opnieuw.",
     "linkInvalid": "Link niet gevonden",
-    "linkInvalidDescription": "Deze link is ongeldig of verlopen."
+    "linkInvalidDescription": "Deze link is ongeldig of verlopen.",
+    "loadFailedTitle": "Pagina kon niet geladen worden",
+    "loadFailedDescription": "Er ging iets mis bij het laden van je uitnodiging. Je link is nog geldig en je plek is niet vrijgegeven — controleer je internetverbinding en probeer het opnieuw."
   },
   "tierControl": {
     "title": "Zichtbaarheid & herboeking",

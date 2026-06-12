@@ -27,6 +27,7 @@ import { formatDate } from '@/lib/format';
 import { useTranslation } from 'react-i18next';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { cn } from '@/lib/utils';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 const UPGRADE_FEATURE_KEYS = [
   'lowerFees',
@@ -49,7 +50,7 @@ export default function TrainerSubscription() {
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
 
-  const { data: plans, isLoading: loadingPlans } = useTrainerPlans();
+  const { data: plans, isLoading: loadingPlans, isError: plansError, refetch: refetchPlans } = useTrainerPlans();
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -292,6 +293,9 @@ export default function TrainerSubscription() {
         </div>
       </div>
 
+      {plansError ? (
+        <QueryErrorState className="mx-auto max-w-5xl" onRetry={() => refetchPlans()} />
+      ) : (
       <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-3">
         {plans?.map((plan) => (
           <Card
@@ -371,6 +375,7 @@ export default function TrainerSubscription() {
           </Card>
         ))}
       </div>
+      )}
 
       <Card className="mx-auto max-w-4xl border-border/80 shadow-sm">
         <CardHeader>

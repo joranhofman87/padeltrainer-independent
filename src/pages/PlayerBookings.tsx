@@ -7,11 +7,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getPlayerReview } from '@/lib/reviews';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
@@ -28,6 +30,7 @@ interface BookingWithDetails {
   slot_id: string;
   status: string;
   payment_status: string | null;
+  paid_externally: boolean | null;
   notes: string | null;
   created_at: string;
   availability_slots: {
@@ -54,6 +57,8 @@ export default function PlayerBookings() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [reviewDialogOpen, setReviewDialogOpen] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<BookingWithDetails | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (user && profile?.id) {
@@ -69,6 +74,7 @@ export default function PlayerBookings() {
         slot_id,
         status,
         payment_status,
+        paid_externally,
         notes,
         created_at,
         availability_slots(
@@ -95,7 +101,7 @@ export default function PlayerBookings() {
 
     if (data) {
       const rawBookings = data as unknown as Array<{
-        id: string; slot_id: string; status: string; payment_status: string | null; notes: string | null; created_at: string;
+        id: string; slot_id: string; status: string; payment_status: string | null; paid_externally: boolean | null; notes: string | null; created_at: string;
         availability_slots: { start_time: string; end_time: string; trainer_id: string; price_per_session: number | null; cyclus_name: string | null; locations: { name: string } | null };
       }>;
 
@@ -161,16 +167,22 @@ export default function PlayerBookings() {
     setLoadingBookings(false);
   };
 
-  const handleCancel = async (bookingId: string) => {
-    if (!confirm(t('bookings.confirmCancel'))) return;
+  const isPaidBooking = (booking: BookingWithDetails) =>
+    booking.payment_status === 'paid' || !!booking.paid_externally;
 
-    const { error } = await cancelBooking(bookingId);
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    const { error } = await cancelBooking(cancelTarget.id);
+    setCancelling(false);
     if (error) {
       toast({
         title: t('bookings.cancelError'),
+        description: getFriendlyErrorMessage(error, t('bookings.cancelErrorRetry', 'Probeer het later opnieuw of neem contact op met je trainer.')),
         variant: 'destructive',
       });
     } else {
+      setCancelTarget(null);
       toast({ title: t('bookings.cancelSuccess') });
       fetchBookings();
     }
@@ -337,7 +349,7 @@ export default function PlayerBookings() {
                             <Button
                               variant="outline"
                               className="text-destructive"
-                              onClick={() => handleCancel(booking.id)}
+                              onClick={() => setCancelTarget(booking)}
                             >
                               {t('bookings.cancelBooking')}
                             </Button>
@@ -444,6 +456,26 @@ export default function PlayerBookings() {
             {profile?.id && <PlayerInvoicesTab profileId={profile.id} />}
           </TabsContent>
       </Tabs>
+
+      {/* Cancel booking confirmation */}
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open && !cancelling) setCancelTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('bookings.cancelDialog.title', 'Boeking annuleren?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelTarget && isPaidBooking(cancelTarget)
+                ? t('bookings.cancelDialog.paidWarning', 'Deze les is al betaald. Annuleren geeft niet automatisch je geld terug — neem contact op met je trainer om een eventuele terugbetaling af te stemmen.')
+                : t('bookings.confirmCancel')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>{t('bookings.cancelDialog.keep', 'Boeking behouden')}</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleConfirmCancel} disabled={cancelling}>
+              {cancelling ? t('bookings.cancelDialog.cancelling', 'Annuleren...') : t('bookings.cancelBooking')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppPage>
   );
 }

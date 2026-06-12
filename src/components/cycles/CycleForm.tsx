@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { logger } from '@/lib/logger';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
@@ -44,10 +44,30 @@ import { formatCurrency } from '@/lib/format';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { toast } from 'sonner';
 
 const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
 const CURRENCIES = ['EUR', 'USD', 'GBP'] as const;
+
+// U-09 draft persistence: bump the version whenever the persisted shape changes
+// so stale drafts are silently discarded instead of mis-restored.
+const CYCLE_FORM_DRAFT_VERSION = 1;
+const CYCLE_FORM_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface CycleFormDraft {
+  v: number;
+  savedAt: number;
+  /** react-hook-form values; Dates are serialized to ISO strings by JSON. */
+  values: Record<string, unknown>;
+  terms?: string;
+  pricingNote?: string;
+  extraCosts?: ExtraCost[];
+  priceTable?: PriceTableRow[];
+  priceColumns?: string[];
+  cyclusOptions?: CyclusOption[];
+  availableDays?: DayAvailability;
+}
 
 interface CycleFormProps {
   cycle?: Cycle | null;
@@ -349,6 +369,141 @@ export default function CycleForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedStartTime, watchedEndTime, watchedWeeks, watchedAssignedTrainer, trainerHourlyRate, ownerType, extraCosts]);
 
+  // U-09: persist a debounced draft so a session-expiry redirect, crash, or tab
+  // close doesn't destroy long-form input. Cleared on successful save.
+  const draftKey = `cycle-form-draft:${ownerType}:${ownerId}:${cycle?.id ?? `new-${formType}`}`;
+  const draftWriteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hasDraftChanges, setHasDraftChanges] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<CycleFormDraft | null>(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as CycleFormDraft;
+      if (
+        parsed?.v !== CYCLE_FORM_DRAFT_VERSION ||
+        typeof parsed.savedAt !== 'number' ||
+        typeof parsed.values !== 'object' ||
+        parsed.values === null
+      ) return null;
+      if (Date.now() - parsed.savedAt > CYCLE_FORM_DRAFT_MAX_AGE_MS) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
+
+  const scheduleDraftWrite = useCallback(() => {
+    setHasDraftChanges(true);
+    if (draftWriteTimer.current) clearTimeout(draftWriteTimer.current);
+    draftWriteTimer.current = setTimeout(() => {
+      try {
+        const draft: CycleFormDraft = {
+          v: CYCLE_FORM_DRAFT_VERSION,
+          savedAt: Date.now(),
+          values: form.getValues() as Record<string, unknown>,
+          terms,
+          pricingNote,
+          extraCosts,
+          priceTable,
+          priceColumns,
+          cyclusOptions,
+          availableDays,
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        // Storage unavailable or full — the beforeunload guard still applies
+      }
+    }, 1000);
+  }, [form, draftKey, terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays]);
+
+  useEffect(() => {
+    const subscription = form.watch(() => {
+      // Gated on isDirty so programmatic setValue calls (auto end_date/pricing
+      // sync on mount) don't create a draft before the user typed anything.
+      if (form.formState.isDirty) scheduleDraftWrite();
+    });
+    return () => subscription.unsubscribe();
+  }, [form, scheduleDraftWrite]);
+
+  // Aux state lives outside react-hook-form; compare serialized snapshots so the
+  // mount-time reset (same content, new array identities) doesn't write a draft.
+  const auxSnapshotRef = useRef<string | null>(null);
+  useEffect(() => {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify({ terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays });
+    } catch {
+      return;
+    }
+    if (auxSnapshotRef.current !== null && auxSnapshotRef.current !== serialized) {
+      scheduleDraftWrite();
+    }
+    auxSnapshotRef.current = serialized;
+  }, [terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays, scheduleDraftWrite]);
+
+  useEffect(() => () => {
+    if (draftWriteTimer.current) clearTimeout(draftWriteTimer.current);
+  }, []);
+
+  const clearDraft = () => {
+    if (draftWriteTimer.current) {
+      clearTimeout(draftWriteTimer.current);
+      draftWriteTimer.current = null;
+    }
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore storage errors
+    }
+    setHasDraftChanges(false);
+    setPendingDraft(null);
+  };
+
+  const restoreDraft = () => {
+    if (!pendingDraft) return;
+    try {
+      const values: Record<string, unknown> = { ...pendingDraft.values };
+      for (const key of ['start_date', 'end_date', 'enrollment_deadline'] as const) {
+        const raw = values[key];
+        if (typeof raw === 'string') {
+          const revived = new Date(raw);
+          values[key] = Number.isNaN(revived.getTime()) ? undefined : revived;
+        }
+      }
+      // keepDefaultValues so restored values still count as dirty edits
+      form.reset(values as FormValues, { keepDefaultValues: true });
+      if (typeof pendingDraft.terms === 'string') setTerms(pendingDraft.terms);
+      if (typeof pendingDraft.pricingNote === 'string') setPricingNote(pendingDraft.pricingNote);
+      if (Array.isArray(pendingDraft.extraCosts)) setExtraCosts(pendingDraft.extraCosts);
+      if (Array.isArray(pendingDraft.priceTable)) setPriceTable(pendingDraft.priceTable);
+      if (Array.isArray(pendingDraft.priceColumns)) setPriceColumns(pendingDraft.priceColumns);
+      if (Array.isArray(pendingDraft.cyclusOptions)) setCyclusOptions(pendingDraft.cyclusOptions);
+      if (pendingDraft.availableDays && typeof pendingDraft.availableDays === 'object') {
+        setAvailableDays(pendingDraft.availableDays);
+      }
+      setHasDraftChanges(true);
+    } catch {
+      // Corrupt draft — drop it rather than break the form
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        // ignore storage errors
+      }
+    }
+    setPendingDraft(null);
+  };
+
+  const dismissDraft = () => {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore storage errors
+    }
+    setPendingDraft(null);
+  };
+
+  useUnsavedChangesGuard(form.formState.isDirty || hasDraftChanges);
+
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
     setIsSubmitting(true);
     try {
@@ -448,6 +603,7 @@ export default function CycleForm({
         result = await createCycle(input);
       }
 
+      clearDraft();
       toast.success(isEdit ? 'Cycle updated' : 'Cycle created');
       onSuccess?.(result);
       // Navigation handled by onSuccess callback
@@ -461,6 +617,19 @@ export default function CycleForm({
 
   return (
     <div className="space-y-6">
+        {pendingDraft && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+            <span>{t('form.draftFound', 'Niet-opgeslagen concept gevonden. Wil je verdergaan waar je gebleven was?')}</span>
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={dismissDraft}>
+                {t('form.draftDismiss', 'Verwijderen')}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={restoreDraft}>
+                {t('form.draftRestore', 'Herstellen')}
+              </Button>
+            </div>
+          </div>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">

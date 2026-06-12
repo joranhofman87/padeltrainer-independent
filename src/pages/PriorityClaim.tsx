@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import { CalendarClock, MapPin, CheckCircle2, XCircle } from 'lucide-react';
 import { fetchClaimByToken, declineClaimWithToken, acceptClaimWithToken } from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency } from '@/lib/format';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 interface ClaimData {
   claim: {
@@ -40,17 +41,26 @@ export default function PriorityClaimPage() {
   const intent = searchParams.get('intent'); // 'accept' | 'decline' from the email buttons
   const [data, setData] = useState<ClaimData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [acting, setActing] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [accepted, setAccepted] = useState(false);
 
-  useEffect(() => {
+  const loadClaim = useCallback(() => {
     if (!token) return;
+    setLoading(true);
+    setLoadFailed(false);
     fetchClaimByToken(token)
+      // A null result is a definitive "no such claim"; a throw is a failed
+      // request (network/5xx) — the link may still be valid, so offer a retry.
       .then((res) => setData(res as unknown as ClaimData | null))
-      .catch(() => setData(null))
+      .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    loadClaim();
+  }, [loadClaim]);
 
   const onClaim = async () => {
     if (!token) return;
@@ -96,6 +106,19 @@ export default function PriorityClaimPage() {
       <div className="container max-w-xl mx-auto py-12 px-4">
         <Skeleton className="h-8 w-48 mb-4" />
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="container max-w-xl mx-auto py-16 px-4">
+        <Helmet><meta name="robots" content="noindex" /></Helmet>
+        <QueryErrorState
+          onRetry={loadClaim}
+          title={t('rebooking.loadFailedTitle', 'Could not load this page')}
+          description={t('rebooking.loadFailedDescription', 'Something went wrong while loading your invitation. Your link is still valid and your spot has not been released — check your connection and try again.')}
+        />
       </div>
     );
   }

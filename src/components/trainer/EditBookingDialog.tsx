@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, parseISO } from "date-fns";
-import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2, Info } from "lucide-react";
+import { Loader2, Calendar, Clock, User, CreditCard, RefreshCw, Trash2, Info, Receipt } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
 import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
+import { syncInvoicesAfterBookingRemoval } from "@/lib/invoiceSync";
+import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import {
   Dialog,
   DialogContent,
@@ -68,6 +70,11 @@ interface EditBookingDialogProps {
   onBookingUpdated: () => void;
 }
 
+interface AffectedInvoiceInfo {
+  invoice_number: string;
+  status: string;
+}
+
 export function EditBookingDialog({
   open,
   onOpenChange,
@@ -85,6 +92,8 @@ export function EditBookingDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [affectedInvoices, setAffectedInvoices] = useState<AffectedInvoiceInfo[]>([]);
+  const [isCheckingInvoices, setIsCheckingInvoices] = useState(false);
 
   useEffect(() => {
     if (booking && open) {
@@ -92,8 +101,27 @@ export function EditBookingDialog({
       setPaymentStatus(booking.payment_status);
       setSelectedPlayerId(booking.guest_player_id);
       fetchPlayers();
+      checkAffectedInvoices(booking.id);
     }
   }, [booking, open]);
+
+  const checkAffectedInvoices = async (bookingId: string) => {
+    setIsCheckingInvoices(true);
+    setAffectedInvoices([]);
+    try {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("invoice_number, status")
+        .in("status", ["draft", "sent", "pending", "paid"])
+        .overlaps("booking_ids", [bookingId]);
+      if (error) throw error;
+      setAffectedInvoices(data || []);
+    } catch (error) {
+      logger.error("Error checking invoices for booking", error as Error, { component: 'EditBookingDialog' });
+    } finally {
+      setIsCheckingInvoices(false);
+    }
+  };
 
   const fetchPlayers = async () => {
     setIsFetching(true);
@@ -169,6 +197,20 @@ export function EditBookingDialog({
 
       if (error) throw error;
 
+      // Invoices reference bookings via a booking_ids array (no FK), so the
+      // deleted booking would keep being billed. Recalculate unpaid invoices;
+      // paid invoices are intentionally left untouched (trainer was warned).
+      try {
+        await syncInvoicesAfterBookingRemoval([booking.id]);
+      } catch (syncError) {
+        logger.error("Error recalculating invoices after booking removal", syncError as Error, { component: 'EditBookingDialog' });
+        toast({
+          title: t("common:error"),
+          description: t("bookings.invoiceSyncFailed", "The player was removed, but a linked invoice could not be updated. Please check the invoice."),
+          variant: "destructive",
+        });
+      }
+
       toast({
         title: t("bookings.bookingDeleted", "Booking deleted"),
         description: t("bookings.bookingDeletedDescription", "The player has been removed from this slot"),
@@ -176,11 +218,11 @@ export function EditBookingDialog({
 
       onBookingUpdated();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error) {
       logger.error("Error deleting booking", error as Error, { component: 'EditBookingDialog' });
       toast({
         title: t("common:error"),
-        description: error.message,
+        description: getFriendlyErrorMessage(error, t("bookings.deleteBookingError", "Could not remove the player. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -191,9 +233,11 @@ export function EditBookingDialog({
   if (!booking) return null;
 
   const isGuestBooking = !!booking.guest_player_id;
-  const playerName = booking.player?.full_name || 
-    players.find(p => p.id === booking.guest_player_id)?.full_name || 
+  const playerName = booking.player?.full_name ||
+    players.find(p => p.id === booking.guest_player_id)?.full_name ||
     "Unknown Player";
+  const paidInvoices = affectedInvoices.filter(i => i.status === "paid");
+  const unpaidInvoices = affectedInvoices.filter(i => i.status !== "paid");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -321,10 +365,31 @@ export function EditBookingDialog({
                   {t("bookings.deleteBookingWarning", "This action cannot be undone. The slot will become available again.")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              {paidInvoices.length > 0 && (
+                <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                  <CreditCard className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-orange-800 dark:text-orange-200">
+                    {t("bookings.deletePaidInvoiceWarning", "This booking is on paid invoice {{number}}. Removing the player will not change the amount already paid — arrange compensation with the player separately.", {
+                      number: paidInvoices.map(i => i.invoice_number).join(", "),
+                    })}
+                  </p>
+                </div>
+              )}
+              {unpaidInvoices.length > 0 && (
+                <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <Receipt className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    {t("bookings.deleteUnpaidInvoiceWarning", "Invoice {{number}} will be recalculated automatically after removal.", {
+                      number: unpaidInvoices.map(i => i.invoice_number).join(", "),
+                    })}
+                  </p>
+                </div>
+              )}
               <AlertDialogFooter>
                 <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
-                <AlertDialogAction 
+                <AlertDialogAction
                   onClick={handleDelete}
+                  disabled={isCheckingInvoices || isDeleting}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

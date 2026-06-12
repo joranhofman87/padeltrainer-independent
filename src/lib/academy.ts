@@ -240,7 +240,8 @@ export async function getAcademyTrainers(academyProfileId: string): Promise<any[
 
   if (error) {
     logger.error('Error fetching academy trainers', undefined, { error });
-    return [];
+    // Propagate so React Query enters isError instead of rendering "0 trainers".
+    throw error;
   }
 
   return data || [];

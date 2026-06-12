@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Clock, X, Globe, Mail, Send } from 'lucide-react';
+import { Clock, X, Globe, Loader2, Mail, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import {
   getPriorityClaimsForSlot,
   declineClaimAsManager,
@@ -41,6 +42,10 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
   const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [priorityWindowEndsAt, setPriorityWindowEndsAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [invitingClaimId, setInvitingClaimId] = useState<string | null>(null);
+  const [sendingAll, setSendingAll] = useState(false);
+  // Both paths email the same claimants; block one while the other runs.
+  const inviteBusy = invitingClaimId !== null || sendingAll;
 
   const reload = async () => {
     setLoading(true);
@@ -100,16 +105,24 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                         <Button
                           variant="ghost"
                           size="sm"
+                          disabled={inviteBusy}
                           onClick={async () => {
+                            setInvitingClaimId(c.id);
                             try {
                               const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { claimIds: [c.id] } });
                               if (error) throw error;
                               toast.success(t('priorityClaims.invitationSent', 'Invitation sent'));
                               await reload();
-                            } catch (e) { toast.error((e as Error).message); }
+                            } catch (e) {
+                              toast.error(getFriendlyErrorMessage(e, t('priorityClaims.inviteError', 'Could not send the invitation. Please try again.')));
+                            } finally {
+                              setInvitingClaimId(null);
+                            }
                           }}
                         >
-                          <Send className="h-4 w-4 mr-1" /> {t('priorityClaims.invite', 'Invite')}
+                          {invitingClaimId === c.id
+                            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            : <Send className="h-4 w-4 mr-1" />} {t('priorityClaims.invite', 'Invite')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -138,16 +151,24 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
             <Button
               size="sm"
               variant="outline"
+              disabled={inviteBusy}
               onClick={async () => {
+                setSendingAll(true);
                 try {
                   const { error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { slotId } });
                   if (error) throw error;
                   toast.success(t('priorityClaims.allInvited', 'Invitations sent'));
                   await reload();
-                } catch (e) { toast.error((e as Error).message); }
+                } catch (e) {
+                  toast.error(getFriendlyErrorMessage(e, t('priorityClaims.inviteError', 'Could not send the invitation. Please try again.')));
+                } finally {
+                  setSendingAll(false);
+                }
               }}
             >
-              <Mail className="h-4 w-4 mr-1" /> {t('priorityClaims.inviteAll', 'Send invites')}
+              {sendingAll
+                ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                : <Mail className="h-4 w-4 mr-1" />} {t('priorityClaims.inviteAll', 'Send invites')}
             </Button>
             <Button
               size="sm"

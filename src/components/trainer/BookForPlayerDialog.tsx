@@ -28,9 +28,11 @@ import {
   shouldShowPayerSelector,
 } from "@/lib/cyclePayerSelection";
 import {
+  calculateAddPlayerPricingPreview,
   calculateSlotBookingPricing,
   countActiveBookings,
   resolveSlotSessionPrice,
+  type AddPlayerPricingPreviewSlot,
 } from "@/lib/bookingPricing";
 import {
   Dialog,
@@ -62,7 +64,7 @@ import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { Badge } from "@/components/ui/badge";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { cn } from "@/lib/utils";
-import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
+import { formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
@@ -138,6 +140,7 @@ export function BookForPlayerDialog({
   const [bookingScope, setBookingScope] = useState<"single" | "cyclus">("single");
   const [cyclusSlotsCount, setCyclusSlotsCount] = useState(0);
   const [cyclusSlots, setCyclusSlots] = useState<CyclusSlotRow[]>([]);
+  const [cyclusExistingCounts, setCyclusExistingCounts] = useState<Record<string, number>>({});
   const [hourlyRate, setHourlyRate] = useState<number>(50);
   const [slotSplitPayment, setSlotSplitPayment] = useState(false);
   const [slotPricePerSession, setSlotPricePerSession] = useState<number | null>(null);
@@ -187,6 +190,7 @@ export function BookForPlayerDialog({
       setBookingScope("single");
       setCyclusSlotsCount(0);
       setCyclusSlots([]);
+      setCyclusExistingCounts({});
       setShowDiscount(false);
       setDiscountType("percentage");
       setDiscountValue(0);
@@ -260,6 +264,17 @@ export function BookForPlayerDialog({
       if (error) throw error;
       setCyclusSlots(data || []);
       setCyclusSlotsCount(data?.length || 0);
+
+      // The price preview needs per-slot existing counts so the cyclus quote
+      // uses the same shares the booking will write.
+      if (data?.length) {
+        const bySlot = await fetchExistingBookingsBySlot(data.map((s) => s.id));
+        setCyclusExistingCounts(
+          Object.fromEntries(data.map((s) => [s.id, (bySlot.get(s.id) || []).length])),
+        );
+      } else {
+        setCyclusExistingCounts({});
+      }
     } catch (error) {
       logger.error("Error fetching cyclus slots", error as Error, { component: "BookForPlayerDialog" });
     }
@@ -355,26 +370,50 @@ export function BookForPlayerDialog({
   const hasAtLeastOnePlayer = selectedCount > 0;
   const showInvoicePayerSelector = shouldShowPayerSelector(slotSplitPayment, selectedGuestIds);
 
-  // Calculate price based on slot duration and hourly rate
-  const slotDurationMinutes = slot 
+  // Price preview derived from the SAME model used at booking time
+  // (resolveSlotSessionPrice + calculateSlotBookingPricing): the session price
+  // is charged once per slot — split or carried by the payer — never
+  // multiplied by player count.
+  const slotDurationMinutes = slot
     ? differenceInMinutes(new Date(slot.end_time), new Date(slot.start_time))
     : 60;
-  const pricePerSession = calculateSlotPrice(hourlyRate, slotDurationMinutes);
-  
-  // Calculate total based on scope and number of players
-  const sessionsCount = bookingScope === "cyclus" && cyclusSlotsCount > 1 ? cyclusSlotsCount : 1;
-  const subtotal = pricePerSession * sessionsCount * selectedCount;
-  
-  // Apply discount
-  const { finalAmount, discountAmount: calculatedDiscount } = applyDiscount(
-    subtotal,
-    discountType,
-    discountValue
+  const pricePerSession = resolveSlotSessionPrice(
+    slotPricePerSession,
+    hourlyRate,
+    slotDurationMinutes,
   );
-  
-  // Price per player for bookings
-  const totalDiscountPerPlayer = selectedCount > 0 ? calculatedDiscount / selectedCount : 0;
-  const finalPricePerPlayer = selectedCount > 0 ? finalAmount / selectedCount : 0;
+
+  const previewSlots: AddPlayerPricingPreviewSlot[] =
+    bookingScope === "cyclus" && slot?.cyclus_id && cyclusSlots.length > 0
+      ? cyclusSlots.map((cyclusSlot) => ({
+          sessionPrice: resolveSlotSessionPrice(
+            cyclusSlot.price_per_session ?? slotPricePerSession,
+            hourlyRate,
+            differenceInMinutes(
+              new Date(cyclusSlot.end_time),
+              new Date(cyclusSlot.start_time),
+            ),
+          ),
+          existingActiveBookingCount: cyclusExistingCounts[cyclusSlot.id] ?? 0,
+        }))
+      : [
+          {
+            sessionPrice: pricePerSession,
+            existingActiveBookingCount: countActiveBookings(slot?.booked_players),
+          },
+        ];
+  const sessionsCount = previewSlots.length;
+
+  const pricePreview = calculateAddPlayerPricingPreview({
+    slots: previewSlots,
+    splitPayment: slotSplitPayment,
+    newPlayerCount: selectedCount,
+    payerIndex: invoicePayerGuestPlayerId
+      ? Math.max(0, selectedGuestIds.indexOf(invoicePayerGuestPlayerId))
+      : 0,
+    discountType,
+    discountValue,
+  });
 
   const showInvoiceFollowUpToasts = (
     invoiceResult: Awaited<ReturnType<typeof syncInvoicesAfterAddPlayer>>,
@@ -532,7 +571,7 @@ export function BookForPlayerDialog({
             guestPlayerIds,
             payerGuestPlayerId: invoicePayerGuestPlayerId,
             notes: notesValue,
-            firstPlayerDiscount: totalDiscountPerPlayer,
+            firstPlayerDiscount: pricePreview.firstPlayerDiscount,
             discountReason: discountReason || null,
             isFirstCyclusSlot: slotIndex === 0,
           });
@@ -611,7 +650,7 @@ export function BookForPlayerDialog({
         
         const { data: { session } } = await supabase.auth.getSession();
         await Promise.all(
-          selectedPlayers.map(player =>
+          selectedPlayers.map((player, playerIndex) =>
             supabase.functions.invoke("send-email", {
               body: {
                 type: "manual_booking_confirmation",
@@ -622,7 +661,7 @@ export function BookForPlayerDialog({
                   lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
                   lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
                   location: null,
-                  price: finalPricePerPlayer,
+                  price: pricePreview.perPlayerTotals[playerIndex] ?? 0,
                 },
               },
               headers: {
@@ -657,7 +696,7 @@ export function BookForPlayerDialog({
           guestPlayerIds,
           payerGuestPlayerId: invoicePayerGuestPlayerId,
           notes: notesValue,
-          firstPlayerDiscount: calculatedDiscount,
+          firstPlayerDiscount: pricePreview.firstPlayerDiscount,
           discountReason: discountReason || null,
         });
 
@@ -713,7 +752,7 @@ export function BookForPlayerDialog({
         // Send email notifications
         const { data: { session: emailSession } } = await supabase.auth.getSession();
         await Promise.all(
-          selectedPlayers.map(player =>
+          selectedPlayers.map((player, playerIndex) =>
             supabase.functions.invoke("send-email", {
               body: {
                 type: "manual_booking_confirmation",
@@ -724,7 +763,7 @@ export function BookForPlayerDialog({
                   lessonDate: format(new Date(slot.start_time), "EEEE, MMMM d, yyyy"),
                   lessonTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
                   location: null,
-                  price: finalPricePerPlayer / selectedPlayers.length,
+                  price: pricePreview.perPlayerTotals[playerIndex] ?? 0,
                 },
               },
               headers: {
@@ -1080,24 +1119,27 @@ export function BookForPlayerDialog({
               </Collapsible>
             )}
 
-            {/* Price Summary */}
+            {/* Price Summary — same model as booking/invoicing (calculateAddPlayerPricingPreview) */}
             {hasAtLeastOnePlayer && (
               <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {selectedCount} {selectedCount === 1 ? t("bookings.player") : t("bookings.players")} × {sessionsCount} {sessionsCount === 1 ? t("calendar.session", "session") : t("calendar.sessions")} × {formatPrice(pricePerSession)}
+                    {selectedCount} {selectedCount === 1 ? t("bookings.player") : t("bookings.players")} × {sessionsCount} {sessionsCount === 1 ? t("calendar.session", "session") : t("calendar.sessions")}
+                    {pricePreview.perPlayerSessionAmount != null && (
+                      <> × {formatPrice(pricePreview.perPlayerSessionAmount)}</>
+                    )}
                   </span>
-                  <span>{formatPrice(subtotal)}</span>
+                  <span>{formatPrice(pricePreview.subtotal)}</span>
                 </div>
-                {calculatedDiscount > 0 && (
+                {pricePreview.discountAmount > 0 && (
                   <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
                     <span>{t("bookings.discount", "Discount")}</span>
-                    <span>-{formatPrice(calculatedDiscount)}</span>
+                    <span>-{formatPrice(pricePreview.discountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-medium border-t pt-2">
                   <span>{t("bookings.total", "Total")}</span>
-                  <span>{formatPrice(finalAmount)}</span>
+                  <span>{formatPrice(pricePreview.total)}</span>
                 </div>
               </div>
             )}

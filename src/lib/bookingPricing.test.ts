@@ -8,7 +8,10 @@ import {
   getRebalanceBookingIds,
   buildGuestBookingInsertRow,
   applyFirstPayerDiscount,
+  resolveSlotSessionPrice,
+  calculateAddPlayerPricingPreview,
 } from "@/lib/bookingPricing";
+import { buildSingleSlotAddPlayerBookings } from "@/lib/bookForPlayerBooking";
 
 describe("normalizeSessionPrice", () => {
   it("returns 0 for null/undefined", () => {
@@ -189,6 +192,189 @@ describe("buildGuestBookingInsertRow", () => {
       notes: null,
     });
     expect(row.payment_amount).toBe(0);
+  });
+});
+
+describe("resolveSlotSessionPrice", () => {
+  it("prefers the configured slot price over the hourly rate", () => {
+    expect(resolveSlotSessionPrice(95, 50, 60)).toBe(95);
+  });
+
+  it("falls back to hourly rate × duration when unset", () => {
+    expect(resolveSlotSessionPrice(null, 50, 90)).toBe(75);
+    expect(resolveSlotSessionPrice(0, 50, 60)).toBe(50);
+  });
+});
+
+describe("calculateAddPlayerPricingPreview — dialog summary matches booking", () => {
+  it("single player, single slot → full session price", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 0 }],
+      splitPayment: false,
+      newPlayerCount: 1,
+      discountType: "percentage",
+      discountValue: 0,
+    });
+    expect(p.subtotal).toBe(80);
+    expect(p.total).toBe(80);
+    expect(p.perPlayerTotals).toEqual([80]);
+    expect(p.perPlayerSessionAmount).toBe(80);
+  });
+
+  it("multi-player split charges the slot price ONCE and splits it", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 0 }],
+      splitPayment: true,
+      newPlayerCount: 2,
+      discountType: "percentage",
+      discountValue: 0,
+    });
+    // NOT 160 — the old summary multiplied the price by player count.
+    expect(p.subtotal).toBe(80);
+    expect(p.perPlayerTotals).toEqual([40, 40]);
+    expect(p.perPlayerSessionAmount).toBe(40);
+  });
+
+  it("split with existing players quotes the booking-time share", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 2 }],
+      splitPayment: true,
+      newPlayerCount: 1,
+      discountType: "percentage",
+      discountValue: 0,
+    });
+    expect(p.subtotal).toBe(26.67);
+    expect(p.perPlayerTotals).toEqual([26.67]);
+  });
+
+  it("non-split multi-player puts the full price on the payer only", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 0 }],
+      splitPayment: false,
+      newPlayerCount: 3,
+      payerIndex: 1,
+      discountType: "percentage",
+      discountValue: 0,
+    });
+    expect(p.subtotal).toBe(80);
+    expect(p.perPlayerTotals).toEqual([0, 80, 0]);
+    expect(p.perPlayerSessionAmount).toBeNull();
+  });
+
+  it("non-split companion joining an existing payer owes nothing", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 1 }],
+      splitPayment: false,
+      newPlayerCount: 1,
+      discountType: "percentage",
+      discountValue: 0,
+    });
+    expect(p.subtotal).toBe(0);
+    expect(p.total).toBe(0);
+  });
+
+  it("percentage discount is a percentage of the REAL subtotal", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 0 }],
+      splitPayment: true,
+      newPlayerCount: 2,
+      discountType: "percentage",
+      discountValue: 10,
+    });
+    // 10% of 80 = €8 — not €16 (10% of the old inflated 160) and not "10€".
+    expect(p.discountAmount).toBe(8);
+    expect(p.total).toBe(72);
+    expect(p.perPlayerTotals).toEqual([32, 40]);
+  });
+
+  it("absolute discount comes off the payer's row", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 0 }],
+      splitPayment: false,
+      newPlayerCount: 1,
+      discountType: "fixed",
+      discountValue: 10,
+    });
+    expect(p.discountAmount).toBe(10);
+    expect(p.total).toBe(70);
+  });
+
+  it("cyclus: discount clamps to what the payer's FIRST booking can absorb", () => {
+    const p = calculateAddPlayerPricingPreview({
+      slots: [
+        { sessionPrice: 80, existingActiveBookingCount: 0 },
+        { sessionPrice: 80, existingActiveBookingCount: 0 },
+        { sessionPrice: 80, existingActiveBookingCount: 0 },
+      ],
+      splitPayment: true,
+      newPlayerCount: 2,
+      discountType: "fixed",
+      discountValue: 100,
+    });
+    // Payer's first-slot share is €40 — booking can never grant more.
+    expect(p.subtotal).toBe(240);
+    expect(p.discountAmount).toBe(40);
+    expect(p.total).toBe(200);
+    expect(p.perPlayerTotals).toEqual([80, 120]);
+  });
+
+  it("uses the configured slot price, not the hourly-derived one", () => {
+    const sessionPrice = resolveSlotSessionPrice(95, 50, 60);
+    const p = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice, existingActiveBookingCount: 0 }],
+      splitPayment: false,
+      newPlayerCount: 1,
+      discountType: "fixed",
+      discountValue: 0,
+    });
+    expect(p.total).toBe(95);
+  });
+
+  it("matches buildSingleSlotAddPlayerBookings row-for-row (split + discount)", () => {
+    const preview = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 1 }],
+      splitPayment: true,
+      newPlayerCount: 2,
+      discountType: "percentage",
+      discountValue: 10,
+    });
+    const rows = buildSingleSlotAddPlayerBookings({
+      slotId: "slot-1",
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 1,
+      guestPlayerIds: ["g1", "g2"],
+      notes: null,
+      firstPlayerDiscount: preview.firstPlayerDiscount,
+    });
+    expect(rows.map((r) => r.payment_amount)).toEqual(preview.perPlayerTotals);
+    expect(rows.reduce((sum, r) => sum + r.payment_amount, 0)).toBeCloseTo(
+      preview.total,
+      2,
+    );
+  });
+
+  it("matches buildSingleSlotAddPlayerBookings for non-split payer selection", () => {
+    const preview = calculateAddPlayerPricingPreview({
+      slots: [{ sessionPrice: 80, existingActiveBookingCount: 0 }],
+      splitPayment: false,
+      newPlayerCount: 2,
+      payerIndex: 1,
+      discountType: "fixed",
+      discountValue: 10,
+    });
+    const rows = buildSingleSlotAddPlayerBookings({
+      slotId: "slot-1",
+      sessionPrice: 80,
+      splitPayment: false,
+      existingActiveBookingCount: 0,
+      guestPlayerIds: ["g1", "g2"],
+      payerGuestPlayerId: "g2",
+      notes: null,
+      firstPlayerDiscount: preview.firstPlayerDiscount,
+    });
+    expect(rows.map((r) => r.payment_amount)).toEqual(preview.perPlayerTotals);
+    expect(preview.total).toBe(70);
   });
 });
 

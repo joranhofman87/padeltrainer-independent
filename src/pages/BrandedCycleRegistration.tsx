@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SEO } from '@/components/SEO';
@@ -22,6 +22,7 @@ import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 
 interface OwnerBranding {
   name: string;
@@ -49,6 +50,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
@@ -58,106 +60,114 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   }, [cycleId, ownerType, slug]);
 
   // Public data fetch — runs immediately, no auth dependency
-  useEffect(() => {
-    const fetchPublicData = async () => {
-      if (!cycleId || !slug) return;
-      setIsLoading(true);
+  const fetchPublicData = useCallback(async () => {
+    if (!cycleId || !slug) return;
+    setIsLoading(true);
+    setLoadFailed(false);
 
-      try {
-        // Parallel: fetch owner branding + cycle data
-        const ownerPromise = ownerType === 'academy'
-          ? supabase
-              .from('academy_profiles_safe' as any)
-              .select('id, name, slug, logo_url, banner_url, welcome_message')
-              .eq('slug', slug)
-              .maybeSingle()
-              .then(({ data }: any) => data)
-          : supabase
-              .from('club_profiles_safe' as any)
-              .select('id, logo_url, banner_url, welcome_message, location_id')
-              .eq('id', slug)
-              .maybeSingle()
-              .then(async ({ data: club }: any) => {
-                if (!club) return null;
-                const { data: loc } = await supabase
-                  .from('locations')
-                  .select('name')
-                  .eq('id', club.location_id)
-                  .maybeSingle();
-                return {
-                  name: loc?.name || 'Club',
-                  slug: slug!,
-                  logo_url: club.logo_url,
-                  banner_url: club.banner_url,
-                  welcome_message: club.welcome_message,
-                } as OwnerBranding;
-              });
+    try {
+      // Parallel: fetch owner branding + cycle data. Query errors must throw —
+      // a failed request is retryable, only a successful empty result is a
+      // genuine "not found".
+      const ownerPromise = ownerType === 'academy'
+        ? supabase
+            .from('academy_profiles_safe' as any)
+            .select('id, name, slug, logo_url, banner_url, welcome_message')
+            .eq('slug', slug)
+            .maybeSingle()
+            .then(({ data, error }: any) => {
+              if (error) throw error;
+              return data;
+            })
+        : supabase
+            .from('club_profiles_safe' as any)
+            .select('id, logo_url, banner_url, welcome_message, location_id')
+            .eq('id', slug)
+            .maybeSingle()
+            .then(async ({ data: club, error }: any) => {
+              if (error) throw error;
+              if (!club) return null;
+              const { data: loc } = await supabase
+                .from('locations')
+                .select('name')
+                .eq('id', club.location_id)
+                .maybeSingle();
+              return {
+                name: loc?.name || 'Club',
+                slug: slug!,
+                logo_url: club.logo_url,
+                banner_url: club.banner_url,
+                welcome_message: club.welcome_message,
+              } as OwnerBranding;
+            });
 
-        const cyclePromise = getCycle(cycleId);
+      const cyclePromise = getCycle(cycleId);
 
-        const [ownerData, cycleData] = await Promise.all([ownerPromise, cyclePromise]);
+      const [ownerData, cycleData] = await Promise.all([ownerPromise, cyclePromise]);
 
-        if (ownerData) setOwner(ownerData as OwnerBranding);
-        if (!cycleData) { setCycle(null); setIsLoading(false); return; }
-        setCycle(cycleData);
+      if (ownerData) setOwner(ownerData as OwnerBranding);
+      if (!cycleData) { setCycle(null); setIsLoading(false); return; }
+      setCycle(cycleData);
 
-        // Fetch cycle location first (critical for above-the-fold UI)
-        const locationPromise = cycleData.location_id
-          ? supabase
-              .from('locations')
-              .select('name, city, logo_url')
-              .eq('id', cycleData.location_id)
-              .maybeSingle()
-              .then(({ data }) => data)
-          : Promise.resolve(null);
+      // Fetch cycle location first (critical for above-the-fold UI)
+      const locationPromise = cycleData.location_id
+        ? supabase
+            .from('locations')
+            .select('name, city, logo_url')
+            .eq('id', cycleData.location_id)
+            .maybeSingle()
+            .then(({ data }) => data)
+        : Promise.resolve(null);
 
-        const locData = await locationPromise;
-        if (locData) setCycleLocation(locData);
+      const locData = await locationPromise;
+      if (locData) setCycleLocation(locData);
 
-        // Render now; fetch heavier form helpers in background
-        setIsLoading(false);
+      // Render now; fetch heavier form helpers in background
+      setIsLoading(false);
 
-        const trainersPromise = ownerType === 'academy'
-          ? (async () => {
-              const { data: academyTrainers } = await supabase
-                .from('academy_trainers')
-                .select('trainer_profile_id')
-                .eq('academy_profile_id', cycleData.owner_id)
-                .eq('status', 'active');
-              if (!academyTrainers?.length) return [];
-              const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
-              const { data: trainerProfiles } = await supabase
-                .from('trainer_profiles')
-                .select('id, user_id')
-                .in('id', trainerIds);
-              if (!trainerProfiles) return [];
-              const userIds = trainerProfiles.map(tp => tp.user_id);
-              const { data: profiles } = await supabase
-                .from('profiles')
-                .select('user_id, full_name')
-                .in('user_id', userIds);
-              if (!profiles) return [];
-              return trainerProfiles.map(tp => {
-                const prof = profiles.find(p => p.user_id === tp.user_id);
-                return { id: tp.id, name: prof?.full_name || 'Trainer' };
-              });
-            })()
-          : Promise.resolve([]);
+      const trainersPromise = ownerType === 'academy'
+        ? (async () => {
+            const { data: academyTrainers } = await supabase
+              .from('academy_trainers')
+              .select('trainer_profile_id')
+              .eq('academy_profile_id', cycleData.owner_id)
+              .eq('status', 'active');
+            if (!academyTrainers?.length) return [];
+            const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
+            const { data: trainerProfiles } = await supabase
+              .from('trainer_profiles')
+              .select('id, user_id')
+              .in('id', trainerIds);
+            if (!trainerProfiles) return [];
+            const userIds = trainerProfiles.map(tp => tp.user_id);
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('user_id, full_name')
+              .in('user_id', userIds);
+            if (!profiles) return [];
+            return trainerProfiles.map(tp => {
+              const prof = profiles.find(p => p.user_id === tp.user_id);
+              return { id: tp.id, name: prof?.full_name || 'Trainer' };
+            });
+          })()
+        : Promise.resolve([]);
 
-        const locationsPromise = getActiveLocations();
-        const [trainersData, locationsData] = await Promise.all([trainersPromise, locationsPromise]);
+      const locationsPromise = getActiveLocations();
+      const [trainersData, locationsData] = await Promise.all([trainersPromise, locationsPromise]);
 
-        setTrainers(trainersData);
-        setLocations(locationsData);
-      } catch (error) {
-        logger.error('Error fetching branded cycle data', error as Error, { component: 'BrandedCycleRegistration', cycleId });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPublicData();
+      setTrainers(trainersData);
+      setLocations(locationsData);
+    } catch (error) {
+      logger.error('Error fetching branded cycle data', error as Error, { component: 'BrandedCycleRegistration', cycleId });
+      setLoadFailed(true);
+    } finally {
+      setIsLoading(false);
+    }
   }, [cycleId, slug, ownerType]);
+
+  useEffect(() => {
+    fetchPublicData();
+  }, [fetchPublicData]);
 
   // Auth-dependent check — runs separately when user changes
   useEffect(() => {
@@ -203,6 +213,20 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
           <Skeleton className="h-12 w-3/4" />
           <Skeleton className="h-6 w-1/2" />
           <Skeleton className="h-[400px]" />
+        </div>
+      </ProfileLayout>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <ProfileLayout breadcrumbs={breadcrumbs} showBackButton={false}>
+        <div className="max-w-md mx-auto py-12">
+          <QueryErrorState
+            onRetry={fetchPublicData}
+            title={t('registration.loadFailedTitle', 'Could not load this registration')}
+            description={t('registration.loadFailedDescription', 'Something went wrong while loading. Your registration link is still valid — check your connection and try again.')}
+          />
         </div>
       </ProfileLayout>
     );

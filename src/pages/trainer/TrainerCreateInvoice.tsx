@@ -23,6 +23,7 @@ import { logger } from '@/lib/logger';
 import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
 import { invalidateAllPlayerData, playerKeys } from '@/lib/playerQueryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceCustomerSection } from '@/components/invoices/InvoiceCustomerSection';
 import {
@@ -193,6 +194,14 @@ export default function TrainerCreateInvoice() {
 
     return { subtotal: sub, vatAmount: vat, total: tot, vatBreakdown: hasMultipleRates ? breakdown : null };
   }, [lineItems, pricesIncludeVat]);
+
+  // U-09: warn on tab close/refresh while there is unsaved typed input.
+  // Receiver fields are ignored when prefilled from a profile (no typing lost).
+  const hasUnsavedInput =
+    lineItems.some(li => li.description.trim() !== '' || li.unit_price !== 0) ||
+    notes.trim() !== '' ||
+    (!prefilledFromProfile && Object.values(receiver).some(v => v.trim() !== ''));
+  useUnsavedChangesGuard(hasUnsavedInput);
 
   const handleSave = async () => {
     if (!trainerId) return;
