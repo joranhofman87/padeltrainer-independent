@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { format, addDays, differenceInMinutes } from "date-fns";
 import { Loader2, Calendar, Clock, Repeat, Percent, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { logger } from '@/lib/logger';
@@ -165,7 +166,7 @@ export function QuickBookDialog({
         .from("bookings")
         .select("slot_id")
         .in("slot_id", slotIds)
-        .in("status", ["confirmed", "pending"]);
+        .in("status", [...CAPACITY_OCCUPYING_STATUSES]);
 
       const bookingCounts = (bookingsData || []).reduce((acc: Record<string, number>, b) => {
         acc[b.slot_id] = (acc[b.slot_id] || 0) + 1;

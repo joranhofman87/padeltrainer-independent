@@ -7,6 +7,7 @@ import {
   DollarSign, Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import {
@@ -114,7 +115,7 @@ export function SlotDetailDialog({
           guest_players:guest_player_id(full_name, skill_rating, rating_system)
         `)
         .eq('slot_id', id)
-        .in('status', ['confirmed', 'pending']);
+        .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
 
       const players: BookedPlayer[] = (bookings || []).map(b => {
         const prof = b.profiles as any;

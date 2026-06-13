@@ -179,7 +179,10 @@ export function RatingHistoryChart({
 
   // Calculate stats
   const firstRating = history.length > 0 ? history[0].rating : null;
-  const latestRating = history.length > 0 ? history[history.length - 1].rating : currentRating;
+  // "Current" reflects the source of truth (profiles.skill_rating, passed as
+  // currentRating) — the history is only the trend and can lag if skill_rating
+  // was updated without a history insert.
+  const latestRating = currentRating ?? (history.length > 0 ? history[history.length - 1].rating : null);
   const rawDifference = firstRating && latestRating ? Number((firstRating - latestRating).toFixed(2)) : 0;
   const improvement = lowerIsBetter ? rawDifference : -rawDifference;
   const hasImproved = improvement > 0;

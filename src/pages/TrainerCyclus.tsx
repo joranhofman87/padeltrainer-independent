@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
+import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -159,7 +160,7 @@ export default function TrainerCyclus() {
           guest_players(id, full_name)
         `)
         .in("slot_id", slotIds)
-        .in("status", ["confirmed", "pending"]);
+        .in("status", [...CAPACITY_OCCUPYING_STATUSES]);
 
       if (bookingsError) throw bookingsError;
 

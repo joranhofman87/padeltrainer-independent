@@ -5,6 +5,7 @@ import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { supabase } from "@/lib/supabaseClient";
+import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import {
   syncInvoicesAfterAddPlayer,
@@ -289,7 +290,7 @@ export function BookForPlayerDialog({
       .from("bookings")
       .select("id, slot_id, payment_status, paid_externally")
       .in("slot_id", slotIds)
-      .in("status", ["confirmed", "pending"]);
+      .in("status", [...CAPACITY_OCCUPYING_STATUSES]);
 
     if (error) throw error;
 

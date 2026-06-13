@@ -9,6 +9,7 @@ import {
   FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
@@ -114,7 +115,7 @@ export default function TrainerSlotDetail() {
       const { data: bookings } = await supabase
         .from('bookings')
         .select('id, status, player_id, guest_player_id, payment_status, payment_amount, paid_externally, profiles:player_id(full_name, avatar_url, skill_rating, rating_system, birth_date), guest_players:guest_player_id(full_name, skill_rating, rating_system, birth_date)')
-        .eq('slot_id', slotId).in('status', ['confirmed', 'pending']);
+        .eq('slot_id', slotId).in('status', [...CAPACITY_OCCUPYING_STATUSES]);
 
       const players: BookedPlayer[] = (bookings || []).map(b => {
         const prof = b.profiles as any;
@@ -282,7 +283,7 @@ export default function TrainerSlotDetail() {
         slotIdsToDelete = (cyclusSlots || []).map(s => s.id);
       } else { slotIdsToDelete = [detail.id]; }
 
-      const { data: slotBookings } = await supabase.from('bookings').select('id').in('slot_id', slotIdsToDelete).in('status', ['confirmed', 'pending']);
+      const { data: slotBookings } = await supabase.from('bookings').select('id').in('slot_id', slotIdsToDelete).in('status', [...CAPACITY_OCCUPYING_STATUSES]);
       const bookingIdsToRemove = (slotBookings || []).map(b => b.id);
 
       if (deleteCyclus && detail.cyclus_id) {

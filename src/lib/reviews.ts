@@ -107,13 +107,20 @@ export async function createReviewWithTags(
   return { data: review, error: null };
 }
 
-export async function getTrainerReviews(trainerId: string) {
-  // Get all reviews
-  const { data: reviews, error } = await supabase
+export async function getTrainerReviews(
+  trainerId: string,
+  opts: { includePrivate?: boolean } = {},
+) {
+  // Public surfaces (profile, directory) must see only is_public reviews so the
+  // displayed rating is the same for everyone, including the trainer viewing
+  // their own public profile. The trainer's own analytics passes includePrivate
+  // to see all their feedback.
+  let query = supabase
     .from('reviews')
     .select('*')
-    .eq('trainer_id', trainerId)
-    .order('created_at', { ascending: false });
+    .eq('trainer_id', trainerId);
+  if (!opts.includePrivate) query = query.eq('is_public', true);
+  const { data: reviews, error } = await query.order('created_at', { ascending: false });
 
   if (error || !reviews) return { data: null, error };
 
@@ -160,11 +167,18 @@ export async function getTrainerReviews(trainerId: string) {
   return { data: reviewsWithProfiles, error: null };
 }
 
-export async function getTrainerAverageRating(trainerId: string) {
-  const { data, error } = await supabase
+export async function getTrainerAverageRating(
+  trainerId: string,
+  opts: { includePrivate?: boolean } = {},
+) {
+  // Public badge: only is_public reviews (consistent for every viewer). The
+  // trainer's analytics passes includePrivate to include private feedback.
+  let query = supabase
     .from('reviews')
     .select('rating')
     .eq('trainer_id', trainerId);
+  if (!opts.includePrivate) query = query.eq('is_public', true);
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
     return { average: null, count: 0, error };
@@ -180,7 +194,8 @@ export async function getBatchTrainerRatings(trainerIds: string[]) {
   const { data, error } = await supabase
     .from('reviews')
     .select('trainer_id, rating')
-    .in('trainer_id', trainerIds);
+    .in('trainer_id', trainerIds)
+    .eq('is_public', true); // directory cards: public reviews only
 
   if (error || !data) return new Map<string, { average: number; count: number }>();
 
@@ -284,11 +299,12 @@ export async function getAcademyAggregatedReviews(academyId: string) {
 
   const trainerIds = academyTrainers.map(t => t.trainer_profile_id);
 
-  // Get all reviews for these trainers
+  // Get all PUBLIC reviews for these trainers (academy aggregate is public-facing)
   const { data: reviews, error } = await supabase
     .from('reviews')
     .select('*')
     .in('trainer_id', trainerIds)
+    .eq('is_public', true)
     .order('created_at', { ascending: false });
 
   if (error || !reviews) return { data: null, average: null, count: 0, error };

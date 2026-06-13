@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Search, Users, Eye, EyeOff, Euro } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -216,7 +217,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             .from('bookings')
             .select('slot_id, player_id, guest_player_id, status, payment_status, paid_externally')
             .in('slot_id', chunk)
-            .in('status', ['confirmed', 'pending']);
+            .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
 
           const playerIds = [...new Set((bookings || []).map(b => b.player_id).filter(Boolean))] as string[];
           const playerNameLookup: Record<string, string> = {};

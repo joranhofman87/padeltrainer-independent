@@ -41,6 +41,7 @@ import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 
 import { supabase } from "@/lib/supabaseClient";
+import { getSlotCapacity } from "@/lib/lessons";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -194,7 +195,7 @@ export default function TrainerCalendar() {
           id: slot.id,
           start_time: slot.start_time,
           end_time: slot.end_time,
-          max_participants: slot.max_participants || 1,
+          max_participants: getSlotCapacity(slot),
           price: slot.price_per_session || null,
           active_bookings: counts.confirmed,
           pending_bookings: counts.pending,
@@ -250,7 +251,7 @@ export default function TrainerCalendar() {
       trainer_id: trainerId,
       trainer_name: trainerName,
       trainer_avatar: trainerAvatar,
-      max_participants: s.max_participants || 1,
+      max_participants: getSlotCapacity(s),
       booked_count: s.active_bookings + s.pending_bookings,
       location_id: (s as any).location_id || null,
       location_name: s.location_name,
@@ -271,7 +272,7 @@ export default function TrainerCalendar() {
     let freeHours = 0;
     agendaSlots.forEach((s) => {
       const dur = (parseISO(s.end_time).getTime() - parseISO(s.start_time).getTime()) / 3_600_000;
-      const max = s.max_participants || 1;
+      const max = getSlotCapacity(s);
       const booked = Math.min(s.booked_count, max);
       const fillRatio = booked / max;
       bookedHours += dur * fillRatio;

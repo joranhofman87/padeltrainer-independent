@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { differenceInMinutes } from "date-fns";
 import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
 import {
@@ -268,7 +269,7 @@ export function InlineBookPlayer({
       .from("bookings")
       .select("id, slot_id, payment_status, paid_externally")
       .in("slot_id", slotIds)
-      .in("status", ["confirmed", "pending"]);
+      .in("status", [...CAPACITY_OCCUPYING_STATUSES]);
 
     if (error) throw error;
 

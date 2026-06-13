@@ -119,9 +119,10 @@ export default function TrainerAnalytics() {
       return;
     }
 
-    // Fetch reviews
-    const { data: reviews, error: reviewsError } = await getTrainerReviews(trainerId);
-    const { average, count, error: ratingError } = await getTrainerAverageRating(trainerId);
+    // Fetch reviews — the trainer's own analytics includes private feedback
+    // (public surfaces default to is_public only).
+    const { data: reviews, error: reviewsError } = await getTrainerReviews(trainerId, { includePrivate: true });
+    const { average, count, error: ratingError } = await getTrainerAverageRating(trainerId, { includePrivate: true });
 
     if (reviewsError || ratingError) {
       logger.error('Error fetching analytics reviews', undefined, { error: reviewsError || ratingError, component: 'TrainerAnalytics' });
