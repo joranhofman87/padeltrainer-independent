@@ -894,7 +894,9 @@
     "loadFailedDescription": "Er ging iets mis bij het laden van je uitnodiging. Je link is nog geldig en je plek is niet vrijgegeven — controleer je internetverbinding en probeer het opnieuw.",
     "payNow": "Je betaalt direct voor de nieuwe cyclus wanneer je je plek bevestigt.",
     "redirectingToPayment": "We sturen je door naar de betaalpagina…",
-    "upfrontUnavailable": "Je plek is gereserveerd. Online betalen is nog niet beschikbaar — je ontvangt een factuur."
+    "upfrontUnavailable": "Je plek is gereserveerd. Online betalen is nog niet beschikbaar — je ontvangt een factuur.",
+    "seriesHeading": "Elke {{weekday}} om {{time}}",
+    "seriesDetail": "{{count}} sessies · {{from}} t/m {{to}}"
   },
   "tierControl": {
     "title": "Zichtbaarheid & herboeking",

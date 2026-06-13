@@ -225,18 +225,20 @@ export default function PlayerBookings() {
     }
   };
 
+  // Guard against a null slot (e.g. a booked slot a trainer later marked private)
+  // so the page never crashes on a missing start_time.
   const upcomingBookings = bookings.filter(
-    (b) => b.status !== 'cancelled' && !isPast(parseISO(b.availability_slots.start_time))
+    (b) => b.status !== 'cancelled' && b.availability_slots?.start_time && !isPast(parseISO(b.availability_slots.start_time))
   );
   const pastBookings = bookings.filter(
-    (b) => b.status === 'cancelled' || isPast(parseISO(b.availability_slots.start_time))
+    (b) => b.status === 'cancelled' || !b.availability_slots?.start_time || isPast(parseISO(b.availability_slots.start_time))
   );
 
   const handleDownloadCalendar = (bookingsToExport: BookingWithDetails[]) => {
     const events = bookingsToExport
-      .filter(b => b.status !== 'cancelled')
+      .filter(b => b.status !== 'cancelled' && b.availability_slots?.start_time)
       .map(b => ({
-        title: `Padel Training – ${b.trainerName}${b.availability_slots.cyclus_name ? ` (${b.availability_slots.cyclus_name})` : ''}`,
+        title: `Padel Training – ${b.trainerName}${b.availability_slots?.cyclus_name ? ` (${b.availability_slots.cyclus_name})` : ''}`,
         startTime: b.availability_slots.start_time,
         endTime: b.availability_slots.end_time,
         location: b.availability_slots.locations?.name || undefined,

@@ -346,39 +346,70 @@ export interface MyPendingClaim {
   priority_window_ends_at: string | null;
   /** Payment mode of the slot's cycle ('deferred_split' when unknown). */
   rebook_payment_mode: RebookPaymentMode;
+  /** Group key tying a weekly SERIES together (null for legacy single claims). */
+  rebook_group_id: string | null;
+  /** Number of weekly sessions in this group (1 for a single claim). */
+  sessions: number;
+  /** Start of the LAST session in the group (== start_time when sessions === 1). */
+  last_start_time: string;
 }
 
 /**
  * The logged-in player's own still-actionable priority claims (pending and
- * within the priority window). RLS ("Players read own priority claims") scopes
- * the rows to this player, including their own claim_token.
+ * within the priority window), COLLAPSED to one entry per rebook group (weekly
+ * series) — the same dedup the email invite and the trainer tentative roster
+ * use, so a 12-week group shows ONE card, not 12. The earliest session is the
+ * representative; its claim_token drives accept/decline, and the group-aware
+ * respond_to_priority_claim RPC fans out to the whole series server-side.
+ * RLS ("Players read own priority claims") scopes the rows to this player.
  */
 export async function getMyPendingPriorityClaims(profileId: string): Promise<MyPendingClaim[]> {
   const { data, error } = await supabase
     .from('slot_priority_claims')
-    .select('id, claim_token, slot_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
+    .select('id, claim_token, slot_id, rebook_group_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
     .eq('player_id', profileId)
     .eq('status', 'pending');
   if (error) throw error;
   const now = Date.now();
+  // Collapse weekly claims into one MyPendingClaim per group (fallback: slot).
+  const byGroup = new Map<string, MyPendingClaim>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const claims = (data || []).flatMap((c: any) => {
+  for (const c of (data || []) as any[]) {
     const s = c.availability_slots;
-    if (!s) return [];
-    if (s.priority_window_ends_at && new Date(s.priority_window_ends_at).getTime() <= now) return [];
-    return [{
-      id: c.id,
-      claim_token: c.claim_token,
-      slot_id: c.slot_id,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      cyclus_id: s.cyclus_id ?? null,
-      cyclus_name: s.cyclus_name,
-      price_per_session: s.price_per_session,
-      priority_window_ends_at: s.priority_window_ends_at,
-      rebook_payment_mode: 'deferred_split' as RebookPaymentMode,
-    }];
-  });
+    if (!s) continue;
+    if (s.priority_window_ends_at && new Date(s.priority_window_ends_at).getTime() <= now) continue;
+    const key = c.rebook_group_id ?? `slot:${c.slot_id}`;
+    const existing = byGroup.get(key);
+    if (!existing) {
+      byGroup.set(key, {
+        id: c.id,
+        claim_token: c.claim_token,
+        slot_id: c.slot_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        cyclus_id: s.cyclus_id ?? null,
+        cyclus_name: s.cyclus_name,
+        price_per_session: s.price_per_session,
+        priority_window_ends_at: s.priority_window_ends_at,
+        rebook_payment_mode: 'deferred_split' as RebookPaymentMode,
+        rebook_group_id: c.rebook_group_id ?? null,
+        sessions: 1,
+        last_start_time: s.start_time,
+      });
+    } else {
+      existing.sessions += 1;
+      // The representative = earliest session (its token drives the group RPC).
+      if (s.start_time < existing.start_time) {
+        existing.start_time = s.start_time;
+        existing.end_time = s.end_time;
+        existing.claim_token = c.claim_token;
+        existing.id = c.id;
+        existing.slot_id = c.slot_id;
+      }
+      if (s.start_time > existing.last_start_time) existing.last_start_time = s.start_time;
+    }
+  }
+  const claims = [...byGroup.values()];
 
   // Resolve each cycle's payment mode so the card copy can be mode-aware.
   const cyclusIds = [...new Set(claims.map((c) => c.cyclus_id).filter((id): id is string => !!id))];

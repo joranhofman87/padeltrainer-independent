@@ -15,6 +15,35 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Save, X, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 
+/**
+ * Upsert a session report (mirrors the standalone Trainer/PlayerAttendanceForm).
+ * session_reports has no unique constraint, so a blind insert created a
+ * DUPLICATE row when a report already existed (e.g. the player reported from the
+ * bookings page while this dashboard card was loaded). Check-then-update/insert
+ * makes both report surfaces converge on a single row.
+ */
+async function upsertSessionReport(payload: {
+  slot_id: string;
+  reporter_id: string;
+  reporter_role: 'trainer' | 'player';
+  session_happened: boolean;
+  attendees: string[];
+  public_notes?: string | null;
+  notes: string | null;
+}) {
+  const { data: existing } = await supabase
+    .from('session_reports')
+    .select('id')
+    .eq('slot_id', payload.slot_id)
+    .eq('reporter_id', payload.reporter_id)
+    .eq('reporter_role', payload.reporter_role)
+    .maybeSingle();
+  if (existing?.id) {
+    return supabase.from('session_reports').update(payload).eq('id', existing.id);
+  }
+  return supabase.from('session_reports').insert(payload);
+}
+
 interface PendingSlot {
   slotId: string;
   startTime: string;
@@ -190,7 +219,7 @@ function TrainerReportForm({ slot, reporterId, onDone }: {
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase.from('session_reports').insert({
+    const { error } = await upsertSessionReport({
       slot_id: slot.slotId,
       reporter_id: reporterId,
       reporter_role: 'trainer',
@@ -264,7 +293,7 @@ function PlayerReportForm({ slot, reporterId, onDone }: {
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase.from('session_reports').insert({
+    const { error } = await upsertSessionReport({
       slot_id: slot.slotId,
       reporter_id: reporterId,
       reporter_role: 'player',

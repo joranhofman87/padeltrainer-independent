@@ -768,7 +768,9 @@
     "loadFailedDescription": "Something went wrong while loading your invitation. Your link is still valid and your spot has not been released — check your connection and try again.",
     "payNow": "You pay for the new cycle right away when you confirm your spot.",
     "redirectingToPayment": "Taking you to the payment page…",
-    "upfrontUnavailable": "Your spot is reserved. Online payment is not available yet — you will receive an invoice."
+    "upfrontUnavailable": "Your spot is reserved. Online payment is not available yet — you will receive an invoice.",
+    "seriesHeading": "Every {{weekday}} at {{time}}",
+    "seriesDetail": "{{count}} sessions · {{from}} to {{to}}"
   },
   "genericError": "Something went wrong. Please try again.",
   "loadCyclesError": "Could not load your registrations. Please try again.",

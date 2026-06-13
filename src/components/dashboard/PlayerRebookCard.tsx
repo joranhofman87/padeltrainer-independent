@@ -111,10 +111,21 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
                 <div className="text-sm">
                   <div className="font-medium">
                     {c.cyclus_name ? `${c.cyclus_name} — ` : ''}
-                    {formatDate(start, 'EEEE d MMM')}
+                    {c.sessions > 1
+                      ? t('rebooking.seriesHeading', 'Every {{weekday}} at {{time}}', {
+                          weekday: formatDate(start, 'EEEE'),
+                          time: formatDate(start, 'HH:mm'),
+                        })
+                      : formatDate(start, 'EEEE d MMM')}
                   </div>
                   <div className="text-muted-foreground">
-                    {formatDate(start, 'HH:mm')} - {formatDate(end, 'HH:mm')}
+                    {c.sessions > 1
+                      ? t('rebooking.seriesDetail', '{{count}} sessions · {{from}} to {{to}}', {
+                          count: c.sessions,
+                          from: formatDate(start, 'd MMM'),
+                          to: formatDate(c.last_start_time, 'd MMM'),
+                        })
+                      : `${formatDate(start, 'HH:mm')} - ${formatDate(end, 'HH:mm')}`}
                     {c.price_per_session ? ` · ${formatCurrency(Number(c.price_per_session))} p.s.` : ''}
                   </div>
                   {c.priority_window_ends_at && (
