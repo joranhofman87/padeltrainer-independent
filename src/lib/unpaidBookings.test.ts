@@ -70,7 +70,16 @@ function createMockClient(handlers: {
     eq: vi.fn().mockReturnThis(),
     gte: vi.fn().mockResolvedValue(handlers.bookings ?? { data: [], error: null }),
   }));
-  const bookingsUpdateIn = vi.fn().mockResolvedValue(handlers.bookingsUpdate ?? { error: null });
+  // update().in(...) returns a chain that supports .neq().neq() (cancelled
+  // guards) and is awaitable to the update result.
+  const bookingsUpdateResult = handlers.bookingsUpdate ?? { error: null };
+  const bookingsUpdateIn = vi.fn(() => {
+    const chain: { neq: ReturnType<typeof vi.fn>; then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise<unknown> } = {
+      neq: vi.fn(() => chain),
+      then: (res, rej) => Promise.resolve(bookingsUpdateResult).then(res, rej),
+    };
+    return chain;
+  });
 
   bookingsFrom.mockReturnValue({
     select: bookingsSelect,

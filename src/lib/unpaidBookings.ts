@@ -241,10 +241,15 @@ export async function markUnpaidBookingsPaid(
   client: SupabaseClient<Database> = supabase,
 ): Promise<{ error: Error | null }> {
   if (bookingIds.length === 0) return { error: null };
+  // Canonical paid transition (mirrors markInvoicePaidAndSyncBookings / the
+  // Mollie webhook): paid + confirmed so the player and staff surfaces agree.
+  // Never resurrect a cancelled booking.
   const { error } = await client
     .from('bookings')
-    .update({ payment_status: 'paid', paid_at: new Date().toISOString() })
-    .in('id', bookingIds);
+    .update({ payment_status: 'paid', status: 'confirmed', paid_at: new Date().toISOString() })
+    .in('id', bookingIds)
+    .neq('status', 'cancelled')
+    .neq('status', 'cancelled_swap');
   return { error: error ? new Error(error.message) : null };
 }
 

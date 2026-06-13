@@ -24,6 +24,8 @@ import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPick
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -276,16 +278,19 @@ export default function AcademyEditInvoice() {
 
   const handleMarkPaid = async () => {
     if (!invoice) return;
-    const { error } = await supabase
-      .from('invoices')
-      .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('id', invoice.id);
-    if (error) {
+    const { error, blockedCancelled } = await markInvoicePaidAndSyncBookings(
+      invoice.id,
+      invoice.booking_ids as string[] | null,
+    );
+    if (blockedCancelled || error) {
       toast.error(t('invoiceEdit.statusFailed'));
       return;
     }
     toast.success(tAcademy('invoices.markedAsPaid', 'Invoice marked as paid'));
     queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
+    if (activeAcademy?.id) {
+      invalidateAllPlayerData(queryClient, { kind: 'academy', id: activeAcademy.id });
+    }
     navigate('/app/academy/invoices');
   };
 

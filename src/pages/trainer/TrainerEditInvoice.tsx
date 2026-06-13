@@ -15,6 +15,8 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
+import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { Loader2, CalendarIcon, Plus, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -201,10 +203,15 @@ export default function TrainerEditInvoice() {
 
   const handleMarkPaid = async () => {
     if (!invoice) return;
-    const { error } = await supabase.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', invoice.id);
+    const { error, blockedCancelled } = await markInvoicePaidAndSyncBookings(
+      invoice.id,
+      invoice.booking_ids as string[] | null,
+    );
+    if (blockedCancelled) { toast.error(t('invoiceEdit.statusFailed', t('invoiceEdit.saveError'))); return; }
     if (error) { toast.error(t('invoiceEdit.saveError')); return; }
     toast.success(tTrainer('invoices.markedAsPaid', 'Marked as paid'));
     queryClient.invalidateQueries({ queryKey: ['trainer-invoices'] });
+    invalidateAllPlayerData(queryClient, { kind: 'trainer', id: invoice.trainer_id as string });
     navigate('/app/trainer/invoices');
   };
 

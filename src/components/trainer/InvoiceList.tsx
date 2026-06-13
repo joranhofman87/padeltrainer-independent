@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
+import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { deriveInvoiceStatus, type InvoiceStatus } from '@/lib/invoiceStatus';
 import { InvoiceStatusBadge } from '@/components/invoices/InvoiceStatusBadge';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
@@ -133,47 +134,35 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       return;
     }
     setActionLoading(invoice.id);
-    const paidAt = new Date().toISOString();
-    // .neq guards the cancelled→paid transition against stale local state too.
-    const { data: updated, error } = await supabase
-      .from('invoices')
-      .update({
-        status: 'paid',
-        paid_at: paidAt
-      })
-      .eq('id', invoice.id)
-      .neq('status', 'cancelled')
-      .select('id');
+    // Single source of truth: flips the invoice to paid AND syncs the linked
+    // bookings (payment_status='paid', status='confirmed', paid_at) so trainer,
+    // academy and player surfaces all agree.
+    const { error, blockedCancelled, invoicePaid } = await markInvoicePaidAndSyncBookings(
+      invoice.id,
+      invoice.booking_ids,
+    );
 
-    if (error) {
-      toast({
-        title: 'Fout',
-        description: 'Kon status niet bijwerken',
-        variant: 'destructive',
-      });
-    } else if (!updated || updated.length === 0) {
+    if (blockedCancelled) {
       toast({
         title: t('invoices.markPaidBlockedTitle', 'Niet mogelijk'),
         description: t('invoices.cancelledCannotBePaid', 'Een geannuleerde factuur kan niet als betaald worden gemarkeerd.'),
         variant: 'destructive',
       });
+    } else if (error && !invoicePaid) {
+      toast({
+        title: 'Fout',
+        description: 'Kon status niet bijwerken',
+        variant: 'destructive',
+      });
     } else {
-      // Propagate to the linked bookings so sessions stop showing/feeding as
-      // unpaid. Skip rows already paid to preserve their original paid_at.
-      if (invoice.booking_ids && invoice.booking_ids.length > 0) {
-        const { error: bookingsError } = await supabase
-          .from('bookings')
-          .update({ payment_status: 'paid', paid_at: paidAt })
-          .in('id', invoice.booking_ids)
-          .neq('payment_status', 'paid');
-        if (bookingsError) {
-          logger.error('Mark paid: booking sync failed', new Error(bookingsError.message), { component: 'InvoiceList' });
-          toast({
-            title: t('invoices.markPaidBookingSyncFailedTitle', 'Let op'),
-            description: t('invoices.markPaidBookingSyncFailed', 'Factuur is als betaald gemarkeerd, maar de gekoppelde boekingen konden niet worden bijgewerkt.'),
-            variant: 'destructive',
-          });
-        }
+      // Invoice is paid; surface a distinct warning if only the booking sync failed.
+      if (error && invoicePaid) {
+        logger.error('Mark paid: booking sync failed', error, { component: 'InvoiceList' });
+        toast({
+          title: t('invoices.markPaidBookingSyncFailedTitle', 'Let op'),
+          description: t('invoices.markPaidBookingSyncFailed', 'Factuur is als betaald gemarkeerd, maar de gekoppelde boekingen konden niet worden bijgewerkt.'),
+          variant: 'destructive',
+        });
       }
       toast({ title: 'Factuur gemarkeerd als betaald' });
       if (forwardEmails.length > 0) {
