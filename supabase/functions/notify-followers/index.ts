@@ -55,7 +55,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Get trainer profile from authenticated user - DO NOT trust trainer_id from request body
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
-      .select("id, user_id")
+      .select("id, user_id, business_name")
       .eq("user_id", user.id)
       .single();
 
@@ -86,7 +86,8 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("user_id", trainerProfile.user_id)
       .single();
 
-    const trainerName = profile?.full_name || "Your trainer";
+    // business_name takes precedence (matches the in-app trainer name resolver).
+    const trainerName = trainerProfile.business_name?.trim() || profile?.full_name || "Your trainer";
 
     // Get followers who want notifications
     const { data: followers } = await supabase

@@ -82,16 +82,21 @@ serve(async (req: Request) => {
     } else if (cycle.owner_type === "trainer") {
       const { data: trainer } = await supabaseAdmin
         .from("trainer_profiles")
-        .select("id, user_id")
+        .select("id, user_id, business_name")
         .eq("id", cycle.owner_id)
         .single();
       if (trainer) {
-        const { data: profile } = await supabaseAdmin
-          .from("profiles")
-          .select("full_name")
-          .eq("user_id", trainer.user_id)
-          .single();
-        if (profile) ownerName = profile.full_name || ownerName;
+        // business_name takes precedence (matches the in-app trainer name resolver).
+        if (trainer.business_name?.trim()) {
+          ownerName = trainer.business_name.trim();
+        } else {
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", trainer.user_id)
+            .single();
+          if (profile) ownerName = profile.full_name || ownerName;
+        }
       }
     }
 
