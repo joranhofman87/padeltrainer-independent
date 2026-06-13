@@ -1004,7 +1004,12 @@
     "addHoliday": "Vakantie toevoegen",
     "removeHoliday": "Verwijderen",
     "previewWeeks": "{{count}} weken per groep",
-    "alreadyExists": "Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum."
+    "alreadyExists": "Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.",
+    "confirmTitle": "Controleer voordat je verstuurt",
+    "confirmIntro": "Je maakt \"{{name}}\" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:",
+    "confirmGroupLine": "{{players}} spelers · {{sessions}} sessies",
+    "confirmEmails": "{{players}} spelers krijgen nu een uitnodiging per e-mail.",
+    "confirmSend": "Versturen"
   },
   "tentativeRoster": {
     "title": "Voorlopige spelers (herboeking)",

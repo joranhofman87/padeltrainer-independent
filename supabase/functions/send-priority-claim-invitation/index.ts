@@ -36,6 +36,7 @@ interface SlotRow {
   cyclus_name: string | null;
   price_per_session: number | null;
   priority_window_ends_at: string | null;
+  academy_profile_id: string | null;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -154,8 +155,18 @@ const handler = async (req: Request): Promise<Response> => {
     const slotIds = [...new Set(eligible.map((c) => c.slot_id))];
     const { data: slots } = await supabase
       .from("availability_slots")
-      .select("id, start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at")
+      .select("id, start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at, academy_profile_id")
       .in("id", slotIds);
+
+    // Academy timezone for DISPLAY (slots are stored UTC). Default Europe/Amsterdam.
+    const acadIds = [...new Set(((slots || []) as SlotRow[]).map((s) => s.academy_profile_id).filter((id): id is string => !!id))];
+    const tzByAcademy = new Map<string, string>();
+    if (acadIds.length > 0) {
+      const { data: acads } = await supabase.from("academy_profiles").select("id, timezone").in("id", acadIds);
+      for (const a of (acads || []) as Array<{ id: string; timezone: string | null }>) {
+        tzByAcademy.set(a.id, a.timezone || "Europe/Amsterdam");
+      }
+    }
     const slotMap = new Map<string, SlotRow>(
       ((slots || []) as SlotRow[]).map((s) => [s.id, s])
     );
@@ -224,25 +235,30 @@ const handler = async (req: Request): Promise<Response> => {
       if (!recipientEmail) continue;
       const recipientName = c.profiles?.full_name || c.guest_players?.full_name || "";
 
+      // Times are stored UTC; render in the academy's timezone (default
+      // Europe/Amsterdam) so 18:00-local reads as 18:00, not 16:00.
+      const tz = (slot.academy_profile_id && tzByAcademy.get(slot.academy_profile_id)) || "Europe/Amsterdam";
       // For a group, anchor the description on the group's FIRST session.
       const start = new Date(group ? group.firstStart : slot.start_time);
       const durationMs = new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime();
       const end = new Date(start.getTime() + durationMs);
-      const weekday = start.toLocaleDateString("nl-NL", { weekday: "long" });
-      const timeRange = `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
-      // Single-week (legacy) vs group (series) heading.
+      const weekday = start.toLocaleDateString("nl-NL", { weekday: "long", timeZone: tz });
+      const startTime = start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+      const timeRange = `${startTime} - ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: tz })}`;
+      // Single-week (legacy) vs group (series) heading — include the time so the
+      // player knows exactly which weekly slot they're committing to.
       const fmtDate = group
-        ? `Elke ${weekday} · ${group.sessions} ${group.sessions === 1 ? "sessie" : "sessies"}`
-        : start.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+        ? `Elke ${weekday} om ${startTime} · ${group.sessions} ${group.sessions === 1 ? "sessie" : "sessies"}`
+        : start.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: tz });
       const groupRange = group
-        ? `${new Date(group.firstStart).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })} t/m ${new Date(group.lastStart).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })}`
+        ? `${new Date(group.firstStart).toLocaleDateString("nl-NL", { day: "numeric", month: "long", timeZone: tz })} t/m ${new Date(group.lastStart).toLocaleDateString("nl-NL", { day: "numeric", month: "long", timeZone: tz })}`
         : null;
       const fmtTime = timeRange;
       const claimUrl = buildClaimUrl(APP_BASE, c.claim_token, isTest);
       const acceptUrl = `${claimUrl}?intent=accept`;
       const declineUrl = `${claimUrl}?intent=decline`;
       const deadline = slot.priority_window_ends_at
-        ? new Date(slot.priority_window_ends_at).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })
+        ? new Date(slot.priority_window_ends_at).toLocaleDateString("nl-NL", { day: "numeric", month: "long", timeZone: tz })
         : null;
       const isUpfront = !!slot.cyclus_id && upfrontCycleIds.has(slot.cyclus_id);
       const paymentLine = isUpfront

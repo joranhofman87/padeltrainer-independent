@@ -6,6 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { ArrowLeft, ChevronDown, Eye, Send, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +42,21 @@ interface HolidayRange {
   to: string;
 }
 
+interface GroupDetail {
+  weekday: string;
+  time: string;
+  players: number;
+  sessions: number;
+}
+
+interface ConfirmData {
+  groups: number;
+  players: number;
+  totalSessions: number;
+  effWeeks: number;
+  groupsDetail: GroupDetail[];
+}
+
 export default function RebookCohortWizard({ academyProfileId, backHref }: Props) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
@@ -65,6 +84,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
+  const [preparing, setPreparing] = useState(false);
 
   useEffect(() => {
     getAcademyLocationsWithDetails(academyProfileId)
@@ -165,8 +186,33 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     }
   };
 
+  // Build the review summary (what will be created + emailed) BEFORE sending —
+  // a fresh dryRun that reflects the chosen weeks + holidays.
+  const prepareConfirm = async () => {
+    if (!inputsValid || !preview || preview.players <= 0) return;
+    setPreparing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
+        body: { ...baseBody, dryRun: true },
+      });
+      if (error) throw error;
+      setConfirmData({
+        groups: Number(data?.groups ?? 0),
+        players: Number(data?.players ?? 0),
+        totalSessions: Number(data?.totalSessions ?? 0),
+        effWeeks: Number(data?.effWeeks ?? 0),
+        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as GroupDetail[]) : [],
+      });
+    } catch (e) {
+      toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errPreview', 'Kon de preview niet ophalen. Probeer het opnieuw.')));
+    } finally {
+      setPreparing(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!inputsValid || !preview || preview.players <= 0 || submitting) return;
+    setConfirmData(null);
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
@@ -495,11 +541,50 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={handleSubmit} disabled={submitting || previewing || !preview || preview.players <= 0}>
+        <Button onClick={prepareConfirm} disabled={submitting || previewing || preparing || !preview || preview.players <= 0}>
           <Send className="h-4 w-4 mr-2" />
-          {submitting ? t('common:saving', 'Bezig...') : t('rebookCohort.confirm', 'Aanmaken & spelers uitnodigen')}
+          {preparing ? t('common:loading', 'Bezig...') : t('rebookCohort.confirm', 'Aanmaken & spelers uitnodigen')}
         </Button>
       </div>
+
+      <AlertDialog open={!!confirmData} onOpenChange={(o) => { if (!o) setConfirmData(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('rebookCohort.confirmTitle', 'Controleer voordat je verstuurt')}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  {t('rebookCohort.confirmIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:', {
+                    name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
+                    date: newStartDate,
+                    weeks: confirmData?.effWeeks ?? '',
+                    price: sessionPrice || (preview?.suggestedPrice ?? ''),
+                  })}
+                </p>
+                <ul className="border rounded-md divide-y">
+                  {(confirmData?.groupsDetail ?? []).map((g, i) => (
+                    <li key={i} className="flex items-center justify-between px-3 py-2">
+                      <span className="font-medium capitalize">{g.weekday} {g.time}</span>
+                      <span className="text-muted-foreground">
+                        {t('rebookCohort.confirmGroupLine', '{{players}} spelers · {{sessions}} sessies', { players: g.players, sessions: g.sessions })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="font-medium">
+                  {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: confirmData?.players ?? 0 })}
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSubmit} disabled={submitting}>
+              {submitting ? t('common:saving', 'Bezig...') : t('rebookCohort.confirmSend', 'Versturen')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

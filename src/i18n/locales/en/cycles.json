@@ -869,7 +869,12 @@
     "addHoliday": "Add holiday",
     "removeHoliday": "Remove",
     "previewWeeks": "{{count}} weeks per group",
-    "alreadyExists": "A round with this name and start date already exists. Give the new round a different name or date."
+    "alreadyExists": "A round with this name and start date already exists. Give the new round a different name or date.",
+    "confirmTitle": "Check before you send",
+    "confirmIntro": "You are creating \"{{name}}\" from {{date}} ({{weeks}} weeks, € {{price}} per session). This will invite the following players by email now:",
+    "confirmGroupLine": "{{players}} players · {{sessions}} sessions",
+    "confirmEmails": "{{players}} players will be emailed an invitation now.",
+    "confirmSend": "Send"
   },
   "tentativeRoster": {
     "title": "Tentative players (rebooking)",

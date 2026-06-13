@@ -47,26 +47,45 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type Holiday = { from: string; to: string; name?: string }; // from/to = yyyy-mm-dd inclusive
 // (slots are now GENERATED for the next term, not copied 1:1 from source weeks)
 
+// The UTC instant whose LOCAL wall-clock time (in tz) is y-mo-d h:mi. Uses the
+// standard offset trick (correct except inside the ~1h DST-transition window).
+function localWallTimeToUtc(y: number, mo: number, d: number, h: number, mi: number, tz: string): Date {
+  const guess = Date.UTC(y, mo, d, h, mi, 0);
+  const asUtc = new Date(new Date(guess).toLocaleString("en-US", { timeZone: "UTC" })).getTime();
+  const asTz = new Date(new Date(guess).toLocaleString("en-US", { timeZone: tz })).getTime();
+  return new Date(guess + (asUtc - asTz));
+}
+
 /**
  * Generate up to `weeks` weekly session start times for the next term, anchored
- * on the source group's weekday + time-of-day (UTC, matching the clustering
- * key), starting at the first matching weekday on/after newStartDate. Any
- * occurrence whose date falls inside a holiday range is dropped — nothing is
- * planned on holidays.
+ * on the source group's weekday + LOCAL time-of-day (in the academy's tz), from
+ * the first matching weekday on/after newStartDate. Anchoring on local time (not
+ * UTC) keeps an 18:00 session at 18:00 across a daylight-saving change between
+ * the old and new term. Any occurrence whose local date is inside a holiday
+ * range is dropped — nothing is planned on holidays.
  */
-function generateWeeklyStarts(newStartDate: string, templateStartIso: string, weeks: number, holidays: Holiday[]): string[] {
+function generateWeeklyStarts(newStartDate: string, templateStartIso: string, weeks: number, holidays: Holiday[], tz: string): string[] {
   const tmpl = new Date(templateStartIso);
-  const dow = tmpl.getUTCDay();
-  const first = new Date(`${newStartDate}T00:00:00.000Z`);
-  while (first.getUTCDay() !== dow) first.setUTCDate(first.getUTCDate() + 1);
-  first.setUTCHours(tmpl.getUTCHours(), tmpl.getUTCMinutes(), 0, 0);
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+    .formatToParts(tmpl);
+  const tWeekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const tHour = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
+  const tMin = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+
+  const wdFmt = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short" });
+  const ymdFmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+
+  // First local date on/after newStartDate whose weekday matches the group's.
+  let cur = new Date(`${newStartDate}T12:00:00.000Z`); // noon avoids DST edges while stepping days
+  for (let i = 0; i < 7 && wdFmt.format(cur) !== tWeekday; i++) cur = new Date(cur.getTime() + DAY_MS);
 
   const out: string[] = [];
   for (let i = 0; i < weeks; i++) {
-    const start = new Date(first.getTime() + i * 7 * DAY_MS);
-    const dateStr = start.toISOString().slice(0, 10);
+    const dayAnchor = new Date(cur.getTime() + i * 7 * DAY_MS);
+    const dateStr = ymdFmt.format(dayAnchor); // yyyy-mm-dd in tz
     if (holidays.some((h) => h.from && h.to && dateStr >= h.from && dateStr <= h.to)) continue;
-    out.push(start.toISOString());
+    const [y, mo, d] = dateStr.split("-").map(Number);
+    out.push(localWallTimeToUtc(y, mo - 1, d, tHour, tMin, tz).toISOString());
   }
   return out;
 }
@@ -138,6 +157,15 @@ serve(async (req) => {
       if (!mgr) return jsonForbidden("You do not manage this academy.");
     }
 
+    // Academy timezone for DISPLAY (slots are stored UTC). NL academies default
+    // to Europe/Amsterdam, so 18:00-local reads as 18:00, not the 16:00 UTC.
+    const { data: acadTz } = await supabase
+      .from("academy_profiles")
+      .select("timezone")
+      .eq("id", academyProfileId)
+      .maybeSingle();
+    const tz = acadTz?.timezone || "Europe/Amsterdam";
+
     // 1. Gather candidate slots at the chosen location(s), up to the term end.
     const termEnd = new Date(`${termEndDate}T23:59:59.999Z`);
     const windowStart = new Date(termEnd.getTime() - 200 * DAY_MS); // generous term lookback
@@ -201,17 +229,41 @@ serve(async (req) => {
       }),
     );
 
+    const effWeeks = weeks > 0 ? weeks : suggestedWeeks;
+
     if (dryRun) {
+      // Per-group breakdown for the admin to review BEFORE anything is created
+      // or emailed: weekday + time, how many players (= invites), and how many
+      // sessions will be planned for the next term (after skipping holidays).
+      const weekdayFmt = new Intl.DateTimeFormat("nl-NL", { weekday: "long", timeZone: tz });
+      const timeFmt = new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+      const groupsDetail = qualifyingSeries.map((series) => {
+        const tmpl = series[0];
+        const d = new Date(tmpl.start_time);
+        const cohort = new Set<string>();
+        for (const src of series) {
+          for (const b of bookingsBySlot.get(src.id) ?? []) cohort.add(b.player_id ?? `g:${b.guest_player_id}`);
+        }
+        const sessions = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz).length;
+        return {
+          weekday: weekdayFmt.format(d),
+          time: timeFmt.format(d),
+          players: cohort.size,
+          sessions,
+        };
+      }).filter((g) => g.players > 0);
+      const totalSessions = groupsDetail.reduce((sum, g) => sum + g.sessions * g.players, 0);
       return new Response(JSON.stringify({
         ok: true, dryRun: true,
         groups: qualifyingSeries.length,
         players: playerSet.size,
         suggestedWeeks,
         suggestedPrice,
+        effWeeks,
+        groupsDetail,
+        totalSessions,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
-
-    const effWeeks = weeks > 0 ? weeks : suggestedWeeks;
     const effName = targetCycleName || "Volgende ronde";
 
     // Re-run guard: a rebook cycle with the same name + start date already
@@ -284,7 +336,7 @@ serve(async (req) => {
       }
       if (cohort.size === 0) continue;
 
-      const starts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays);
+      const starts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz);
       const repByPlayer = new Map<string, string>(); // player -> earliest claim id (the one we email)
 
       for (const startIso of starts) {
