@@ -4589,6 +4589,7 @@ export type Database = {
           id: string
           invited_at: string | null
           player_id: string | null
+          rebook_group_id: string | null
           responded_at: string | null
           slot_id: string
           source_slot_id: string | null
@@ -4604,6 +4605,7 @@ export type Database = {
           id?: string
           invited_at?: string | null
           player_id?: string | null
+          rebook_group_id?: string | null
           responded_at?: string | null
           slot_id: string
           source_slot_id?: string | null
@@ -4619,6 +4621,7 @@ export type Database = {
           id?: string
           invited_at?: string | null
           player_id?: string | null
+          rebook_group_id?: string | null
           responded_at?: string | null
           slot_id?: string
           source_slot_id?: string | null
