@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 const db = new PGlite();
 let failures = 0;
+type RpcResult = { ok: boolean; status?: string; reason?: string; group?: boolean; booked?: number; declined?: number; skipped_full?: number; booking_id?: string | null };
 const check = (cond: boolean, msg: string, extra?: unknown) => {
   if (cond) { console.log('  PASS', msg); }
   else { failures++; console.error('  FAIL', msg, extra !== undefined ? JSON.stringify(extra) : ''); }
@@ -67,7 +68,7 @@ await db.exec(`
 `);
 
 // --- ACCEPT via P1's representative token books all 3 of P1's slots ---
-const acc = (await db.query<{ r: any }>(`SELECT public.respond_to_priority_claim('tok-p1-s1','accept') AS r`)).rows[0].r;
+const acc = (await db.query<{ r: RpcResult }>(`SELECT public.respond_to_priority_claim('tok-p1-s1','accept') AS r`)).rows[0].r;
 check(acc.ok === true && acc.group === true && acc.booked === 3, 'group accept books all 3 series slots', acc);
 
 const p1Bookings = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.bookings WHERE player_id='${P(1)}' AND status='confirmed' AND payment_status='pending'`)).rows[0].n;
@@ -80,7 +81,7 @@ const p2Claim = (await db.query<{ status: string }>(`SELECT status FROM public.s
 check(p2Claim === 'pending', 'P2 claim on shared slot untouched by P1 accept', p2Claim);
 
 // --- DECLINE via P2 token releases only P2's claim(s) in the group ---
-const dec = (await db.query<{ r: any }>(`SELECT public.respond_to_priority_claim('tok-p2-s1','decline') AS r`)).rows[0].r;
+const dec = (await db.query<{ r: RpcResult }>(`SELECT public.respond_to_priority_claim('tok-p2-s1','decline') AS r`)).rows[0].r;
 check(dec.ok === true && dec.group === true && dec.declined === 1, 'group decline releases P2 series (1 slot)', dec);
 const p2After = (await db.query<{ status: string }>(`SELECT status FROM public.slot_priority_claims WHERE claim_token='tok-p2-s1'`)).rows[0].status;
 check(p2After === 'declined', 'P2 claim now declined', p2After);
@@ -96,7 +97,7 @@ await db.exec(`
     ('${S(4)}', '${P(3)}', 'pending', 'tok-p3-s4', '22222222-2222-2222-2222-222222222222'),
     ('${S(5)}', '${P(3)}', 'pending', 'tok-p3-s5', '22222222-2222-2222-2222-222222222222');
 `);
-const accFull = (await db.query<{ r: any }>(`SELECT public.respond_to_priority_claim('tok-p3-s4','accept') AS r`)).rows[0].r;
+const accFull = (await db.query<{ r: RpcResult }>(`SELECT public.respond_to_priority_claim('tok-p3-s4','accept') AS r`)).rows[0].r;
 check(accFull.booked === 1 && accFull.skipped_full === 1, 'group accept books open slot, skips full one', accFull);
 const p3s4 = (await db.query<{ status: string }>(`SELECT status FROM public.slot_priority_claims WHERE claim_token='tok-p3-s4'`)).rows[0].status;
 check(p3s4 === 'pending', 'full-slot claim stays pending (owner can see it did not fit)', p3s4);
@@ -108,11 +109,11 @@ await db.exec(`
   INSERT INTO public.slot_priority_claims (slot_id, player_id, status, claim_token) VALUES
     ('${S(6)}', '${P(4)}', 'pending', 'tok-legacy');
 `);
-const legacy = (await db.query<{ r: any }>(`SELECT public.respond_to_priority_claim('tok-legacy','accept') AS r`)).rows[0].r;
+const legacy = (await db.query<{ r: RpcResult }>(`SELECT public.respond_to_priority_claim('tok-legacy','accept') AS r`)).rows[0].r;
 check(legacy.ok === true && legacy.status === 'claimed' && legacy.group === undefined && !!legacy.booking_id, 'legacy single accept unchanged (no group flag)', legacy);
 
 // --- Idempotency: re-accept an already-claimed token is a no-op response ---
-const again = (await db.query<{ r: any }>(`SELECT public.respond_to_priority_claim('tok-p1-s1','accept') AS r`)).rows[0].r;
+const again = (await db.query<{ r: RpcResult }>(`SELECT public.respond_to_priority_claim('tok-p1-s1','accept') AS r`)).rows[0].r;
 check(again.ok === false && again.reason === 'already_responded', 'already-responded token returns no-op', again);
 
 console.log(failures === 0 ? '\nALL rebook-group-claims rehearsal checks passed.' : `\n${failures} CHECK(S) FAILED`);
