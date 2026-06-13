@@ -5,11 +5,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { InvoiceRecipientCard } from './InvoiceRecipientCard';
 
-const fromMock = vi.fn();
+const rpcMock = vi.fn();
 
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
-    from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
   },
 }));
 
@@ -45,23 +45,18 @@ function renderCard(props: ReactComponentProps<typeof InvoiceRecipientCard>) {
 
 describe('InvoiceRecipientCard', () => {
   beforeEach(() => {
-    fromMock.mockReset();
+    rpcMock.mockReset();
   });
 
   it('shows registered player with email and academy profile link', async () => {
-    fromMock.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: { email: 'player@example.com' }, error: null }),
-        }),
-      }),
-    });
+    rpcMock.mockResolvedValue({ data: 'player@example.com', error: null });
 
     renderCard({
       owner: 'academy',
       playerName: 'Jane Player',
       playerId: 'profile-uuid',
       guestPlayerId: null,
+      invoiceId: 'inv-1',
     });
 
     expect(screen.getByText('Jane Player')).toBeInTheDocument();
@@ -79,19 +74,14 @@ describe('InvoiceRecipientCard', () => {
   });
 
   it('shows guest with email and guest profile link', async () => {
-    fromMock.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: { email: 'guest@example.com' }, error: null }),
-        }),
-      }),
-    });
+    rpcMock.mockResolvedValue({ data: 'guest@example.com', error: null });
 
     renderCard({
       owner: 'academy',
       playerName: 'Guest Name',
       playerId: null,
       guestPlayerId: 'guest-uuid',
+      invoiceId: 'inv-2',
     });
 
     expect(screen.getByText('Guest Player')).toBeInTheDocument();
@@ -115,23 +105,18 @@ describe('InvoiceRecipientCard', () => {
     expect(screen.getByText('Manual Recipient')).toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open Player Profile' })).not.toBeInTheDocument();
-    expect(fromMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it('trainer links to player profile detail', async () => {
-    fromMock.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: { email: 't@example.com' }, error: null }),
-        }),
-      }),
-    });
+    rpcMock.mockResolvedValue({ data: 't@example.com', error: null });
 
     renderCard({
       owner: 'trainer',
       playerName: 'Trainer Player',
       playerId: 'profile-uuid',
       guestPlayerId: null,
+      invoiceId: 'inv-3',
     });
 
     await waitFor(() => {

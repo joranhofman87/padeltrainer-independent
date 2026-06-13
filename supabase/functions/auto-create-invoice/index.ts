@@ -5,7 +5,6 @@ import {
   isInvoiceBusinessProfileComplete,
   resolveAutoCreateBusinessGate,
 } from "../_shared/invoice-business.ts";
-import { resolveGuestNameForInvoice } from "../_shared/profileName.ts";
 import {
   resolveInvoiceUnitPrice,
   splitAmongPlayersForInvoiceCreate,
@@ -241,31 +240,21 @@ serve(async (req) => {
     let playerAddress: string | null = null;
     let playerBtwNumber: string | null = null;
 
-    if (playerId) {
-      const { data: playerProfile } = await supabase
-        .from("profiles")
-        .select("full_name, billing_business_name, billing_address, billing_btw_number")
-        .eq("id", playerId)
-        .single();
-      if (playerProfile?.full_name) {
-        playerName = playerProfile.full_name;
+    if (playerId || guestPlayerId) {
+      // Single source of truth: the person's own name, but billing from the
+      // linked profile first (FAM-02), so a snapshot can't go stale against an
+      // edited parent profile.
+      const { data: identityRows } = await supabase.rpc("get_invoice_recipient_identity", {
+        _player_id: playerId ?? null,
+        _guest_player_id: guestPlayerId ?? null,
+      });
+      const identity = Array.isArray(identityRows) ? identityRows[0] : identityRows;
+      if (identity?.full_name) {
+        playerName = identity.full_name;
       }
-      playerBusinessName = playerProfile?.billing_business_name || null;
-      playerAddress = playerProfile?.billing_address || null;
-      playerBtwNumber = playerProfile?.billing_btw_number || null;
-    } else if (guestPlayerId) {
-      const { data: guestPlayer } = await supabase
-        .from("guest_players")
-        .select("first_name, last_name, full_name, email, billing_business_name, billing_address, billing_btw_number")
-        .eq("id", guestPlayerId)
-        .single();
-      const resolved = guestPlayer ? resolveGuestNameForInvoice(guestPlayer) : "";
-      if (resolved) {
-        playerName = resolved;
-      }
-      playerBusinessName = (guestPlayer as any)?.billing_business_name || null;
-      playerAddress = (guestPlayer as any)?.billing_address || null;
-      playerBtwNumber = (guestPlayer as any)?.billing_btw_number || null;
+      playerBusinessName = identity?.billing_business_name || null;
+      playerAddress = identity?.billing_address || null;
+      playerBtwNumber = identity?.billing_btw_number || null;
     }
 
     // Build line items from bookings

@@ -371,6 +371,7 @@ export default function AcademyEditInvoice() {
           playerName={invoice.player_name}
           playerId={invoice.player_id}
           guestPlayerId={invoice.guest_player_id}
+          invoiceId={invoice.id}
         />
         <InvoiceSourceCard owner="academy" bookingIds={invoice.booking_ids as string[] | null} />
 

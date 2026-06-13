@@ -19,29 +19,19 @@ export interface InvoiceRecipientCardProps {
   playerName: string;
   playerId?: string | null;
   guestPlayerId?: string | null;
+  invoiceId?: string | null;
 }
 
+// Resolve the recipient email through the ownership-gated RPC, which applies the
+// FAM-02 rule (a linked guest's email comes from the parent profile first) — the
+// same value the invoice is actually sent to. Reading guest_players.email
+// directly showed a stale address after the parent edited their profile.
 async function fetchRecipientEmail(
-  playerId: string | null | undefined,
-  guestPlayerId: string | null | undefined,
+  invoiceId: string | null | undefined,
 ): Promise<string | null> {
-  if (playerId) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('id', playerId)
-      .maybeSingle();
-    return data?.email?.trim() || null;
-  }
-  if (guestPlayerId) {
-    const { data } = await supabase
-      .from('guest_players')
-      .select('email')
-      .eq('id', guestPlayerId)
-      .maybeSingle();
-    return data?.email?.trim() || null;
-  }
-  return null;
+  if (!invoiceId) return null;
+  const { data } = await supabase.rpc('get_invoice_recipient_email', { _invoice_id: invoiceId });
+  return (typeof data === 'string' ? data.trim() : '') || null;
 }
 
 export function InvoiceRecipientCard({
@@ -49,14 +39,15 @@ export function InvoiceRecipientCard({
   playerName,
   playerId,
   guestPlayerId,
+  invoiceId,
 }: InvoiceRecipientCardProps) {
   const { t } = useTranslation('common');
   const kind = getInvoiceRecipientKind(playerId, guestPlayerId);
 
   const { data: email, isLoading: emailLoading } = useQuery({
-    queryKey: ['invoice-recipient-email', playerId, guestPlayerId],
-    queryFn: () => fetchRecipientEmail(playerId, guestPlayerId),
-    enabled: !!(playerId || guestPlayerId),
+    queryKey: ['invoice-recipient-email', invoiceId],
+    queryFn: () => fetchRecipientEmail(invoiceId),
+    enabled: !!invoiceId,
   });
 
   const profilePath =

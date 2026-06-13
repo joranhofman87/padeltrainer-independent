@@ -228,31 +228,23 @@ const handler = async (req: Request): Promise<Response> => {
     const pdfLink = signedUrl?.signedUrl || invoice.pdf_url || "";
 
     let playerReplyTo: string | null = null;
-    if (invoice.guest_player_id) {
-      const { data: guest } = await supabase
-        .from("guest_players")
-        .select("email")
-        .eq("id", invoice.guest_player_id)
-        .single();
-      if (guest?.email) playerReplyTo = guest.email;
-    }
+    // Single source of truth: resolves a linked guest's email from the parent
+    // profile first (FAM-02), so an edited contact is honoured.
+    const { data: replyIdRows } = await supabase.rpc("get_invoice_recipient_identity", {
+      _player_id: invoice.player_id ?? null,
+      _guest_player_id: invoice.guest_player_id ?? null,
+    });
+    const replyIdentity = Array.isArray(replyIdRows) ? replyIdRows[0] : replyIdRows;
+    if (replyIdentity?.email) playerReplyTo = replyIdentity.email;
+    // Historic fallback: some old rows stored a user_id in player_id (the RPC
+    // keys on profiles.id).
     if (!playerReplyTo && invoice.player_id) {
-      // invoices.player_id references profiles.id; fall back to user_id for
-      // any historic rows that stored it.
-      let { data: profile } = await supabase
+      const { data: byUserId } = await supabase
         .from("profiles")
         .select("email")
-        .eq("id", invoice.player_id)
+        .eq("user_id", invoice.player_id)
         .maybeSingle();
-      if (!profile?.email) {
-        const { data: byUserId } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("user_id", invoice.player_id)
-          .maybeSingle();
-        profile = byUserId;
-      }
-      if (profile?.email) playerReplyTo = profile.email;
+      if (byUserId?.email) playerReplyTo = byUserId.email;
     }
 
     const sendOutcomes: Array<{ ok: boolean; email: string; error?: string; resendId?: string }> = [];

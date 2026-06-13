@@ -6853,6 +6853,21 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_invoice_recipient_email: {
+        Args: { _invoice_id: string }
+        Returns: string
+      }
+      get_invoice_recipient_identity: {
+        Args: { _guest_player_id?: string; _player_id?: string }
+        Returns: {
+          billing_address: string
+          billing_btw_number: string
+          billing_business_name: string
+          email: string
+          full_name: string
+          phone: string
+        }[]
+      }
       get_location_review_stats: {
         Args: { _location_id: string }
         Returns: Json

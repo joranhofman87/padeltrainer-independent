@@ -265,6 +265,7 @@ export default function TrainerEditInvoice() {
           playerName={invoice.player_name}
           playerId={invoice.player_id}
           guestPlayerId={invoice.guest_player_id}
+          invoiceId={invoice.id}
         />
         <InvoiceSourceCard owner="trainer" bookingIds={invoice.booking_ids as string[] | null} />
 

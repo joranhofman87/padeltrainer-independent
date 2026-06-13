@@ -85,15 +85,17 @@ serve(async (req) => {
       });
     }
 
-    // Look up guest player email if no registered player
+    // Look up guest player email if no registered player. Resolve via the shared
+    // recipient identity so a linked guest's email comes from the parent profile
+    // first (FAM-02) instead of the stale guest row.
     let playerEmail: string | null = null;
     if (!invoice.player_id && invoice.guest_player_id) {
-      const { data: guestData } = await supabase
-        .from("guest_players")
-        .select("email")
-        .eq("id", invoice.guest_player_id)
-        .maybeSingle();
-      playerEmail = guestData?.email || null;
+      const { data: idRows } = await supabase.rpc("get_invoice_recipient_identity", {
+        _player_id: null,
+        _guest_player_id: invoice.guest_player_id,
+      });
+      const identity = Array.isArray(idRows) ? idRows[0] : idRows;
+      playerEmail = identity?.email || null;
     }
 
     let academy = null;
