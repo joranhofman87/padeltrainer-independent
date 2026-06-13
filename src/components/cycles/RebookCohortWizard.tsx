@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronDown, Eye, Send } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Eye, Send, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -28,8 +28,14 @@ interface LocationOption {
 interface PreviewResult {
   groups: number;
   players: number;
-  weeksOffset: number;
-  slotsToCopy: number;
+  suggestedWeeks: number;
+  suggestedPrice: number | null;
+}
+
+interface HolidayRange {
+  name: string;
+  from: string;
+  to: string;
 }
 
 export default function RebookCohortWizard({ academyProfileId, backHref }: Props) {
@@ -41,6 +47,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [selectedLocationIds, setSelectedLocationIds] = useState<Set<string>>(new Set());
   const [termEndDate, setTermEndDate] = useState('');
   const [newStartDate, setNewStartDate] = useState('');
+  const [weeks, setWeeks] = useState('');
+  const [sessionPrice, setSessionPrice] = useState('');
+  const [holidays, setHolidays] = useState<HolidayRange[]>([]);
 
   const [priorityWindowDays, setPriorityWindowDays] = useState(7);
   const [memberWindowDays, setMemberWindowDays] = useState(7);
@@ -96,6 +105,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       paymentMode,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
+      weeks: weeks ? Number(weeks) : 0,
+      sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
+      holidays: holidays.filter((h) => h.from && h.to),
     }),
     [
       academyProfileId,
@@ -108,8 +120,16 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       paymentMode,
       requireAdminReview,
       targetCycleName,
+      weeks,
+      sessionPrice,
+      holidays,
     ],
   );
+
+  const addHoliday = () => setHolidays((prev) => [...prev, { name: '', from: '', to: '' }]);
+  const updateHoliday = (i: number, patch: Partial<HolidayRange>) =>
+    setHolidays((prev) => prev.map((h, idx) => (idx === i ? { ...h, ...patch } : h)));
+  const removeHoliday = (i: number) => setHolidays((prev) => prev.filter((_, idx) => idx !== i));
 
   const inputsValid = selectedLocationIds.size > 0 && Boolean(termEndDate) && Boolean(newStartDate);
 
@@ -128,10 +148,13 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       const result: PreviewResult = {
         groups: Number(data?.groups ?? 0),
         players: Number(data?.players ?? 0),
-        weeksOffset: Number(data?.weeksOffset ?? 0),
-        slotsToCopy: Number(data?.slotsToCopy ?? 0),
+        suggestedWeeks: Number(data?.suggestedWeeks ?? 0),
+        suggestedPrice: data?.suggestedPrice == null ? null : Number(data.suggestedPrice),
       };
       setPreview(result);
+      // Pre-fill weeks + price from the previous term when the user hasn't set them.
+      if (!weeks && result.suggestedWeeks > 0) setWeeks(String(result.suggestedWeeks));
+      if (sessionPrice === '' && result.suggestedPrice != null) setSessionPrice(String(result.suggestedPrice));
       if (result.players === 0) {
         toast.info(t('rebookCohort.previewEmpty', 'Geen spelers gevonden voor deze selectie.'));
       }
@@ -245,6 +268,79 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
               {t('rebookCohort.newStartHint', 'Wanneer de volgende termijn begint.')}
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('rebookCohort.sessionsAndPrice', 'Aantal weken en prijs')}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <Label className="text-xs">{t('rebookCohort.weeks', 'Aantal weken')}</Label>
+            <Input
+              type="number"
+              min={1}
+              max={52}
+              value={weeks}
+              onChange={(e) => setWeeks(e.target.value)}
+              placeholder={preview?.suggestedWeeks ? String(preview.suggestedWeeks) : ''}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {t('rebookCohort.weeksHint', 'Hoeveel weken de nieuwe ronde loopt. Vakantieweken worden overgeslagen.')}
+            </p>
+          </div>
+          <div>
+            <Label className="text-xs">{t('rebookCohort.sessionPrice', 'Prijs per sessie (€)')}</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={sessionPrice}
+              onChange={(e) => setSessionPrice(e.target.value)}
+              placeholder={preview?.suggestedPrice != null ? String(preview.suggestedPrice) : '0.00'}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {t('rebookCohort.sessionPriceHint', 'Prijs voor elke sessie in de nieuwe ronde.')}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('rebookCohort.holidays', 'Vakanties (geen training)')}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {t('rebookCohort.holidaysHint', 'Geef vakantieperiodes op. Op deze dagen wordt niets ingepland.')}
+          </p>
+          {holidays.map((h, i) => (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+              <div>
+                <Label className="text-xs">{t('rebookCohort.holidayName', 'Naam')}</Label>
+                <Input
+                  value={h.name}
+                  onChange={(e) => updateHoliday(i, { name: e.target.value })}
+                  placeholder={t('rebookCohort.holidayNamePlaceholder', 'bv. Herfstvakantie')}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">{t('rebookCohort.holidayFrom', 'Van')}</Label>
+                <Input type="date" value={h.from} onChange={(e) => updateHoliday(i, { from: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">{t('rebookCohort.holidayTo', 'Tot en met')}</Label>
+                <Input type="date" value={h.to} onChange={(e) => updateHoliday(i, { to: e.target.value })} />
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => removeHoliday(i)} aria-label={t('rebookCohort.removeHoliday', 'Verwijderen')}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={addHoliday}>
+            <Plus className="h-4 w-4 mr-1" /> {t('rebookCohort.addHoliday', 'Vakantie toevoegen')}
+          </Button>
         </CardContent>
       </Card>
 
@@ -380,9 +476,13 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
                   groups: preview.groups,
                 })}
               </p>
-              <p className="text-muted-foreground text-xs">
-                {t('rebookCohort.previewSlots', '{{count}} trainingen worden gekopieerd', { count: preview.slotsToCopy })}
-              </p>
+              {(weeks || preview.suggestedWeeks > 0) && (
+                <p className="text-muted-foreground text-xs">
+                  {t('rebookCohort.previewWeeks', '{{count}} weken per groep', {
+                    count: weeks ? Number(weeks) : preview.suggestedWeeks,
+                  })}
+                </p>
+              )}
             </div>
           )}
         </CardContent>

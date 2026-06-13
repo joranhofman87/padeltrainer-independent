@@ -44,8 +44,44 @@ type Slot = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function shiftWeeks(iso: string, weeks: number): string {
-  return new Date(new Date(iso).getTime() + weeks * 7 * DAY_MS).toISOString();
+type Holiday = { from: string; to: string; name?: string }; // from/to = yyyy-mm-dd inclusive
+// (slots are now GENERATED for the next term, not copied 1:1 from source weeks)
+
+/**
+ * Generate up to `weeks` weekly session start times for the next term, anchored
+ * on the source group's weekday + time-of-day (UTC, matching the clustering
+ * key), starting at the first matching weekday on/after newStartDate. Any
+ * occurrence whose date falls inside a holiday range is dropped — nothing is
+ * planned on holidays.
+ */
+function generateWeeklyStarts(newStartDate: string, templateStartIso: string, weeks: number, holidays: Holiday[]): string[] {
+  const tmpl = new Date(templateStartIso);
+  const dow = tmpl.getUTCDay();
+  const first = new Date(`${newStartDate}T00:00:00.000Z`);
+  while (first.getUTCDay() !== dow) first.setUTCDate(first.getUTCDate() + 1);
+  first.setUTCHours(tmpl.getUTCHours(), tmpl.getUTCMinutes(), 0, 0);
+
+  const out: string[] = [];
+  for (let i = 0; i < weeks; i++) {
+    const start = new Date(first.getTime() + i * 7 * DAY_MS);
+    const dateStr = start.toISOString().slice(0, 10);
+    if (holidays.some((h) => h.from && h.to && dateStr >= h.from && dateStr <= h.to)) continue;
+    out.push(start.toISOString());
+  }
+  return out;
+}
+
+// Most common value in a list (for suggesting the source price / term length).
+function mode(nums: number[]): number | null {
+  if (nums.length === 0) return null;
+  const counts = new Map<number, number>();
+  let best = nums[0], bestN = 0;
+  for (const n of nums) {
+    const c = (counts.get(n) ?? 0) + 1;
+    counts.set(n, c);
+    if (c > bestN) { bestN = c; best = n; }
+  }
+  return best;
 }
 
 // Series key — clusters weekly recurrences of the same group. UTC weekday+time
@@ -75,6 +111,15 @@ serve(async (req) => {
     const requireAdminReview: boolean = body?.requireAdminReview === true;
     const targetCycleName: string | null = body?.targetCycleName ?? null;
     const dryRun: boolean = body?.dryRun === true;
+    // New term shape (see generateWeeklyStarts): number of weeks, named holiday
+    // ranges to skip, and the session price to apply to every new session.
+    const weeks: number = Math.max(0, Math.floor(Number(body?.weeks ?? 0)));
+    const holidays: Holiday[] = Array.isArray(body?.holidays)
+      ? body.holidays.filter((h: Holiday) => h && h.from && h.to)
+      : [];
+    const sessionPrice: number | null = body?.sessionPrice == null || body?.sessionPrice === ""
+      ? null
+      : Number(body.sessionPrice);
 
     if (!academyProfileId || locationIds.length === 0 || !termEndDate || !newStartDate) {
       return new Response(JSON.stringify({ error: "academyProfileId, locationIds, termEndDate, newStartDate required" }), {
@@ -147,24 +192,31 @@ serve(async (req) => {
       }
     }
 
-    const earliestSrcMs = Math.min(...qualifyingSeries.flat().map((s) => new Date(s.start_time).getTime()));
-    const newStartMs = new Date(`${newStartDate}T00:00:00.000Z`).getTime();
-    const weeksOffset = Math.round((newStartMs - new Date(new Date(earliestSrcMs).toISOString().slice(0, 10) + "T00:00:00.000Z").getTime()) / (7 * DAY_MS));
+    // Suggested defaults from the source term: most common price + length in weeks.
+    const suggestedPrice = mode(qualifyingSeries.flat().map((s) => s.price_per_session).filter((p): p is number => p != null));
+    const suggestedWeeks = Math.max(
+      ...qualifyingSeries.map((series) => {
+        const weeksInSeries = new Set(series.map((s) => Math.floor(new Date(s.start_time).getTime() / (7 * DAY_MS))));
+        return weeksInSeries.size;
+      }),
+    );
 
     if (dryRun) {
       return new Response(JSON.stringify({
         ok: true, dryRun: true,
         groups: qualifyingSeries.length,
         players: playerSet.size,
-        weeksOffset,
-        slotsToCopy: qualifyingSeries.flat().length,
+        suggestedWeeks,
+        suggestedPrice,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
 
+    const effWeeks = weeks > 0 ? weeks : suggestedWeeks;
+
     // 4. Create one target cycle for the run.
     const repTemplate = qualifyingSeries[0][0];
-    const termLenDays = Math.round((termEnd.getTime() - earliestSrcMs) / DAY_MS);
-    const newEndDate = new Date(newStartMs + termLenDays * DAY_MS).toISOString().slice(0, 10);
+    const cyclePrice = sessionPrice ?? suggestedPrice ?? repTemplate.price_per_session;
+    const newEndDate = new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
     const singleLocation = locationIds.length === 1 ? locationIds[0] : null;
     const { data: targetCycle, error: tcErr } = await supabase
       .from("cycles")
@@ -177,8 +229,8 @@ serve(async (req) => {
         type: "cyclus",
         status: "open",
         location_id: singleLocation,
-        price_per_session: repTemplate.price_per_session,
-        settings: { rebook_payment_mode: paymentMode },
+        price_per_session: cyclePrice,
+        settings: { rebook_payment_mode: paymentMode, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null },
       })
       .select("id, name")
       .single();
@@ -193,42 +245,58 @@ serve(async (req) => {
     let claimsCreated = 0;
     const representativeClaimIds: string[] = [];
 
-    // 5. Copy each series forward; create grouped claims (one rebook_group_id per series).
+    // 5. For each source series, generate `effWeeks` weekly sessions for the next
+    //    term (skipping holidays, applying the session price) and create
+    //    group-level claims (one rebook_group_id per series) for every player who
+    //    was in that group — so one Yes rebooks the whole new term.
     for (const series of qualifyingSeries) {
+      const tmpl = series[0];
+      const durationMs = new Date(tmpl.end_time).getTime() - new Date(tmpl.start_time).getTime();
+      const effPrice = sessionPrice ?? tmpl.price_per_session;
       const rebookGroupId = crypto.randomUUID();
-      // player key -> earliest copied claim id (the representative we email)
-      const repByPlayer = new Map<string, string>();
 
+      // Cohort for this group = distinct players booked on ANY session of the series.
+      const cohort = new Map<string, { player_id: string | null; guest_player_id: string | null }>();
       for (const src of series) {
+        for (const b of bookingsBySlot.get(src.id) ?? []) {
+          cohort.set(b.player_id ?? `g:${b.guest_player_id}`, b);
+        }
+      }
+      if (cohort.size === 0) continue;
+
+      const starts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays);
+      const repByPlayer = new Map<string, string>(); // player -> earliest claim id (the one we email)
+
+      for (const startIso of starts) {
         const { data: newSlot, error: insErr } = await supabase
           .from("availability_slots")
           .insert({
-            trainer_id: src.trainer_id,
-            start_time: shiftWeeks(src.start_time, weeksOffset),
-            end_time: shiftWeeks(src.end_time, weeksOffset),
+            trainer_id: tmpl.trainer_id,
+            start_time: startIso,
+            end_time: new Date(new Date(startIso).getTime() + durationMs).toISOString(),
             is_recurring: false,
             cyclus_id: targetCycle.id,
             cyclus_name: targetCycle.name,
-            court_type: src.court_type,
-            location_id: src.location_id,
-            academy_profile_id: src.academy_profile_id,
+            court_type: tmpl.court_type,
+            location_id: tmpl.location_id,
+            academy_profile_id: tmpl.academy_profile_id,
             is_public: true,
-            training_level: src.training_level,
-            price_per_session: src.price_per_session,
-            total_price: src.total_price,
-            allow_single_booking: src.allow_single_booking,
-            min_participants: src.min_participants,
-            max_participants: src.max_participants,
-            extra_costs: src.extra_costs,
-            rating_system: src.rating_system,
-            min_rating: src.min_rating,
-            max_rating: src.max_rating,
-            prices_include_vat: src.prices_include_vat,
-            split_payment: src.split_payment,
-            priority_source_slot_id: src.id,
+            training_level: tmpl.training_level,
+            price_per_session: effPrice,
+            total_price: tmpl.total_price,
+            allow_single_booking: tmpl.allow_single_booking,
+            min_participants: tmpl.min_participants,
+            max_participants: tmpl.max_participants,
+            extra_costs: tmpl.extra_costs,
+            rating_system: tmpl.rating_system,
+            min_rating: tmpl.min_rating,
+            max_rating: tmpl.max_rating,
+            prices_include_vat: tmpl.prices_include_vat,
+            split_payment: tmpl.split_payment,
+            priority_source_slot_id: tmpl.id,
             priority_window_starts_at: now.toISOString(),
             priority_window_ends_at: priorityEnd.toISOString(),
-            source_cycle_id: src.cyclus_id, // best-effort cohort link for membership reads
+            source_cycle_id: tmpl.cyclus_id, // best-effort cohort link for membership reads
             member_window_starts_at: memberEnd ? priorityEnd.toISOString() : null,
             member_window_ends_at: memberEnd ? memberEnd.toISOString() : null,
             public_release_status: publicReleaseStatus,
@@ -238,14 +306,14 @@ serve(async (req) => {
         if (insErr) throw insErr;
         slotsCopied++;
 
-        for (const b of bookingsBySlot.get(src.id) ?? []) {
+        for (const b of cohort.values()) {
           const { data: claim, error: cErr } = await supabase
             .from("slot_priority_claims")
             .insert({
               slot_id: newSlot.id,
               player_id: b.player_id,
               guest_player_id: b.guest_player_id,
-              source_slot_id: src.id,
+              source_slot_id: tmpl.id,
               rebook_group_id: rebookGroupId,
               status: "pending",
             })

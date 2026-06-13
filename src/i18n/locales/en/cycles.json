@@ -854,7 +854,21 @@
     "errLoadLocations": "Could not load the locations. Please try again.",
     "errFillRequired": "Pick at least one location and both dates.",
     "errPreview": "Could not load the preview. Please try again.",
-    "errSubmit": "Could not create the round. Please try again."
+    "errSubmit": "Could not create the round. Please try again.",
+    "sessionsAndPrice": "Weeks and price",
+    "weeks": "Number of weeks",
+    "weeksHint": "How many weeks the new round runs. Holiday weeks are skipped.",
+    "sessionPrice": "Price per session (€)",
+    "sessionPriceHint": "Price for each session in the new round.",
+    "holidays": "Holidays (no training)",
+    "holidaysHint": "Add holiday periods. Nothing is scheduled on these days.",
+    "holidayName": "Name",
+    "holidayNamePlaceholder": "e.g. Autumn break",
+    "holidayFrom": "From",
+    "holidayTo": "Up to and including",
+    "addHoliday": "Add holiday",
+    "removeHoliday": "Remove",
+    "previewWeeks": "{{count}} weeks per group"
   },
   "tentativeRoster": {
     "title": "Tentative players (rebooking)",

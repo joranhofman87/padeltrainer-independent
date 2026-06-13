@@ -989,7 +989,21 @@
     "errLoadLocations": "Kon de locaties niet laden. Probeer het opnieuw.",
     "errFillRequired": "Kies minstens één locatie en beide datums.",
     "errPreview": "Kon de preview niet ophalen. Probeer het opnieuw.",
-    "errSubmit": "Kon de ronde niet aanmaken. Probeer het opnieuw."
+    "errSubmit": "Kon de ronde niet aanmaken. Probeer het opnieuw.",
+    "sessionsAndPrice": "Aantal weken en prijs",
+    "weeks": "Aantal weken",
+    "weeksHint": "Hoeveel weken de nieuwe ronde loopt. Vakantieweken worden overgeslagen.",
+    "sessionPrice": "Prijs per sessie (€)",
+    "sessionPriceHint": "Prijs voor elke sessie in de nieuwe ronde.",
+    "holidays": "Vakanties (geen training)",
+    "holidaysHint": "Geef vakantieperiodes op. Op deze dagen wordt niets ingepland.",
+    "holidayName": "Naam",
+    "holidayNamePlaceholder": "bv. Herfstvakantie",
+    "holidayFrom": "Van",
+    "holidayTo": "Tot en met",
+    "addHoliday": "Vakantie toevoegen",
+    "removeHoliday": "Verwijderen",
+    "previewWeeks": "{{count}} weken per groep"
   },
   "tentativeRoster": {
     "title": "Voorlopige spelers (herboeking)",
