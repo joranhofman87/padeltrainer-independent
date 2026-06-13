@@ -868,7 +868,8 @@
     "holidayTo": "Up to and including",
     "addHoliday": "Add holiday",
     "removeHoliday": "Remove",
-    "previewWeeks": "{{count}} weeks per group"
+    "previewWeeks": "{{count}} weeks per group",
+    "alreadyExists": "A round with this name and start date already exists. Give the new round a different name or date."
   },
   "tentativeRoster": {
     "title": "Tentative players (rebooking)",

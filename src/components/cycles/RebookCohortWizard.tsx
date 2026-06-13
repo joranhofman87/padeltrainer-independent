@@ -173,6 +173,12 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         body: baseBody,
       });
       if (error) throw error;
+      if (data?.ok === false && data?.reason === 'already_exists') {
+        toast.error(
+          t('rebookCohort.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'),
+        );
+        return;
+      }
       toast.success(
         t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
           groups: Number(data?.groups ?? 0),

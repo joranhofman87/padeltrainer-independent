@@ -23,6 +23,7 @@ interface ClaimRow {
   slot_id: string;
   player_id: string | null;
   guest_player_id: string | null;
+  rebook_group_id: string | null;
   profiles: { full_name: string | null; email: string | null } | null;
   guest_players: { full_name: string | null; email: string | null } | null;
 }
@@ -119,7 +120,7 @@ const handler = async (req: Request): Promise<Response> => {
     let query = supabase
       .from("slot_priority_claims")
       .select(
-        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
+        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
       );
     if (authorizedIds) query = query.in("id", authorizedIds);
     else if (claimIds && claimIds.length) query = query.in("id", claimIds);
@@ -178,12 +179,42 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // Group rebooking: a player's claim belongs to a weekly SERIES (shared
+    // rebook_group_id). Compute per (group, player) the session count + date
+    // range + weekday/time so the email describes the whole group, not just the
+    // first week. One Yes books the entire series.
+    type GroupInfo = { sessions: number; firstStart: string; lastStart: string };
+    const groupInfo = new Map<string, GroupInfo>(); // key: `${rebook_group_id}|${playerKey}`
+    const groupIds = [...new Set(eligible.map((c) => c.rebook_group_id).filter((id): id is string => !!id))];
+    if (groupIds.length > 0) {
+      const { data: groupClaims } = await supabase
+        .from("slot_priority_claims")
+        .select("rebook_group_id, player_id, guest_player_id, status, availability_slots:slot_id(start_time)")
+        .in("rebook_group_id", groupIds)
+        .eq("status", "pending");
+      for (const gc of (groupClaims || []) as Array<{ rebook_group_id: string | null; player_id: string | null; guest_player_id: string | null; availability_slots: { start_time: string } | null }>) {
+        if (!gc.rebook_group_id || !gc.availability_slots) continue;
+        const pkey = gc.player_id ?? `g:${gc.guest_player_id}`;
+        const key = `${gc.rebook_group_id}|${pkey}`;
+        const start = gc.availability_slots.start_time;
+        const cur = groupInfo.get(key);
+        if (!cur) groupInfo.set(key, { sessions: 1, firstStart: start, lastStart: start });
+        else {
+          cur.sessions++;
+          if (start < cur.firstStart) cur.firstStart = start;
+          if (start > cur.lastStart) cur.lastStart = start;
+        }
+      }
+    }
+
     const resendClient = new Resend(resendApiKey);
     let sent = 0;
 
     for (const c of eligible) {
       const slot = slotMap.get(c.slot_id);
       if (!slot) continue;
+      const playerKey = c.player_id ?? `g:${c.guest_player_id}`;
+      const group = c.rebook_group_id ? groupInfo.get(`${c.rebook_group_id}|${playerKey}`) : undefined;
       const recipientEmail = resolveRecipient({
         isTest,
         callerEmail,
@@ -193,12 +224,20 @@ const handler = async (req: Request): Promise<Response> => {
       if (!recipientEmail) continue;
       const recipientName = c.profiles?.full_name || c.guest_players?.full_name || "";
 
-      const start = new Date(slot.start_time);
-      const end = new Date(slot.end_time);
-      const fmtDate = start.toLocaleDateString("nl-NL", {
-        weekday: "long", day: "numeric", month: "long", year: "numeric",
-      });
-      const fmtTime = `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
+      // For a group, anchor the description on the group's FIRST session.
+      const start = new Date(group ? group.firstStart : slot.start_time);
+      const durationMs = new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime();
+      const end = new Date(start.getTime() + durationMs);
+      const weekday = start.toLocaleDateString("nl-NL", { weekday: "long" });
+      const timeRange = `${start.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
+      // Single-week (legacy) vs group (series) heading.
+      const fmtDate = group
+        ? `Elke ${weekday} · ${group.sessions} ${group.sessions === 1 ? "sessie" : "sessies"}`
+        : start.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      const groupRange = group
+        ? `${new Date(group.firstStart).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })} t/m ${new Date(group.lastStart).toLocaleDateString("nl-NL", { day: "numeric", month: "long" })}`
+        : null;
+      const fmtTime = timeRange;
       const claimUrl = buildClaimUrl(APP_BASE, c.claim_token, isTest);
       const acceptUrl = `${claimUrl}?intent=accept`;
       const declineUrl = `${claimUrl}?intent=decline`;
@@ -218,6 +257,7 @@ const handler = async (req: Request): Promise<Response> => {
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0;">
             <div style="font-weight:600;">${fmtDate}</div>
             <div style="color:#6b7280;">${fmtTime}</div>
+            ${groupRange ? `<div style="color:#6b7280;font-size:13px;margin-top:4px;">${groupRange}</div>` : ""}
             ${slot.price_per_session ? `<div style="margin-top:6px;">EUR ${Number(slot.price_per_session).toFixed(2)} per sessie</div>` : ""}
           </div>
           <p style="color:#6b7280;font-size:13px;">${paymentLine}</p>

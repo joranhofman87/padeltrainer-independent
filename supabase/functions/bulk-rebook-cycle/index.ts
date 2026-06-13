@@ -212,6 +212,26 @@ serve(async (req) => {
     }
 
     const effWeeks = weeks > 0 ? weeks : suggestedWeeks;
+    const effName = targetCycleName || "Volgende ronde";
+
+    // Re-run guard: a rebook cycle with the same name + start date already
+    // exists for this academy → almost certainly a double-run that would send
+    // every player a second invite. Block it (the user can rename or change the
+    // date to make a genuinely separate round).
+    const { data: existing } = await supabase
+      .from("cycles")
+      .select("id")
+      .eq("owner_type", "academy")
+      .eq("owner_id", academyProfileId)
+      .eq("name", effName)
+      .eq("start_date", newStartDate)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
+      return new Response(JSON.stringify({ ok: false, reason: "already_exists", existingCycleId: existing[0].id }), {
+        status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
 
     // 4. Create one target cycle for the run.
     const repTemplate = qualifyingSeries[0][0];
@@ -223,7 +243,7 @@ serve(async (req) => {
       .insert({
         owner_type: "academy",
         owner_id: academyProfileId,
-        name: targetCycleName || "Volgende ronde",
+        name: effName,
         start_date: newStartDate,
         end_date: newEndDate,
         type: "cyclus",
@@ -296,7 +316,12 @@ serve(async (req) => {
             priority_source_slot_id: tmpl.id,
             priority_window_starts_at: now.toISOString(),
             priority_window_ends_at: priorityEnd.toISOString(),
-            source_cycle_id: tmpl.cyclus_id, // best-effort cohort link for membership reads
+            // Membership for the member window = anyone with a booking in THIS
+            // rebooked cohort cycle. Pointing at the target (not the old, possibly
+            // mixed/null source cyclus_id) makes the member window work uniformly
+            // for registration- and hand-added-origin groups alike: a freed seat
+            // opens first to players who already rebooked into the new round.
+            source_cycle_id: targetCycle.id,
             member_window_starts_at: memberEnd ? priorityEnd.toISOString() : null,
             member_window_ends_at: memberEnd ? memberEnd.toISOString() : null,
             public_release_status: publicReleaseStatus,

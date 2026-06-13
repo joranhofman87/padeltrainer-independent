@@ -1003,7 +1003,8 @@
     "holidayTo": "Tot en met",
     "addHoliday": "Vakantie toevoegen",
     "removeHoliday": "Verwijderen",
-    "previewWeeks": "{{count}} weken per groep"
+    "previewWeeks": "{{count}} weken per groep",
+    "alreadyExists": "Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum."
   },
   "tentativeRoster": {
     "title": "Voorlopige spelers (herboeking)",
