@@ -561,9 +561,11 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
 
   let slot: ClaimSlotInfo | null = null;
   let mode: RebookPaymentMode = 'deferred_split';
+  let playerId: string | null = null;
   try {
     const claimData = await fetchClaimByToken(token);
     slot = (claimData?.slot ?? null) as ClaimSlotInfo | null;
+    playerId = ((claimData?.claim as { player_id?: string | null } | undefined)?.player_id) ?? null;
     mode = await getCycleRebookPaymentMode(slot?.cyclus_id);
   } catch {
     // Mode lookup failed — the commitment stands; fall back to the default.
@@ -594,14 +596,26 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
 
     // Multi-slot cycles: the player may hold one claim per slot. Accept the
     // remaining pending ones first so a single checkout covers the whole
-    // cycle. RLS scopes this select to the player's own claims; previously
-    // accepted ('claimed') siblings are picked up via their booking_id.
+    // cycle. RLS scopes this select to the player's own claims; we also pin
+    // player_id explicitly (defense-in-depth) so a future RLS change can't
+    // widen it. Previously accepted ('claimed') siblings are picked up via
+    // their booking_id.
+    //
+    // NOTE: this is cycle-scoped (all slots sharing the target cyclus_id), not
+    // rebook-group-scoped. For a cohort rebooked across several weekday/time
+    // groups into one cycle, accepting+paying one group's claim also accepts
+    // this player's pending claims in their OTHER groups of the same cycle and
+    // settles them in a single checkout. That is intentional (one payment for
+    // the player's whole commitment); the group-aware decline path still lets a
+    // manager release individual groups.
     const bookingIds = accept.booking_id ? [accept.booking_id] : [];
     if (cycleSlotIds.length > 0) {
-      const { data: myClaims } = await supabase
+      let myClaimsQuery = supabase
         .from('slot_priority_claims')
         .select('claim_token, slot_id, status, booking_id')
         .in('slot_id', cycleSlotIds);
+      if (playerId) myClaimsQuery = myClaimsQuery.eq('player_id', playerId);
+      const { data: myClaims } = await myClaimsQuery;
       for (const mc of myClaims || []) {
         if (mc.claim_token === token) continue;
         if (mc.status === 'pending') {

@@ -18,7 +18,7 @@ import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDi
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
+import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -34,6 +34,8 @@ import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceS
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
+import { deriveInvoiceStatus, type InvoiceStatus } from "@/lib/invoiceStatus";
+import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
 import {
   buildInvoiceSettingsLabels,
   checkInvoiceSettingsGate,
@@ -300,11 +302,13 @@ export default function AcademyInvoices() {
   });
 
 
-  const getComputedStatus = (inv: Invoice): string => {
+  // The academy keys "sent" off sent_at (the actual delivery signal), so feed a
+  // normalized status into the shared deriver for the sent/overdue rule while
+  // keeping the academy-only 'open' state (created but not yet sent).
+  const getComputedStatus = (inv: Invoice): InvoiceStatus | "open" => {
     if (inv.status === "paid") return "paid";
     if (inv.status === "cancelled") return "cancelled";
-    if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
-    if (inv.sent_at) return "sent";
+    if (inv.sent_at) return deriveInvoiceStatus({ status: "sent", due_date: inv.due_date });
     if (inv.status === "draft") return "draft";
     return "open";
   };
@@ -633,22 +637,13 @@ export default function AcademyInvoices() {
   };
 
   const getStatusBadge = (invoice: Invoice) => {
-    if (invoice.status === "paid") {
-      return <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-0"><CheckCircle className="h-3 w-3 mr-1" />{t("invoices.paid", "Paid")}</Badge>;
+    const status = getComputedStatus(invoice);
+    // 'open' is academy-only (not in the canonical InvoiceStatus); the five
+    // canonical states render via the shared InvoiceStatusBadge.
+    if (status === "open") {
+      return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
     }
-    if (invoice.status === "cancelled") {
-      return <Badge variant="outline">{t("invoices.cancelled", "Cancelled")}</Badge>;
-    }
-    if (invoice.sent_at) {
-      const isOverdue = new Date(invoice.due_date) < new Date();
-      return isOverdue
-        ? <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />{t("invoices.overdue", "Overdue")}</Badge>
-        : <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{t("invoices.sent", "Sent")}</Badge>;
-    }
-    if (invoice.status === "draft") {
-      return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Draft")}</Badge>;
-    }
-    return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
+    return <InvoiceStatusBadge status={status} />;
   };
 
   const getPaymentUrl = (inv: Invoice) =>

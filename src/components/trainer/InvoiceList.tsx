@@ -3,22 +3,21 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
+import { deriveInvoiceStatus, type InvoiceStatus } from '@/lib/invoiceStatus';
+import { InvoiceStatusBadge } from '@/components/invoices/InvoiceStatusBadge';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
 import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
-import { 
-  FileText, 
-  Download, 
-  Send, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
+import {
+  FileText,
+  Download,
+  Send,
+  CheckCircle2,
   Loader2,
   Trash2,
   Mail,
@@ -35,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { format, parseISO, isAfter } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 interface Invoice {
@@ -72,14 +71,6 @@ interface InvoiceListProps {
 
 type StatusFilter = 'all' | 'draft' | 'sent' | 'paid' | 'overdue';
 
-const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ComponentType<{ className?: string }> }> = {
-  draft: { label: 'Concept', variant: 'secondary', icon: FileText },
-  sent: { label: 'Verzonden', variant: 'default', icon: Clock },
-  paid: { label: 'Betaald', variant: 'outline', icon: CheckCircle2 },
-  overdue: { label: 'Verlopen', variant: 'destructive', icon: AlertCircle },
-  cancelled: { label: 'Geannuleerd', variant: 'secondary', icon: AlertCircle },
-};
-
 export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isAdmin = false }: InvoiceListProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
@@ -115,12 +106,12 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       });
     } else {
       const now = new Date();
-      const processedInvoices = (data || []).map(inv => {
-        if (inv.status === 'sent' && isAfter(now, parseISO(inv.due_date))) {
-          return { ...inv, status: 'overdue' };
-        }
-        return inv;
-      });
+      // Persist the derived status (e.g. sent + past-due → overdue) so the
+      // status filter and badge agree. Single source of truth: deriveInvoiceStatus.
+      const processedInvoices = (data || []).map(inv => ({
+        ...inv,
+        status: deriveInvoiceStatus(inv, now),
+      }));
       setInvoices(processedInvoices as Invoice[]);
     }
     setLoading(false);
@@ -410,17 +401,6 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     return inv.status === statusFilter;
   });
 
-  const getStatusBadge = (status: string) => {
-    const config = STATUS_CONFIG[status] || STATUS_CONFIG.draft;
-    const Icon = config.icon;
-    return (
-      <Badge variant={config.variant} className="gap-1">
-        <Icon className="h-3 w-3" />
-        {config.label}
-      </Badge>
-    );
-  };
-
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -455,7 +435,9 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         <Card className="p-8 text-center">
           <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">
-            {statusFilter === 'all' ? 'Nog geen facturen' : `Geen ${STATUS_CONFIG[statusFilter]?.label.toLowerCase() || statusFilter} facturen`}
+            {statusFilter === 'all'
+              ? 'Nog geen facturen'
+              : `Geen ${t(`invoiceStatus.${statusFilter}`, { ns: 'common' }).toLowerCase()} facturen`}
           </h3>
           <p className="text-muted-foreground">
             Maak je eerste factuur aan via de pending payments tab.
@@ -469,7 +451,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-semibold font-mono">{invoice.invoice_number}</p>
-                    {getStatusBadge(invoice.status)}
+                    <InvoiceStatusBadge status={invoice.status as InvoiceStatus} />
                   </div>
                   <p className="text-sm text-muted-foreground">{invoice.player_name}</p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">

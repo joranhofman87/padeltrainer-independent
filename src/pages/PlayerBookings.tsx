@@ -17,7 +17,7 @@ import { formatDate } from '@/lib/format';
 import { cancelBooking } from '@/lib/lessons';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
-import { getPlayerReview } from '@/lib/reviews';
+import { getReviewedBookingIds } from '@/lib/reviews';
 import { fetchPlayerBookings, type PlayerBooking } from '@/lib/playerBookings';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
@@ -49,13 +49,13 @@ export default function PlayerBookings() {
     if (!profile?.id) return;
     try {
       const list = await fetchPlayerBookings(profile.id);
-      // Per-booking review lookup (kept here so the shared fetch stays UI-agnostic).
-      const withReviews = await Promise.all(
-        list.map(async (booking) => {
-          const { data: review } = await getPlayerReview(booking.id);
-          return { ...booking, hasReview: !!review };
-        }),
-      );
+      // Batched review lookup (kept here so the shared fetch stays UI-agnostic):
+      // one IN query instead of one request per booking.
+      const reviewedIds = await getReviewedBookingIds(list.map((b) => b.id));
+      const withReviews = list.map((booking) => ({
+        ...booking,
+        hasReview: reviewedIds.has(booking.id),
+      }));
       setBookings(withReviews);
     } catch {
       toast({

@@ -67,7 +67,7 @@ export function RatingHistoryChart({
     try {
       const { data, error } = await supabase
         .from('player_rating_history')
-        .select('*')
+        .select('id, rating, rating_system, source, scraped_at')
         .eq('profile_id', profileId)
         .eq('rating_system', ratingSystem)
         .order('scraped_at', { ascending: true });

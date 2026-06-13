@@ -213,6 +213,28 @@ export async function getPlayerReview(bookingId: string) {
     .maybeSingle();
 }
 
+// Batched counterpart to getPlayerReview: which of these bookings already have a
+// review. Replaces an N+1 (one maybeSingle per booking) with a single IN query.
+// Returns the set of booking ids that have a review (RLS scopes rows to the
+// caller's own bookings, same as the per-row lookup).
+export async function getReviewedBookingIds(bookingIds: string[]): Promise<Set<string>> {
+  if (bookingIds.length === 0) return new Set<string>();
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('booking_id')
+    .in('booking_id', bookingIds);
+
+  if (error || !data) {
+    if (error) {
+      logger.error('Error fetching reviewed booking ids', undefined, { error });
+    }
+    return new Set<string>();
+  }
+
+  return new Set(data.map((r) => r.booking_id));
+}
+
 export async function updateReview(reviewId: string, rating: number, comment?: string) {
   return supabase
     .from('reviews')
