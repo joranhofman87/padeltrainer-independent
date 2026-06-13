@@ -5,8 +5,11 @@ import { resolve } from 'node:path';
 const source = readFileSync(resolve(__dirname, 'TrainerDashboard.tsx'), 'utf8');
 
 describe('TrainerDashboard visibility', () => {
-  it('uses active guest count excluding removed players', () => {
-    expect(source).toContain('fetchActiveGuestPlayerCountForTrainer');
+  it('derives total students from the shared players-overview RPC (matches the Players page; removal applied server-side)', () => {
+    expect(source).toContain('fetchPlayersOverview');
+    // No bespoke guest-only count — the dashboard total must equal the Players
+    // page total (guests + registered), with removal handled inside the RPC.
+    expect(source).not.toContain('fetchActiveGuestPlayerCountForTrainer');
     expect(source).not.toMatch(/guest_players.*count: 'exact'/);
   });
 

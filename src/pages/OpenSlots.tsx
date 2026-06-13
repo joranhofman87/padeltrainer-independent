@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Calendar, RotateCcw, UserPlus, ArrowLeft, ChevronDown, ChevronRight, MapPin, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { CAPACITY_OCCUPYING_STATUSES, getSlotCapacity } from '@/lib/lessons';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -102,7 +103,7 @@ export default function OpenSlots() {
         .from('bookings')
         .select('slot_id, status')
         .in('slot_id', slotIds)
-        .in('status', ['confirmed', 'pending']);
+        .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
 
       const bookingCounts: Record<string, number> = {};
       bookings?.forEach(b => {
@@ -110,7 +111,7 @@ export default function OpenSlots() {
       });
 
       const processedSlots: SlotData[] = (slots || []).map(slot => {
-        const maxParticipants = slot.max_participants || 4;
+        const maxParticipants = getSlotCapacity(slot);
         const bookedCount = bookingCounts[slot.id] || 0;
         return {
           id: slot.id,

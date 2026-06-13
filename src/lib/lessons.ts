@@ -1,6 +1,32 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 
+/** Default seats for a slot when max_participants is unset (a padel court).
+ *  Single source of truth so every surface agrees on a NULL-capacity slot. */
+export const DEFAULT_MAX_PARTICIPANTS = 4;
+
+/** Booking statuses that occupy a seat for capacity / open-spot calculations.
+ *  pending_approval IS occupying — the player has requested the seat and is
+ *  awaiting the trainer's decision, so it must not be overbookable. cancelled /
+ *  cancelled_swap / rejected / completed do not hold a future seat. */
+export const CAPACITY_OCCUPYING_STATUSES = ['confirmed', 'pending', 'pending_approval'] as const;
+
+export function isOccupyingStatus(status: string | null | undefined): boolean {
+  return !!status && (CAPACITY_OCCUPYING_STATUSES as readonly string[]).includes(status);
+}
+
+/** Resolve a slot's capacity, applying the single shared default. */
+export function getSlotCapacity(slot: { max_participants?: number | null } | null | undefined): number {
+  return slot?.max_participants ?? DEFAULT_MAX_PARTICIPANTS;
+}
+
+/** Count occupied seats among a slot's bookings (confirmed + pending + pending_approval). */
+export function countOccupiedSeats(
+  bookings: Array<{ status?: string | null }> | null | undefined,
+): number {
+  return (bookings ?? []).filter((b) => isOccupyingStatus(b.status)).length;
+}
+
 export interface Booking {
   id: string;
   slot_id: string;
@@ -59,9 +85,7 @@ export async function getAvailableSlotsForTrainer(trainerId: string) {
   if (error) return { data: null, error };
 
   const availableSlots = slots?.filter(slot => {
-    const confirmedBookings = slot.bookings?.filter((b: { id: string; status: string }) => b.status === 'confirmed' || b.status === 'pending') || [];
-    const maxParticipants = slot.max_participants ?? 4;
-    return confirmedBookings.length < maxParticipants;
+    return countOccupiedSeats(slot.bookings) < getSlotCapacity(slot);
   });
 
   return { data: availableSlots, error: null };

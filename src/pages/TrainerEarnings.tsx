@@ -30,7 +30,9 @@ import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatT
 import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
 import { EarningsBookingRow } from '@/components/trainer/earnings/EarningsBookingRow';
 import { cn } from '@/lib/utils';
-import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { bookingReceivedAmount, isReceivedPayment, sumReceivedInRange } from '@/lib/trainerEarnings';
+import { getBookedPlayerName } from '@/lib/bookedPlayerName';
 import { supabase } from '@/lib/supabaseClient';
 // CreateInvoiceDialog removed — now using /app/trainer/invoices/new page
 import { InvoiceList } from '@/components/trainer/InvoiceList';
@@ -59,6 +61,9 @@ interface EarningsBooking {
   player: {
     full_name: string | null;
     email: string | null;
+  } | null;
+  guest_players: {
+    full_name: string | null;
   } | null;
 }
 
@@ -195,7 +200,8 @@ export default function TrainerEarnings() {
         created_at,
         player_id,
         availability_slots!inner(start_time, end_time, trainer_id, price_per_session, cyclus_name),
-        player:profiles!bookings_player_id_fkey(full_name, email)
+        player:profiles!bookings_player_id_fkey(full_name, email),
+        guest_players:guest_player_id(full_name)
       `)
       .eq('availability_slots.trainer_id', trainerProfile.id)
       .in('status', ['completed', 'confirmed', 'cancelled'])
@@ -317,22 +323,19 @@ export default function TrainerEarnings() {
   const lastMonthEnd = endOfMonth(subMonths(now, 1));
 
   const completedBookings = bookings.filter(b => b.status === 'completed');
-  
-  const getAmount = (b: EarningsBooking) => b.payment_amount || b.availability_slots.price_per_session || 0;
-  
-  const totalEarnings = completedBookings
-    .filter(b => b.payment_status === 'paid')
+
+  // Earnings = money actually received (payment_status='paid' + paid_at), gross,
+  // no fee — the shared rule the TrainerDashboard "Revenue" tile also uses, so
+  // the two tiles always agree.
+  const getAmount = (b: EarningsBooking) => bookingReceivedAmount(b);
+
+  const totalEarnings = bookings
+    .filter(isReceivedPayment)
     .reduce((sum, b) => sum + getAmount(b), 0);
 
-  const thisMonthEarnings = completedBookings
-    .filter(b => b.payment_status === 'paid' && b.paid_at && 
-      isWithinInterval(parseISO(b.paid_at), { start: thisMonthStart, end: thisMonthEnd }))
-    .reduce((sum, b) => sum + getAmount(b), 0);
+  const thisMonthEarnings = sumReceivedInRange(bookings, thisMonthStart, thisMonthEnd);
 
-  const lastMonthEarnings = completedBookings
-    .filter(b => b.payment_status === 'paid' && b.paid_at &&
-      isWithinInterval(parseISO(b.paid_at), { start: lastMonthStart, end: lastMonthEnd }))
-    .reduce((sum, b) => sum + getAmount(b), 0);
+  const lastMonthEarnings = sumReceivedInRange(bookings, lastMonthStart, lastMonthEnd);
 
   const pendingPayments = bookings.filter(b => 
     (b.status === 'completed' || b.status === 'confirmed') && 
@@ -707,7 +710,7 @@ export default function TrainerEarnings() {
                 <EarningsBookingRow
                   key={booking.id}
                   title={booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}
-                  subtitle={booking.player?.full_name || 'Player'}
+                  subtitle={getBookedPlayerName(booking)}
                   meta={
                     <div className="flex flex-wrap items-center gap-4">
                       <span className="inline-flex items-center gap-1">
@@ -779,7 +782,7 @@ export default function TrainerEarnings() {
                     key={booking.id}
                     className="opacity-90"
                     title={booking.availability_slots.cyclus_name || t('earningsPage.trainingSession')}
-                    subtitle={booking.player?.full_name || 'Player'}
+                    subtitle={getBookedPlayerName(booking)}
                     meta={
                       <div className="flex flex-wrap items-center gap-4">
                         <span className="inline-flex items-center gap-1">

@@ -17,6 +17,7 @@ import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { supabase } from '@/lib/supabaseClient';
+import { sumReceivedInRange } from '@/lib/trainerEarnings';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
@@ -31,10 +32,10 @@ import { DashboardSetupBanner } from '@/components/trainer/dashboard/DashboardSe
 import { computeTrainerPaymentsSetupComplete } from '@/lib/trainerSetupPlan';
 import { getAcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import {
-  fetchActiveGuestPlayerCountForTrainer,
   fetchRemovedPlayerKeys,
   filterGuestRowsByRemoval,
 } from '@/lib/playerRemovalVisibility';
+import { fetchPlayersOverview } from '@/lib/playersOverview';
 import {
   DashboardSectionHeader,
   DashboardActivityRow,
@@ -88,14 +89,16 @@ async function fetchTrainerStats(userId: string): Promise<{
     academyPaymentInfo,
   ] = await Promise.all([
     supabase.from('profiles').select('full_name, bio').eq('user_id', userId).maybeSingle(),
-    fetchActiveGuestPlayerCountForTrainer(currentTrainerId),
+    // Total students must match the Players page header: the get_players_overview
+    // total (guests + registered), not a guests-only count.
+    fetchPlayersOverview({ kind: 'trainer', id: currentTrainerId }, { pageSize: 1 }).then((r) => r.total),
     supabase.from('availability_slots')
       .select('id, max_participants, bookings(id, status)')
       .eq('trainer_id', currentTrainerId)
       .eq('is_public', true)
       .gte('start_time', now.toISOString()),
     supabase.from('bookings')
-      .select('payment_amount, paid_at, availability_slots!inner(trainer_id)')
+      .select('payment_amount, paid_at, payment_status, availability_slots!inner(trainer_id, price_per_session)')
       .eq('availability_slots.trainer_id', currentTrainerId)
       .eq('payment_status', 'paid')
       .gte('paid_at', monthStart.toISOString())
@@ -133,7 +136,9 @@ async function fetchTrainerStats(userId: string): Promise<{
     if (confirmedBookings < maxParticipants) openSlotsCount++;
   });
 
-  const totalEarnings = monthlyBookings.data?.reduce((sum, b) => sum + (b.payment_amount || 0), 0) || 0;
+  // Money actually received this month — same rule the Earnings page uses
+  // (sumReceivedInRange), no platform fee.
+  const totalEarnings = sumReceivedInRange(monthlyBookings.data ?? [], monthStart, monthEnd);
 
   return {
     trainerId: currentTrainerId,
@@ -148,7 +153,7 @@ async function fetchTrainerStats(userId: string): Promise<{
     stats: {
       totalStudents: activeStudentCount,
       openSlots: openSlotsCount,
-      monthlyEarnings: totalEarnings * 0.9,
+      monthlyEarnings: totalEarnings,
       followerCount: followerResult.count || 0,
       profileViews: viewsResult.count || 0,
     },

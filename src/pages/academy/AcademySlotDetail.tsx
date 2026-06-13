@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
+import { CAPACITY_OCCUPYING_STATUSES, getSlotCapacity } from '@/lib/lessons';
 import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
@@ -163,24 +165,31 @@ export default function AcademySlotDetail() {
 
       if (error) throw error;
 
+      // Trainer display name via the shared resolver (business_name →
+      // profiles_public → profiles → 'Trainer'), so the academy slot detail
+      // labels a trainer the same as every other surface. (The old direct
+      // profiles query could even RLS-fail to null → 'Unknown'.)
+      const trainerNameMap = await fetchTrainerDisplayNamesByProfileIds(
+        [slot.trainer_id],
+        supabase,
+        'AcademySlotDetail',
+      );
+      const trainerName = trainerNameMap.get(slot.trainer_id) || 'Trainer';
+
+      // Avatar is not part of the name resolver; fetch it separately.
+      let trainerAvatar: string | null = null;
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
-        .select('id, user_id')
+        .select('user_id')
         .eq('id', slot.trainer_id)
         .single();
-
-      let trainerName = 'Unknown';
-      let trainerAvatar: string | null = null;
-      if (trainerProfile) {
+      if (trainerProfile?.user_id) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('full_name, avatar_url')
+          .select('avatar_url')
           .eq('user_id', trainerProfile.user_id)
           .single();
-        if (profile) {
-          trainerName = profile.full_name || 'Unknown';
-          trainerAvatar = profile.avatar_url;
-        }
+        trainerAvatar = profile?.avatar_url || null;
       }
 
       const { data: bookings } = await supabase
@@ -190,7 +199,7 @@ export default function AcademySlotDetail() {
           guest_players:guest_player_id(full_name, skill_rating, rating_system, birth_date)
         `)
         .eq('slot_id', slotId)
-        .in('status', ['confirmed', 'pending']);
+        .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
 
       // Registered players resolve via profiles_public: the academy has no RLS
       // access to other users' profiles rows, so an embedded profiles join
@@ -236,7 +245,7 @@ export default function AcademySlotDetail() {
         location_name: (slot.locations as any)?.name || null,
         cyclus_id: slot.cyclus_id,
         cyclus_name: slot.cyclus_name,
-        max_participants: slot.max_participants || 4,
+        max_participants: getSlotCapacity(slot),
         is_public: slot.is_public,
         rating_system: slot.rating_system,
         min_rating: slot.min_rating,
@@ -511,7 +520,7 @@ export default function AcademySlotDetail() {
         .from('bookings')
         .select('id')
         .in('slot_id', slotIdsToDelete)
-        .in('status', ['confirmed', 'pending']);
+        .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
       const bookingIdsToRemove = (slotBookings || []).map(b => b.id);
 
       if (deleteCyclus && detail.cyclus_id) {

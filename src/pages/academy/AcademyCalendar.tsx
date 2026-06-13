@@ -43,6 +43,7 @@ import {
   filterProfileIdsByRemoval,
 } from "@/lib/playerRemovalVisibility";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchTrainerDisplayNamesByProfileIds } from "@/lib/trainerDisplayNames";
 import { logger } from "@/lib/logger";
 import {
   parseAcademyCalendarTab,
@@ -316,6 +317,11 @@ export default function AcademyCalendar() {
 
     const profileMap = new Map((profiles || []).map((p) => [p.user_id, p]));
     const trainerUserMap = new Map((trainerProfiles || []).map((tp) => [tp.id, tp.user_id]));
+    // Trainer display name via the shared resolver (business_name → profiles_public
+    // → profiles → 'Trainer'), so the academy calendar labels a trainer the same
+    // as the player agenda / rosters. The profiles query above is kept only for
+    // the avatar (not part of the name resolver).
+    const trainerNameMap = await fetchTrainerDisplayNamesByProfileIds(trainerIds, supabase, "AcademyCalendar");
 
     const slotIds = slotsData?.map((s) => s.id) || [];
     let bookings: any[] = [];
@@ -380,7 +386,7 @@ export default function AcademyCalendar() {
         max_participants: slot.max_participants || 4,
         cyclus_id: slot.cyclus_id || null,
         cyclus_name: slot.cyclus_name || null,
-        trainer_name: profile?.full_name || "Unknown",
+        trainer_name: trainerNameMap.get(slot.trainer_id) || "Trainer",
         trainer_avatar: profile?.avatar_url || null,
         location_name: slot.locations?.name || null,
         location_logo: slot.locations?.logo_url || null,

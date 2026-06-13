@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
+import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
 import {
   usePlayersOverview,
   fetchPlayersOverview,
@@ -343,26 +344,14 @@ export default function AcademyPlayers() {
       return;
     }
 
-    const { data: trainerProfiles } = await supabase
-      .from('trainer_profiles')
-      .select('id, user_id')
-      .in('id', trainerIds);
-
-    if (!trainerProfiles || trainerProfiles.length === 0) {
-      setTrainers([]);
-      return;
-    }
-
-    const userIds = trainerProfiles.map((tp) => tp.user_id);
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('user_id, full_name')
-      .in('user_id', userIds);
-
-    const nameMap = new Map(profiles?.map((p) => [p.user_id, p.full_name || 'Unknown']) || []);
-    const opts: TrainerOption[] = trainerProfiles.map((tp) => ({
-      id: tp.id,
-      name: nameMap.get(tp.user_id) || 'Unknown',
+    // Single source of truth for trainer display names: business_name →
+    // profiles_public → profiles → 'Trainer' (same precedence the player
+    // agenda, rosters and invoice surfaces use), so the academy player list
+    // labels a trainer identically to every other surface.
+    const nameMap = await fetchTrainerDisplayNamesByProfileIds(trainerIds, supabase, 'AcademyPlayers');
+    const opts: TrainerOption[] = trainerIds.map((id) => ({
+      id,
+      name: nameMap.get(id) || 'Trainer',
     }));
 
     setTrainers(opts);
