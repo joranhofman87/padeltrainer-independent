@@ -68,6 +68,7 @@ import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
 import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import CyclePricingCard from '@/components/cycles/CyclePricingCard';
+import TentativeRosterSection from '@/components/cycles/TentativeRosterSection';
 import { getSuggestedLinks, getLinkedIdsForRequest, getDismissedSuggestions } from '@/lib/suggestLinks';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -834,6 +835,10 @@ export default function AcademyCycleDetail() {
               allPlayers={allPlayersForGrid}
             />
           )}
+
+          {/* Tentative roster from priority rebooking — pending claims on this
+              cycle's slots, grouped by series. Self-hides when there are none. */}
+          {cycleId && <TentativeRosterSection cycleId={cycleId} />}
         </div>
       )}
 

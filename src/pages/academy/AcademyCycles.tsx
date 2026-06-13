@@ -4,6 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
@@ -94,10 +100,22 @@ export default function AcademyCycles() {
             <PartyPopper className="h-4 w-4" />
             {t('createEvent', 'Create Event')}
           </Button>
-          <Button variant="outline" onClick={() => navigate('/app/academy/cycles/bulk-copy')}>
-            <Copy className="h-4 w-4" />
-            {t('bulkCopy.cta', 'Set up next round')}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Copy className="h-4 w-4" />
+                {t('bulkCopy.cta', 'Set up next round')}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => navigate('/app/academy/cycles/rebook')}>
+                {t('rebookCohort.byLocation', 'Per locatie (hele groep)')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate('/app/academy/cycles/bulk-copy')}>
+                {t('rebookCohort.byCycle', 'Per cyclus')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           </>
         }
       />

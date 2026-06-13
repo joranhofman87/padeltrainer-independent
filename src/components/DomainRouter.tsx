@@ -167,6 +167,7 @@ const AcademyTrainers = lazy(() => import('@/pages/academy/AcademyTrainers'));
 const AcademyLocations = lazy(() => import('@/pages/academy/AcademyLocations'));
 const AcademyCycles = lazy(() => import('@/pages/academy/AcademyCycles'));
 const AcademyBulkCopySlots = lazy(() => import('@/pages/academy/AcademyBulkCopySlots'));
+const AcademyRebookCohort = lazy(() => import('@/pages/academy/AcademyRebookCohort'));
 const TrainerBulkCopySlots = lazy(() => import('@/pages/trainer/TrainerBulkCopySlots'));
 const PriorityClaim = lazy(() => import('@/pages/PriorityClaim'));
 const AcademyCycleDetail = lazy(() => import('@/pages/academy/AcademyCycleDetail'));
@@ -336,6 +337,7 @@ export function DomainRouter() {
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="cycles" element={<AcademyCycles />} />
           <Route path="cycles/bulk-copy" element={<AcademyBulkCopySlots />} />
+          <Route path="cycles/rebook" element={<AcademyRebookCohort />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />
           <Route path="cycles/:cycleId" element={<AcademyCycleDetail />} />
           <Route path="cycles/:cycleId/edit" element={<AcademyCycleDetail />} />
