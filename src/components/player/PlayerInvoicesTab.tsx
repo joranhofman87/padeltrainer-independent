@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/ui/empty-state';
+import { InvoiceStatusBadge } from '@/components/invoices/InvoiceStatusBadge';
+import { deriveInvoiceStatus } from '@/lib/invoiceStatus';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
@@ -15,13 +17,10 @@ import { formatCurrency } from '@/lib/format';
 import {
   FileText,
   Download,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
   Loader2,
   Pencil,
 } from 'lucide-react';
-import { format, parseISO, isAfter } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { clearSignupClaimSource, isPaidInvoiceClaimFlow } from '@/lib/signupClaimFlow';
 import { surfaceCardClass } from '@/components/ui/app-page';
 import { cn } from '@/lib/utils';
@@ -68,13 +67,6 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ComponentType<{ className?: string }> }> = {
-    draft: { label: t('playerInvoices.status.draft'), variant: 'secondary', icon: FileText },
-    sent: { label: t('playerInvoices.status.sent'), variant: 'default', icon: Clock },
-    paid: { label: t('playerInvoices.status.paid'), variant: 'outline', icon: CheckCircle2 },
-    overdue: { label: t('playerInvoices.status.overdue'), variant: 'destructive', icon: AlertCircle },
-  };
-
   useEffect(() => {
     fetchInvoices();
   }, [profileId]);
@@ -93,12 +85,10 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
       toast({ title: t('playerInvoices.loadError'), description: t('playerInvoices.loadError'), variant: 'destructive' });
     } else {
       const now = new Date();
-      const processed = (data || []).map(inv => {
-        if (inv.status === 'sent' && isAfter(now, parseISO(inv.due_date))) {
-          return { ...inv, status: 'overdue' };
-        }
-        return inv;
-      }) as PlayerInvoice[];
+      const processed = (data || []).map(inv => ({
+        ...inv,
+        status: deriveInvoiceStatus(inv, now),
+      })) as PlayerInvoice[];
       setInvoices(processed);
       try {
         trackInvoiceClaimOutcome(processed.length);
@@ -175,17 +165,6 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     setSaving(false);
   };
 
-  const getStatusBadge = (status: string) => {
-    const config = STATUS_CONFIG[status] || STATUS_CONFIG.draft;
-    const Icon = config.icon;
-    return (
-      <Badge variant={config.variant} className="gap-1">
-        <Icon className="h-3 w-3" />
-        {config.label}
-      </Badge>
-    );
-  };
-
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -196,11 +175,13 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
 
   if (invoices.length === 0) {
     const claimEmpty = isPaidInvoiceClaimFlow();
-    return (
-      <Card className={cn(surfaceCardClass(), 'p-12 text-center')} data-testid="player-invoices-empty">
-        <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="text-xl font-semibold mb-2">{t('playerInvoices.empty.title')}</h3>
-        {claimEmpty ? (
+    // Claim flow keeps its bulleted-steps variant; the simple case reuses the
+    // shared EmptyState for consistency with the rest of the app.
+    if (claimEmpty) {
+      return (
+        <Card className={cn(surfaceCardClass(), 'p-12 text-center')} data-testid="player-invoices-empty">
+          <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-xl font-semibold mb-2">{t('playerInvoices.empty.title')}</h3>
           <div
             className="mx-auto max-w-md space-y-3 text-left text-muted-foreground"
             data-testid="player-invoices-empty-claim"
@@ -211,9 +192,16 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
               <li>{t('playerInvoices.empty.claimStep2')}</li>
             </ul>
           </div>
-        ) : (
-          <p className="text-muted-foreground">{t('playerInvoices.empty.description')}</p>
-        )}
+        </Card>
+      );
+    }
+    return (
+      <Card className={cn(surfaceCardClass(), 'p-2')} data-testid="player-invoices-empty">
+        <EmptyState
+          icon={FileText}
+          title={t('playerInvoices.empty.title')}
+          description={t('playerInvoices.empty.description')}
+        />
       </Card>
     );
   }
@@ -228,7 +216,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-semibold font-mono">{invoice.invoice_number}</p>
-                    {getStatusBadge(invoice.status)}
+                    <InvoiceStatusBadge status={deriveInvoiceStatus(invoice)} />
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                     <span>

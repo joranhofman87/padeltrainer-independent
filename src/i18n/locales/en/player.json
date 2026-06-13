@@ -16,7 +16,8 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "openMenu": "Open menu",
-    "primary": "Player navigation"
+    "primary": "Player navigation",
+    "agenda": "Agenda"
   },
   "invoices": {
     "title": "Invoices",
@@ -459,5 +460,14 @@
     "linkCopied": "Link copied!",
     "failedToCopy": "Failed to copy link",
     "failedToGenerateImage": "Failed to generate image"
+  },
+  "agenda": {
+    "title": "Agenda",
+    "subtitle": "A monthly overview of your scheduled trainings.",
+    "empty": "No scheduled trainings yet",
+    "emptyDescription": "As soon as you book a training, it appears here in your agenda.",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "trainerFallback": "Trainer"
   }
 }

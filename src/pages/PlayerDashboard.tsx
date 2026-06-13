@@ -4,13 +4,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight, Building2, FileText } from 'lucide-react';
 import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { BookingStatusBadge } from '@/components/player/BookingStatusBadge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
+import { fetchPlayerBookings } from '@/lib/playerBookings';
 import { RatingHistoryChart } from '@/components/player/RatingHistoryChart';
 import { MyWaitingListEntries } from '@/components/waitingList';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
@@ -37,6 +39,8 @@ interface UpcomingBooking {
   status: string;
 }
 
+const DASHBOARD_BOOKING_LIMIT = 10;
+
 interface FollowedTrainerSlot {
   id: string;
   type: 'slot' | 'cycle';
@@ -59,58 +63,27 @@ interface PlayerClub {
 
 // --- Query functions ---
 
-async function fetchPlayerBookings(profileId: string): Promise<UpcomingBooking[]> {
+/**
+ * Upcoming bookings for the dashboard table. Routes through the shared
+ * fetchPlayerBookings so payment-status/confirmed overrides match the bookings
+ * page exactly, then keeps only active, future sessions (newest-first, capped).
+ */
+async function fetchUpcomingBookings(profileId: string): Promise<UpcomingBooking[]> {
   const now = new Date();
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select(`
-      id, status,
-      availability_slots(start_time, trainer_id, cyclus_name, location_id, locations(name))
-    `)
-    .eq('player_id', profileId)
-    .order('created_at', { ascending: false });
+  const bookings = await fetchPlayerBookings(profileId);
 
-  if (!bookings) return [];
-
-  const active = bookings.filter(b => ['confirmed', 'pending', 'pending_approval'].includes(b.status));
-  const upcoming = active.filter(b => {
-    const slot = b.availability_slots as any;
-    return slot?.start_time && isAfter(new Date(slot.start_time), now);
-  });
-
-  const upcomingSlice = upcoming.slice(0, 10);
-  const trainerIds = [...new Set(upcomingSlice.map(b => (b.availability_slots as any)?.trainer_id).filter(Boolean))];
-
-  const trainerNameMap = new Map<string, string>();
-  if (trainerIds.length > 0) {
-    const { data: trainers } = await supabase
-      .from('trainer_profiles')
-      .select('id, user_id')
-      .in('id', trainerIds);
-    if (trainers && trainers.length > 0) {
-      const userIds = trainers.map(t => t.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles_public')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
-      const pMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
-      trainers.forEach(t => {
-        trainerNameMap.set(t.id, pMap.get(t.user_id) || 'Trainer');
-      });
-    }
-  }
-
-  return upcomingSlice.map(b => {
-    const slot = b.availability_slots as any;
-    return {
+  return bookings
+    .filter((b) => ['confirmed', 'pending', 'pending_approval'].includes(b.status))
+    .filter((b) => b.start_time && isAfter(new Date(b.start_time), now))
+    .slice(0, DASHBOARD_BOOKING_LIMIT)
+    .map((b) => ({
       id: b.id,
-      sessionTitle: slot?.cyclus_name || 'Training Session',
-      trainerName: trainerNameMap.get(slot?.trainer_id) || 'Trainer',
-      startTime: new Date(slot.start_time),
-      location: slot?.locations?.name || null,
+      sessionTitle: b.cyclus_name || 'Training Session',
+      trainerName: b.trainer_name,
+      startTime: new Date(b.start_time!),
+      location: b.location_name,
       status: b.status,
-    };
-  });
+    }));
 }
 
 async function fetchFollowedTrainersData(profileId: string): Promise<{
@@ -251,7 +224,7 @@ export default function PlayerDashboard() {
 
   const { data: upcomingBookings = [], isLoading: statsLoading } = useQuery({
     queryKey: ['player-bookings', profileId],
-    queryFn: () => fetchPlayerBookings(profileId!),
+    queryFn: () => fetchUpcomingBookings(profileId!),
     enabled: !!profileId,
     staleTime: 60_000,
   });
@@ -281,19 +254,6 @@ export default function PlayerDashboard() {
       </div>
     );
   }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return <Badge variant="default">{t('dashboard.status.confirmed')}</Badge>;
-      case 'pending':
-        return <Badge variant="secondary">{t('dashboard.status.pendingPayment')}</Badge>;
-      case 'pending_approval':
-        return <Badge variant="outline">{t('dashboard.status.awaitingApproval')}</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
 
   const quickActionCardClass = cn(
     surfaceCardClass(),
@@ -417,7 +377,7 @@ export default function PlayerDashboard() {
                 <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-primary" />
               </div>
             ) : upcomingBookings.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">{t('dashboard.noUpcomingBookings')}</p>
+              <EmptyState icon={Calendar} title={t('dashboard.noUpcomingBookings')} />
             ) : (
               <div className="overflow-x-auto -mx-1">
               <Table>
@@ -443,7 +403,7 @@ export default function PlayerDashboard() {
                           <p className="text-xs text-muted-foreground">{format(booking.startTime, 'HH:mm')}</p>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(booking.status)}</TableCell>
+                      <TableCell><BookingStatusBadge status={booking.status} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -471,7 +431,7 @@ export default function PlayerDashboard() {
                 <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-primary" />
               </div>
             ) : followedTrainers.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">{t('dashboard.notFollowingYet')}</p>
+              <EmptyState icon={Users} title={t('dashboard.notFollowingYet')} />
             ) : (
               <div className="overflow-x-auto -mx-1">
               <Table>
@@ -531,7 +491,7 @@ export default function PlayerDashboard() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
             ) : followedTrainerSlots.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noOpenSlots')}</p>
+              <EmptyState icon={Clock} title={t('dashboard.noOpenSlots')} />
             ) : (
               <Table>
                 <TableHeader>
@@ -590,7 +550,7 @@ export default function PlayerDashboard() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
               </div>
             ) : playerClubs.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noClubsYet')}</p>
+              <EmptyState icon={Building2} title={t('dashboard.noClubsYet')} />
             ) : (
               <Table>
                 <TableHeader>

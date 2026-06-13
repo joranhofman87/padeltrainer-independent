@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard,
   Calendar,
+  CalendarDays,
   FileText,
   User,
   Users,
@@ -10,6 +11,7 @@ import {
 export type PlayerNavItemId =
   | 'dashboard'
   | 'bookings'
+  | 'agenda'
   | 'invoices'
   | 'profile'
   | 'following'
@@ -43,6 +45,14 @@ export const PLAYER_PRIMARY_NAV: PlayerNavItem[] = [
     defaultLabel: 'My trainings',
     icon: Calendar,
     testId: 'nav-player-bookings',
+  },
+  {
+    id: 'agenda',
+    to: '/app/player/agenda',
+    labelKey: 'nav.agenda',
+    defaultLabel: 'Agenda',
+    icon: CalendarDays,
+    testId: 'nav-player-agenda',
   },
   {
     id: 'invoices',

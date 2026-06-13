@@ -704,5 +704,12 @@
     "event": "Evenement"
   },
   "trainerNotFound": "Trainer niet gevonden",
-  "today": "Vandaag"
+  "today": "Vandaag",
+  "invoiceStatus": {
+    "draft": "Concept",
+    "sent": "Verzonden",
+    "paid": "Betaald",
+    "overdue": "Vervallen",
+    "cancelled": "Geannuleerd"
+  }
 }

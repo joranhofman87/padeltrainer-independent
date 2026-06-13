@@ -16,7 +16,8 @@
     "collapseSidebar": "Zijbalk inklappen",
     "expandSidebar": "Zijbalk uitklappen",
     "openMenu": "Menu openen",
-    "primary": "Spelersnavigatie"
+    "primary": "Spelersnavigatie",
+    "agenda": "Agenda"
   },
   "invoices": {
     "title": "Facturen",
@@ -459,5 +460,14 @@
     "linkCopied": "Link gekopieerd!",
     "failedToCopy": "Kopiëren van link mislukt",
     "failedToGenerateImage": "Afbeelding genereren mislukt"
+  },
+  "agenda": {
+    "title": "Agenda",
+    "subtitle": "Een maandoverzicht van je geplande trainingen.",
+    "empty": "Nog geen geplande trainingen",
+    "emptyDescription": "Zodra je een training boekt, verschijnt die hier in je agenda.",
+    "previousMonth": "Vorige maand",
+    "nextMonth": "Volgende maand",
+    "trainerFallback": "Trainer"
   }
 }

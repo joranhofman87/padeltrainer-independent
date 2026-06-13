@@ -858,14 +858,9 @@
       "count": 1
     }
   },
-  "src/pages/PlayerBookings.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/pages/PlayerDashboard.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 4
     }
   },
   "src/pages/PlayerSettings.tsx": {

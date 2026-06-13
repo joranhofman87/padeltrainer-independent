@@ -693,5 +693,12 @@
     "event": "Event"
   },
   "trainerNotFound": "Trainer Not Found",
-  "today": "Today"
+  "today": "Today",
+  "invoiceStatus": {
+    "draft": "Draft",
+    "sent": "Sent",
+    "paid": "Paid",
+    "overdue": "Overdue",
+    "cancelled": "Cancelled"
+  }
 }

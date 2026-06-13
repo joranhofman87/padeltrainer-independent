@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { useAuth } from '@/hooks/useAuth';
@@ -7,16 +7,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { BookingStatusBadge } from '@/components/player/BookingStatusBadge';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus, CalendarX } from 'lucide-react';
 import { isPast, parseISO } from 'date-fns';
 import { formatDate } from '@/lib/format';
-import { supabase } from '@/lib/supabaseClient';
 import { cancelBooking } from '@/lib/lessons';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getPlayerReview } from '@/lib/reviews';
+import { fetchPlayerBookings, type PlayerBooking } from '@/lib/playerBookings';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
 import { downloadIcsFile } from '@/lib/icsGenerator';
@@ -26,26 +28,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { surfaceCardClass } from '@/components/ui/app-page';
 import { cn } from '@/lib/utils';
 
-interface BookingWithDetails {
-  id: string;
-  slot_id: string;
-  status: string;
-  payment_status: string | null;
-  paid_externally: boolean | null;
-  notes: string | null;
-  created_at: string;
-  availability_slots: {
-    start_time: string;
-    end_time: string;
-    trainer_id: string;
-    price_per_session: number | null;
-    cyclus_name: string | null;
-    locations: { name: string } | null;
-  };
-  hasReview?: boolean;
-  trainerName: string;
-  trainerEmail: string | null;
-  trainerProfileId: string;
+interface BookingWithDetails extends PlayerBooking {
+  hasReview: boolean;
 }
 
 export default function PlayerBookings() {
@@ -61,112 +45,33 @@ export default function PlayerBookings() {
   const [cancelTarget, setCancelTarget] = useState<BookingWithDetails | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  useEffect(() => {
-    if (user && profile?.id) {
-      fetchBookings();
-    }
-  }, [user, profile]);
-
-  const fetchBookings = async () => {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
-        id,
-        slot_id,
-        status,
-        payment_status,
-        paid_externally,
-        notes,
-        created_at,
-        availability_slots(
-          start_time,
-          end_time,
-          trainer_id,
-          price_per_session,
-          cyclus_name,
-          location_id,
-          locations(name)
-        )
-      `)
-      .eq('player_id', profile!.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
+  const fetchBookings = useCallback(async () => {
+    if (!profile?.id) return;
+    try {
+      const list = await fetchPlayerBookings(profile.id);
+      // Per-booking review lookup (kept here so the shared fetch stays UI-agnostic).
+      const withReviews = await Promise.all(
+        list.map(async (booking) => {
+          const { data: review } = await getPlayerReview(booking.id);
+          return { ...booking, hasReview: !!review };
+        }),
+      );
+      setBookings(withReviews);
+    } catch {
       toast({
         title: t('bookings.loadError'),
         variant: 'destructive',
       });
+    } finally {
       setLoadingBookings(false);
-      return;
     }
+  }, [profile?.id, toast, t]);
 
-    if (data) {
-      const rawBookings = data as unknown as Array<{
-        id: string; slot_id: string; status: string; payment_status: string | null; paid_externally: boolean | null; notes: string | null; created_at: string;
-        availability_slots: { start_time: string; end_time: string; trainer_id: string; price_per_session: number | null; cyclus_name: string | null; locations: { name: string } | null };
-      }>;
-
-      const trainerIds = [...new Set(rawBookings.map(b => b.availability_slots?.trainer_id).filter(Boolean))];
-      const trainerInfoMap = new Map<string, { name: string; email: string | null; profileId: string }>();
-
-      if (trainerIds.length > 0) {
-        const { data: trainers } = await supabase
-          .from('trainer_profiles')
-          .select('id, user_id')
-          .in('id', trainerIds);
-        if (trainers && trainers.length > 0) {
-          const userIds = trainers.map(t => t.user_id);
-          const { data: profiles } = await supabase
-            .from('profiles_public')
-            .select('user_id, full_name')
-            .in('user_id', userIds);
-          const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
-          trainers.forEach(t => {
-            const p = profileMap.get(t.user_id);
-            trainerInfoMap.set(t.id, {
-              name: p?.full_name || 'Trainer',
-              email: null,
-              profileId: t.id,
-            });
-          });
-        }
-      }
-
-      // Cross-reference invoices to get accurate payment status for bookings
-      const { data: paidInvoices } = await supabase
-        .from('invoices')
-        .select('booking_ids, status, paid_at')
-        .eq('player_id', profile!.id)
-        .eq('status', 'paid');
-
-      const paidBookingIds = new Set<string>();
-      paidInvoices?.forEach(inv => {
-        inv.booking_ids?.forEach((id: string) => paidBookingIds.add(id));
-      });
-
-      const bookingsWithDetails = await Promise.all(
-        rawBookings.map(async (booking) => {
-          const { data: review } = await getPlayerReview(booking.id);
-          const trainerInfo = trainerInfoMap.get(booking.availability_slots?.trainer_id) || { name: 'Trainer', email: null, profileId: '' };
-          // If invoice is paid but booking payment_status is still pending, override
-          const effectivePaymentStatus = paidBookingIds.has(booking.id) && booking.payment_status !== 'paid'
-            ? 'paid'
-            : booking.payment_status;
-          return {
-            ...booking,
-            payment_status: effectivePaymentStatus,
-            status: effectivePaymentStatus === 'paid' && booking.status === 'pending' ? 'confirmed' : booking.status,
-            hasReview: !!review,
-            trainerName: trainerInfo.name,
-            trainerEmail: trainerInfo.email,
-            trainerProfileId: trainerInfo.profileId,
-          } as BookingWithDetails;
-        })
-      );
-      setBookings(bookingsWithDetails);
+  useEffect(() => {
+    if (user && profile?.id) {
+      fetchBookings();
     }
-    setLoadingBookings(false);
-  };
+  }, [user, profile?.id, fetchBookings]);
 
   const isPaidBooking = (booking: BookingWithDetails) =>
     booking.payment_status === 'paid' || !!booking.paid_externally;
@@ -186,23 +91,6 @@ export default function PlayerBookings() {
       setCancelTarget(null);
       toast({ title: t('bookings.cancelSuccess') });
       fetchBookings();
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">{t('bookings.status.pendingPayment')}</Badge>;
-      case 'pending_approval':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{t('bookings.status.awaitingApproval')}</Badge>;
-      case 'confirmed':
-        return <Badge className="bg-green-500">{t('bookings.status.confirmed')}</Badge>;
-      case 'cancelled':
-        return <Badge variant="destructive">{t('bookings.status.cancelled')}</Badge>;
-      case 'completed':
-        return <Badge variant="outline">{t('bookings.status.completed')}</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
     }
   };
 
@@ -228,24 +116,24 @@ export default function PlayerBookings() {
   // Guard against a null slot (e.g. a booked slot a trainer later marked private)
   // so the page never crashes on a missing start_time.
   const upcomingBookings = bookings.filter(
-    (b) => b.status !== 'cancelled' && b.availability_slots?.start_time && !isPast(parseISO(b.availability_slots.start_time))
+    (b) => b.status !== 'cancelled' && b.start_time && !isPast(parseISO(b.start_time))
   );
   const pastBookings = bookings.filter(
-    (b) => b.status === 'cancelled' || !b.availability_slots?.start_time || isPast(parseISO(b.availability_slots.start_time))
+    (b) => b.status === 'cancelled' || !b.start_time || isPast(parseISO(b.start_time))
   );
 
   const handleDownloadCalendar = (bookingsToExport: BookingWithDetails[]) => {
     const events = bookingsToExport
-      .filter(b => b.status !== 'cancelled' && b.availability_slots?.start_time)
+      .filter(b => b.status !== 'cancelled' && b.start_time)
       .map(b => ({
-        title: `Padel Training – ${b.trainerName}${b.availability_slots?.cyclus_name ? ` (${b.availability_slots.cyclus_name})` : ''}`,
-        startTime: b.availability_slots.start_time,
-        endTime: b.availability_slots.end_time,
-        location: b.availability_slots.locations?.name || undefined,
-        description: `Coach: ${b.trainerName}`,
+        title: `Padel Training – ${b.trainer_name}${b.cyclus_name ? ` (${b.cyclus_name})` : ''}`,
+        startTime: b.start_time!,
+        endTime: b.end_time ?? b.start_time!,
+        location: b.location_name || undefined,
+        description: `Coach: ${b.trainer_name}`,
       }));
     if (events.length === 0) return;
-    const cycleName = bookingsToExport[0]?.availability_slots.cyclus_name || 'training';
+    const cycleName = bookingsToExport[0]?.cyclus_name || 'training';
     downloadIcsFile(events, `${cycleName.replace(/\s+/g, '-').toLowerCase()}-sessions.ics`);
   };
 
@@ -296,15 +184,17 @@ export default function PlayerBookings() {
 
           <TabsContent value="upcoming">
             {upcomingBookings.length === 0 ? (
-              <Card className={cn(surfaceCardClass(), 'p-12 text-center')}>
-                <div className="text-6xl mb-4">📅</div>
-                <h3 className="text-xl font-semibold mb-2">{t('bookings.noUpcoming')}</h3>
-                <p className="text-muted-foreground mb-6">
-                  {t('bookings.findTrainerDescription')}
-                </p>
-                <Button onClick={() => navigate(localizePath('/trainers'))}>
-                  {t('bookings.browseTrainers')}
-                </Button>
+              <Card className={surfaceCardClass()}>
+                <EmptyState
+                  icon={Calendar}
+                  title={t('bookings.noUpcoming')}
+                  description={t('bookings.findTrainerDescription')}
+                  action={
+                    <Button onClick={() => navigate(localizePath('/trainers'))}>
+                      {t('bookings.browseTrainers')}
+                    </Button>
+                  }
+                />
               </Card>
             ) : (
               <div className="space-y-4">
@@ -315,38 +205,38 @@ export default function PlayerBookings() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-3">
                             <h3 className="text-lg font-semibold">
-                              {booking.availability_slots.cyclus_name || t('bookings.trainingSession')}
+                              {booking.cyclus_name || t('bookings.trainingSession')}
                             </h3>
-                            {getStatusBadge(booking.status)}
+                            <BookingStatusBadge status={booking.status} />
                             {getPaymentBadge(booking.payment_status, booking.status)}
                           </div>
                           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              {formatDate(booking.availability_slots.start_time, 'EEEE d MMM yyyy')}
+                              {formatDate(booking.start_time!, 'EEEE d MMM yyyy')}
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock className="h-4 w-4" />
-                              {formatDate(booking.availability_slots.start_time, 'HH:mm')} -
-                              {formatDate(booking.availability_slots.end_time, 'HH:mm')}
+                              {formatDate(booking.start_time!, 'HH:mm')} -
+                              {formatDate(booking.end_time ?? booking.start_time!, 'HH:mm')}
                             </div>
-                            {booking.availability_slots.locations?.name && (
+                            {booking.location_name && (
                               <div className="flex items-center gap-1">
                                 <MapPin className="h-4 w-4" />
-                                {booking.availability_slots.locations.name}
+                                {booking.location_name}
                               </div>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-muted-foreground" />
                             <span>
-                              {t('bookings.coach')} {booking.trainerName}
+                              {t('bookings.coach')} {booking.trainer_name}
                             </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          {booking.availability_slots.price_per_session != null && (
-                            <span className="text-xl font-bold">€{booking.availability_slots.price_per_session}</span>
+                          {booking.price_per_session != null && (
+                            <span className="text-xl font-bold">€{booking.price_per_session}</span>
                           )}
                           {booking.status !== 'cancelled' && (
                             <Button
@@ -368,15 +258,18 @@ export default function PlayerBookings() {
 
           <TabsContent value="past">
             {pastBookings.length === 0 ? (
-              <Card className={cn(surfaceCardClass(), 'p-10 text-center')}>
-                <p className="mb-2 font-medium text-foreground">{t('bookings.noPast')}</p>
-                <p className="text-sm text-muted-foreground">{t('bookings.noPastDescription')}</p>
+              <Card className={surfaceCardClass()}>
+                <EmptyState
+                  icon={CalendarX}
+                  title={t('bookings.noPast')}
+                  description={t('bookings.noPastDescription')}
+                />
               </Card>
             ) : (
               <div className="space-y-4">
                 {pastBookings.map((booking) => {
                   const canReview = booking.status === 'completed' && !booking.hasReview;
-                  
+
                   return (
                     <Card key={booking.id} className={cn(surfaceCardClass(), 'opacity-95')}>
                       <CardContent className="p-6">
@@ -384,9 +277,9 @@ export default function PlayerBookings() {
                           <div className="space-y-2">
                             <div className="flex items-center gap-3">
                               <h3 className="text-lg font-semibold">
-                                {booking.availability_slots.cyclus_name || t('bookings.trainingSession')}
+                                {booking.cyclus_name || t('bookings.trainingSession')}
                               </h3>
-                              {getStatusBadge(booking.status)}
+                              <BookingStatusBadge status={booking.status} />
                               {getPaymentBadge(booking.payment_status, booking.status)}
                               {booking.hasReview && (
                                 <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
@@ -398,18 +291,20 @@ export default function PlayerBookings() {
                             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                               <div className="flex items-center gap-1">
                                 <Calendar className="h-4 w-4" />
-                                {formatDate(booking.availability_slots.start_time, 'EEEE d MMM yyyy')}
+                                {booking.start_time && formatDate(booking.start_time, 'EEEE d MMM yyyy')}
                               </div>
-                              <div className="flex items-center gap-1">
-                                <Clock className="h-4 w-4" />
-                                {formatDate(booking.availability_slots.start_time, 'HH:mm')} -
-                                {formatDate(booking.availability_slots.end_time, 'HH:mm')}
-                              </div>
+                              {booking.start_time && (
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-4 w-4" />
+                                  {formatDate(booking.start_time, 'HH:mm')} -
+                                  {formatDate(booking.end_time ?? booking.start_time, 'HH:mm')}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4 text-muted-foreground" />
                               <span>
-                                {t('bookings.coach')} {booking.trainerName}
+                                {t('bookings.coach')} {booking.trainer_name}
                               </span>
                             </div>
                           </div>
@@ -425,11 +320,10 @@ export default function PlayerBookings() {
                                 <ReviewForm
                                   bookingId={booking.id}
                                   playerId={profile!.id}
-                                  trainerId={booking.trainerProfileId}
-                                  trainerName={booking.trainerName}
-                                  trainerEmail={booking.trainerEmail || undefined}
+                                  trainerId={booking.trainer_id || ''}
+                                  trainerName={booking.trainer_name}
                                   playerName={profile!.full_name || undefined}
-                                  lessonTitle={booking.availability_slots.cyclus_name || undefined}
+                                  lessonTitle={booking.cyclus_name || undefined}
                                   onSuccess={() => {
                                     setReviewDialogOpen(null);
                                     fetchBookings();
@@ -441,7 +335,7 @@ export default function PlayerBookings() {
                           )}
                         </div>
                         {/* Attendance confirmation for past non-cancelled bookings */}
-                        {booking.status !== 'cancelled' && isPast(parseISO(booking.availability_slots.start_time)) && (
+                        {booking.status !== 'cancelled' && booking.start_time && isPast(parseISO(booking.start_time)) && (
                           <PlayerAttendanceForm
                             slotId={booking.slot_id}
                             bookingId={booking.id}
@@ -461,24 +355,20 @@ export default function PlayerBookings() {
       </Tabs>
 
       {/* Cancel booking confirmation */}
-      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open && !cancelling) setCancelTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('bookings.cancelDialog.title', 'Boeking annuleren?')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {cancelTarget && isPaidBooking(cancelTarget)
-                ? t('bookings.cancelDialog.paidWarning', 'Deze les is al betaald. Annuleren geeft niet automatisch je geld terug — neem contact op met je trainer om een eventuele terugbetaling af te stemmen.')
-                : t('bookings.confirmCancel')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>{t('bookings.cancelDialog.keep', 'Boeking behouden')}</AlertDialogCancel>
-            <Button variant="destructive" onClick={handleConfirmCancel} disabled={cancelling}>
-              {cancelling ? t('bookings.cancelDialog.cancelling', 'Annuleren...') : t('bookings.cancelBooking')}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!cancelTarget}
+        onOpenChange={(next) => { if (!next) setCancelTarget(null); }}
+        title={t('bookings.cancelDialog.title', 'Boeking annuleren?')}
+        description={
+          cancelTarget && isPaidBooking(cancelTarget)
+            ? t('bookings.cancelDialog.paidWarning', 'Deze les is al betaald. Annuleren geeft niet automatisch je geld terug — neem contact op met je trainer om een eventuele terugbetaling af te stemmen.')
+            : t('bookings.confirmCancel')
+        }
+        confirmLabel={t('bookings.cancelBooking')}
+        cancelLabel={t('bookings.cancelDialog.keep', 'Boeking behouden')}
+        loading={cancelling}
+        onConfirm={handleConfirmCancel}
+      />
     </AppPage>
   );
 }
