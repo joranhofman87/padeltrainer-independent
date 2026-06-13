@@ -813,21 +813,25 @@ export default function TrainerScheduleOverview() {
         }
       }
 
-      // 4. If splitPayment toggled ON (from off), update cycle settings and split existing invoices
-      if (cycleEditData.splitPayment && !cycleEditData.originalSplitPayment) {
-        // Update cycles table settings
+      // Always persist split_payment to the cycle settings (the single write
+      // authority); a DB trigger mirrors it onto the cycle's slots. Previously
+      // this ran only when toggling ON, so toggling OFF left settings stale and
+      // the two stores drifted (div-009).
+      if (cycleEditData.splitPayment !== cycleEditData.originalSplitPayment) {
         const { data: cycleRow } = await supabase
           .from("cycles")
           .select("settings")
           .eq("id", editCycleId)
           .maybeSingle();
-
         if (cycleRow) {
           const settings: Record<string, unknown> = ((cycleRow.settings as Record<string, unknown>) || {});
-          settings.split_payment = true;
+          settings.split_payment = cycleEditData.splitPayment;
           await supabase.from("cycles").update({ settings: settings as any }).eq("id", editCycleId);
         }
+      }
 
+      // 4. If splitPayment toggled ON (from off), re-split existing invoices.
+      if (cycleEditData.splitPayment && !cycleEditData.originalSplitPayment) {
         // Find all bookings on this cycle's slots
         const { data: cycleSlotIds } = await supabase
           .from("availability_slots")
