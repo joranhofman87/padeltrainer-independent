@@ -1,4 +1,19 @@
 {
+  "agenda": {
+    "title": "Agenda",
+    "trainerSubtitle": "What's coming up for you this week",
+    "academySubtitle": "Your academy's sessions this week",
+    "today": "Today",
+    "thisWeek": "This week",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "allTrainers": "All trainers",
+    "empty": "No sessions in this period",
+    "reportNeeded": "Report needed",
+    "noBookings": "No players booked yet",
+    "details": "Details",
+    "openDetails": "Open session"
+  },
   "switchProfile": "Switch Profile",
   "myClubs": "My Clubs",
   "myAcademies": "My Academies",

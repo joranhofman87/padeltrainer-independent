@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard,
   Calendar,
+  CalendarClock,
   Users,
   UserRoundCog,
   CalendarDays,
@@ -12,6 +13,7 @@ import {
 export type AcademyNavItemId =
   | 'dashboard'
   | 'schedule'
+  | 'agenda'
   | 'players'
   | 'trainers'
   | 'registrations'
@@ -46,6 +48,14 @@ export const ACADEMY_PRIMARY_NAV: AcademyNavItem[] = [
     defaultLabel: 'Schedule',
     icon: Calendar,
     testId: 'nav-academy-schedule',
+  },
+  {
+    id: 'agenda',
+    to: '/app/academy/agenda',
+    labelKey: 'nav.agenda',
+    defaultLabel: 'Agenda',
+    icon: CalendarClock,
+    testId: 'nav-academy-agenda',
   },
   {
     id: 'players',

@@ -394,6 +394,7 @@
     "saveError": "Failed to save welcome message"
   },
   "nav": {
+    "agenda": "Agenda",
     "dashboard": "Dashboard",
     "trainers": "Trainers",
     "players": "Players",

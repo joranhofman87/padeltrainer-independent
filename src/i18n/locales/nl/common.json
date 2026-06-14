@@ -1,4 +1,19 @@
 {
+  "agenda": {
+    "title": "Agenda",
+    "trainerSubtitle": "Wat staat er deze week voor je op de planning",
+    "academySubtitle": "De sessies van je academy deze week",
+    "today": "Vandaag",
+    "thisWeek": "Deze week",
+    "prevWeek": "Vorige week",
+    "nextWeek": "Volgende week",
+    "allTrainers": "Alle trainers",
+    "empty": "Geen sessies in deze periode",
+    "reportNeeded": "Rapport nodig",
+    "noBookings": "Nog geen spelers geboekt",
+    "details": "Details",
+    "openDetails": "Sessie openen"
+  },
   "switchProfile": "Wissel profiel",
   "myClubs": "Mijn clubs",
   "myAcademies": "Mijn academies",

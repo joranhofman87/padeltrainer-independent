@@ -1,6 +1,7 @@
 {
   "badge": "Trainer",
   "nav": {
+    "agenda": "Agenda",
     "myProfile": "Mijn profiel",
     "dashboard": "Dashboard",
     "schedule": "Rooster",

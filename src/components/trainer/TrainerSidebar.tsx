@@ -43,6 +43,7 @@ import {
   Users,
   User,
   Calendar,
+  CalendarClock,
   CalendarDays,
   Settings,
   CreditCard,
@@ -264,6 +265,21 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                       >
                         <Calendar className="h-4 w-4" />
                         {!collapsed && <span>{t("nav.calendar")}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+
+                  {/* Agenda - day/week list */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip={t("nav.agenda")}>
+                      <NavLink
+                        to="/app/trainer/agenda"
+                        className={cn(appNavLinkBase, appNavLinkInactive)}
+                        activeClassName={appNavLinkActive}
+                        onClick={closeMobileDrawer}
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                        {!collapsed && <span>{t("nav.agenda")}</span>}
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

@@ -518,6 +518,7 @@
     "saveError": "Kon het welkomstbericht niet opslaan"
   },
   "nav": {
+    "agenda": "Agenda",
     "dashboard": "Dashboard",
     "trainers": "Trainers",
     "players": "Spelers",

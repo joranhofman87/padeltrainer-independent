@@ -123,6 +123,7 @@ const TrainerInvoices = lazy(() => import('@/pages/trainer/TrainerInvoices'));
 const TrainerCreateInvoice = lazy(() => import('@/pages/trainer/TrainerCreateInvoice'));
 const TrainerEditInvoice = lazy(() => import('@/pages/trainer/TrainerEditInvoice'));
 const TrainerSlotDetail = lazy(() => import('@/pages/trainer/TrainerSlotDetail'));
+const TrainerAgenda = lazy(() => import('@/pages/trainer/TrainerAgenda'));
 const TrainerCreateSlot = lazy(() => import('@/pages/trainer/TrainerCreateSlot'));
 
 // Admin pages
@@ -173,6 +174,7 @@ const TrainerBulkCopySlots = lazy(() => import('@/pages/trainer/TrainerBulkCopyS
 const PriorityClaim = lazy(() => import('@/pages/PriorityClaim'));
 const AcademyCycleDetail = lazy(() => import('@/pages/academy/AcademyCycleDetail'));
 const AcademyCalendar = lazy(() => import('@/pages/academy/AcademyCalendar'));
+const AcademyAgenda = lazy(() => import('@/pages/academy/AcademyAgenda'));
 const AcademySlotDetail = lazy(() => import('@/pages/academy/AcademySlotDetail'));
 const AcademyCreateSlot = lazy(() => import('@/pages/academy/AcademyCreateSlot'));
 const AcademyIntakeRequests = lazy(() => import('@/pages/academy/AcademyIntakeRequests'));
@@ -252,6 +254,7 @@ export function DomainRouter() {
           <Route path="settings/notifications" element={<NotificationSettings />} />
           <Route path="terms" element={<TrainerTerms />} />
           <Route path="calendar" element={<TrainerCalendar />} />
+          <Route path="agenda" element={<TrainerAgenda />} />
           <Route path="players" element={<TrainerPlayers />} />
           <Route path="players/:playerId" element={<TrainerPlayerDetail />} />
           <Route path="cyclus" element={<TrainerCyclus />} />
@@ -344,6 +347,7 @@ export function DomainRouter() {
           <Route path="cycles/:cycleId" element={<AcademyCycleDetail />} />
           <Route path="cycles/:cycleId/edit" element={<AcademyCycleDetail />} />
           <Route path="calendar" element={<AcademyCalendar />} />
+          <Route path="agenda" element={<AcademyAgenda />} />
           <Route path="slot/new" element={<AcademyCreateSlot />} />
           <Route path="slot/:slotId" element={<AcademySlotDetail />} />
           <Route path="intake-requests" element={<AcademyIntakeRequests />} />

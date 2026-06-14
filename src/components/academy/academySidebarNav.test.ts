@@ -6,6 +6,7 @@ describe('academySidebarNav', () => {
     expect(ACADEMY_PRIMARY_NAV.map((item) => item.id)).toEqual([
       'dashboard',
       'schedule',
+      'agenda',
       'players',
       'trainers',
       'registrations',
@@ -14,10 +15,11 @@ describe('academySidebarNav', () => {
     ]);
   });
 
-  it('uses existing routes without new paths', () => {
+  it('routes match the primary nav destinations', () => {
     expect(ACADEMY_PRIMARY_NAV.map((item) => item.to)).toEqual([
       '/app/academy',
       '/app/academy/calendar',
+      '/app/academy/agenda',
       '/app/academy/players',
       '/app/academy/trainers',
       '/app/academy/cycles',
