@@ -67,3 +67,43 @@ describe("CRON-SF-03 grant tightening (revoke from anon + authenticated)", () =>
     expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.try_lock_cron_job(text) TO service_role");
   });
 });
+
+describe("BJ-08 notification_sends dedup table", () => {
+  const sql = readMigration("20260614210000_notification_sends_dedup.sql");
+
+  it("creates the dedup table with a UNIQUE dedup_key index", () => {
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.notification_sends");
+    expect(sql).toContain("dedup_key text NOT NULL");
+    expect(sql).toContain("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_sends_dedup_key");
+    expect(sql).toContain("ON public.notification_sends (dedup_key)");
+  });
+
+  it("is service_role only (RLS on, revoked from anon/authenticated)", () => {
+    expect(sql).toContain("ENABLE ROW LEVEL SECURITY");
+    expect(sql).toContain("REVOKE ALL ON TABLE public.notification_sends FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("GRANT SELECT, INSERT, DELETE ON TABLE public.notification_sends TO service_role");
+  });
+});
+
+describe("BJ-08 notify-followers edge function", () => {
+  const src = readFileSync(
+    join(process.cwd(), "supabase", "functions", "notify-followers", "index.ts"),
+    "utf8",
+  );
+
+  it("claims the dedup key before sending and releases failed claims", () => {
+    expect(src).toContain("notification_sends");
+    expect(src).toContain('onConflict: "dedup_key"');
+    expect(src).toContain("ignoreDuplicates: true");
+    // failed sends release their claim so they retry instead of being suppressed
+    expect(src).toContain('.from("notification_sends").delete().in("dedup_key", failedKeys)');
+  });
+
+  it("batches with bounded concurrency and a wall-clock budget", () => {
+    expect(src).toContain("CHUNK_SIZE");
+    expect(src).toContain("TIME_BUDGET_MS");
+    expect(src).toContain("Promise.all");
+    // no more serial per-follower await-fetch loop
+    expect(src).not.toContain("for (const player of playersToNotify)");
+  });
+});

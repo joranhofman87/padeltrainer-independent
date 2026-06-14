@@ -1429,7 +1429,7 @@
   },
   "supabase/functions/notify-followers/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 2
+      "count": 1
     }
   },
   "supabase/functions/recalculate-invoices/index.ts": {

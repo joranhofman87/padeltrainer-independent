@@ -14,6 +14,10 @@ interface NotifyRequest {
     date: string;
     time: string;
   };
+  // BJ-08: the cancelled booking id, used as the per-event dedup anchor for a
+  // reopened slot so re-opens of a re-booked slot still notify (each cancellation
+  // is a distinct event). Optional — falls back to the slot date/time.
+  booking_id?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -68,7 +72,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const trainer_id = trainerProfile.id;
-    const { slot_count, date_range, single_slot }: NotifyRequest = await req.json();
+    const { slot_count, date_range, single_slot, booking_id }: NotifyRequest = await req.json();
 
     if (!slot_count) {
       return new Response(
@@ -143,63 +147,118 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Send emails via the send-email function
+    // Determine email type + a deterministic per-event dedup anchor (BJ-08).
+    // new_availability keys on the slot batch's date range; slot_reopened keys on
+    // the cancelled booking id (falls back to slot date/time). A re-trigger after
+    // an apparent timeout therefore re-uses the same keys and does NOT re-spam.
+    const emailType = isReopenedSlot ? "slot_reopened" : "new_availability";
+    const eventAnchor = isReopenedSlot
+      ? `sr:${booking_id ?? `${single_slot!.date}:${single_slot!.time}`}`
+      : `na:${date_range}`;
+    const dedupKeyFor = (playerId: string) => `${trainer_id}:${playerId}:${eventAnchor}`;
+
+    const recipients = playersToNotify.filter((p) => p.email);
+
     let sentCount = 0;
+    let remaining = 0;
     const errors: string[] = [];
 
-    // Determine email type based on whether it's a reopened slot
-    const emailType = isReopenedSlot ? "slot_reopened" : "new_availability";
+    // Bounded-concurrency batches with a per-chunk dedup claim and a wall-clock
+    // budget: a large follower set can't blow the edge timeout (serial → ~15x
+    // faster) and can't re-spam (claim-before-send). Un-processed chunks (budget
+    // hit) stay UN-claimed so a re-invoke continues them; a failed send releases
+    // its claim so it retries instead of being silently suppressed.
+    // 10 concurrent sends per chunk — a ~10x speedup over the old serial loop
+    // while staying near the email provider's rate ceiling. A 429 (or any send
+    // error) releases that claim, so it simply retries on the next run.
+    const CHUNK_SIZE = 10;
+    const TIME_BUDGET_MS = 110_000;
+    const start = Date.now();
 
-    for (const player of playersToNotify) {
-      if (!player.email) continue;
+    for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
+      if (Date.now() - start > TIME_BUDGET_MS) {
+        remaining = recipients.length - i;
+        break;
+      }
+      const chunk = recipients.slice(i, i + CHUNK_SIZE);
 
-      try {
-        const emailRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            type: emailType,
-            to: player.email,
-            data: {
-              playerName: player.full_name || "Player",
-              trainerName,
-              slotCount: slot_count,
-              dateRange: date_range,
-              ...(single_slot && {
-                slotDate: single_slot.date,
-                slotTime: single_slot.time,
+      // Claim this chunk: INSERT ... ON CONFLICT DO NOTHING returns only rows we
+      // actually inserted → exactly the players not yet notified for this event.
+      const { data: claimed } = await supabase
+        .from("notification_sends")
+        .upsert(
+          chunk.map((p) => ({ dedup_key: dedupKeyFor(p.id) })),
+          { onConflict: "dedup_key", ignoreDuplicates: true },
+        )
+        .select("dedup_key");
+      const claimedKeys = new Set((claimed ?? []).map((r) => r.dedup_key));
+      const toSend = chunk.filter((p) => claimedKeys.has(dedupKeyFor(p.id)));
+
+      const results = await Promise.all(
+        toSend.map(async (player) => {
+          try {
+            const emailRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                type: emailType,
+                to: player.email,
+                data: {
+                  playerName: player.full_name || "Player",
+                  trainerName,
+                  slotCount: slot_count,
+                  dateRange: date_range,
+                  ...(single_slot && {
+                    slotDate: single_slot.date,
+                    slotTime: single_slot.time,
+                  }),
+                },
               }),
-            },
-          }),
-        });
+            });
+            if (emailRes.ok) return { ok: true as const };
+            const errText = await emailRes.text();
+            return { ok: false as const, key: dedupKeyFor(player.id), err: `Failed to email ${player.email}: ${errText}` };
+          } catch (err) {
+            return { ok: false as const, key: dedupKeyFor(player.id), err: `Error emailing ${player.email}: ${(err as Error).message}` };
+          }
+        }),
+      );
 
-        if (emailRes.ok) {
-          sentCount++;
-        } else {
-          const errText = await emailRes.text();
-          errors.push(`Failed to email ${player.email}: ${errText}`);
+      const failedKeys: string[] = [];
+      for (const r of results) {
+        if (r.ok) sentCount++;
+        else {
+          failedKeys.push(r.key);
+          errors.push(r.err);
         }
-      } catch (err: any) {
-        errors.push(`Error emailing ${player.email}: ${err.message}`);
+      }
+      // Release failed claims so they retry next run (never suppress a
+      // notification that didn't actually go out).
+      if (failedKeys.length > 0) {
+        await supabase.from("notification_sends").delete().in("dedup_key", failedKeys);
       }
     }
 
-    console.log(`Notified ${sentCount} followers about ${isReopenedSlot ? 'reopened slot' : 'new availability'}`);
+    console.log(
+      `Notified ${sentCount} followers about ${isReopenedSlot ? "reopened slot" : "new availability"}` +
+        (remaining ? ` (${remaining} deferred — time budget)` : ""),
+    );
     if (errors.length > 0) {
       console.error("Email errors:", errors);
     }
 
     return new Response(
-      JSON.stringify({ 
-        message: `Notified ${sentCount} followers`, 
+      JSON.stringify({
+        message: `Notified ${sentCount} followers`,
         sent: sentCount,
-        type: isReopenedSlot ? 'reopened_slot' : 'new_availability',
-        errors: errors.length > 0 ? errors : undefined 
+        remaining,
+        type: isReopenedSlot ? "reopened_slot" : "new_availability",
+        errors: errors.length > 0 ? errors : undefined,
       }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
     );
   } catch (error: any) {
     console.error("Error in notify-followers function:", error);

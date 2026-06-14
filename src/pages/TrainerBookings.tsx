@@ -221,6 +221,9 @@ export default function TrainerBookings() {
             date: slotDate,
             time: slotTime,
           },
+          // BJ-08 dedup anchor: each cancellation is a distinct reopen event, so
+          // a slot re-booked then cancelled again still re-notifies followers.
+          booking_id: cancellingBooking.id,
         },
         headers: {
           Authorization: `Bearer ${session?.access_token}`,

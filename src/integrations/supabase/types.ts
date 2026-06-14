@@ -3613,6 +3613,24 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_sends: {
+        Row: {
+          created_at: string
+          dedup_key: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          dedup_key: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          dedup_key?: string
+          id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           body: string
