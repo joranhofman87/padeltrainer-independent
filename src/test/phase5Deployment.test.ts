@@ -15,7 +15,7 @@ describe('Phase 5 deployment configuration', () => {
 
   it('vercel.json defines cron routes and security headers', () => {
     const vercel = read('vercel.json');
-    expect(vercel).toContain('/api/cron/hourly-maintenance');
+    expect(vercel).toContain('/api/cron/daily-emails');
     expect(vercel).toContain('/api/cron/daily-maintenance');
     expect(vercel).toContain('X-Frame-Options');
   });

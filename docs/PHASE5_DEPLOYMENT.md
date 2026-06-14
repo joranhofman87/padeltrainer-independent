@@ -89,7 +89,7 @@ From address: `PadelTrainer.ai <noreply@app.padeltrainer.ai>`
 
 | Schedule | Vercel path | Edge functions invoked |
 |----------|-------------|------------------------|
-| `0 * * * *` | `/api/cron/hourly-maintenance` | `process-onboarding-emails`, `send-digest-emails` |
+| `0 12 * * *` | `/api/cron/daily-emails` | `process-onboarding-emails`, `send-digest-emails` |
 | `0 6 * * *` | `/api/cron/daily-maintenance` | `backup-database`, `invoice-health-check`, `enrich-clubs`, `fetch-location-logos` |
 
 After Vercel cron is verified, unschedule pg_cron on ficwb:

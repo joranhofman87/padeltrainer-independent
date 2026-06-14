@@ -11,7 +11,7 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/hourly-maintenance",
+      "path": "/api/cron/daily-emails",
       "schedule": "0 12 * * *"
     },
     {

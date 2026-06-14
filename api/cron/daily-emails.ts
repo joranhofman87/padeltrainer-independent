@@ -1,7 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron';
 
-/** Hourly: onboarding drip + digest emails (replaces Lovable external cron). */
+/**
+ * Daily (noon, `0 12 * * *`): onboarding-drip queue flush + the daily digest.
+ *
+ * Named for its actual cadence — this runs ONCE PER DAY (Vercel Hobby crons
+ * can't run sub-daily). send-digest-emails must stay daily (it drains a full
+ * day's notification_queue into one digest per user). process-onboarding-emails
+ * would ideally run hourly so drips go out nearer their scheduled time; if that
+ * becomes important, move JUST that job to Supabase pg_cron (the digest stays
+ * here, daily).
+ */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!verifyCronSecret(req)) {
     rejectUnauthorizedCron(res);
