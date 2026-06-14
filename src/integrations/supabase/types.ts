@@ -258,6 +258,7 @@ export type Database = {
           payouts_enabled: boolean
           refresh_token: string | null
           token_expires_at: string | null
+          token_refreshing_at: string | null
           updated_at: string
         }
         Insert: {
@@ -271,6 +272,7 @@ export type Database = {
           payouts_enabled?: boolean
           refresh_token?: string | null
           token_expires_at?: string | null
+          token_refreshing_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -284,6 +286,7 @@ export type Database = {
           payouts_enabled?: boolean
           refresh_token?: string | null
           token_expires_at?: string | null
+          token_refreshing_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -4773,6 +4776,30 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_webhook_events: {
+        Row: {
+          event_created: number | null
+          event_id: string
+          event_type: string
+          processed_at: string
+          subscription_id: string | null
+        }
+        Insert: {
+          event_created?: number | null
+          event_id: string
+          event_type: string
+          processed_at?: string
+          subscription_id?: string | null
+        }
+        Update: {
+          event_created?: number | null
+          event_id?: string
+          event_type?: string
+          processed_at?: string
+          subscription_id?: string | null
+        }
+        Relationships: []
+      }
       subscription_payments: {
         Row: {
           amount: number
@@ -5031,6 +5058,7 @@ export type Database = {
           payouts_enabled: boolean
           refresh_token: string | null
           token_expires_at: string | null
+          token_refreshing_at: string | null
           trainer_id: string
           updated_at: string
         }
@@ -5044,6 +5072,7 @@ export type Database = {
           payouts_enabled?: boolean
           refresh_token?: string | null
           token_expires_at?: string | null
+          token_refreshing_at?: string | null
           trainer_id: string
           updated_at?: string
         }
@@ -5057,6 +5086,7 @@ export type Database = {
           payouts_enabled?: boolean
           refresh_token?: string | null
           token_expires_at?: string | null
+          token_refreshing_at?: string | null
           trainer_id?: string
           updated_at?: string
         }
@@ -6833,6 +6863,15 @@ export type Database = {
         Args: { p_from_status: string; p_queue_id: string }
         Returns: boolean
       }
+      claim_stripe_event: {
+        Args: {
+          _event_created: number
+          _event_id: string
+          _event_type: string
+          _subscription_id: string
+        }
+        Returns: boolean
+      }
       club_has_managers: {
         Args: { _club_profile_id: string }
         Returns: boolean
@@ -7012,6 +7051,10 @@ export type Database = {
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
+      stripe_subscription_has_newer_activation: {
+        Args: { _event_created: number; _subscription_id: string }
+        Returns: boolean
+      }
       swap_member_booking: {
         Args: { _new_slot_id: string; _old_booking_id: string }
         Returns: Json

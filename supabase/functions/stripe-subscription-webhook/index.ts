@@ -57,6 +57,33 @@ serve(async (req) => {
 
     logStep("Event received", { type: event.type, id: event.id });
 
+    // Extract the subscription id this event concerns (for dedup ordering).
+    const eventObj = event.data.object as Record<string, unknown>;
+    const eventSubscriptionId: string | null =
+      event.type === "customer.subscription.deleted"
+        ? ((eventObj.id as string) ?? null)
+        : (typeof eventObj.subscription === "string" ? (eventObj.subscription as string) : null);
+
+    // Idempotency: claim the event id atomically. Stripe retries deliver the
+    // same event again; only the first delivery does work.
+    const { data: claimed, error: claimError } = await supabase.rpc("claim_stripe_event", {
+      _event_id: event.id,
+      _event_type: event.type,
+      _subscription_id: eventSubscriptionId,
+      _event_created: event.created,
+    });
+    if (claimError) {
+      // Fail closed: let Stripe retry rather than risk double/half processing.
+      logStep("claim_stripe_event failed", { message: claimError.message });
+      return new Response(JSON.stringify({ error: "claim failed" }), { status: 500 });
+    }
+    if (claimed === false) {
+      logStep("Duplicate event — already processed, skipping", { id: event.id });
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -154,6 +181,18 @@ serve(async (req) => {
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
+
+        // Ordering guard: if a NEWER activation (renewal / checkout) for this
+        // subscription was already processed, this delete is stale and must not
+        // deactivate a paying tenant.
+        const { data: hasNewer } = await supabase.rpc("stripe_subscription_has_newer_activation", {
+          _subscription_id: subscription.id,
+          _event_created: event.created,
+        });
+        if (hasNewer === true) {
+          logStep("Stale subscription.deleted ignored — newer activation exists", { subscriptionId: subscription.id });
+          break;
+        }
 
         for (const table of ["trainer_profiles", "academy_profiles", "club_profiles"] as const) {
           const { data } = await supabase

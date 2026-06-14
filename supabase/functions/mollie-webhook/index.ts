@@ -69,6 +69,31 @@ async function refreshTokenIfNeeded(
     return accountData.access_token;
   }
 
+  const tableName = entityType === 'trainer' ? 'trainer_mollie_accounts' : 'academy_mollie_accounts';
+  const idColumn = entityType === 'trainer' ? 'trainer_id' : 'academy_profile_id';
+
+  // Mollie refresh tokens are single-use (rotating). Claim the refresh so only
+  // ONE concurrent webhook rotates the token; others skip and reuse the current
+  // token (valid for the 5-min buffer, or the winner's freshly written one). The
+  // 2-minute staleness window lets a crashed claim self-heal.
+  const staleClaim = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data: claimRows } = await supabaseClient
+    .from(tableName)
+    .update({ token_refreshing_at: new Date().toISOString() })
+    .eq(idColumn, entityId)
+    .or(`token_refreshing_at.is.null,token_refreshing_at.lt.${staleClaim}`)
+    .select('access_token');
+
+  if (!claimRows || claimRows.length === 0) {
+    const { data: fresh } = await supabaseClient
+      .from(tableName)
+      .select('access_token')
+      .eq(idColumn, entityId)
+      .maybeSingle();
+    logStep("Token refresh already in progress — reusing current token");
+    return fresh?.access_token ?? accountData.access_token;
+  }
+
   try {
     const tokenResponse = await fetch('https://api.mollie.com/oauth2/tokens', {
       method: 'POST',
@@ -85,14 +110,13 @@ async function refreshTokenIfNeeded(
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json();
       logStep("Token refresh failed", errorData);
+      // Release the claim so a later webhook can retry the refresh.
+      await supabaseClient.from(tableName).update({ token_refreshing_at: null }).eq(idColumn, entityId);
       return accountData.access_token;
     }
 
     const tokens = await tokenResponse.json();
     const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-
-    const tableName = entityType === 'trainer' ? 'trainer_mollie_accounts' : 'academy_mollie_accounts';
-    const idColumn = entityType === 'trainer' ? 'trainer_id' : 'academy_profile_id';
 
     await supabaseClient
       .from(tableName)
@@ -100,6 +124,7 @@ async function refreshTokenIfNeeded(
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: newExpiresAt,
+        token_refreshing_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq(idColumn, entityId);
@@ -108,6 +133,7 @@ async function refreshTokenIfNeeded(
     return tokens.access_token;
   } catch (error) {
     logStep("Error refreshing token", { error: String(error) });
+    await supabaseClient.from(tableName).update({ token_refreshing_at: null }).eq(idColumn, entityId);
     return accountData.access_token;
   }
 }
