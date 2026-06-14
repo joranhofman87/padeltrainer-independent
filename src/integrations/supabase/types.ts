@@ -7079,6 +7079,16 @@ export type Database = {
       unschedule_enrichment_job: { Args: never; Returns: undefined }
       unschedule_invoice_health_check_job: { Args: never; Returns: undefined }
       unschedule_logo_fetch_job: { Args: never; Returns: undefined }
+      update_cycle_pricing: {
+        Args: {
+          _cycle_id: string
+          _extra_costs: Json
+          _price_per_session: number
+          _prices_include_vat: boolean
+          _split_payment: boolean
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role:

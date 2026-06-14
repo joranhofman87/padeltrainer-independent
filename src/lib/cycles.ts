@@ -1952,43 +1952,16 @@ export async function updateCyclePricing(
     prices_include_vat: boolean;
   }
 ) {
-  // 1. Update cycle record
-  const { data: cycle, error: fetchErr } = await supabase
-    .from('cycles')
-    .select('settings')
-    .eq('id', cycleId)
-    .single();
+  // Atomic: the RPC updates the cycle row AND all linked slots in ONE
+  // transaction, so billing (which reads the slot columns) can never drift from
+  // the cycle after a partial client-side write. (Was two separate updates.)
+  const { error } = await supabase.rpc('update_cycle_pricing', {
+    _cycle_id: cycleId,
+    _price_per_session: pricing.price_per_session,
+    _extra_costs: pricing.extra_costs as unknown as Json,
+    _split_payment: pricing.split_payment,
+    _prices_include_vat: pricing.prices_include_vat,
+  });
 
-  if (fetchErr) throw fetchErr;
-
-  const settings = (cycle?.settings as CycleSettings) || {};
-  const updatedSettings: CycleSettings = {
-    ...settings,
-    extra_costs: pricing.extra_costs,
-    split_payment: pricing.split_payment,
-    prices_include_vat: pricing.prices_include_vat,
-  };
-
-  const { error: cycleErr } = await supabase
-    .from('cycles')
-    .update({
-      price_per_session: pricing.price_per_session,
-      settings: updatedSettings as unknown as Json,
-    })
-    .eq('id', cycleId);
-
-  if (cycleErr) throw cycleErr;
-
-  // 2. Bulk-update all slots linked to this cycle
-  const { error: slotsErr } = await supabase
-    .from('availability_slots')
-    .update({
-      price_per_session: pricing.price_per_session,
-      extra_costs: pricing.extra_costs.length > 0 ? (pricing.extra_costs as unknown as Json) : null,
-      split_payment: pricing.split_payment,
-      prices_include_vat: pricing.prices_include_vat,
-    })
-    .eq('cyclus_id', cycleId);
-
-  if (slotsErr) throw slotsErr;
+  if (error) throw error;
 }
