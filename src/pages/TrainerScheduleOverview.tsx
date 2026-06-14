@@ -497,18 +497,20 @@ export default function TrainerScheduleOverview() {
               }
             }
 
-            await supabase
+            const { error: slotShiftErr } = await supabase
               .from("availability_slots")
               .update({ ...updates, start_time: newStart.toISOString(), end_time: newEnd.toISOString() })
               .eq("id", cs.id);
+            if (slotShiftErr) throw slotShiftErr;
           }
         }
       } else {
         // No date/time shift — just bulk update
-        await supabase
+        const { error: bulkUpdateErr } = await supabase
           .from("availability_slots")
           .update(updates)
           .eq("cyclus_id", editCycleId);
+        if (bulkUpdateErr) throw bulkUpdateErr;
       }
 
       // 3. Handle repeat count change
@@ -555,7 +557,8 @@ export default function TrainerScheduleOverview() {
                 prices_include_vat: cycleEditData.pricesIncludeVat,
               });
             }
-            const { data: insertedSlots } = await supabase.from("availability_slots").insert(newSlots).select("id, start_time");
+            const { data: insertedSlots, error: insertSlotsErr } = await supabase.from("availability_slots").insert(newSlots).select("id, start_time");
+            if (insertSlotsErr) throw insertSlotsErr;
 
             // Auto-book existing players/guests on the new slots
             if (insertedSlots && insertedSlots.length > 0) {
@@ -590,7 +593,8 @@ export default function TrainerScheduleOverview() {
                 }
 
                 if (newBookings.length > 0) {
-                  const { data: createdBookings } = await supabase.from("bookings").insert(newBookings).select("id, player_id, guest_player_id");
+                  const { data: createdBookings, error: createBookingsErr } = await supabase.from("bookings").insert(newBookings).select("id, player_id, guest_player_id");
+                  if (createBookingsErr) throw createBookingsErr;
 
                   // Add new booking IDs to unpaid invoices so section 3b recalculates them
                   if (createdBookings && createdBookings.length > 0) {
@@ -626,13 +630,14 @@ export default function TrainerScheduleOverview() {
                           .map((nb) => nb.id);
 
                         if (relevantNewIds.length > 0) {
-                          await supabase
+                          const { error: invIdsErr } = await supabase
                             .from("invoices")
                             // Dedup the merge: a duplicate booking UUID would
                             // inflate the line-item quantity → overcharge (e.g. a
                             // re-run of the cycle edit re-appending the same ids).
                             .update({ booking_ids: [...new Set([...currentIds, ...relevantNewIds])], pdf_url: null })
                             .eq("id", inv.id);
+                          if (invIdsErr) throw invIdsErr;
                         }
                       }
                     }
@@ -663,10 +668,11 @@ export default function TrainerScheduleOverview() {
             }
 
             if (deletableSlots.length > 0) {
-              await supabase
+              const { error: deleteSlotsErr } = await supabase
                 .from("availability_slots")
                 .delete()
                 .in("id", deletableSlots.map((s) => s.id));
+              if (deleteSlotsErr) throw deleteSlotsErr;
             }
           }
         }
@@ -799,7 +805,7 @@ export default function TrainerScheduleOverview() {
                   vatBreakdown[rate].vat = Math.round(vatBreakdown[rate].vat * 100) / 100;
                 }
 
-                await supabase
+                const { error: invRecalcErr } = await supabase
                   .from("invoices")
                   .update({
                     line_items: updatedItems,
@@ -810,6 +816,7 @@ export default function TrainerScheduleOverview() {
                     pdf_url: null,
                   })
                   .eq("id", inv.id);
+                if (invRecalcErr) throw invRecalcErr;
               }
             }
           }
