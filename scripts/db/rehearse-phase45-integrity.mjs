@@ -20,6 +20,7 @@ await db.exec(`
 await db.exec(readFileSync('supabase/migrations/20260614170000_availability_slots_time_order_check.sql', 'utf8'));
 await db.exec(readFileSync('supabase/migrations/20260614180000_cycles_date_order_check.sql', 'utf8'));
 await db.exec(readFileSync('supabase/migrations/20260614190000_cron_single_flight_lock.sql', 'utf8'));
+await db.exec(readFileSync('supabase/migrations/20260614200000_cron_lock_revoke_authenticated.sql', 'utf8'));
 
 // ---- availability_slots CHECK (enforced on new writes despite NOT VALID) ----
 ok(!(await raises(`INSERT INTO public.availability_slots (start_time, end_time) VALUES ('2026-06-14T10:00Z','2026-06-14T11:00Z')`)),
@@ -52,6 +53,19 @@ ok(tl2 === true, 'try_lock_cron_job acquires an independent lock for a distinct 
 await db.query(`SELECT public.unlock_cron_job('invoice-health-check')`);
 // NOTE: PGlite is single-session so true cross-run contention (run B sees false)
 // is validated against Supabase, not here — documented in the migration.
+
+// ---- grant lockdown: service_role yes, authenticated/anon no ----
+await db.query(`SET ROLE service_role`);
+const svc = (await db.query(`SELECT public.try_lock_cron_job('grant-test') AS v`)).rows[0].v;
+ok(svc === true, 'service_role CAN execute try_lock_cron_job', svc);
+await db.query(`SELECT public.unlock_cron_job('grant-test')`);
+await db.query(`RESET ROLE`);
+ok(await raises(`SET ROLE authenticated; SELECT public.try_lock_cron_job('grant-test')`),
+  'authenticated CANNOT execute try_lock_cron_job (revoked)', null);
+await db.query(`RESET ROLE`);
+ok(await raises(`SET ROLE anon; SELECT public.unlock_cron_job('grant-test')`),
+  'anon CANNOT execute unlock_cron_job (revoked)', null);
+await db.query(`RESET ROLE`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -55,3 +55,15 @@ describe("CRON-SF-03 cron single-flight advisory-lock RPCs", () => {
     expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.unlock_cron_job(text) TO service_role");
   });
 });
+
+describe("CRON-SF-03 grant tightening (revoke from anon + authenticated)", () => {
+  const sql = readMigration("20260614200000_cron_lock_revoke_authenticated.sql");
+
+  it("revokes EXECUTE from anon AND authenticated (Supabase default-privilege grant)", () => {
+    // a plain REVOKE ... FROM PUBLIC does NOT remove Supabase's default
+    // anon/authenticated grants — they must be named explicitly.
+    expect(sql).toContain("REVOKE ALL ON FUNCTION public.try_lock_cron_job(text) FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION public.unlock_cron_job(text) FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.try_lock_cron_job(text) TO service_role");
+  });
+});
