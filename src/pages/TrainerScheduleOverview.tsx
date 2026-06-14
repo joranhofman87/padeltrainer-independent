@@ -628,7 +628,10 @@ export default function TrainerScheduleOverview() {
                         if (relevantNewIds.length > 0) {
                           await supabase
                             .from("invoices")
-                            .update({ booking_ids: [...currentIds, ...relevantNewIds], pdf_url: null })
+                            // Dedup the merge: a duplicate booking UUID would
+                            // inflate the line-item quantity → overcharge (e.g. a
+                            // re-run of the cycle edit re-appending the same ids).
+                            .update({ booking_ids: [...new Set([...currentIds, ...relevantNewIds])], pdf_url: null })
                             .eq("id", inv.id);
                         }
                       }

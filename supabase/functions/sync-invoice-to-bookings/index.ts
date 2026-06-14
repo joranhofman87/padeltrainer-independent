@@ -64,15 +64,24 @@ Deno.serve(async (req) => {
 
     const perBookingPrice = sessionItem.unit_price;
 
-    // Update each booking's payment_amount
-    let updated = 0;
-    for (const bookingId of bookingIds) {
-      const { error } = await supabase
-        .from("bookings")
-        .update({ payment_amount: perBookingPrice })
-        .eq("id", bookingId);
-      if (!error) updated++;
+    // Update every booking's payment_amount in ONE statement (was a per-row loop
+    // that swallowed individual failures and returned success even on a partial
+    // write, so a timeout mid-loop left some bookings at the new price and the
+    // rest stale — silently).
+    const { data: updatedRows, error: updErr } = await supabase
+      .from("bookings")
+      .update({ payment_amount: perBookingPrice })
+      .in("id", bookingIds)
+      .select("id");
+
+    if (updErr) {
+      console.error("sync-invoice-to-bookings booking update failed:", updErr);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    const updated = updatedRows?.length ?? 0;
 
     // Also update the slot's price_per_session if possible
     if (bookingIds.length > 0) {
@@ -91,7 +100,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, updated }),
+      JSON.stringify({ success: updated === bookingIds.length, updated, expected: bookingIds.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
