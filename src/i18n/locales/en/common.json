@@ -1,4 +1,16 @@
 {
+  "coachingNotes": {
+    "heading": "Coaching notes",
+    "shared": "Shared",
+    "private": "Private draft",
+    "byAcademy": "by academy",
+    "toggleShare": "Share with player",
+    "shareWithPlayer": "Share with player",
+    "guestNoShare": "Guest players have no login to view notes",
+    "placeholder": "Add a coaching note for {{name}}…",
+    "save": "Save note",
+    "saveError": "Could not save note"
+  },
   "agenda": {
     "title": "Agenda",
     "trainerSubtitle": "What's coming up for you this week",

@@ -1,4 +1,16 @@
 {
+  "coachingNotes": {
+    "heading": "Coachingnotities",
+    "shared": "Gedeeld",
+    "private": "Privé concept",
+    "byAcademy": "door academy",
+    "toggleShare": "Delen met speler",
+    "shareWithPlayer": "Delen met speler",
+    "guestNoShare": "Gastspelers hebben geen login om notities te zien",
+    "placeholder": "Voeg een coachingnotitie toe voor {{name}}…",
+    "save": "Notitie opslaan",
+    "saveError": "Notitie kon niet worden opgeslagen"
+  },
   "agenda": {
     "title": "Agenda",
     "trainerSubtitle": "Wat staat er deze week voor je op de planning",

@@ -37,6 +37,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { InlineBookPlayer } from '@/components/trainer/InlineBookPlayer';
 import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
+import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
+import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
 import { SlotRatingPicker } from '@/components/trainer/SlotRatingPicker';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
@@ -101,6 +103,7 @@ export default function AcademySlotDetail() {
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
   const { activeAcademy } = useAcademyContext();
 
+  const { data: coachingNotes = [] } = usePlayerCoachingNotes(slotId);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<SlotDetail | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -1178,6 +1181,21 @@ export default function AcademySlotDetail() {
                           onBookingUpdated={() => { setEditingBookingId(null); setEditingBookingData(null); fetchSlotDetail(); }}
                           onClose={() => { setEditingBookingId(null); setEditingBookingData(null); }}
                         />
+                      )}
+                      {editingBookingId === player.bookingId && user?.id && (
+                        <div className="mt-2 space-y-1.5">
+                          <p className="px-1 text-xs font-medium text-muted-foreground">{tCommon('coachingNotes.heading', 'Coaching notes')}</p>
+                          <PlayerCoachingNoteEditor
+                            slotId={detail.id}
+                            authorId={user.id}
+                            authorRole="academy"
+                            subjectProfileId={player.isGuest ? null : player.id}
+                            subjectGuestPlayerId={player.isGuest ? player.id : null}
+                            subjectName={player.name}
+                            isGuest={player.isGuest}
+                            notes={coachingNotes}
+                          />
+                        </div>
                       )}
                     </div>
                   ))}
