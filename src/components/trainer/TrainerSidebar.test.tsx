@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -56,6 +56,17 @@ vi.mock('@/lib/academy', () => ({
   getTrainerAcademy: vi.fn().mockResolvedValue(null),
 }));
 
+// The sidebar reads academy affiliation through this shared hook (useQuery-backed).
+// Mock it so the test needs no QueryClient/Supabase and stays deterministic. Default
+// is a solo (non-academy) trainer, which is what these nav assertions expect.
+const academyTrainerState = vi.hoisted(() => ({ isAcademyTrainer: false }));
+vi.mock('@/hooks/useIsAcademyTrainer', () => ({
+  useIsAcademyTrainer: () => ({
+    isAcademyTrainer: academyTrainerState.isAcademyTrainer,
+    isResolved: true,
+  }),
+}));
+
 vi.mock('@/components/ProfileSwitcher', () => ({
   ProfileSwitcher: () => <div data-testid="profile-switcher" />,
 }));
@@ -77,6 +88,7 @@ const NAV_LABELS: Record<string, string> = {
   'nav.players': 'Players',
   'nav.schedule': 'Schedule',
   'nav.calendar': 'Calendar',
+  'nav.agenda': 'Agenda',
   'nav.openSlots': 'Open slots',
   'nav.scheduleOverview': 'Schedule overview',
   'nav.settings': 'Settings',
@@ -139,6 +151,31 @@ describe('TrainerSidebar', () => {
   it('renders profile switcher in footer', async () => {
     renderSidebar();
     expect(await screen.findByTestId('profile-switcher')).toBeInTheDocument();
+  });
+});
+
+describe('TrainerSidebar academy trainer', () => {
+  beforeEach(() => {
+    sidebarTestState.isMobile = false;
+    academyTrainerState.isAcademyTrainer = true;
+  });
+  afterEach(() => {
+    academyTrainerState.isAcademyTrainer = false;
+  });
+
+  it('shows only academy-relevant nav and hides financial/business items', async () => {
+    renderSidebar('/app/trainer/agenda');
+
+    // Academy mini-nav: the trainer's relevant surfaces.
+    expect(await screen.findByRole('link', { name: 'Players' })).toHaveAttribute('href', '/app/trainer/players');
+    expect(screen.getByRole('link', { name: 'Agenda' })).toHaveAttribute('href', '/app/trainer/agenda');
+    expect(screen.getByRole('link', { name: 'Calendar' })).toHaveAttribute('href', '/app/trainer/calendar');
+
+    // Financial / business surfaces are not in the academy nav (the academy manages them).
+    expect(screen.queryByRole('link', { name: 'Earnings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Subscription' })).toBeNull();
+    expect(screen.queryByTestId('nav-trainer-dashboard')).toBeNull();
   });
 });
 

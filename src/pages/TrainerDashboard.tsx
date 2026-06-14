@@ -24,7 +24,7 @@ import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { getTrainerShortUrl } from '@/lib/domains';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
-import { getTrainerAcademy } from '@/lib/academy';
+import { useIsAcademyTrainer } from '@/hooks/useIsAcademyTrainer';
 import { useQuery } from '@tanstack/react-query';
 import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
 import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
@@ -301,15 +301,8 @@ export default function TrainerDashboard() {
   const trainerSlug = statsData?.slug ?? null;
   const stats = statsData?.stats ?? { totalStudents: 0, openSlots: 0, monthlyEarnings: 0, followerCount: 0, profileViews: 0 };
 
-  const { data: hasAcademy = false } = useQuery({
-    queryKey: ['trainer-has-academy', trainerId],
-    queryFn: async () => {
-      const academy = await getTrainerAcademy(trainerId!);
-      return !!academy;
-    },
-    enabled: !!trainerId,
-    staleTime: 5 * 60 * 1000,
-  });
+  // Shared affiliation signal (same query key as TrainerLayout) — no divergent cache.
+  const { isAcademyTrainer: hasAcademy } = useIsAcademyTrainer();
 
   const { data: activityData, isPending: activityPending } = useQuery({
     queryKey: ['trainer-activity', trainerId],

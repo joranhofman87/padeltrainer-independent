@@ -58,7 +58,7 @@ import {
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut, getTrainerProfile } from "@/lib/auth";
-import { getTrainerAcademy } from "@/lib/academy";
+import { useIsAcademyTrainer } from "@/hooks/useIsAcademyTrainer";
 import { getMarketingUrl } from "@/lib/domains";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
@@ -80,8 +80,10 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
 
   const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
   const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
-  
-  const [hasAcademy, setHasAcademy] = useState<boolean>(false);
+
+  // Single shared affiliation signal (same query key as TrainerLayout + the in-page
+  // financial hides) so nav, route guards, and page content can never diverge.
+  const { isAcademyTrainer: hasAcademy } = useIsAcademyTrainer();
 
   // Track which groups are open
   const [scheduleOpen, setScheduleOpen] = useState(
@@ -116,9 +118,6 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
       if (trainerProfile) {
         setTrainerProfileId(trainerProfile.id);
         setTrainerSlug(trainerProfile.slug);
-
-        const academy = await getTrainerAcademy(trainerProfile.id);
-        setHasAcademy(!!academy);
       }
     };
 

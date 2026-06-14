@@ -35,6 +35,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useTranslation } from "react-i18next";
+import { useIsAcademyTrainer } from "@/hooks/useIsAcademyTrainer";
 import { SlotWithBookings, BookedPlayer } from "./CalendarSlotCard";
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
@@ -96,6 +97,8 @@ export function DayViewSlotCard({
   onToggleMarkedFull 
 }: DayViewSlotCardProps) {
   const { t } = useTranslation("trainer");
+  // Academy trainers see no pricing — the academy manages it.
+  const { isAcademyTrainer } = useIsAcademyTrainer();
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");
@@ -150,7 +153,7 @@ export function DayViewSlotCard({
               {slot.cyclus_name && (
                 <div className="font-medium text-lg">{slot.cyclus_name}</div>
               )}
-              {slot.price && (
+              {!isAcademyTrainer && slot.price && (
                 <Badge variant="outline" className="font-semibold">
                   €{slot.price}
                 </Badge>

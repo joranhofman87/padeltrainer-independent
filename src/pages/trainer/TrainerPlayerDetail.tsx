@@ -22,6 +22,7 @@ import {
   Minus,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAcademyTrainer } from '@/hooks/useIsAcademyTrainer';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -117,6 +118,9 @@ export default function TrainerPlayerDetail() {
   const { t } = useTranslation('trainer');
   const { playerId } = useParams<{ playerId: string }>();
   const { user } = useAuth();
+  // Academy trainers don't handle billing — the academy invoices players. Hide all
+  // invoice/payment surfaces on this otherwise-core player page.
+  const { isAcademyTrainer } = useIsAcademyTrainer();
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -511,7 +515,7 @@ export default function TrainerPlayerDetail() {
                   {player.skill_rating.toFixed(1)} {(player.rating_system || 'knltb').toUpperCase()}
                 </Badge>
               )}
-              {(() => {
+              {!isAcademyTrainer && (() => {
                 const todayIso = new Date().toISOString().slice(0, 10);
                 const overdueCount = invoices.filter((inv) => {
                   const status = (inv.status || '').toLowerCase();
@@ -577,12 +581,14 @@ export default function TrainerPlayerDetail() {
             )}
           </div>
           <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
-            <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
-              <Link to={getTrainerCreateInvoiceUrl(playerId)}>
-                <FileText className="h-4 w-4 mr-2" />
-                {t('players.detail.createInvoice', 'Create invoice')}
-              </Link>
-            </Button>
+            {!isAcademyTrainer && (
+              <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
+                <Link to={getTrainerCreateInvoiceUrl(playerId)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  {t('players.detail.createInvoice', 'Create invoice')}
+                </Link>
+              </Button>
+            )}
             {player.type === 'guest' && player.guest_player_id && (
               <Button
                 variant="outline"
@@ -611,7 +617,9 @@ export default function TrainerPlayerDetail() {
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <Stat label={t('players.detail.stats.cycles', 'Cycles')} value={cycluses.length} />
-          <Stat label={t('players.detail.stats.invoices', 'Invoices')} value={invoices.length} />
+          {!isAcademyTrainer && (
+            <Stat label={t('players.detail.stats.invoices', 'Invoices')} value={invoices.length} />
+          )}
           <Stat label={t('players.detail.stats.ratingPoints', 'Rating points')} value={ratingHistory.length} />
           <Stat label={t('players.detail.stats.emails', 'Emails')} value={emails.length} />
         </CardContent>
@@ -668,6 +676,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
+      {!isAcademyTrainer && (
       <Card data-testid="trainer-player-section-invoices">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -727,6 +736,7 @@ export default function TrainerPlayerDetail() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <Card data-testid="trainer-player-section-rating">
         <CardHeader>

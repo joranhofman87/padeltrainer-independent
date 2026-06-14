@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAcademyTrainer } from '@/hooks/useIsAcademyTrainer';
 import { supabase } from '@/lib/supabaseClient';
 import { getTrainerProfile, setUserRole, ensureTrainerProfile } from '@/lib/auth';
 import { computeTargetLiveDate } from '@/lib/onboardingResponses';
@@ -84,6 +85,16 @@ export default function TrainerOnboardingFlow() {
   const [initializing, setInitializing] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
+
+  // Academy-affiliated trainers never go through onboarding — the academy arranges
+  // their setup. TrainerLayout no longer sends them here; this guards the direct-URL
+  // / legacy case by bouncing them to their Agenda instead of the solo-trainer flow.
+  const { isAcademyTrainer, isResolved: academyResolved } = useIsAcademyTrainer();
+  useEffect(() => {
+    if (academyResolved && isAcademyTrainer) {
+      navigate('/app/trainer/agenda', { replace: true });
+    }
+  }, [academyResolved, isAcademyTrainer, navigate]);
 
   const {
     data: responses,

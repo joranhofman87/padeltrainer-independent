@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
 import { CalendarIcon, Plus, Repeat, Lock, GraduationCap, User, Euro, Users, Trash2 } from "lucide-react";
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
+import { useIsAcademyTrainer } from "@/hooks/useIsAcademyTrainer";
 import { logger } from "@/lib/logger";
 import { createCycle, type CycleSettings, type ExtraCost } from "@/lib/cycles";
 import { formatDate } from "@/lib/format";
@@ -457,6 +458,9 @@ export function BulkCreateContent({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { trainerRatingSystem } = useTrainerRatingSystem(trainerId || undefined);
+  // Academy trainers don't set pricing — the academy manages it. Hide the whole
+  // pricing/VAT/extra-costs block from the slot-creation flow for them.
+  const { isAcademyTrainer } = useIsAcademyTrainer();
 
   const [bulkSlots, setBulkSlots] = useState<BulkSlotConfig[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1390,7 +1394,8 @@ export function BulkCreateContent({
                     </div>
                   )}
 
-                  {/* Pricing */}
+                  {/* Pricing — academy-managed, hidden for academy trainers */}
+                  {!isAcademyTrainer && (
                   <div className="space-y-2 pt-2 border-t">
                     <Label className="text-xs flex items-center gap-1">
                       <Euro className="h-3 w-3" />
@@ -1607,6 +1612,7 @@ export function BulkCreateContent({
                   </div>
                     </div>
                   </div>
+                  )}
 
                   {/* Participants */}
                   <div className="space-y-2 pt-2 border-t">

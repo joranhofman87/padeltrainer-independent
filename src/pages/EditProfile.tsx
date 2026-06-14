@@ -29,6 +29,7 @@ import { logger } from '@/lib/logger';
 import { VideoManager } from '@/components/profiles/VideoManager';
 import { canBeVisible } from '@/lib/subscription';
 import { isTrainerInPaidAcademy } from '@/lib/academy';
+import { useIsAcademyTrainer } from '@/hooks/useIsAcademyTrainer';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 interface TrainerProfileData {
@@ -51,6 +52,8 @@ interface TrainerProfileData {
 
 export default function EditProfile() {
   const { user, profile, role, loading, refreshAuth, subscription } = useAuth();
+  // Academy trainers don't set their own rate — the academy manages pricing.
+  const { isAcademyTrainer } = useIsAcademyTrainer();
   const navigate = useNavigate();
   const location = useLocation();
   const isPlayerProfileRoute = location.pathname.startsWith('/app/player/profile');
@@ -936,6 +939,8 @@ export default function EditProfile() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
+                    {/* Hourly rate is academy-managed — hidden for academy trainers. */}
+                    {!isAcademyTrainer && (
                     <div className="space-y-2">
                       <Label htmlFor="hourly_rate">{tTrainer('editProfile.hourlyRate')}</Label>
                       <Input
@@ -944,13 +949,14 @@ export default function EditProfile() {
                         step="0.01"
                         min="0"
                         value={trainerData.hourly_rate || ''}
-                        onChange={(e) => setTrainerData({ 
-                          ...trainerData, 
-                          hourly_rate: e.target.value ? parseFloat(e.target.value) : null 
+                        onChange={(e) => setTrainerData({
+                          ...trainerData,
+                          hourly_rate: e.target.value ? parseFloat(e.target.value) : null
                         })}
                         placeholder="50.00"
                       />
                     </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="coaching_since_year">{tTrainer('editProfile.coachingSince')}</Label>
                       <Input

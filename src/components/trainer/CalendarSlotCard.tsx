@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
+import { useIsAcademyTrainer } from "@/hooks/useIsAcademyTrainer";
 
 export interface BookedPlayer {
   id: string;
@@ -113,6 +114,8 @@ function calculateAverageRating(players: BookedPlayer[]): { average: number | nu
 
 export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTrainerInfo, onSlotClick, onBookForPlayer, onDuplicateCyclus, onEditSlot, onDeleteSlot, onEditBooking, onToggleMarkedFull }: CalendarSlotCardProps) {
   const { t, i18n } = useTranslation("trainer");
+  // Academy trainers see no pricing — the academy manages it.
+  const { isAcademyTrainer } = useIsAcademyTrainer();
   const dfLocale = dateFnsLocales[i18n.language] || enUS;
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
@@ -217,7 +220,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
           {slot.cyclus_name && (
             <div>
               <div className="text-sm font-medium">{slot.cyclus_name}</div>
-              {slot.price && (
+              {!isAcademyTrainer && slot.price && (
                 <div className="text-sm text-muted-foreground">
                   €{slot.price}
                 </div>

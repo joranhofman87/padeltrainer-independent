@@ -15,6 +15,7 @@ import { logger } from '@/lib/logger';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAcademyTrainer } from '@/hooks/useIsAcademyTrainer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +70,8 @@ export default function TrainerSlotDetail() {
   const { t: tCommon } = useTranslation('common');
   const { toast } = useToast();
   const { user } = useAuth();
+  // Pricing is academy-managed — academy trainers see/edit no money on slots.
+  const { isAcademyTrainer } = useIsAcademyTrainer();
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
 
   const { data: coachingNotes = [] } = usePlayerCoachingNotes(slotId);
@@ -420,9 +423,14 @@ export default function TrainerSlotDetail() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5"><Label className="text-xs">{t('calendar.maxParticipants', 'Max deelnemers')}</Label>
                             <Input type="number" min={1} max={20} value={editMaxParticipants} onChange={e => setEditMaxParticipants(Number(e.target.value))} /></div>
+                          {/* Pricing is academy-managed — hidden for academy trainers. */}
+                          {!isAcademyTrainer && (
                           <div className="space-y-1.5"><Label className="text-xs">{t('calendar.price', 'Prijs')}</Label>
                             <Input type="number" step="0.01" min={0} value={editPricePerSession} onChange={e => setEditPricePerSession(e.target.value)} placeholder="€" disabled={isCycleSlot} className={isCycleSlot ? 'opacity-60' : ''} /></div>
+                          )}
                         </div>
+                        {!isAcademyTrainer && (
+                        <>
                         <div className="space-y-1.5"><Label className="text-xs">{t('calendar.totalPrice', 'Totaalprijs (hele cyclus)')}</Label>
                           <Input type="number" step="0.01" min={0} value={editTotalPrice} onChange={e => setEditTotalPrice(e.target.value)} placeholder="€" disabled={isCycleSlot} className={isCycleSlot ? 'opacity-60' : ''} /></div>
                         {isCycleSlot && (
@@ -437,10 +445,14 @@ export default function TrainerSlotDetail() {
                           <div><Label className="text-xs">{t('calendar.splitPayment', 'Gesplitste betaling')}</Label><p className="text-[10px] text-muted-foreground">{t('calendar.splitPaymentDesc', 'Elke speler betaalt apart')}</p></div>
                           <Switch checked={editSplitPayment} onCheckedChange={setEditSplitPayment} disabled={isCycleSlot} />
                         </div>
+                        </>
+                        )}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-muted-foreground" /><Label className="text-xs">{t('calendar.markPrivate', 'Privé')}</Label></div>
                           <Switch checked={editIsMarkedFull} onCheckedChange={setEditIsMarkedFull} />
                         </div>
+                        {!isAcademyTrainer && (
+                        <>
                         <Separator />
                         <div className="space-y-2">
                           <div className="flex items-center justify-between"><Label className="text-xs">{t('calendar.extraCosts', 'Extra kosten')}</Label>
@@ -454,6 +466,8 @@ export default function TrainerSlotDetail() {
                             </div>
                           ))}
                         </div>
+                        </>
+                        )}
                       </>
                     );
                   })()}
@@ -479,7 +493,7 @@ export default function TrainerSlotDetail() {
                     {detail.location_name && <Badge variant="outline" className="gap-1"><MapPin className="h-3 w-3" />{detail.location_name}</Badge>}
                     {detail.cyclus_name && <Badge variant="secondary">{detail.cyclus_name}</Badge>}
                     {!detail.is_public && <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300"><Lock className="h-3 w-3" />{t('calendar.private', 'Privé')}</Badge>}
-                    {detail.price_per_session != null && <Badge variant="outline" className="gap-1"><DollarSign className="h-3 w-3" />{formatCurrency(detail.price_per_session)} / sessie</Badge>}
+                    {!isAcademyTrainer && detail.price_per_session != null && <Badge variant="outline" className="gap-1"><DollarSign className="h-3 w-3" />{formatCurrency(detail.price_per_session)} / sessie</Badge>}
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -580,7 +594,8 @@ export default function TrainerSlotDetail() {
             <SlotAttendanceCard slotId={detail.id} bookedPlayers={detail.booked_players.map(p => ({ id: p.id, name: p.name, profileId: p.id }))} isPastSlot={true} />
           )}
 
-          {/* Invoices */}
+          {/* Invoices — academy-managed, hidden for academy trainers */}
+          {!isAcademyTrainer && (
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />{t('calendar.invoices', 'Facturen')}</CardTitle></CardHeader>
             <CardContent>
@@ -608,6 +623,7 @@ export default function TrainerSlotDetail() {
               )}
             </CardContent>
           </Card>
+          )}
         </div>
       </main>
 

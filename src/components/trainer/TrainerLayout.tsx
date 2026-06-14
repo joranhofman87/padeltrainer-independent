@@ -9,7 +9,7 @@ import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sideb
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
-import { getTrainerAcademy } from '@/lib/academy';
+import { useIsAcademyTrainer } from '@/hooks/useIsAcademyTrainer';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
@@ -51,24 +51,10 @@ export default function TrainerLayout() {
   const { user, roles, loading, profileReady, profileFetchFailed, refreshAuth, subscription, refreshSubscription } = useAuth();
   const authResolving = loading || (!!user && !profileReady);
 
-  // Check academy membership with caching
-  const { data: hasAcademy = false } = useQuery({
-    queryKey: ['trainer-has-academy', user?.id],
-    queryFn: async () => {
-      if (!user) return false;
-      const { data: trainerProfile } = await supabase
-        .from('trainer_profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!trainerProfile) return false;
-      const academy = await getTrainerAcademy(trainerProfile.id);
-      return !!academy;
-    },
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  // Academy affiliation — single shared signal (see useIsAcademyTrainer). Academy
+  // trainers skip onboarding and have every financial/business surface hidden,
+  // because the academy manages those things for them.
+  const { isAcademyTrainer: hasAcademy, isResolved: academyResolved } = useIsAcademyTrainer();
 
   // Trigger subscription fetch when entering trainer layout (if not yet loaded)
   useEffect(() => {
@@ -115,9 +101,15 @@ export default function TrainerLayout() {
     staleTime: 60 * 1000,
   });
 
-  // Onboarding before subscription/paywall
+  // Onboarding before subscription/paywall.
+  // Academy-affiliated trainers SKIP onboarding entirely — the academy arranges
+  // their setup, so we never guide them through the solo-trainer flow. Wait until
+  // affiliation is known (academyResolved) so a first-login academy trainer is not
+  // momentarily bounced into onboarding before the signal resolves.
   useEffect(() => {
     if (authResolving || onboardingGateLoading || !user || !isTrainerUser) return;
+    if (!academyResolved) return;
+    if (hasAcademy) return;
     if (!trainerOnboardingComplete && !isOnTrainerOnboarding) {
       navigate('/app/onboarding/trainer', { replace: true });
     }
@@ -126,6 +118,8 @@ export default function TrainerLayout() {
     onboardingGateLoading,
     user,
     isTrainerUser,
+    academyResolved,
+    hasAcademy,
     trainerOnboardingComplete,
     isOnTrainerOnboarding,
     navigate,
@@ -154,12 +148,19 @@ export default function TrainerLayout() {
     navigate,
   ]);
 
-  // Redirect academy trainers away from restricted pages
+  // Redirect academy trainers away from restricted (financial / business) pages.
+  // The `.startsWith` check also covers nested routes (e.g. /invoices/new,
+  // /invoices/:id/edit, /settings/bookings). Slot detail is intentionally NOT here —
+  // academy trainers need it for attendance/notes/roster; its pricing/payment blocks
+  // are hidden in-page via useIsAcademyTrainer instead.
   const RESTRICTED_PATHS_FOR_ACADEMY = [
     '/app/trainer/settings',
     '/app/trainer/subscription',
     '/app/trainer/earnings',
+    '/app/trainer/invoices',
+    '/app/trainer/analytics',
     '/app/trainer/cycles',
+    '/app/trainer/cyclus',
     '/app/trainer/intake-requests',
     '/app/trainer/waiting-list',
     '/app/trainer/schedule-overview',
@@ -168,17 +169,20 @@ export default function TrainerLayout() {
   ];
 
   useEffect(() => {
-    if (!authResolving && hasAcademy) {
+    if (!authResolving && academyResolved && hasAcademy) {
       const isRestricted = RESTRICTED_PATHS_FOR_ACADEMY.some(p => location.pathname.startsWith(p));
-      // Also redirect dashboard index for academy trainers
+      // Also redirect dashboard index (financial tiles) for academy trainers.
       const isDashboardIndex = location.pathname === '/app/trainer' || location.pathname === '/app/trainer/';
       if (isRestricted || isDashboardIndex) {
-        navigate('/app/trainer/calendar', { replace: true });
+        // Land on the Agenda ("what's coming up") — their relevant, no-financials home.
+        navigate('/app/trainer/agenda', { replace: true });
       }
     }
-  }, [authResolving, hasAcademy, location.pathname, navigate]);
+  }, [authResolving, academyResolved, hasAcademy, location.pathname, navigate]);
 
-  const showLayoutLoading = authResolving || (isTrainerUser && onboardingGateLoading);
+  // Block render until affiliation is known too, so academy trainers never flash a
+  // financial page (or the onboarding bounce) before the signal resolves on first load.
+  const showLayoutLoading = authResolving || (isTrainerUser && (onboardingGateLoading || !academyResolved));
 
   if (showLayoutLoading) {
     return (
