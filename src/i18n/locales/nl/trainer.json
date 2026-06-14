@@ -87,6 +87,8 @@
     "noPlayersInCycle": "Geen spelers in deze cyclus",
     "addedToCycle": "Speler toegevoegd aan alle sessies",
     "removedFromCycle": "Speler verwijderd uit alle sessies",
+    "removedButSyncFailed": "Speler verwijderd, maar facturen konden niet volledig worden bijgewerkt",
+    "removedSyncFailedDesc": "Sommige facturen brengen de verwijderde speler mogelijk nog in rekening of tonen de verkeerde verdeling. Controleer de facturen van deze cyclus.",
     "sessionsLabel": "{{count}} sessies",
     "allDays": "Alle dagen",
     "allLocations": "Alle locaties",

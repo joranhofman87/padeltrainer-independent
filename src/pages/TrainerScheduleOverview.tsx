@@ -1057,18 +1057,32 @@ export default function TrainerScheduleOverview() {
             .update({ status: 'cancelled' })
             .in("id", cancelledIds);
 
-          // Sync affected invoices
+          // Sync affected invoices + recalc the split. If either fails, the
+          // removed player may still be billed / the split is stale — surface it
+          // instead of a false "success" (the booking cancel already committed).
+          let syncFailed = false;
           try {
             await syncInvoicesAfterBookingRemoval(cancelledIds);
           } catch (err) {
+            syncFailed = true;
             logger.error("Invoice sync failed after cycle player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
           }
-
-          // Recalculate split count for remaining players
           try {
             await syncSplitCountForCycle(editCycleId);
           } catch (err) {
+            syncFailed = true;
             logger.error("Split count sync failed after cycle player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+          }
+
+          if (syncFailed) {
+            setEditCyclePlayers(prev => prev.filter(p => p.id !== player.id));
+            toast({
+              title: t("scheduleOverview.removedButSyncFailed", "Player removed, but invoices could not be fully updated"),
+              description: t("scheduleOverview.removedSyncFailedDesc", "Some invoices may still bill the removed player or show the wrong split. Please review this cycle's invoices."),
+              variant: "destructive",
+            });
+            invalidate();
+            return;
           }
         }
       }

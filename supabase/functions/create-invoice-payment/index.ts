@@ -156,6 +156,16 @@ serve(async (req) => {
       });
     }
 
+    // Never send a non-positive amount to Mollie — a calc regression (negative /
+    // zero total) would 4xx every pay-link click and strand the invoice.
+    if (!(Number(invoice.total) > 0)) {
+      logStep("Refusing payment for non-positive total", { invoiceId: invoice.id, total: invoice.total });
+      return new Response(JSON.stringify({ error: "invalid_amount" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const resolvedInvoiceId = invoice.id;
 
     // Note: existing payment URL check moved to after token resolution

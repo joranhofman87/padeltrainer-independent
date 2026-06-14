@@ -87,6 +87,8 @@
     "noPlayersInCycle": "No players in this cycle",
     "addedToCycle": "Player added to all sessions",
     "removedFromCycle": "Player removed from all sessions",
+    "removedButSyncFailed": "Player removed, but invoices could not be fully updated",
+    "removedSyncFailedDesc": "Some invoices may still bill the removed player or show the wrong split. Please review this cycle's invoices.",
     "sessionsLabel": "{{count}} sessions",
     "allDays": "All days",
     "allLocations": "All locations",
