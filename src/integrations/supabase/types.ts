@@ -6857,6 +6857,10 @@ export type Database = {
         Args: { _academy_profile_id: string }
         Returns: boolean
       }
+      book_slot_for_payment: {
+        Args: { _payment_amount: number; _player_id: string; _slot_id: string }
+        Returns: string
+      }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
       claim_onboarding_email_queue_item: {

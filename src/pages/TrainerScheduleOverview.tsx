@@ -929,15 +929,26 @@ export default function TrainerScheduleOverview() {
       toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
       return;
     }
-    // Sync affected invoices
+    // Sync affected invoices — surface a failure instead of a false "removed"
+    // (the booking cancel already committed).
+    let syncFailed = false;
     try {
       await syncInvoicesAfterBookingRemoval([removeBookingId]);
     } catch (err) {
+      syncFailed = true;
       logger.error("Invoice sync failed after player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
     }
     setRemovingBooking(false);
-    toast({ title: t("scheduleOverview.playerRemoved", "Player removed from session") });
     setRemoveBookingId(null);
+    if (syncFailed) {
+      toast({
+        title: t("scheduleOverview.removedButSyncFailed", "Player removed, but invoices could not be fully updated"),
+        description: t("scheduleOverview.removedSyncFailedDesc", "Some invoices may still bill the removed player or show the wrong split. Please review this cycle's invoices."),
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: t("scheduleOverview.playerRemoved", "Player removed from session") });
+    }
     invalidate();
   };
 

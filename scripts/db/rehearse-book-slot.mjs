@@ -1,0 +1,20 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+const db = new PGlite();
+const SLOT = '50000000-0000-0000-0000-000000000001';
+const PL = '20000000-0000-0000-0000-000000000001';
+await db.exec(`
+  CREATE ROLE service_role;
+  CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, max_participants int);
+  CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, status text, payment_status text, payment_amount numeric);
+  INSERT INTO public.availability_slots VALUES ('${SLOT}', 2);
+`);
+await db.exec(readFileSync('supabase/migrations/20260614130000_book_slot_for_payment.sql','utf8'));
+let pass=0,fail=0; const ok=(c,m,x)=>{c?(pass++,console.log('PASS',m)):(fail++,console.error('FAIL',m,x??''));};
+const book=async(p)=>{ try{ const r=await db.query(`SELECT public.book_slot_for_payment($1,$2,$3) AS id`,[SLOT,p,40]); return {id:r.rows[0].id}; }catch(e){ return {err:String(e.message||e)}; } };
+let r=await book(PL); ok(!!r.id,'book #1 under capacity succeeds',r);
+r=await book('20000000-0000-0000-0000-000000000002'); ok(!!r.id,'book #2 fills the slot (2/2)',r);
+r=await book('20000000-0000-0000-0000-000000000003'); ok(!!r.err && /slot_full/.test(r.err),'book #3 rejected: slot_full (capacity enforced on paid path)',r);
+const n=Number((await db.query(`SELECT count(*) n FROM public.bookings WHERE slot_id='${SLOT}'`)).rows[0].n);
+ok(n===2,'no overbooking — exactly 2 bookings',n);
+console.log(fail===0?'\nALL book-slot checks passed':`\n${fail} FAILED`); process.exit(fail===0?0:1);

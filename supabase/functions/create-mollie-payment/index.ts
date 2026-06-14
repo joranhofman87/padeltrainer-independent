@@ -548,20 +548,26 @@ serve(async (req) => {
       }
       logStep("Payment amounts distributed across cyclus bookings", { totalCents, count: n });
     } else {
-      const { data: booking, error: bookingError } = await supabase
-        .from("bookings")
-        .insert({
-          slot_id: slotId,
-          player_id: playerProfile.id,
-          payment_status: "pending",
-          status: "pending",
-          payment_amount: expectedAmount,
-        })
-        .select()
-        .single();
+      // Capacity-gated insert: the service-role client bypasses
+      // enforce_booking_slot_tier, so route through book_slot_for_payment which
+      // takes the per-slot advisory lock + capacity check before inserting.
+      const { data: newBookingId, error: bookingError } = await supabase.rpc("book_slot_for_payment", {
+        _slot_id: slotId,
+        _player_id: playerProfile.id,
+        _payment_amount: expectedAmount,
+      });
 
-      if (bookingError) throw new Error(`Failed to create booking: ${bookingError.message}`);
-      bookingId = booking.id;
+      if (bookingError) {
+        if ((bookingError.message || "").includes("slot_full")) {
+          logStep("Refusing payment — slot full", { slotId });
+          return new Response(JSON.stringify({ error: "slot_full" }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        throw new Error(`Failed to create booking: ${bookingError.message}`);
+      }
+      bookingId = newBookingId as string;
       allBookingIds.push(bookingId);
       logStep("Booking created", { bookingId, payment_amount: expectedAmount });
     }
