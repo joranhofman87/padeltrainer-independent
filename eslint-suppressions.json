@@ -1072,7 +1072,7 @@
   },
   "src/pages/academy/AcademyInvoices.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 19
+      "count": 13
     }
   },
   "src/pages/academy/AcademyLocations.tsx": {
@@ -1316,7 +1316,7 @@
   },
   "src/pages/trainer/TrainerInvoices.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 8
+      "count": 7
     }
   },
   "src/pages/trainer/TrainerSlotDetail.tsx": {

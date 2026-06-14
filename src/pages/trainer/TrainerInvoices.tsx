@@ -13,6 +13,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import {
+  INVOICE_PAGE_SIZE,
+  useTrainerInvoices,
+  useTrainerInvoiceSummary,
+  fetchAllTrainerInvoices,
+  type TrainerInvoiceRow,
+} from "@/lib/invoicesList";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -39,35 +55,9 @@ import {
   checkInvoiceSettingsGate,
 } from "@/lib/invoiceShareGuards";
 
-interface Invoice {
-  id: string;
-  invoice_number: string;
-  invoice_date: string;
-  due_date: string;
-  player_name: string;
-  player_id: string | null;
-  guest_player_id: string | null;
-  total: number;
-  status: string;
-  sent_at: string | null;
-  paid_at: string | null;
-  forwarded_at: string | null;
-  pdf_url: string | null;
-  mollie_payment_url: string | null;
-  mollie_payment_id: string | null;
-  line_items: any;
-  subtotal: number;
-  vat_amount: number;
-  vat_rate: number;
-  public_token: string;
-  prices_include_vat?: boolean;
-  player_business_name?: string;
-  player_address?: string;
-  player_btw_number?: string;
-  booking_ids?: string[] | null;
-  notes?: string | null;
-  trainer_id?: string | null;
-}
+// The visible rows are now the server-paginated RPC rows. Aliasing keeps every
+// existing (inv: Invoice) signature valid against the new row shape.
+type Invoice = TrainerInvoiceRow;
 
 export default function TrainerInvoices() {
   const { t, i18n } = useTranslation("trainer");
@@ -89,7 +79,11 @@ export default function TrainerInvoices() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkDueOpen, setBulkDueOpen] = useState(false);
   const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
+  const [page, setPage] = useState(0);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
+
+  // Server-side ILIKE search: debounce the input before it hits the RPC.
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -135,48 +129,12 @@ export default function TrainerInvoices() {
     }
   };
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["trainer-invoices", trainerId],
-    queryFn: async () => {
-      if (!trainerId) return [];
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("trainer_id", trainerId)
-        .is("academy_profile_id", null)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data || []) as Invoice[];
-    },
-    enabled: !!trainerId,
-  });
+  // useTableSort is kept ONLY as the header-click UI affordance; the visible
+  // rows come from the server page, so it sorts nothing locally (empty input).
+  const { sortConfig, handleSort, setSortConfig } = useTableSort<Invoice>([]);
 
-  const getComputedStatus = (inv: Invoice): string => {
-    if (inv.status === "paid") return "paid";
-    if (inv.status === "cancelled") return "cancelled";
-    if (inv.sent_at && new Date(inv.due_date) < new Date()) return "overdue";
-    if (inv.sent_at) return "sent";
-    if (inv.status === "draft") return "draft";
-    return "open";
-  };
-
-  const unpaidInvoices = invoices.filter((i) => i.status !== "paid" && i.status !== "cancelled");
-  const paidInvoices = invoices.filter((i) => i.status === "paid");
-  const draftInvoices = invoices.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
-
-  const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
-
-  const statusFiltered = statusFilter === "all"
-    ? tabFiltered
-    : tabFiltered.filter(i => getComputedStatus(i) === statusFilter);
-
-  const searchFiltered = statusFiltered.filter(i =>
-    !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
-  const { sortedData, sortConfig, handleSort, setSortConfig } = useTableSort(dataWithStatus);
-
+  // Force the paid-tab default sort exactly as before: paid_at desc on the paid
+  // tab, created_at desc (no column chosen) on the unpaid tab.
   useEffect(() => {
     if (activeTab === "paid") {
       setSortConfig({ key: "paid_at" as any, direction: "desc" });
@@ -184,9 +142,64 @@ export default function TrainerInvoices() {
       setSortConfig({ key: null, direction: null });
     }
   }, [activeTab, setSortConfig]);
-  const filteredInvoices = sortedData.map(({ _computedStatus, ...rest }) => rest as Invoice);
 
-  const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
+  // Translate the header-click sortConfig into the RPC sort/sortDir params.
+  const sort: string = (() => {
+    switch (sortConfig.key as string | null) {
+      case "player_name": return "player_name";
+      case "total": return "total";
+      case "due_date": return "due_date";
+      case "_computedStatus": return "status";
+      case "paid_at": return "paid_at";
+      default: return "created_at";
+    }
+  })();
+  const sortDir: "asc" | "desc" = sortConfig.direction === "asc" ? "asc" : "desc";
+
+  const tab: "unpaid" | "paid" = activeTab === "paid" ? "paid" : "unpaid";
+
+  const { data: overview, isLoading } = useTrainerInvoices(trainerId, {
+    tab,
+    status: statusFilter === "all" ? null : statusFilter,
+    search: debouncedSearch || null,
+    sort,
+    sortDir,
+    page,
+    pageSize: INVOICE_PAGE_SIZE,
+  });
+
+  // Scoreboard reads from the summary RPC (always one row) so the tiles + tab
+  // labels stay correct even when the current tab/page is empty. The trainer
+  // page has no trainer/location sub-filters, so the summary has no scope.
+  const { data: summary } = useTrainerInvoiceSummary(trainerId);
+  const sumUnpaid = summary?.sumUnpaid ?? 0;
+  const countUnpaid = summary?.countUnpaid ?? 0;
+  const countPaid = summary?.countPaid ?? 0;
+  const countDraft = summary?.countDraft ?? 0;
+
+  // VISIBLE LIST = the server page rows only. No client-side re-filter/re-sort.
+  const filteredInvoices = overview?.rows ?? [];
+
+  const totalUnpaid = sumUnpaid;
+
+  const pageCount = Math.max(1, Math.ceil((overview?.total ?? 0) / INVOICE_PAGE_SIZE));
+  const goToPage = (p: number) => setPage(Math.min(pageCount - 1, Math.max(0, p)));
+
+  // Keep the page in range if the result set shrinks (e.g. after a bulk delete).
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(0, p), pageCount - 1));
+  }, [pageCount]);
+
+  // Reset to the first page whenever any list-shaping input changes.
+  useEffect(() => {
+    setPage(0);
+  }, [activeTab, statusFilter, debouncedSearch, sort, sortDir]);
+
+  // Selection is page-scoped: clear it on any filter/tab/page change so the
+  // page-scoped selectedInvoices (rows on the current page) is always safe.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeTab, statusFilter, debouncedSearch, sort, sortDir, page]);
 
   const invoiceSettingsLabels = buildTrainerInvoiceSettingsLabels(t);
 
@@ -281,10 +294,13 @@ export default function TrainerInvoices() {
   // Bulk send
   const handleSendAllDrafts = async () => {
     if (!ensureInvoiceSettingsComplete()) return;
+    if (!trainerId) return;
     setSendingAll(true);
+    // Reach is ALL unsent drafts (every page), not just the visible page.
+    const drafts = (await fetchAllTrainerInvoices(trainerId, { tab: "unpaid" })).filter((i) => !i.sent_at);
     let sent = 0, noEmail = 0, failed = 0;
     const undelivered: string[] = [];
-    for (const inv of draftInvoices) {
+    for (const inv of drafts) {
       const rowLabel = inv.player_name ? `${inv.invoice_number} (${inv.player_name})` : inv.invoice_number;
       try {
         const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", { body: { invoiceId: inv.id } });
@@ -310,7 +326,7 @@ export default function TrainerInvoices() {
     if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
     if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
     if (failed > 0) parts.push(t("invoices.bulkFailed", { count: failed }));
-    const summary = t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") });
+    const summary = t("invoices.bulkProcessed", { total: drafts.length, parts: parts.join(", ") });
     if (undelivered.length > 0) {
       const MAX_LISTED = 8;
       const list = undelivered.slice(0, MAX_LISTED).join(", ") + (undelivered.length > MAX_LISTED ? ", …" : "");
@@ -362,7 +378,9 @@ export default function TrainerInvoices() {
   };
 
   // ========== Bulk actions ==========
-  const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
+  // Selection is page-scoped (cleared on page change), so the selected rows are
+  // exactly the chosen rows on the current page.
+  const selectedInvoices = filteredInvoices.filter((i) => selectedIds.has(i.id));
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
@@ -527,10 +545,10 @@ export default function TrainerInvoices() {
         description={t("invoices.description", "Beheer je facturen")}
         actions={
           <>
-            {draftInvoices.length > 0 && (
+            {countDraft > 0 && (
               <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
                 {sendingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                {sendingAll ? t("invoices.sendingAll", "Verzenden...") : t("invoices.sendAllDrafts", "Alle concepten verzenden")} ({draftInvoices.length})
+                {sendingAll ? t("invoices.sendingAll", "Verzenden...") : t("invoices.sendAllDrafts", "Alle concepten verzenden")} ({countDraft})
               </Button>
             )}
             <Button size="sm" onClick={() => navigate('/app/trainer/invoices/new')}>
@@ -585,15 +603,15 @@ export default function TrainerInvoices() {
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="font-display text-2xl font-semibold tabular-nums">{formatCurrency(totalUnpaid)}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open facturen")}</p><p className="font-display text-2xl font-semibold tabular-nums">{unpaidInvoices.length}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="font-display text-2xl font-semibold tabular-nums">{paidInvoices.length}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open facturen")}</p><p className="font-display text-2xl font-semibold tabular-nums">{countUnpaid}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="font-display text-2xl font-semibold tabular-nums">{countPaid}</p></CardContent></Card>
           </div>
 
           {/* Tabs + Filters */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
             <TabsList>
-              <TabsTrigger value="unpaid">{t("invoices.unpaid", "Openstaand")} ({unpaidInvoices.length})</TabsTrigger>
-              <TabsTrigger value="paid">{t("invoices.paid", "Betaald")} ({paidInvoices.length})</TabsTrigger>
+              <TabsTrigger value="unpaid">{t("invoices.unpaid", "Openstaand")} ({countUnpaid})</TabsTrigger>
+              <TabsTrigger value="paid">{t("invoices.paid", "Betaald")} ({countPaid})</TabsTrigger>
             </TabsList>
             <TableToolbar
               searchPlaceholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
@@ -749,6 +767,45 @@ export default function TrainerInvoices() {
                     ))}
                   </div>
                 </>
+              )}
+
+              {pageCount > 1 && (
+                <Pagination className="mt-4">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        aria-disabled={page === 0}
+                        className={page === 0 ? 'pointer-events-none opacity-50' : ''}
+                        onClick={(e) => { e.preventDefault(); goToPage(page - 1); }}
+                      />
+                    </PaginationItem>
+                    {Array.from({ length: pageCount }, (_, i) => i)
+                      .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
+                      .map((i, idx, arr) => (
+                        <PaginationItem key={i}>
+                          {idx > 0 && arr[idx - 1] !== i - 1 ? (
+                            <span className="px-2 text-muted-foreground">…</span>
+                          ) : null}
+                          <PaginationLink
+                            href="#"
+                            isActive={i === page}
+                            onClick={(e) => { e.preventDefault(); goToPage(i); }}
+                          >
+                            {i + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        aria-disabled={page >= pageCount - 1}
+                        className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
+                        onClick={(e) => { e.preventDefault(); goToPage(page + 1); }}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               )}
             </TabsContent>
           </Tabs>

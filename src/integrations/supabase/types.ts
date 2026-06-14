@@ -6896,6 +6896,73 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_academy_invoice_summary: {
+        Args: {
+          p_academy_profile_id: string
+          p_location_id?: string
+          p_trainer_id?: string
+        }
+        Returns: {
+          count_draft: number
+          count_paid: number
+          count_unpaid: number
+          sum_unpaid: number
+        }[]
+      }
+      get_academy_invoices: {
+        Args: {
+          p_academy_profile_id: string
+          p_limit?: number
+          p_location_id?: string
+          p_no_email?: boolean
+          p_offset?: number
+          p_search?: string
+          p_sort?: string
+          p_sort_dir?: string
+          p_status?: string
+          p_tab?: string
+          p_trainer_id?: string
+        }
+        Returns: {
+          academy_profile_id: string
+          booking_ids: string[]
+          computed_status: string
+          created_at: string
+          due_date: string
+          forwarded_at: string
+          guest_player_id: string
+          id: string
+          invoice_date: string
+          invoice_number: string
+          line_items: Json
+          linked_email: string
+          location_id: string
+          mollie_payment_id: string
+          mollie_payment_url: string
+          notes: string
+          paid_at: string
+          pdf_url: string
+          player_address: string
+          player_btw_number: string
+          player_business_name: string
+          player_id: string
+          player_name: string
+          prices_include_vat: boolean
+          public_token: string
+          public_token_revoked_at: string
+          sent_at: string
+          split_count: number
+          status: string
+          subtotal: number
+          total: number
+          total_count: number
+          trainer_id: string
+          updated_at: string
+          vat_amount: number
+          vat_breakdown: Json
+          vat_rate: number
+        }[]
+      }
       get_invoice_recipient_email: {
         Args: { _invoice_id: string }
         Returns: string
@@ -6958,6 +7025,64 @@ export type Database = {
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
+      get_trainer_invoice_summary: {
+        Args: { p_trainer_id: string }
+        Returns: {
+          count_draft: number
+          count_paid: number
+          count_unpaid: number
+          sum_unpaid: number
+        }[]
+      }
+      get_trainer_invoices: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_sort?: string
+          p_sort_dir?: string
+          p_status?: string
+          p_tab?: string
+          p_trainer_id: string
+        }
+        Returns: {
+          academy_profile_id: string
+          booking_ids: string[]
+          computed_status: string
+          created_at: string
+          due_date: string
+          forwarded_at: string
+          guest_player_id: string
+          id: string
+          invoice_date: string
+          invoice_number: string
+          line_items: Json
+          mollie_payment_id: string
+          mollie_payment_url: string
+          notes: string
+          paid_at: string
+          pdf_url: string
+          player_address: string
+          player_btw_number: string
+          player_business_name: string
+          player_id: string
+          player_name: string
+          prices_include_vat: boolean
+          public_token: string
+          public_token_revoked_at: string
+          sent_at: string
+          split_count: number
+          status: string
+          subtotal: number
+          total: number
+          total_count: number
+          trainer_id: string
+          updated_at: string
+          vat_amount: number
+          vat_breakdown: Json
+          vat_rate: number
+        }[]
+      }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_role: {

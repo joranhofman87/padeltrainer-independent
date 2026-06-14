@@ -13,6 +13,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import {
+  INVOICE_PAGE_SIZE,
+  useAcademyInvoices,
+  useAcademyInvoiceSummary,
+  fetchAllAcademyInvoices,
+  type AcademyInvoiceRow,
+} from "@/lib/invoicesList";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -34,7 +50,7 @@ import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceS
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
-import { deriveInvoiceStatus, type InvoiceStatus } from "@/lib/invoiceStatus";
+import { type InvoiceStatus } from "@/lib/invoiceStatus";
 import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
 import {
   buildInvoiceSettingsLabels,
@@ -42,35 +58,10 @@ import {
 } from "@/lib/invoiceShareGuards";
 
 
-interface Invoice {
-  id: string;
-  invoice_number: string;
-  invoice_date: string;
-  due_date: string;
-  player_name: string;
-  player_id: string | null;
-  guest_player_id: string | null;
-  total: number;
-  status: string;
-  sent_at: string | null;
-  paid_at: string | null;
-  forwarded_at: string | null;
-  pdf_url: string | null;
-  mollie_payment_url: string | null;
-  mollie_payment_id: string | null;
-  line_items: any;
-  subtotal: number;
-  vat_amount: number;
-  vat_rate: number;
-  public_token: string;
-  prices_include_vat?: boolean;
-  player_business_name?: string;
-  player_address?: string;
-  player_btw_number?: string;
-  booking_ids?: string[] | null;
-  notes?: string | null;
-  trainer_id?: string | null;
-}
+// The visible list is now the server-paginated RPC row (33 invoice columns plus
+// computed_status / total_count / linked_email / location_id). Aliasing keeps the
+// existing mutation/handler/ShareDropdown signatures intact across the data swap.
+type Invoice = AcademyInvoiceRow;
 
 export default function AcademyInvoices() {
   const { t, i18n } = useTranslation("academy");
@@ -105,9 +96,75 @@ export default function AcademyInvoices() {
   const [bulkDueOpen, setBulkDueOpen] = useState(false);
   const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
   const [noEmailFilter, setNoEmailFilter] = useState(false);
+  const [page, setPage] = useState(0);
+  const debouncedSearch = useDebouncedValue(searchQuery);
 
-  // Clear selection when filters/tab change
-  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, searchQuery, noEmailFilter]);
+  // Header-click sort affordance only; translated to RPC sort/sortDir params below.
+  const { sortConfig, handleSort, setSortConfig } = useTableSort<Invoice>([]);
+
+  // Translate the sortConfig column to the RPC's server-side sort key.
+  const rpcSort =
+    sortConfig.key === "player_name" ? "player_name"
+    : sortConfig.key === "total" ? "total"
+    : sortConfig.key === "due_date" ? "due_date"
+    : sortConfig.key === "_computedStatus" ? "status"
+    : sortConfig.key === "paid_at" ? "paid_at"
+    : "created_at";
+  const rpcSortDir: "asc" | "desc" = sortConfig.direction === "asc" ? "asc" : "desc";
+
+  // Force the paid-tab default sort (paid_at desc) and clear it on the unpaid tab
+  // so the unpaid default falls back to created_at desc — preserved from before.
+  useEffect(() => {
+    if (activeTab === "paid") {
+      setSortConfig({ key: "paid_at" as any, direction: "desc" });
+    } else {
+      setSortConfig({ key: null, direction: null });
+    }
+  }, [activeTab, setSortConfig]);
+
+  const academyId = activeAcademy?.id;
+  const trainerScope = trainerFilter === "all" ? null : trainerFilter;
+  const locationScope = locationFilter === "all" ? null : locationFilter;
+  const statusScope = statusFilter === "all" ? null : statusFilter;
+
+  // Server-paginated visible list (exact at >1000 invoices; no client re-filter/sort).
+  const { data: overview, isLoading } = useAcademyInvoices(academyId, {
+    tab: activeTab === "paid" ? "paid" : "unpaid",
+    status: statusScope,
+    search: debouncedSearch || null,
+    trainerId: trainerScope,
+    locationId: locationScope,
+    noEmail: noEmailFilter,
+    sort: rpcSort,
+    sortDir: rpcSortDir,
+    page,
+    pageSize: INVOICE_PAGE_SIZE,
+  });
+
+  // Receivables scoreboard: follows trainer + location, ignores tab/status/search/no-email
+  // (contract rule 3). This is the financial-correctness source — never derived from page rows.
+  const { data: summary } = useAcademyInvoiceSummary(academyId, {
+    trainerId: trainerScope,
+    locationId: locationScope,
+  });
+
+  const filteredInvoices: Invoice[] = overview?.rows ?? [];
+  const totalUnpaid = summary?.sumUnpaid ?? 0;
+  const countUnpaid = summary?.countUnpaid ?? 0;
+  const countPaid = summary?.countPaid ?? 0;
+  const countDraft = summary?.countDraft ?? 0;
+  const pageCount = Math.max(1, Math.ceil((overview?.total ?? 0) / INVOICE_PAGE_SIZE));
+
+  // Keep page in range and reset to the first page whenever the query inputs change.
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(0, p), pageCount - 1));
+  }, [pageCount]);
+  useEffect(() => {
+    setPage(0);
+  }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, noEmailFilter, rpcSort, rpcSortDir]);
+
+  // Clear selection when filters/tab/page change (selection is page-scoped).
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, noEmailFilter, page]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -211,145 +268,10 @@ export default function AcademyInvoices() {
     return true;
   };
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["academy-invoices", activeAcademy?.id],
-    queryFn: async () => {
-      if (!activeAcademy?.id) return [];
-      const { data, error } = await supabase
-        .from("invoices")
-        // Pull the linked player's email from the same query so the "no email"
-        // indicator always reflects the player record (single source of truth)
-        // and never goes stale against a separate cache.
-        .select("*, guest_players(email), profiles(email)")
-        .eq("academy_profile_id", activeAcademy.id)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as Invoice[];
-    },
-    enabled: !!activeAcademy?.id,
-  });
-
-  // Email is read from the linked player record (guest_players / profiles) in
-  // the main invoices query above — one source, so it stays correct after an
-  // email is added or edited instead of lingering as a false "no email".
-  const invoiceHasEmail = (inv: Invoice) => {
-    const linked = inv as Invoice & {
-      guest_players?: { email?: string | null } | null;
-      profiles?: { email?: string | null } | null;
-    };
-    return Boolean(linked.guest_players?.email || linked.profiles?.email);
-  };
-
-  // Build invoice → location map from booking_ids → bookings → slots
-  const { data: invoiceLocationMap = {} } = useQuery({
-    queryKey: ["invoice-location-map", invoices.map(i => i.id).join(",")],
-    queryFn: async () => {
-      const allBookingIds = Array.from(new Set(
-        invoices.flatMap(i => i.booking_ids || []).filter(Boolean)
-      ));
-      if (allBookingIds.length === 0) return {};
-
-      // Batch in chunks to avoid the default 1000-row limit and overly long IN clauses
-      const chunk = <T,>(arr: T[], size: number): T[][] => {
-        const out: T[][] = [];
-        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-        return out;
-      };
-
-      const bookings: { id: string; slot_id: string }[] = [];
-      for (const ids of chunk(allBookingIds, 200)) {
-        const { data } = await supabase
-          .from("bookings")
-          .select("id, slot_id")
-          .in("id", ids);
-        if (data) bookings.push(...(data as any));
-      }
-      if (!bookings.length) return {};
-
-      const slotIds = Array.from(new Set(bookings.map(b => b.slot_id).filter(Boolean)));
-      const slots: { id: string; location_id: string | null }[] = [];
-      for (const ids of chunk(slotIds, 200)) {
-        const { data } = await supabase
-          .from("availability_slots")
-          .select("id, location_id")
-          .in("id", ids);
-        if (data) slots.push(...(data as any));
-      }
-      if (!slots.length) return {};
-      
-      const slotLocationMap = slots.reduce((acc: Record<string, string>, s: any) => {
-        if (s.location_id) acc[s.id] = s.location_id;
-        return acc;
-      }, {});
-      
-      const bookingLocationMap = bookings.reduce((acc: Record<string, string>, b: any) => {
-        if (slotLocationMap[b.slot_id]) acc[b.id] = slotLocationMap[b.slot_id];
-        return acc;
-      }, {});
-      
-      const map: Record<string, string> = {};
-      for (const inv of invoices) {
-        for (const bid of (inv.booking_ids || [])) {
-          if (bookingLocationMap[bid]) {
-            map[inv.id] = bookingLocationMap[bid];
-            break;
-          }
-        }
-      }
-      return map;
-    },
-    enabled: invoices.length > 0,
-  });
-
-
-  // The academy keys "sent" off sent_at (the actual delivery signal), so feed a
-  // normalized status into the shared deriver for the sent/overdue rule while
-  // keeping the academy-only 'open' state (created but not yet sent).
-  const getComputedStatus = (inv: Invoice): InvoiceStatus | "open" => {
-    if (inv.status === "paid") return "paid";
-    if (inv.status === "cancelled") return "cancelled";
-    if (inv.sent_at) return deriveInvoiceStatus({ status: "sent", due_date: inv.due_date });
-    if (inv.status === "draft") return "draft";
-    return "open";
-  };
-
-  // Filter by trainer, then by location
-  const trainerFiltered = trainerFilter === "all"
-    ? invoices
-    : invoices.filter(i => (i as any).trainer_id === trainerFilter);
-
-  const locationFiltered = locationFilter === "all"
-    ? trainerFiltered
-    : trainerFiltered.filter(i => (invoiceLocationMap as Record<string, string>)[i.id] === locationFilter);
-
-  const unpaidInvoices = locationFiltered.filter((i) => i.status !== "paid" && i.status !== "cancelled");
-  const paidInvoices = locationFiltered.filter((i) => i.status === "paid");
-  const draftInvoices = locationFiltered.filter((i) => !i.sent_at && i.status !== "paid" && i.status !== "cancelled");
-
-  const tabFiltered = activeTab === "paid" ? paidInvoices : unpaidInvoices;
-
-  const statusFiltered = statusFilter === "all"
-    ? tabFiltered
-    : tabFiltered.filter(i => getComputedStatus(i) === statusFilter);
-
-  const searchFiltered = statusFiltered.filter(i =>
-    !searchQuery || i.player_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  ).filter(i => !noEmailFilter || !invoiceHasEmail(i));
-
-  // Add computed status for sorting
-  const dataWithStatus = searchFiltered.map(i => ({ ...i, _computedStatus: getComputedStatus(i) }));
-  const { sortedData, sortConfig, handleSort, setSortConfig } = useTableSort(dataWithStatus);
-
-  useEffect(() => {
-    if (activeTab === "paid") {
-      setSortConfig({ key: "paid_at" as any, direction: "desc" });
-    } else {
-      setSortConfig({ key: null, direction: null });
-    }
-  }, [activeTab, setSortConfig]);
-  const filteredInvoices = sortedData.map(({ _computedStatus, ...rest }) => rest as Invoice);
-
-  const totalUnpaid = unpaidInvoices.reduce((sum, i) => sum + i.total, 0);
+  // The "no email" indicator now reads the linked-player email resolved
+  // server-side by the RPC (single source of truth). Typed non-null by the
+  // generator, but null at runtime when no email is linked — handle defensively.
+  const invoiceHasEmail = (inv: Invoice) => inv.linked_email != null;
 
   // Map a known send-failure reason from the send-invoice-email function to
   // actionable copy for the failure toast description.
@@ -427,13 +349,23 @@ export default function AcademyInvoices() {
   // Bulk send all drafts
   const handleSendAllDrafts = async () => {
     if (!ensureInvoiceSettingsComplete()) return;
+    if (!academyId) return;
     setSendingAll(true);
     let sent = 0;
     let noEmail = 0;
     let failed = 0;
     const undelivered: string[] = [];
 
-    for (const inv of draftInvoices) {
+    // Reach ALL unsent drafts (not just the visible page) within the current
+    // trainer/location scope — page the unpaid tab server-side, then keep rows
+    // that were never sent.
+    const drafts = (await fetchAllAcademyInvoices(academyId, {
+      tab: "unpaid",
+      trainerId: trainerScope,
+      locationId: locationScope,
+    })).filter((i) => !i.sent_at);
+
+    for (const inv of drafts) {
       const rowLabel = inv.player_name ? `${inv.invoice_number} (${inv.player_name})` : inv.invoice_number;
       try {
         const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", {
@@ -467,7 +399,7 @@ export default function AcademyInvoices() {
     if (sent > 0) parts.push(t("invoices.bulkSent", { count: sent }));
     if (noEmail > 0) parts.push(t("invoices.bulkNoEmail", { count: noEmail }));
     if (failed > 0) parts.push(t("invoices.bulkFailed", { count: failed }));
-    const summary = t("invoices.bulkProcessed", { total: draftInvoices.length, parts: parts.join(", ") });
+    const summary = t("invoices.bulkProcessed", { total: drafts.length, parts: parts.join(", ") });
     if (undelivered.length > 0) {
       const MAX_LISTED = 8;
       const list = undelivered.slice(0, MAX_LISTED).join(", ") + (undelivered.length > MAX_LISTED ? ", …" : "");
@@ -539,7 +471,9 @@ export default function AcademyInvoices() {
   };
 
   // ========== Bulk actions ==========
-  const selectedInvoices = invoices.filter((i) => selectedIds.has(i.id));
+  // Selection is page-scoped (cleared on page change), so resolve against the
+  // visible page rows rather than a full in-memory set.
+  const selectedInvoices = (overview?.rows ?? []).filter((i) => selectedIds.has(i.id));
 
   const toggleSelectAllVisible = (visible: Invoice[]) => {
     setSelectedIds((prev) => {
@@ -637,13 +571,13 @@ export default function AcademyInvoices() {
   };
 
   const getStatusBadge = (invoice: Invoice) => {
-    const status = getComputedStatus(invoice);
+    const status = invoice.computed_status;
     // 'open' is academy-only (not in the canonical InvoiceStatus); the five
     // canonical states render via the shared InvoiceStatusBadge.
     if (status === "open") {
       return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
     }
-    return <InvoiceStatusBadge status={status} />;
+    return <InvoiceStatusBadge status={status as InvoiceStatus} />;
   };
 
   const getPaymentUrl = (inv: Invoice) =>
@@ -715,12 +649,12 @@ export default function AcademyInvoices() {
         description={t("invoices.description", "Beheer facturen voor je academy")}
         actions={
           <>
-            {draftInvoices.length > 0 && (
+            {countDraft > 0 && (
               <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
                 {sendingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                 {sendingAll
                   ? t("invoices.sendingAll", "Sending...")
-                  : t("invoices.sendAllDrafts", "Send all drafts")} ({draftInvoices.length})
+                  : t("invoices.sendAllDrafts", "Send all drafts")} ({countDraft})
               </Button>
             )}
             <Button size="sm" onClick={() => navigate('/app/academy/invoices/new')}>
@@ -754,13 +688,13 @@ export default function AcademyInvoices() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open invoices")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{unpaidInvoices.length}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{countUnpaid}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.paid", "Paid")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{paidInvoices.length}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{countPaid}</p>
           </CardContent>
         </Card>
       </div>
@@ -799,8 +733,8 @@ export default function AcademyInvoices() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <TabsList>
-          <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({unpaidInvoices.length})</TabsTrigger>
-          <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({paidInvoices.length})</TabsTrigger>
+          <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({countUnpaid})</TabsTrigger>
+          <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({countPaid})</TabsTrigger>
         </TabsList>
 
         <TableToolbar
@@ -1059,6 +993,45 @@ export default function AcademyInvoices() {
                   </Card>
                 ))}
               </div>
+
+              {pageCount > 1 && (
+                <Pagination className="mt-4">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        aria-disabled={page === 0}
+                        className={page === 0 ? 'pointer-events-none opacity-50' : ''}
+                        onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
+                      />
+                    </PaginationItem>
+                    {Array.from({ length: pageCount }, (_, i) => i)
+                      .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
+                      .map((i, idx, arr) => (
+                        <PaginationItem key={i}>
+                          {idx > 0 && arr[idx - 1] !== i - 1 ? (
+                            <span className="px-2 text-muted-foreground">…</span>
+                          ) : null}
+                          <PaginationLink
+                            href="#"
+                            isActive={i === page}
+                            onClick={(e) => { e.preventDefault(); setPage(i); }}
+                          >
+                            {i + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        aria-disabled={page >= pageCount - 1}
+                        className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
+                        onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              )}
             </>
           )}
         </TabsContent>
