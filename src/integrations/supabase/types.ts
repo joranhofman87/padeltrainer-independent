@@ -7205,6 +7205,8 @@ export type Database = {
         }
         Returns: undefined
       }
+      try_lock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
+      unlock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
       unschedule_all_background_pg_cron_jobs: {
         Args: never
         Returns: undefined

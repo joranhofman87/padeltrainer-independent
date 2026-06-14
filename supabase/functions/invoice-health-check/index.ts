@@ -26,10 +26,26 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  let cronLockHeld = false;
+
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // CRON-SF-02: single-flight — bail if another run holds the lock so two
+    // overlapping firings don't re-run the anomaly scan and double-post the
+    // Slack alert (read-only, so the gap is duplicate work + alert noise only).
+    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: "invoice-health-check" });
+    if (cronLocked === false) {
+      // Another run holds the lock → skip this duplicate firing.
+      return new Response(
+        JSON.stringify({ status: "skipped", reason: "locked" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    // Fail-open: only release if we actually acquired it (RPC error / not-yet-deployed
+    // → proceed without the guard rather than halt the health check).
+    cronLockHeld = cronLocked === true;
 
     const anomalies: InvoiceAnomaly[] = [];
 
@@ -172,5 +188,9 @@ serve(async (req) => {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } finally {
+    if (cronLockHeld) {
+      try { await supabase.rpc("unlock_cron_job", { p_job_name: "invoice-health-check" }); } catch { /* best-effort; auto-releases on connection recycle */ }
+    }
   }
 });

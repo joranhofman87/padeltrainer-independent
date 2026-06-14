@@ -355,7 +355,10 @@ async function generateInvoicePDF(invoice: InvoiceData): Promise<Uint8Array> {
       continue;
     }
     try {
-      const logoResponse = await fetch(tryUrl);
+      // GEN-INVOICE-01: bound the external logo fetch so a slow/hung logo host
+      // can never hang the whole PDF render — on timeout the AbortError is caught
+      // below and we fall through to the next URL / the business-name text fallback.
+      const logoResponse = await fetch(tryUrl, { signal: AbortSignal.timeout(3000) });
       if (logoResponse.ok) {
         const contentType = logoResponse.headers.get('content-type') || '';
         if (contentType.includes('svg') || contentType.includes('avif') || contentType.includes('webp')) {
