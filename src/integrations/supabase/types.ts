@@ -2132,6 +2132,60 @@ export type Database = {
           },
         ]
       }
+      coaching_note_views: {
+        Row: {
+          note_id: string
+          profile_id: string
+          seen_at: string
+        }
+        Insert: {
+          note_id: string
+          profile_id: string
+          seen_at?: string
+        }
+        Update: {
+          note_id?: string
+          profile_id?: string
+          seen_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_note_views_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "session_player_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_note_views_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_note_views_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_note_views_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_note_views_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_topics: {
         Row: {
           angle: string | null
@@ -4549,6 +4603,91 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_player_notes: {
+        Row: {
+          author_id: string
+          author_role: string
+          body: string
+          created_at: string
+          id: string
+          media: Json | null
+          slot_id: string
+          subject_guest_player_id: string | null
+          subject_profile_id: string | null
+          updated_at: string
+          visibility: string
+        }
+        Insert: {
+          author_id: string
+          author_role: string
+          body: string
+          created_at?: string
+          id?: string
+          media?: Json | null
+          slot_id: string
+          subject_guest_player_id?: string | null
+          subject_profile_id?: string | null
+          updated_at?: string
+          visibility?: string
+        }
+        Update: {
+          author_id?: string
+          author_role?: string
+          body?: string
+          created_at?: string
+          id?: string
+          media?: Json | null
+          slot_id?: string
+          subject_guest_player_id?: string | null
+          subject_profile_id?: string | null
+          updated_at?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_player_notes_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_player_notes_subject_guest_player_id_fkey"
+            columns: ["subject_guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_player_notes_subject_profile_id_fkey"
+            columns: ["subject_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_player_notes_subject_profile_id_fkey"
+            columns: ["subject_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_player_notes_subject_profile_id_fkey"
+            columns: ["subject_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_player_notes_subject_profile_id_fkey"
+            columns: ["subject_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -7000,6 +7139,27 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_player_journey: {
+        Args: { p_limit?: number; p_offset?: number; p_profile_id: string }
+        Returns: {
+          academy_profile_id: string
+          end_time: string
+          group_summary: string
+          location_name: string
+          own_notes: Json
+          player_confirmed: boolean
+          rating_at_session: number
+          rating_system: string
+          session_happened: boolean
+          shared_coaching_notes: Json
+          slot_id: string
+          start_time: string
+          total_count: number
+          trainer_confirmed: boolean
+          trainer_id: string
+          trainer_name: string
+        }[]
+      }
       get_players_overview: {
         Args: {
           p_filters?: Json
@@ -7100,6 +7260,10 @@ export type Database = {
           vat_breakdown: Json
           vat_rate: number
         }[]
+      }
+      get_unseen_shared_feedback_count: {
+        Args: { p_profile_id: string }
+        Returns: number
       }
       get_user_academy_ids: { Args: { _user_id: string }; Returns: string[] }
       get_user_club_ids: { Args: { _user_id: string }; Returns: string[] }
