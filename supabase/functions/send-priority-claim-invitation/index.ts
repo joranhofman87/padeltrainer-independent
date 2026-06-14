@@ -144,7 +144,7 @@ const handler = async (req: Request): Promise<Response> => {
     const eligible = allClaims.filter(
       (c) => c.status === "pending" && (isTest || resend === true || !c.invited_at)
     );
-    const skipped = allClaims.length - eligible.length;
+    let skipped = allClaims.length - eligible.length;
     if (eligible.length === 0)
       return new Response(JSON.stringify({ sent: 0, skipped }), {
         status: 200,
@@ -286,6 +286,23 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
+      // Atomic claim-before-send (normal path): stamp invited_at only if it is
+      // still NULL, so a crash mid-loop or a concurrent run can't double-send the
+      // "reserve your spot" email. Test sends and explicit resends intentionally
+      // re-send, so they skip the claim.
+      if (!isTest && !resend) {
+        const { data: claimedRows } = await supabase
+          .from("slot_priority_claims")
+          .update({ invited_at: new Date().toISOString() })
+          .eq("id", c.id)
+          .is("invited_at", null)
+          .select("id");
+        if (!claimedRows || claimedRows.length === 0) {
+          skipped++;
+          continue;
+        }
+      }
+
       const { error: sendErr } = await resendClient.emails.send({
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [recipientEmail],
@@ -294,10 +311,18 @@ const handler = async (req: Request): Promise<Response> => {
       });
       if (sendErr) {
         console.error("send error", sendErr);
+        // Release the claim so a later run can retry this invitation.
+        if (!isTest && !resend) {
+          await supabase
+            .from("slot_priority_claims")
+            .update({ invited_at: null })
+            .eq("id", c.id);
+        }
         continue;
       }
       sent++;
-      if (!testEmail) {
+      // Resend stamps the new send time here (the claim above was skipped).
+      if (!isTest && resend) {
         await supabase
           .from("slot_priority_claims")
           .update({ invited_at: new Date().toISOString() })
