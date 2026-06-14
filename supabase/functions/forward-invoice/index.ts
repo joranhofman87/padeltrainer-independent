@@ -89,16 +89,28 @@ const handler = async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "Invoice not found" }, 404);
     }
 
-    if (invoice.forwarded_at && !force) {
-      logStep("skipped", { invoiceId, invoiceNumber: invoice.invoice_number, reason: "already_forwarded" });
-      return jsonResponse({
-        success: true,
-        skipped: true,
-        reason: "already_forwarded",
-        sent: 0,
-        failed: 0,
-        invoice_number: invoice.invoice_number,
-      });
+    if (!force) {
+      // Atomic claim: only the first concurrent caller proceeds. A duplicate
+      // (the paid webhook racing a manual "resend", or two clicks) sees no row
+      // and skips — so the bookkeeper isn't emailed the same invoice twice.
+      // Released below if the send then fails.
+      const { data: claimedRows } = await supabase
+        .from("invoices")
+        .update({ forwarded_at: new Date().toISOString() })
+        .eq("id", invoice.id)
+        .is("forwarded_at", null)
+        .select("id");
+      if (!claimedRows || claimedRows.length === 0) {
+        logStep("skipped", { invoiceId, invoiceNumber: invoice.invoice_number, reason: "already_forwarded" });
+        return jsonResponse({
+          success: true,
+          skipped: true,
+          reason: "already_forwarded",
+          sent: 0,
+          failed: 0,
+          invoice_number: invoice.invoice_number,
+        });
+      }
     }
 
     let trainerProfile: { user_id: string; invoice_forward_emails: string[] | null; business_name: string | null } | null = null;
@@ -303,9 +315,20 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (completion.shouldSetForwardedAt) {
+      // Non-force already claimed forwarded_at up front; only a force-resend
+      // needs to (re)stamp it on success.
+      if (force) {
+        await supabase
+          .from("invoices")
+          .update({ forwarded_at: new Date().toISOString() })
+          .eq("id", invoice.id);
+      }
+    } else if (!force) {
+      // Send failed after we claimed forwarded_at — release the claim so a
+      // later call can retry the forward.
       await supabase
         .from("invoices")
-        .update({ forwarded_at: new Date().toISOString() })
+        .update({ forwarded_at: null })
         .eq("id", invoice.id);
     }
 
