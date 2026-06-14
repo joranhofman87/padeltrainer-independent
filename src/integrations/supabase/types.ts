@@ -7047,6 +7047,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      recalc_cycle_split_count: {
+        Args: { _cyclus_id: string }
+        Returns: number
+      }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }

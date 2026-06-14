@@ -59,8 +59,12 @@ describe('forward-invoice implementation', () => {
     expect(source).toContain('skipped: true');
   });
 
-  it('force=true bypasses already_forwarded skip', () => {
-    expect(source).toContain('if (invoice.forwarded_at && !force)');
+  it('force=true bypasses the forwarded_at claim (M-02 atomic claim)', () => {
+    // The atomic forwarded_at claim is gated by `if (!force)`, so a force resend
+    // skips the dedup claim and re-forwards.
+    expect(source).toContain('if (!force)');
+    expect(source).toContain('.is("forwarded_at", null)');
+    expect(source).not.toContain('if (invoice.forwarded_at && !force)');
   });
 });
 

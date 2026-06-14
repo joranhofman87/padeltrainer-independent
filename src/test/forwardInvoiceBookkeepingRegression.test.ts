@@ -338,17 +338,23 @@ describe('bookkeeping regression: forwarded_at behavior', () => {
     expect(pdfMissingIdx).toBeLessThan(shouldSetIdx);
   });
 
-  it('already forwarded skips by default', () => {
-    expect(forwardSource).toContain('if (invoice.forwarded_at && !force)');
+  it('already forwarded skips by default (M-02: atomic claim, not a read-then-act)', () => {
+    // Atomic claim: UPDATE ... WHERE forwarded_at IS NULL RETURNING — a duplicate
+    // sees no row and skips with already_forwarded.
+    expect(forwardSource).toContain('.is("forwarded_at", null)');
     expect(forwardSource).toContain('reason: "already_forwarded"');
     expect(forwardSource).toContain('skipped: true');
+    // The old non-atomic read-then-skip must NOT be reintroduced.
+    expect(forwardSource).not.toContain('if (invoice.forwarded_at && !force)');
   });
 
-  it('force:true bypasses already_forwarded skip', () => {
+  it('force:true bypasses the forwarded_at claim', () => {
     expect(forwardSource).toContain('body?.force === true');
-    const skipIdx = forwardSource.indexOf('if (invoice.forwarded_at && !force)');
+    // The claim is gated by `if (!force)`, so a force resend skips it.
+    expect(forwardSource).toContain('if (!force)');
+    const claimIdx = forwardSource.indexOf('.is("forwarded_at", null)');
     const forceIdx = forwardSource.indexOf('body?.force === true');
-    expect(skipIdx).toBeGreaterThan(-1);
+    expect(claimIdx).toBeGreaterThan(-1);
     expect(forceIdx).toBeGreaterThan(-1);
   });
 

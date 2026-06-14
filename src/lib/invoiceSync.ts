@@ -497,15 +497,21 @@ async function applySplitRebuild(
   const slotPricesIncludeVat = firstSlot.prices_include_vat ?? true;
   const cyclusName = firstSlot.cyclus_name || "Training cyclus";
 
+  // Divisor: prefer the authoritative split_count written by
+  // recalc_cycle_split_count (under a per-cycle lock); fall back to the passed
+  // count. This is what makes concurrent split-cycle joins race-safe — the count
+  // is no longer a stale client value.
+  const splitCount = state.split_count ?? playerCount;
+
   // The split count itself changed, so per-player shares are re-derived from
   // the base (unsplit) slot price by design — payment_amount still reflects
   // the OLD share here and cannot be reused.
   const basePrice = firstSlot.price_per_session || 0;
-  const splitPrice = applySplit(basePrice, playerCount);
+  const splitPrice = applySplit(basePrice, splitCount);
 
   const lineItems: SyncLineItem[] = [
     {
-      description: `${cyclusName} (${invBookings.length} weken) (1/${playerCount})`,
+      description: `${cyclusName} (${invBookings.length} weken) (1/${splitCount})`,
       quantity: invBookings.length,
       unit_price: splitPrice,
     },
@@ -518,7 +524,7 @@ async function applySplitRebuild(
   appendExtraCostLineItems(
     lineItems,
     extraCosts,
-    playerCount,
+    splitCount,
     invBookings.length,
     defaultVatRate,
   );
@@ -530,6 +536,7 @@ async function applySplitRebuild(
     subtotal: totals.subtotal,
     vat_amount: totals.vatAmount,
     total: totals.total,
+    split_count: splitCount,
     pdf_url: null,
     vat_breakdown:
       Object.keys(totals.vatBreakdown).length > 0 ? totals.vatBreakdown : null,
@@ -550,37 +557,37 @@ export async function syncSplitCountForCycle(
 ): Promise<void> {
   if (!cyclusId) return;
 
-  // 1. Find all slots in this cycle
+  // 1. Authoritative, race-safe divisor: the RPC takes a per-cycle advisory
+  // lock, recounts unique active players, and writes split_count onto every
+  // unpaid sibling invoice. The rebuild below reads that split_count, so
+  // concurrent joins can no longer stamp a stale 1/N. Returns 0 for a
+  // non-split cycle / when no split is needed.
+  const { data: playerCount, error: rpcError } = await supabase.rpc(
+    "recalc_cycle_split_count",
+    { _cyclus_id: cyclusId },
+  );
+  if (rpcError) throw rpcError;
+  if (!playerCount || playerCount <= 1) return;
+
+  // 2. Locate the active bookings → the unpaid sibling invoices to rebuild.
   const { data: cycleSlots, error: slotsError } = await supabase
     .from("availability_slots")
-    .select("id, split_payment")
+    .select("id")
     .eq("cyclus_id", cyclusId);
 
   if (slotsError) throw slotsError;
   if (!cycleSlots || cycleSlots.length === 0) return;
 
-  if (!cycleSlots[0].split_payment) return; // Not a split-payment cycle
-
   const slotIds = cycleSlots.map((s) => s.id);
 
-  // 2. Count unique active players across the cycle
   const { data: activeBookings, error: activeBookingsError } = await supabase
     .from("bookings")
-    .select("id, player_id, guest_player_id")
+    .select("id")
     .in("slot_id", slotIds)
     .in("status", ["confirmed", "pending"]);
 
   if (activeBookingsError) throw activeBookingsError;
   if (!activeBookings || activeBookings.length === 0) return;
-
-  const uniquePlayers = new Set<string>();
-  for (const b of activeBookings) {
-    const key = b.player_id || b.guest_player_id;
-    if (key) uniquePlayers.add(key);
-  }
-
-  const playerCount = uniquePlayers.size;
-  if (playerCount <= 1) return; // No split needed
 
   const activeBookingIds = activeBookings.map((b) => b.id);
 
