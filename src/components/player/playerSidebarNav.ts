@@ -4,6 +4,7 @@ import {
   Calendar,
   CalendarDays,
   FileText,
+  Sparkles,
   User,
   Users,
 } from 'lucide-react';
@@ -11,6 +12,7 @@ import {
 export type PlayerNavItemId =
   | 'dashboard'
   | 'bookings'
+  | 'journey'
   | 'agenda'
   | 'invoices'
   | 'profile'
@@ -45,6 +47,14 @@ export const PLAYER_PRIMARY_NAV: PlayerNavItem[] = [
     defaultLabel: 'My trainings',
     icon: Calendar,
     testId: 'nav-player-bookings',
+  },
+  {
+    id: 'journey',
+    to: '/app/player/journey',
+    labelKey: 'nav.journey',
+    defaultLabel: 'My Journey',
+    icon: Sparkles,
+    testId: 'nav-player-journey',
   },
   {
     id: 'agenda',

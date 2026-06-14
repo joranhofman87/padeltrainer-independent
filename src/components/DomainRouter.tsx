@@ -91,6 +91,7 @@ const AcademyOnboarding = lazy(() => import('@/pages/AcademyOnboarding'));
 // Player pages
 const PlayerDashboard = lazy(() => import('@/pages/PlayerDashboard'));
 const PlayerBookings = lazy(() => import('@/pages/PlayerBookings'));
+const PlayerJourney = lazy(() => import('@/pages/PlayerJourney'));
 const PlayerAgenda = lazy(() => import('@/pages/PlayerAgenda'));
 const PlayerInvoicesPage = lazy(() => import('@/pages/PlayerInvoicesPage'));
 const PlayerSettings = lazy(() => import('@/pages/PlayerSettings'));
@@ -236,6 +237,7 @@ export function DomainRouter() {
         <Route path="/app/player" element={<PlayerLayout />}>
           <Route index element={<PlayerDashboard />} />
           <Route path="bookings" element={<PlayerBookings />} />
+          <Route path="journey" element={<PlayerJourney />} />
           <Route path="agenda" element={<PlayerAgenda />} />
           <Route path="invoices" element={<PlayerInvoicesPage />} />
           <Route path="following" element={<FollowingList />} />

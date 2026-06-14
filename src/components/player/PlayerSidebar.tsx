@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { showReferralWidget } from "@/components/ReferralWidget";
 import { useAuth } from "@/hooks/useAuth";
+import { useUnseenFeedbackCount } from "@/lib/playerJourney";
 import { signOut } from "@/lib/auth";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { useToast } from "@/hooks/use-toast";
@@ -63,15 +64,18 @@ function PlayerNavLink({
   label,
   collapsed,
   onNavigate,
+  badge,
 }: {
   item: PlayerNavItem;
   label: string;
   collapsed: boolean;
   onNavigate: () => void;
+  badge?: number;
 }) {
   const Icon = item.icon;
   const location = useLocation();
   const active = isPlayerNavItemActive(location.pathname, item);
+  const showBadge = typeof badge === "number" && badge > 0;
 
   return (
     <SidebarMenuItem>
@@ -84,7 +88,12 @@ function PlayerNavLink({
           className={cn(appNavLinkBase, active ? appNavLinkActive : appNavLinkInactive)}
         >
           <Icon className="h-4 w-4 shrink-0" aria-hidden />
-          {!collapsed && <span className="truncate">{label}</span>}
+          {!collapsed && <span className="flex-1 truncate">{label}</span>}
+          {!collapsed && showBadge && (
+            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+              {badge}
+            </span>
+          )}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -99,6 +108,7 @@ export function PlayerSidebar() {
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { profile } = useAuth();
+  const { data: unseenFeedback = 0 } = useUnseenFeedbackCount(profile?.id);
   const { toast } = useToast();
 
   const [accountOpen, setAccountOpen] = useState(
@@ -223,6 +233,7 @@ export function PlayerSidebar() {
                     label={t(item.labelKey, item.defaultLabel)}
                     collapsed={collapsed}
                     onNavigate={closeMobileDrawer}
+                    badge={item.id === "journey" ? unseenFeedback : undefined}
                   />
                 ))}
 

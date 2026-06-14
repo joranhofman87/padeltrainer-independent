@@ -1,4 +1,22 @@
 {
+  "journey": {
+    "title": "My Journey",
+    "subtitle": "Your progress, feedback and notes over time",
+    "empty": "Your past sessions and coach feedback will appear here",
+    "tookPlace": "Took place",
+    "didNotHappen": "Did not take place",
+    "coachFeedback": "Feedback from your coach",
+    "videoComingSoon": "Practice videos coming soon"
+  },
+  "selfNotes": {
+    "heading": "My notes",
+    "placeholder": "Add a note for yourself about this session…",
+    "shared": "Shared with coach",
+    "private": "Private",
+    "shareToggle": "Share with my coach",
+    "save": "Save",
+    "saveError": "Could not save note"
+  },
   "coachingNotes": {
     "heading": "Coaching notes",
     "shared": "Shared",

@@ -1,4 +1,22 @@
 {
+  "journey": {
+    "title": "Mijn pad",
+    "subtitle": "Je voortgang, feedback en notities door de tijd",
+    "empty": "Je afgelopen sessies en feedback van je coach verschijnen hier",
+    "tookPlace": "Doorgegaan",
+    "didNotHappen": "Niet doorgegaan",
+    "coachFeedback": "Feedback van je coach",
+    "videoComingSoon": "Trainingsvideo's komen binnenkort"
+  },
+  "selfNotes": {
+    "heading": "Mijn notities",
+    "placeholder": "Voeg een notitie toe over deze sessie…",
+    "shared": "Gedeeld met coach",
+    "private": "Privé",
+    "shareToggle": "Delen met mijn coach",
+    "save": "Opslaan",
+    "saveError": "Notitie kon niet worden opgeslagen"
+  },
   "coachingNotes": {
     "heading": "Coachingnotities",
     "shared": "Gedeeld",

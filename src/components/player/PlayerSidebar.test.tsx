@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { PlayerSidebar } from './PlayerSidebar';
 import { isPlayerNavItemActive, PLAYER_PRIMARY_NAV } from '@/components/player/playerSidebarNav';
@@ -58,12 +59,15 @@ vi.mock('react-i18next', () => ({
 }));
 
 function renderSidebar(path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <SidebarProvider>
-        <PlayerSidebar />
-      </SidebarProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>
+        <SidebarProvider>
+          <PlayerSidebar />
+        </SidebarProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
