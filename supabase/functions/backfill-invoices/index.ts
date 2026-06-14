@@ -104,29 +104,41 @@ serve(async (req) => {
     }
     logStep("Grouped into invoice batches", { groupCount: Object.keys(groups).length });
 
-    // 6. Call auto-create-invoice for each group
+    // 6. Call auto-create-invoice for each group, in bounded-concurrency chunks.
+    // Groups are distinct (cyclus, player) keys so they never collide, and M-10's
+    // next_invoice_sequence serializes invoice-number allocation — so chunked
+    // parallelism is safe and keeps a large backfill from running serially into
+    // the edge wall-clock limit.
     let created = 0;
     let errors = 0;
-    for (const [key, bookingIds] of Object.entries(groups)) {
-      try {
-        const resp = await fetch(`${supabaseUrl}/functions/v1/auto-create-invoice`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({ bookingIds, asDraft: true }),
-        });
-        const result = await resp.json();
-        if (resp.ok && result.invoiceId) {
-          created++;
-        } else {
-          logStep("Failed to create invoice for group", { key, result });
-          errors++;
-        }
-      } catch (e) {
-        logStep("Error creating invoice for group", { key, error: String(e) });
-        errors++;
+    const groupEntries = Object.entries(groups);
+    const CHUNK = 5;
+    for (let i = 0; i < groupEntries.length; i += CHUNK) {
+      const chunk = groupEntries.slice(i, i + CHUNK);
+      const results = await Promise.all(
+        chunk.map(async ([key, bookingIds]) => {
+          try {
+            const resp = await fetch(`${supabaseUrl}/functions/v1/auto-create-invoice`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ bookingIds, asDraft: true }),
+            });
+            const result = await resp.json();
+            if (resp.ok && result.invoiceId) return true;
+            logStep("Failed to create invoice for group", { key, result });
+            return false;
+          } catch (e) {
+            logStep("Error creating invoice for group", { key, error: String(e) });
+            return false;
+          }
+        }),
+      );
+      for (const okResult of results) {
+        if (okResult) created++;
+        else errors++;
       }
     }
 

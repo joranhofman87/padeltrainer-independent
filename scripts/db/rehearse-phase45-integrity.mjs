@@ -21,6 +21,7 @@ await db.exec(readFileSync('supabase/migrations/20260614170000_availability_slot
 await db.exec(readFileSync('supabase/migrations/20260614180000_cycles_date_order_check.sql', 'utf8'));
 await db.exec(readFileSync('supabase/migrations/20260614190000_cron_single_flight_lock.sql', 'utf8'));
 await db.exec(readFileSync('supabase/migrations/20260614200000_cron_lock_revoke_authenticated.sql', 'utf8'));
+await db.exec(readFileSync('supabase/migrations/20260614220000_validate_date_order_checks.sql', 'utf8'));
 
 // ---- availability_slots CHECK (enforced on new writes despite NOT VALID) ----
 ok(!(await raises(`INSERT INTO public.availability_slots (start_time, end_time) VALUES ('2026-06-14T10:00Z','2026-06-14T11:00Z')`)),
@@ -41,6 +42,13 @@ ok(!(await raises(`INSERT INTO public.cycles (start_date, end_date) VALUES ('202
   'cycles: open-ended (end NULL) inserts OK', null);
 ok(await raises(`INSERT INTO public.cycles (start_date, end_date) VALUES ('2026-08-31','2026-06-01')`),
   'cycles: end<start REJECTED', null);
+
+// ---- VALIDATE migration validated both CHECKs (empty tables → 0 violators) ----
+const conv = (await db.query(
+  `SELECT conname, convalidated FROM pg_constraint WHERE conname IN ('availability_slots_time_order_check','cycles_date_order_check') ORDER BY conname`,
+)).rows;
+ok(conv.length === 2 && conv.every((c) => c.convalidated === true),
+  'both date-order CHECKs are VALIDATED after 20260614220000', conv);
 
 // ---- cron single-flight RPCs ----
 const tl = (await db.query(`SELECT public.try_lock_cron_job('process-onboarding-emails') AS v`)).rows[0].v;

@@ -68,6 +68,20 @@ describe("CRON-SF-03 grant tightening (revoke from anon + authenticated)", () =>
   });
 });
 
+describe("P5-CHK VALIDATE follow-up (count-then-conditionally-validate)", () => {
+  const sql = readMigration("20260614220000_validate_date_order_checks.sql");
+
+  it("validates only when 0 violators, never aborts the deploy", () => {
+    // counts first; VALIDATE under IF v = 0, WARNING (not error) otherwise
+    expect(sql).toContain("VALIDATE CONSTRAINT availability_slots_time_order_check");
+    expect(sql).toContain("VALIDATE CONSTRAINT cycles_date_order_check");
+    expect(sql).toContain("end_time <= start_time");
+    expect(sql).toContain("end_date < start_date");
+    expect(sql).toContain("RAISE WARNING");
+    expect(sql).not.toContain("RAISE EXCEPTION");
+  });
+});
+
 describe("BJ-08 notification_sends dedup table", () => {
   const sql = readMigration("20260614210000_notification_sends_dedup.sql");
 
