@@ -43,22 +43,30 @@ export function useAcademyUndeliverableRecipients(academyProfileId: string | nul
 
 export type InvoiceDeliveryStatus = 'bounced' | 'delivered' | 'failed' | 'sent' | null;
 
+/** Per-invoice delivery status + the resolved recipient email (null = none on
+ *  file). linkedEmail drives the InvoiceDeliveryChip's "No email" flag without a
+ *  client-side profiles read that RLS would block. */
+export interface InvoiceDeliveryInfo {
+  status: InvoiceDeliveryStatus;
+  linkedEmail: string | null;
+}
+
 export async function fetchInvoicesDeliveryStatus(
   invoiceIds: string[],
-): Promise<Record<string, InvoiceDeliveryStatus>> {
+): Promise<Record<string, InvoiceDeliveryInfo>> {
   if (invoiceIds.length === 0) return {};
   const { data, error } = await supabase.rpc('get_invoices_delivery_status', {
     p_invoice_ids: invoiceIds,
   });
   if (error) throw error;
-  const map: Record<string, InvoiceDeliveryStatus> = {};
-  for (const row of (data ?? []) as { invoice_id: string; delivery_status: InvoiceDeliveryStatus }[]) {
-    map[row.invoice_id] = row.delivery_status;
+  const map: Record<string, InvoiceDeliveryInfo> = {};
+  for (const row of (data ?? []) as { invoice_id: string; delivery_status: InvoiceDeliveryStatus; linked_email: string | null }[]) {
+    map[row.invoice_id] = { status: row.delivery_status, linkedEmail: row.linked_email ?? null };
   }
   return map;
 }
 
-/** Per-invoice delivery status for the visible page of an invoice list. */
+/** Per-invoice delivery status + recipient email for the visible page of an invoice list. */
 export function useInvoicesDeliveryStatus(invoiceIds: string[]) {
   const stableKey = [...invoiceIds].sort().join(',');
   return useQuery({

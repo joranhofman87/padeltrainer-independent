@@ -12,6 +12,8 @@ import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { deriveInvoiceStatus, type InvoiceStatus } from '@/lib/invoiceStatus';
 import { InvoiceStatusBadge } from '@/components/invoices/InvoiceStatusBadge';
+import { InvoiceDeliveryChip } from '@/components/email/InvoiceDeliveryChip';
+import { useInvoicesDeliveryStatus } from '@/lib/emailBounce';
 import { InvoiceEmailDialog } from './InvoiceEmailDialog';
 import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
 import {
@@ -85,6 +87,11 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
   const [splitConfirm, setSplitConfirm] = useState<{ open: boolean; invoiceId: string }>({ open: false, invoiceId: '' });
   const [voidConfirm, setVoidConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
+
+  // Per-invoice delivery flag (no email / bounced / failed) — same signal as the
+  // dedicated invoice pages, via the authorized batch RPC that resolves the
+  // recipient email server-side (a client read of profiles.email is RLS-blocked).
+  const { data: deliveryInfo } = useInvoicesDeliveryStatus(invoices.map((i) => i.id));
 
   useEffect(() => {
     fetchInvoices();
@@ -441,6 +448,12 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-semibold font-mono">{invoice.invoice_number}</p>
                     <InvoiceStatusBadge status={invoice.status as InvoiceStatus} />
+                    {deliveryInfo?.[invoice.id] && (
+                      <InvoiceDeliveryChip
+                        deliveryStatus={deliveryInfo[invoice.id].status}
+                        hasEmail={deliveryInfo[invoice.id].linkedEmail != null}
+                      />
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">{invoice.player_name}</p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">

@@ -22,7 +22,8 @@
     "db:rehearse:players": "npx tsx scripts/db/rehearse-players-overview.ts",
     "db:rehearse:coaching": "node scripts/db/rehearse-coaching-notes.mjs",
     "db:rehearse:email": "node scripts/db/rehearse-email-delivery.mjs",
-    "db:rehearse:trainer-invoices": "node scripts/db/rehearse-trainer-invoice-delivery.mjs"
+    "db:rehearse:trainer-invoices": "node scripts/db/rehearse-trainer-invoice-delivery.mjs",
+    "db:rehearse:invoices-delivery": "node scripts/db/rehearse-invoices-delivery-status.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

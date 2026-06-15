@@ -7261,6 +7261,7 @@ export type Database = {
         Returns: {
           delivery_status: string
           invoice_id: string
+          linked_email: string
         }[]
       }
       get_location_review_stats: {
