@@ -22,6 +22,10 @@ const EVENT_MAP: Record<string, string> = {
   "email.failed": "failed",
 };
 
+interface ResendBounce { type?: string; message?: string; subType?: string }
+interface ResendEventData { to?: string | string[]; email_id?: string; created_at?: string; bounce?: ResendBounce }
+interface ResendWebhookEvent { type?: string; created_at?: string; data?: ResendEventData }
+
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("method not allowed", { status: 405 });
@@ -49,14 +53,14 @@ serve(async (req) => {
     return new Response("invalid signature", { status: 401 });
   }
 
-  let evt: Record<string, any>;
+  let evt: ResendWebhookEvent;
   try {
     evt = JSON.parse(body);
   } catch {
     return new Response("bad json", { status: 400 });
   }
 
-  const data = evt?.data ?? {};
+  const data: ResendEventData = evt?.data ?? {};
   const eventType = EVENT_MAP[evt?.type ?? ""];
   const recipient = Array.isArray(data.to) ? data.to[0] : data.to;
 
@@ -71,7 +75,7 @@ serve(async (req) => {
   let bounceType: string | null = null;
   let reason: string | null = null;
   if (eventType === "bounced") {
-    const b = data.bounce ?? {};
+    const b: ResendBounce = data.bounce ?? {};
     bounceType = b.type === "Permanent" ? "hard" : "soft"; // conservative: only clear-permanent suppresses
     reason = b.message ?? b.subType ?? b.type ?? null;
   } else if (eventType === "complained") {
