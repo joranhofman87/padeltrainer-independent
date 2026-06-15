@@ -186,3 +186,12 @@ verify_jwt = false
 
 [functions.forward-invoice]
 verify_jwt = false
+
+[functions.resend-webhook]
+verify_jwt = false
+
+[functions.backfill-email-bounces]
+verify_jwt = false
+
+[functions.academy-update-player-email]
+verify_jwt = false

@@ -676,7 +676,8 @@
     "selectAll": "Select all",
     "selectInvoice": "Select {{number}}",
     "sendErrorNotConfigured": "Email sending is not configured yet — contact support.",
-    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again."
+    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again.",
+    "emailBounced": "Email bounced — not delivered"
   },
   "warnings": {
     "ratingSpread": "Rating spread: {{spread}}",
@@ -875,5 +876,43 @@
       "pro": "Pro (9+)",
       "unrated": "Unrated"
     }
+  },
+  "emailDelivery": {
+    "alertTitle": "{{count}} player(s) have an undeliverable email",
+    "alertBody": "Reminders and invoices aren't reaching them. Update their email address to fix delivery.",
+    "reviewPlayers": "Review players",
+    "fixTitle": "This email is bouncing",
+    "overrideHelp": "You can't change this player's login email, so set a billing email used only for their invoices.",
+    "directHelp": "Enter a corrected email address.",
+    "billingEmailPlaceholder": "Billing email",
+    "newEmailPlaceholder": "New email address",
+    "fixSave": "Save",
+    "fixed": "Email updated",
+    "fixFailed": "Could not update email",
+    "column": "Delivery",
+    "chip": {
+      "noEmail": "No email",
+      "bounced": "Not delivered",
+      "delivered": "Delivered",
+      "sent": "Sent",
+      "notSent": "Not sent"
+    },
+    "filter": {
+      "all": "All delivery",
+      "undelivered": "Not delivered",
+      "bounced": "Bounced",
+      "noEmail": "No email",
+      "delivered": "Delivered",
+      "issue": "Delivery issue"
+    },
+    "banner": "{{count}} of these invoices never reached the player",
+    "bannerDetail": "{{bounced}} bounced · {{noEmail}} no email",
+    "bannerCta": "Show them",
+    "reason": {
+      "noEmail": "No email address on file",
+      "bounced": "Email bounced — couldn’t be delivered",
+      "failed": "Sending failed"
+    },
+    "flagLabel": "Delivery issue"
   }
 }

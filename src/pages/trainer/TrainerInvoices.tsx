@@ -26,9 +26,11 @@ import {
   INVOICE_PAGE_SIZE,
   useTrainerInvoices,
   useTrainerInvoiceSummary,
+  useTrainerInvoiceDeliverySummary,
   fetchAllTrainerInvoices,
   type TrainerInvoiceRow,
 } from "@/lib/invoicesList";
+import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -39,7 +41,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon } from "lucide-react";
+import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -61,6 +63,9 @@ type Invoice = TrainerInvoiceRow;
 
 export default function TrainerInvoices() {
   const { t, i18n } = useTranslation("trainer");
+  // Email-delivery copy + the InvoiceDeliveryChip live in the shared 'academy'
+  // namespace (single source of truth — see InvoiceDeliveryChip).
+  const { t: tDelivery } = useTranslation("academy");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -69,6 +74,7 @@ export default function TrainerInvoices() {
   const [activeTab, setActiveTab] = useState("unpaid");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [deliveryFilter, setDeliveryFilter] = useState<string>("all");
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
@@ -162,11 +168,16 @@ export default function TrainerInvoices() {
     tab,
     status: statusFilter === "all" ? null : statusFilter,
     search: debouncedSearch || null,
+    delivery: deliveryFilter === "all" ? null : deliveryFilter,
     sort,
     sortDir,
     page,
     pageSize: INVOICE_PAGE_SIZE,
   });
+
+  // Delivery breakdown for the current tab (drives the "never reached" banner).
+  const { data: deliverySummary } = useTrainerInvoiceDeliverySummary(trainerId, { tab });
+  const invoiceHasEmail = (inv: Invoice) => inv.linked_email != null;
 
   // Scoreboard reads from the summary RPC (always one row) so the tiles + tab
   // labels stay correct even when the current tab/page is empty. The trainer
@@ -193,13 +204,13 @@ export default function TrainerInvoices() {
   // Reset to the first page whenever any list-shaping input changes.
   useEffect(() => {
     setPage(0);
-  }, [activeTab, statusFilter, debouncedSearch, sort, sortDir]);
+  }, [activeTab, statusFilter, deliveryFilter, debouncedSearch, sort, sortDir]);
 
   // Selection is page-scoped: clear it on any filter/tab/page change so the
   // page-scoped selectedInvoices (rows on the current page) is always safe.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [activeTab, statusFilter, debouncedSearch, sort, sortDir, page]);
+  }, [activeTab, statusFilter, deliveryFilter, debouncedSearch, sort, sortDir, page]);
 
   const invoiceSettingsLabels = buildTrainerInvoiceSettingsLabels(t);
 
@@ -613,6 +624,24 @@ export default function TrainerInvoices() {
               <TabsTrigger value="unpaid">{t("invoices.unpaid", "Openstaand")} ({countUnpaid})</TabsTrigger>
               <TabsTrigger value="paid">{t("invoices.paid", "Betaald")} ({countPaid})</TabsTrigger>
             </TabsList>
+
+            {deliverySummary && (deliverySummary.bounced + deliverySummary.noEmail) > 0 && deliveryFilter === "all" && (
+              <button
+                type="button"
+                onClick={() => setDeliveryFilter("undelivered")}
+                aria-label={tDelivery("emailDelivery.bannerCta", "Show them")}
+                className="flex w-full items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+              >
+                <MailWarning className="h-4 w-4 shrink-0" />
+                <span className="flex-1">
+                  {tDelivery("emailDelivery.banner", "{{count}} of these invoices never reached the player", { count: deliverySummary.bounced + deliverySummary.noEmail })}
+                  {" — "}
+                  {tDelivery("emailDelivery.bannerDetail", "{{bounced}} bounced · {{noEmail}} no email", { bounced: deliverySummary.bounced, noEmail: deliverySummary.noEmail })}
+                </span>
+                <span className="shrink-0 text-xs underline">{tDelivery("emailDelivery.bannerCta", "Show them")}</span>
+              </button>
+            )}
+
             <TableToolbar
               searchPlaceholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
               searchValue={searchQuery}
@@ -630,6 +659,15 @@ export default function TrainerInvoices() {
                   <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
                   <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
                   <SelectItem value="cancelled">{t("invoices.cancelled", "Geannuleerd")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{tDelivery("emailDelivery.filter.all", "All delivery")}</SelectItem>
+                  <SelectItem value="undelivered">{tDelivery("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
                 </SelectContent>
               </Select>
             </TableToolbar>
@@ -660,6 +698,7 @@ export default function TrainerInvoices() {
                             </TableHead>
                             <TableHead>{t("invoices.number", "Nummer")}</TableHead>
                             <TableHead>{t("invoices.player", "Klant")}</TableHead>
+                            <TableHead>{tDelivery("emailDelivery.column", "Delivery")}</TableHead>
                             <TableHead>{t("invoices.date", "Datum")}</TableHead>
                             {activeTab === "paid" ? (
                               <SortableTableHead sortKey="paid_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
@@ -691,6 +730,9 @@ export default function TrainerInvoices() {
                               </TableCell>
                               <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                               <TableCell>{inv.player_name}</TableCell>
+                              <TableCell>
+                                <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={invoiceHasEmail(inv)} />
+                              </TableCell>
                               <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                               <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                               <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
@@ -740,8 +782,12 @@ export default function TrainerInvoices() {
                                 <p className="text-sm text-muted-foreground truncate">{inv.player_name}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
                               {getStatusBadge(inv)}
+                              <InvoiceDeliveryChip
+                                deliveryStatus={inv.delivery_status}
+                                hasEmail={invoiceHasEmail(inv)}
+                              />
                               {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
                             </div>
                           </div>

@@ -323,6 +323,7 @@ export type Database = {
       academy_player_metadata: {
         Row: {
           academy_profile_id: string | null
+          billing_email: string | null
           created_at: string
           guest_player_id: string | null
           id: string
@@ -338,6 +339,7 @@ export type Database = {
         }
         Insert: {
           academy_profile_id?: string | null
+          billing_email?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
@@ -353,6 +355,7 @@ export type Database = {
         }
         Update: {
           academy_profile_id?: string | null
+          billing_email?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
@@ -2408,6 +2411,33 @@ export type Database = {
           },
         ]
       }
+      email_address_state: {
+        Row: {
+          email: string
+          last_event_at: string | null
+          last_event_type: string | null
+          reason: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          email: string
+          last_event_at?: string | null
+          last_event_type?: string | null
+          reason?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          email?: string
+          last_event_at?: string | null
+          last_event_type?: string | null
+          reason?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_campaign_recipients: {
         Row: {
           campaign_id: string
@@ -2636,6 +2666,59 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_delivery_events: {
+        Row: {
+          academy_profile_id: string | null
+          bounce_type: string | null
+          created_at: string
+          event_type: string
+          id: string
+          invoice_id: string | null
+          occurred_at: string
+          reason: string | null
+          recipient_email: string
+          resend_email_id: string | null
+          resend_event_id: string | null
+          trainer_id: string | null
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          bounce_type?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          invoice_id?: string | null
+          occurred_at?: string
+          reason?: string | null
+          recipient_email: string
+          resend_email_id?: string | null
+          resend_event_id?: string | null
+          trainer_id?: string | null
+        }
+        Update: {
+          academy_profile_id?: string | null
+          bounce_type?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          invoice_id?: string | null
+          occurred_at?: string
+          reason?: string | null
+          recipient_email?: string
+          resend_email_id?: string | null
+          resend_event_id?: string | null
+          trainer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_delivery_events_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
         ]
@@ -7053,6 +7136,21 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_academy_invoice_delivery_summary: {
+        Args: {
+          p_academy_profile_id: string
+          p_location_id?: string
+          p_tab?: string
+          p_trainer_id?: string
+        }
+        Returns: {
+          bounced: number
+          delivered: number
+          no_email: number
+          pending: number
+          total: number
+        }[]
+      }
       get_academy_invoice_summary: {
         Args: {
           p_academy_profile_id: string
@@ -7069,6 +7167,7 @@ export type Database = {
       get_academy_invoices: {
         Args: {
           p_academy_profile_id: string
+          p_delivery?: string
           p_limit?: number
           p_location_id?: string
           p_no_email?: boolean
@@ -7085,6 +7184,7 @@ export type Database = {
           booking_ids: string[]
           computed_status: string
           created_at: string
+          delivery_status: string
           due_date: string
           forwarded_at: string
           guest_player_id: string
@@ -7120,12 +7220,33 @@ export type Database = {
           vat_rate: number
         }[]
       }
+      get_academy_undeliverable_recipients: {
+        Args: { p_academy_profile_id: string }
+        Returns: {
+          email: string
+          full_name: string
+          guest_player_id: string
+          last_event_at: string
+          player_key: string
+          player_type: string
+          profile_id: string
+          state: string
+        }[]
+      }
+      get_invoice_delivery_status: {
+        Args: { p_invoice_id: string }
+        Returns: string
+      }
       get_invoice_recipient_email: {
         Args: { _invoice_id: string }
         Returns: string
       }
       get_invoice_recipient_identity: {
-        Args: { _guest_player_id?: string; _player_id?: string }
+        Args: {
+          _academy_profile_id?: string
+          _guest_player_id?: string
+          _player_id?: string
+        }
         Returns: {
           billing_address: string
           billing_btw_number: string
@@ -7135,9 +7256,21 @@ export type Database = {
           phone: string
         }[]
       }
+      get_invoices_delivery_status: {
+        Args: { p_invoice_ids: string[] }
+        Returns: {
+          delivery_status: string
+          invoice_id: string
+          linked_email: string
+        }[]
+      }
       get_location_review_stats: {
         Args: { _location_id: string }
         Returns: Json
+      }
+      get_player_email_edit_capability: {
+        Args: { _academy_profile_id: string; _profile_id: string }
+        Returns: string
       }
       get_player_journey: {
         Args: { p_limit?: number; p_offset?: number; p_profile_id: string }
@@ -7179,6 +7312,7 @@ export type Database = {
           birth_date: string
           created_at: string
           email: string
+          email_undeliverable: boolean
           full_name: string
           guest_player_id: string
           has_active_cyclus: boolean
@@ -7203,6 +7337,16 @@ export type Database = {
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
+      get_trainer_invoice_delivery_summary: {
+        Args: { p_tab?: string; p_trainer_id: string }
+        Returns: {
+          bounced: number
+          delivered: number
+          no_email: number
+          pending: number
+          total: number
+        }[]
+      }
       get_trainer_invoice_summary: {
         Args: { p_trainer_id: string }
         Returns: {
@@ -7214,6 +7358,7 @@ export type Database = {
       }
       get_trainer_invoices: {
         Args: {
+          p_delivery?: string
           p_limit?: number
           p_offset?: number
           p_search?: string
@@ -7228,6 +7373,7 @@ export type Database = {
           booking_ids: string[]
           computed_status: string
           created_at: string
+          delivery_status: string
           due_date: string
           forwarded_at: string
           guest_player_id: string
@@ -7235,6 +7381,7 @@ export type Database = {
           invoice_date: string
           invoice_number: string
           line_items: Json
+          linked_email: string
           mollie_payment_id: string
           mollie_payment_url: string
           notes: string
@@ -7314,6 +7461,7 @@ export type Database = {
         Args: { _cycle_id: string; _user_id: string }
         Returns: boolean
       }
+      is_email_suppressed: { Args: { p_email: string }; Returns: boolean }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_player_of_academy: {
         Args: { p_academy_profile_id: string; p_player_id: string }
@@ -7357,6 +7505,21 @@ export type Database = {
       recalc_cycle_split_count: {
         Args: { _cyclus_id: string }
         Returns: number
+      }
+      record_email_event: {
+        Args: {
+          p_academy_profile_id?: string
+          p_bounce_type?: string
+          p_event_type: string
+          p_invoice_id?: string
+          p_occurred_at?: string
+          p_reason?: string
+          p_recipient_email: string
+          p_resend_email_id?: string
+          p_resend_event_id?: string
+          p_trainer_id?: string
+        }
+        Returns: undefined
       }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       respond_to_priority_claim: {

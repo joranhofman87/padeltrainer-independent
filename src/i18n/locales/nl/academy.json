@@ -800,7 +800,8 @@
     "selectAll": "Alles selecteren",
     "selectInvoice": "Selecteer {{number}}",
     "sendErrorNotConfigured": "E-mailverzending is nog niet ingesteld — neem contact op met support.",
-    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw."
+    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw.",
+    "emailBounced": "E-mail niet bezorgd"
   },
   "warnings": {
     "ratingSpread": "Niveauverschil: {{spread}}",
@@ -877,5 +878,43 @@
       "pro": "Pro (9+)",
       "unrated": "Geen rating"
     }
+  },
+  "emailDelivery": {
+    "alertTitle": "{{count}} speler(s) met een onbezorgbaar e-mailadres",
+    "alertBody": "Herinneringen en facturen bereiken hen niet. Werk hun e-mailadres bij om bezorging te herstellen.",
+    "reviewPlayers": "Spelers bekijken",
+    "fixTitle": "Dit e-mailadres komt niet aan",
+    "overrideHelp": "Je kunt het login-e-mailadres van deze speler niet wijzigen. Stel een factuur-e-mailadres in dat alleen voor hun facturen wordt gebruikt.",
+    "directHelp": "Voer een gecorrigeerd e-mailadres in.",
+    "billingEmailPlaceholder": "Factuur-e-mailadres",
+    "newEmailPlaceholder": "Nieuw e-mailadres",
+    "fixSave": "Opslaan",
+    "fixed": "E-mailadres bijgewerkt",
+    "fixFailed": "E-mailadres kon niet worden bijgewerkt",
+    "column": "Bezorging",
+    "chip": {
+      "noEmail": "Geen e-mail",
+      "bounced": "Niet bezorgd",
+      "delivered": "Bezorgd",
+      "sent": "Verzonden",
+      "notSent": "Niet verzonden"
+    },
+    "filter": {
+      "all": "Alle bezorging",
+      "undelivered": "Niet bezorgd",
+      "bounced": "Gebounced",
+      "noEmail": "Geen e-mail",
+      "delivered": "Bezorgd",
+      "issue": "Bezorgprobleem"
+    },
+    "banner": "{{count}} van deze facturen hebben de speler nooit bereikt",
+    "bannerDetail": "{{bounced}} gebounced · {{noEmail}} geen e-mail",
+    "bannerCta": "Toon ze",
+    "reason": {
+      "noEmail": "Geen e-mailadres bekend",
+      "bounced": "E-mail gebounced — kon niet worden bezorgd",
+      "failed": "Verzenden mislukt"
+    },
+    "flagLabel": "Bezorgprobleem"
   }
 }

@@ -26,15 +26,17 @@ import {
   INVOICE_PAGE_SIZE,
   useAcademyInvoices,
   useAcademyInvoiceSummary,
+  useAcademyInvoiceDeliverySummary,
   fetchAllAcademyInvoices,
   type AcademyInvoiceRow,
 } from "@/lib/invoicesList";
+import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
+import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -95,7 +97,7 @@ export default function AcademyInvoices() {
 
   const [bulkDueOpen, setBulkDueOpen] = useState(false);
   const [bulkDueDate, setBulkDueDate] = useState<Date | undefined>(undefined);
-  const [noEmailFilter, setNoEmailFilter] = useState(false);
+  const [deliveryFilter, setDeliveryFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
   const debouncedSearch = useDebouncedValue(searchQuery);
 
@@ -134,7 +136,7 @@ export default function AcademyInvoices() {
     search: debouncedSearch || null,
     trainerId: trainerScope,
     locationId: locationScope,
-    noEmail: noEmailFilter,
+    delivery: deliveryFilter === "all" ? null : deliveryFilter,
     sort: rpcSort,
     sortDir: rpcSortDir,
     page,
@@ -149,6 +151,13 @@ export default function AcademyInvoices() {
   });
 
   const filteredInvoices: Invoice[] = overview?.rows ?? [];
+
+  // Delivery breakdown for the banner (follows tab + trainer/location, like the scoreboard).
+  const { data: deliverySummary } = useAcademyInvoiceDeliverySummary(academyId, {
+    tab: activeTab === "paid" ? "paid" : "unpaid",
+    trainerId: trainerScope,
+    locationId: locationScope,
+  });
   const totalUnpaid = summary?.sumUnpaid ?? 0;
   const countUnpaid = summary?.countUnpaid ?? 0;
   const countPaid = summary?.countPaid ?? 0;
@@ -161,10 +170,10 @@ export default function AcademyInvoices() {
   }, [pageCount]);
   useEffect(() => {
     setPage(0);
-  }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, noEmailFilter, rpcSort, rpcSortDir]);
+  }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, rpcSort, rpcSortDir]);
 
   // Clear selection when filters/tab/page change (selection is page-scoped).
-  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, noEmailFilter, page]);
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, page]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -737,6 +746,23 @@ export default function AcademyInvoices() {
           <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({countPaid})</TabsTrigger>
         </TabsList>
 
+        {deliverySummary && (deliverySummary.bounced + deliverySummary.noEmail) > 0 && deliveryFilter === "all" && (
+          <button
+            type="button"
+            onClick={() => setDeliveryFilter("undelivered")}
+            aria-label={t("emailDelivery.bannerCta", "Show them")}
+            className="flex w-full items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+          >
+            <MailWarning className="h-4 w-4 shrink-0" />
+            <span className="flex-1">
+              {t("emailDelivery.banner", "{{count}} of these invoices never reached the player", { count: deliverySummary.bounced + deliverySummary.noEmail })}
+              {" — "}
+              {t("emailDelivery.bannerDetail", "{{bounced}} bounced · {{noEmail}} no email", { bounced: deliverySummary.bounced, noEmail: deliverySummary.noEmail })}
+            </span>
+            <span className="shrink-0 text-xs underline">{t("emailDelivery.bannerCta", "Show them")}</span>
+          </button>
+        )}
+
         <TableToolbar
           searchPlaceholder={t("invoices.searchPlaceholder", "Zoek op speler...")}
           searchValue={searchQuery}
@@ -790,14 +816,15 @@ export default function AcademyInvoices() {
               <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            size="sm"
-            variant={noEmailFilter ? "default" : "outline"}
-            onClick={() => setNoEmailFilter(v => !v)}
-          >
-            <MailX className="h-4 w-4 mr-1.5" />
-            {t("invoices.noEmailFilter", "Geen e-mail")}
-          </Button>
+          <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
+            <SelectTrigger className="w-[170px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("emailDelivery.filter.all", "All delivery")}</SelectItem>
+              <SelectItem value="undelivered">{t("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
+            </SelectContent>
+          </Select>
         </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">
@@ -830,7 +857,7 @@ export default function AcademyInvoices() {
                         </TableHead>
                         <TableHead>{t("invoices.number", "Number")}</TableHead>
                         <TableHead>{t("invoices.player", "Player")}</TableHead>
-                        <TableHead className="w-8"></TableHead>
+                        <TableHead>{t("emailDelivery.column", "Delivery")}</TableHead>
                         <TableHead>{t("invoices.date", "Date")}</TableHead>
                         {activeTab === "paid" ? (
                           <SortableTableHead
@@ -887,17 +914,11 @@ export default function AcademyInvoices() {
                           </TableCell>
                           <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                           <TableCell>{inv.player_name}</TableCell>
-                          <TableCell className="w-8">
-                            {!invoiceHasEmail(inv) && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <MailX className="h-3.5 w-3.5 text-muted-foreground" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {t("invoices.noEmail", "No email address")}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
+                          <TableCell>
+                            <InvoiceDeliveryChip
+                              deliveryStatus={inv.delivery_status}
+                              hasEmail={invoiceHasEmail(inv)}
+                            />
                           </TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
@@ -965,8 +986,12 @@ export default function AcademyInvoices() {
                             <p className="text-sm text-muted-foreground truncate">{inv.player_name}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
                           {getStatusBadge(inv)}
+                          <InvoiceDeliveryChip
+                            deliveryStatus={inv.delivery_status}
+                            hasEmail={invoiceHasEmail(inv)}
+                          />
                           {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
                         </div>
                       </div>

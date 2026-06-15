@@ -245,6 +245,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: replyIdRows } = await supabase.rpc("get_invoice_recipient_identity", {
       _player_id: invoice.player_id ?? null,
       _guest_player_id: invoice.guest_player_id ?? null,
+      _academy_profile_id: invoice.academy_profile_id ?? null,
     });
     const replyIdentity = Array.isArray(replyIdRows) ? replyIdRows[0] : replyIdRows;
     if (replyIdentity?.email) playerReplyTo = replyIdentity.email;

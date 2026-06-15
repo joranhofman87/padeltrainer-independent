@@ -117,6 +117,8 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: identityRows } = await supabase.rpc("get_invoice_recipient_identity", {
       _player_id: invoice.player_id ?? null,
       _guest_player_id: invoice.guest_player_id ?? null,
+      // academy-scoped billing-email override (bounce remediation) wins for the email
+      _academy_profile_id: invoice.academy_profile_id ?? null,
     });
     const identity = Array.isArray(identityRows) ? identityRows[0] : identityRows;
     if (identity?.email) {
@@ -267,6 +269,25 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // Suppression: don't keep sending to a hard-bounced / complained address — it
+    // hurts deliverability for every academy on the shared domain. The fix-it flow
+    // corrects the address (a different string → no longer suppressed) or passes
+    // force=true to deliberately override.
+    if (!previewOnly && !testEmail && !force && recipientEmail) {
+      try {
+        const { data: blocked } = await supabase.rpc("is_email_suppressed", { p_email: recipientEmail });
+        if (blocked === true) {
+          logStep("skipped_suppressed", { invoiceId, invoiceNumber: invoice.invoice_number });
+          return new Response(
+            JSON.stringify({ success: false, error: "email_suppressed", email: recipientEmail, playerName: invoice.player_name }),
+            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+      } catch (_) {
+        // delivery-tracking unavailable → fail open and send anyway
+      }
+    }
+
     // Build public invoice URL using recipient language
     const supportedLangs = ["nl", "en", "es", "de", "fr", "it"];
     const urlLang = supportedLangs.includes(language) ? language : "nl";
@@ -383,7 +404,7 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
-    const { error: sendError } = await resend.emails.send({
+    const { data: sendData, error: sendError } = await resend.emails.send({
       from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
       to: [sendTo],
       subject: testEmail ? `[TEST] ${subject}` : subject,
@@ -391,12 +412,32 @@ const handler = async (req: Request): Promise<Response> => {
       reply_to: replyTo || undefined,
     });
 
+    // Record the outcome into delivery tracking (never the test sends). A
+    // synchronous failure surfaces at invoice level immediately; the accepted-send
+    // row stores the Resend message id so a later bounce webhook maps to this invoice.
+    const recordDelivery = async (eventType: "sent" | "send_failed", extra: Record<string, unknown>) => {
+      if (testEmail || !recipientEmail) return;
+      try {
+        await supabase.rpc("record_email_event", {
+          p_event_type: eventType,
+          p_recipient_email: recipientEmail,
+          p_invoice_id: invoice.id,
+          p_academy_profile_id: invoice.academy_profile_id ?? null,
+          p_trainer_id: invoice.trainer_id ?? null,
+          ...extra,
+        });
+      } catch (_) {
+        // tracking is best-effort — never block sending
+      }
+    };
+
     if (sendError) {
       logStep("failed", {
         invoiceId,
         invoiceNumber: invoice.invoice_number,
         errorCode: "send_failed",
       });
+      await recordDelivery("send_failed", { p_reason: String(sendError).slice(0, 500) });
       await notifySlackEdgeError(
         "send-invoice-email",
         "Resend send failed",
@@ -407,6 +448,8 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    await recordDelivery("sent", { p_resend_email_id: sendData?.id ?? null });
 
     // Stamp sent_at and promote draft -> sent only after a real successful delivery
     if (!testEmail) {

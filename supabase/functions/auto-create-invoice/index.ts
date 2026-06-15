@@ -247,6 +247,7 @@ serve(async (req) => {
       const { data: identityRows } = await supabase.rpc("get_invoice_recipient_identity", {
         _player_id: playerId ?? null,
         _guest_player_id: guestPlayerId ?? null,
+        _academy_profile_id: academyProfileId ?? null,
       });
       const identity = Array.isArray(identityRows) ? identityRows[0] : identityRows;
       if (identity?.full_name) {

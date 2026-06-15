@@ -3,6 +3,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { resolveAcademyCyclusPricingRoute } from '@/lib/cyclusPricingRoute';
 import { buildAcademyInvoiceEditPath } from '@/lib/academyPlayerDetailNavigation';
+import { useAcademyUndeliverableRecipients } from '@/lib/emailBounce';
+import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
+import { EmailFixControl } from '@/components/email/EmailFixControl';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import {
@@ -132,6 +135,13 @@ export default function AcademyPlayerDetail() {
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [locationNames, setLocationNames] = useState<string[]>([]);
   const [academyLocations, setAcademyLocations] = useState<{ id: string; name: string }[]>([]);
+
+  // Is this player's current email bouncing? (reuses the academy-wide recipients list)
+  const { data: undeliverableRecipients = [] } = useAcademyUndeliverableRecipients(activeAcademy?.id);
+  const isEmailBouncing = !!player && undeliverableRecipients.some(
+    (r) => (player.profile_id && r.profile_id === player.profile_id) ||
+           (player.guest_player_id && r.guest_player_id === player.guest_player_id),
+  );
   const [detailsValues, setDetailsValues] = useState<AcademyPlayerDetailsValues | null>(null);
   const [removedAt, setRemovedAt] = useState<string | null>(null);
 
@@ -481,6 +491,7 @@ export default function AcademyPlayerDetail() {
                   </Badge>
                 );
               })()}
+              {isEmailBouncing && <EmailBounceBadge />}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
               {player.email && (
@@ -508,6 +519,17 @@ export default function AcademyPlayerDetail() {
                 {t('players.detail.addedOn', 'Added')} {format(new Date(player.created_at), 'dd-MM-yyyy')}
               </span>
             </div>
+            {isEmailBouncing && activeAcademy && player && (
+              <div className="pt-2 max-w-md">
+                <EmailFixControl
+                  academyProfileId={activeAcademy.id}
+                  playerType={player.type}
+                  profileId={player.profile_id}
+                  guestPlayerId={player.guest_player_id}
+                  currentEmail={player.email}
+                />
+              </div>
+            )}
             {activeAcademy && player && (
               <div className="pt-2">
                 <TagPicker
