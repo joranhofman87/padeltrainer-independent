@@ -189,3 +189,6 @@ verify_jwt = false
 
 [functions.resend-webhook]
 verify_jwt = false
+
+[functions.backfill-email-bounces]
+verify_jwt = false
