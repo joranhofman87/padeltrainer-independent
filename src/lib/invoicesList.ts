@@ -41,6 +41,7 @@ export interface TrainerInvoiceParams {
   tab?: 'unpaid' | 'paid';
   status?: string | null;
   search?: string | null;
+  delivery?: string | null; // 'undelivered' | 'bounced' | 'no_email' | 'delivered'
   sort?: string;
   sortDir?: 'asc' | 'desc';
   page?: number;
@@ -130,6 +131,7 @@ export async function fetchTrainerInvoices(
     p_tab: params.tab ?? 'unpaid',
     p_status: params.status ?? undefined,
     p_search: params.search?.trim() || undefined,
+    p_delivery: params.delivery ?? undefined,
     p_sort: params.sort ?? 'created_at',
     p_sort_dir: params.sortDir ?? 'desc',
     p_limit: pageSize,
@@ -276,6 +278,37 @@ export function useTrainerInvoiceSummary(trainerId: string | null | undefined) {
   return useQuery({
     queryKey: ['trainer-invoices', 'summary', trainerId],
     queryFn: () => fetchTrainerInvoiceSummary(trainerId!),
+    enabled: Boolean(trainerId),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export async function fetchTrainerInvoiceDeliverySummary(
+  trainerId: string,
+  opts: { tab?: 'unpaid' | 'paid' } = {},
+): Promise<InvoiceDeliverySummary> {
+  const { data, error } = await supabase.rpc('get_trainer_invoice_delivery_summary', {
+    p_trainer_id: trainerId,
+    p_tab: opts.tab ?? 'unpaid',
+  });
+  if (error) throw error;
+  const r = (data ?? [])[0];
+  return {
+    total: Number(r?.total ?? 0),
+    noEmail: Number(r?.no_email ?? 0),
+    bounced: Number(r?.bounced ?? 0),
+    delivered: Number(r?.delivered ?? 0),
+    pending: Number(r?.pending ?? 0),
+  };
+}
+
+export function useTrainerInvoiceDeliverySummary(
+  trainerId: string | null | undefined,
+  opts: { tab?: 'unpaid' | 'paid' },
+) {
+  return useQuery({
+    queryKey: ['trainer-invoices', 'delivery-summary', trainerId, opts.tab ?? 'unpaid'],
+    queryFn: () => fetchTrainerInvoiceDeliverySummary(trainerId!, opts),
     enabled: Boolean(trainerId),
     placeholderData: keepPreviousData,
   });

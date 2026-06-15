@@ -7336,6 +7336,16 @@ export type Database = {
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
+      get_trainer_invoice_delivery_summary: {
+        Args: { p_tab?: string; p_trainer_id: string }
+        Returns: {
+          bounced: number
+          delivered: number
+          no_email: number
+          pending: number
+          total: number
+        }[]
+      }
       get_trainer_invoice_summary: {
         Args: { p_trainer_id: string }
         Returns: {
@@ -7347,6 +7357,7 @@ export type Database = {
       }
       get_trainer_invoices: {
         Args: {
+          p_delivery?: string
           p_limit?: number
           p_offset?: number
           p_search?: string
@@ -7361,6 +7372,7 @@ export type Database = {
           booking_ids: string[]
           computed_status: string
           created_at: string
+          delivery_status: string
           due_date: string
           forwarded_at: string
           guest_player_id: string
@@ -7368,6 +7380,7 @@ export type Database = {
           invoice_date: string
           invoice_number: string
           line_items: Json
+          linked_email: string
           mollie_payment_id: string
           mollie_payment_url: string
           notes: string
