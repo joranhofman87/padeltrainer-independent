@@ -58,6 +58,7 @@ await db.exec(readFileSync('supabase/migrations/20260615110090_players_overview_
 // Phase 2: the curated store + the function that reads it (supersedes 110090).
 await db.exec(readFileSync('supabase/migrations/20260615110100_academy_player_locations.sql', 'utf8'));
 await db.exec(readFileSync('supabase/migrations/20260615110110_players_overview_read_manual_locations.sql', 'utf8'));
+await db.exec(readFileSync('supabase/migrations/20260615110120_get_player_locations.sql', 'utf8'));
 
 // ---- seed ----
 await db.exec(`
@@ -171,6 +172,20 @@ ok('filter L2 (inactive) → only GC (preferred)', JSON.stringify(f2) === JSON.s
   const f5 = (await db.query(`SELECT full_name FROM public.get_players_overview('academy','${A}',null,$1::jsonb,'name','asc',100,0)`,
     [JSON.stringify({ location_id: L1 })])).rows.map((r) => r.full_name);
   ok('merged dismiss: GB excluded from filter L1 too (display↔filter parity)', !f5.includes('GB prefers L1'), f5);
+}
+
+// ---- per-player RPC get_player_locations (drives the profile UI; must equal the table) ----
+{
+  const gpl = async (gid) => (await db.query(`SELECT location_name FROM public.get_player_locations('${A}', null, '${gid}')`)).rows.map((r) => r.location_name).sort();
+  ok('get_player_locations: GE (intake) → [Center Court]', JSON.stringify(await gpl(g(5))) === '["Center Court"]');
+  ok('get_player_locations: GD (trained non-academy) → []', JSON.stringify(await gpl(g(4))) === '[]');
+  ok('get_player_locations: GB (merged-dismissed) → []', JSON.stringify(await gpl(g(2))) === '[]');
+  ok('get_player_locations: GH (manual attach) → [Center Court]', JSON.stringify(await gpl(g(8))) === '["Center Court"]');
+  let denied = false;
+  await db.exec(`SET app.uid = '99999999-0000-0000-0000-000000000000'`);
+  try { await db.query(`SELECT * FROM public.get_player_locations('${A}', null, '${g(5)}')`); } catch (e) { denied = String(e).includes('not authorized'); }
+  ok('get_player_locations: non-manager rejected (42501)', denied);
+  await db.exec(`SET app.uid = '${MGR}'`);
 }
 
 console.log(`\n${fail ? `*** FAILED (${fail}) ***` : '*** PASSED ***'}`);

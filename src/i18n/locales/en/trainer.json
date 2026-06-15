@@ -560,7 +560,10 @@
       "removedFromTrainerSuccess": "Player removed from trainer",
       "removedFromTrainerSuccessDesc": "Historical bookings, invoices, and notes are unchanged.",
       "removedFromTrainerTitle": "Removed from trainer",
-      "started": "Started"
+      "started": "Started",
+      "noClubs": "No clubs yet",
+      "removeClub": "Remove club",
+      "addClub": "Add club"
     },
     "import": {
       "button": "Import CSV",

@@ -7400,6 +7400,17 @@ export type Database = {
           trainer_name: string
         }[]
       }
+      get_player_locations: {
+        Args: {
+          p_academy_profile_id: string
+          p_guest_player_id: string
+          p_profile_id: string
+        }
+        Returns: {
+          location_id: string
+          location_name: string
+        }[]
+      }
       get_players_overview: {
         Args: {
           p_filters?: Json

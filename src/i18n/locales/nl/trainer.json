@@ -563,7 +563,10 @@
       "removedFromTrainerSuccess": "Speler verwijderd van trainer",
       "removedFromTrainerSuccessDesc": "Eerdere boekingen, facturen en notities blijven ongewijzigd.",
       "removedFromTrainerTitle": "Verwijderd van trainer",
-      "started": "Gestart"
+      "started": "Gestart",
+      "noClubs": "Nog geen clubs",
+      "removeClub": "Club verwijderen",
+      "addClub": "Club toevoegen"
     },
     "import": {
       "button": "CSV importeren",

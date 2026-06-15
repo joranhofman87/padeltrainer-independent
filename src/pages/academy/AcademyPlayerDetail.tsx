@@ -12,7 +12,6 @@ import {
   ArrowLeft,
   Mail,
   Phone,
-  MapPin,
   Calendar,
   Cake,
   BarChart3,
@@ -39,6 +38,7 @@ import { PlayerTag } from '@/components/players/playerTagColors';
 import { TagPicker } from '@/components/players/TagPicker';
 import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
+import { PlayerLocationsControl } from '@/components/academy/PlayerLocationsControl';
 import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
 import {
@@ -46,7 +46,6 @@ import {
   fetchLinkedProfileIdentity,
   type AcademyPlayerDetailsValues,
 } from '@/lib/academyPlayerDetails';
-import { fetchPlayerTrainingLocations } from '@/lib/academyPlayerTrainingLocations';
 import {
   buildInvoiceEmailEvents,
   filterInvoicesForAcademy,
@@ -133,7 +132,6 @@ export default function AcademyPlayerDetail() {
   const [player, setPlayer] = useState<PlayerCore | null>(null);
   const [tags, setTags] = useState<PlayerTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [locationNames, setLocationNames] = useState<string[]>([]);
   const [academyLocations, setAcademyLocations] = useState<{ id: string; name: string }[]>([]);
 
   // Is this player's current email bouncing? (reuses the academy-wide recipients list)
@@ -275,13 +273,6 @@ export default function AcademyPlayerDetail() {
             ? core.notes
             : meta?.notes ?? null,
       });
-
-      const trainingLocations = await fetchPlayerTrainingLocations({
-        academyProfileId: activeAcademy!.id,
-        guestPlayerId: parsed.kind === 'guest' ? parsed.id : null,
-        profileId: parsed.kind === 'profile' ? parsed.id : null,
-      });
-      setLocationNames(trainingLocations.map((l) => l.location_name));
 
       // Bookings (cycluses)
       const bookingFilter = parsed.kind === 'guest'
@@ -504,11 +495,6 @@ export default function AcademyPlayerDetail() {
                   <Phone className="h-3.5 w-3.5" /> {player.phone}
                 </a>
               )}
-              {locationNames.length > 0 && (
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" /> {locationNames.join(', ')}
-                </span>
-              )}
               {player.birth_date && (
                 <span className="inline-flex items-center gap-1.5">
                   <Cake className="h-3.5 w-3.5" /> {format(new Date(player.birth_date), 'dd-MM-yyyy')}
@@ -519,6 +505,16 @@ export default function AcademyPlayerDetail() {
                 {t('players.detail.addedOn', 'Added')} {format(new Date(player.created_at), 'dd-MM-yyyy')}
               </span>
             </div>
+            {activeAcademy && player && (
+              <div className="pt-2">
+                <PlayerLocationsControl
+                  academyProfileId={activeAcademy.id}
+                  profileId={player.profile_id}
+                  guestPlayerId={player.guest_player_id}
+                  academyLocations={academyLocations}
+                />
+              </div>
+            )}
             {isEmailBouncing && activeAcademy && player && (
               <div className="pt-2 max-w-md">
                 <EmailFixControl
