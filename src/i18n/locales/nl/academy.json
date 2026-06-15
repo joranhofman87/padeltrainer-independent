@@ -904,10 +904,17 @@
       "undelivered": "Niet bezorgd",
       "bounced": "Gebounced",
       "noEmail": "Geen e-mail",
-      "delivered": "Bezorgd"
+      "delivered": "Bezorgd",
+      "issue": "Bezorgprobleem"
     },
     "banner": "{{count}} van deze facturen hebben de speler nooit bereikt",
     "bannerDetail": "{{bounced}} gebounced · {{noEmail}} geen e-mail",
-    "bannerCta": "Toon ze"
+    "bannerCta": "Toon ze",
+    "reason": {
+      "noEmail": "Geen e-mailadres bekend",
+      "bounced": "E-mail gebounced — kon niet worden bezorgd",
+      "failed": "Verzenden mislukt"
+    },
+    "flagLabel": "Bezorgprobleem"
   }
 }

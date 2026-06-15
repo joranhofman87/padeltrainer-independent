@@ -822,10 +822,7 @@ export default function AcademyInvoices() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("emailDelivery.filter.all", "All delivery")}</SelectItem>
-              <SelectItem value="undelivered">{t("emailDelivery.filter.undelivered", "Not delivered")}</SelectItem>
-              <SelectItem value="bounced">{t("emailDelivery.filter.bounced", "Bounced")}</SelectItem>
-              <SelectItem value="no_email">{t("emailDelivery.filter.noEmail", "No email")}</SelectItem>
-              <SelectItem value="delivered">{t("emailDelivery.filter.delivered", "Delivered")}</SelectItem>
+              <SelectItem value="undelivered">{t("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
             </SelectContent>
           </Select>
         </TableToolbar>
@@ -921,7 +918,6 @@ export default function AcademyInvoices() {
                             <InvoiceDeliveryChip
                               deliveryStatus={inv.delivery_status}
                               hasEmail={invoiceHasEmail(inv)}
-                              sentAt={inv.sent_at}
                             />
                           </TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
@@ -995,7 +991,6 @@ export default function AcademyInvoices() {
                           <InvoiceDeliveryChip
                             deliveryStatus={inv.delivery_status}
                             hasEmail={invoiceHasEmail(inv)}
-                            sentAt={inv.sent_at}
                           />
                           {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
                         </div>

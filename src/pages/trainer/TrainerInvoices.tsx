@@ -667,10 +667,7 @@ export default function TrainerInvoices() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{tDelivery("emailDelivery.filter.all", "All delivery")}</SelectItem>
-                  <SelectItem value="undelivered">{tDelivery("emailDelivery.filter.undelivered", "Not delivered")}</SelectItem>
-                  <SelectItem value="bounced">{tDelivery("emailDelivery.filter.bounced", "Bounced")}</SelectItem>
-                  <SelectItem value="no_email">{tDelivery("emailDelivery.filter.noEmail", "No email")}</SelectItem>
-                  <SelectItem value="delivered">{tDelivery("emailDelivery.filter.delivered", "Delivered")}</SelectItem>
+                  <SelectItem value="undelivered">{tDelivery("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
                 </SelectContent>
               </Select>
             </TableToolbar>
@@ -734,7 +731,7 @@ export default function TrainerInvoices() {
                               <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
                               <TableCell>{inv.player_name}</TableCell>
                               <TableCell>
-                                <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={invoiceHasEmail(inv)} sentAt={inv.sent_at} />
+                                <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={invoiceHasEmail(inv)} />
                               </TableCell>
                               <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                               <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
@@ -790,7 +787,6 @@ export default function TrainerInvoices() {
                               <InvoiceDeliveryChip
                                 deliveryStatus={inv.delivery_status}
                                 hasEmail={invoiceHasEmail(inv)}
-                                sentAt={inv.sent_at}
                               />
                               {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
                             </div>

@@ -902,10 +902,17 @@
       "undelivered": "Not delivered",
       "bounced": "Bounced",
       "noEmail": "No email",
-      "delivered": "Delivered"
+      "delivered": "Delivered",
+      "issue": "Delivery issue"
     },
     "banner": "{{count}} of these invoices never reached the player",
     "bannerDetail": "{{bounced}} bounced · {{noEmail}} no email",
-    "bannerCta": "Show them"
+    "bannerCta": "Show them",
+    "reason": {
+      "noEmail": "No email address on file",
+      "bounced": "Email bounced — couldn’t be delivered",
+      "failed": "Sending failed"
+    },
+    "flagLabel": "Delivery issue"
   }
 }

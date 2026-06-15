@@ -1,57 +1,43 @@
-import { Badge } from '@/components/ui/badge';
-import { MailCheck, MailWarning, MailX, Send, Minus } from 'lucide-react';
+import { MailWarning } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   deliveryStatus: string | null | undefined;
   hasEmail: boolean;
-  sentAt: string | null | undefined;
 }
 
 /**
- * Clear per-invoice delivery state for the invoice list — distinguishes
- * No email / Not delivered / Delivered / Sent (accepted, awaiting) / Not sent,
- * so "marked sent" no longer hides a bounce.
+ * Per-invoice delivery FLAG. Renders a warning icon ONLY when the invoice can't
+ * have reached the player — no email on file, a bounce (incl. spam complaint,
+ * which get_invoice_delivery_status folds into 'bounced'), or a send failure.
+ * Hovering gives the reason. Healthy rows (delivered / accepted / unknown) render
+ * nothing, so a column of mostly-blank cells reads as a scannable "needs action"
+ * flag. Shared by the academy + trainer invoice pages.
  */
-export function InvoiceDeliveryChip({ deliveryStatus, hasEmail, sentAt }: Props) {
+export function InvoiceDeliveryChip({ deliveryStatus, hasEmail }: Props) {
   const { t } = useTranslation('academy');
 
+  let reason: string | null = null;
+  let tone = 'text-destructive';
   if (!hasEmail) {
-    return (
-      <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
-        <MailX className="h-3 w-3" />
-        {t('emailDelivery.chip.noEmail', 'No email')}
-      </Badge>
-    );
+    reason = t('emailDelivery.reason.noEmail', 'No email address on file');
+    tone = 'text-amber-600';
+  } else if (deliveryStatus === 'bounced') {
+    reason = t('emailDelivery.reason.bounced', "Email bounced — couldn't be delivered");
+  } else if (deliveryStatus === 'failed') {
+    reason = t('emailDelivery.reason.failed', 'Sending failed');
   }
-  if (deliveryStatus === 'bounced' || deliveryStatus === 'failed') {
-    return (
-      <Badge variant="destructive" className="gap-1">
-        <MailWarning className="h-3 w-3" />
-        {t('emailDelivery.chip.bounced', 'Not delivered')}
-      </Badge>
-    );
-  }
-  if (deliveryStatus === 'delivered') {
-    return (
-      <Badge variant="outline" className="gap-1 text-emerald-600 border-emerald-300">
-        <MailCheck className="h-3 w-3" />
-        {t('emailDelivery.chip.delivered', 'Delivered')}
-      </Badge>
-    );
-  }
-  if (deliveryStatus === 'sent' || sentAt) {
-    return (
-      <Badge variant="secondary" className="gap-1">
-        <Send className="h-3 w-3" />
-        {t('emailDelivery.chip.sent', 'Sent')}
-      </Badge>
-    );
-  }
+  if (!reason) return null;
+
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-      <Minus className="h-3 w-3" />
-      {t('emailDelivery.chip.notSent', 'Not sent')}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex ${tone}`} aria-label={t('emailDelivery.flagLabel', 'Delivery issue')}>
+          <MailWarning className="h-4 w-4" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
   );
 }
