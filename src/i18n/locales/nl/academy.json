@@ -882,6 +882,14 @@
   "emailDelivery": {
     "alertTitle": "{{count}} speler(s) met een onbezorgbaar e-mailadres",
     "alertBody": "Herinneringen en facturen bereiken hen niet. Werk hun e-mailadres bij om bezorging te herstellen.",
-    "reviewPlayers": "Spelers bekijken"
+    "reviewPlayers": "Spelers bekijken",
+    "fixTitle": "Dit e-mailadres komt niet aan",
+    "overrideHelp": "Je kunt het login-e-mailadres van deze speler niet wijzigen. Stel een factuur-e-mailadres in dat alleen voor hun facturen wordt gebruikt.",
+    "directHelp": "Voer een gecorrigeerd e-mailadres in.",
+    "billingEmailPlaceholder": "Factuur-e-mailadres",
+    "newEmailPlaceholder": "Nieuw e-mailadres",
+    "fixSave": "Opslaan",
+    "fixed": "E-mailadres bijgewerkt",
+    "fixFailed": "E-mailadres kon niet worden bijgewerkt"
   }
 }

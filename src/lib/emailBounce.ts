@@ -6,6 +6,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 
+export type EmailEditCapability = 'direct' | 'override';
+
 export type EmailBounceState = 'hard_bounced' | 'complained';
 
 export interface UndeliverableRecipient {
@@ -65,4 +67,56 @@ export function useInvoicesDeliveryStatus(invoiceIds: string[]) {
     enabled: invoiceIds.length > 0,
     staleTime: 60 * 1000,
   });
+}
+
+// ===================== remediation (fix-it) =====================
+
+/** Whether the academy may edit a registered player's REAL email ('direct') or
+ *  must use a billing-email override ('override'). Guests are edited directly. */
+export function usePlayerEmailEditCapability(profileId: string | null | undefined, academyProfileId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['player-email-edit-capability', profileId, academyProfileId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_player_email_edit_capability', {
+        _profile_id: profileId!,
+        _academy_profile_id: academyProfileId!,
+      });
+      if (error) throw error;
+      return (data ?? 'override') as EmailEditCapability;
+    },
+    enabled: !!profileId && !!academyProfileId,
+    staleTime: 60 * 1000,
+  });
+}
+
+/** Gated edit of a registered player's real login email (only when capability='direct'). */
+export async function updatePlayerEmailDirect(profileId: string, academyProfileId: string, email: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('academy-update-player-email', {
+    body: { profile_id: profileId, academy_profile_id: academyProfileId, email },
+  });
+  if (error) throw error;
+  if (data && (data as { error?: string }).error) throw new Error((data as { error: string }).error);
+}
+
+/** Academy/trainer edit a guest's contact email directly. */
+export async function updateGuestEmail(guestPlayerId: string, email: string): Promise<void> {
+  const { error } = await supabase.from('guest_players').update({ email: email.trim().toLowerCase() }).eq('id', guestPlayerId);
+  if (error) throw error;
+}
+
+/** Set an invoice-only billing-email override on the academy's player-metadata row. */
+export async function updateBillingEmailOverride(opts: {
+  academyProfileId: string;
+  profileId?: string | null;
+  guestPlayerId?: string | null;
+  email: string;
+}): Promise<void> {
+  let q = supabase
+    .from('academy_player_metadata')
+    .update({ billing_email: opts.email.trim().toLowerCase() })
+    .eq('academy_profile_id', opts.academyProfileId)
+    .is('removed_at', null);
+  q = opts.guestPlayerId ? q.eq('guest_player_id', opts.guestPlayerId) : q.eq('profile_id', opts.profileId!);
+  const { error } = await q;
+  if (error) throw error;
 }

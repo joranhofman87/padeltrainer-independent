@@ -158,5 +158,94 @@ ok(denied, 'non-manager is denied the recipients list (42501)');
 const batchUnauth = (await db.query(`SELECT * FROM public.get_invoices_delivery_status(ARRAY['${INV1}']::uuid[]);`)).rows;
 ok(batchUnauth.length === 0, 'batch status returns nothing for an invoice the caller does not manage');
 
+// ============ Phase 5: remediation (migration 5) — capability gate + override ============
+await db.exec(`
+  ALTER TABLE public.profiles ADD COLUMN phone text;
+  ALTER TABLE public.profiles ADD COLUMN billing_business_name text;
+  ALTER TABLE public.profiles ADD COLUMN billing_address text;
+  ALTER TABLE public.profiles ADD COLUMN billing_btw_number text;
+  ALTER TABLE public.guest_players ADD COLUMN first_name text;
+  ALTER TABLE public.guest_players ADD COLUMN last_name text;
+  ALTER TABLE public.guest_players ADD COLUMN phone text;
+  ALTER TABLE public.guest_players ADD COLUMN billing_business_name text;
+  ALTER TABLE public.guest_players ADD COLUMN billing_address text;
+  ALTER TABLE public.guest_players ADD COLUMN billing_btw_number text;
+  CREATE TABLE auth.users (id uuid PRIMARY KEY, last_sign_in_at timestamptz, email_confirmed_at timestamptz);
+  CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, academy_profile_id uuid, trainer_id uuid);
+  CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid, status text);
+`);
+await db.exec(readFileSync('supabase/migrations/20260615110040_email_remediation.sql', 'utf8'));
+await db.exec(readFileSync('supabase/migrations/20260615110050_email_remediation_hardening.sql', 'utf8'));
+
+const AC2 = '24000000-0000-0000-0000-000000000002';
+const P_OTHER = '21000000-0000-0000-0000-00000000000a';
+await db.exec(`
+  INSERT INTO auth.users (id, last_sign_in_at) VALUES
+    ('${P1}', NULL),                  -- never logged in
+    ('${P2}', '2026-01-01T00:00:00Z'),-- logged in
+    ('${LP}', NULL);
+  INSERT INTO public.profiles (id, user_id, full_name, email) VALUES ('${P_OTHER}', '${P_OTHER}', 'Other Academy Player', 'other@x.com');
+  INSERT INTO auth.users (id, last_sign_in_at) VALUES ('${P_OTHER}', NULL);
+  INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id) VALUES ('${AC2}', '${P_OTHER}');
+`);
+
+await db.exec(`SELECT set_config('rehearse.uid', '${UM}', false);`); // UM manages AC
+const cap = async (pid, aid) => (await db.query(`SELECT public.get_player_email_edit_capability('${pid}', '${aid}') AS c;`)).rows[0].c;
+
+// P1: never logged in, only AC owns + only AC has invoiced (INV1) → direct
+ok(await cap(P1, AC) === 'direct', 'never-logged-in + single-tenant + owned → direct');
+// P2: has logged in → override
+ok(await cap(P2, AC) === 'override', 'logged-in player → override (never rewrite a live login)');
+
+// multi-academy: attach a 2nd academy to P1 → override; detach → direct again
+await db.exec(`INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id) VALUES ('${AC2}', '${P1}');`);
+ok(await cap(P1, AC) === 'override', 'multi-academy → override');
+await db.exec(`DELETE FROM public.academy_player_metadata WHERE academy_profile_id = '${AC2}' AND profile_id = '${P1}';`);
+ok(await cap(P1, AC) === 'direct', 'back to single-academy → direct again');
+
+// an invoice from ANOTHER academy also forces override
+await db.exec(`INSERT INTO public.invoices (id, academy_profile_id, player_id) VALUES ('23000000-0000-0000-0000-0000000000a2', '${AC2}', '${P1}');`);
+ok(await cap(P1, AC) === 'override', 'invoice from another academy → override');
+await db.exec(`DELETE FROM public.invoices WHERE id = '23000000-0000-0000-0000-0000000000a2';`);
+
+// not owned by the calling academy → override
+ok(await cap(P_OTHER, AC) === 'override', 'player not owned by this academy → override');
+
+// HARDENING — confirmed-but-never-logged-in → override (email_confirmed_at guard)
+const P_CONFIRMED = '21000000-0000-0000-0000-00000000000b';
+await db.exec(`
+  INSERT INTO public.profiles (id, user_id, full_name, email) VALUES ('${P_CONFIRMED}', '${P_CONFIRMED}', 'Confirmed Player', 'conf@x.com');
+  INSERT INTO auth.users (id, last_sign_in_at, email_confirmed_at) VALUES ('${P_CONFIRMED}', NULL, '2026-02-01T00:00:00Z');
+  INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id) VALUES ('${AC}', '${P_CONFIRMED}');
+`);
+ok(await cap(P_CONFIRMED, AC) === 'override', 'never logged in but email CONFIRMED → override (hardening)');
+
+// HARDENING — a booking in another org's slot makes the player multi-tenant → override
+await db.exec(`
+  INSERT INTO public.availability_slots (id, academy_profile_id, trainer_id) VALUES ('25000000-0000-0000-0000-000000000001', '${AC2}', NULL);
+  INSERT INTO public.bookings (slot_id, player_id, status) VALUES ('25000000-0000-0000-0000-000000000001', '${P1}', 'confirmed');
+`);
+ok(await cap(P1, AC) === 'override', 'booking in another academy slot → override (hardening)');
+await db.exec(`DELETE FROM public.bookings WHERE slot_id = '25000000-0000-0000-0000-000000000001';`);
+ok(await cap(P1, AC) === 'direct', 'remove the cross-org booking → direct again');
+
+// non-manager caller → 42501
+await db.exec(`SELECT set_config('rehearse.uid', '${P1}', false);`);
+let capDenied = false;
+try { await db.query(`SELECT public.get_player_email_edit_capability('${P1}', '${AC}');`); } catch { capDenied = true; }
+ok(capDenied, 'non-manager denied the capability check (42501)');
+await db.exec(`SELECT set_config('rehearse.uid', '${UM}', false);`);
+
+// billing-email override wins for the academy, but not without the academy scope
+const recipEmail = async (pid, aid) => {
+  const sql = aid
+    ? `SELECT email FROM public.get_invoice_recipient_identity('${pid}', NULL, '${aid}');`
+    : `SELECT email FROM public.get_invoice_recipient_identity('${pid}', NULL, NULL);`;
+  return (await db.query(sql)).rows[0]?.email;
+};
+await db.exec(`UPDATE public.academy_player_metadata SET billing_email = 'override@fix.com' WHERE academy_profile_id = '${AC}' AND profile_id = '${P1}';`);
+ok(await recipEmail(P1, AC) === 'override@fix.com', 'billing override wins for the academy invoice');
+ok(await recipEmail(P1, null) === 'bad@reg.com', 'without academy scope, the real profile email is used (override not leaked)');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

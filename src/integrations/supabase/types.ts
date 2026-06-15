@@ -323,6 +323,7 @@ export type Database = {
       academy_player_metadata: {
         Row: {
           academy_profile_id: string | null
+          billing_email: string | null
           created_at: string
           guest_player_id: string | null
           id: string
@@ -338,6 +339,7 @@ export type Database = {
         }
         Insert: {
           academy_profile_id?: string | null
+          billing_email?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
@@ -353,6 +355,7 @@ export type Database = {
         }
         Update: {
           academy_profile_id?: string | null
+          billing_email?: string | null
           created_at?: string
           guest_player_id?: string | null
           id?: string
@@ -7222,7 +7225,11 @@ export type Database = {
         Returns: string
       }
       get_invoice_recipient_identity: {
-        Args: { _guest_player_id?: string; _player_id?: string }
+        Args: {
+          _academy_profile_id?: string
+          _guest_player_id?: string
+          _player_id?: string
+        }
         Returns: {
           billing_address: string
           billing_btw_number: string
@@ -7242,6 +7249,10 @@ export type Database = {
       get_location_review_stats: {
         Args: { _location_id: string }
         Returns: Json
+      }
+      get_player_email_edit_capability: {
+        Args: { _academy_profile_id: string; _profile_id: string }
+        Returns: string
       }
       get_player_journey: {
         Args: { p_limit?: number; p_offset?: number; p_profile_id: string }

@@ -117,6 +117,8 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: identityRows } = await supabase.rpc("get_invoice_recipient_identity", {
       _player_id: invoice.player_id ?? null,
       _guest_player_id: invoice.guest_player_id ?? null,
+      // academy-scoped billing-email override (bounce remediation) wins for the email
+      _academy_profile_id: invoice.academy_profile_id ?? null,
     });
     const identity = Array.isArray(identityRows) ? identityRows[0] : identityRows;
     if (identity?.email) {

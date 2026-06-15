@@ -880,6 +880,14 @@
   "emailDelivery": {
     "alertTitle": "{{count}} player(s) have an undeliverable email",
     "alertBody": "Reminders and invoices aren't reaching them. Update their email address to fix delivery.",
-    "reviewPlayers": "Review players"
+    "reviewPlayers": "Review players",
+    "fixTitle": "This email is bouncing",
+    "overrideHelp": "You can't change this player's login email, so set a billing email used only for their invoices.",
+    "directHelp": "Enter a corrected email address.",
+    "billingEmailPlaceholder": "Billing email",
+    "newEmailPlaceholder": "New email address",
+    "fixSave": "Save",
+    "fixed": "Email updated",
+    "fixFailed": "Could not update email"
   }
 }
