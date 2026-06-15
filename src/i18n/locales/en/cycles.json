@@ -170,7 +170,8 @@
     "unlimited": "Unlimited",
     "cycleCreated": "Cycle created",
     "cycleUpdated": "Cycle updated",
-    "saveFailed": "Failed to save cycle"
+    "saveFailed": "Failed to save cycle",
+    "locationRequired": "Select a training location so players show the right club."
   },
   "detail": {
     "pricesIncludeVat": "All prices include VAT",

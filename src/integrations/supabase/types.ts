@@ -320,6 +320,113 @@ export type Database = {
           },
         ]
       }
+      academy_player_locations: {
+        Row: {
+          academy_profile_id: string
+          created_at: string
+          created_by: string | null
+          dismissed: boolean
+          guest_player_id: string | null
+          id: string
+          location_id: string
+          profile_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          created_at?: string
+          created_by?: string | null
+          dismissed?: boolean
+          guest_player_id?: string | null
+          id?: string
+          location_id: string
+          profile_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          created_at?: string
+          created_by?: string | null
+          dismissed?: boolean
+          guest_player_id?: string | null
+          id?: string
+          location_id?: string
+          profile_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_player_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_locations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       academy_player_metadata: {
         Row: {
           academy_profile_id: string | null
@@ -7293,6 +7400,17 @@ export type Database = {
           trainer_name: string
         }[]
       }
+      get_player_locations: {
+        Args: {
+          p_academy_profile_id: string
+          p_guest_player_id: string
+          p_profile_id: string
+        }
+        Returns: {
+          location_id: string
+          location_name: string
+        }[]
+      }
       get_players_overview: {
         Args: {
           p_filters?: Json
@@ -7529,6 +7647,16 @@ export type Database = {
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
+      set_player_location: {
+        Args: {
+          p_academy_profile_id: string
+          p_dismissed: boolean
+          p_guest_player_id: string
+          p_location_id: string
+          p_profile_id: string
+        }
+        Returns: undefined
+      }
       stripe_subscription_has_newer_activation: {
         Args: { _event_created: number; _subscription_id: string }
         Returns: boolean

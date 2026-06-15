@@ -180,7 +180,8 @@
     "unlimited": "Onbeperkt",
     "cycleCreated": "Inschrijving aangemaakt",
     "cycleUpdated": "Inschrijving bijgewerkt",
-    "saveFailed": "Opslaan mislukt. Probeer het opnieuw."
+    "saveFailed": "Opslaan mislukt. Probeer het opnieuw.",
+    "locationRequired": "Kies een trainingslocatie zodat spelers de juiste club te zien krijgen."
   },
   "detail": {
     "priceTable": "Tarieven",

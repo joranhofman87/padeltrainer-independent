@@ -210,6 +210,12 @@ export default function CycleForm({
   }).refine(data => data.is_always_open || !!data.start_date, {
     message: 'Start date is required',
     path: ['start_date'],
+    // A training cycle without a location is the root cause of players showing no club
+    // (the slot inherits the cycle's location). Require one when clubs are available;
+    // events/registrations are exempt.
+  }).refine(data => isEvent || isRegistration || locations.length === 0 || !!data.location_id, {
+    message: t('form.locationRequired', 'Select a training location so players show the right club.'),
+    path: ['location_id'],
   });
 
   type FormValues = z.infer<typeof formSchema>;
@@ -1050,7 +1056,7 @@ export default function CycleForm({
                 name="location_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('form.location')}</FormLabel>
+                    <FormLabel>{t('form.location')}{!isEvent && !isRegistration ? ' *' : ''}</FormLabel>
                     <Select value={field.value || ''} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
