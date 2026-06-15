@@ -34,7 +34,7 @@ import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDi
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX } from "lucide-react";
+import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailX, MailWarning } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -52,6 +52,7 @@ import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
 import { type InvoiceStatus } from "@/lib/invoiceStatus";
 import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
+import { useInvoicesDeliveryStatus } from "@/lib/emailBounce";
 import {
   buildInvoiceSettingsLabels,
   checkInvoiceSettingsGate,
@@ -149,6 +150,8 @@ export default function AcademyInvoices() {
   });
 
   const filteredInvoices: Invoice[] = overview?.rows ?? [];
+  // Per-invoice email delivery status for the visible page (powers the bounce indicator).
+  const { data: deliveryStatus } = useInvoicesDeliveryStatus(filteredInvoices.map((i) => i.id));
   const totalUnpaid = summary?.sumUnpaid ?? 0;
   const countUnpaid = summary?.countUnpaid ?? 0;
   const countPaid = summary?.countPaid ?? 0;
@@ -898,6 +901,16 @@ export default function AcademyInvoices() {
                                 </TooltipContent>
                               </Tooltip>
                             )}
+                            {deliveryStatus?.[inv.id] === "bounced" && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <MailWarning className="h-3.5 w-3.5 text-destructive" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {t("invoices.emailBounced", "Email bounced — not delivered")}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                           </TableCell>
                           <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
                           <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
@@ -967,6 +980,9 @@ export default function AcademyInvoices() {
                         </div>
                         <div className="flex items-center gap-1.5">
                           {getStatusBadge(inv)}
+                          {deliveryStatus?.[inv.id] === "bounced" && (
+                            <MailWarning className="h-3.5 w-3.5 text-destructive" aria-label={t("invoices.emailBounced", "Email bounced — not delivered")} />
+                          )}
                           {inv.forwarded_at && <Mail className="h-3.5 w-3.5 text-muted-foreground" />}
                         </div>
                       </div>

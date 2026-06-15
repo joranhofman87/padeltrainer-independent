@@ -756,5 +756,9 @@
     "paid": "Betaald",
     "overdue": "Vervallen",
     "cancelled": "Geannuleerd"
+  },
+  "emailBounce": {
+    "badge": "E-mail komt niet aan",
+    "tooltip": "We kunnen geen e-mails bezorgen op dit adres — herinneringen bereiken deze speler niet."
   }
 }

@@ -800,7 +800,8 @@
     "selectAll": "Alles selecteren",
     "selectInvoice": "Selecteer {{number}}",
     "sendErrorNotConfigured": "E-mailverzending is nog niet ingesteld — neem contact op met support.",
-    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw."
+    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw.",
+    "emailBounced": "E-mail niet bezorgd"
   },
   "warnings": {
     "ratingSpread": "Niveauverschil: {{spread}}",
@@ -877,5 +878,10 @@
       "pro": "Pro (9+)",
       "unrated": "Geen rating"
     }
+  },
+  "emailDelivery": {
+    "alertTitle": "{{count}} speler(s) met een onbezorgbaar e-mailadres",
+    "alertBody": "Herinneringen en facturen bereiken hen niet. Werk hun e-mailadres bij om bezorging te herstellen.",
+    "reviewPlayers": "Spelers bekijken"
   }
 }

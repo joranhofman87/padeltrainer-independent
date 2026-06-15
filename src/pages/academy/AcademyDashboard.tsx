@@ -24,6 +24,7 @@ import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { useAcademyUndeliverableRecipients } from '@/lib/emailBounce';
 import { AcademyPublicLinkCard } from '@/components/academy/AcademyPublicLinkCard';
 import { useQuery } from '@tanstack/react-query';
 import { AppPage } from '@/components/ui/app-page';
@@ -45,6 +46,9 @@ export default function AcademyDashboard() {
   const { activeAcademy, isTrialing, trialDaysRemaining, subscription } = useAcademyContext();
 
   const academyId = activeAcademy?.id;
+
+  // Players whose email is bouncing — reminders aren't reaching them.
+  const { data: undeliverableRecipients = [] } = useAcademyUndeliverableRecipients(academyId);
 
   // Stats query
   const { data: stats = { trainers: 0, locations: 0, viewsLast30Days: 0, outstandingInvoices: 0 }, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
@@ -310,6 +314,22 @@ export default function AcademyDashboard() {
           <AlertTitle>{t('dashboard.subscriptionRequired', 'Subscription required')}</AlertTitle>
           <AlertDescription>
             {t('dashboard.subscriptionRequiredDescription', 'Subscribe to a paid plan to make your academy visible in the directory.')}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Undeliverable email alert — reminders/invoices are bouncing for some players */}
+      {undeliverableRecipients.length > 0 && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {t('emailDelivery.alertTitle', '{{count}} player(s) have an undeliverable email', { count: undeliverableRecipients.length })}
+          </AlertTitle>
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>{t('emailDelivery.alertBody', "Reminders and invoices aren't reaching them. Update their email address to fix delivery.")}</span>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate('/app/academy/players')}>
+              {t('emailDelivery.reviewPlayers', 'Review players')}
+            </Button>
           </AlertDescription>
         </Alert>
       )}

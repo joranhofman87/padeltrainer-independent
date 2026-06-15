@@ -676,7 +676,8 @@
     "selectAll": "Select all",
     "selectInvoice": "Select {{number}}",
     "sendErrorNotConfigured": "Email sending is not configured yet — contact support.",
-    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again."
+    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again.",
+    "emailBounced": "Email bounced — not delivered"
   },
   "warnings": {
     "ratingSpread": "Rating spread: {{spread}}",
@@ -875,5 +876,10 @@
       "pro": "Pro (9+)",
       "unrated": "Unrated"
     }
+  },
+  "emailDelivery": {
+    "alertTitle": "{{count}} player(s) have an undeliverable email",
+    "alertBody": "Reminders and invoices aren't reaching them. Update their email address to fix delivery.",
+    "reviewPlayers": "Review players"
   }
 }

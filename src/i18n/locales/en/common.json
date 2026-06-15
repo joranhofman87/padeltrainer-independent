@@ -745,5 +745,9 @@
     "paid": "Paid",
     "overdue": "Overdue",
     "cancelled": "Cancelled"
+  },
+  "emailBounce": {
+    "badge": "Email bouncing",
+    "tooltip": "We can't deliver emails to this address — reminders aren't reaching them."
   }
 }

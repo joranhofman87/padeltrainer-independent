@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Columns3, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -103,6 +104,7 @@ type UnifiedPlayer = {
   guest_player_id?: string | null;
   profile_id?: string | null;
   has_overdue_payment?: boolean;
+  email_undeliverable?: boolean;
 };
 
 function getLevelLabel(band: string, t: (key: string, defaultValue: string) => string): string {
@@ -304,6 +306,7 @@ export default function AcademyPlayers() {
       guest_player_id: row.guest_player_id,
       profile_id: row.profile_id,
       has_overdue_payment: row.has_overdue_payment,
+      email_undeliverable: row.email_undeliverable,
     }));
   }, [overview, trainerNameMap, t]);
 
@@ -672,6 +675,7 @@ export default function AcademyPlayers() {
                                 {tTrainer('players.payment.overdue', 'Overdue')}
                               </Badge>
                             )}
+                            {player.email_undeliverable && <EmailBounceBadge compact />}
                           </div>
                         </TableCell>
                         {visibleColumns.map((key) => {
