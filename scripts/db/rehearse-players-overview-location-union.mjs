@@ -55,6 +55,9 @@ await db.exec(`
 `);
 
 await db.exec(readFileSync('supabase/migrations/20260615110090_players_overview_location_union.sql', 'utf8'));
+// Phase 2: the curated store + the function that reads it (supersedes 110090).
+await db.exec(readFileSync('supabase/migrations/20260615110100_academy_player_locations.sql', 'utf8'));
+await db.exec(readFileSync('supabase/migrations/20260615110110_players_overview_read_manual_locations.sql', 'utf8'));
 
 // ---- seed ----
 await db.exec(`
@@ -120,6 +123,55 @@ ok('filter L1 → GA,GB,GE,GF,REG (trained+preferred+intake), not GC/GD/GG',
   JSON.stringify(f1) === JSON.stringify(['GA trains L1','GB prefers L1','GE intake L1','GF prefers merged L3','REG meta-pref L1']), f1);
 const f2 = await filt(L2);
 ok('filter L2 (inactive) → only GC (preferred)', JSON.stringify(f2) === JSON.stringify(['GC prefers inactive L2']), f2);
+
+// ---- Phase 2: manual attach / dismiss via the curated store (set_player_location) ----
+{
+  const GH = g(8);
+  // the curated store FKs academy_profile_id -> profiles; add the academy's profile row
+  await db.exec(`INSERT INTO public.profiles (id, full_name) VALUES ('${A}', 'RL Academy') ON CONFLICT DO NOTHING`);
+  await db.exec(`INSERT INTO public.guest_players (id,academy_profile_id,full_name) VALUES ('${GH}','${A}','GH manual only')`);
+  // attach L1 to GH (no booking/preferred/intake); dismiss L1 for GA (who trains there)
+  await db.exec(`SELECT public.set_player_location('${A}', null, '${GH}', '${L1}', false)`);
+  await db.exec(`SELECT public.set_player_location('${A}', null, '${g(1)}', '${L1}', true)`);
+  const r2 = (await db.query(`SELECT * FROM public.get_players_overview('academy','${A}',null,'{}'::jsonb,'name','asc',100,0)`)).rows;
+  const Lof = (gid) => (r2.find((r) => r.guest_player_id === gid)?.location_names ?? []).slice().sort();
+  ok('manual attach: GH (no other source) → [Center Court]', JSON.stringify(Lof(GH)) === '["Center Court"]', Lof(GH));
+  ok('dismiss: GA (trained L1) suppressed → []', JSON.stringify(Lof(g(1))) === '[]', Lof(g(1)));
+
+  // re-attach GA → shows again (idempotent flip)
+  await db.exec(`SELECT public.set_player_location('${A}', null, '${g(1)}', '${L1}', false)`);
+  const r3 = (await db.query(`SELECT * FROM public.get_players_overview('academy','${A}',null,'{}'::jsonb,'name','asc',100,0)`)).rows;
+  ok('re-attach: GA → [Center Court] again',
+    JSON.stringify((r3.find((r) => r.guest_player_id === g(1))?.location_names ?? []).slice().sort()) === '["Center Court"]');
+
+  // filter parity: L1 now includes manual GH
+  const f = (await db.query(`SELECT full_name FROM public.get_players_overview('academy','${A}',null,$1::jsonb,'name','asc',100,0)`,
+    [JSON.stringify({ location_id: L1 })])).rows.map((r) => r.full_name);
+  ok('filter L1 includes manually-attached GH', f.includes('GH manual only'), f);
+
+  // RLS/auth: a non-manager cannot write the store
+  let denied = false;
+  await db.exec(`SET app.uid = '99999999-0000-0000-0000-000000000000'`);
+  try { await db.query(`SELECT public.set_player_location('${A}', null, '${GH}', '${L1}', false)`); } catch (e) { denied = String(e).includes('not authorized'); }
+  ok('set_player_location: non-manager rejected (42501)', denied);
+  await db.exec(`SET app.uid = '${MGR}'`);
+
+  // validation: a location that is not the academy's is rejected
+  let badloc = false;
+  try { await db.query(`SELECT public.set_player_location('${A}', null, '${GH}', '${L4}', false)`); } catch (e) { badloc = String(e).includes('not an academy location'); }
+  ok('set_player_location: non-academy location rejected', badloc);
+
+  // merged-location dismiss: a dismiss row pointing at a CHILD id (L3 merged into L1) must
+  // still suppress the canonical L1 (e.g. a location merged AFTER the dismiss row was created).
+  await db.exec(`INSERT INTO public.academy_player_locations (academy_profile_id, guest_player_id, location_id, dismissed) VALUES ('${A}','${g(2)}','${L3}', true)`);
+  const r5 = (await db.query(`SELECT * FROM public.get_players_overview('academy','${A}',null,'{}'::jsonb,'name','asc',100,0)`)).rows;
+  ok('merged dismiss: child-id dismiss (L3→L1) suppresses canonical L1 for GB',
+    JSON.stringify((r5.find((r) => r.guest_player_id === g(2))?.location_names ?? []).slice().sort()) === '[]',
+    (r5.find((r) => r.guest_player_id === g(2))?.location_names ?? []));
+  const f5 = (await db.query(`SELECT full_name FROM public.get_players_overview('academy','${A}',null,$1::jsonb,'name','asc',100,0)`,
+    [JSON.stringify({ location_id: L1 })])).rows.map((r) => r.full_name);
+  ok('merged dismiss: GB excluded from filter L1 too (display↔filter parity)', !f5.includes('GB prefers L1'), f5);
+}
 
 console.log(`\n${fail ? `*** FAILED (${fail}) ***` : '*** PASSED ***'}`);
 process.exit(fail ? 1 : 0);
