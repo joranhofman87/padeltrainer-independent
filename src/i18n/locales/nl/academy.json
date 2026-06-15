@@ -890,6 +890,24 @@
     "newEmailPlaceholder": "Nieuw e-mailadres",
     "fixSave": "Opslaan",
     "fixed": "E-mailadres bijgewerkt",
-    "fixFailed": "E-mailadres kon niet worden bijgewerkt"
+    "fixFailed": "E-mailadres kon niet worden bijgewerkt",
+    "column": "Bezorging",
+    "chip": {
+      "noEmail": "Geen e-mail",
+      "bounced": "Niet bezorgd",
+      "delivered": "Bezorgd",
+      "sent": "Verzonden",
+      "notSent": "Niet verzonden"
+    },
+    "filter": {
+      "all": "Alle bezorging",
+      "undelivered": "Niet bezorgd",
+      "bounced": "Gebounced",
+      "noEmail": "Geen e-mail",
+      "delivered": "Bezorgd"
+    },
+    "banner": "{{count}} van deze facturen hebben de speler nooit bereikt",
+    "bannerDetail": "{{bounced}} gebounced · {{noEmail}} geen e-mail",
+    "bannerCta": "Toon ze"
   }
 }

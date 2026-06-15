@@ -30,6 +30,7 @@ export interface AcademyInvoiceParams {
   trainerId?: string | null;
   locationId?: string | null;
   noEmail?: boolean;
+  delivery?: string | null; // 'undelivered' | 'bounced' | 'no_email' | 'delivered'
   sort?: string;
   sortDir?: 'asc' | 'desc';
   page?: number;
@@ -70,6 +71,7 @@ export async function fetchAcademyInvoices(
     p_trainer_id: params.trainerId ?? undefined,
     p_location_id: params.locationId ?? undefined,
     p_no_email: params.noEmail ?? false,
+    p_delivery: params.delivery ?? undefined,
     p_sort: params.sort ?? 'created_at',
     p_sort_dir: params.sortDir ?? 'desc',
     p_limit: pageSize,
@@ -215,6 +217,47 @@ export function useAcademyInvoiceSummary(
   return useQuery({
     queryKey: ['academy-invoices', 'summary', academyId, opts.trainerId ?? null, opts.locationId ?? null],
     queryFn: () => fetchAcademyInvoiceSummary(academyId!, opts),
+    enabled: Boolean(academyId),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export interface InvoiceDeliverySummary {
+  total: number;
+  noEmail: number;
+  bounced: number;
+  delivered: number;
+  pending: number;
+}
+
+export async function fetchAcademyInvoiceDeliverySummary(
+  academyId: string,
+  opts: { tab?: 'unpaid' | 'paid'; trainerId?: string | null; locationId?: string | null } = {},
+): Promise<InvoiceDeliverySummary> {
+  const { data, error } = await supabase.rpc('get_academy_invoice_delivery_summary', {
+    p_academy_profile_id: academyId,
+    p_tab: opts.tab ?? 'unpaid',
+    p_trainer_id: opts.trainerId ?? undefined,
+    p_location_id: opts.locationId ?? undefined,
+  });
+  if (error) throw error;
+  const r = (data ?? [])[0];
+  return {
+    total: Number(r?.total ?? 0),
+    noEmail: Number(r?.no_email ?? 0),
+    bounced: Number(r?.bounced ?? 0),
+    delivered: Number(r?.delivered ?? 0),
+    pending: Number(r?.pending ?? 0),
+  };
+}
+
+export function useAcademyInvoiceDeliverySummary(
+  academyId: string | null | undefined,
+  opts: { tab?: 'unpaid' | 'paid'; trainerId?: string | null; locationId?: string | null },
+) {
+  return useQuery({
+    queryKey: ['academy-invoices', 'delivery-summary', academyId, opts.tab ?? 'unpaid', opts.trainerId ?? null, opts.locationId ?? null],
+    queryFn: () => fetchAcademyInvoiceDeliverySummary(academyId!, opts),
     enabled: Boolean(academyId),
     placeholderData: keepPreviousData,
   });

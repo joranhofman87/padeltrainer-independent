@@ -7136,6 +7136,21 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_academy_invoice_delivery_summary: {
+        Args: {
+          p_academy_profile_id: string
+          p_location_id?: string
+          p_tab?: string
+          p_trainer_id?: string
+        }
+        Returns: {
+          bounced: number
+          delivered: number
+          no_email: number
+          pending: number
+          total: number
+        }[]
+      }
       get_academy_invoice_summary: {
         Args: {
           p_academy_profile_id: string
@@ -7152,6 +7167,7 @@ export type Database = {
       get_academy_invoices: {
         Args: {
           p_academy_profile_id: string
+          p_delivery?: string
           p_limit?: number
           p_location_id?: string
           p_no_email?: boolean
@@ -7168,6 +7184,7 @@ export type Database = {
           booking_ids: string[]
           computed_status: string
           created_at: string
+          delivery_status: string
           due_date: string
           forwarded_at: string
           guest_player_id: string
