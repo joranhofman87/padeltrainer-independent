@@ -47,6 +47,12 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # Data-integrity invariants (PGlite): RLS isolation, RPC contracts, and — critically —
+      # that list RPCs never HIDE a record (e.g. the invoice paid/unpaid tabs are a complete
+      # partition across every status). A regression that makes data disappear fails here.
+      - name: Data-integrity rehearsals
+        run: npm run db:rehearse:all
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
