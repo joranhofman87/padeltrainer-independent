@@ -59,7 +59,8 @@ serve(async (req) => {
         });
       }
       const json = await res.json();
-      const data: any[] = Array.isArray(json?.data) ? json.data : [];
+      const data: Array<{ id?: string; to?: string | string[]; created_at?: string; last_event?: string }> =
+        Array.isArray(json?.data) ? json.data : [];
       if (data.length === 0) break;
       pages++;
 
