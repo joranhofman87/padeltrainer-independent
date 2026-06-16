@@ -656,7 +656,8 @@
       "progressToastDesc": "You can safely close this window. Sending continues in the background.",
       "resetError": "Failed to reset invoices",
       "updateDueDateDesc": "Set a new due date for {{count}} selected invoice(s).",
-      "updateDueDateTitle": "Update due date"
+      "updateDueDateTitle": "Update due date",
+      "cancelReasonPlaceholder": "Reason (optional) — e.g. email bounced, duplicate"
     },
     "open": "Open",
     "cancelled": "Cancelled",

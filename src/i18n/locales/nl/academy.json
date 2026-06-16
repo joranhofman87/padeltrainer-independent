@@ -780,7 +780,8 @@
       "progressToastDesc": "Je kunt dit venster veilig sluiten. Het versturen gaat op de achtergrond verder.",
       "resetError": "Facturen terugzetten mislukt",
       "updateDueDateDesc": "Stel een nieuwe vervaldatum in voor {{count}} geselecteerde factu(u)r(en).",
-      "updateDueDateTitle": "Vervaldatum bijwerken"
+      "updateDueDateTitle": "Vervaldatum bijwerken",
+      "cancelReasonPlaceholder": "Reden (optioneel) — bijv. e-mail gebounced, dubbel"
     },
     "open": "Open",
     "cancelled": "Geannuleerd",

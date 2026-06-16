@@ -3225,6 +3225,44 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_status_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          id: string
+          invoice_id: string
+          new_status: string | null
+          old_status: string | null
+          reason: string | null
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          invoice_id: string
+          new_status?: string | null
+          old_status?: string | null
+          reason?: string | null
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          invoice_id?: string
+          new_status?: string | null
+          old_status?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_status_history_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           academy_profile_id: string | null
@@ -7204,6 +7242,10 @@ export type Database = {
         Args: { _academy_profile_id: string }
         Returns: boolean
       }
+      annotate_invoice_status_reason: {
+        Args: { p_invoice_id: string; p_reason: string }
+        Returns: undefined
+      }
       book_slot_for_payment: {
         Args: { _payment_amount: number; _player_id: string; _slot_id: string }
         Returns: string
@@ -7361,6 +7403,17 @@ export type Database = {
           email: string
           full_name: string
           phone: string
+        }[]
+      }
+      get_invoice_status_history: {
+        Args: { p_invoice_id: string }
+        Returns: {
+          changed_at: string
+          changed_by: string
+          changed_by_name: string
+          new_status: string
+          old_status: string
+          reason: string
         }[]
       }
       get_invoices_delivery_status: {

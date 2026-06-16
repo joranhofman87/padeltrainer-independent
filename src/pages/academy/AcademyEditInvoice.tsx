@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
+import { InvoiceStatusHistoryCard } from '@/components/invoices/InvoiceStatusHistoryCard';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
@@ -374,6 +375,7 @@ export default function AcademyEditInvoice() {
           invoiceId={invoice.id}
         />
         <InvoiceSourceCard owner="academy" bookingIds={invoice.booking_ids as string[] | null} />
+        <InvoiceStatusHistoryCard invoiceId={invoice.id} />
 
         {/* Receiver (editable billing) */}
         <Card>

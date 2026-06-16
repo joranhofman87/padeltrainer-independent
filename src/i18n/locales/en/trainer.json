@@ -1264,7 +1264,13 @@
     "vatReduced": "Reduced rate",
     "vatStandard": "Standard rate",
     "sendErrorNotConfigured": "Email sending is not configured yet — contact support.",
-    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again."
+    "sendErrorWithHint": "Failed to send the invoice. Check the recipient email and try again.",
+    "history": {
+      "title": "Status history",
+      "by": "by",
+      "system": "System",
+      "unknownUser": "a user"
+    }
   },
   "profileVisibility": {
     "title": "Marketplace visibility",
