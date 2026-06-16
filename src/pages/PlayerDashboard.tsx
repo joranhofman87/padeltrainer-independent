@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Search, Calendar, User, ChevronRight, Clock, Users, ArrowRight, Building2, FileText } from 'lucide-react';
 import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState } from '@/components/ui/empty-state';
 import { BookingStatusBadge } from '@/components/player/BookingStatusBadge';
@@ -359,7 +360,7 @@ export default function PlayerDashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <Card className={surfaceCardClass()}>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -413,7 +414,7 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className={surfaceCardClass()}>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -472,7 +473,7 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className={surfaceCardClass()}>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -532,7 +533,7 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className={surfaceCardClass()}>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -589,7 +590,7 @@ export default function PlayerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className={surfaceCardClass()}>
+        <Card className={flushOnMobileCardClass()}>
           <CardContent className="p-0">
             <MyWaitingListEntries />
           </CardContent>

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { supabase } from '@/lib/supabaseClient';
 import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 
@@ -78,7 +79,7 @@ export default function PlayerSettings() {
         </div>
 
         <div className="mt-6">
-          <Card className={surfaceCardClass()}>
+          <Card className={flushOnMobileCardClass()}>
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
