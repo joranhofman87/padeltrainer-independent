@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
@@ -371,7 +372,7 @@ export default function TrainerSlotDetail() {
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-0 py-6 sm:px-4">
         <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
           <Button variant="outline" aria-label={t('calendar.deleteSlot', 'Sessie verwijderen')} className="gap-1.5 text-destructive hover:text-destructive" onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}>
             <Trash2 className="h-4 w-4" />
@@ -379,7 +380,7 @@ export default function TrainerSlotDetail() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
           {/* Details card */}
-          <Card>
+          <Card className={flushOnMobileCardClass()}>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4" />{t('calendar.details', 'Details')}</CardTitle>
             </CardHeader>
@@ -496,7 +497,7 @@ export default function TrainerSlotDetail() {
           </Card>
 
           {/* Players */}
-          <Card>
+          <Card className={flushOnMobileCardClass()}>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" />{t('calendar.players', 'Spelers')} ({bookedCount}/{detail.max_participants})</CardTitle>
@@ -581,7 +582,7 @@ export default function TrainerSlotDetail() {
           )}
 
           {/* Invoices */}
-          <Card>
+          <Card className={flushOnMobileCardClass()}>
             <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />{t('calendar.invoices', 'Facturen')}</CardTitle></CardHeader>
             <CardContent>
               {slotInvoices.length === 0 ? (
