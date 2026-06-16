@@ -31,6 +31,8 @@ import {
   type AcademyInvoiceRow,
 } from "@/lib/invoicesList";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
+import { Input } from "@/components/ui/input";
+import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -92,6 +94,7 @@ export default function AcademyInvoices() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
+  const [bulkCancelReason, setBulkCancelReason] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
   const dateFnsLocale = i18n.language === "nl" ? nl : enUS;
 
@@ -541,10 +544,17 @@ export default function AcademyInvoices() {
     }
     if (others.length) {
       const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
-      if (error) fail += others.length; else ok += others.length;
+      if (error) fail += others.length;
+      else {
+        ok += others.length;
+        // record WHY they were cancelled (best-effort; never blocks the action)
+        const reason = bulkCancelReason.trim();
+        if (reason) await Promise.all(others.map((id) => annotateInvoiceStatusReason(id, reason).catch(() => {})));
+      }
     }
     setBulkRunning(false);
     setConfirmBulk(null);
+    setBulkCancelReason("");
     setSelectedIds(new Set());
     invalidateInvoicesAndPlayers();
     if (fail > 0) {
@@ -1134,7 +1144,7 @@ export default function AcademyInvoices() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
+      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => { if (!o && !bulkRunning) { setConfirmBulk(null); setBulkCancelReason(""); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1148,6 +1158,14 @@ export default function AcademyInvoices() {
                 : t("invoices.bulk.confirmDeleteDesc", "Drafts will be removed permanently. Sent invoices will be cancelled.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmBulk === "delete" && (
+            <Input
+              value={bulkCancelReason}
+              onChange={(e) => setBulkCancelReason(e.target.value)}
+              placeholder={t("invoices.bulk.cancelReasonPlaceholder", "Reason (optional) — e.g. email bounced, duplicate")}
+              disabled={bulkRunning}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Cancel")}</AlertDialogCancel>
             <AlertDialogAction

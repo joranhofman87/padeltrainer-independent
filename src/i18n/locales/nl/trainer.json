@@ -1267,7 +1267,13 @@
     "vatReduced": "Laag tarief",
     "vatStandard": "Standaard tarief",
     "sendErrorNotConfigured": "E-mailverzending is nog niet ingesteld — neem contact op met support.",
-    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw."
+    "sendErrorWithHint": "Het versturen van de factuur is mislukt. Controleer het e-mailadres van de ontvanger en probeer het opnieuw.",
+    "history": {
+      "title": "Statusgeschiedenis",
+      "by": "door",
+      "system": "Systeem",
+      "unknownUser": "een gebruiker"
+    }
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",
