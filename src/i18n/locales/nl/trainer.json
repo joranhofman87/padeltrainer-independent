@@ -1272,7 +1272,9 @@
       "title": "Statusgeschiedenis",
       "by": "door",
       "system": "Systeem",
-      "unknownUser": "een gebruiker"
+      "unknownUser": "een gebruiker",
+      "loading": "Laden…",
+      "none": "Geen statuswijzigingen vastgelegd"
     }
   },
   "profileVisibility": {
