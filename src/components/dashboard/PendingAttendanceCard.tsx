@@ -345,11 +345,12 @@ export function PendingAttendanceCard({ mode, trainerId, profileId }: PendingAtt
                   mode === 'trainer' ? (
                     <TrainerReportForm slot={slot} reporterId={reporterId} onDone={() => handleDone(slot.slotId)} />
                   ) : (
-                    <div className="mt-2 space-y-3 rounded-lg border bg-background p-3">
-                      <PlayerSessionReport slotId={slot.slotId} trainerSummary={slot.trainerSummary} />
-                      <Button size="sm" variant="outline" className="w-full" onClick={() => handleDone(slot.slotId)}>
-                        {t('pendingAttendance.done', 'Done')}
-                      </Button>
+                    <div className="mt-2 rounded-lg border bg-background p-3">
+                      <PlayerSessionReport
+                        slotId={slot.slotId}
+                        trainerSummary={slot.trainerSummary}
+                        onDone={() => handleDone(slot.slotId)}
+                      />
                     </div>
                   )
                 )}

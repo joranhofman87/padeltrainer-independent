@@ -3,10 +3,12 @@
  * (PlayerSessionReport) and the dashboard "Action Required" card
  * (PendingAttendanceCard / TrainerReportForm).
  *
- * The table has no unique constraint, so a blind insert can create a DUPLICATE
- * row when a report already exists (e.g. the player reported from the bookings
- * page while the dashboard card was loaded). upsertSessionReport does a
- * check-then-update/insert so every report surface converges on a single row.
+ * The table has a UNIQUE (slot_id, reporter_id) constraint, so each person can
+ * file at most one report per slot. upsertSessionReport does a
+ * check-then-update/insert (matching on reporter_role too) so every report
+ * surface converges on that single row instead of erroring on a blind insert
+ * when a report already exists (e.g. the player reported from the bookings page
+ * while the dashboard card was loaded).
  *
  * Note: the player's free-text reflection no longer lives here — it is written
  * to session_player_notes via playerSelfNotes.ts (the same store the journey

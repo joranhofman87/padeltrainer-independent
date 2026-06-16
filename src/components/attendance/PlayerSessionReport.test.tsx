@@ -56,6 +56,7 @@ describe('PlayerSessionReport', () => {
   it('records "No" as session_happened=false', () => {
     render(<PlayerSessionReport slotId="slot-1" />);
     fireEvent.click(screen.getByRole('button', { name: /No/ }));
+    expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate.mock.calls[0][0]).toMatchObject({ sessionHappened: false });
   });
 
@@ -66,5 +67,24 @@ describe('PlayerSessionReport', () => {
     expect(yes).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(yes); // already selected → no-op
     expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('Done is disabled until an answer is given, then fires onDone', () => {
+    const onDone = vi.fn();
+    render(<PlayerSessionReport slotId="slot-1" onDone={onDone} />);
+    const done = screen.getByRole('button', { name: 'Done' });
+    expect(done).toBeDisabled();
+    fireEvent.click(done);
+    expect(onDone).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Yes/ })); // optimistic answer
+    expect(done).toBeEnabled();
+    fireEvent.click(done);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the Done button when onDone is not provided', () => {
+    render(<PlayerSessionReport slotId="slot-1" />);
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
   });
 });
