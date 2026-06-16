@@ -983,11 +983,11 @@ export default function AcademyInvoices() {
                 </Card>
               </div>
 
-              {/* Mobile Cards */}
-              <div className="md:hidden space-y-3">
+              {/* Mobile Cards — flush divided list (the viewport is the container on a phone) */}
+              <div className="md:hidden divide-y divide-border/60 border-y border-border/60">
                 {filteredInvoices.map((inv) => (
-                  <Card key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}>
-                    <CardContent className="p-4">
+                  <Card key={inv.id} className="cursor-pointer rounded-none border-0 bg-transparent shadow-none" onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}>
+                    <CardContent className="px-0 py-3">
                       <div className="flex items-start justify-between mb-2 gap-2">
                         <div className="flex items-start gap-2 min-w-0">
                           <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
