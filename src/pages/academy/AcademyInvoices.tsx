@@ -56,6 +56,7 @@ import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
 import { type InvoiceStatus } from "@/lib/invoiceStatus";
 import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
+import { InvoiceStatusBadgeTooltip } from "@/components/invoices/InvoiceStatusBadgeTooltip";
 import {
   buildInvoiceSettingsLabels,
   checkInvoiceSettingsGate,
@@ -593,10 +594,15 @@ export default function AcademyInvoices() {
     const status = invoice.computed_status;
     // 'open' is academy-only (not in the canonical InvoiceStatus); the five
     // canonical states render via the shared InvoiceStatusBadge.
-    if (status === "open") {
-      return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
-    }
-    return <InvoiceStatusBadge status={status as InvoiceStatus} />;
+    const badge =
+      status === "open" ? (
+        <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>
+      ) : (
+        <InvoiceStatusBadge status={status as InvoiceStatus} />
+      );
+    // Hovering the badge surfaces the last status change (who/when/why) from the
+    // audit trail — fetched lazily so the list stays a single query.
+    return <InvoiceStatusBadgeTooltip invoiceId={invoice.id}>{badge}</InvoiceStatusBadgeTooltip>;
   };
 
   const getPaymentUrl = (inv: Invoice) =>

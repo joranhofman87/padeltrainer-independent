@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
 import { InvoiceStatusHistoryCard } from '@/components/invoices/InvoiceStatusHistoryCard';
+import { annotateInvoiceStatusReason } from '@/lib/invoiceStatusHistory';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
@@ -69,6 +70,9 @@ export default function AcademyEditInvoice() {
   const [saving, setSaving] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [markPaidConfirmOpen, setMarkPaidConfirmOpen] = useState(false);
+  const [markPaidReason, setMarkPaidReason] = useState('');
 
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
@@ -277,7 +281,7 @@ export default function AcademyEditInvoice() {
     }
   };
 
-  const handleMarkPaid = async () => {
+  const handleMarkPaid = async (reason?: string) => {
     if (!invoice) return;
     const { error, blockedCancelled } = await markInvoicePaidAndSyncBookings(
       invoice.id,
@@ -287,6 +291,8 @@ export default function AcademyEditInvoice() {
       toast.error(t('invoiceEdit.statusFailed'));
       return;
     }
+    if (reason?.trim()) await annotateInvoiceStatusReason(invoice.id, reason).catch(() => {});
+    setMarkPaidConfirmOpen(false);
     toast.success(tAcademy('invoices.markedAsPaid', 'Invoice marked as paid'));
     queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
     if (activeAcademy?.id) {
@@ -295,7 +301,7 @@ export default function AcademyEditInvoice() {
     navigate('/app/academy/invoices');
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (reason?: string) => {
     if (!invoice) return;
     if (isDraft) {
       const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
@@ -304,6 +310,7 @@ export default function AcademyEditInvoice() {
     } else {
       const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
       if (error) { toast.error(t('invoiceEdit.cancelFailed')); return; }
+      if (reason?.trim()) await annotateInvoiceStatusReason(invoice.id, reason).catch(() => {});
       toast.success(tAcademy('invoices.cancelled', 'Invoice cancelled'));
     }
     queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
@@ -348,7 +355,7 @@ export default function AcademyEditInvoice() {
               PDF
             </Button>
             {!isPaid && !isCancelled && (
-              <Button variant="outline" size="sm" onClick={handleMarkPaid}>
+              <Button variant="outline" size="sm" onClick={() => setMarkPaidConfirmOpen(true)}>
                 <CheckCircle className="h-4 w-4 mr-2" />
                 {t('invoiceEdit.paid')}
               </Button>
@@ -590,8 +597,11 @@ export default function AcademyEditInvoice() {
         </div>
       </div>
 
-      {/* Delete confirmation */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      {/* Delete / cancel confirmation */}
+      <AlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => { setDeleteConfirmOpen(open); if (!open) setCancelReason(''); }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}</AlertDialogTitle>
@@ -599,13 +609,48 @@ export default function AcademyEditInvoice() {
               {isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {!isDraft && (
+            <Input
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder={tAcademy('invoices.bulk.cancelReasonPlaceholder', 'Reason (optional) — e.g. email bounced, duplicate')}
+              maxLength={500}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>{t('back')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleDelete}
+              onClick={() => handleDelete(cancelReason)}
             >
               {isDraft ? t('invoiceEdit.deleteAction') : t('invoiceEdit.cancelAction')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Mark-as-paid confirmation (with optional reason) */}
+      <AlertDialog
+        open={markPaidConfirmOpen}
+        onOpenChange={(open) => { setMarkPaidConfirmOpen(open); if (!open) setMarkPaidReason(''); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tAcademy('invoices.markPaidTitle', 'Mark invoice as paid?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {tAcademy('invoices.markPaidConfirm', 'This records the invoice as paid. Add an optional note explaining why (e.g. paid in cash).')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            value={markPaidReason}
+            onChange={(e) => setMarkPaidReason(e.target.value)}
+            placeholder={tAcademy('invoices.markPaidReasonPlaceholder', 'Reason (optional) — e.g. paid in cash, bank transfer')}
+            maxLength={500}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('back')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleMarkPaid(markPaidReason)}>
+              {tAcademy('invoices.markPaid', 'Mark as paid')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
