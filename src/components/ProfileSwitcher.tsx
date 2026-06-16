@@ -168,7 +168,7 @@ export function ProfileSwitcher({
           </Avatar>
           {!collapsed && (
             <>
-              <span className="font-medium text-sm max-w-[120px] truncate">
+              <span className="font-medium text-sm max-w-[120px] truncate text-slate-900">
                 {displayName}
               </span>
               <ChevronDown className="h-4 w-4 text-muted-foreground ml-auto" />
