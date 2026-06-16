@@ -222,7 +222,7 @@ export default function AcademyLayout() {
             onAcademyChange={handleAcademyChange}
             isExpired={!!isSubscriptionExpired}
           />
-          <SidebarInset className="flex-1">
+          <SidebarInset className="flex-1 min-w-0">
             {/* Mobile Header */}
             <AcademyMobileHeader academyName={activeAcademy?.name} />
             

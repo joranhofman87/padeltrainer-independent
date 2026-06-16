@@ -466,7 +466,7 @@ export default function AcademyPlayers() {
           >
             {trainers.length > 0 && (
               <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder={tTrainer('players.allTrainers', 'All Trainers')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -482,7 +482,7 @@ export default function AcademyPlayers() {
 
             {allLocations.length > 0 && (
               <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder={tTrainer('players.allLocations', 'All Locations')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -497,7 +497,7 @@ export default function AcademyPlayers() {
             )}
 
             <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-full sm:w-[170px]">
                 <SelectValue placeholder={tTrainer('players.allLevels', 'All Levels')} />
               </SelectTrigger>
               <SelectContent>
@@ -511,7 +511,7 @@ export default function AcademyPlayers() {
             </Select>
 
             <Select value={selectedCyclus} onValueChange={setSelectedCyclus}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue placeholder={tTrainer('players.activeCyclus', 'Active Cyclus')} />
               </SelectTrigger>
               <SelectContent>
@@ -522,7 +522,7 @@ export default function AcademyPlayers() {
             </Select>
 
             <Select value={selectedTagId} onValueChange={setSelectedTagId}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue placeholder={tTrainer('players.tags.filterAll', 'All Tags')} />
               </SelectTrigger>
               <SelectContent>
@@ -538,7 +538,7 @@ export default function AcademyPlayers() {
             </Select>
 
             <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-full sm:w-[170px]">
                 <SelectValue placeholder={tTrainer('players.payment.filterAll', 'Payment status')} />
               </SelectTrigger>
               <SelectContent>
@@ -596,13 +596,13 @@ export default function AcademyPlayers() {
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         {player.email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {player.email}
+                          <span className="flex min-w-0 items-center gap-1">
+                            <Mail className="h-3 w-3 shrink-0" /> <span className="truncate">{player.email}</span>
                           </span>
                         )}
                         {player.phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {player.phone}
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Phone className="h-3 w-3 shrink-0" /> {player.phone}
                           </span>
                         )}
                       </div>
