@@ -5,11 +5,41 @@
  * see). RLS enforces it. Mutations invalidate the journey so the timeline
  * refreshes (own_notes are embedded in the journey RPC rows).
  */
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import type { OwnNote } from '@/lib/playerJourney';
 
-const invalidateJourney = (qc: ReturnType<typeof useQueryClient>) =>
+/**
+ * Refresh every surface that renders a player's own notes: the journey timeline
+ * (own_notes embedded in the RPC rows) and the per-slot lists used by the
+ * report widget on the dashboard and bookings page.
+ */
+const invalidateOwnNotes = (qc: ReturnType<typeof useQueryClient>) => {
   qc.invalidateQueries({ queryKey: ['player-journey'] });
+  qc.invalidateQueries({ queryKey: ['slot-own-notes'] });
+};
+
+/**
+ * A player's own notes for a single slot (subject = self), for surfaces outside
+ * the journey RPC (the attendance report on the dashboard / bookings page).
+ */
+export function useSlotOwnNotes(slotId: string, profileId?: string | null) {
+  return useQuery({
+    queryKey: ['slot-own-notes', slotId, profileId],
+    enabled: Boolean(profileId),
+    queryFn: async (): Promise<OwnNote[]> => {
+      const { data, error } = await supabase
+        .from('session_player_notes')
+        .select('id, visibility, body, created_at')
+        .eq('slot_id', slotId)
+        .eq('subject_profile_id', profileId!)
+        .eq('author_role', 'player')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as OwnNote[];
+    },
+  });
+}
 
 export function useCreateSelfNote() {
   const qc = useQueryClient();
@@ -31,7 +61,7 @@ export function useCreateSelfNote() {
       });
       if (error) throw error;
     },
-    onSuccess: () => invalidateJourney(qc),
+    onSuccess: () => invalidateOwnNotes(qc),
   });
 }
 
@@ -45,7 +75,7 @@ export function useUpdateSelfNote() {
       const { error } = await supabase.from('session_player_notes').update(patch).eq('id', input.id);
       if (error) throw error;
     },
-    onSuccess: () => invalidateJourney(qc),
+    onSuccess: () => invalidateOwnNotes(qc),
   });
 }
 
@@ -56,6 +86,6 @@ export function useDeleteSelfNote() {
       const { error } = await supabase.from('session_player_notes').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => invalidateJourney(qc),
+    onSuccess: () => invalidateOwnNotes(qc),
   });
 }

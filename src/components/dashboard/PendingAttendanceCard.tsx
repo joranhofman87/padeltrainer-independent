@@ -12,37 +12,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Save, X, Eye } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Save, X } from 'lucide-react';
 import { format } from 'date-fns';
-
-/**
- * Upsert a session report (mirrors the standalone Trainer/PlayerAttendanceForm).
- * session_reports has no unique constraint, so a blind insert created a
- * DUPLICATE row when a report already existed (e.g. the player reported from the
- * bookings page while this dashboard card was loaded). Check-then-update/insert
- * makes both report surfaces converge on a single row.
- */
-async function upsertSessionReport(payload: {
-  slot_id: string;
-  reporter_id: string;
-  reporter_role: 'trainer' | 'player';
-  session_happened: boolean;
-  attendees: string[];
-  public_notes?: string | null;
-  notes: string | null;
-}) {
-  const { data: existing } = await supabase
-    .from('session_reports')
-    .select('id')
-    .eq('slot_id', payload.slot_id)
-    .eq('reporter_id', payload.reporter_id)
-    .eq('reporter_role', payload.reporter_role)
-    .maybeSingle();
-  if (existing?.id) {
-    return supabase.from('session_reports').update(payload).eq('id', existing.id);
-  }
-  return supabase.from('session_reports').insert(payload);
-}
+import { upsertSessionReport } from '@/lib/sessionReports';
+import { PlayerSessionReport } from '@/components/attendance/PlayerSessionReport';
 
 interface PendingSlot {
   slotId: string;
@@ -280,70 +253,6 @@ function TrainerReportForm({ slot, reporterId, onDone }: {
   );
 }
 
-function PlayerReportForm({ slot, reporterId, onDone }: {
-  slot: PendingSlot;
-  reporterId: string;
-  onDone: () => void;
-}) {
-  const { t } = useTranslation('player');
-  const { toast } = useToast();
-  const [sessionHappened, setSessionHappened] = useState(true);
-  const [privateNotes, setPrivateNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    setSaving(true);
-    const { error } = await upsertSessionReport({
-      slot_id: slot.slotId,
-      reporter_id: reporterId,
-      reporter_role: 'player',
-      session_happened: sessionHappened,
-      attendees: [],
-      notes: privateNotes.trim() || null,
-    });
-    if (error) {
-      toast({ title: t('attendance.saveError', 'Failed to save'), variant: 'destructive' });
-    } else {
-      toast({ title: t('attendance.saved', 'Attendance saved') });
-      onDone();
-    }
-    setSaving(false);
-  };
-
-  return (
-    <div className="space-y-3 mt-2 p-3 rounded-lg border bg-background">
-      {slot.trainerSummary && (
-        <div className="rounded-md bg-muted/50 p-2.5 text-xs">
-          <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-            <Eye className="h-3 w-3" />
-            <span className="font-medium">{t('attendance.sessionSummary', 'Session summary')}</span>
-          </div>
-          <p className="text-foreground">{slot.trainerSummary}</p>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <Switch id={`sh-p-${slot.slotId}`} checked={sessionHappened} onCheckedChange={setSessionHappened} />
-        <Label htmlFor={`sh-p-${slot.slotId}`} className="text-xs cursor-pointer">
-          {t('attendance.sessionHappened', 'Did this session happen?')}
-        </Label>
-      </div>
-
-      <div className="space-y-1">
-        <Label className="text-xs">{t('attendance.myNotes', 'My notes (private)')}</Label>
-        <Textarea value={privateNotes} onChange={e => setPrivateNotes(e.target.value)}
-          placeholder={t('attendance.myNotesPlaceholder', 'Notes for yourself...')}
-          className="min-h-[50px] text-xs" />
-      </div>
-
-      <Button size="sm" onClick={handleSave} disabled={saving} className="w-full gap-1.5">
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-        {t('attendance.save', 'Save')}
-      </Button>
-    </div>
-  );
-}
-
 // --- Main card ---
 
 export function PendingAttendanceCard({ mode, trainerId, profileId }: PendingAttendanceCardProps) {
@@ -436,7 +345,12 @@ export function PendingAttendanceCard({ mode, trainerId, profileId }: PendingAtt
                   mode === 'trainer' ? (
                     <TrainerReportForm slot={slot} reporterId={reporterId} onDone={() => handleDone(slot.slotId)} />
                   ) : (
-                    <PlayerReportForm slot={slot} reporterId={reporterId} onDone={() => handleDone(slot.slotId)} />
+                    <div className="mt-2 space-y-3 rounded-lg border bg-background p-3">
+                      <PlayerSessionReport slotId={slot.slotId} trainerSummary={slot.trainerSummary} />
+                      <Button size="sm" variant="outline" className="w-full" onClick={() => handleDone(slot.slotId)}>
+                        {t('pendingAttendance.done', 'Done')}
+                      </Button>
+                    </div>
                   )
                 )}
               </div>

@@ -386,6 +386,9 @@
   "attendance": {
     "title": "Attendance",
     "reported": "Reported",
+    "didTrainingHappen": "Did the training happen?",
+    "yes": "Yes",
+    "no": "No",
     "sessionHappened": "Did this session happen?",
     "sessionSummary": "Session summary",
     "myNotes": "My notes (private)",
@@ -398,6 +401,7 @@
     "title": "Action Required",
     "subtitle": "{{count}} session(s) need your attendance report",
     "report": "Report",
+    "done": "Done",
     "trainingSession": "Training Session",
     "players": "players"
   },

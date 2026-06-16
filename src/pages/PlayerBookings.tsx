@@ -22,7 +22,7 @@ import { fetchPlayerBookings, type PlayerBooking } from '@/lib/playerBookings';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
 import { downloadIcsFile } from '@/lib/icsGenerator';
-import { PlayerAttendanceForm } from '@/components/attendance/PlayerAttendanceForm';
+import { PlayerSessionReport } from '@/components/attendance/PlayerSessionReport';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { surfaceCardClass } from '@/components/ui/app-page';
@@ -334,12 +334,9 @@ export default function PlayerBookings() {
                             </Dialog>
                           )}
                         </div>
-                        {/* Attendance confirmation for past non-cancelled bookings */}
+                        {/* Attendance + self-notes for past non-cancelled bookings */}
                         {booking.status !== 'cancelled' && booking.start_time && isPast(parseISO(booking.start_time)) && (
-                          <PlayerAttendanceForm
-                            slotId={booking.slot_id}
-                            bookingId={booking.id}
-                          />
+                          <PlayerSessionReport slotId={booking.slot_id} className="mt-3 border-t pt-3" />
                         )}
                       </CardContent>
                     </Card>
