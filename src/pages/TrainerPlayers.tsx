@@ -44,6 +44,7 @@ import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
 import { AppPage } from '@/components/ui/app-page';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
 import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
@@ -510,10 +511,11 @@ export default function TrainerPlayers() {
           ) : (
             <DataTableCard
               testId="trainer-players-table-scroll"
+              className={flushOnMobileCardClass()}
               mobile={
-                <div className="md:hidden space-y-3 p-4" data-testid="trainer-players-mobile-cards">
+                <div className="md:hidden divide-y divide-border/60" data-testid="trainer-players-mobile-cards">
                   {sortedPlayers.map((player) => (
-                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
+                    <div key={player.id} className="py-3 space-y-2 first:pt-1">
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
                           <Link
