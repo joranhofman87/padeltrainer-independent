@@ -62,8 +62,8 @@ vi.mock('@/components/player/PlayerInvoicesTab', () => ({
   PlayerInvoicesTab: () => <div data-testid="player-invoices-tab-mock" />,
 }));
 
-vi.mock('@/components/attendance/PlayerAttendanceForm', () => ({
-  PlayerAttendanceForm: () => null,
+vi.mock('@/components/attendance/PlayerSessionReport', () => ({
+  PlayerSessionReport: () => null,
 }));
 
 vi.mock('@/lib/icsGenerator', () => ({

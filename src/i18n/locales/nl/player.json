@@ -386,10 +386,11 @@
   "attendance": {
     "title": "Aanwezigheid",
     "reported": "Gerapporteerd",
+    "didTrainingHappen": "Heeft de training plaatsgevonden?",
+    "yes": "Ja",
+    "no": "Nee",
     "sessionHappened": "Heeft deze training plaatsgevonden?",
     "sessionSummary": "Samenvatting training",
-    "myNotes": "Mijn notities (privé)",
-    "myNotesPlaceholder": "Notities voor jezelf...",
     "save": "Opslaan",
     "saved": "Aanwezigheid opgeslagen",
     "saveError": "Opslaan mislukt"
@@ -398,6 +399,7 @@
     "title": "Actie vereist",
     "subtitle": "{{count}} sessie(s) wacht(en) op je aanwezigheidsrapport",
     "report": "Rapporteren",
+    "done": "Klaar",
     "trainingSession": "Trainingssessie",
     "players": "spelers"
   },
