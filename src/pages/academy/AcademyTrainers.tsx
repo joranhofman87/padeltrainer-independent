@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { Switch } from '@/components/ui/switch';
@@ -249,8 +250,9 @@ export default function AcademyTrainers() {
           ) : (
             <DataTableCard
               testId="academy-trainers-table-scroll"
+              className={flushOnMobileCardClass()}
               mobile={
-                <div className="md:hidden space-y-3 p-4">
+                <div className="md:hidden divide-y divide-border/60">
                   {activeTrainers.map((trainer) => {
                     const hasName = !!trainer.profile?.full_name;
                     const isVisible = trainer.show_on_academy_page;
@@ -258,7 +260,7 @@ export default function AcademyTrainers() {
                     return (
                       <div
                         key={trainer.id}
-                        className="border rounded-lg p-3 space-y-3"
+                        className="py-3 space-y-3 first:pt-1"
                       >
                         <div className="flex items-center justify-between">
                           <div

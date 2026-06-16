@@ -52,6 +52,7 @@ import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
@@ -573,10 +574,11 @@ export default function AcademyPlayers() {
           ) : (
             <DataTableCard
               testId="academy-players-table-scroll"
+              className={flushOnMobileCardClass()}
               mobile={
-                <div className="md:hidden space-y-3 p-4">
+                <div className="md:hidden divide-y divide-border/60">
                   {sortedPlayers.map((player) => (
-                    <div key={player.id} className="border rounded-lg p-3 space-y-2">
+                    <div key={player.id} className="py-3 space-y-2 first:pt-1">
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{player.full_name}</p>
