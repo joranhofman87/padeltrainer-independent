@@ -7,6 +7,8 @@ import { flushOnMobileCardClass } from "@/components/ui/surface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { compactDataTableClass } from "@/components/ui/data-table";
 import { useToast } from "@/hooks/use-toast";
 import { sendEmail } from "@/lib/email";
 import { formatCurrency } from "@/lib/format";
@@ -249,74 +251,89 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
           )}
         </div>
 
-        {visibleBookings.map((booking) => (
-          <div
-            key={booking.id}
-            data-testid="unpaid-obligation-row"
-            className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50"
-          >
-            <Checkbox
-              checked={selected.has(booking.id)}
-              onCheckedChange={() => toggleSelect(booking.id)}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm truncate">
-                  {booking.playerName}
-                </span>
-                {booking.isCycleGroup && booking.cyclusName && (
-                  <Badge variant="secondary" className="text-xs">
-                    {booking.cyclusName}
-                  </Badge>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {obligationSubtitle(booking, t)}
-                <span className="ml-2 font-medium text-foreground">
-                  {formatCurrency(booking.amount)}
-                </span>
-              </div>
-              {booking.reminderSentAt && (
-                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <AlertCircle className="h-3 w-3" />
-                  {t("unpaidBookings.lastReminder")}:{" "}
-                  {formatDistanceToNow(new Date(booking.reminderSentAt), {
-                    addSuffix: true,
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleSendReminder(booking)}
-                disabled={sendingIds.has(booking.id)}
-                title={t("unpaidBookings.sendReminder")}
-              >
-                {sendingIds.has(booking.id) ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Send className="h-3 w-3" />
-                )}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleMarkPaid(booking)}
-                disabled={markingIds.has(booking.id)}
-                title={t("unpaidBookings.markPaid")}
-                className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"
-              >
-                {markingIds.has(booking.id) ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3 w-3" />
-                )}
-              </Button>
-            </div>
-          </div>
-        ))}
+        <div className="overflow-x-auto">
+          <Table className={compactDataTableClass}>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10 text-xs" />
+                <TableHead className="text-xs">{t("unpaidBookings.player", "Player")}</TableHead>
+                <TableHead className="text-xs">{t("unpaidBookings.cyclus", "Cyclus")}</TableHead>
+                <TableHead className="text-xs">{t("unpaidBookings.details", "Details")}</TableHead>
+                <TableHead className="text-xs">{t("unpaidBookings.amount", "Amount")}</TableHead>
+                <TableHead className="text-xs text-right">{t("unpaidBookings.actions", "Actions")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleBookings.map((booking) => (
+                <TableRow key={booking.id} data-testid="unpaid-obligation-row">
+                  <TableCell>
+                    <Checkbox
+                      checked={selected.has(booking.id)}
+                      onCheckedChange={() => toggleSelect(booking.id)}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5">
+                      {booking.playerName}
+                      {booking.reminderSentAt && (
+                        <AlertCircle
+                          className="h-3 w-3 shrink-0 text-muted-foreground"
+                          aria-label={`${t("unpaidBookings.lastReminder")}: ${formatDistanceToNow(new Date(booking.reminderSentAt), { addSuffix: true })}`}
+                        />
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {booking.isCycleGroup && booking.cyclusName ? (
+                      <Badge variant="secondary" className="whitespace-nowrap text-xs">
+                        {booking.cyclusName}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {obligationSubtitle(booking, t)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap font-medium">
+                    {formatCurrency(booking.amount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSendReminder(booking)}
+                        disabled={sendingIds.has(booking.id)}
+                        title={t("unpaidBookings.sendReminder")}
+                      >
+                        {sendingIds.has(booking.id) ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Send className="h-3 w-3" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleMarkPaid(booking)}
+                        disabled={markingIds.has(booking.id)}
+                        title={t("unpaidBookings.markPaid")}
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"
+                      >
+                        {markingIds.has(booking.id) ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
 
         {hasMoreThanPreview && (
           <div className="flex flex-col items-center gap-1 pt-2 border-t">
