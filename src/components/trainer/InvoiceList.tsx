@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -428,7 +429,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
       {/* Invoice List */}
       {filteredInvoices.length === 0 ? (
-        <Card className="p-8 text-center">
+        <Card className={flushOnMobileCardClass("p-8 text-center")}>
           <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">
             {statusFilter === 'all'
@@ -441,7 +442,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         </Card>
       ) : (
         filteredInvoices.map((invoice) => (
-          <Card key={invoice.id}>
+          <Card key={invoice.id} className={flushOnMobileCardClass()}>
             <CardContent className="p-4 sm:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">

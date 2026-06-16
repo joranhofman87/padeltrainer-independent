@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -420,7 +421,7 @@ export default function AcademyTrainerDetail() {
         </Card>
 
         {/* Basic Info */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <CardTitle className="text-base">{t('trainers.basicInfo', 'Basic Information')}</CardTitle>
           </CardHeader>
@@ -464,7 +465,7 @@ export default function AcademyTrainerDetail() {
         </Card>
 
         {/* Trainer Details */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <CardTitle className="text-base">{t('trainers.trainerDetails', 'Trainer Details')}</CardTitle>
           </CardHeader>
@@ -556,7 +557,7 @@ export default function AcademyTrainerDetail() {
 
         {/* Locations */}
         {academyLocations.length > 0 && (
-          <Card>
+          <Card className={flushOnMobileCardClass()}>
             <CardHeader>
               <CardTitle className="text-base">{t('trainers.assignLocations', 'Assign Locations')}</CardTitle>
               <p className="text-sm text-muted-foreground">
@@ -590,7 +591,7 @@ export default function AcademyTrainerDetail() {
         )}
 
         {/* Additional Info */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <CardTitle className="text-base">{t('trainers.additionalInfo', 'Additional Information')}</CardTitle>
           </CardHeader>

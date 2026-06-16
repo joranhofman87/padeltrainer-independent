@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
@@ -69,7 +70,7 @@ export function AcademyOpenCycles({ academyId, academyName: _academyName, academ
 
   if (cycles.length === 0) {
     return (
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
@@ -88,7 +89,7 @@ export function AcademyOpenCycles({ academyId, academyName: _academyName, academ
   }
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">

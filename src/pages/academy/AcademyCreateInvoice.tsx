@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
@@ -335,7 +336,7 @@ export default function AcademyCreateInvoice() {
       />
 
       {/* Line items */}
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">{t('invoiceForm.lineItems.title')}</CardTitle>
@@ -437,7 +438,7 @@ export default function AcademyCreateInvoice() {
       </Card>
 
       {/* Settings + Totals */}
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardContent className="pt-6 space-y-4">
           {/* VAT toggle */}
           <div className="flex items-center justify-between">

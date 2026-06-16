@@ -5,6 +5,7 @@ import {
 } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -350,7 +351,7 @@ export default function AcademyCalendarOverview({
         </div>
 
         {/* Week Day-Column Grid — Trainer-Grouped */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardContent className="p-3 sm:p-4">
             <ScrollArea className="w-full">
               <div className="grid grid-cols-7 gap-1.5 min-w-[700px]">

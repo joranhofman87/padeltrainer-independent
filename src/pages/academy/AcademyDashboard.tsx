@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -372,7 +373,7 @@ export default function AcademyDashboard() {
 
       {/* Activity Sections */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <Card className="overflow-hidden border-border/80 shadow-sm">
+        <Card className={flushOnMobileCardClass("overflow-hidden border-border/80 shadow-sm")}>
           <DashboardSectionHeader
             title={t('dashboard.recentPlayers', 'Recent Players')}
             viewAllLabel={t('dashboard.viewAll', 'View all')}
@@ -419,7 +420,7 @@ export default function AcademyDashboard() {
           )}
         </Card>
 
-        <Card className="overflow-hidden border-border/80 shadow-sm">
+        <Card className={flushOnMobileCardClass("overflow-hidden border-border/80 shadow-sm")}>
           <DashboardSectionHeader
             title={t('dashboard.recentBookings', 'Recent Bookings')}
             viewAllLabel={t('dashboard.viewAll', 'View all')}
@@ -478,7 +479,7 @@ export default function AcademyDashboard() {
           )}
         </Card>
 
-        <Card className="overflow-hidden border-border/80 shadow-sm">
+        <Card className={flushOnMobileCardClass("overflow-hidden border-border/80 shadow-sm")}>
           <DashboardSectionHeader
             title={t('dashboard.registrations', 'Registrations')}
             viewAllLabel={t('dashboard.viewAll', 'View all')}
@@ -524,7 +525,7 @@ export default function AcademyDashboard() {
           )}
         </Card>
 
-        <Card className="overflow-hidden border-border/80 shadow-sm">
+        <Card className={flushOnMobileCardClass("overflow-hidden border-border/80 shadow-sm")}>
           <DashboardSectionHeader
             title={t('dashboard.upcomingSpots', 'Upcoming Open Spots')}
             viewAllLabel={t('dashboard.viewAll', 'View all')}

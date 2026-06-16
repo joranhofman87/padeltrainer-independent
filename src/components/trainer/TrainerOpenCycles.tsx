@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
@@ -66,7 +67,7 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
   }
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">

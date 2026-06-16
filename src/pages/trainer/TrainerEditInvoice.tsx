@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
@@ -270,7 +271,7 @@ export default function TrainerEditInvoice() {
         <InvoiceSourceCard owner="trainer" bookingIds={invoice.booking_ids as string[] | null} />
 
         {/* Receiver (editable billing) */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3"><CardTitle className="text-base">{t('invoiceEdit.receiver')}</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -285,7 +286,7 @@ export default function TrainerEditInvoice() {
         </Card>
 
         {/* Line items */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{t('invoiceEdit.lineItems')}</CardTitle>
@@ -353,7 +354,7 @@ export default function TrainerEditInvoice() {
         </Card>
 
         {/* Totals */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center justify-between"><Label className="text-sm">{t('invoiceEdit.pricesIncludeVat')}</Label><Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} /></div>
             <Separator />

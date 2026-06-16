@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
@@ -385,7 +386,7 @@ export default function AcademyEditInvoice() {
         <InvoiceStatusHistoryCard invoiceId={invoice.id} />
 
         {/* Receiver (editable billing) */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{t('invoiceEdit.receiver')}</CardTitle>
           </CardHeader>
@@ -402,7 +403,7 @@ export default function AcademyEditInvoice() {
         </Card>
 
         {/* Line items */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">{t('invoiceEdit.lineItems')}</CardTitle>
@@ -504,7 +505,7 @@ export default function AcademyEditInvoice() {
         </Card>
 
         {/* Settings + Totals */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center justify-between">
               <Label className="text-sm">{t('invoiceEdit.pricesIncludeVat')}</Label>

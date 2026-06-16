@@ -6,6 +6,7 @@ import {
 } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -142,7 +143,7 @@ export default function AcademyTrainerHours({
       </div>
 
       {/* Table */}
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
