@@ -30,6 +30,7 @@ import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -579,7 +580,7 @@ export default function AcademyPlayerDetail() {
       />
 
       {/* Summary */}
-      <Card data-testid="academy-player-summary">
+      <Card className={flushOnMobileCardClass()} data-testid="academy-player-summary">
         <CardHeader>
           <CardTitle className="text-base">{t('players.detail.summary', 'Summary')}</CardTitle>
         </CardHeader>
@@ -606,7 +607,7 @@ export default function AcademyPlayerDetail() {
       )}
 
       {/* Cycles */}
-      <Card data-testid="academy-player-section-cycles">
+      <Card className={flushOnMobileCardClass()} data-testid="academy-player-section-cycles">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />
@@ -645,7 +646,7 @@ export default function AcademyPlayerDetail() {
       </Card>
 
       {/* Invoices */}
-      <Card data-testid="academy-player-section-invoices">
+      <Card className={flushOnMobileCardClass()} data-testid="academy-player-section-invoices">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
@@ -706,7 +707,7 @@ export default function AcademyPlayerDetail() {
       </Card>
 
       {/* Rating history */}
-      <Card data-testid="academy-player-section-rating">
+      <Card className={flushOnMobileCardClass()} data-testid="academy-player-section-rating">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
@@ -736,7 +737,7 @@ export default function AcademyPlayerDetail() {
       </Card>
 
       {/* Email history */}
-      <Card data-testid="academy-player-section-emails">
+      <Card className={flushOnMobileCardClass()} data-testid="academy-player-section-emails">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Send className="h-4 w-4" />

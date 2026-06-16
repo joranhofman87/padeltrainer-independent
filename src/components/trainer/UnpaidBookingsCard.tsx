@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Euro, Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { flushOnMobileCardClass } from "@/components/ui/surface";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -205,7 +206,7 @@ export function UnpaidBookingsCard({ trainerId, academyId }: UnpaidBookingsCardP
   if (bookings.length === 0) return null;
 
   return (
-    <Card className="mb-6 border-border/60 shadow-sm">
+    <Card className={flushOnMobileCardClass("mb-6 border-border/60 shadow-sm")}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">

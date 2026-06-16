@@ -12,6 +12,7 @@ import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { formatPrice } from '@/lib/pricing';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 
 interface SlotData {
   id: string;
@@ -228,7 +229,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
   const bookUrl = localizePath(`/book/${trainerSlug || trainerId}`);
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">

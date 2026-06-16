@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { flushOnMobileCardClass } from "@/components/ui/surface";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -343,7 +344,7 @@ export default function TrainerCyclus() {
 
         {/* Cyclus List */}
         {filteredCyclus.length === 0 ? (
-          <Card className="p-8 text-center">
+          <Card className={flushOnMobileCardClass("p-8 text-center")}>
             <div className="mx-auto h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
               <Repeat className="h-6 w-6 text-muted-foreground" />
             </div>
@@ -365,7 +366,7 @@ export default function TrainerCyclus() {
         ) : (
           <div className="space-y-4">
             {filteredCyclus.map((cyclus) => (
-              <Card key={cyclus.cyclus_id}>
+              <Card key={cyclus.cyclus_id} className={flushOnMobileCardClass()}>
                 <Collapsible
                   open={expandedCyclus === cyclus.cyclus_id}
                   onOpenChange={(open) =>

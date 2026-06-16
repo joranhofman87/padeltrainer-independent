@@ -54,6 +54,7 @@ import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
 import { TagPicker } from '@/components/players/TagPicker';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -605,7 +606,7 @@ export default function TrainerPlayerDetail() {
         t={t}
       />
 
-      <Card data-testid="trainer-player-summary">
+      <Card data-testid="trainer-player-summary" className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="text-base">{t('players.detail.summary', 'Summary')}</CardTitle>
         </CardHeader>
@@ -630,7 +631,7 @@ export default function TrainerPlayerDetail() {
         />
       )}
 
-      <Card data-testid="trainer-player-section-cycles">
+      <Card data-testid="trainer-player-section-cycles" className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />
@@ -668,7 +669,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      <Card data-testid="trainer-player-section-invoices">
+      <Card data-testid="trainer-player-section-invoices" className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
@@ -759,7 +760,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      <Card data-testid="trainer-player-section-emails">
+      <Card data-testid="trainer-player-section-emails" className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Send className="h-4 w-4" />

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Mail, User } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -68,7 +69,7 @@ export function InvoiceRecipientCard({
       : t('invoiceEdit.recipient.openProfile', 'Open Player Profile');
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <User className="h-4 w-4" />

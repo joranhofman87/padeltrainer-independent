@@ -17,6 +17,7 @@ import StarterKit from '@tiptap/starter-kit';
 import LinkExtension from '@tiptap/extension-link';
 import UnderlineExtension from '@tiptap/extension-underline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { AppPage } from '@/components/ui/app-page';
 import { Button } from '@/components/ui/button';
@@ -337,7 +338,7 @@ export default function AcademySettings() {
         <AcademyPriceDisplayCard academyId={activeAcademy.id} />
 
         {/* Warnings */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-muted-foreground" />
@@ -409,7 +410,7 @@ export default function AcademySettings() {
         </Card>
 
         {/* General Terms */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <div className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-muted-foreground" />
@@ -435,7 +436,7 @@ export default function AcademySettings() {
         </Card>
 
         {/* Welcome Message */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-muted-foreground" />
@@ -465,7 +466,7 @@ export default function AcademySettings() {
         </Card>
 
         {/* Managers */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
@@ -563,7 +564,7 @@ export default function AcademySettings() {
         </Card>
 
         {/* Language Setting */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-indigo-500/10">
@@ -595,7 +596,7 @@ export default function AcademySettings() {
         </Card>
 
         {/* Timezone Setting */}
-        <Card>
+        <Card className={flushOnMobileCardClass()}>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-sky-500/10">

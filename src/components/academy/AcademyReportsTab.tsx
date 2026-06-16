@@ -8,6 +8,7 @@ import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/loca
 import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -343,7 +344,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className={flushOnMobileCardClass()}>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
@@ -396,7 +397,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className={flushOnMobileCardClass()}>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
@@ -446,7 +447,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className={flushOnMobileCardClass()}>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>

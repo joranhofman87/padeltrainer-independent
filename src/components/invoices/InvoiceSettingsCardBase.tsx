@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -386,7 +387,7 @@ export function InvoiceSettingsCardBase({
 
   if (loading) {
     return (
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardContent className="py-8 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </CardContent>
@@ -398,7 +399,7 @@ export function InvoiceSettingsCardBase({
 
   return (
     <>
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

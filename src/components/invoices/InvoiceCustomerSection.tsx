@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Check, UserRound } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -92,7 +93,7 @@ export function InvoiceCustomerSection({
   const showOneTimeToggle = !hidePlayerSearch;
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">
           {showSearch || showOneTimeToggle

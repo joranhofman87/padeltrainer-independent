@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Pencil, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -160,7 +161,7 @@ export function AcademyPlayerDetailsCard({
   }
 
   return (
-    <Card data-testid="academy-player-details-card">
+    <Card className={flushOnMobileCardClass()} data-testid="academy-player-details-card">
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
           <User className="h-4 w-4" />

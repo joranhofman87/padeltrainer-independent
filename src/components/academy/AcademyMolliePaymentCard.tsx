@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -66,7 +67,7 @@ export function AcademyMolliePaymentCard({
   };
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader>
         <div className="flex items-center gap-2">
           <CreditCard className="h-5 w-5 text-muted-foreground" />

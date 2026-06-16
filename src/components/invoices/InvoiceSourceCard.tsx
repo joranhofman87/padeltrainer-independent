@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import {
   resolveInvoiceSourceFromBookings,
   type InvoiceSourceBookingRow,
@@ -96,7 +97,7 @@ export function InvoiceSourceCard({ owner, bookingIds }: InvoiceSourceCardProps)
   if (!ids.length) return null;
   if (isLoading) {
     return (
-      <Card>
+      <Card className={flushOnMobileCardClass()}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">{t('invoiceEdit.source.title', 'Source')}</CardTitle>
         </CardHeader>
@@ -158,7 +159,7 @@ export function InvoiceSourceCard({ owner, bookingIds }: InvoiceSourceCardProps)
   }
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Calendar className="h-4 w-4" />

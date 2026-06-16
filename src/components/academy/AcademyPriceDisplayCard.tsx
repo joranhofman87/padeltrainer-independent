@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Euro, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { flushOnMobileCardClass } from "@/components/ui/surface";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -73,7 +74,7 @@ export function AcademyPriceDisplayCard({ academyId }: AcademyPriceDisplayCardPr
   };
 
   return (
-    <Card id="price-display">
+    <Card id="price-display" className={flushOnMobileCardClass()}>
       <CardHeader>
         <div className="flex items-center gap-2">
           <Euro className="h-5 w-5 text-muted-foreground" />
