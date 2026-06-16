@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { MapPin, MessageSquareQuote, CheckCircle2, XCircle, TrendingUp, Video } from 'lucide-react';
 import { PlayerSelfNoteEditor } from './PlayerSelfNoteEditor';
 import { sharedCoachingNotes, ownNotes, type JourneyRow } from '@/lib/playerJourney';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 
 export function JourneyTimelineEntry({
   row,
@@ -23,7 +24,7 @@ export function JourneyTimelineEntry({
   const mine = ownNotes(row);
 
   return (
-    <Card>
+    <Card className={flushOnMobileCardClass()}>
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">

@@ -26,7 +26,7 @@ import { PlayerAttendanceForm } from '@/components/attendance/PlayerAttendanceFo
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { surfaceCardClass } from '@/components/ui/app-page';
-import { cn } from '@/lib/utils';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 
 interface BookingWithDetails extends PlayerBooking {
   hasReview: boolean;
@@ -199,7 +199,7 @@ export default function PlayerBookings() {
             ) : (
               <div className="space-y-4">
                 {upcomingBookings.map((booking) => (
-                  <Card key={booking.id} className={surfaceCardClass()}>
+                  <Card key={booking.id} className={flushOnMobileCardClass()}>
                     <CardContent className="p-5 sm:p-6">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="space-y-2">
@@ -271,7 +271,7 @@ export default function PlayerBookings() {
                   const canReview = booking.status === 'completed' && !booking.hasReview;
 
                   return (
-                    <Card key={booking.id} className={cn(surfaceCardClass(), 'opacity-95')}>
+                    <Card key={booking.id} className={flushOnMobileCardClass('opacity-95')}>
                       <CardContent className="p-6">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="space-y-2">

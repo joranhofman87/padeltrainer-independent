@@ -23,6 +23,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { clearSignupClaimSource, isPaidInvoiceClaimFlow } from '@/lib/signupClaimFlow';
 import { surfaceCardClass } from '@/components/ui/app-page';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { cn } from '@/lib/utils';
 import { trackInvoiceClaimOutcome } from '@/lib/invoiceClaimTracking';
 import { nl, enUS, es, de, fr, it } from 'date-fns/locale';
@@ -210,7 +211,7 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     <>
       <div className="space-y-4">
         {invoices.map((invoice) => (
-          <Card key={invoice.id} className={surfaceCardClass()}>
+          <Card key={invoice.id} className={flushOnMobileCardClass()}>
             <CardContent className="p-5 sm:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">
