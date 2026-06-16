@@ -5,7 +5,6 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Sidebar,
   SidebarContent,
@@ -24,7 +23,6 @@ import {
   ExternalLink,
   PanelLeftClose,
   PanelLeft,
-  GraduationCap,
   Gift,
   X,
 } from "lucide-react";
@@ -124,17 +122,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
     }
   };
 
-  const initials = academy?.name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "A";
-
-  const statusLabel = academy?.is_verified
-    ? t("common.verified")
-    : t("badge");
-
   return (
     <Sidebar
       collapsible="icon"
@@ -219,27 +206,6 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
             collapsed ? "flex-col items-center gap-2" : "flex-col gap-2",
           )}
         >
-          {!collapsed && academy && (
-            <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
-              {academy.logo_url ? (
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={academy.logo_url} alt={academy.name || ""} />
-                  <AvatarFallback className="text-xs bg-slate-100 text-slate-700">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              ) : (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100">
-                  <GraduationCap className="h-4 w-4 text-slate-500" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900">{academy.name}</p>
-                <p className="truncate text-xs text-slate-500">{statusLabel}</p>
-              </div>
-            </div>
-          )}
-
           <ProfileSwitcher
             context="academy"
             activeAcademyId={academy?.id}
