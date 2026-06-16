@@ -80,13 +80,15 @@ export default function PlayerSettings() {
         <div className="mt-6">
           <Card className={surfaceCardClass()}>
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-indigo-500/10">
-                  <Globe className="h-5 w-5 text-indigo-600" />
-                </div>
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{t('settings.language', 'Language')}</CardTitle>
-                  <CardDescription>{t('settings.languageDescription', 'Choose your preferred language for the app')}</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="p-2 rounded-lg bg-indigo-500/10 shrink-0">
+                    <Globe className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg">{t('settings.language', 'Language')}</CardTitle>
+                    <CardDescription>{t('settings.languageDescription', 'Choose your preferred language for the app')}</CardDescription>
+                  </div>
                 </div>
                 <Select
                   value={i18n.language}
@@ -97,7 +99,7 @@ export default function PlayerSettings() {
                     }
                   }}
                 >
-                  <SelectTrigger className="w-[160px]">
+                  <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

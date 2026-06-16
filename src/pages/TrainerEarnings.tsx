@@ -500,13 +500,15 @@ export default function TrainerEarnings() {
         {/* Manual invoicing: Business info warning - Only for non-academy trainers */}
         {!academyPaymentInfo?.isAcademyTrainer && !isBusinessInfoComplete && (
           <Card className="border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-soft))]/40 shadow-sm">
-            <CardContent className="flex items-center gap-4 p-4 sm:p-5">
-              <TrainerIconWell icon={AlertCircle} />
-              <div className="flex-1">
-                <p className="font-medium text-foreground">{t('earningsPage.completeBusinessDetails')}</p>
-                <p className="text-sm text-muted-foreground">{t('earningsPage.addBusinessDetails')}</p>
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <TrainerIconWell icon={AlertCircle} />
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">{t('earningsPage.completeBusinessDetails')}</p>
+                  <p className="text-sm text-muted-foreground">{t('earningsPage.addBusinessDetails')}</p>
+                </div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
+              <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setShowSettings(true)}>
                 {t('earningsPage.addDetails')}
               </Button>
             </CardContent>

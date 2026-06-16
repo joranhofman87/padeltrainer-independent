@@ -423,7 +423,7 @@ export default function TrainerPlayers() {
           >
             {allLocations.length > 0 && (
               <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder={t('players.allLocations', 'All Locations')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -436,7 +436,7 @@ export default function TrainerPlayers() {
             )}
 
             <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-full sm:w-[170px]">
                 <SelectValue placeholder={t('players.allLevels', 'All Levels')} />
               </SelectTrigger>
               <SelectContent>
@@ -450,7 +450,7 @@ export default function TrainerPlayers() {
             </Select>
 
             <Select value={selectedCyclus} onValueChange={setSelectedCyclus}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue placeholder={t('players.activeCyclus', 'Active Cyclus')} />
               </SelectTrigger>
               <SelectContent>
@@ -461,7 +461,7 @@ export default function TrainerPlayers() {
             </Select>
 
             <Select value={selectedTagId} onValueChange={setSelectedTagId}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue placeholder={t('players.tags.filterAll', 'All Tags')} />
               </SelectTrigger>
               <SelectContent>
@@ -477,7 +477,7 @@ export default function TrainerPlayers() {
             </Select>
 
             <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-full sm:w-[170px]">
                 <SelectValue placeholder={t('players.payment.filterAll', 'Payment status')} />
               </SelectTrigger>
               <SelectContent>

@@ -403,11 +403,13 @@ export default function TrainerSettings() {
         <div className="max-w-4xl">
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <TrainerIconWell icon={Globe} />
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{t('settings.language', 'Language')}</CardTitle>
-                  <CardDescription>{t('settings.languageDescription', 'Choose your preferred language for the app')}</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <TrainerIconWell icon={Globe} />
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg">{t('settings.language', 'Language')}</CardTitle>
+                    <CardDescription>{t('settings.languageDescription', 'Choose your preferred language for the app')}</CardDescription>
+                  </div>
                 </div>
                 <Select
                   value={i18n.language}
@@ -418,7 +420,7 @@ export default function TrainerSettings() {
                     }
                   }}
                 >
-                  <SelectTrigger className="w-[160px]">
+                  <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -435,18 +437,20 @@ export default function TrainerSettings() {
         <div className="max-w-4xl">
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <TrainerIconWell icon={Clock} />
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
-                  <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <TrainerIconWell icon={Clock} />
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg">{t('settings.timezone', 'Timezone')}</CardTitle>
+                    <CardDescription>{t('settings.timezoneDescription', 'Set the timezone used for scheduling and displaying lesson times')}</CardDescription>
+                  </div>
                 </div>
                 <Select
                   value={timezone}
                   onValueChange={handleTimezoneChange}
                   disabled={updatingTimezone}
                 >
-                  <SelectTrigger className="w-[240px]">
+                  <SelectTrigger className="w-full sm:w-[240px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
