@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Info } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { createOptionalPhoneSchema } from '@/lib/validation';
+import { createOptionalPhoneSchema, createRequiredPhoneSchema } from '@/lib/validation';
 import { buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
@@ -166,7 +166,13 @@ export default function CycleApplicationForm({
     first_name: z.string().trim().min(2, t('application.form.firstNameMin')),
     last_name: z.string().trim().min(2, t('application.form.lastNameMin')),
     email: z.string().email(t('application.form.emailInvalid')),
-    phone: createOptionalPhoneSchema(t('application.form.validation.phoneInvalid')),
+    // Phone is mandatory on registration sign-ups; events keep it optional.
+    phone: isEvent
+      ? createOptionalPhoneSchema(t('application.form.validation.phoneInvalid'))
+      : createRequiredPhoneSchema(
+          t('application.form.validation.phoneInvalid'),
+          t('application.form.validation.phoneRequired'),
+        ),
     password: z.string().optional(),
     birth_date: z.string().min(1, t('application.form.birthDateRequired')),
     rating: z.coerce.number().optional(),
@@ -197,7 +203,7 @@ export default function CycleApplicationForm({
       
       rating: playerRating || undefined,
       rating_system: (cycle.settings as any)?.rating_system || playerRatingSystem,
-      lesson_types: ['group4'] as string[],
+      lesson_types: [] as string[],
       preferred_duration_minutes: availableDurations.length === 1 ? availableDurations[0] : (cycle.settings.default_duration_minutes || 60),
       sessions_per_week: 1,
       availability: cyclAvailableDays && Object.keys(cyclAvailableDays).length > 0 ? cyclAvailableDays : {},
@@ -609,9 +615,11 @@ export default function CycleApplicationForm({
                 <FormItem>
                   <FormLabel>
                     {t('application.form.phone')}
-                    <span className="text-muted-foreground font-normal ml-1">
-                      ({t('application.form.phoneOptional')})
-                    </span>
+                    {isEvent && (
+                      <span className="text-muted-foreground font-normal ml-1">
+                        ({t('application.form.phoneOptional')})
+                      </span>
+                    )}
                   </FormLabel>
                   <FormControl>
                     <Input {...field} type="tel" />

@@ -28,6 +28,7 @@ vi.mock('react-i18next', () => ({
         'application.form.noAvailability': 'Select availability',
         'application.form.phoneOptional': 'optional',
         'application.form.validation.phoneInvalid': 'Please enter a valid Dutch phone number',
+        'application.form.validation.phoneRequired': 'Phone number is required',
         'application.form.personalInfo': 'Personal Information',
         'application.form.email': 'Email',
         'application.form.phone': 'Phone',
@@ -190,8 +191,13 @@ describe('CycleApplicationForm', () => {
     expect(screen.getByDisplayValue('+31612345678')).toBeInTheDocument();
   });
 
-  it('shows phone as optional in the label', () => {
+  it('marks phone as required (no "optional" tag) on registration forms', () => {
     renderForm();
+    expect(screen.queryByText(/optional/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps phone optional on event forms', () => {
+    renderForm({ cycle: { ...baseCycle, type: 'event' } });
     expect(screen.getByText(/optional/i)).toBeInTheDocument();
   });
 

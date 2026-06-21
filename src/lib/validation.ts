@@ -24,6 +24,19 @@ export function createOptionalPhoneSchema(invalidMessage: string) {
     });
 }
 
+/** Required phone schema with caller-supplied (already translated) messages. */
+export function createRequiredPhoneSchema(invalidMessage: string, requiredMessage: string) {
+  return z
+    .string()
+    .transform((val) => val.trim())
+    .refine((val) => val !== '', { message: requiredMessage })
+    // Empty already flagged above; only validate the format of a non-empty value
+    // so an empty input shows just the "required" message, not both.
+    .refine((val) => val === '' || dutchPhoneRegex.test(val.replace(/[\s.-]/g, '')), {
+      message: invalidMessage,
+    });
+}
+
 /**
  * Phone validation schema - required
  * Must be a valid Dutch phone number
