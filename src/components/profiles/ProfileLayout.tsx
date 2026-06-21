@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +26,48 @@ interface ProfileLayoutProps {
   showBackButton?: boolean;
 }
 
+// Supabase storage serves files from the avatars bucket as
+// `application/octet-stream`. Browsers content-sniff raster images (PNG/JPG)
+// and render them anyway, but they deliberately do NOT sniff SVG (XSS safety),
+// so an SVG banner shows up blank in an <img>. For SVG banners we fetch the
+// markup and re-wrap it as a correctly-typed blob URL so it renders regardless
+// of the stored content-type. Raster banners pass straight through.
+function BannerImage({ url }: { url: string }) {
+  const [src, setSrc] = useState(url);
+
+  useEffect(() => {
+    if (!/\.svg(\?|#|$)/i.test(url)) {
+      setSrc(url);
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    fetch(url)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((text) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setSrc(url); // fall back to the raw URL
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  return (
+    <img
+      src={src}
+      alt="Profile banner"
+      className="w-full h-full object-cover"
+      loading="lazy"
+    />
+  );
+}
+
 export function ProfileLayout({
   children,
   breadcrumbs,
@@ -41,12 +83,7 @@ export function ProfileLayout({
       {/* Banner */}
       {bannerUrl && (
         <div className="w-full h-32 sm:h-48 md:h-64 overflow-hidden">
-          <img
-            src={bannerUrl}
-            alt="Profile banner"
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <BannerImage url={bannerUrl} />
         </div>
       )}
 
