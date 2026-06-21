@@ -244,8 +244,12 @@ export default function CycleApplicationForm({
       const registeringForSelf =
         !isGuest && (!playerName || normalize(fullName) === normalize(playerName));
 
+      // Online event registrations return a public pay URL we redirect to after
+      // a successful submit (the existing PublicInvoicePay page → Mollie).
+      let redirectPayUrl: string | null = null;
+
       if (isGuest || !registeringForSelf) {
-        // Guest flow: edge function handles account creation + intake
+        // Guest flow: edge function handles account creation + intake (+ invoice)
         const { data: result, error: fnError } = await supabase.functions.invoke('submit-guest-intake', {
           body: {
             email: values.email,
@@ -267,6 +271,7 @@ export default function CycleApplicationForm({
             notes: notesWithFlag || undefined,
             consentGiven: values.consent,
             language: i18n.language,
+            paymentMethod: selectedPaymentMethod,
             metadata: {
               ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
               ...(selectedDurationWeeks ? { preferred_number_of_weeks: selectedDurationWeeks } : {}),
@@ -276,9 +281,10 @@ export default function CycleApplicationForm({
 
         if (fnError) throw fnError;
         if (result?.error) throw new Error(result.error);
+        redirectPayUrl = result?.payment?.payUrl ?? null;
       } else {
         // Logged-in user flow
-        await submitIntakeRequest({
+        const createdIntake = await submitIntakeRequest({
           cycle_id: cycle.id,
           player_id: playerId,
           full_name: fullName,
@@ -416,6 +422,26 @@ export default function CycleApplicationForm({
             .update(profileUpdates)
             .eq('user_id', playerUserId);
         }
+
+        // Mint the payable invoice for a paid event registration (mirrors the
+        // guest edge function). Non-blocking: a failure leaves the registration
+        // saved and the player can still pay later from their dashboard.
+        if (createdIntake?.id) {
+          try {
+            const { data: payRes } = await supabase.functions.invoke('create-registration-invoice', {
+              body: { intakeRequestId: createdIntake.id, paymentMethod: selectedPaymentMethod },
+            });
+            redirectPayUrl = (payRes as { payUrl?: string | null })?.payUrl ?? null;
+          } catch (payErr) {
+            logger.error('Registration invoice minting failed', payErr as Error, { component: 'CycleApplicationForm' });
+          }
+        }
+      }
+
+      // Online: hand off to the existing pay page → Mollie (skip the thank-you screen).
+      if (redirectPayUrl) {
+        window.location.href = redirectPayUrl;
+        return;
       }
 
       setIsSuccess(true);

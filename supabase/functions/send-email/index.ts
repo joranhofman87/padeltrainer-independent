@@ -65,6 +65,7 @@ interface EmailRequest {
     cycleName?: string;
     // Intake registration confirmation fields
     confirmationText?: string;
+    payUrl?: string;
     isNewUser?: boolean;
     startDate?: string;
     endDate?: string;
@@ -873,6 +874,18 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
            </div>`
         : '';
 
+      // Pay-now block — online events return a public pay URL so the player can
+      // complete (or retry an abandoned) payment straight from the email.
+      const payUrlAbs = data.payUrl
+        ? (data.payUrl.startsWith('http') ? data.payUrl : `https://padeltrainer.ai${data.payUrl}`)
+        : '';
+      const payNowLabel = lang === 'nl' ? 'Betaal je inschrijving' : 'Pay your registration';
+      const payBlock = payUrlAbs
+        ? `<div style="text-align: center; margin: 24px 0;">
+             <a href="${payUrlAbs}" style="display: inline-block; background: #ea580c; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600;">${payNowLabel}</a>
+           </div>`
+        : '';
+
       return {
         subject: t.subject,
         html: `
@@ -884,6 +897,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
             ${detailsBlock}
             ${summaryBlock}
             ${priceBlock}
+            ${payBlock}
             <p>${t.footer}</p>
             <p>${t.regards}<br>${data.ownerName || data.trainerName || 'PadelTrainer.ai Team'}</p>
           </div>
