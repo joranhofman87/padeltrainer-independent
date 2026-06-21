@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import {
+  mintEventRegistrationInvoice,
+  resolveEffectivePaymentMethod,
+  buildPayUrl,
+  type RegistrationInvoiceCycle,
+} from "../_shared/event-registration-invoice.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -93,6 +99,7 @@ Deno.serve(async (req) => {
       consentGiven,
       language,
       metadata,
+      paymentMethod,
     } = body;
 
     // Type guards: a public caller can send any JSON shape; non-string name/email
@@ -370,7 +377,7 @@ Deno.serve(async (req) => {
     try {
       const { data: cycle } = await adminClient
         .from("cycles")
-        .select("owner_type, owner_id, name, settings, start_date, end_date, enrollment_deadline, location_id")
+        .select("id, owner_type, owner_id, name, type, total_price, price_per_session, currency, settings, start_date, end_date, enrollment_deadline, location_id")
         .eq("id", cycleId)
         .single();
 
@@ -396,6 +403,53 @@ Deno.serve(async (req) => {
       }
     } catch (followErr) {
       console.error("Auto-follow failed (non-blocking):", followErr);
+    }
+
+    // Mint a payable invoice for paid event registrations and reuse the existing
+    // Mollie invoice flow. Non-blocking: a mint failure never fails the
+    // registration (it stays saved, just unpaid). `paymentInfo` feeds the
+    // response (redirect URL) and the confirmation email (pay-link).
+    let paymentInfo:
+      | { invoiceId: string; publicToken: string; method: "online" | "cash"; payUrl: string | null }
+      | { error: string }
+      | null = null;
+    let emailPayUrl: string | undefined;
+    try {
+      const method = cycleData
+        ? resolveEffectivePaymentMethod(
+            (cycleData.settings as Record<string, unknown> | null)?.payment_methods as
+              | "online" | "cash" | "both" | undefined,
+            paymentMethod,
+          )
+        : null;
+      if (cycleData && cycleData.type === "event" && method) {
+        const result = await mintEventRegistrationInvoice(
+          adminClient,
+          cycleData as RegistrationInvoiceCycle,
+          {
+            player_id: playerId,
+            guest_player_id: guestPlayerId,
+            player_name: nameFields.full_name,
+          },
+          method,
+        );
+        if (result.ok) {
+          await adminClient
+            .from("intake_requests")
+            .update({ payment_method: method, invoice_id: result.invoiceId })
+            .eq("id", intakeData.id);
+          const payUrl = method === "online" ? buildPayUrl(result.slug, result.publicToken, language || "nl") : null;
+          if (payUrl) emailPayUrl = payUrl;
+          paymentInfo = { invoiceId: result.invoiceId, publicToken: result.publicToken, method, payUrl };
+        } else {
+          // e.g. no_price_set / business_profile_incomplete — surface to the form
+          // without failing the registration.
+          console.error(`Registration invoice not minted for intake ${intakeData.id}: ${result.reason}`);
+          paymentInfo = { error: result.reason };
+        }
+      }
+    } catch (payErr) {
+      console.error("Registration invoice minting failed (non-blocking):", payErr);
     }
 
     // Send registration confirmation email (non-blocking)
@@ -547,6 +601,7 @@ Deno.serve(async (req) => {
               selectedPackagePrice: selectedOptionPrice || undefined,
               selectedDurationWeeks: durationWeeks || undefined,
               priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
+              payUrl: emailPayUrl,
             },
           }),
         });
@@ -682,7 +737,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, intakeRequest: intakeData }),
+      JSON.stringify({ success: true, intakeRequest: intakeData, payment: paymentInfo }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -3080,10 +3085,12 @@ export type Database = {
           full_name: string
           guest_player_id: string | null
           id: string
+          invoice_id: string | null
           lesson_type: string[]
           location_id: string | null
           metadata: Json | null
           notes: string | null
+          payment_method: string | null
           phone: string | null
           player_id: string | null
           preferred_days: string[]
@@ -3106,10 +3113,12 @@ export type Database = {
           full_name: string
           guest_player_id?: string | null
           id?: string
+          invoice_id?: string | null
           lesson_type: string[]
           location_id?: string | null
           metadata?: Json | null
           notes?: string | null
+          payment_method?: string | null
           phone?: string | null
           player_id?: string | null
           preferred_days: string[]
@@ -3132,10 +3141,12 @@ export type Database = {
           full_name?: string
           guest_player_id?: string | null
           id?: string
+          invoice_id?: string | null
           lesson_type?: string[]
           location_id?: string | null
           metadata?: Json | null
           notes?: string | null
+          payment_method?: string | null
           phone?: string | null
           player_id?: string | null
           preferred_days?: string[]
@@ -3162,6 +3173,13 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
           {
@@ -3268,6 +3286,7 @@ export type Database = {
           academy_profile_id: string | null
           booking_ids: string[] | null
           created_at: string
+          cycle_id: string | null
           due_date: string
           forwarded_at: string | null
           guest_player_id: string | null
@@ -3303,6 +3322,7 @@ export type Database = {
           academy_profile_id?: string | null
           booking_ids?: string[] | null
           created_at?: string
+          cycle_id?: string | null
           due_date: string
           forwarded_at?: string | null
           guest_player_id?: string | null
@@ -3338,6 +3358,7 @@ export type Database = {
           academy_profile_id?: string | null
           booking_ids?: string[] | null
           created_at?: string
+          cycle_id?: string | null
           due_date?: string
           forwarded_at?: string | null
           guest_player_id?: string | null
@@ -3396,6 +3417,13 @@ export type Database = {
             columns: ["academy_profile_id"]
             isOneToOne: false
             referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles"
             referencedColumns: ["id"]
           },
           {
@@ -7912,4 +7940,3 @@ export const Constants = {
     },
   },
 } as const
-
