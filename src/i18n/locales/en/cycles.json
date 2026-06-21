@@ -186,7 +186,15 @@
     "shareLink": "Share Registration Link",
     "linkCopied": "Registration link copied!",
     "copyLink": "Copy Registration Link",
+    "qrCode": "QR code",
     "statusUpdateError": "Could not update the cycle status. Please try again."
+  },
+  "qr": {
+    "title": "QR code",
+    "scanHint": "Scan to open the registration form",
+    "png": "PNG",
+    "svg": "SVG",
+    "downloadError": "Could not generate the image. Try the SVG instead."
   },
   "paymentBadge": {
     "upfront": "Pay upfront",

@@ -82,6 +82,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.462.0",
     "posthog-js": "^1.342.1",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-day-picker": "^8.10.2",
     "react-dom": "^19.2.4",
