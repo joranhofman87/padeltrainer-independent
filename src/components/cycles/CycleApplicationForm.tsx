@@ -679,8 +679,8 @@ export default function CycleApplicationForm({
           </CardContent>
         </Card>
 
-        {/* Event Payment Method Selection */}
-        {isEvent && eventPaymentMethods === 'both' && (
+        {/* Payment method choice — shown for any cycle set to "player chooses" (both) */}
+        {eventPaymentMethods === 'both' && (
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">{t('application.form.paymentMethod', 'Payment Method')}</CardTitle>

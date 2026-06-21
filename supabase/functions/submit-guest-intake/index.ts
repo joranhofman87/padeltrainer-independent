@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     try {
       const { data: cycle } = await adminClient
         .from("cycles")
-        .select("id, owner_type, owner_id, name, type, total_price, price_per_session, currency, settings, start_date, end_date, enrollment_deadline, location_id")
+        .select("id, owner_type, owner_id, name, type, total_price, price_per_session, price_table, currency, settings, start_date, end_date, enrollment_deadline, location_id")
         .eq("id", cycleId)
         .single();
 
@@ -422,7 +422,9 @@ Deno.serve(async (req) => {
             paymentMethod,
           )
         : null;
-      if (cycleData && cycleData.type === "event" && method) {
+      if (cycleData && (cycleData.type === "event" || cycleData.type === "registration") && method) {
+        const md = (metadata ?? undefined) as Record<string, unknown> | undefined;
+        const selectedOption = md?.selected_cyclus_option as Record<string, unknown> | undefined;
         const result = await mintEventRegistrationInvoice(
           adminClient,
           cycleData as RegistrationInvoiceCycle,
@@ -432,6 +434,11 @@ Deno.serve(async (req) => {
             player_name: nameFields.full_name,
           },
           method,
+          {
+            lessonTypes: lessonTypes ?? [],
+            cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
+            durationWeeks: md?.preferred_number_of_weeks,
+          },
         );
         if (result.ok) {
           await adminClient
