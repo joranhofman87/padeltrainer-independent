@@ -125,6 +125,12 @@ export default function CycleForm({
   const [eventPaymentMethod, setEventPaymentMethod] = useState<EventPaymentMethod>(
     (cycle?.settings as any)?.payment_methods ?? 'online'
   );
+  // Registration cycles: 'invoice_later' = existing finalize invoicing; 'online'/'both'
+  // = charge the selected package at sign-up (persisted as settings.payment_methods).
+  const [registrationChargeMode, setRegistrationChargeMode] = useState<'invoice_later' | 'online' | 'both'>(() => {
+    const pm = (cycle?.settings as { payment_methods?: string } | null | undefined)?.payment_methods;
+    return pm === 'online' ? 'online' : pm === 'both' ? 'both' : 'invoice_later';
+  });
   const [maxParticipants, setMaxParticipants] = useState<number | ''>(
     (cycle?.settings as any)?.max_participants ?? ''
   );
@@ -298,6 +304,8 @@ export default function CycleForm({
       setInvoiceDelayWeeks(settings?.invoice_delay_weeks ?? 2);
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
       setEventPaymentMethod((cycle?.settings as any)?.payment_methods ?? 'online');
+      const regPm = (cycle?.settings as { payment_methods?: string } | null | undefined)?.payment_methods;
+      setRegistrationChargeMode(regPm === 'online' ? 'online' : regPm === 'both' ? 'both' : 'invoice_later');
       setMaxParticipants((cycle?.settings as any)?.max_participants ?? '');
       setTerms(cycle?.terms || '');
       setPriceTable(cycle?.price_table || []);
@@ -536,7 +544,9 @@ export default function CycleForm({
         split_payment: isEvent ? undefined : splitPayment,
         extra_costs: isEvent ? undefined : extraCosts.filter(ec => ec.description && ec.price > 0),
         // Event-specific
-        payment_methods: isEvent ? eventPaymentMethod : undefined,
+        payment_methods: isEvent
+          ? eventPaymentMethod
+          : (isRegistration && registrationChargeMode !== 'invoice_later' ? registrationChargeMode : undefined),
         max_participants: isEvent && maxParticipants ? Number(maxParticipants) : undefined,
         success_message: values.success_message?.trim() || undefined,
         confirmation_email_text: values.confirmation_email_text?.trim() || undefined,
@@ -1691,6 +1701,37 @@ export default function CycleForm({
                     {t('form.addDurationOption', 'Add option')}
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {/* Registration: when do players pay? */}
+            {isRegistration && (
+              <div className="space-y-3 rounded-lg border p-3">
+                <Label className="text-sm font-medium">{t('form.registrationPayment', 'Payment')}</Label>
+                <p className="text-xs text-muted-foreground">{t('form.registrationPaymentHelp', 'How should players pay when they register?')}</p>
+                {([
+                  { v: 'invoice_later', title: t('form.regPayInvoiceLater', 'Invoice later'), help: t('form.regPayInvoiceLaterHelp', 'You invoice players after you schedule them (default).') },
+                  { v: 'online', title: t('form.regPayOnline', 'Charge online at sign-up'), help: t('form.regPayOnlineHelp', 'Players pay for their selected package immediately via the platform.') },
+                  { v: 'both', title: t('form.regPayBoth', 'Let the player choose'), help: t('form.regPayBothHelp', 'Player picks: pay online now, or cash at the club.') },
+                ] as const).map((opt) => (
+                  <label key={opt.v} className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    registrationChargeMode === opt.v && "border-primary bg-primary/5"
+                  )}>
+                    <input
+                      type="radio"
+                      name="reg_payment"
+                      value={opt.v}
+                      checked={registrationChargeMode === opt.v}
+                      onChange={() => setRegistrationChargeMode(opt.v)}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-medium">{opt.title}</span>
+                      <p className="text-xs text-muted-foreground">{opt.help}</p>
+                    </div>
+                  </label>
+                ))}
               </div>
             )}
 

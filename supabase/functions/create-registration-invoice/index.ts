@@ -51,7 +51,7 @@ serve(async (req: Request) => {
 
     const { data: intake } = await admin
       .from("intake_requests")
-      .select("id, cycle_id, player_id, full_name, invoice_id")
+      .select("id, cycle_id, player_id, full_name, invoice_id, lesson_type, metadata")
       .eq("id", intakeRequestId)
       .single();
     if (!intake) return json({ error: "Registration not found" }, 404);
@@ -85,7 +85,7 @@ serve(async (req: Request) => {
 
     const { data: cycle } = await admin
       .from("cycles")
-      .select("id, owner_type, owner_id, name, type, total_price, price_per_session, currency, settings")
+      .select("id, owner_type, owner_id, name, type, total_price, price_per_session, price_table, start_date, end_date, currency, settings")
       .eq("id", intake.cycle_id)
       .single<RegistrationInvoiceCycle>();
     if (!cycle) return json({ error: "Cycle not found" }, 404);
@@ -97,11 +97,20 @@ serve(async (req: Request) => {
     );
     if (!method) return json({ ok: false, reason: "no_payment_configured" });
 
+    // Selections come from the stored intake (server-side); the pricing helper
+    // re-validates them against the cycle's config before pricing.
+    const md = (intake.metadata ?? undefined) as Record<string, unknown> | undefined;
+    const selectedOption = md?.selected_cyclus_option as Record<string, unknown> | undefined;
     const result = await mintEventRegistrationInvoice(
       admin,
       cycle,
       { player_id: profile.id, guest_player_id: null, player_name: intake.full_name || profile.full_name || "Onbekend" },
       method,
+      {
+        lessonTypes: Array.isArray(intake.lesson_type) ? intake.lesson_type : [],
+        cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
+        durationWeeks: md?.preferred_number_of_weeks,
+      },
     );
 
     if (!result.ok) return json({ ok: false, reason: result.reason, message: result.message });

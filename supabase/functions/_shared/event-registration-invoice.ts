@@ -9,6 +9,7 @@
 // edge function (logged-in players) so both surfaces mint identically.
 
 import { isInvoiceBusinessProfileComplete } from "./invoice-business.ts";
+import { computeRegistrationCharge, type RegistrationSelections } from "./registration-pricing.ts";
 
 // The Supabase service-role client; typed loosely like the other edge fns.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +26,10 @@ export interface RegistrationInvoiceCycle {
   type: string;
   total_price: number | null;
   price_per_session: number | null;
+  // Registration-type pricing inputs (computed server-side, never trusted from client).
+  price_table?: Array<{ description?: string; price?: unknown; vat_rate?: unknown }> | null;
+  start_date?: string | null;
+  end_date?: string | null;
   currency?: string | null;
   settings: Record<string, unknown> | null;
 }
@@ -96,13 +101,11 @@ export async function mintEventRegistrationInvoice(
   cycle: RegistrationInvoiceCycle,
   recipient: RegistrationInvoiceRecipient,
   method: EffectivePaymentMethod,
+  selections?: RegistrationSelections,
 ): Promise<MintResult> {
-  if (cycle.type !== "event") return { ok: false, reason: "not_paid_event" };
-  // v1: events are academy-owned; trainer/club events are a follow-on.
+  if (cycle.type !== "event" && cycle.type !== "registration") return { ok: false, reason: "not_paid_event" };
+  // v1: events/registrations are academy-owned; trainer/club are a follow-on.
   if (cycle.owner_type !== "academy") return { ok: false, reason: "not_academy" };
-
-  const gross = resolveEventPrice(cycle);
-  if (gross == null) return { ok: false, reason: "no_price_set" };
 
   // Academy invoice profile: business details (legal gate) + numbering + VAT + slug.
   const { data: academy, error: academyErr } = await admin
@@ -119,11 +122,36 @@ export async function mintEventRegistrationInvoice(
     return { ok: false, reason: "business_profile_incomplete" };
   }
 
-  // VAT-inclusive: total_price is the gross the player pays; break out VAT from it.
-  const vatRate = academy.default_vat_rate ?? 21;
-  const total = round2(gross);
-  const subtotal = round2(total / (1 + vatRate / 100));
-  const vatAmount = round2(total - subtotal);
+  // The charge, computed entirely from server-trusted config. Event = flat
+  // total_price (VAT-inclusive); registration = per-selection package validated
+  // + priced server-side (registration-pricing.ts).
+  const defaultVat = academy.default_vat_rate ?? 21;
+  let charge: {
+    lineItems: Array<{ description: string; quantity: number; unit_price: number; vat_rate?: number }>;
+    subtotal: number;
+    vatAmount: number;
+    total: number;
+    vatRate: number;
+    vatBreakdown: Record<number, { subtotal: number; vat: number }>;
+  };
+  if (cycle.type === "event") {
+    const gross = resolveEventPrice(cycle);
+    if (gross == null) return { ok: false, reason: "no_price_set" };
+    const total = round2(gross);
+    const subtotal = round2(total / (1 + defaultVat / 100));
+    charge = {
+      lineItems: [{ description: cycle.name, quantity: 1, unit_price: total }],
+      subtotal,
+      vatAmount: round2(total - subtotal),
+      total,
+      vatRate: defaultVat,
+      vatBreakdown: {},
+    };
+  } else {
+    const computed = computeRegistrationCharge(cycle, defaultVat, selections ?? { lessonTypes: [] });
+    if (!computed) return { ok: false, reason: "no_price_set" };
+    charge = computed;
+  }
 
   // Invoice number — same atomic scheme as auto-create-invoice (scan the
   // academy's last number for p_min, then the per-profile counter RPC).
@@ -177,10 +205,6 @@ export async function mintEventRegistrationInvoice(
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + (academy.payment_terms_days || 14));
 
-  const lineItems = [
-    { description: cycle.name, quantity: 1, unit_price: total },
-  ];
-
   const slug = academy.slug ?? null;
   const ok = (inv: { id: string; public_token: string; invoice_number?: string; status?: string }): MintResult => ({
     ok: true,
@@ -189,7 +213,7 @@ export async function mintEventRegistrationInvoice(
     publicToken: inv.public_token,
     slug,
     status: inv.status ?? "sent",
-    total,
+    total: charge.total,
     method,
   });
 
@@ -231,12 +255,13 @@ export async function mintEventRegistrationInvoice(
         player_id: recipient.player_id,
         guest_player_id: recipient.guest_player_id,
         player_name: recipient.player_name || "Onbekend",
-        line_items: lineItems,
-        subtotal,
-        vat_rate: vatRate,
-        vat_amount: vatAmount,
-        total,
-        prices_include_vat: true,
+        line_items: charge.lineItems,
+        subtotal: charge.subtotal,
+        vat_rate: charge.vatRate,
+        vat_amount: charge.vatAmount,
+        total: charge.total,
+        ...(Object.keys(charge.vatBreakdown).length > 0 ? { vat_breakdown: charge.vatBreakdown } : {}),
+        prices_include_vat: (cycle.settings?.prices_include_vat as boolean | undefined) !== false,
         status: "sent",
         booking_ids: [],
       })
@@ -244,8 +269,9 @@ export async function mintEventRegistrationInvoice(
       .single();
     if (!res.error) {
       // Audit trail for money movement (no PII beyond ids).
-      console.log("event registration invoice minted", JSON.stringify({
-        invoiceId: res.data.id, academyId: cycle.owner_id, cycleId: cycle.id, total, vatRate, method,
+      console.log("registration invoice minted", JSON.stringify({
+        invoiceId: res.data.id, academyId: cycle.owner_id, cycleId: cycle.id, type: cycle.type,
+        total: charge.total, vatRate: charge.vatRate, lines: charge.lineItems.length, method,
       }));
       return ok(res.data);
     }

@@ -238,7 +238,45 @@ serve(async (req: Request) => {
             return coPlayers.size || 1;
           };
 
+          // Players who paid (or were invoiced) at registration: their sign-up
+          // invoice REPLACES the finalize invoice — never double-charge. Keyed
+          // on the intake's invoice_id (unambiguous vs. finalize-made invoices).
+          const regInvoiceIdByKey = new Map<string, string>();
+          {
+            const { data: regIntakes } = await supabaseAdmin
+              .from("intake_requests")
+              .select("player_id, guest_player_id, invoice_id")
+              .eq("cycle_id", cycle_id)
+              .not("invoice_id", "is", null);
+            for (const r of regIntakes ?? []) {
+              const key = (r as { player_id: string | null; guest_player_id: string | null }).player_id
+                || (r as { guest_player_id: string | null }).guest_player_id;
+              const invId = (r as { invoice_id: string | null }).invoice_id;
+              if (key && invId) regInvoiceIdByKey.set(key, invId);
+            }
+          }
+
           for (const [playerId, bookingIds] of playerBookings) {
+            // Sign-up invoice replaces the finalize invoice (unless it was cancelled).
+            const regInvoiceId = regInvoiceIdByKey.get(playerId);
+            if (regInvoiceId) {
+              const { data: regInv } = await supabaseAdmin
+                .from("invoices").select("status, booking_ids").eq("id", regInvoiceId).single();
+              if (regInv && regInv.status !== "cancelled") {
+                try {
+                  const merged = Array.from(new Set([...((regInv.booking_ids as string[] | null) ?? []), ...bookingIds]));
+                  await supabaseAdmin.from("invoices").update({ booking_ids: merged }).eq("id", regInvoiceId);
+                  if (regInv.status === "paid") {
+                    await supabaseAdmin.from("bookings").update({ payment_status: "paid" }).in("id", bookingIds);
+                  }
+                } catch (recErr) {
+                  console.error(`Reconcile failed for player ${playerId}:`, recErr);
+                }
+                console.log(`Skipped finalize invoice for player ${playerId} — sign-up invoice ${regInvoiceId}`);
+                continue;
+              }
+              // cancelled sign-up invoice → fall through to normal finalize invoicing
+            }
             try {
               const invoiceBody: Record<string, unknown> = { bookingIds };
               const groupSize = groupSizeFor(playerId);
