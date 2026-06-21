@@ -22,10 +22,18 @@ describe('academySidebarNav', () => {
       '/app/academy/agenda',
       '/app/academy/players',
       '/app/academy/trainers',
-      '/app/academy/cycles',
+      '/app/academy/registrations',
       '/app/academy/invoices',
       '/app/academy/settings',
     ]);
+  });
+
+  it('marks registrations active on both /registrations and the shared /cycles CRUD pages', () => {
+    const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
+    expect(isAcademyNavItemActive('/app/academy/registrations', registrations)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/cycles/new', registrations)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/cycles/abc-123', registrations)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/players', registrations)).toBe(false);
   });
 
   it('includes Trainers nav item after Players and before Registrations', () => {

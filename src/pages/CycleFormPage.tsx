@@ -73,7 +73,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   }
 
   const ownerId = ownerType === 'trainer' ? trainerId : ownerType === 'academy' ? activeAcademy?.id : activeClub?.id;
-  const backPath = ownerType === 'trainer' ? '/app/trainer/cycles' : ownerType === 'academy' ? '/app/academy/cycles' : '/app/club/registrations';
+  const backPath = ownerType === 'trainer' ? '/app/trainer/cycles' : ownerType === 'academy' ? '/app/academy/registrations' : '/app/club/registrations';
 
   // Fetch owner data
   useEffect(() => {

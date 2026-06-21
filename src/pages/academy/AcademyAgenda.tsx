@@ -1,21 +1,29 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { startOfWeek, endOfWeek, addWeeks, format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Copy } from 'lucide-react';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { supabase } from '@/lib/supabaseClient';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AgendaList } from '@/components/agenda/AgendaList';
 import { useAcademyAgenda } from '@/lib/agendaSlots';
 
 export default function AcademyAgenda() {
   const { t, i18n } = useTranslation('common');
+  const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
   const locale = i18n.language === 'nl' ? nl : enUS;
   const [weekOffset, setWeekOffset] = useState(0);
@@ -55,6 +63,24 @@ export default function AcademyAgenda() {
       <PageHeader
         title={t('agenda.title', 'Agenda')}
         description={t('agenda.academySubtitle', "Your academy's sessions this week")}
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Copy className="h-4 w-4" />
+                {t('cycles:bulkCopy.cta', 'Set up next round')}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => navigate('/app/academy/cycles/rebook')}>
+                {t('cycles:rebookCohort.byLocation', 'Per locatie (hele groep)')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate('/app/academy/cycles/bulk-copy')}>
+                {t('cycles:rebookCohort.byCycle', 'Per cyclus')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">

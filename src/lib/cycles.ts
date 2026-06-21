@@ -293,13 +293,20 @@ export async function getCycles(ownerType: 'trainer' | 'club' | 'academy', owner
 }
 
 // Get cycles with intake request counts
-export async function getCyclesWithCounts(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
-  const { data, error } = await supabase
+export async function getCyclesWithCounts(
+  ownerType: 'trainer' | 'club' | 'academy',
+  ownerId: string,
+  types?: Array<Cycle['type']>,
+): Promise<Cycle[]> {
+  let query = supabase
     .from('cycles')
     .select('*, location:locations(id, name, city)')
     .eq('owner_type', ownerType)
-    .eq('owner_id', ownerId)
-    .order('created_at', { ascending: false });
+    .eq('owner_id', ownerId);
+  if (types && types.length > 0) {
+    query = query.in('type', types);
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) throw error;
   

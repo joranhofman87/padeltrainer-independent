@@ -491,7 +491,7 @@ export default function AcademyDashboard() {
               title={t('dashboard.noData', 'No data yet')}
               description={t('dashboard.emptyRegistrationsHint', 'Registrations appear once players sign up for a cycle.')}
               action={
-                <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/cycles')}>
+                <Button variant="ghost" size="sm" onClick={() => navigate('/app/academy/registrations')}>
                   {t('dashboard.emptyRegistrationsAction', 'Create a registration')}
                   <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
