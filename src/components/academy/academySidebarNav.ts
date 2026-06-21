@@ -75,7 +75,7 @@ export const ACADEMY_PRIMARY_NAV: AcademyNavItem[] = [
   },
   {
     id: 'registrations',
-    to: '/app/academy/cycles',
+    to: '/app/academy/registrations',
     labelKey: 'nav.registrations',
     defaultLabel: 'Registrations',
     icon: CalendarDays,
@@ -105,9 +105,20 @@ const SETTINGS_SECTION_PREFIXES = [
   '/app/academy/locations',
 ] as const;
 
+// The registrations list lives at /registrations, but creating/editing a
+// registration still routes through the shared /cycles/* CRUD pages — keep the
+// nav item highlighted there too.
+const REGISTRATIONS_SECTION_PREFIXES = [
+  '/app/academy/registrations',
+  '/app/academy/cycles',
+] as const;
+
 export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): boolean {
   if (item.id === 'settings') {
     return SETTINGS_SECTION_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  }
+  if (item.id === 'registrations') {
+    return REGISTRATIONS_SECTION_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   }
   if (item.end) {
     return pathname === item.to;

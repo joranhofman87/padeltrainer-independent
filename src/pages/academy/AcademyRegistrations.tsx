@@ -1,16 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
+import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
 import CyclesTable from '@/components/cycles/CyclesTable';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
@@ -26,7 +20,7 @@ interface LocationData {
   city: string;
 }
 
-export default function AcademyCycles() {
+export default function AcademyRegistrations() {
   const { t } = useTranslation('cycles');
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -51,29 +45,29 @@ export default function AcademyCycles() {
             }))
         );
       } catch (error) {
-        logger.error('Error fetching academy locations', error as Error, { component: 'AcademyCycles' });
+        logger.error('Error fetching academy locations', error as Error, { component: 'AcademyRegistrations' });
       }
     };
     fetchLocations();
   }, [activeAcademy]);
 
-  const fetchCycles = async () => {
+  const fetchCycles = useCallback(async () => {
     if (!activeAcademy) return;
     setIsLoading(true);
     try {
-      const data = await getCyclesWithCounts('academy', activeAcademy.id);
+      const data = await getCyclesWithCounts('academy', activeAcademy.id, ['registration', 'event']);
       setCycles(data);
-    } catch (error: any) {
-      logger.error('Error fetching cycles', error as Error, { component: 'AcademyCycles' });
+    } catch (error) {
+      logger.error('Error fetching cycles', error as Error, { component: 'AcademyRegistrations' });
       toast({ title: t('common:error'), description: getFriendlyErrorMessage(error, t('overview.loadError', 'Could not load cycles. Please try again.')), variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeAcademy, t, toast]);
 
   useEffect(() => {
-    if (activeAcademy) fetchCycles();
-  }, [activeAcademy]);
+    fetchCycles();
+  }, [fetchCycles]);
 
   if (isLoading) {
     return (
@@ -100,22 +94,6 @@ export default function AcademyCycles() {
             <PartyPopper className="h-4 w-4" />
             {t('createEvent', 'Create Event')}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <Copy className="h-4 w-4" />
-                {t('bulkCopy.cta', 'Set up next round')}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => navigate('/app/academy/cycles/rebook')}>
-                {t('rebookCohort.byLocation', 'Per locatie (hele groep)')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate('/app/academy/cycles/bulk-copy')}>
-                {t('rebookCohort.byCycle', 'Per cyclus')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
           </>
         }
       />
@@ -130,11 +108,6 @@ export default function AcademyCycles() {
           <span className="font-medium text-foreground">{t('createEvent', 'Create Event')}</span>
           {' — '}
           {t('actionExplainers.event', 'A one-off activity, such as a tournament or clinic.')}
-        </p>
-        <p>
-          <span className="font-medium text-foreground">{t('bulkCopy.cta', 'Set up next round')}</span>
-          {' — '}
-          {t('bulkCopy.subtitle', "Reuse a previous cycle's trainings and let your current players keep their spot first.")}
         </p>
       </div>
 
