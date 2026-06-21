@@ -134,6 +134,7 @@ export default function AcademyRegistrations() {
           onDeleted={fetchCycles}
           ownerType="academy"
           ownerSlug={activeAcademy?.slug}
+          ownerLogoUrl={activeAcademy?.logo_url}
         />
       )}
     </AppPage>

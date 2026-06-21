@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { getMarketingUrl } from '@/lib/domains';
+import { useState, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, differenceInWeeks } from 'date-fns';
@@ -40,9 +39,13 @@ import {
   ToggleRight,
   Search,
   ArrowUpDown,
+  QrCode,
 } from 'lucide-react';
 import { type Cycle, updateCycle } from '@/lib/cycles';
+import { buildRegistrationUrl } from '@/lib/cycleRegistrationUrl';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
+
+const RegistrationQrDialog = lazy(() => import('@/components/cycles/RegistrationQrDialog'));
 import { toast } from 'sonner';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency } from '@/lib/format';
@@ -55,6 +58,8 @@ interface CyclesTableProps {
   onDeleted: () => void;
   ownerType: 'trainer' | 'club' | 'academy';
   ownerSlug?: string;
+  /** Academy/club/trainer logo, centred in the QR code when present. */
+  ownerLogoUrl?: string | null;
 }
 
 type SortField = 'name' | 'location' | 'start_date' | 'status' | 'applications';
@@ -68,6 +73,7 @@ export default function CyclesTable({
   onDeleted,
   ownerType,
   ownerSlug,
+  ownerLogoUrl,
 }: CyclesTableProps) {
   const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
@@ -83,6 +89,7 @@ export default function CyclesTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const [cycleToDelete, setCycleToDelete] = useState<Cycle | null>(null);
+  const [qrCycle, setQrCycle] = useState<Cycle | null>(null);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -105,13 +112,7 @@ export default function CyclesTable({
   };
 
   const handleCopyLink = (cycle: Cycle) => {
-    const lang = i18n.language || 'nl';
-    let path = `register/${cycle.id}`;
-    if (ownerSlug) {
-      if (ownerType === 'club') path = `clubs/${ownerSlug}/register/${cycle.id}`;
-      else if (ownerType === 'academy') path = `academies/${ownerSlug}/register/${cycle.id}`;
-    }
-    const url = getMarketingUrl(path, lang);
+    const url = buildRegistrationUrl(cycle.id, ownerType, ownerSlug, i18n.language || 'nl');
     navigator.clipboard.writeText(url);
     toast.success(t('actions.linkCopied'));
   };
@@ -356,6 +357,10 @@ export default function CyclesTable({
                           <ExternalLink className="h-4 w-4 mr-2" />
                           {t('actions.shareLink')}
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setQrCycle(cycle)}>
+                          <QrCode className="h-4 w-4 mr-2" />
+                          {t('actions.qrCode', 'QR code')}
+                        </DropdownMenuItem>
                         {onDuplicate && (
                           <DropdownMenuItem onClick={() => onDuplicate(cycle)}>
                             <Copy className="h-4 w-4 mr-2" />
@@ -402,6 +407,18 @@ export default function CyclesTable({
         }}
         onDeleted={onDeleted}
       />
+
+      {qrCycle && (
+        <Suspense fallback={null}>
+          <RegistrationQrDialog
+            open
+            onOpenChange={(open) => { if (!open) setQrCycle(null); }}
+            url={buildRegistrationUrl(qrCycle.id, ownerType, ownerSlug, i18n.language || 'nl')}
+            title={qrCycle.name}
+            logoUrl={ownerLogoUrl}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

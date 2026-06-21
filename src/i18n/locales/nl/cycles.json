@@ -206,7 +206,15 @@
     "shareLink": "Registratielink delen",
     "linkCopied": "Registratielink gekopieerd!",
     "copyLink": "Registratielink kopiëren",
+    "qrCode": "QR-code",
     "statusUpdateError": "Kon de cyclus-status niet bijwerken. Probeer het opnieuw."
+  },
+  "qr": {
+    "title": "QR-code",
+    "scanHint": "Scan om het inschrijfformulier te openen",
+    "png": "PNG",
+    "svg": "SVG",
+    "downloadError": "Kon de afbeelding niet maken. Probeer de SVG."
   },
   "paymentBadge": {
     "upfront": "Vooraf betalen",
