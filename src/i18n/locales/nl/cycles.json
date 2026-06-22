@@ -913,7 +913,20 @@
     "redirectingToPayment": "We sturen je door naar de betaalpagina…",
     "upfrontUnavailable": "Je plek is gereserveerd. Online betalen is nog niet beschikbaar — je ontvangt een factuur.",
     "seriesHeading": "Elke {{weekday}} om {{time}}",
-    "seriesDetail": "{{count}} sessies · {{from}} t/m {{to}}"
+    "seriesDetail": "{{count}} sessies · {{from}} t/m {{to}}",
+    "cycleStarts": "De nieuwe cyclus start op {{date}}.",
+    "cycleStartsShort": "Start nieuwe cyclus: {{date}}",
+    "rulesTitle": "Hoe werkt het?",
+    "ruleKeep": "Je houdt je vaste plek tot de deadline hierboven.",
+    "ruleKeepNoDeadline": "Je houdt je vaste plek zolang de voorrangsperiode loopt.",
+    "ruleAfter": "Reageer je niet op tijd? Dan komt je plek daarna vrij voor anderen.",
+    "changeTimesTitle": "Wil je een ander moment?",
+    "changeTimesBody": "Je houdt je eigen dag en tijd. Wil je wisselen? Geef je plek dan vrij en boek opnieuw zodra de plekken opengaan, of neem contact op met de academy.",
+    "ifNoResponse": "Geen reactie betekent dat je je plek na de deadline opgeeft. Wil je er daarna weer bij? Zoek een vrije plek of neem contact op met de academy.",
+    "windowEndedRecovery": "De voorrangsperiode is voorbij. Wil je er weer bij? Bekijk hieronder of er een vrije plek is, of neem contact op met de academy.",
+    "cardRules": "Je houdt je plek tot de deadline. Reageer je niet, dan komt je plek vrij voor anderen.",
+    "cardChangeTimes": "Wil je een ander moment? Geef je plek vrij en boek opnieuw zodra de plekken opengaan, of neem contact op met de academy.",
+    "cardRecovery": "Mis je de deadline? Zoek daarna een vrije plek of neem contact op met de academy."
   },
   "tierControl": {
     "title": "Zichtbaarheid & herboeking",

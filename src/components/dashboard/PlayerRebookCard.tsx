@@ -128,6 +128,12 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
                       : `${formatDate(start, 'HH:mm')} - ${formatDate(end, 'HH:mm')}`}
                     {c.price_per_session ? ` · ${formatCurrency(Number(c.price_per_session))} p.s.` : ''}
                   </div>
+                  {c.start_date && (
+                    <div className="text-xs text-muted-foreground">
+                      {/* start_date is a pure DATE — parse at local noon so it never shifts a day */}
+                      {t('rebooking.cycleStartsShort', 'New cycle starts: {{date}}', { date: formatDate(`${c.start_date}T12:00:00`, 'd MMM yyyy') })}
+                    </div>
+                  )}
                   {c.priority_window_ends_at && (
                     <div className="text-xs text-muted-foreground">
                       {t('rebooking.respondByShort', 'Respond before {{date}}', { date: formatDate(c.priority_window_ends_at, 'd MMM HH:mm') })}
@@ -156,6 +162,11 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
             </div>
           );
         })}
+        <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">
+          <p>{t('rebooking.cardRules', "You keep your spot until the deadline. If you don't respond, your spot is released — first to players from your current cycle, then to everyone.")}</p>
+          <p>{t('rebooking.cardChangeTimes', 'Want a different time? Release your spot and book again once spots open, or contact the academy.')}</p>
+          <p>{t('rebooking.cardRecovery', 'Miss the deadline? You can still book afterwards while spots last.')}</p>
+        </div>
       </CardContent>
     </Card>
   );

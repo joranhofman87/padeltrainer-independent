@@ -12,6 +12,7 @@ import {
   declineClaimWithToken,
   acceptClaimAndStartPayment,
   getCycleRebookPaymentMode,
+  getCycleStartDate,
   type RebookPaymentMode,
 } from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -52,6 +53,7 @@ export default function PriorityClaimPage() {
   const [declined, setDeclined] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
+  const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
 
   const loadClaim = useCallback(() => {
     if (!token) return;
@@ -63,9 +65,14 @@ export default function PriorityClaimPage() {
       .then(async (res) => {
         const claim = res as unknown as ClaimData | null;
         setData(claim);
-        // Mode-aware copy: read the cycle's rebook payment mode (cycles with
-        // status 'open' are publicly readable; falls back to deferred).
-        setPaymentMode(await getCycleRebookPaymentMode(claim?.slot?.cyclus_id));
+        // Mode-aware copy + "starts on" date: read the cycle in parallel (cycles
+        // with status 'open' are publicly readable; both fall back gracefully).
+        const [mode, startDate] = await Promise.all([
+          getCycleRebookPaymentMode(claim?.slot?.cyclus_id),
+          getCycleStartDate(claim?.slot?.cyclus_id),
+        ]);
+        setPaymentMode(mode);
+        setCycleStartDate(startDate);
       })
       .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
@@ -159,6 +166,8 @@ export default function PriorityClaimPage() {
   const status = data.claim.status;
   const start = new Date(data.slot.start_time);
   const end = new Date(data.slot.end_time);
+  // The player can still keep/release → show the "how it works" explainer.
+  const actionable = !accepted && !declined && status !== 'claimed' && status !== 'declined' && !windowEnded;
 
   return (
     <div className="container max-w-xl mx-auto py-12 px-4">
@@ -181,6 +190,12 @@ export default function PriorityClaimPage() {
               <div className="text-sm text-muted-foreground">{formatDate(start, 'HH:mm')} - {formatDate(end, 'HH:mm')}</div>
             </div>
           </div>
+          {cycleStartDate && (
+            <p className="text-sm text-muted-foreground">
+              {/* start_date is a pure DATE — parse at local noon so it never shifts a day */}
+              {t('rebooking.cycleStarts', 'The new cycle starts on {{date}}.', { date: formatDate(`${cycleStartDate}T12:00:00`, 'd MMMM yyyy') })}
+            </p>
+          )}
           {data.slot.price_per_session && (
             <div className="flex items-start gap-3">
               <MapPin className="h-5 w-5 mt-0.5 text-muted-foreground" />
@@ -202,6 +217,26 @@ export default function PriorityClaimPage() {
             </p>
           )}
 
+          {actionable && (
+            <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-sm">
+              <p className="font-medium">{t('rebooking.rulesTitle', 'How does it work?')}</p>
+              <p className="text-muted-foreground">
+                {data.slot.priority_window_ends_at
+                  ? t('rebooking.ruleKeep', 'You keep your spot until the deadline above.')
+                  : t('rebooking.ruleKeepNoDeadline', 'You keep your spot while the priority period is open.')}
+                {' '}
+                {t('rebooking.ruleAfter', "If you don't respond in time, your spot is released afterwards: first to other players from your current cycle, then to everyone.")}
+              </p>
+              <p className="text-muted-foreground">
+                <span className="font-medium text-foreground">{t('rebooking.changeTimesTitle', 'Want a different time?')}</span>{' '}
+                {t('rebooking.changeTimesBody', 'You keep your own day and time. To switch, release your spot and book again once spots open, or contact the academy.')}
+              </p>
+              <p className="text-muted-foreground">
+                {t('rebooking.ifNoResponse', "No response means your spot is released after the deadline. You can still book afterwards via ‘Browse available spots’ while spots last.")}
+              </p>
+            </div>
+          )}
+
           {accepted || status === 'claimed' ? (
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle2 className="h-5 w-5" /> {t('rebooking.reserved', "Your spot is reserved. You'll receive an invoice when the cycle starts.")}
@@ -212,7 +247,8 @@ export default function PriorityClaimPage() {
             </div>
           ) : windowEnded ? (
             <div>
-              <p className="text-sm text-muted-foreground mb-3">{t('rebooking.windowEnded', 'The reservation period has ended.')}</p>
+              <p className="text-sm text-muted-foreground mb-2">{t('rebooking.windowEnded', 'The reservation period has ended.')}</p>
+              <p className="text-sm text-muted-foreground mb-3">{t('rebooking.windowEndedRecovery', 'Your spot has been released to others. Still room? You can book again below. Questions? Contact the academy.')}</p>
               <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
             </div>
           ) : (
