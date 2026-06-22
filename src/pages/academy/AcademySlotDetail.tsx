@@ -315,6 +315,9 @@ export default function AcademySlotDetail() {
   useEffect(() => {
     if (!activeAcademy) return;
     (async () => {
+      // Load trainers and locations INDEPENDENTLY — a failure in one must not hide
+      // the other's editor (a trainers hiccup used to silently kill the location
+      // picker because both shared one try block).
       try {
         const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
         setTrainers(
@@ -322,10 +325,19 @@ export default function AcademySlotDetail() {
             .filter((t: any) => t.status === 'active' && t.trainer_profile)
             .map((t: any) => ({ id: t.trainer_profile.id, name: t.profile?.full_name || 'Unknown' }))
         );
-        const academyLocations = await getAcademyLocations(activeAcademy.id);
-        setLocations(academyLocations.map((al: any) => ({ id: al.location.id, name: al.location.name })));
       } catch (e) {
-        logger.error('Error loading academy data for slot detail', e as Error);
+        logger.error('Error loading academy trainers for slot detail', e as Error);
+      }
+      try {
+        const academyLocations = await getAcademyLocations(activeAcademy.id);
+        setLocations(
+          academyLocations
+            // skip orphaned rows (location deleted/hidden) so a bad row can't break the picker
+            .map((al: any) => (al.location?.id ? { id: al.location.id, name: al.location.name } : null))
+            .filter((x: LocationOption | null): x is LocationOption => x !== null)
+        );
+      } catch (e) {
+        logger.error('Error loading academy locations for slot detail', e as Error);
       }
     })();
   }, [activeAcademy]);
