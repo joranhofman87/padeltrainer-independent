@@ -113,12 +113,29 @@ const REGISTRATIONS_SECTION_PREFIXES = [
   '/app/academy/cycles',
 ] as const;
 
+// Rebook + bulk-copy also live under /cycles/* but are AGENDA operations — they
+// act on current cycles' scheduling, are launched from the Agenda, and return
+// there. So they belong to Agenda, not Registrations.
+const AGENDA_CYCLE_ROUTES = [
+  '/app/academy/cycles/rebook',
+  '/app/academy/cycles/bulk-copy',
+] as const;
+
+function isAgendaCycleRoute(pathname: string): boolean {
+  return AGENDA_CYCLE_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/'));
+}
+
 export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): boolean {
   if (item.id === 'settings') {
     return SETTINGS_SECTION_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   }
+  if (item.id === 'agenda') {
+    return pathname.startsWith(item.to) || isAgendaCycleRoute(pathname);
+  }
   if (item.id === 'registrations') {
-    return REGISTRATIONS_SECTION_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    // Registration CRUD under /cycles/* counts, but the Agenda cycle-ops do not.
+    return !isAgendaCycleRoute(pathname)
+      && REGISTRATIONS_SECTION_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   }
   if (item.end) {
     return pathname === item.to;
