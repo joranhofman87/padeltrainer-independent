@@ -140,6 +140,21 @@ export async function fetchAcademyInvoiceSummaryFiltered(
   return mapSummaryRow(data);
 }
 
+// Count of cancelled invoices (trainer/location-scoped) — drives the Geannuleerd
+// tab label. Additive function; throws (PGRST202) until its migration is applied.
+export async function fetchAcademyInvoiceCancelledCount(
+  academyId: string,
+  opts: { trainerId?: string | null; locationId?: string | null } = {},
+): Promise<number> {
+  const { data, error } = await supabase.rpc('get_academy_invoice_cancelled_count', {
+    p_academy_profile_id: academyId,
+    p_trainer_id: opts.trainerId ?? undefined,
+    p_location_id: opts.locationId ?? undefined,
+  });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
 /**
  * Every matching academy invoice, by paging the RPC at the server max page size.
  * Used by bulk paths (e.g. "send all drafts") whose reach must NOT shrink to the
@@ -283,6 +298,20 @@ export function useAcademyInvoiceSummaryFiltered(
     enabled: Boolean(academyId),
     placeholderData: keepPreviousData,
     retry: false, // pre-migration this 404s; don't spam retries before the fallback kicks in
+  });
+}
+
+// Cancelled-invoice count for the Geannuleerd tab label.
+export function useAcademyInvoiceCancelledCount(
+  academyId: string | null | undefined,
+  opts: { trainerId?: string | null; locationId?: string | null },
+) {
+  return useQuery({
+    queryKey: ['academy-invoices', 'cancelled-count', academyId, opts.trainerId ?? null, opts.locationId ?? null],
+    queryFn: () => fetchAcademyInvoiceCancelledCount(academyId!, opts),
+    enabled: Boolean(academyId),
+    placeholderData: keepPreviousData,
+    retry: false, // additive fn; 404s until its migration is applied
   });
 }
 

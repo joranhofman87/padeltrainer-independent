@@ -25,8 +25,8 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
   useAcademyInvoices,
-  useAcademyInvoiceSummary,
   useAcademyInvoiceSummaryFiltered,
+  useAcademyInvoiceCancelledCount,
   useAcademyInvoiceDeliverySummary,
   fetchAllAcademyInvoices,
   type AcademyInvoiceRow,
@@ -132,11 +132,15 @@ export default function AcademyInvoices() {
   const academyId = activeAcademy?.id;
   const trainerScope = trainerFilter === "all" ? null : trainerFilter;
   const locationScope = locationFilter === "all" ? null : locationFilter;
-  const statusScope = statusFilter === "all" ? null : statusFilter;
+  // The cancelled tab is itself a status; ignore the status dropdown there.
+  const statusScope = (statusFilter === "all" || activeTab === "cancelled") ? null : statusFilter;
+
+  // Tab → server partition: unpaid (not paid, not cancelled) | paid | cancelled.
+  const queryTab = activeTab === "paid" ? "paid" : activeTab === "cancelled" ? "cancelled" : "unpaid";
 
   // Server-paginated visible list (exact at >1000 invoices; no client re-filter/sort).
   const { data: overview, isLoading } = useAcademyInvoices(academyId, {
-    tab: activeTab === "paid" ? "paid" : "unpaid",
+    tab: queryTab,
     status: statusScope,
     search: debouncedSearch || null,
     trainerId: trainerScope,
@@ -148,10 +152,16 @@ export default function AcademyInvoices() {
     pageSize: INVOICE_PAGE_SIZE,
   });
 
-  // Tab-label totals: trainer + location only, so the Unpaid/Paid tab counts stay
-  // stable for navigation regardless of the active status/search/delivery filter.
-  // Financial-correctness source — never derived from page rows.
-  const { data: summary } = useAcademyInvoiceSummary(academyId, {
+  // Tab-label totals: trainer + location only (no status/search/delivery), so the
+  // Openstaand/Betaald counts stay stable for navigation. Uses the filtered fn with
+  // no filters so count_unpaid EXCLUDES cancelled (cancelled is its own tab now).
+  const { data: summary } = useAcademyInvoiceSummaryFiltered(academyId, {
+    trainerId: trainerScope,
+    locationId: locationScope,
+  });
+
+  // Cancelled-tab label count.
+  const { data: cancelledCount } = useAcademyInvoiceCancelledCount(academyId, {
     trainerId: trainerScope,
     locationId: locationScope,
   });
@@ -777,6 +787,9 @@ export default function AcademyInvoices() {
         <TabsList>
           <TabsTrigger value="unpaid">{t("invoices.unpaid", "Unpaid")} ({countUnpaid})</TabsTrigger>
           <TabsTrigger value="paid">{t("invoices.paid", "Paid")} ({countPaid})</TabsTrigger>
+          <TabsTrigger value="cancelled">
+            {t("invoices.cancelled", "Cancelled")}{cancelledCount != null ? ` (${cancelledCount})` : ""}
+          </TabsTrigger>
         </TabsList>
 
         {deliverySummary && (deliverySummary.bounced + deliverySummary.noEmail) > 0 && deliveryFilter === "all" && (
@@ -835,20 +848,22 @@ export default function AcademyInvoices() {
               </SelectContent>
             </Select>
           )}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-              <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
-              <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-              <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
-              <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
-              <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
-              <SelectItem value="cancelled">{t("invoices.cancelled", "Cancelled")}</SelectItem>
-            </SelectContent>
-          </Select>
+          {activeTab !== "cancelled" && (
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
+                <SelectItem value="draft">{t("invoices.draft", "Draft")}</SelectItem>
+                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
+                <SelectItem value="sent">{t("invoices.sent", "Sent")}</SelectItem>
+                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
+                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
+                {/* cancelled is now its own tab, not a status filter */}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
             <SelectTrigger className="w-[170px]">
               <SelectValue />
