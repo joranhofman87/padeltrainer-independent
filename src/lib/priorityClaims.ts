@@ -40,6 +40,28 @@ export async function getCycleRebookPaymentMode(
   }
 }
 
+/**
+ * The start date (yyyy-mm-dd) of a cycle, so the player can be told when the new
+ * round begins. Null when unavailable (unreadable cycle / RLS / no date) — the
+ * caller then simply omits the "starts on …" line. Public for status='open'.
+ */
+export async function getCycleStartDate(
+  cyclusId: string | null | undefined,
+): Promise<string | null> {
+  if (!cyclusId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('cycles')
+      .select('start_date')
+      .eq('id', cyclusId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return (data.start_date as string | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Compute when the priority window ends, given a start time and number of days. */
 export function computePriorityWindowEnd(now: Date, days: number): Date {
   return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
@@ -352,6 +374,8 @@ export interface MyPendingClaim {
   sessions: number;
   /** Start of the LAST session in the group (== start_time when sessions === 1). */
   last_start_time: string;
+  /** Start date (yyyy-mm-dd) of the new cycle, for "new cycle starts: …". */
+  start_date: string | null;
 }
 
 /**
@@ -395,6 +419,7 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
         rebook_group_id: c.rebook_group_id ?? null,
         sessions: 1,
         last_start_time: s.start_time,
+        start_date: null,
       });
     } else {
       existing.sessions += 1;
@@ -416,7 +441,7 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
   if (cyclusIds.length > 0) {
     const { data: cycleRows } = await supabase
       .from('cycles')
-      .select('id, settings')
+      .select('id, settings, start_date')
       .in('id', cyclusIds);
     const modeByCycle = new Map<string, RebookPaymentMode>(
       (cycleRows || []).map((row) => {
@@ -424,9 +449,13 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
         return [row.id, settings.rebook_payment_mode === 'upfront' ? 'upfront' : 'deferred_split'];
       }),
     );
+    const startDateByCycle = new Map<string, string | null>(
+      (cycleRows || []).map((row) => [row.id, (row.start_date as string | null) ?? null]),
+    );
     for (const claim of claims) {
       if (claim.cyclus_id) {
         claim.rebook_payment_mode = modeByCycle.get(claim.cyclus_id) ?? 'deferred_split';
+        claim.start_date = startDateByCycle.get(claim.cyclus_id) ?? null;
       }
     }
   }

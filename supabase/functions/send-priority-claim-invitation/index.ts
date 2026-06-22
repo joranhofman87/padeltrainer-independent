@@ -180,13 +180,15 @@ const handler = async (req: Request): Promise<Response> => {
       ),
     ];
     const upfrontCycleIds = new Set<string>();
+    const startDateByCycle = new Map<string, string>(); // cycleId -> yyyy-mm-dd (new round start)
     if (cyclusIds.length > 0) {
       const { data: cycleRows } = await supabase
         .from("cycles")
-        .select("id, settings")
+        .select("id, settings, start_date")
         .in("id", cyclusIds);
-      for (const row of (cycleRows || []) as Array<{ id: string; settings: Record<string, unknown> | null }>) {
+      for (const row of (cycleRows || []) as Array<{ id: string; settings: Record<string, unknown> | null; start_date: string | null }>) {
         if ((row.settings || {}).rebook_payment_mode === "upfront") upfrontCycleIds.add(row.id);
+        if (row.start_date) startDateByCycle.set(row.id, row.start_date);
       }
     }
 
@@ -260,6 +262,12 @@ const handler = async (req: Request): Promise<Response> => {
       const deadline = slot.priority_window_ends_at
         ? new Date(slot.priority_window_ends_at).toLocaleDateString("nl-NL", { day: "numeric", month: "long", timeZone: tz })
         : null;
+      // New round's start date (a DATE; render at noon UTC so the tz never shifts
+      // it to the previous day). Omitted from the email when unknown.
+      const cycleStartRaw = slot.cyclus_id ? startDateByCycle.get(slot.cyclus_id) : null;
+      const cycleStart = cycleStartRaw
+        ? new Date(`${cycleStartRaw}T12:00:00Z`).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: tz })
+        : null;
       const isUpfront = !!slot.cyclus_id && upfrontCycleIds.has(slot.cyclus_id);
       const paymentLine = isUpfront
         ? "Je rekent direct online af wanneer je je plek bevestigt."
@@ -275,13 +283,18 @@ const handler = async (req: Request): Promise<Response> => {
             <div style="color:#6b7280;">${fmtTime}</div>
             ${groupRange ? `<div style="color:#6b7280;font-size:13px;margin-top:4px;">${groupRange}</div>` : ""}
             ${slot.price_per_session ? `<div style="margin-top:6px;">EUR ${Number(slot.price_per_session).toFixed(2)} per sessie</div>` : ""}
+            ${cycleStart ? `<div style="color:#6b7280;font-size:13px;margin-top:6px;">De nieuwe cyclus start op <strong>${cycleStart}</strong>.</div>` : ""}
           </div>
           <p style="color:#6b7280;font-size:13px;">${paymentLine}</p>
-          ${deadline ? `<p style="color:#6b7280;font-size:13px;">Reageer voor <strong>${deadline}</strong>, daarna komt je plek vrij voor anderen.</p>` : ""}
+          ${deadline
+            ? `<p style="color:#6b7280;font-size:13px;">Je houdt je vaste plek tot <strong>${deadline}</strong>. Reageer op tijd, anders komt je plek daarna vrij voor anderen.</p>`
+            : `<p style="color:#6b7280;font-size:13px;">Je houdt je vaste plek zolang de voorrangsperiode loopt. Daarna komt je plek vrij voor anderen.</p>`}
+          <p style="color:#6b7280;font-size:13px;">Je houdt je eigen dag en tijd. Wil je een ander moment? Geef je plek dan vrij en boek opnieuw zodra de plekken opengaan, of neem contact op met de academy.</p>
           <div style="text-align:center;margin:28px 0;">
             <a href="${acceptUrl}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Ja, ik hou mijn plek</a>
             <a href="${declineUrl}" style="display:inline-block;background:#ffffff;color:#1a1a1a;border:1px solid #d1d5db;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Nee, geef mijn plek vrij</a>
           </div>
+          <p style="color:#6b7280;font-size:13px;">${deadline ? "Reageer je niet? Dan komt je plek na de deadline vrij." : "Reageer je niet? Dan komt je plek daarna vrij."} Je kunt daarna nog proberen te boeken via de boekingspagina zolang er plek is, of contact opnemen met de academy.</p>
           <p style="color:#9ca3af;font-size:12px;text-align:center;">Of open deze link: <a href="${claimUrl}" style="color:#f45d25;">${claimUrl}</a></p>
         </div>
       `;
