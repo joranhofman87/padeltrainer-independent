@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { getCycles, getCycle, createCycle, updateCycleSettings, type Cycle } from '@/lib/cycles';
+import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/lib/cyclusLabel';
 import { bulkCopySlotsToCycle, getBookingsBySlotIds, notifyPriorityClaimsForSlots, type RebookPaymentMode } from '@/lib/priorityClaims';
 
 interface Props {
@@ -38,6 +39,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
   const [searchParams] = useSearchParams();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [cyclusLabels, setCyclusLabels] = useState<Map<string, CyclusRosterEntry>>(new Map());
   const [loadingCycles, setLoadingCycles] = useState(true);
   const [sourceCycleId, setSourceCycleId] = useState<string>(searchParams.get('source') ?? '');
   const [targetMode, setTargetMode] = useState<'new' | 'existing'>('new');
@@ -63,6 +65,14 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       .catch((e) => toast.error(getFriendlyErrorMessage(e, t('bulkCopy.errLoadCycles', 'Could not load your cycles. Please try again.'))))
       .finally(() => setLoadingCycles(false));
   }, [ownerType, ownerId, t]);
+
+  // Enrich the dropdown labels with each cyclus's day/time + roster + location
+  // (one RPC; falls back to cycle.name on error / non-academy / pre-migration).
+  useEffect(() => {
+    fetchCyclusLabels(ownerType, ownerId).then(setCyclusLabels);
+  }, [ownerType, ownerId]);
+
+  const cyclusLabel = (c: Cycle): string => buildCyclusLabel(cyclusLabels.get(c.id)) ?? c.name;
 
   useEffect(() => {
     if (!sourceCycleId) {
@@ -226,7 +236,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
             <Select value={sourceCycleId} onValueChange={setSourceCycleId}>
               <SelectTrigger><SelectValue placeholder={t('bulkCopy.selectCycle', 'Kies een cyclus')} /></SelectTrigger>
               <SelectContent>
-                {cycles.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                {cycles.map((c) => <SelectItem key={c.id} value={c.id}>{cyclusLabel(c)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -259,7 +269,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
               <Select value={targetCycleId} onValueChange={setTargetCycleId}>
                 <SelectTrigger><SelectValue placeholder={t('bulkCopy.selectCycle', 'Kies een cyclus')} /></SelectTrigger>
                 <SelectContent>
-                  {cycles.filter((c) => c.id !== sourceCycleId).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {cycles.filter((c) => c.id !== sourceCycleId).map((c) => <SelectItem key={c.id} value={c.id}>{cyclusLabel(c)}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
