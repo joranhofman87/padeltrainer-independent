@@ -11,7 +11,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,7 +63,6 @@ import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailShe
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import ProposalWorkflowSteps, { type WorkflowStep } from '@/components/cycles/ProposalWorkflowSteps';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
-import CycleForm from '@/components/cycles/CycleForm';
 import WaitingListTable from '@/components/waitingList/WaitingListTable';
 import PreGenerationReview from '@/components/cycles/PreGenerationReview';
 import CyclePricingCard from '@/components/cycles/CyclePricingCard';
@@ -168,9 +166,6 @@ export default function AcademyCycleDetail() {
     staleTime: 120_000,
   });
 
-  const trainers = settingsData?.trainers ?? [];
-  const locations = settingsData?.locations ?? [];
-  const trainerLocationMap = settingsData?.trainerLocationMap ?? {};
   const academyTimezone = settingsData?.timezone ?? 'Europe/Amsterdam';
 
   const isFirstLoad = cycleLoading && !cycle;
@@ -204,7 +199,6 @@ export default function AcademyCycleDetail() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   // Pricing state for Step 4 — initialized from cycle data
   const [pricingPricePerSession, setPricingPricePerSession] = useState<number | null>(null);
@@ -651,7 +645,7 @@ export default function AcademyCycleDetail() {
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('actions.shareLink')}
             </Button>
-            <Button variant="outline" size="icon" aria-label={tCommon('aria.settings', 'Settings')} className="h-9 w-9" onClick={() => setShowSettings(true)}>
+            <Button variant="outline" size="icon" aria-label={tCommon('aria.settings', 'Settings')} className="h-9 w-9" onClick={() => navigate(`/app/academy/cycles/${cycle.id}/edit`)}>
               <Settings className="h-4 w-4" />
             </Button>
             <DropdownMenu>
@@ -1021,31 +1015,6 @@ export default function AcademyCycleDetail() {
         }}
       />
 
-      {/* Settings Sheet */}
-      <Sheet open={showSettings} onOpenChange={setShowSettings}>
-        <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{t('nav.settings', 'Settings')}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6">
-            <CycleForm
-              cycle={cycle}
-              ownerType="academy"
-              ownerId={activeAcademy!.id}
-              onSuccess={() => {
-                toast.success(t('common:saved', 'Saved'));
-                refreshCycle();
-                setShowSettings(false);
-              }}
-              onCancel={() => setShowSettings(false)}
-              formType={cycle.type === 'event' ? 'event' : 'registration'}
-              locations={locations}
-              trainers={trainers}
-              trainerLocationMap={trainerLocationMap}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Reset Proposals Confirmation */}
       <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
