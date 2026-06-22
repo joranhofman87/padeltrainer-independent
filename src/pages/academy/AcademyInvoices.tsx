@@ -26,6 +26,7 @@ import {
   INVOICE_PAGE_SIZE,
   useAcademyInvoices,
   useAcademyInvoiceSummary,
+  useAcademyInvoiceSummaryFiltered,
   useAcademyInvoiceDeliverySummary,
   fetchAllAcademyInvoices,
   type AcademyInvoiceRow,
@@ -158,7 +159,7 @@ export default function AcademyInvoices() {
   // Scoreboard cards follow EVERY active filter so they match the rows below.
   // (Falls back to the tab totals if this errors — e.g. before the migration that
   // adds the filter params is applied to prod — so the cards never go blank.)
-  const { data: summaryFiltered, isError: cardsSummaryError } = useAcademyInvoiceSummary(academyId, {
+  const { data: summaryFiltered, isError: cardsSummaryError } = useAcademyInvoiceSummaryFiltered(academyId, {
     trainerId: trainerScope,
     locationId: locationScope,
     status: statusScope,
