@@ -120,7 +120,12 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const academyProfileId: string = body?.academyProfileId;
+    // Two source modes (exactly one required): a single source CYCLUS — rebook
+    // that whole cyclus's weekly pattern (Agenda "new round" / bulk-copy) — or
+    // LOCATION(s) + term-end week — the cohort spanning hand-added + registration
+    // slots (RebookCohortWizard).
+    const sourceCyclusId: string | null = body?.sourceCyclusId ?? null;
+    let academyProfileId: string = body?.academyProfileId;
     const locationIds: string[] = Array.isArray(body?.locationIds) ? body.locationIds : [];
     const termEndDate: string = body?.termEndDate; // yyyy-mm-dd
     const newStartDate: string = body?.newStartDate; // yyyy-mm-dd
@@ -132,7 +137,7 @@ serve(async (req) => {
     const dryRun: boolean = body?.dryRun === true;
     // New term shape (see generateWeeklyStarts): number of weeks, named holiday
     // ranges to skip, and the session price to apply to every new session.
-    const weeks: number = Math.max(0, Math.floor(Number(body?.weeks ?? 0)));
+    const weeks: number = Math.min(52, Math.max(0, Math.floor(Number(body?.weeks ?? 0)))); // hard cap at the source-form max
     const holidays: Holiday[] = Array.isArray(body?.holidays)
       ? body.holidays.filter((h: Holiday) => h && h.from && h.to)
       : [];
@@ -140,10 +145,40 @@ serve(async (req) => {
       ? null
       : Number(body.sessionPrice);
 
-    if (!academyProfileId || locationIds.length === 0 || !termEndDate || !newStartDate) {
-      return new Response(JSON.stringify({ error: "academyProfileId, locationIds, termEndDate, newStartDate required" }), {
+    if (!newStartDate || (!sourceCyclusId && (!academyProfileId || locationIds.length === 0 || !termEndDate))) {
+      return new Response(JSON.stringify({ error: "newStartDate plus either sourceCyclusId, or academyProfileId + locationIds + termEndDate, are required" }), {
         status: 400, headers: { "Content-Type": "application/json", ...corsHeaders },
       });
+    }
+    if (sessionPrice != null && (Number.isNaN(sessionPrice) || sessionPrice < 0)) {
+      return new Response(JSON.stringify({ error: "sessionPrice must be a non-negative number" }), {
+        status: 400, headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // Cyclus mode: derive (and trust) the academy from the cyclus row itself, so a
+    // caller can't rebook a cyclus into a different academy's namespace. The
+    // manager authorization below then runs against this derived academy.
+    if (sourceCyclusId) {
+      const { data: srcCycle, error: scErr } = await supabase
+        .from("cycles")
+        .select("id, owner_id, owner_type, type")
+        .eq("id", sourceCyclusId)
+        .maybeSingle();
+      if (scErr) throw scErr;
+      if (!srcCycle || srcCycle.owner_type !== "academy") {
+        return new Response(JSON.stringify({ error: "source cyclus not found" }), {
+          status: 404, headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+      // Only weekly training cycli are rebookable — an event/registration cycle has
+      // no weekly series, so it would silently produce a 0-player round.
+      if (srcCycle.type !== "cyclus") {
+        return new Response(JSON.stringify({ error: "source must be a training cyclus" }), {
+          status: 400, headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+      academyProfileId = srcCycle.owner_id;
     }
 
     // Authorization: caller must manage this academy (or be service-role).
@@ -166,37 +201,59 @@ serve(async (req) => {
       .maybeSingle();
     const tz = acadTz?.timezone || "Europe/Amsterdam";
 
-    // 1. Gather candidate slots at the chosen location(s), up to the term end.
-    const termEnd = new Date(`${termEndDate}T23:59:59.999Z`);
-    const windowStart = new Date(termEnd.getTime() - 200 * DAY_MS); // generous term lookback
-    const { data: slots, error: slotsErr } = await supabase
-      .from("availability_slots")
-      .select("id, trainer_id, location_id, academy_profile_id, start_time, end_time, court_type, training_level, price_per_session, total_price, allow_single_booking, min_participants, max_participants, extra_costs, rating_system, min_rating, max_rating, prices_include_vat, split_payment, cyclus_id")
-      .eq("academy_profile_id", academyProfileId)
-      .in("location_id", locationIds)
-      .gte("start_time", windowStart.toISOString())
-      .lte("start_time", termEnd.toISOString());
-    if (slotsErr) throw slotsErr;
+    // 1. Gather candidate slots: the whole source cyclus, or the academy's slots
+    //    at the chosen location(s) up to the term end.
+    const SLOT_COLUMNS = "id, trainer_id, location_id, academy_profile_id, start_time, end_time, court_type, training_level, price_per_session, total_price, allow_single_booking, min_participants, max_participants, extra_costs, rating_system, min_rating, max_rating, prices_include_vat, split_payment, cyclus_id";
+    let slots: Slot[] = [];
+    let termEndMs = 0;
+    if (sourceCyclusId) {
+      const { data, error: slotsErr } = await supabase
+        .from("availability_slots")
+        .select(SLOT_COLUMNS)
+        .eq("cyclus_id", sourceCyclusId);
+      if (slotsErr) throw slotsErr;
+      slots = (data ?? []) as Slot[];
+    } else {
+      const termEnd = new Date(`${termEndDate}T23:59:59.999Z`);
+      termEndMs = termEnd.getTime();
+      const windowStart = new Date(termEnd.getTime() - 200 * DAY_MS); // generous term lookback
+      const { data, error: slotsErr } = await supabase
+        .from("availability_slots")
+        .select(SLOT_COLUMNS)
+        .eq("academy_profile_id", academyProfileId)
+        .in("location_id", locationIds)
+        .gte("start_time", windowStart.toISOString())
+        .lte("start_time", termEnd.toISOString());
+      if (slotsErr) throw slotsErr;
+      slots = (data ?? []) as Slot[];
+    }
 
-    // 2. Cluster into series; keep those whose LAST session is in the term-end week.
-    const termEndWeekStart = termEnd.getTime() - 6 * DAY_MS;
+    // 2. Cluster into series. Cyclus mode rebooks EVERY series in the cyclus;
+    //    location mode keeps only series whose LAST session is in the term-end week.
     const bySeries = new Map<string, Slot[]>();
-    for (const s of (slots ?? []) as Slot[]) {
+    for (const s of slots) {
       const arr = bySeries.get(seriesKey(s)) ?? [];
       arr.push(s);
       bySeries.set(seriesKey(s), arr);
     }
+    const termEndWeekStart = termEndMs - 6 * DAY_MS;
     const qualifyingSeries: Slot[][] = [];
     for (const arr of bySeries.values()) {
-      const lastMs = Math.max(...arr.map((s) => new Date(s.start_time).getTime()));
-      if (lastMs >= termEndWeekStart && lastMs <= termEnd.getTime()) {
-        qualifyingSeries.push(arr.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()));
+      const sorted = arr.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      if (sourceCyclusId) {
+        qualifyingSeries.push(sorted);
+      } else {
+        const lastMs = Math.max(...arr.map((s) => new Date(s.start_time).getTime()));
+        if (lastMs >= termEndWeekStart && lastMs <= termEndMs) qualifyingSeries.push(sorted);
       }
     }
 
     const allQualifyingSlotIds = qualifyingSeries.flat().map((s) => s.id);
     if (allQualifyingSlotIds.length === 0) {
-      return new Response(JSON.stringify({ ok: true, dryRun, groups: 0, players: 0, slotsCopied: 0, claimsCreated: 0, invitesSent: 0, message: "No series found ending in that week at those locations." }), {
+      const message = sourceCyclusId
+        ? "No bookable sessions found in this cyclus."
+        : "No series found ending in that week at those locations.";
+      return new Response(JSON.stringify({ ok: true, dryRun, groups: 0, players: 0, slotsCopied: 0, claimsCreated: 0, invitesSent: 0, message }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -289,7 +346,9 @@ serve(async (req) => {
     const repTemplate = qualifyingSeries[0][0];
     const cyclePrice = sessionPrice ?? suggestedPrice ?? repTemplate.price_per_session;
     const newEndDate = new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
-    const singleLocation = locationIds.length === 1 ? locationIds[0] : null;
+    const singleLocation = locationIds.length === 1
+      ? locationIds[0]
+      : (sourceCyclusId ? repTemplate.location_id : null); // cyclus mode: inherit the source venue
     const { data: targetCycle, error: tcErr } = await supabase
       .from("cycles")
       .insert({
