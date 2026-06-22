@@ -13,6 +13,7 @@ import { useClubContext } from '@/components/club/ClubLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { getClubTrainers } from '@/lib/club';
 import { logger } from '@/lib/logger';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface LocationData {
   id: string;
@@ -33,6 +34,7 @@ interface LocationData {
 export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'club' | 'academy' }) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { cycleId } = useParams<{ cycleId: string }>();
   const [searchParams] = useSearchParams();
   const requestedType = (searchParams.get('type') as 'registration' | 'event') || 'registration';
@@ -73,7 +75,16 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   }
 
   const ownerId = ownerType === 'trainer' ? trainerId : ownerType === 'academy' ? activeAcademy?.id : activeClub?.id;
-  const backPath = ownerType === 'trainer' ? '/app/trainer/cycles' : ownerType === 'academy' ? '/app/academy/registrations' : '/app/club/registrations';
+  // After editing an academy cycle, return to that cycle's detail page (where
+  // the editor was opened from); creating/duplicating returns to the list.
+  const backPath =
+    ownerType === 'trainer'
+      ? '/app/trainer/cycles'
+      : ownerType === 'academy'
+        ? cycleId
+          ? `/app/academy/cycles/${cycleId}`
+          : '/app/academy/registrations'
+        : '/app/club/registrations';
 
   // Fetch owner data
   useEffect(() => {
@@ -222,6 +233,9 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   }, [user, ownerType, activeAcademy?.id, activeClub?.id, cycleId, duplicateFromId]);
 
   const handleSuccess = () => {
+    // The cycle-detail query is cached (staleTime 60s); invalidate it so the
+    // detail page we return to reflects the just-saved changes.
+    if (cycleId) queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
     navigate(backPath);
   };
 
