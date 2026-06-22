@@ -795,11 +795,12 @@
     "ruleKeepNoDeadline": "You keep your spot while the priority period is open.",
     "ruleAfter": "If you don't respond in time, your spot is released to others afterwards.",
     "changeTimesTitle": "Want a different time?",
-    "changeTimesBody": "You keep your own day and time. To switch, release your spot and book again once spots open, or contact the academy.",
-    "ifNoResponse": "No response means you give up your spot after the deadline. To rejoin afterwards, look for an available spot or contact the academy.",
-    "windowEndedRecovery": "The priority period is over. To rejoin, look for an available spot below or contact the academy.",
+    "changeTimesBody": "You keep your own day and time. Want to switch? The easiest way is to ask the academy. You can also release your spot and rebook if another time has room.",
+    "splitNote": "The price is shared between everyone who joins, so if fewer players sign up, each person pays a bit more.",
+    "ifNoResponse": "No response means you give up your spot after the deadline. To rejoin afterwards, ask the academy or look for an available spot.",
+    "windowEndedRecovery": "The priority period is over. To rejoin, contact the academy or look for an available spot below.",
     "cardRules": "You keep your spot until the deadline. If you don't respond, your spot is released to others.",
-    "cardChangeTimes": "Want a different time? Release your spot and book again once spots open, or contact the academy.",
+    "cardChangeTimes": "Want a different time? Ask the academy to move you, or release your spot and rebook if another time has room.",
     "cardRecovery": "Miss the deadline? You can look for an available spot afterwards, or contact the academy."
   },
   "genericError": "Something went wrong. Please try again.",
@@ -973,6 +974,7 @@
     "groupFallback": "Series",
     "countPending": "{{count}} tentative",
     "countClaimed": "{{count}} confirmed",
-    "countDeclined": "{{count}} declined"
+    "countDeclined": "{{count}} declined",
+    "declinedTitle": "Opted out"
   }
 }

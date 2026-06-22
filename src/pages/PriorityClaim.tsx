@@ -38,7 +38,6 @@ interface ClaimData {
     trainer_id: string;
   };
   player_name: string | null;
-  player_email: string | null;
 }
 
 export default function PriorityClaimPage() {
@@ -209,6 +208,11 @@ export default function PriorityClaimPage() {
               {paymentMode === 'upfront'
                 ? t('rebooking.payNow', 'You pay for the new cycle right away when you confirm your spot.')
                 : t('rebooking.payLater', 'You only pay when the cycle starts; the price is split between the players who join.')}
+            </p>
+          )}
+          {data.slot.price_per_session && paymentMode === 'deferred_split' && (
+            <p className="text-xs text-muted-foreground">
+              {t('rebooking.splitNote', 'The price is shared between everyone who joins, so if fewer players sign up, each person pays a bit more.')}
             </p>
           )}
           {data.slot.priority_window_ends_at && !windowEnded && (
