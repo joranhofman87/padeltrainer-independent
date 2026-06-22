@@ -348,7 +348,7 @@ export function DomainRouter() {
           <Route path="cycles/rebook" element={<AcademyRebookCohort />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />
           <Route path="cycles/:cycleId" element={<AcademyCycleDetail />} />
-          <Route path="cycles/:cycleId/edit" element={<AcademyCycleDetail />} />
+          <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="academy" />} />
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="agenda" element={<AcademyAgenda />} />
           <Route path="slot/new" element={<AcademyCreateSlot />} />

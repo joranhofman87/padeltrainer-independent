@@ -35,7 +35,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   const navigate = useNavigate();
   const { cycleId } = useParams<{ cycleId: string }>();
   const [searchParams] = useSearchParams();
-  const formType = (searchParams.get('type') as 'registration' | 'event') || 'registration';
+  const requestedType = (searchParams.get('type') as 'registration' | 'event') || 'registration';
   const duplicateFromId = searchParams.get('duplicateFrom');
 
   const { user } = useAuth();
@@ -228,6 +228,11 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   const handleCancel = () => {
     navigate(backPath);
   };
+
+  // When editing an existing cycle the type comes from the cycle itself (the
+  // edit route carries no ?type=); fall back to the requested type when creating.
+  const formType: 'registration' | 'event' =
+    cycleId && cycle ? (cycle.type === 'event' ? 'event' : 'registration') : requestedType;
 
   const title = cycleId
     ? formType === 'event' ? t('editEvent', 'Edit Event') : t('editRegistration', 'Edit Registration')
