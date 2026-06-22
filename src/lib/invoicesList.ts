@@ -83,7 +83,38 @@ export async function fetchAcademyInvoices(
   return { rows, total: Number(rows[0]?.total_count ?? 0) };
 }
 
+function mapSummaryRow(data: unknown): InvoiceSummary {
+  const r = (data as Record<string, unknown>[] | null ?? [])[0];
+  return r
+    ? {
+        sumUnpaid: Number(r.sum_unpaid ?? 0),
+        countUnpaid: Number(r.count_unpaid ?? 0),
+        countPaid: Number(r.count_paid ?? 0),
+        countDraft: Number(r.count_draft ?? 0),
+      }
+    : emptySummary;
+}
+
+// Cross-status tab-label totals: trainer + location only. Uses the original
+// (stable, always-deployed) function so the tab counts never depend on the
+// filtered-cards migration being applied.
 export async function fetchAcademyInvoiceSummary(
+  academyId: string,
+  opts: { trainerId?: string | null; locationId?: string | null } = {},
+): Promise<InvoiceSummary> {
+  const { data, error } = await supabase.rpc('get_academy_invoice_summary', {
+    p_academy_profile_id: academyId,
+    p_trainer_id: opts.trainerId ?? undefined,
+    p_location_id: opts.locationId ?? undefined,
+  });
+  if (error) throw error;
+  return mapSummaryRow(data);
+}
+
+// Scoreboard cards: mirrors the table filters. Targets the additive
+// get_academy_invoice_summary_filtered function — throws (PGRST202) until that
+// migration is applied to prod, which the caller catches and falls back from.
+export async function fetchAcademyInvoiceSummaryFiltered(
   academyId: string,
   opts: {
     trainerId?: string | null;
@@ -94,11 +125,9 @@ export async function fetchAcademyInvoiceSummary(
     delivery?: string | null;
   } = {},
 ): Promise<InvoiceSummary> {
-  // Optional filter params (status/search/no_email/delivery) are passed only when
-  // set; the SQL function declares them DEFAULT NULL, so the tab-total call that
-  // omits them still resolves. (Drop-undefined is the intended optional-filter
-  // pattern here — the params have defaults, unlike get_player_locations.)
-  const { data, error } = await supabase.rpc('get_academy_invoice_summary', {
+  // Optional filter params have DB defaults → drop-undefined is the intended
+  // optional-filter pattern (unlike the required-param get_player_locations bug).
+  const { data, error } = await supabase.rpc('get_academy_invoice_summary_filtered', {
     p_academy_profile_id: academyId,
     p_trainer_id: opts.trainerId ?? undefined,
     p_location_id: opts.locationId ?? undefined,
@@ -108,15 +137,7 @@ export async function fetchAcademyInvoiceSummary(
     p_delivery: opts.delivery ?? undefined,
   });
   if (error) throw error;
-  const r = (data ?? [])[0];
-  return r
-    ? {
-        sumUnpaid: Number(r.sum_unpaid ?? 0),
-        countUnpaid: Number(r.count_unpaid ?? 0),
-        countPaid: Number(r.count_paid ?? 0),
-        countDraft: Number(r.count_draft ?? 0),
-      }
-    : emptySummary;
+  return mapSummaryRow(data);
 }
 
 /**
@@ -227,7 +248,21 @@ export function useAcademyInvoices(academyId: string | null | undefined, params:
   });
 }
 
+// Tab-label totals (trainer + location only).
 export function useAcademyInvoiceSummary(
+  academyId: string | null | undefined,
+  opts: { trainerId?: string | null; locationId?: string | null },
+) {
+  return useQuery({
+    queryKey: ['academy-invoices', 'summary', academyId, opts.trainerId ?? null, opts.locationId ?? null],
+    queryFn: () => fetchAcademyInvoiceSummary(academyId!, opts),
+    enabled: Boolean(academyId),
+    placeholderData: keepPreviousData,
+  });
+}
+
+// Scoreboard cards — follows every active filter (status/search/delivery + trainer/location).
+export function useAcademyInvoiceSummaryFiltered(
   academyId: string | null | undefined,
   opts: {
     trainerId?: string | null;
@@ -240,13 +275,14 @@ export function useAcademyInvoiceSummary(
 ) {
   return useQuery({
     queryKey: [
-      'academy-invoices', 'summary', academyId,
+      'academy-invoices', 'summary-filtered', academyId,
       opts.trainerId ?? null, opts.locationId ?? null,
       opts.status ?? null, opts.search ?? null, opts.noEmail ?? null, opts.delivery ?? null,
     ],
-    queryFn: () => fetchAcademyInvoiceSummary(academyId!, opts),
+    queryFn: () => fetchAcademyInvoiceSummaryFiltered(academyId!, opts),
     enabled: Boolean(academyId),
     placeholderData: keepPreviousData,
+    retry: false, // pre-migration this 404s; don't spam retries before the fallback kicks in
   });
 }
 

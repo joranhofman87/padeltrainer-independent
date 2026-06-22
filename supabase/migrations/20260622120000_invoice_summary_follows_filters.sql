@@ -1,18 +1,18 @@
--- Make the academy invoice scoreboard cards follow the same filters as the table.
+-- Make the academy invoices scoreboard cards follow the same filters as the table.
 --
--- Previously get_academy_invoice_summary only accepted trainer + location, so the
+-- The existing get_academy_invoice_summary only accepts trainer + location, so the
 -- top cards updated on those but ignored status / search / delivery / no-email.
--- We add those params (DEFAULT NULL → backward-compatible: the tab-total call that
--- passes only trainer+location still resolves via defaults) and apply the SAME
--- predicates as get_academy_invoices, so the cards reflect the filtered rows.
 --
--- NOTE: the cards summary intentionally does NOT apply p_tab — the four figures are
--- a cross-status breakdown (unpaid € / unpaid count / paid count / draft count); the
--- tab-label counts come from a separate, filter-light call to this same function.
+-- This is PURELY ADDITIVE: we create a SEPARATE function (no DROP / no REPLACE of the
+-- existing one) so there is nothing destructive and no dependency on the existing
+-- function's exact shape (prod has drifted from the migration history). The frontend
+-- keeps using get_academy_invoice_summary for the stable tab-label totals and calls
+-- this new function for the filtered cards.
+--
+-- NOTE: this summary intentionally does NOT apply p_tab — the four figures are a
+-- cross-status breakdown (unpaid € / unpaid count / paid count / draft count).
 
-DROP FUNCTION IF EXISTS public.get_academy_invoice_summary(uuid, uuid, uuid);
-
-CREATE OR REPLACE FUNCTION public.get_academy_invoice_summary(
+CREATE OR REPLACE FUNCTION public.get_academy_invoice_summary_filtered(
   p_academy_profile_id uuid,
   p_trainer_id uuid DEFAULT NULL,
   p_location_id uuid DEFAULT NULL,
@@ -84,8 +84,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.get_academy_invoice_summary(uuid,uuid,uuid,text,text,boolean,text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.get_academy_invoice_summary(uuid,uuid,uuid,text,text,boolean,text) TO authenticated;
+REVOKE ALL ON FUNCTION public.get_academy_invoice_summary_filtered(uuid,uuid,uuid,text,text,boolean,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_academy_invoice_summary_filtered(uuid,uuid,uuid,text,text,boolean,text) TO authenticated;
 
-COMMENT ON FUNCTION public.get_academy_invoice_summary(uuid,uuid,uuid,text,text,boolean,text) IS
-  'Academy invoice scoreboard. With only trainer/location it returns the cross-status totals (tab labels); with status/search/no_email/delivery it mirrors get_academy_invoices'' filters so the cards match the table. p_tab is intentionally not applied.';
+COMMENT ON FUNCTION public.get_academy_invoice_summary_filtered(uuid,uuid,uuid,text,text,boolean,text) IS
+  'Academy invoice scoreboard cards — mirrors get_academy_invoices'' filters (status/search/no_email/delivery + trainer/location) so the cards match the filtered table. p_tab is intentionally not applied. The plain get_academy_invoice_summary still serves the cross-status tab-label totals.';
