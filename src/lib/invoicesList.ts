@@ -85,12 +85,27 @@ export async function fetchAcademyInvoices(
 
 export async function fetchAcademyInvoiceSummary(
   academyId: string,
-  opts: { trainerId?: string | null; locationId?: string | null } = {},
+  opts: {
+    trainerId?: string | null;
+    locationId?: string | null;
+    status?: string | null;
+    search?: string | null;
+    noEmail?: boolean;
+    delivery?: string | null;
+  } = {},
 ): Promise<InvoiceSummary> {
+  // Optional filter params (status/search/no_email/delivery) are passed only when
+  // set; the SQL function declares them DEFAULT NULL, so the tab-total call that
+  // omits them still resolves. (Drop-undefined is the intended optional-filter
+  // pattern here — the params have defaults, unlike get_player_locations.)
   const { data, error } = await supabase.rpc('get_academy_invoice_summary', {
     p_academy_profile_id: academyId,
     p_trainer_id: opts.trainerId ?? undefined,
     p_location_id: opts.locationId ?? undefined,
+    p_status: opts.status ?? undefined,
+    p_search: opts.search?.trim() || undefined,
+    p_no_email: opts.noEmail ?? undefined,
+    p_delivery: opts.delivery ?? undefined,
   });
   if (error) throw error;
   const r = (data ?? [])[0];
@@ -214,10 +229,21 @@ export function useAcademyInvoices(academyId: string | null | undefined, params:
 
 export function useAcademyInvoiceSummary(
   academyId: string | null | undefined,
-  opts: { trainerId?: string | null; locationId?: string | null },
+  opts: {
+    trainerId?: string | null;
+    locationId?: string | null;
+    status?: string | null;
+    search?: string | null;
+    noEmail?: boolean;
+    delivery?: string | null;
+  },
 ) {
   return useQuery({
-    queryKey: ['academy-invoices', 'summary', academyId, opts.trainerId ?? null, opts.locationId ?? null],
+    queryKey: [
+      'academy-invoices', 'summary', academyId,
+      opts.trainerId ?? null, opts.locationId ?? null,
+      opts.status ?? null, opts.search ?? null, opts.noEmail ?? null, opts.delivery ?? null,
+    ],
     queryFn: () => fetchAcademyInvoiceSummary(academyId!, opts),
     enabled: Boolean(academyId),
     placeholderData: keepPreviousData,
