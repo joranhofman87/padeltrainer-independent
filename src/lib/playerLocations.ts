@@ -12,8 +12,11 @@ export async function fetchPlayerLocations(params: {
 }): Promise<PlayerLocation[]> {
   const { data, error } = await supabase.rpc('get_player_locations', {
     p_academy_profile_id: params.academyProfileId,
-    p_profile_id: params.profileId ?? undefined,
-    p_guest_player_id: params.guestPlayerId ?? undefined,
+    // Pass null, not undefined: supabase-js drops undefined keys from the JSON
+    // body, which leaves PostgREST unable to resolve the 3-arg function (it has
+    // no defaults) → PGRST202. Explicit null keeps all params present.
+    p_profile_id: params.profileId ?? null,
+    p_guest_player_id: params.guestPlayerId ?? null,
   });
   if (error) throw error;
   return (data ?? []) as PlayerLocation[];
@@ -56,8 +59,11 @@ export async function setPlayerLocation(params: {
 }): Promise<void> {
   const { error } = await supabase.rpc('set_player_location', {
     p_academy_profile_id: params.academyProfileId,
-    p_profile_id: params.profileId ?? undefined,
-    p_guest_player_id: params.guestPlayerId ?? undefined,
+    // Pass null, not undefined: supabase-js drops undefined keys from the JSON
+    // body, which leaves PostgREST unable to resolve the 3-arg function (it has
+    // no defaults) → PGRST202. Explicit null keeps all params present.
+    p_profile_id: params.profileId ?? null,
+    p_guest_player_id: params.guestPlayerId ?? null,
     p_location_id: params.locationId,
     p_dismissed: params.dismissed,
   });
