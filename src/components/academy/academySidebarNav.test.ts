@@ -36,6 +36,18 @@ describe('academySidebarNav', () => {
     expect(isAcademyNavItemActive('/app/academy/players', registrations)).toBe(false);
   });
 
+  it('keeps the Agenda cycle-ops (rebook / bulk-copy) under Agenda, not Registrations', () => {
+    const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
+    const agenda = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'agenda')!;
+    for (const path of ['/app/academy/cycles/rebook', '/app/academy/cycles/bulk-copy']) {
+      expect(isAcademyNavItemActive(path, agenda)).toBe(true);
+      expect(isAcademyNavItemActive(path, registrations)).toBe(false);
+    }
+    // plain /agenda still highlights Agenda; registration CRUD still highlights Registrations
+    expect(isAcademyNavItemActive('/app/academy/agenda', agenda)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/cycles/new', agenda)).toBe(false);
+  });
+
   it('includes Trainers nav item after Players and before Registrations', () => {
     const trainers = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'trainers')!;
     expect(trainers.to).toBe('/app/academy/trainers');
