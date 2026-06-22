@@ -271,7 +271,7 @@ const handler = async (req: Request): Promise<Response> => {
       const isUpfront = !!slot.cyclus_id && upfrontCycleIds.has(slot.cyclus_id);
       const paymentLine = isUpfront
         ? "Je rekent direct online af wanneer je je plek bevestigt."
-        : "Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.";
+        : "Je betaalt pas wanneer de cyclus start; de prijs wordt gedeeld door iedereen die meedoet — hoe minder spelers, hoe hoger ieders deel.";
 
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color:#1a1a1a;">
@@ -289,7 +289,7 @@ const handler = async (req: Request): Promise<Response> => {
           ${deadline
             ? `<p style="color:#6b7280;font-size:13px;">Je houdt je vaste plek tot <strong>${deadline}</strong>. Reageer op tijd, anders komt je plek daarna vrij voor anderen.</p>`
             : `<p style="color:#6b7280;font-size:13px;">Je houdt je vaste plek zolang de voorrangsperiode loopt. Daarna komt je plek vrij voor anderen.</p>`}
-          <p style="color:#6b7280;font-size:13px;">Je houdt je eigen dag en tijd. Wil je een ander moment? Geef je plek dan vrij en boek opnieuw zodra de plekken opengaan, of neem contact op met de academy.</p>
+          <p style="color:#6b7280;font-size:13px;">Je houdt je eigen dag en tijd. Wil je wisselen? Vraag het de academy — dat is het makkelijkst. Je kunt ook je plek vrijgeven en opnieuw boeken als er ergens plek is.</p>
           <div style="text-align:center;margin:28px 0;">
             <a href="${acceptUrl}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Ja, ik hou mijn plek</a>
             <a href="${declineUrl}" style="display:inline-block;background:#ffffff;color:#1a1a1a;border:1px solid #d1d5db;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Nee, geef mijn plek vrij</a>

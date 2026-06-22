@@ -323,26 +323,50 @@ serve(async (req) => {
     }
     const effName = targetCycleName || "Volgende ronde";
 
-    // Re-run guard: a rebook cycle with the same name + start date already
-    // exists for this academy → almost certainly a double-run that would send
-    // every player a second invite. Block it (the user can rename or change the
-    // date to make a genuinely separate round).
+    // Best-effort teardown of a half-built cycle (used to roll back a failed run, and
+    // to clear a leftover draft before a clean retry). A freshly-built rebook cycle
+    // has no bookings yet, so deleting its slots can't orphan a paid seat.
+    const cleanupCycle = async (cycleId: string) => {
+      const { data: slotRows } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+      const ids = (slotRows ?? []).map((r) => r.id);
+      for (let i = 0; i < ids.length; i += 100) {
+        await supabase.from("slot_priority_claims").delete().in("slot_id", ids.slice(i, i + 100));
+      }
+      await supabase.from("availability_slots").delete().eq("cyclus_id", cycleId);
+      await supabase.from("cycles").delete().eq("id", cycleId);
+    };
+
+    // Re-run guard. An existing NON-draft cycle with the same name+start_date is a
+    // genuine double-run → block it (a second run would email everyone again). A
+    // leftover DRAFT with the same key is debris from a previously-failed run (it was
+    // never visible/bookable) → delete it and rebuild cleanly.
     const { data: existing } = await supabase
       .from("cycles")
-      .select("id")
+      .select("id, status")
       .eq("owner_type", "academy")
       .eq("owner_id", academyProfileId)
       .eq("name", effName)
       .eq("start_date", newStartDate)
+      // Only ever match THIS engine's own cycles (rebook marker present), so the
+      // already_exists block and the draft cleanup below can never touch — let alone
+      // delete — a manually-created registration/event cycle that shares name+date.
+      .not("settings->>rebook_payment_mode", "is", null)
       .limit(1);
     if (existing && existing.length > 0) {
-      // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
-      return new Response(JSON.stringify({ ok: false, reason: "already_exists", existingCycleId: existing[0].id }), {
-        status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
+      if (existing[0].status === "draft") {
+        await cleanupCycle(existing[0].id);
+      } else {
+        // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
+        return new Response(JSON.stringify({ ok: false, reason: "already_exists", existingCycleId: existing[0].id }), {
+          status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
     }
 
-    // 4. Create one target cycle for the run.
+    // 4. Create the target cycle as a DRAFT. It is flipped to 'open' only after every
+    //    slot + claim is written, so a mid-run failure/timeout leaves an invisible
+    //    draft (cleaned up on retry) instead of a half-built 'open' round that a retry
+    //    would refuse with already_exists.
     const repTemplate = qualifyingSeries[0][0];
     const cyclePrice = sessionPrice ?? suggestedPrice ?? repTemplate.price_per_session;
     const newEndDate = new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
@@ -358,132 +382,179 @@ serve(async (req) => {
         start_date: newStartDate,
         end_date: newEndDate,
         type: "cyclus",
-        status: "open",
+        status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
         settings: { rebook_payment_mode: paymentMode, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null },
       })
       .select("id, name")
       .single();
-    if (tcErr) throw tcErr;
-
-    const now = new Date();
-    const priorityEnd = new Date(now.getTime() + priorityWindowDays * DAY_MS);
-    const memberEnd = memberWindowDays > 0 ? new Date(priorityEnd.getTime() + memberWindowDays * DAY_MS) : null;
-    const publicReleaseStatus = requireAdminReview ? "pending_admin_review" : "auto_release_scheduled";
-
-    let slotsCopied = 0;
-    let claimsCreated = 0;
-    const representativeClaimIds: string[] = [];
-
-    // 5. For each source series, generate `effWeeks` weekly sessions for the next
-    //    term (skipping holidays, applying the session price) and create
-    //    group-level claims (one rebook_group_id per series) for every player who
-    //    was in that group — so one Yes rebooks the whole new term.
-    for (const series of qualifyingSeries) {
-      const tmpl = series[0];
-      const durationMs = new Date(tmpl.end_time).getTime() - new Date(tmpl.start_time).getTime();
-      const effPrice = sessionPrice ?? tmpl.price_per_session;
-      const rebookGroupId = crypto.randomUUID();
-
-      // Cohort for this group = distinct players booked on ANY session of the series.
-      const cohort = new Map<string, { player_id: string | null; guest_player_id: string | null }>();
-      for (const src of series) {
-        for (const b of bookingsBySlot.get(src.id) ?? []) {
-          cohort.set(b.player_id ?? `g:${b.guest_player_id}`, b);
-        }
+    if (tcErr) {
+      // 23505 = the concurrency unique index fired (a simultaneous run won the race).
+      if (String((tcErr as { code?: string }).code) === "23505") {
+        return new Response(JSON.stringify({ ok: false, reason: "already_exists" }), {
+          status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
       }
-      if (cohort.size === 0) continue;
+      throw tcErr;
+    }
 
-      const starts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz);
-      const repByPlayer = new Map<string, string>(); // player -> earliest claim id (the one we email)
+    let committed = false;
+    try {
+      const now = new Date();
+      const priorityEnd = new Date(now.getTime() + priorityWindowDays * DAY_MS);
+      const memberEnd = memberWindowDays > 0 ? new Date(priorityEnd.getTime() + memberWindowDays * DAY_MS) : null;
+      const publicReleaseStatus = requireAdminReview ? "pending_admin_review" : "auto_release_scheduled";
 
-      for (const startIso of starts) {
-        const { data: newSlot, error: insErr } = await supabase
+      let slotsCopied = 0;
+      let claimsCreated = 0;
+      const representativeClaimIds: string[] = [];
+
+      // 5. For each source series, generate `effWeeks` weekly sessions for the next
+      //    term (skipping holidays, applying the session price) and create group-level
+      //    claims (one rebook_group_id per series) for every player who was in that
+      //    group — so one Yes rebooks the whole new term. Inserts are BATCHED per
+      //    series (one slot insert + chunked claim inserts) so a 20-group term is a few
+      //    dozen round-trips, not thousands.
+      for (const series of qualifyingSeries) {
+        const tmpl = series[0];
+        const durationMs = new Date(tmpl.end_time).getTime() - new Date(tmpl.start_time).getTime();
+        const effPrice = sessionPrice ?? tmpl.price_per_session;
+        const rebookGroupId = crypto.randomUUID();
+
+        // Cohort for this group = distinct players booked on ANY session of the series.
+        const cohort = new Map<string, { player_id: string | null; guest_player_id: string | null }>();
+        for (const src of series) {
+          for (const b of bookingsBySlot.get(src.id) ?? []) {
+            cohort.set(b.player_id ?? `g:${b.guest_player_id}`, b);
+          }
+        }
+        if (cohort.size === 0) continue;
+
+        const starts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz);
+        if (starts.length === 0) continue;
+
+        // 5a. Batch-insert this series' weekly slots in ONE round-trip.
+        const slotRows = starts.map((startIso) => ({
+          trainer_id: tmpl.trainer_id,
+          start_time: startIso,
+          end_time: new Date(new Date(startIso).getTime() + durationMs).toISOString(),
+          is_recurring: false,
+          cyclus_id: targetCycle.id,
+          cyclus_name: targetCycle.name,
+          court_type: tmpl.court_type,
+          location_id: tmpl.location_id,
+          academy_profile_id: tmpl.academy_profile_id,
+          is_public: true,
+          training_level: tmpl.training_level,
+          price_per_session: effPrice,
+          total_price: tmpl.total_price,
+          allow_single_booking: tmpl.allow_single_booking,
+          min_participants: tmpl.min_participants,
+          max_participants: tmpl.max_participants,
+          extra_costs: tmpl.extra_costs,
+          rating_system: tmpl.rating_system,
+          min_rating: tmpl.min_rating,
+          max_rating: tmpl.max_rating,
+          prices_include_vat: tmpl.prices_include_vat,
+          split_payment: tmpl.split_payment,
+          priority_source_slot_id: tmpl.id,
+          priority_window_starts_at: now.toISOString(),
+          priority_window_ends_at: priorityEnd.toISOString(),
+          // Membership for the member window = anyone with a booking in THIS rebooked
+          // cohort cycle. Pointing at the target (not the old, possibly mixed/null
+          // source cyclus_id) makes the member window work uniformly: a freed seat
+          // opens first to players who already rebooked into the new round.
+          source_cycle_id: targetCycle.id,
+          member_window_starts_at: memberEnd ? priorityEnd.toISOString() : null,
+          member_window_ends_at: memberEnd ? memberEnd.toISOString() : null,
+          public_release_status: publicReleaseStatus,
+        }));
+        const { data: newSlots, error: insErr } = await supabase
           .from("availability_slots")
-          .insert({
-            trainer_id: tmpl.trainer_id,
-            start_time: startIso,
-            end_time: new Date(new Date(startIso).getTime() + durationMs).toISOString(),
-            is_recurring: false,
-            cyclus_id: targetCycle.id,
-            cyclus_name: targetCycle.name,
-            court_type: tmpl.court_type,
-            location_id: tmpl.location_id,
-            academy_profile_id: tmpl.academy_profile_id,
-            is_public: true,
-            training_level: tmpl.training_level,
-            price_per_session: effPrice,
-            total_price: tmpl.total_price,
-            allow_single_booking: tmpl.allow_single_booking,
-            min_participants: tmpl.min_participants,
-            max_participants: tmpl.max_participants,
-            extra_costs: tmpl.extra_costs,
-            rating_system: tmpl.rating_system,
-            min_rating: tmpl.min_rating,
-            max_rating: tmpl.max_rating,
-            prices_include_vat: tmpl.prices_include_vat,
-            split_payment: tmpl.split_payment,
-            priority_source_slot_id: tmpl.id,
-            priority_window_starts_at: now.toISOString(),
-            priority_window_ends_at: priorityEnd.toISOString(),
-            // Membership for the member window = anyone with a booking in THIS
-            // rebooked cohort cycle. Pointing at the target (not the old, possibly
-            // mixed/null source cyclus_id) makes the member window work uniformly
-            // for registration- and hand-added-origin groups alike: a freed seat
-            // opens first to players who already rebooked into the new round.
-            source_cycle_id: targetCycle.id,
-            member_window_starts_at: memberEnd ? priorityEnd.toISOString() : null,
-            member_window_ends_at: memberEnd ? memberEnd.toISOString() : null,
-            public_release_status: publicReleaseStatus,
-          })
-          .select("id")
-          .single();
+          .insert(slotRows)
+          .select("id, start_time");
         if (insErr) throw insErr;
-        slotsCopied++;
+        const slots = newSlots ?? [];
+        slotsCopied += slots.length;
 
-        for (const b of cohort.values()) {
-          const { data: claim, error: cErr } = await supabase
+        // slot_id -> start_time, so we can pick each player's EARLIEST-week claim as
+        // the representative (the one we email). start_time is unique within a series.
+        const startBySlot = new Map<string, string>();
+        for (const s of slots) startBySlot.set(s.id, s.start_time);
+
+        // 5b. Batch-insert all (slot × player) claims for this series, chunked.
+        const cohortArr = [...cohort.values()];
+        const claimRows = slots.flatMap((s) =>
+          cohortArr.map((b) => ({
+            slot_id: s.id,
+            player_id: b.player_id,
+            guest_player_id: b.guest_player_id,
+            source_slot_id: tmpl.id,
+            rebook_group_id: rebookGroupId,
+            status: "pending",
+          })),
+        );
+        const insertedClaims: Array<{ id: string; slot_id: string; player_id: string | null; guest_player_id: string | null }> = [];
+        for (let i = 0; i < claimRows.length; i += 500) {
+          const { data: chunk, error: cErr } = await supabase
             .from("slot_priority_claims")
-            .insert({
-              slot_id: newSlot.id,
-              player_id: b.player_id,
-              guest_player_id: b.guest_player_id,
-              source_slot_id: tmpl.id,
-              rebook_group_id: rebookGroupId,
-              status: "pending",
-            })
-            .select("id")
-            .single();
-          if (cErr) continue; // dup (slot,player) guard — skip
-          claimsCreated++;
-          const pkey = b.player_id ?? `g:${b.guest_player_id}`;
-          if (!repByPlayer.has(pkey)) repByPlayer.set(pkey, claim.id); // earliest week = representative
+            .insert(claimRows.slice(i, i + 500))
+            .select("id, slot_id, player_id, guest_player_id");
+          if (cErr) throw cErr;
+          insertedClaims.push(...(chunk ?? []));
         }
+        claimsCreated += insertedClaims.length;
+
+        // Representative = each player's claim on the EARLIEST week (min start_time).
+        const repByPlayer = new Map<string, { claimId: string; start: string }>();
+        for (const cl of insertedClaims) {
+          const pkey = cl.player_id ?? `g:${cl.guest_player_id}`;
+          const start = startBySlot.get(cl.slot_id) ?? "";
+          const cur = repByPlayer.get(pkey);
+          if (!cur || start < cur.start) repByPlayer.set(pkey, { claimId: cl.id, start });
+        }
+        for (const r of repByPlayer.values()) representativeClaimIds.push(r.claimId);
       }
-      representativeClaimIds.push(...repByPlayer.values());
-    }
 
-    // 6. One invite per (player, series): email only the representative claims.
-    let invitesSent = 0;
-    for (let i = 0; i < representativeClaimIds.length; i += 50) {
-      const batch = representativeClaimIds.slice(i, i + 50);
-      const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
-        body: { claimIds: batch },
-      });
-      if (!error && data) invitesSent += batch.length;
-    }
+      // 6. Commit: flip the draft to 'open' now that all slots + claims are written.
+      //    Done BEFORE the invites so a later email hiccup can't roll back the round.
+      const { error: commitErr } = await supabase.from("cycles").update({ status: "open" }).eq("id", targetCycle.id);
+      if (commitErr) throw commitErr;
+      committed = true;
 
-    logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent });
-    return new Response(JSON.stringify({
-      ok: true,
-      targetCycleId: targetCycle.id,
-      groups: qualifyingSeries.length,
-      players: playerSet.size,
-      slotsCopied,
-      claimsCreated,
-      invitesSent,
-    }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+      // 7. One invite per (player, series): email only the representative claims.
+      //    Track failed batches so the admin can be told / a resend is possible —
+      //    the cycle is already committed, so a partial send is recoverable.
+      let invitesSent = 0;
+      const failedClaimIds: string[] = [];
+      for (let i = 0; i < representativeClaimIds.length; i += 50) {
+        const batch = representativeClaimIds.slice(i, i + 50);
+        const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
+          body: { claimIds: batch },
+        });
+        if (!error && data) invitesSent += batch.length;
+        else failedClaimIds.push(...batch);
+      }
+
+      logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length });
+      return new Response(JSON.stringify({
+        ok: true,
+        targetCycleId: targetCycle.id,
+        groups: qualifyingSeries.length,
+        players: playerSet.size,
+        slotsCopied,
+        claimsCreated,
+        invitesSent,
+        failedClaimIds,
+      }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+    } catch (buildErr) {
+      // Roll back the half-built draft (only if not yet committed) so a retry is clean.
+      if (!committed) {
+        try { await cleanupCycle(targetCycle.id); } catch (_) { /* best-effort */ }
+      }
+      throw buildErr;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });

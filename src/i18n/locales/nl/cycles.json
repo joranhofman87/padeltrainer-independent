@@ -921,11 +921,12 @@
     "ruleKeepNoDeadline": "Je houdt je vaste plek zolang de voorrangsperiode loopt.",
     "ruleAfter": "Reageer je niet op tijd? Dan komt je plek daarna vrij voor anderen.",
     "changeTimesTitle": "Wil je een ander moment?",
-    "changeTimesBody": "Je houdt je eigen dag en tijd. Wil je wisselen? Geef je plek dan vrij en boek opnieuw zodra de plekken opengaan, of neem contact op met de academy.",
-    "ifNoResponse": "Geen reactie betekent dat je je plek na de deadline opgeeft. Wil je er daarna weer bij? Zoek een vrije plek of neem contact op met de academy.",
-    "windowEndedRecovery": "De voorrangsperiode is voorbij. Wil je er weer bij? Bekijk hieronder of er een vrije plek is, of neem contact op met de academy.",
+    "changeTimesBody": "Je houdt je eigen dag en tijd. Wil je wisselen? Vraag het de academy — dat is het makkelijkst. Je kunt ook je plek vrijgeven en opnieuw boeken als er ergens plek is.",
+    "splitNote": "De prijs wordt gedeeld door iedereen die meedoet, dus als er minder spelers meedoen, betaalt iedereen iets meer.",
+    "ifNoResponse": "Geen reactie betekent dat je je plek na de deadline opgeeft. Wil je er daarna weer bij? Vraag het de academy of zoek een vrije plek.",
+    "windowEndedRecovery": "De voorrangsperiode is voorbij. Wil je er weer bij? Neem contact op met de academy of bekijk hieronder of er een vrije plek is.",
     "cardRules": "Je houdt je plek tot de deadline. Reageer je niet, dan komt je plek vrij voor anderen.",
-    "cardChangeTimes": "Wil je een ander moment? Geef je plek vrij en boek opnieuw zodra de plekken opengaan, of neem contact op met de academy.",
+    "cardChangeTimes": "Wil je een ander moment? Vraag de academy om je te verplaatsen, of geef je plek vrij en boek opnieuw als er ergens plek is.",
     "cardRecovery": "Mis je de deadline? Zoek daarna een vrije plek of neem contact op met de academy."
   },
   "tierControl": {
@@ -1108,6 +1109,7 @@
     "groupFallback": "Serie",
     "countPending": "{{count}} tentatief",
     "countClaimed": "{{count}} bevestigd",
-    "countDeclined": "{{count}} afgemeld"
+    "countDeclined": "{{count}} afgemeld",
+    "declinedTitle": "Afgemeld"
   }
 }

@@ -123,9 +123,9 @@ export default function TentativeRosterSection({ cycleId }: Props) {
     staleTime: 30_000,
   });
 
-  const { groups, counts } = useMemo(() => {
+  const { groups, counts, declinedNames } = useMemo(() => {
     if (!data) {
-      return { groups: [] as RosterGroup[], counts: { claimed: 0, pending: 0, declined: 0 } };
+      return { groups: [] as RosterGroup[], counts: { claimed: 0, pending: 0, declined: 0 }, declinedNames: [] as string[] };
     }
     const { slots, claims, nameByPlayerId, nameByGuestId } = data;
     const slotById = new Map(slots.map((s) => [s.id, s]));
@@ -143,6 +143,27 @@ export default function TentativeRosterSection({ cycleId }: Props) {
       else if (c.status === 'declined') declinedSet.add(playerKeyOf(c));
     }
     const counts = { claimed: claimedSet.size, pending: pendingSet.size, declined: declinedSet.size };
+
+    // Distinct players who opted OUT (declined and not still pending/claimed elsewhere),
+    // by name, so the academy can follow up personally instead of just seeing a count.
+    const declinedNames: string[] = [];
+    const seenDeclined = new Set<string>();
+    for (const c of claims) {
+      if (c.status !== 'declined') continue;
+      const key = playerKeyOf(c);
+      if (pendingSet.has(key) || claimedSet.has(key) || seenDeclined.has(key)) continue;
+      seenDeclined.add(key);
+      const name = c.player_id
+        ? nameByPlayerId.get(c.player_id) ?? t('tentativeRoster.unknownPlayer', 'Unknown player')
+        : c.guest_player_id
+          ? nameByGuestId.get(c.guest_player_id) ?? t('tentativeRoster.unknownPlayer', 'Unknown player')
+          : t('tentativeRoster.unknownPlayer', 'Unknown player');
+      declinedNames.push(name);
+    }
+    declinedNames.sort((a, b) => a.localeCompare(b));
+    // Keep the "declined" badge in step with the names shown: count fully opted-out
+    // players (a partial decliner who is still pending elsewhere isn't really out).
+    counts.declined = declinedNames.length;
 
     // Build groups from PENDING claims only, keyed on rebook_group_id (fallback
     // to slot_id when a claim has no group). Within a group, collapse a player's
@@ -195,7 +216,7 @@ export default function TentativeRosterSection({ cycleId }: Props) {
     }
     groups.sort((a, b) => a.earliestStart.localeCompare(b.earliestStart));
 
-    return { groups, counts };
+    return { groups, counts, declinedNames };
   }, [data, t]);
 
   if (isLoading || !data) return null;
@@ -280,6 +301,14 @@ export default function TentativeRosterSection({ cycleId }: Props) {
               </div>
             );
           })
+        )}
+        {declinedNames.length > 0 && (
+          <div className="space-y-1 border-t pt-3">
+            <h4 className="text-sm font-medium text-muted-foreground">
+              {t('tentativeRoster.declinedTitle', 'Afgemeld')}
+            </h4>
+            <p className="text-sm text-muted-foreground">{declinedNames.join(', ')}</p>
+          </div>
         )}
       </CardContent>
     </Card>
