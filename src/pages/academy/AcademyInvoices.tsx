@@ -147,12 +147,25 @@ export default function AcademyInvoices() {
     pageSize: INVOICE_PAGE_SIZE,
   });
 
-  // Receivables scoreboard: follows trainer + location, ignores tab/status/search/no-email
-  // (contract rule 3). This is the financial-correctness source — never derived from page rows.
+  // Tab-label totals: trainer + location only, so the Unpaid/Paid tab counts stay
+  // stable for navigation regardless of the active status/search/delivery filter.
+  // Financial-correctness source — never derived from page rows.
   const { data: summary } = useAcademyInvoiceSummary(academyId, {
     trainerId: trainerScope,
     locationId: locationScope,
   });
+
+  // Scoreboard cards follow EVERY active filter so they match the rows below.
+  // (Falls back to the tab totals if this errors — e.g. before the migration that
+  // adds the filter params is applied to prod — so the cards never go blank.)
+  const { data: summaryFiltered, isError: cardsSummaryError } = useAcademyInvoiceSummary(academyId, {
+    trainerId: trainerScope,
+    locationId: locationScope,
+    status: statusScope,
+    search: debouncedSearch || null,
+    delivery: deliveryFilter === "all" ? null : deliveryFilter,
+  });
+  const cards = (cardsSummaryError ? summary : summaryFiltered) ?? summary;
 
   const filteredInvoices: Invoice[] = overview?.rows ?? [];
 
@@ -162,7 +175,10 @@ export default function AcademyInvoices() {
     trainerId: trainerScope,
     locationId: locationScope,
   });
-  const totalUnpaid = summary?.sumUnpaid ?? 0;
+  // Cards = filtered (match the table); tab/draft counts = totals (stable).
+  const totalUnpaid = cards?.sumUnpaid ?? 0;
+  const cardCountUnpaid = cards?.countUnpaid ?? 0;
+  const cardCountPaid = cards?.countPaid ?? 0;
   const countUnpaid = summary?.countUnpaid ?? 0;
   const countPaid = summary?.countPaid ?? 0;
   const countDraft = summary?.countDraft ?? 0;
@@ -713,13 +729,13 @@ export default function AcademyInvoices() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open invoices")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{countUnpaid}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{cardCountUnpaid}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("invoices.paid", "Paid")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{countPaid}</p>
+            <p className="font-display text-2xl font-semibold tabular-nums">{cardCountPaid}</p>
           </CardContent>
         </Card>
       </div>
