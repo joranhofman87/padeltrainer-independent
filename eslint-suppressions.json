@@ -99,11 +99,6 @@
       "count": 3
     }
   },
-  "src/components/attendance/PlayerAttendanceForm.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/components/attendance/SlotAttendanceCard.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1
@@ -196,7 +191,7 @@
       "count": 44
     },
     "react-hooks/exhaustive-deps": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/cycles/CyclesTable.tsx": {
@@ -1039,14 +1034,6 @@
   "src/pages/academy/AcademyCycleDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 19
-    }
-  },
-  "src/pages/academy/AcademyCycles.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
     }
   },
   "src/pages/academy/AcademyCyclusOverview.tsx": {
