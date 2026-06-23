@@ -36,42 +36,48 @@ export async function removePlayerFromAcademy(params: {
   }
 
   const removedAt = new Date().toISOString();
-  const baseQuery = supabase
-    .from('academy_player_metadata')
-    .select('id, tag_ids, notes')
-    .eq('academy_profile_id', params.academyProfileId);
-
-  const { data: existing } = await (params.guestPlayerId
-    ? baseQuery.eq('guest_player_id', params.guestPlayerId)
-    : baseQuery.eq('profile_id', params.profileId!)
-  ).maybeSingle();
-
   const removalFields = {
     removed_at: removedAt,
     removed_by: params.removedByProfileId ?? null,
     remove_reason: params.removeReason?.trim() || null,
   };
 
-  if (existing) {
-    const { error } = await supabase
+  // A linked guest surfaces in the players overview via its GUEST id, and the overview
+  // hides the linked registered profile precisely because a guest points at it. So we must
+  // mark removed_at on EVERY identity the player has — guest AND linked profile — each in
+  // its own row (the table's CHECK allows only one id per row). Removing just the guest
+  // would un-hide the profile and the player would reappear as a registered player.
+  const targets: Array<{ col: 'guest_player_id' | 'profile_id'; val: string }> = [];
+  if (params.guestPlayerId) targets.push({ col: 'guest_player_id', val: params.guestPlayerId });
+  if (params.profileId) targets.push({ col: 'profile_id', val: params.profileId });
+
+  for (const target of targets) {
+    const { data: existing } = await supabase
       .from('academy_player_metadata')
-      .update(removalFields as any)
-      .eq('id', existing.id)
-      .eq('academy_profile_id', params.academyProfileId);
-    if (error) throw error;
-    return { removed_at: removedAt };
+      .select('id')
+      .eq('academy_profile_id', params.academyProfileId)
+      .eq(target.col, target.val)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from('academy_player_metadata')
+        .update(removalFields as any)
+        .eq('id', existing.id)
+        .eq('academy_profile_id', params.academyProfileId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('academy_player_metadata').insert({
+        academy_profile_id: params.academyProfileId,
+        guest_player_id: target.col === 'guest_player_id' ? target.val : null,
+        profile_id: target.col === 'profile_id' ? target.val : null,
+        tag_ids: [],
+        notes: null,
+        ...removalFields,
+      } as any);
+      if (error) throw error;
+    }
   }
 
-  const { error } = await supabase.from('academy_player_metadata').insert({
-    academy_profile_id: params.academyProfileId,
-    // CHECK constraint requires exactly one of guest/profile — prefer the guest id.
-    guest_player_id: params.guestPlayerId,
-    profile_id: params.guestPlayerId ? null : params.profileId,
-    tag_ids: [],
-    notes: null,
-    ...removalFields,
-  } as any);
-
-  if (error) throw error;
   return { removed_at: removedAt };
 }

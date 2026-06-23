@@ -93,6 +93,27 @@ describe('academyPlayerRemoval', () => {
     );
   });
 
+  it('marks BOTH identities removed for a linked guest (guest + profile)', async () => {
+    await removePlayerFromAcademy({
+      academyProfileId: ACADEMY_A,
+      guestPlayerId: GUEST_ID,
+      profileId: PROFILE_ID,
+      removedByProfileId: MANAGER_ID,
+    });
+
+    // One metadata row per identity, each marked removed — otherwise removing only the
+    // guest un-hides the linked profile and the player reappears in the overview.
+    expect(insertMock).toHaveBeenCalledWith(
+      'academy_player_metadata',
+      expect.objectContaining({ guest_player_id: GUEST_ID, profile_id: null, removed_at: expect.any(String) }),
+    );
+    expect(insertMock).toHaveBeenCalledWith(
+      'academy_player_metadata',
+      expect.objectContaining({ guest_player_id: null, profile_id: PROFILE_ID, removed_at: expect.any(String) }),
+    );
+    expect(insertMock).toHaveBeenCalledTimes(2);
+  });
+
   it('updates existing metadata with removed_at for registered player', async () => {
     maybeSingleMock.mockResolvedValue({
       data: { id: META_ID, tag_ids: ['tag-1'], notes: 'Keep notes' },
