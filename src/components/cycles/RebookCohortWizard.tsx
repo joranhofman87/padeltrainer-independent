@@ -230,7 +230,10 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           invites: Number(data?.invitesSent ?? 0),
         }),
       );
-      navigate(backHref);
+      // Land on the new cycle's rebook management view so the academy can track
+      // responses / payments and manage the round (falls back to backHref).
+      const newCycleId = data?.targetCycleId as string | undefined;
+      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : backHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {
