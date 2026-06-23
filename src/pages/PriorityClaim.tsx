@@ -92,6 +92,11 @@ export default function PriorityClaimPage() {
           window.location.href = res.checkoutUrl;
           return;
         }
+        if (res.mode === 'upfront_invoiced' && res.publicToken) {
+          toast.success(t('rebooking.invoiceReady', 'Your spot is reserved. Here is your invoice — pay online or by bank transfer.'));
+          window.location.href = `/pay/${res.publicToken}`;
+          return;
+        }
         setAccepted(true);
         if (res.mode === 'upfront_unavailable') {
           toast.success(t('rebooking.upfrontUnavailable', 'Your spot is reserved. Online payment is not available yet — you will receive an invoice.'));

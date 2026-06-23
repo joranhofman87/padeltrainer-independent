@@ -23,6 +23,7 @@ import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
+import { RebookPaymentModeField } from './RebookPaymentModeField';
 
 interface Props {
   academyProfileId: string;
@@ -342,25 +343,11 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 setMemberWindowDays={setMemberWindowDays}
               />
 
-              <Card>
-                <CardHeader><CardTitle>{t('newRound.payment', 'Betaling')}</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  <Label>{t('bulkCopy.paymentModeLabel', 'How do players pay when they keep their spot?')}</Label>
-                  <label className="flex items-start gap-2 text-sm cursor-pointer">
-                    <input type="radio" className="mt-1" checked={paymentMode === 'deferred_split'} onChange={() => setPaymentMode('deferred_split')} />
-                    <span>{t('bulkCopy.paymentModeDeferred', 'Invoice at cycle start — the price is split between everyone who joins')}</span>
-                  </label>
-                  <label className="flex items-start gap-2 text-sm cursor-pointer">
-                    <input type="radio" className="mt-1" checked={paymentMode === 'upfront'} onChange={() => setPaymentMode('upfront')} />
-                    <span>{t('bulkCopy.paymentModeUpfront', 'Pay immediately — the player checks out online when they say yes')}</span>
-                  </label>
-                  {paymentMode === 'upfront' && (
-                    <p className="text-xs text-muted-foreground pl-6">
-                      {t('bulkCopy.paymentModeUpfrontHint', 'Requires online payments (Mollie) for the trainer or academy.')}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+              <RebookPaymentModeField
+                academyProfileId={academyProfileId}
+                paymentMode={paymentMode}
+                setPaymentMode={setPaymentMode}
+              />
 
               <Card>
                 <CardHeader><CardTitle>{t('newRound.publicRelease', 'Publiek vrijgeven')}</CardTitle></CardHeader>

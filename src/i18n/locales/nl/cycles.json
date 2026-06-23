@@ -919,6 +919,7 @@
     "payNow": "Je betaalt direct voor de nieuwe cyclus wanneer je je plek bevestigt.",
     "redirectingToPayment": "We sturen je door naar de betaalpagina…",
     "upfrontUnavailable": "Je plek is gereserveerd. Online betalen is nog niet beschikbaar — je ontvangt een factuur.",
+    "invoiceReady": "Je plek staat vast. Hier is je factuur — betaal online of via bankoverschrijving.",
     "seriesHeading": "Elke {{weekday}} om {{time}}",
     "seriesDetail": "{{count}} sessies · {{from}} t/m {{to}}",
     "cycleStarts": "De nieuwe cyclus start op {{date}}.",
@@ -1108,6 +1109,10 @@
     "confirmSend": "Aanmaken & spelers uitnodigen"
   },
   "rebookShared": {
+    "paymentTitle": "Betaling",
+    "upfrontNoPaymentSetup": "Stel eerst je betaalgegevens in (Mollie of bankgegevens) om direct betalen aan te zetten.",
+    "upfrontSetupLink": "Betaalgegevens instellen",
+    "upfrontManualHint": "Spelers betalen direct via een factuur met bankgegevens (Mollie is niet gekoppeld).",
     "holidaysTitle": "Vakanties (geen training)",
     "holidaysHint": "Geef vakantieperiodes op. Op deze dagen wordt niets ingepland.",
     "holidayName": "Naam",
