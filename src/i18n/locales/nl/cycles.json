@@ -1133,6 +1133,18 @@
     "memberLabel": "Hoelang houden vaste spelers voorrang op vrije plekken?",
     "memberHint": "Daarna kan iedereen de overgebleven plekken boeken."
   },
+  "rebookReview": {
+    "group": "Groep & spelers",
+    "sessions": "Sessies",
+    "invoice": "Factuur",
+    "playersCount": "{{n}} spelers",
+    "breakdownSplit": "{{p}} × {{s}} (gedeeld)",
+    "breakdown": "{{p}} × {{s}} × {{n}}",
+    "totals": "{{groups}} groepen · {{players}} spelers · {{sessions}} sessies",
+    "grandTotal": "Totaal indien iedereen accepteert: {{amount}}",
+    "noEmailTitle": "{{n}} spelers hebben geen e-mailadres en krijgen GEEN uitnodiging:",
+    "noEmailAck": "Ik begrijp dat {{n}} spelers geen e-mail krijgen"
+  },
   "tentativeRoster": {
     "title": "Voorlopige spelers (herboeking)",
     "remove": "Verwijderen",

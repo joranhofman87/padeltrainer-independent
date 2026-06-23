@@ -998,6 +998,18 @@
     "memberLabel": "How long do returning players keep priority on free slots?",
     "memberHint": "After that, anyone can book the remaining slots."
   },
+  "rebookReview": {
+    "group": "Group & players",
+    "sessions": "Sessions",
+    "invoice": "Invoice",
+    "playersCount": "{{n}} players",
+    "breakdownSplit": "{{p}} × {{s}} (split)",
+    "breakdown": "{{p}} × {{s}} × {{n}}",
+    "totals": "{{groups}} groups · {{players}} players · {{sessions}} sessions",
+    "grandTotal": "Total if everyone accepts: {{amount}}",
+    "noEmailTitle": "{{n}} players have no email address and will NOT get an invitation:",
+    "noEmailAck": "I understand {{n}} players will not be emailed"
+  },
   "tentativeRoster": {
     "title": "Tentative players (rebooking)",
     "remove": "Remove",

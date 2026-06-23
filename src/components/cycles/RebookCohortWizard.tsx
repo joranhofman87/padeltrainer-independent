@@ -19,6 +19,7 @@ import { getAcademyLocationsWithDetails } from '@/lib/academy';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
+import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 
 interface Props {
   academyProfileId: string;
@@ -44,19 +45,14 @@ interface HolidayRange {
   to: string;
 }
 
-interface GroupDetail {
-  weekday: string;
-  time: string;
-  players: number;
-  sessions: number;
-}
-
 interface ConfirmData {
   groups: number;
   players: number;
   totalSessions: number;
   effWeeks: number;
-  groupsDetail: GroupDetail[];
+  groupsDetail: RebookGroupDetail[];
+  noEmailTotal: number;
+  grandInvoiceTotal: number;
 }
 
 export default function RebookCohortWizard({ academyProfileId, backHref }: Props) {
@@ -88,6 +84,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [submitting, setSubmitting] = useState(false);
   const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [preparing, setPreparing] = useState(false);
+  const [ackNoEmail, setAckNoEmail] = useState(false);
 
   useEffect(() => {
     getAcademyLocationsWithDetails(academyProfileId)
@@ -193,12 +190,15 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         body: { ...baseBody, dryRun: true },
       });
       if (error) throw error;
+      setAckNoEmail(false);
       setConfirmData({
         groups: Number(data?.groups ?? 0),
         players: Number(data?.players ?? 0),
         totalSessions: Number(data?.totalSessions ?? 0),
         effWeeks: Number(data?.effWeeks ?? 0),
-        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as GroupDetail[]) : [],
+        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : [],
+        noEmailTotal: Number(data?.noEmailTotal ?? 0),
+        grandInvoiceTotal: Number(data?.grandInvoiceTotal ?? 0),
       });
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errPreview', 'Kon de preview niet ophalen. Probeer het opnieuw.')));
@@ -476,39 +476,40 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         </Button>
       </div>
 
-      <AlertDialog open={!!confirmData} onOpenChange={(o) => { if (!o) setConfirmData(null); }}>
-        <AlertDialogContent>
+      <AlertDialog open={!!confirmData} onOpenChange={(o) => { if (!o) { setConfirmData(null); setAckNoEmail(false); } }}>
+        <AlertDialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>{t('rebookCohort.confirmTitle', 'Controleer voordat je verstuurt')}</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 text-sm">
-                <p>
-                  {t('rebookCohort.confirmIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:', {
-                    name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
-                    date: newStartDate,
-                    weeks: confirmData?.effWeeks ?? '',
-                    price: sessionPrice || (preview?.suggestedPrice ?? ''),
-                  })}
-                </p>
-                <ul className="border rounded-md divide-y">
-                  {(confirmData?.groupsDetail ?? []).map((g, i) => (
-                    <li key={i} className="flex items-center justify-between px-3 py-2">
-                      <span className="font-medium capitalize">{g.weekday} {g.time}</span>
-                      <span className="text-muted-foreground">
-                        {t('rebookCohort.confirmGroupLine', '{{players}} spelers · {{sessions}} sessies', { players: g.players, sessions: g.sessions })}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="font-medium">
-                  {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: confirmData?.players ?? 0 })}
-                </p>
-              </div>
+            <AlertDialogDescription>
+              {t('rebookCohort.confirmIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:', {
+                name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
+                date: newStartDate,
+                weeks: confirmData?.effWeeks ?? '',
+                price: sessionPrice || (preview?.suggestedPrice ?? ''),
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmData && (
+            <RebookReviewTable
+              groups={confirmData.groupsDetail}
+              noEmailTotal={confirmData.noEmailTotal}
+              grandInvoiceTotal={confirmData.grandInvoiceTotal}
+              locationName={(id) => locations.find((l) => l.id === id)?.name}
+              ackNoEmail={ackNoEmail}
+              onAckChange={setAckNoEmail}
+            />
+          )}
+          <p className="text-sm font-medium">
+            {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', {
+              players: Math.max(0, (confirmData?.players ?? 0) - (confirmData?.noEmailTotal ?? 0)),
+            })}
+          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSubmit} disabled={submitting}>
+            <AlertDialogAction
+              onClick={handleSubmit}
+              disabled={submitting || ((confirmData?.noEmailTotal ?? 0) > 0 && !ackNoEmail)}
+            >
               {submitting ? t('common:saving', 'Bezig...') : t('rebookCohort.confirmSend', 'Versturen')}
             </AlertDialogAction>
           </AlertDialogFooter>
