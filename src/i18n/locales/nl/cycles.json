@@ -420,7 +420,13 @@
       "toggleColumns": "Kolommen aan/uit",
       "searchPlayer": "Zoek speler...",
       "groupNotes": "Groepsnotities",
-      "groupMembers": "Groepsleden:"
+      "groupMembers": "Groepsleden:",
+      "payment": "Betaling"
+    },
+    "payment": {
+      "paid": "Betaald",
+      "unpaid": "Niet betaald",
+      "cancelled": "Geannuleerd"
     },
     "detail": {
       "title": "Aanmeldingsdetails",

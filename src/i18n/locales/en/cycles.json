@@ -385,7 +385,13 @@
       "preferredTrainer": "Pref. Trainer",
       "status": "Status",
       "applied": "Applied",
-      "groupMembers": "Group members:"
+      "groupMembers": "Group members:",
+      "payment": "Payment"
+    },
+    "payment": {
+      "paid": "Paid",
+      "unpaid": "Unpaid",
+      "cancelled": "Cancelled"
     },
     "detail": {
       "title": "Request Details",
