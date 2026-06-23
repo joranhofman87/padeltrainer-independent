@@ -121,24 +121,24 @@ export default function CycleRegistration() {
             welcomeMessage: academyData.welcome_message,
           });
 
-          // Fetch academy trainers
+          // Fetch academy trainers (anon-readable view + safe views — the base
+          // academy_trainers / trainer_profiles / profiles tables are not anon-readable).
           const { data: academyTrainers } = await supabase
-            .from('academy_trainers')
+            .from('academy_trainers_public')
             .select('trainer_profile_id')
-            .eq('academy_profile_id', academyData.id)
-            .eq('status', 'active');
+            .eq('academy_profile_id', academyData.id);
 
           if (academyTrainers && academyTrainers.length > 0) {
             const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
             const { data: trainerProfiles } = await supabase
-              .from('trainer_profiles')
+              .from('trainer_profiles_safe')
               .select('id, user_id')
               .in('id', trainerIds);
 
             if (trainerProfiles) {
               const userIds = trainerProfiles.map(tp => tp.user_id);
               const { data: profiles } = await supabase
-                .from('profiles')
+                .from('profiles_public')
                 .select('user_id, full_name')
                 .in('user_id', userIds);
 
