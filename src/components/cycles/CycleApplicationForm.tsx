@@ -36,7 +36,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
 import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod, type CyclusOption } from '@/lib/cycles';
-import { sendEmail } from '@/lib/email';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -314,110 +313,6 @@ export default function CycleApplicationForm({
           },
         });
 
-        // Send registration confirmation email (non-blocking)
-        // Resolve owner name for the email
-        let ownerName: string | undefined;
-        try {
-          if (cycle.owner_type === 'academy') {
-            const { data: academy } = await supabase.from('academy_profiles').select('name').eq('id', cycle.owner_id).single();
-            ownerName = academy?.name || undefined;
-          } else if (cycle.owner_type === 'club') {
-            const { data: club } = await supabase.from('club_profiles').select('location_id').eq('id', cycle.owner_id).single();
-            if (club?.location_id) {
-              const { data: loc } = await supabase.from('locations').select('name').eq('id', club.location_id).single();
-              ownerName = loc?.name || undefined;
-            }
-          } else if (cycle.owner_type === 'trainer') {
-            const { data: tp } = await supabase.from('trainer_profiles').select('user_id').eq('id', cycle.owner_id).single();
-            if (tp?.user_id) {
-              const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', tp.user_id).single();
-              ownerName = prof?.full_name || undefined;
-            }
-          }
-        } catch { /* non-fatal: owner name lookup is best-effort for the email */ }
-        // Resolve location name for the email
-        let locationName: string | undefined;
-        try {
-          const locId = cycle.location_id || values.location_id;
-          if (locId) {
-            const { data: locData } = await supabase.from('locations').select('name').eq('id', locId).single();
-            locationName = locData?.name || undefined;
-          }
-        } catch { /* non-fatal: location name lookup is best-effort for the email */ }
-        // Compute price lines for the email (mirrors price calculator logic)
-        const emailCurrency = cycle.currency || 'EUR';
-        const emailFmt = (v: number) => new Intl.NumberFormat(i18n.language, { style: 'currency', currency: emailCurrency }).format(v);
-        const rawStandardAllowedTypes = ((cycle.settings as any)?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
-        const standardAllowedTypes = [...new Set(rawStandardAllowedTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]))];
-        const customTypesEmail = ((cycle.settings as any)?.custom_lesson_types as string[] | undefined) || [];
-        const orderedTypesEmail = [...standardAllowedTypes, ...customTypesEmail];
-        const emailLessonCount = selectedCyclusOption?.number_of_sessions || selectedDurationWeeks || (() => {
-          if (!cycle.start_date || !cycle.end_date) return null;
-          return Math.max(1, Math.floor(
-            (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
-          ));
-        })();
-
-        const emailPriceLines: { label: string; perLesson: string; total: string }[] = [];
-        for (const lt of values.lesson_types) {
-          const displayLabel = (STANDARD_LESSON_TYPES as readonly string[]).includes(lt)
-            ? t(`application.form.lessonTypes.${lt}`)
-            : lt.charAt(0).toUpperCase() + lt.slice(1);
-          let perLesson: number | null = null;
-          if (selectedCyclusOption) {
-            perLesson = selectedCyclusOption.price_per_session;
-          } else if (cycle.price_table && cycle.price_table.length > 0) {
-            const typeIndex = orderedTypesEmail.indexOf(lt);
-            const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length ? cycle.price_table[typeIndex] : null;
-            if (priceRow) perLesson = priceRow.price;
-          }
-          if (perLesson == null && cycle.price_per_session) perLesson = cycle.price_per_session;
-          const total = selectedCyclusOption
-            ? (selectedCyclusOption.total_price ?? (perLesson && emailLessonCount ? perLesson * emailLessonCount : null))
-            : (perLesson && emailLessonCount ? perLesson * emailLessonCount : null);
-          if (perLesson != null && perLesson > 0) {
-            emailPriceLines.push({
-              label: displayLabel,
-              perLesson: emailFmt(perLesson),
-              total: total != null ? emailFmt(total) : '',
-            });
-          }
-        }
-
-        // Resolve lesson-type labels from the form's own i18n so the email shows exactly
-        // what the registrant saw — single source of truth, no separate email label map.
-        const emailLessonTypeLabels = values.lesson_types.map((lt: string) =>
-          (STANDARD_LESSON_TYPES as readonly string[]).includes(lt)
-            ? t(`application.form.lessonTypes.${lt}`)
-            : lt.charAt(0).toUpperCase() + lt.slice(1)
-        );
-
-        sendEmail('intake_registration_confirmation', values.email, {
-          playerName: fullName,
-          cycleName: cycle.name,
-          ownerName,
-          confirmationText: (cycle.settings as any)?.confirmation_email_text || undefined,
-          language: i18n.language,
-          startDate: cycle.start_date,
-          endDate: cycle.end_date,
-          enrollmentDeadline: cycle.enrollment_deadline || undefined,
-          locationName,
-          lessonTypes: values.lesson_types,
-          lessonTypeLabels: emailLessonTypeLabels,
-          preferredDurationMinutes: values.preferred_duration_minutes,
-          sessionsPerWeek: values.sessions_per_week,
-          rating: values.rating,
-          ratingSystem: values.rating_system,
-          notes: values.notes || undefined,
-          phone: values.phone || undefined,
-          birthDate: values.birth_date || undefined,
-          selectedPackageLabel: selectedCyclusOption?.label || undefined,
-          selectedPackagePrice: selectedCyclusOption?.price_per_session || undefined,
-          selectedDurationWeeks: emailLessonCount || undefined,
-          priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
-          currency: emailCurrency,
-        }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
-
         // Update player profile if rating/phone/birth_date changed
         const profileUpdates: Record<string, any> = {};
         if (values.rating && values.rating !== playerRating) {
@@ -446,7 +341,7 @@ export default function CycleApplicationForm({
         if (createdIntake?.id) {
           try {
             const { data: payRes } = await supabase.functions.invoke('create-registration-invoice', {
-              body: { intakeRequestId: createdIntake.id, paymentMethod: selectedPaymentMethod },
+              body: { intakeRequestId: createdIntake.id, paymentMethod: selectedPaymentMethod, language: i18n.language },
             });
             redirectPayUrl = (payRes as { payUrl?: string | null })?.payUrl ?? null;
           } catch (payErr) {
