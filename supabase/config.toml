@@ -190,6 +190,9 @@ verify_jwt = false
 [functions.create-rebook-invoice]
 verify_jwt = false
 
+[functions.send-rebook-reminder]
+verify_jwt = true
+
 [functions.forward-invoice]
 verify_jwt = false
 

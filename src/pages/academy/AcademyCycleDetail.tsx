@@ -641,6 +641,12 @@ export default function AcademyCycleDetail() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {(cycle.settings as Record<string, unknown> | null)?.rebook_payment_mode != null && (
+              <Button variant="outline" size="sm" onClick={() => navigate(`/app/academy/cycles/${cycle.id}/rebook`)}>
+                <RotateCcw className="h-4 w-4 mr-1" />
+                {t('actions.manageRebooking', 'Beheer herboeking')}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handleCopyLink}>
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('actions.shareLink')}

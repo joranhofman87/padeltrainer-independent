@@ -200,7 +200,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
           t('newRound.invitesPartial', '{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.', { count: failedCount }),
         );
       }
-      navigate(backHref);
+      // Land on the new cycle's rebook management view (falls back to backHref).
+      const newCycleId = data?.targetCycleId as string | undefined;
+      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : backHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {
