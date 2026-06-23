@@ -533,17 +533,33 @@ Deno.serve(async (req) => {
           : [];
         const cyclePricePerSession = toBoundedNumber(cycleData.price_per_session);
         const selectedOption = metadata?.selected_cyclus_option;
-        const selectedOptionPrice = toBoundedNumber(selectedOption?.price_per_session);
         const selectedOptionLabel = typeof selectedOption?.label === "string"
           ? selectedOption.label.slice(0, MAX_SHORT_FIELD_LENGTH)
           : undefined;
-        const durationWeeks = toBoundedNumber(metadata?.preferred_number_of_weeks, 520) || (() => {
-          if (!cycleData.start_date || !cycleData.end_date) return null;
-          const weeks = Math.round(
-            (new Date(cycleData.end_date).getTime() - new Date(cycleData.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
-          );
-          return Number.isFinite(weeks) ? Math.max(1, weeks) : null;
-        })();
+        // Resolve the chosen package against the cycle's CURRENT server config (never the
+        // registrant's possibly-stale form metadata) so the price + lesson count always
+        // reflect what the academy has configured right now. Mirrors the client fix (#45).
+        const serverCyclusOptions = Array.isArray(settingsRecord.cyclus_options)
+          ? (settingsRecord.cyclus_options as Array<Record<string, unknown>>)
+          : [];
+        const serverOption = selectedOptionLabel
+          ? serverCyclusOptions.find((o) => typeof o?.label === "string" && o.label === selectedOptionLabel) ?? null
+          : null;
+        const selectedOptionPrice = toBoundedNumber(serverOption?.price_per_session)
+          ?? toBoundedNumber(selectedOption?.price_per_session);
+        const selectedOptionTotal = toBoundedNumber(serverOption?.total_price);
+        // Lesson/session count shown as "duration" and used for per-lesson totals: the
+        // package's configured number_of_sessions → a validated weeks selection → the date
+        // span (FLOOR, not round — a holiday week must not inflate the count to 11).
+        const durationWeeks = toBoundedNumber(serverOption?.number_of_sessions, 520)
+          || toBoundedNumber(metadata?.preferred_number_of_weeks, 520)
+          || (() => {
+            if (!cycleData.start_date || !cycleData.end_date) return null;
+            const weeks = Math.floor(
+              (new Date(cycleData.end_date).getTime() - new Date(cycleData.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
+            );
+            return Number.isFinite(weeks) ? Math.max(1, weeks) : null;
+          })();
 
         const standardAllowed = Array.isArray(settingsRecord.lesson_types)
           ? (settingsRecord.lesson_types as string[])
@@ -567,7 +583,9 @@ Deno.serve(async (req) => {
             if (row) perLesson = toBoundedNumber(row.price);
           }
           if (perLesson == null && cyclePricePerSession != null) perLesson = cyclePricePerSession;
-          const total = perLesson != null && durationWeeks ? perLesson * durationWeeks : null;
+          const total = selectedOption
+            ? (selectedOptionTotal ?? (perLesson != null && durationWeeks ? perLesson * durationWeeks : null))
+            : (perLesson != null && durationWeeks ? perLesson * durationWeeks : null);
           if (perLesson != null && perLesson > 0) {
             emailPriceLines.push({
               label: lt.charAt(0).toUpperCase() + lt.slice(1),
