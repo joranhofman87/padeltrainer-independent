@@ -64,8 +64,9 @@ export async function removePlayerFromAcademy(params: {
 
   const { error } = await supabase.from('academy_player_metadata').insert({
     academy_profile_id: params.academyProfileId,
+    // CHECK constraint requires exactly one of guest/profile — prefer the guest id.
     guest_player_id: params.guestPlayerId,
-    profile_id: params.profileId,
+    profile_id: params.guestPlayerId ? null : params.profileId,
     tag_ids: [],
     notes: null,
     ...removalFields,

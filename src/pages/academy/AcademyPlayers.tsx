@@ -175,7 +175,7 @@ export default function AcademyPlayers() {
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
   // Bulk selection + actions on the players table.
-  const [selected, setSelected] = useState<Map<string, BulkPlayerKey>>(new Map());
+  const [selected, setSelected] = useState<Map<string, BulkPlayerKey & { name: string }>>(new Map());
   const [bulkAction, setBulkAction] = useState<null | 'location' | 'tag' | 'note' | 'delete'>(null);
   const [bulkLocationId, setBulkLocationId] = useState('');
   const [bulkTagId, setBulkTagId] = useState('');
@@ -265,11 +265,11 @@ export default function AcademyPlayers() {
   };
 
   // --- Bulk selection + actions ---
-  const togglePlayerSelected = (p: { id: string; guest_player_id?: string | null; profile_id?: string | null }) =>
+  const togglePlayerSelected = (p: { id: string; guest_player_id?: string | null; profile_id?: string | null; full_name?: string }) =>
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(p.id)) next.delete(p.id);
-      else next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null });
+      else next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null, name: p.full_name || '' });
       return next;
     });
   const clearSelection = () => setSelected(new Map());
@@ -278,25 +278,33 @@ export default function AcademyPlayers() {
   const runBulkAction = async () => {
     const players = [...selected.values()];
     if (!activeAcademy || players.length === 0 || !bulkAction) return;
+    if (bulkAction === 'location' && !bulkLocationId) return;
+    if (bulkAction === 'tag' && !bulkTagId) return;
+    if (bulkAction === 'note' && !bulkNote.trim()) return;
     setBulkSaving(true);
     try {
-      if (bulkAction === 'location') {
-        if (!bulkLocationId) { setBulkSaving(false); return; }
-        await bulkSetLocation(activeAcademy.id, players, bulkLocationId);
-      } else if (bulkAction === 'tag') {
-        if (!bulkTagId) { setBulkSaving(false); return; }
-        await bulkAddTag(activeAcademy.id, players, bulkTagId);
-      } else if (bulkAction === 'note') {
-        if (!bulkNote.trim()) { setBulkSaving(false); return; }
-        await bulkAddNote(activeAcademy.id, players, bulkNote);
-      } else if (bulkAction === 'delete') {
-        await bulkRemovePlayers(activeAcademy.id, players, null);
-      }
-      sonnerToast.success(tTrainer('players.bulk.success', { count: players.length, defaultValue: '{{count}} players updated' }));
+      const result =
+        bulkAction === 'location' ? await bulkSetLocation(activeAcademy.id, players, bulkLocationId)
+        : bulkAction === 'tag' ? await bulkAddTag(activeAcademy.id, players, bulkTagId)
+        : bulkAction === 'note' ? await bulkAddNote(activeAcademy.id, players, bulkNote)
+        : await bulkRemovePlayers(activeAcademy.id, players, null);
+
       handlePlayerDataChanged();
+      if (result.failed.length === 0) {
+        sonnerToast.success(tTrainer('players.bulk.success', { count: result.succeeded, defaultValue: '{{count}} players updated' }));
+      } else {
+        // Partial success: report which players failed and the real reason (not a generic error).
+        const names = result.failed.map((f) => f.item.name).filter(Boolean).join(', ');
+        const reason = result.failed[0].reason;
+        sonnerToast.error(
+          tTrainer('players.bulk.partial', { ok: result.succeeded, failed: result.failed.length, defaultValue: '{{ok}} done, {{failed}} could not be processed' }),
+          { description: names ? `${names} — ${reason}` : reason },
+        );
+      }
       clearSelection();
       closeBulk();
     } catch (e) {
+      // Only reached if something fails before per-player processing (e.g. the initial read).
       sonnerToast.error(getFriendlyErrorMessage(e, tTrainer('players.bulk.error', 'Bulk action failed. Please try again.')));
     } finally {
       setBulkSaving(false);
@@ -710,7 +718,7 @@ export default function AcademyPlayers() {
                           checked={sortedPlayers.length > 0 && sortedPlayers.every((p) => selected.has(p.id))}
                           onCheckedChange={(c) => setSelected((prev) => {
                             const next = new Map(prev);
-                            if (c) sortedPlayers.forEach((p) => next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null }));
+                            if (c) sortedPlayers.forEach((p) => next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null, name: p.full_name || '' }));
                             else sortedPlayers.forEach((p) => next.delete(p.id));
                             return next;
                           })}
