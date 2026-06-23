@@ -38,6 +38,10 @@ export interface RegistrationCharge {
   total: number;
   vatRate: number;
   vatBreakdown: Record<number, { subtotal: number; vat: number }>;
+  /** The authoritative lesson/session count this charge was priced on — the SAME
+   *  number the confirmation email must show, so the email never drifts from the
+   *  invoice. number_of_sessions for a package; else the validated/floored weeks. */
+  lessonCount: number | null;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -51,6 +55,49 @@ function bounded(value: unknown, max = 10000): number | null {
 }
 
 const MAX_INVOICE_TOTAL = 100000; // defense-in-depth cap on the computed charge
+
+/** The date span rounded to whole weeks. This is the cycle's fallback duration when
+ *  there is no package and no duration_options; it is BOTH the count shown in the email
+ *  and the multiplier the invoice charges on, so the two can never disagree. (A package
+ *  cycle never reaches here — its count is the explicit number_of_sessions the academy
+ *  set, e.g. 10 for a 10-lesson term with a holiday week.) */
+function dateSpanWeeks(startDate: string | null, endDate: string | null): number | null {
+  if (!startDate || !endDate) return null;
+  const w = Math.round(
+    (new Date(endDate).getTime() - new Date(startDate).getTime()) / (7 * 24 * 60 * 60 * 1000),
+  );
+  return Number.isFinite(w) ? Math.max(1, w) : null;
+}
+
+/**
+ * The authoritative lesson/session count for a registration, resolved entirely
+ * from the cycle's current server config (never a client value). This is the SAME
+ * number used for the invoice and the confirmation email, so they cannot drift:
+ *   package selected  → its number_of_sessions (→ number_of_weeks → date span)
+ *   duration_options  → the validated weeks selection (→ date span)
+ *   otherwise         → the floored date span.
+ */
+export function resolveRegistrationLessonCount(
+  cycle: RegistrationPricingCycle,
+  selections: RegistrationSelections,
+): number | null {
+  const settings = (cycle.settings ?? {}) as Record<string, unknown>;
+  const cyclusOptions = Array.isArray(settings.cyclus_options) ? (settings.cyclus_options as Array<Record<string, unknown>>) : [];
+  const label = typeof selections.cyclusOptionLabel === "string" ? selections.cyclusOptionLabel : null;
+  const pkg = label ? cyclusOptions.find((o) => typeof o?.label === "string" && o.label === label) ?? null : null;
+  const dateWeeks = dateSpanWeeks(cycle.start_date, cycle.end_date);
+  if (pkg) {
+    return bounded(pkg.number_of_sessions, 520) ?? bounded(pkg.number_of_weeks, 520) ?? dateWeeks;
+  }
+  const durationOptions = Array.isArray(settings.duration_options)
+    ? (settings.duration_options as unknown[]).map((n) => bounded(n, 520)).filter((n): n is number => n != null)
+    : [];
+  if (durationOptions.length > 0) {
+    const requested = bounded(selections.durationWeeks, 520);
+    return requested != null && durationOptions.includes(requested) ? requested : dateWeeks;
+  }
+  return dateWeeks;
+}
 
 /**
  * Compute what a registration sign-up should be charged, entirely from the
@@ -83,11 +130,7 @@ export function computeRegistrationCharge(
   const durationOptions = Array.isArray(settings.duration_options)
     ? (settings.duration_options as unknown[]).map((n) => bounded(n, 520)).filter((n): n is number => n != null)
     : [];
-  const dateWeeks = (() => {
-    if (!cycle.start_date || !cycle.end_date) return null;
-    const w = Math.round((new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000));
-    return Number.isFinite(w) ? Math.max(1, w) : null;
-  })();
+  const dateWeeks = dateSpanWeeks(cycle.start_date, cycle.end_date);
   let weeks: number | null;
   if (pkg) {
     weeks = bounded(pkg.number_of_weeks, 520) ?? dateWeeks ?? 1;
@@ -178,5 +221,5 @@ export function computeRegistrationCharge(
 
   if (!(total > 0) || total > MAX_INVOICE_TOTAL) return null;
 
-  return { lineItems, subtotal, vatAmount, total, vatRate: defaultVat, vatBreakdown };
+  return { lineItems, subtotal, vatAmount, total, vatRate: defaultVat, vatBreakdown, lessonCount: resolveRegistrationLessonCount(cycle, selections) };
 }
