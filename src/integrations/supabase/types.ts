@@ -6561,6 +6561,26 @@ export type Database = {
           trainer_profile_id: string | null
           updated_at: string | null
         }
+        Insert: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          joined_at?: string | null
+          show_on_academy_page?: boolean | null
+          status?: string | null
+          trainer_profile_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          academy_profile_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          joined_at?: string | null
+          show_on_academy_page?: boolean | null
+          status?: string | null
+          trainer_profile_id?: string | null
+          updated_at?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "academy_trainers_academy_profile_id_fkey"
@@ -6573,7 +6593,21 @@ export type Database = {
             foreignKeyName: "academy_trainers_academy_profile_id_fkey"
             columns: ["academy_profile_id"]
             isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
             referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
             referencedColumns: ["id"]
           },
           {
@@ -6581,6 +6615,13 @@ export type Database = {
             columns: ["trainer_profile_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_trainers_trainer_profile_id_fkey"
+            columns: ["trainer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
             referencedColumns: ["id"]
           },
           {
@@ -7350,6 +7391,23 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_academy_cyclus_labels: {
+        Args: { p_academy_profile_id: string }
+        Returns: {
+          cycle_id: string
+          earliest_start: string
+          first_names: string[]
+          location_name: string
+        }[]
+      }
+      get_academy_invoice_cancelled_count: {
+        Args: {
+          p_academy_profile_id: string
+          p_location_id?: string
+          p_trainer_id?: string
+        }
+        Returns: number
+      }
       get_academy_invoice_delivery_summary: {
         Args: {
           p_academy_profile_id: string
@@ -7369,6 +7427,23 @@ export type Database = {
         Args: {
           p_academy_profile_id: string
           p_location_id?: string
+          p_trainer_id?: string
+        }
+        Returns: {
+          count_draft: number
+          count_paid: number
+          count_unpaid: number
+          sum_unpaid: number
+        }[]
+      }
+      get_academy_invoice_summary_filtered: {
+        Args: {
+          p_academy_profile_id: string
+          p_delivery?: string
+          p_location_id?: string
+          p_no_email?: boolean
+          p_search?: string
+          p_status?: string
           p_trainer_id?: string
         }
         Returns: {
@@ -7977,3 +8052,4 @@ export const Constants = {
     },
   },
 } as const
+
