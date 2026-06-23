@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
@@ -227,11 +226,6 @@ export default function FollowingList() {
                           <MapPin className="h-3 w-3" />
                           {trainer.location}
                         </p>
-                      )}
-                      {trainer.hourly_rate && (
-                        <Badge variant="secondary" className="mt-1">
-                          €{trainer.hourly_rate}/hr
-                        </Badge>
                       )}
                     </div>
 

@@ -139,21 +139,12 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     };
     if (facts?.bio) personSchema.description = facts.bio.slice(0, 500);
     if (facts?.city) personSchema.address = { "@type": "PostalAddress", addressLocality: facts.city };
-    if (facts?.hourlyRate) {
-      personSchema.makesOffer = {
-        "@type": "Offer",
-        priceCurrency: "EUR",
-        price: facts.hourlyRate,
-        itemOffered: { "@type": "Service", name: "Padel coaching session" },
-      };
-    }
     const ar = facts ? aggregateRatingSchema(facts.avgRating, facts.reviewCount) : null;
     if (ar) personSchema.aggregateRating = ar;
 
     const tldrParts: string[] = [];
     if (facts?.city) tldrParts.push(`Based in ${facts.city}`);
     if (facts?.experienceYears) tldrParts.push(`${facts.experienceYears}+ years coaching`);
-    if (facts?.hourlyRate) tldrParts.push(`From €${facts.hourlyRate}/hour`);
     if (facts?.avgRating && facts.reviewCount > 0) tldrParts.push(`${facts.avgRating}★ (${facts.reviewCount} reviews)`);
     if (facts?.specializations?.length) tldrParts.push(`Specializes in ${facts.specializations.slice(0, 3).join(', ')}`);
     const tldr = tldrParts.length ? tldrParts.join(' · ') + '.' : `Padel trainer on PadelTrainer.ai.`;
@@ -161,7 +152,7 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     const faqs = trainerFaqs(displayName, lang);
     const description = facts?.bio
       ? facts.bio.slice(0, 155)
-      : `Book padel lessons with ${displayName}${facts?.city ? ` in ${facts.city}` : ''}. ${facts?.hourlyRate ? `From €${facts.hourlyRate}/hr. ` : ''}View profile, experience and reviews.`;
+      : `Book padel lessons with ${displayName}${facts?.city ? ` in ${facts.city}` : ''}. View profile, experience and reviews.`;
 
     const reviewSds = facts ? reviewSchemas(facts.recentReviews, displayName) : [];
     const sd: object[] = [
@@ -210,7 +201,6 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     const tldrParts: string[] = [];
     if (facts?.trainerCount) tldrParts.push(`${facts.trainerCount} certified trainers`);
     if (facts?.locationCount) tldrParts.push(`${facts.locationCount} padel clubs`);
-    if (facts?.minRate && facts?.maxRate) tldrParts.push(`Lessons €${facts.minRate}–€${facts.maxRate}/hr (avg €${facts.avgRate})`);
     const tldr = tldrParts.length
       ? `${tldrParts.join(' · ')}.`
       : `Find and book certified padel trainers in ${city}.`;
@@ -218,7 +208,7 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     const faqs = cityFaqs(city, lang);
     const canonicalUrl = `${SITE_URL}/${lang}/trainers/${citySlug}`;
     const description = facts?.trainerCount
-      ? `${facts.trainerCount} certified padel trainers in ${city}${facts.minRate && facts.maxRate ? ` from €${facts.minRate}–€${facts.maxRate}/hr` : ''}. Compare rates, read verified reviews, and book your first lesson.`
+      ? `${facts.trainerCount} certified padel trainers in ${city}. Read verified reviews, and book your first lesson.`
       : `Find certified padel trainers in ${city}. Compare rates, read reviews, and book your first lesson today.`;
 
     return page(
@@ -289,7 +279,6 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     const tldrParts: string[] = [];
     if (facts?.locationCount) tldrParts.push(`${facts.locationCount} padel clubs`);
     if (facts?.trainerCount) tldrParts.push(`${facts.trainerCount} certified coaches`);
-    if (facts?.minRate && facts?.maxRate) tldrParts.push(`Lessons €${facts.minRate}–€${facts.maxRate}/hr`);
     const tldr = tldrParts.length ? `${tldrParts.join(' · ')}.` : `Discover padel in ${city}.`;
     const canonicalUrl = `${SITE_URL}/${lang}/padel/${citySlug}`;
 

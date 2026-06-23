@@ -392,14 +392,14 @@ export default function TrainerProfile() {
           name: profile.full_name || 'this trainer',
           location: profile.location || 'the Netherlands',
           experience: trainer.experience_years ? `${trainer.experience_years} years of experience. ` : '',
-          rate: trainer.hourly_rate ? `€${trainer.hourly_rate}/hour.` : ''
+          rate: ''
         })}
         url={`/trainer/${trainerSlug}`}
         image={profile.avatar_url || buildDynamicOgUrl({
           type: 'trainer',
           eyebrow: profile.location ? `Padel coach · ${profile.location}` : 'Padel coach',
           title: profile.full_name || 'Padel Trainer',
-          subtitle: trainer.hourly_rate ? `From €${trainer.hourly_rate}/hour · Book on PadelTrainer.ai` : 'Book on PadelTrainer.ai',
+          subtitle: 'Book on PadelTrainer.ai',
         })}
         structuredData={[structuredData, breadcrumbData].filter(Boolean) as object[]}
       />
