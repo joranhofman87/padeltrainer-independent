@@ -799,7 +799,7 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
       // Localized lesson type labels
       const lessonTypeLabels: Record<string, Record<string, string>> = {
         en: { private: 'Private (1:1)', duo: 'Duo (2 players)', group: 'Group (3 or 4 players)', group3: 'Group (3 players)', group4: 'Group (4 players)', kids: 'Kids Training' },
-        nl: { private: 'Privé (1:1)', duo: 'Duo (2 spelers)', group: 'Groep (3 of 4 spelers)', group3: 'Groep (3 spelers)', group4: 'Groep (4 spelers)', kids: 'Kindertraining' },
+        nl: { private: 'Privé (1:1)', duo: 'Duo (2 spelers)', group: 'Groep (3 of 4 spelers)', group3: 'Groep (3 spelers)', group4: 'Groep (4 spelers)', kids: 'Jeugdtraining' },
         es: { private: 'Privado (1:1)', duo: 'Dúo (2 jugadores)', group: 'Grupo (3 o 4 jugadores)', group3: 'Grupo (3 jugadores)', group4: 'Grupo (4 jugadores)', kids: 'Entrenamiento infantil' },
         de: { private: 'Privat (1:1)', duo: 'Duo (2 Spieler)', group: 'Gruppe (3 oder 4 Spieler)', group3: 'Gruppe (3 Spieler)', group4: 'Gruppe (4 Spieler)', kids: 'Kindertraining' },
         fr: { private: 'Privé (1:1)', duo: 'Duo (2 joueurs)', group: 'Groupe (3 ou 4 joueurs)', group3: 'Groupe (3 joueurs)', group4: 'Groupe (4 joueurs)', kids: 'Entraînement enfants' },
