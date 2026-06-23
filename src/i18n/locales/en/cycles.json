@@ -917,6 +917,7 @@
     "errPreview": "Could not load the preview. Please try again.",
     "alreadyExists": "A round with this name and start date already exists. Give the new round a different name or date.",
     "success": "{{groups}} group(s) · {{players}} players invited · {{invites}} emails",
+    "invitesPartial": "{{count}} invitation(s) could not be sent. The round was created; those players can also respond from their dashboard.",
     "errSubmit": "Could not create the round. Please try again.",
     "title": "Set up the next round",
     "subtitle": "Pick a cycle, a start date and the number of weeks. We create one new round and give your current players first chance to keep their spot.",

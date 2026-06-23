@@ -193,6 +193,15 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
           invites: Number(data?.invitesSent ?? 0),
         }),
       );
+      // The round + claims are committed even if some invite emails didn't go out —
+      // warn so the admin knows, rather than silently dropping it. Those players can
+      // still respond via their dashboard (PlayerRebookCard).
+      const failedCount = Array.isArray(data?.failedClaimIds) ? data.failedClaimIds.length : 0;
+      if (failedCount > 0) {
+        toast.warning(
+          t('newRound.invitesPartial', '{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.', { count: failedCount }),
+        );
+      }
       navigate(backHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));

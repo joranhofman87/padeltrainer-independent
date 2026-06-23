@@ -1052,6 +1052,7 @@
     "errPreview": "Kon de preview niet ophalen. Probeer het opnieuw.",
     "alreadyExists": "Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.",
     "success": "{{groups}} groep(en) · {{players}} spelers uitgenodigd · {{invites}} e-mails",
+    "invitesPartial": "{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.",
     "errSubmit": "Kon de ronde niet aanmaken. Probeer het opnieuw.",
     "title": "Volgende ronde opzetten",
     "subtitle": "Kies een cyclus, een startdatum en het aantal weken. We maken één nieuwe ronde aan en geven je huidige spelers als eerste de kans hun vaste plek te houden.",
