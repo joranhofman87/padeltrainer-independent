@@ -71,6 +71,7 @@ interface EmailRequest {
     endDate?: string;
     enrollmentDeadline?: string;
     lessonTypes?: string[];
+    lessonTypeLabels?: string[];
     preferredDurationMinutes?: number;
     sessionsPerWeek?: number;
     locationName?: string;
@@ -830,8 +831,13 @@ const getEmailContent = (type: string, data: EmailRequest["data"], language?: st
       const summaryRows: string[] = [];
       if (data.phone) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.phone}:</strong> ${data.phone}</p>`);
       if (data.birthDate) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.birthDate}:</strong> ${formatDate(data.birthDate) || data.birthDate}</p>`);
-      if (data.lessonTypes && data.lessonTypes.length > 0) {
-        const translatedTypes = data.lessonTypes.map((lt: string) => ltLabels[lt] || lt);
+      if ((data.lessonTypeLabels && data.lessonTypeLabels.length > 0) || (data.lessonTypes && data.lessonTypes.length > 0)) {
+        // Prefer labels already resolved by the form (single source of truth, so a
+        // label change in the form's i18n flows through here). Fall back to the local
+        // map only for older callers that send raw lesson-type keys.
+        const translatedTypes = (data.lessonTypeLabels && data.lessonTypeLabels.length > 0)
+          ? data.lessonTypeLabels
+          : (data.lessonTypes || []).map((lt: string) => ltLabels[lt] || lt);
         summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.lessonType}:</strong> ${translatedTypes.join(', ')}</p>`);
       }
       if (data.preferredDurationMinutes) summaryRows.push(`<p style="margin: 4px 0;"><strong>${t.duration}:</strong> ${data.preferredDurationMinutes} ${t.min}</p>`);

@@ -384,6 +384,14 @@ export default function CycleApplicationForm({
           }
         }
 
+        // Resolve lesson-type labels from the form's own i18n so the email shows exactly
+        // what the registrant saw — single source of truth, no separate email label map.
+        const emailLessonTypeLabels = values.lesson_types.map((lt: string) =>
+          (STANDARD_LESSON_TYPES as readonly string[]).includes(lt)
+            ? t(`application.form.lessonTypes.${lt}`)
+            : lt.charAt(0).toUpperCase() + lt.slice(1)
+        );
+
         sendEmail('intake_registration_confirmation', values.email, {
           playerName: fullName,
           cycleName: cycle.name,
@@ -395,6 +403,7 @@ export default function CycleApplicationForm({
           enrollmentDeadline: cycle.enrollment_deadline || undefined,
           locationName,
           lessonTypes: values.lesson_types,
+          lessonTypeLabels: emailLessonTypeLabels,
           preferredDurationMinutes: values.preferred_duration_minutes,
           sessionsPerWeek: values.sessions_per_week,
           rating: values.rating,
