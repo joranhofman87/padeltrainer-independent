@@ -11,12 +11,14 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronDown, Eye, Send, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Eye, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { getAcademyLocationsWithDetails } from '@/lib/academy';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
+import { HolidayRangeEditor } from './HolidayRangeEditor';
+import { RebookAccessWindows } from './RebookAccessWindows';
 
 interface Props {
   academyProfileId: string;
@@ -146,11 +148,6 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       holidays,
     ],
   );
-
-  const addHoliday = () => setHolidays((prev) => [...prev, { name: '', from: '', to: '' }]);
-  const updateHoliday = (i: number, patch: Partial<HolidayRange>) =>
-    setHolidays((prev) => prev.map((h, idx) => (idx === i ? { ...h, ...patch } : h)));
-  const removeHoliday = (i: number) => setHolidays((prev) => prev.filter((_, idx) => idx !== i));
 
   const inputsValid = selectedLocationIds.size > 0 && Boolean(termEndDate) && Boolean(newStartDate);
 
@@ -359,42 +356,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rebookCohort.holidays', 'Vakanties (geen training)')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {t('rebookCohort.holidaysHint', 'Geef vakantieperiodes op. Op deze dagen wordt niets ingepland.')}
-          </p>
-          {holidays.map((h, i) => (
-            <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
-              <div>
-                <Label className="text-xs">{t('rebookCohort.holidayName', 'Naam')}</Label>
-                <Input
-                  value={h.name}
-                  onChange={(e) => updateHoliday(i, { name: e.target.value })}
-                  placeholder={t('rebookCohort.holidayNamePlaceholder', 'bv. Herfstvakantie')}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">{t('rebookCohort.holidayFrom', 'Van')}</Label>
-                <Input type="date" value={h.from} onChange={(e) => updateHoliday(i, { from: e.target.value })} />
-              </div>
-              <div>
-                <Label className="text-xs">{t('rebookCohort.holidayTo', 'Tot en met')}</Label>
-                <Input type="date" value={h.to} onChange={(e) => updateHoliday(i, { to: e.target.value })} />
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => removeHoliday(i)} aria-label={t('rebookCohort.removeHoliday', 'Verwijderen')}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" onClick={addHoliday}>
-            <Plus className="h-4 w-4 mr-1" /> {t('rebookCohort.addHoliday', 'Vakantie toevoegen')}
-          </Button>
-        </CardContent>
-      </Card>
+      <HolidayRangeEditor holidays={holidays} onChange={setHolidays} />
 
       <Card>
         <CardHeader>
@@ -418,47 +380,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
 
       {showAdvanced && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('rebookCohort.windows', 'Voorrang en ledenvenster')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="max-w-xs">
-                <Label>{t('rebookCohort.priorityDays', 'Hoeveel dagen krijgen spelers voorrang?')}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={priorityWindowDays}
-                  onChange={(e) => setPriorityWindowDays(Number(e.target.value))}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t('rebookCohort.priorityHint', 'De plek blijft gereserveerd totdat de speler nee zegt of deze periode voorbij is.')}
-                </p>
-              </div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <Checkbox checked={enableMemberWindow} onCheckedChange={(v) => setEnableMemberWindow(Boolean(v))} />
-                <span className="text-sm">
-                  {t('rebookCohort.enableMemberWindow', 'Geef spelers uit de vorige ronde eerder toegang dan het publiek')}
-                </span>
-              </label>
-              {enableMemberWindow && (
-                <div className="max-w-xs">
-                  <Label>{t('rebookCohort.memberDays', 'Lengte ledenvenster (dagen)')}</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={memberWindowDays}
-                    onChange={(e) => setMemberWindowDays(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t('rebookCohort.memberHint', 'Na het voorrangsvenster kunnen alleen spelers uit de vorige ronde nog boeken of wisselen.')}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <RebookAccessWindows
+            priorityWindowDays={priorityWindowDays}
+            setPriorityWindowDays={setPriorityWindowDays}
+            enableMemberWindow={enableMemberWindow}
+            setEnableMemberWindow={setEnableMemberWindow}
+            memberWindowDays={memberWindowDays}
+            setMemberWindowDays={setMemberWindowDays}
+          />
 
           <Card>
             <CardHeader>
