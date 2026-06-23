@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Columns3, Tags, MapPin, Tag, StickyNote, Trash2, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
@@ -63,6 +63,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
 import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { toast as sonnerToast } from 'sonner';
+import { bulkAddTag, bulkAddNote, bulkSetLocation, bulkRemovePlayers, type BulkPlayerKey } from '@/lib/academyPlayerBulk';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { PlayerTag, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
 
@@ -168,6 +174,13 @@ export default function AcademyPlayers() {
   // Dialogs
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showImportPlayers, setShowImportPlayers] = useState(false);
+  // Bulk selection + actions on the players table.
+  const [selected, setSelected] = useState<Map<string, BulkPlayerKey>>(new Map());
+  const [bulkAction, setBulkAction] = useState<null | 'location' | 'tag' | 'note' | 'delete'>(null);
+  const [bulkLocationId, setBulkLocationId] = useState('');
+  const [bulkTagId, setBulkTagId] = useState('');
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   // Column customization
   type ColumnKey =
@@ -249,6 +262,45 @@ export default function AcademyPlayers() {
   // Tag/notes edits refresh every player view through the central subtree.
   const handlePlayerDataChanged = () => {
     if (activeAcademy) invalidateAllPlayerData(queryClient, { kind: 'academy', id: activeAcademy.id });
+  };
+
+  // --- Bulk selection + actions ---
+  const togglePlayerSelected = (p: { id: string; guest_player_id?: string | null; profile_id?: string | null }) =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(p.id)) next.delete(p.id);
+      else next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null });
+      return next;
+    });
+  const clearSelection = () => setSelected(new Map());
+  const closeBulk = () => { setBulkAction(null); setBulkLocationId(''); setBulkTagId(''); setBulkNote(''); };
+
+  const runBulkAction = async () => {
+    const players = [...selected.values()];
+    if (!activeAcademy || players.length === 0 || !bulkAction) return;
+    setBulkSaving(true);
+    try {
+      if (bulkAction === 'location') {
+        if (!bulkLocationId) { setBulkSaving(false); return; }
+        await bulkSetLocation(activeAcademy.id, players, bulkLocationId);
+      } else if (bulkAction === 'tag') {
+        if (!bulkTagId) { setBulkSaving(false); return; }
+        await bulkAddTag(activeAcademy.id, players, bulkTagId);
+      } else if (bulkAction === 'note') {
+        if (!bulkNote.trim()) { setBulkSaving(false); return; }
+        await bulkAddNote(activeAcademy.id, players, bulkNote);
+      } else if (bulkAction === 'delete') {
+        await bulkRemovePlayers(activeAcademy.id, players, null);
+      }
+      sonnerToast.success(tTrainer('players.bulk.success', { count: players.length, defaultValue: '{{count}} players updated' }));
+      handlePlayerDataChanged();
+      clearSelection();
+      closeBulk();
+    } catch (e) {
+      sonnerToast.error(getFriendlyErrorMessage(e, tTrainer('players.bulk.error', 'Bulk action failed. Please try again.')));
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   const trainerNameMap = useMemo(() => new Map(trainers.map((tr) => [tr.id, tr.name])), [trainers]);
@@ -425,6 +477,29 @@ export default function AcademyPlayers() {
 
         {/* All Players Tab */}
         <TabsContent value="all-players" className="space-y-3 mt-3">
+          {selected.size > 0 && (
+            <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border bg-background p-2 shadow-sm">
+              <span className="px-1 text-sm font-medium">
+                {tTrainer('players.bulk.selected', { count: selected.size, defaultValue: '{{count}} selected' })}
+              </span>
+              <div className="flex-1" />
+              <Button variant="outline" size="sm" onClick={() => setBulkAction('location')}>
+                <MapPin className="h-4 w-4" />{tTrainer('players.bulk.addLocation', 'Add location')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBulkAction('tag')}>
+                <Tag className="h-4 w-4" />{tTrainer('players.bulk.addTag', 'Add tag')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBulkAction('note')}>
+                <StickyNote className="h-4 w-4" />{tTrainer('players.bulk.addNote', 'Add note')}
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => setBulkAction('delete')}>
+                <Trash2 className="h-4 w-4" />{tTrainer('players.bulk.delete', 'Delete')}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={clearSelection} aria-label={tTrainer('players.bulk.clear', 'Clear selection')}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
           <TableToolbar
             searchPlaceholder={tTrainer('players.searchPlayers')}
             searchValue={searchQuery}
@@ -630,6 +705,18 @@ export default function AcademyPlayers() {
                 <Table className={compactDataTableClass}>
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
+                      <TableHead className="w-8">
+                        <Checkbox
+                          checked={sortedPlayers.length > 0 && sortedPlayers.every((p) => selected.has(p.id))}
+                          onCheckedChange={(c) => setSelected((prev) => {
+                            const next = new Map(prev);
+                            if (c) sortedPlayers.forEach((p) => next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null }));
+                            else sortedPlayers.forEach((p) => next.delete(p.id));
+                            return next;
+                          })}
+                          aria-label={tTrainer('players.bulk.selectAll', 'Select all on page')}
+                        />
+                      </TableHead>
                       <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
                         {tTrainer('players.name')}
                       </SortableHeader>
@@ -663,7 +750,14 @@ export default function AcademyPlayers() {
                   </TableHeader>
                   <TableBody>
                     {sortedPlayers.map((player) => (
-                      <TableRow key={player.id} className="h-10 max-h-10">
+                      <TableRow key={player.id} className="h-10 max-h-10" data-state={selected.has(player.id) ? 'selected' : undefined}>
+                        <TableCell className="w-8">
+                          <Checkbox
+                            checked={selected.has(player.id)}
+                            onCheckedChange={() => togglePlayerSelected(player)}
+                            aria-label={tTrainer('players.bulk.selectRow', 'Select player')}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium whitespace-nowrap max-w-[260px] min-w-0 overflow-hidden" title={player.full_name}>
                           <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                             <Link
@@ -935,6 +1029,59 @@ export default function AcademyPlayers() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Bulk action dialog */}
+      <Dialog open={!!bulkAction} onOpenChange={(o) => { if (!o) closeBulk(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === 'location' && tTrainer('players.bulk.addLocation', 'Add location')}
+              {bulkAction === 'tag' && tTrainer('players.bulk.addTag', 'Add tag')}
+              {bulkAction === 'note' && tTrainer('players.bulk.addNote', 'Add note')}
+              {bulkAction === 'delete' && tTrainer('players.bulk.deleteTitle', 'Remove players')}
+            </DialogTitle>
+            <DialogDescription>
+              {tTrainer('players.bulk.appliesTo', { count: selected.size, defaultValue: 'Applies to {{count}} selected players.' })}
+            </DialogDescription>
+          </DialogHeader>
+          {bulkAction === 'location' && (
+            <Select value={bulkLocationId} onValueChange={setBulkLocationId}>
+              <SelectTrigger><SelectValue placeholder={tTrainer('players.bulk.chooseLocation', 'Choose a location')} /></SelectTrigger>
+              <SelectContent>{allLocations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          {bulkAction === 'tag' && (
+            <Select value={bulkTagId} onValueChange={setBulkTagId}>
+              <SelectTrigger><SelectValue placeholder={tTrainer('players.bulk.chooseTag', 'Choose a tag')} /></SelectTrigger>
+              <SelectContent>{tags.map((tg) => <SelectItem key={tg.id} value={tg.id}>{tg.name}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          {bulkAction === 'note' && (
+            <Textarea value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} rows={4}
+              placeholder={tTrainer('players.bulk.notePlaceholder', 'Note to add to each selected player')} />
+          )}
+          {bulkAction === 'delete' && (
+            <p className="text-sm text-muted-foreground">
+              {tTrainer('players.bulk.deleteConfirm', 'These players will be removed from your roster (this can be undone later). Their bookings and history are kept.')}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeBulk} disabled={bulkSaving}>{tTrainer('common.cancel', 'Cancel')}</Button>
+            <Button
+              variant={bulkAction === 'delete' ? 'destructive' : 'default'}
+              onClick={runBulkAction}
+              disabled={bulkSaving
+                || (bulkAction === 'location' && !bulkLocationId)
+                || (bulkAction === 'tag' && !bulkTagId)
+                || (bulkAction === 'note' && !bulkNote.trim())}
+            >
+              {bulkSaving
+                ? tTrainer('common.saving', 'Saving…')
+                : bulkAction === 'delete' ? tTrainer('players.bulk.delete', 'Delete') : tTrainer('common.apply', 'Apply')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Player Dialog */}
       <AddPlayerDialog
