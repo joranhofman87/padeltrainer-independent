@@ -273,6 +273,7 @@
       "preferences": "Trainingsvoorkeuren",
       "lessonType": "Lesvorm",
       "lessonTypeRequired": "Selecteer minimaal één lesvorm",
+      "selectCyclusRequired": "Kies een pakket om door te gaan.",
       "lessonTypes": {
         "private": "Privé (1:1)",
         "duo": "Duo (2 spelers)",

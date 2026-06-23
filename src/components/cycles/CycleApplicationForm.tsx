@@ -216,6 +216,13 @@ export default function CycleApplicationForm({
 
   const onSubmit = async (values: FormValues) => {
     if (isSubmitting) return;
+    // A cycle that offers packages (e.g. Leden / Niet-leden) prices ONLY via the chosen
+    // package: without one there is no amount to invoice and the duration is ambiguous.
+    // Require the choice before submit so every registration is priced and dated correctly.
+    if (hasCyclusOptions && !selectedCyclusOption) {
+      toast.error(t('application.form.selectCyclusRequired', 'Kies een pakket om door te gaan.'));
+      return;
+    }
     setIsSubmitting(true);
     const nameFields = buildGuestPlayerDbFields(values.first_name, values.last_name);
     const fullName = nameFields.full_name;
