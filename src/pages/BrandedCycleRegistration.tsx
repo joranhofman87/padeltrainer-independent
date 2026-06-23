@@ -127,21 +127,21 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
 
       const trainersPromise = ownerType === 'academy'
         ? (async () => {
+            // Anon-readable view + safe views — base tables are not anon-readable.
             const { data: academyTrainers } = await supabase
-              .from('academy_trainers')
+              .from('academy_trainers_public')
               .select('trainer_profile_id')
-              .eq('academy_profile_id', cycleData.owner_id)
-              .eq('status', 'active');
+              .eq('academy_profile_id', cycleData.owner_id);
             if (!academyTrainers?.length) return [];
             const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
             const { data: trainerProfiles } = await supabase
-              .from('trainer_profiles')
+              .from('trainer_profiles_safe')
               .select('id, user_id')
               .in('id', trainerIds);
             if (!trainerProfiles) return [];
             const userIds = trainerProfiles.map(tp => tp.user_id);
             const { data: profiles } = await supabase
-              .from('profiles')
+              .from('profiles_public')
               .select('user_id, full_name')
               .in('user_id', userIds);
             if (!profiles) return [];

@@ -59,12 +59,12 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
 
   const fetchOpenSlots = async () => {
     try {
-      // Fetch active trainer IDs for this academy
+      // Fetch active trainer IDs for this academy. Uses the anon-readable view —
+      // the base academy_trainers table is not anon-readable.
       const { data: trainerRows } = await supabase
-        .from('academy_trainers')
+        .from('academy_trainers_public')
         .select('trainer_profile_id')
-        .eq('academy_profile_id', academyId)
-        .eq('status', 'active');
+        .eq('academy_profile_id', academyId);
 
       const trainerIds = (trainerRows || []).map(t => t.trainer_profile_id);
 
@@ -117,7 +117,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
       const trainerMap: Record<string, { slug: string | null; user_id: string | null }> = {};
       if (slotTrainerIds.length > 0) {
         const { data: trainerProfiles } = await supabase
-          .from('trainer_profiles' as any)
+          .from('trainer_profiles_safe' as any)
           .select('id, slug, user_id')
           .in('id', slotTrainerIds);
         (trainerProfiles || []).forEach((tp: any) => {
@@ -130,7 +130,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublic
       const nameMap: Record<string, string> = {};
       if (userIds.length > 0) {
         const { data: profiles } = await supabase
-          .from('profiles' as any)
+          .from('profiles_public' as any)
           .select('user_id, full_name')
           .in('user_id', userIds);
         (profiles || []).forEach((p: any) => {

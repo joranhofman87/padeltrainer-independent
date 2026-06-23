@@ -52,20 +52,29 @@ export function LocationOpenCycles({ locationId, locationName: _locationName, cl
           }
         }
 
-        // Fetch academy slugs for trainer-owned cycles via academy_trainers
+        // Fetch academy slugs for trainer-owned cycles via the anon-readable view.
+        // The slug is resolved through academy_profiles_public because neither the
+        // academy_trainers nor academy_profiles base tables are anon-readable.
         const trainerOwnerIds = [...new Set(cyclesData.filter(c => c.owner_type === 'trainer').map(c => c.owner_id))];
         if (trainerOwnerIds.length > 0) {
           const { data: trainerAcademies } = await supabase
-            .from('academy_trainers')
-            .select('trainer_profile_id, academy_profile:academy_profiles(slug)')
-            .in('trainer_profile_id', trainerOwnerIds)
-            .eq('status', 'active');
-          if (trainerAcademies) {
+            .from('academy_trainers_public')
+            .select('trainer_profile_id, academy_profile_id')
+            .in('trainer_profile_id', trainerOwnerIds);
+          if (trainerAcademies && trainerAcademies.length > 0) {
+            const academyIds = [...new Set(
+              trainerAcademies.map(ta => ta.academy_profile_id).filter((id): id is string => Boolean(id)),
+            )];
+            const { data: academies } = await supabase
+              .from('academy_profiles_public')
+              .select('id, slug')
+              .in('id', academyIds);
+            const slugById = new Map((academies || []).map(a => [a.id, a.slug]));
             const tMap: Record<string, string> = {};
-            trainerAcademies.forEach((ta: any) => {
-              if (ta.academy_profile?.slug) {
-                tMap[ta.trainer_profile_id] = ta.academy_profile.slug;
-              }
+            trainerAcademies.forEach(ta => {
+              const tpid = ta.trainer_profile_id;
+              const slug = slugById.get(ta.academy_profile_id);
+              if (tpid && slug) tMap[tpid] = slug;
             });
             setTrainerAcademySlugs(tMap);
           }

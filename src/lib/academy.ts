@@ -943,34 +943,35 @@ export async function cancelAcademyInvitation(invitationId: string): Promise<boo
 
 // ===== PUBLIC PROFILE FUNCTIONS =====
 
-// Get public trainers for an academy (for public profile page)
+// Get public trainers for an academy (for public profile page).
+// Reads academy_trainers_public — a postgres-owned view that is anon-readable and
+// already filters to active, shown trainers of verified+public academies. The base
+// academy_trainers table is NOT anon-readable (its public RLS policy depends on a
+// now-locked academy_profiles subquery), so anon must go through the view. Trainer
+// profiles are fetched in a separate query rather than embedded, since PostgREST
+// cannot reliably embed one view (trainer_profiles_safe) off another (the view).
 export async function getPublicAcademyTrainers(academyProfileId: string): Promise<any[]> {
-  const { data, error } = await supabase
-    .from('academy_trainers')
-    .select(`
-      id,
-      trainer_profile_id,
-      trainer_profile:trainer_profiles_safe(
-        id,
-        user_id,
-        slug,
-        hourly_rate,
-        experience_years,
-        specializations,
-        certifications,
-        is_verified
-      )
-    `)
-    .eq('academy_profile_id', academyProfileId)
-    .eq('status', 'active')
-    .eq('show_on_academy_page', true);
+  const { data: rows, error } = await supabase
+    .from('academy_trainers_public')
+    .select('id, trainer_profile_id')
+    .eq('academy_profile_id', academyProfileId);
 
   if (error) {
     logger.error('Error fetching public academy trainers', undefined, { error });
     return [];
   }
 
-  if (!data || data.length === 0) return [];
+  if (!rows || rows.length === 0) return [];
+
+  // Batch fetch trainer profiles from the anon-readable safe view.
+  const trainerProfileIds = rows.map(t => t.trainer_profile_id).filter((id): id is string => Boolean(id));
+  const { data: trainerProfiles } = await supabase
+    .from('trainer_profiles_safe')
+    .select('id, user_id, slug, hourly_rate, experience_years, specializations, certifications, is_verified')
+    .in('id', trainerProfileIds);
+  const trainerProfileMap = new Map((trainerProfiles || []).map(tp => [tp.id, tp]));
+
+  const data = rows.map(t => ({ ...t, trainer_profile: trainerProfileMap.get(t.trainer_profile_id) || null }));
 
   // Batch fetch profiles
   const userIds = data.map((t: any) => t.trainer_profile?.user_id).filter(Boolean);

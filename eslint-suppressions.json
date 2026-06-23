@@ -151,11 +151,6 @@
       "count": 1
     }
   },
-  "src/components/club/LocationOpenCycles.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
-  },
   "src/components/cycles/AddIntakeRequestDialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
