@@ -76,6 +76,11 @@ const LINK_COLORS = [
 ];
 
 const STORAGE_KEY = 'intake-table-columns';
+// Bump when adding a defaultVisible column existing users (with a saved layout that
+// predates it) should see. We surface those columns once; they can still hide them after.
+const COLUMNS_VERSION = '2';
+const VERSION_KEY = 'intake-table-columns-version';
+const NEW_IN_VERSION = ['payment'];
 
 interface ColumnDef {
   key: string;
@@ -91,6 +96,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'availability', labelKey: 'intakeRequests.table.availability', defaultVisible: true },
   { key: 'preferredTrainer', labelKey: 'intakeRequests.table.preferredTrainer', defaultVisible: true },
   { key: 'status', labelKey: 'intakeRequests.table.status', defaultVisible: true },
+  { key: 'payment', labelKey: 'intakeRequests.table.payment', defaultVisible: true },
   { key: 'linked', labelKey: 'intakeRequests.links.linkedColumn', defaultVisible: true },
   { key: 'proposal', labelKey: 'proposals.title', defaultVisible: true },
   { key: 'applied', labelKey: 'intakeRequests.table.applied', defaultVisible: true },
@@ -113,6 +119,11 @@ function loadColumns(): Set<string> {
       const set = new Set(arr);
       // Always include alwaysVisible
       ALL_COLUMNS.filter(c => c.alwaysVisible).forEach(c => set.add(c.key));
+      // One-time: surface columns added after this user saved their layout (e.g. Payment).
+      if (localStorage.getItem(VERSION_KEY) !== COLUMNS_VERSION) {
+        NEW_IN_VERSION.forEach(k => set.add(k));
+        localStorage.setItem(VERSION_KEY, COLUMNS_VERSION);
+      }
       return set;
     }
   } catch { /* non-fatal: corrupt/unavailable localStorage — fall back to defaults */ }
@@ -259,6 +270,21 @@ export default function IntakeRequestsTable({
       case 'rejected': return 'bg-red-500/10 text-red-600 border-red-500/20';
       default: return 'bg-muted text-muted-foreground';
     }
+  };
+
+  // Payment status for registration/event cycles. No invoice => no payment configured
+  // (free), shown as a neutral dash so it doesn't read as "unpaid".
+  const renderPaymentBadge = (request: IntakeRequestWithProposal) => {
+    if (request.invoice_status === 'paid') {
+      return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">{t('intakeRequests.payment.paid', { defaultValue: 'Paid' })}</Badge>;
+    }
+    if (request.invoice_status === 'cancelled') {
+      return <Badge variant="outline" className="bg-muted text-muted-foreground">{t('intakeRequests.payment.cancelled', { defaultValue: 'Cancelled' })}</Badge>;
+    }
+    if (request.invoice_id) {
+      return <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">{t('intakeRequests.payment.unpaid', { defaultValue: 'Unpaid' })}</Badge>;
+    }
+    return <span className="text-muted-foreground text-sm">—</span>;
   };
 
   const formatAvailability = (request: IntakeRequestWithProposal) => {
@@ -623,6 +649,7 @@ export default function IntakeRequestsTable({
                   {isVisible('availability') && <TableHead>{t('intakeRequests.table.availability')}</TableHead>}
                   {isVisible('preferredTrainer') && <TableHead>{t('intakeRequests.table.preferredTrainer')}</TableHead>}
                   {isVisible('status') && <TableHead>{t('intakeRequests.table.status')}</TableHead>}
+                  {isVisible('payment') && <TableHead>{t('intakeRequests.table.payment', { defaultValue: 'Payment' })}</TableHead>}
                   {isVisible('linked') && <SortableTableHead sortKey="_isLinked" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</SortableTableHead>}
                   {isVisible('proposal') && <TableHead>{t('proposals.title')}</TableHead>}
                   {isVisible('applied') && <SortableTableHead sortKey="created_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.applied')}</SortableTableHead>}
@@ -695,6 +722,10 @@ export default function IntakeRequestsTable({
                           {t(`intakeRequests.filters.${request.status}`)}
                         </Badge>
                       </TableCell>
+                    )}
+
+                    {isVisible('payment') && (
+                      <TableCell>{renderPaymentBadge(request)}</TableCell>
                     )}
 
                     {isVisible('linked') && (

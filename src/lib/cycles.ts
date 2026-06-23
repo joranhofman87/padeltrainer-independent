@@ -153,6 +153,10 @@ export interface IntakeRequest {
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Payment — registration/event cycles are invoiced; null when no payment is configured.
+  invoice_id?: string | null;
+  payment_method?: string | null;
+  invoice_status?: string | null;
 }
 
 export interface ProposalDetails {
@@ -569,6 +573,26 @@ export async function getIntakeRequestsWithProposals(
 
   const requestIds = requests.map(r => r.id);
 
+  // Payment status per request: registration/event cycles mint an invoice, so surface
+  // paid/unpaid in the table. Read invoice_id straight off the rows (select('*')), then
+  // resolve each invoice's status in one query.
+  const { data: payRows } = await supabase
+    .from('intake_requests')
+    .select('id, invoice_id, payment_method')
+    .in('id', requestIds);
+  const invoiceIds = [...new Set((payRows || []).map(p => p.invoice_id).filter((x): x is string => !!x))];
+  const invoiceStatusById = new Map<string, string>();
+  if (invoiceIds.length > 0) {
+    const { data: invs } = await supabase.from('invoices').select('id, status').in('id', invoiceIds);
+    invs?.forEach(i => invoiceStatusById.set(i.id, i.status as string));
+  }
+  const payByReq = new Map<string, { invoice_id: string | null; payment_method: string | null; invoice_status: string | null }>();
+  (payRows || []).forEach(p => payByReq.set(p.id, {
+    invoice_id: p.invoice_id ?? null,
+    payment_method: p.payment_method ?? null,
+    invoice_status: p.invoice_id ? (invoiceStatusById.get(p.invoice_id) ?? null) : null,
+  }));
+
   // Fetch all proposals for these requests with slot info (no nested profile join)
   const { data: proposals, error } = await supabase
     .from('proposed_assignments')
@@ -625,8 +649,9 @@ export async function getIntakeRequestsWithProposals(
 
   // Merge proposals into requests
   return requests.map(req => {
+    const pay = payByReq.get(req.id) || { invoice_id: null, payment_method: null, invoice_status: null };
     const proposal = proposals?.find(p => p.intake_request_id === req.id);
-    if (!proposal || !proposal.slot) return req;
+    if (!proposal || !proposal.slot) return { ...req, ...pay };
 
     const groupMembers = slotGroups.get(proposal.slot_id)
       ?.filter(m => m.requestId !== req.id)
@@ -636,6 +661,7 @@ export async function getIntakeRequestsWithProposals(
 
     return {
       ...req,
+      ...pay,
       proposal: {
         slot_day: format(new Date(proposal.slot.start_time), 'EEEE'),
         slot_time: `${format(new Date(proposal.slot.start_time), 'HH:mm')} - ${format(new Date(proposal.slot.end_time), 'HH:mm')}`,
