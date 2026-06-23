@@ -583,7 +583,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
             collapsed ? "flex-col items-center gap-2" : "items-center justify-between"
           )}>
             <ThemeToggle />
-            <LanguageSwitcher />
+            <LanguageSwitcher className={appSidebarGhostButtonClass} />
             <Button
               variant="ghost"
               size="icon"
@@ -592,10 +592,11 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
             >
               <Gift className="h-4 w-4 text-primary" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size={collapsed ? "icon" : "sm"} 
+            <Button
+              variant="ghost"
+              size={collapsed ? "icon" : "sm"}
               onClick={handleLogout}
+              className={appSidebarGhostButtonClass}
             >
               <LogOut className="h-4 w-4" />
               {!collapsed && <span className="ml-2">{t("nav.logout", "Log out")}</span>}

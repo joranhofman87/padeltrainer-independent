@@ -50,6 +50,7 @@ import {
   appNavLinkInactive,
   appSidebarContentClass,
   appSidebarFooterClass,
+  appSidebarGhostButtonClass,
   appSidebarHeaderClass,
   appSidebarShellClass,
 } from "@/components/ui/appSidebarStyles";
@@ -343,7 +344,7 @@ export function PlayerSidebar() {
             )}
           >
             <ThemeToggle />
-            <LanguageSwitcher />
+            <LanguageSwitcher className={appSidebarGhostButtonClass} />
             <Button variant="ghost" size="icon" onClick={showReferralWidget} aria-label="Referrals">
               <Gift className="h-4 w-4 text-primary" />
             </Button>
@@ -351,6 +352,7 @@ export function PlayerSidebar() {
               variant="ghost"
               size={collapsed ? "icon" : "sm"}
               onClick={handleLogout}
+              className={appSidebarGhostButtonClass}
             >
               <LogOut className="h-4 w-4" />
               {!collapsed && <span className="ml-2">{tCommon("signOut")}</span>}

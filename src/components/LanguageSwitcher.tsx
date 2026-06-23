@@ -11,13 +11,14 @@ import { Globe, Check } from 'lucide-react';
 import { SUPPORTED_LANGUAGES } from '@/components/LanguageRouter';
 import { useTranslationsContext } from '@/contexts/TranslationsContext';
 import { supabase } from '@/lib/supabaseClient';
+import { cn } from '@/lib/utils';
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
   { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
 ];
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ className }: { className?: string }) {
   const { i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,7 +66,7 @@ export function LanguageSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Change language">
+        <Button variant="ghost" size="icon" className={cn("relative", className)} aria-label="Change language">
           <Globe className="h-5 w-5" />
           <span className="sr-only">Change language</span>
         </Button>
