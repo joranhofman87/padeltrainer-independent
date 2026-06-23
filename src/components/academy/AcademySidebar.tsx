@@ -237,7 +237,7 @@ export function AcademySidebar({ academy, onAcademyChange, isExpired = false }: 
             )}
           >
             <ThemeToggle />
-            <LanguageSwitcher />
+            <LanguageSwitcher className={appSidebarGhostButtonClass} />
             <Button
               variant="ghost"
               size="icon"

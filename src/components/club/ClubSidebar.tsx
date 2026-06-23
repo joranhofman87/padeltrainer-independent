@@ -446,7 +446,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
             collapsed ? "flex-col items-center gap-2" : "items-center gap-2"
           )}>
             <ThemeToggle />
-            <LanguageSwitcher />
+            <LanguageSwitcher className={appSidebarGhostButtonClass} />
             <Button
               variant="ghost"
               size="icon"
@@ -459,7 +459,7 @@ export function ClubSidebar({ club, onClubChange, isExpired = false }: ClubSideb
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="h-9 w-9"
+              className={cn("h-9 w-9", appSidebarGhostButtonClass)}
               aria-label={t("nav.logout", "Log out")}
             >
               <LogOut className="h-4 w-4" />
