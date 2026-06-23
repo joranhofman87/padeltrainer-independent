@@ -32,9 +32,11 @@ async function sendInviteWithRetry(
     if (!error) return { error: null };
     lastError = error;
     const e = error as { statusCode?: number; name?: string };
-    const blob = JSON.stringify(error ?? {});
+    // Prefer the structured fields; only fall back to scanning the serialized error
+    // when no statusCode is present, so a non-rate-limit error that merely contains
+    // "429" somewhere isn't retried as if it were throttled.
     const isRateLimit = e?.statusCode === 429 || e?.name === "rate_limit_exceeded" ||
-      /\b429\b|rate.?limit/i.test(blob);
+      (e?.statusCode == null && /\b429\b|rate.?limit/i.test(JSON.stringify(error ?? {})));
     if (!isRateLimit) return { error };
     if (attempt < maxAttempts - 1) await sleep(800 * (attempt + 1)); // 0.8s, 1.6s, 2.4s
   }
@@ -251,7 +253,21 @@ const handler = async (req: Request): Promise<Response> => {
     let failed = 0;
     const failedClaimIds: string[] = [];
 
-    for (const c of eligible) {
+    // Wall-clock budget: under sustained Resend rate-limiting a big batch (pacing +
+    // up to ~4.8s backoff per send) could blow the edge runtime's hard timeout, which
+    // would surface to the caller as a total failure of the WHOLE batch (incl. claims
+    // that already sent). Instead, stop early and report the not-yet-attempted claims
+    // as retryable — their invited_at is still NULL, so a resend picks them up.
+    const startedAt = Date.now();
+    const TIME_BUDGET_MS = 100_000;
+
+    for (let idx = 0; idx < eligible.length; idx++) {
+      const c = eligible[idx];
+      if (Date.now() - startedAt > TIME_BUDGET_MS) {
+        for (let j = idx; j < eligible.length; j++) { failed++; failedClaimIds.push(eligible[j].id); }
+        console.warn("send-priority-claim-invitation: time budget reached", { remaining: eligible.length - idx });
+        break;
+      }
       const slot = slotMap.get(c.slot_id);
       if (!slot) { skipped++; continue; }
       const playerKey = c.player_id ?? `g:${c.guest_player_id}`;
