@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Search, Users, Eye, EyeOff, Euro } from 'lucide-react';
+import { Search, Users, Eye, EyeOff, Euro, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { Card, CardContent } from '@/components/ui/card';
@@ -48,6 +48,8 @@ interface CyclusGroup {
   price_per_session: number | null;
   max_participants: number;
   max_booked: number;
+  /** True when any slot in the cyclus is public (showcased as bookable on the profile). */
+  is_public: boolean;
   first_slot_id: string | null;
   status: string;
   type: string;
@@ -76,6 +78,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [filterTrainer, setFilterTrainer] = useState('all');
   const [filterLocation, setFilterLocation] = useState('all');
   const [filterPaid, setFilterPaid] = useState<PaidFilterValue>('all');
+  const [filterVisibility, setFilterVisibility] = useState<'all' | 'public' | 'private'>('all');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
 
   // Bulk actions
@@ -176,7 +180,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           const { data: slots } = await supabase
             .from('availability_slots')
             .select(`
-              id, start_time, end_time, max_participants,
+              id, start_time, end_time, max_participants, is_public,
               cyclus_id, cyclus_name, trainer_id,
               price_per_session,
               location_id, locations:location_id(name)
@@ -358,6 +362,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             max_participants: 4,
             max_booked: 0,
             first_slot_id: null,
+            is_public: false,
             status: cycle.status || 'draft',
             type: cycle.type || 'cyclus',
             has_slots: false,
@@ -451,6 +456,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               max_participants: first.max_participants || 4,
               max_booked: maxBooked,
               first_slot_id: first.id,
+              is_public: seriesSlots.some((s: { is_public?: boolean }) => s.is_public),
               status: cycle.status || 'draft',
               type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
               has_slots: true,
@@ -509,6 +515,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             max_participants: first.max_participants || 4,
             max_booked: maxBooked,
             first_slot_id: first.id,
+            is_public: trainerSlots.some((s: { is_public?: boolean }) => s.is_public),
             status: 'active',
             type: 'cyclus',
             has_slots: true,
@@ -551,6 +558,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     return timeFiltered.filter(g => {
       if (filterTrainer !== 'all' && g.trainer_id !== filterTrainer) return false;
       if (filterLocation !== 'all' && g.location_name !== filterLocation) return false;
+      if (filterVisibility === 'public' && !g.is_public) return false;
+      if (filterVisibility === 'private' && g.is_public) return false;
       if (!matchesPaidFilter(g.payment_status_summary, filterPaid)) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -562,7 +571,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
       return true;
     });
-  }, [timeFiltered, filterTrainer, filterLocation, filterPaid, search]);
+  }, [timeFiltered, filterTrainer, filterLocation, filterVisibility, filterPaid, search]);
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
@@ -642,6 +651,53 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     } catch (error) {
       logger.error('Bulk visibility update failed', error as Error);
       toast({ title: t('cyclesTab.error'), variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  // Bulk-delete the selected cycli. SKIPS any cyclus that has bookings (a player booking is
+  // never silently cancelled) — those are reported back. Each cyclus is independent: one
+  // failure never aborts the rest.
+  const handleBulkDelete = async () => {
+    const groups = sortedData.filter(g => selectedIds.has(g.group_key) && g.cyclus_id);
+    setBulkUpdating(true);
+    let deleted = 0;
+    let skipped = 0;
+    const failed: string[] = [];
+    try {
+      for (const g of groups) {
+        try {
+          if (g.max_booked > 0) { skipped++; continue; }
+          const [cyclusId, trainerId] = g.group_key.split('::');
+          let sq = supabase.from('availability_slots').select('id').eq('cyclus_id', cyclusId);
+          if (trainerId) sq = sq.eq('trainer_id', trainerId);
+          const { data: slotRows } = await sq;
+          const slotIds = (slotRows || []).map((s: { id: string }) => s.id);
+          if (slotIds.length > 0) {
+            // Re-verify no booking appeared since the list loaded (never cascade a booking).
+            const { data: booked } = await supabase.from('bookings').select('slot_id')
+              .in('slot_id', slotIds).in('status', ['confirmed', 'booked', 'pending']);
+            if ((booked || []).length > 0) { skipped++; continue; }
+            const { error } = await supabase.from('availability_slots').delete().in('id', slotIds);
+            if (error) throw error;
+          }
+          deleted++;
+        } catch (e) {
+          logger.error('Bulk cyclus delete failed', e as Error, { group: g.group_key });
+          failed.push(g.cyclus_name);
+        }
+      }
+      if (failed.length > 0) {
+        toast({ title: t('cyclesTab.bulkDelete.partial', { deleted, skipped, failed: failed.length }), description: failed.join(', '), variant: 'destructive' });
+      } else if (skipped > 0) {
+        toast({ title: t('cyclesTab.bulkDelete.doneSkipped', { deleted, skipped }) });
+      } else {
+        toast({ title: t('cyclesTab.bulkDelete.done', { count: deleted }) });
+      }
+      setSelectedIds(new Set());
+      setDeleteDialogOpen(false);
+      fetchCyclusData();
     } finally {
       setBulkUpdating(false);
     }
@@ -794,6 +850,16 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <SelectItem value="no_players">{t('cyclesTab.paidFilterNoPlayers')}</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={filterVisibility} onValueChange={v => setFilterVisibility(v as 'all' | 'public' | 'private')}>
+              <SelectTrigger className="w-full sm:w-[180px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('cyclesTab.visibilityFilterAll', { defaultValue: 'All visibility' })}</SelectItem>
+                <SelectItem value="public">{t('cyclesTab.visibilityFilterPublic', { defaultValue: 'Public (on profile)' })}</SelectItem>
+                <SelectItem value="private">{t('cyclesTab.visibilityFilterPrivate', { defaultValue: 'Private' })}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -832,6 +898,15 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             >
               <Euro className="h-3.5 w-3.5 mr-1.5" />
               {t('cyclesTab.changePrice')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              {t('cyclesTab.bulkDelete.button', { defaultValue: 'Delete' })}
             </Button>
           </div>
         )}
@@ -1007,6 +1082,27 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             </Button>
             <Button onClick={handleBulkPriceUpdate} disabled={bulkUpdating}>
               {bulkUpdating ? t('cyclesTab.saving') : t('cyclesTab.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t('cyclesTab.bulkDelete.confirmTitle', { count: selectedIds.size, defaultValue: 'Delete {{count}} cycli?' })}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            {t('cyclesTab.bulkDelete.confirmBody', { defaultValue: 'This permanently deletes the selected cycli and their open slots. Any cyclus that still has player bookings is skipped (never auto-cancelled) and reported back. This cannot be undone.' })}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={bulkUpdating}>
+              {t('cyclesTab.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkUpdating}>
+              {bulkUpdating ? t('cyclesTab.saving') : t('cyclesTab.bulkDelete.button', { defaultValue: 'Delete' })}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1388,6 +1388,9 @@
     "paidFilterPaid": "Paid",
     "paidFilterUnpaid": "Unpaid / open payment",
     "paidFilterNoPlayers": "No players",
+    "visibilityFilterAll": "All visibility",
+    "visibilityFilterPublic": "Public (on profile)",
+    "visibilityFilterPrivate": "Private",
     "price": "Price",
     "occupancy": "Occupancy",
     "noCyclesFound": "No cycles found",
@@ -1397,7 +1400,15 @@
     "cancel": "Cancel",
     "saving": "Saving...",
     "save": "Save",
-    "session": "session"
+    "session": "session",
+    "bulkDelete": {
+      "button": "Delete",
+      "confirmTitle": "Delete {{count}} cycles?",
+      "confirmBody": "This permanently deletes the selected cycles and their open slots. Any cycle that still has player bookings is skipped (never auto-cancelled) and reported back. This cannot be undone.",
+      "done": "Deleted {{count}} cycles",
+      "doneSkipped": "{{deleted}} deleted, {{skipped}} skipped (have bookings)",
+      "partial": "{{deleted}} deleted, {{skipped}} skipped, {{failed}} failed"
+    }
   },
   "pendingAttendance": {
     "title": "Action Required",
