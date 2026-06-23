@@ -169,9 +169,6 @@ export default function CycleForm({
   const isEdit = !!cycle?.id;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
-  // True = end_date is user-authoritative (loaded from a saved cycle, or manually
-  // picked) and must NOT be overwritten by the start+weeks auto-sync below.
-  const customEndDateRef = useRef(!!cycle?.end_date);
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
@@ -293,9 +290,6 @@ export default function CycleForm({
         notify_admin_on_submission: (cycle?.settings as any)?.notify_admin_on_submission ?? true,
         notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
       });
-      // Keep the auto-sync guard in step with the freshly-loaded cycle: a saved
-      // end date is authoritative, so the start+weeks effect must not clobber it.
-      customEndDateRef.current = !!cycle?.end_date;
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
       const settings = cycle?.settings as any;
@@ -344,17 +338,22 @@ export default function CycleForm({
   const watchedEndTime = form.watch('end_time');
   const watchedWeeks = form.watch('number_of_weeks');
   const watchedAssignedTrainer = form.watch('assigned_trainer_id');
-  const watchedStartDate = form.watch('start_date');
   const watchedAlwaysOpen = form.watch('is_always_open');
 
-  // Auto-sync end_date from start_date + weeks (for non-event types)
+  // end_date and number_of_weeks are kept in step by EXPLICIT edits in the date
+  // controls below (start or weeks -> recompute end; end -> recompute weeks). There is
+  // deliberately NO background effect deriving end_date: the previous one re-ran on
+  // every render and clobbered a saved/manual end date, so a partial-week end (e.g.
+  // Mon -> Fri) never stuck. For a NEW cycle only, seed the end once for convenience.
   useEffect(() => {
-    if (isEvent || customEndDateRef.current) return;
-    if (watchedStartDate && watchedWeeks && watchedWeeks > 0) {
-      const computed = addWeeks(watchedStartDate, watchedWeeks);
-      form.setValue('end_date', computed);
+    if (cycle || isEvent) return;
+    const s = form.getValues('start_date');
+    const w = Number(form.getValues('number_of_weeks'));
+    if (s && w > 0 && !form.getValues('end_date')) {
+      form.setValue('end_date', addWeeks(s, w));
     }
-  }, [watchedStartDate, watchedWeeks, isEvent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (isRegistration || !watchedStartTime || !watchedEndTime || !watchedWeeks) return;
@@ -925,7 +924,12 @@ export default function CycleForm({
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              // Moving the start re-fills the end from the week count.
+                              const w = Number(form.getValues('number_of_weeks'));
+                              if (date && w > 0) form.setValue('end_date', addWeeks(date, w));
+                            }}
                             initialFocus
                           />
                         </PopoverContent>
@@ -948,9 +952,11 @@ export default function CycleForm({
                           max={52}
                           {...field}
                           onChange={(e) => {
-                            // Editing weeks re-enables the start+weeks auto-fill of end_date.
-                            customEndDateRef.current = false;
                             field.onChange(e);
+                            // Weeks drives the end date.
+                            const w = Number(e.target.value);
+                            const s = form.getValues('start_date');
+                            if (s && w > 0) form.setValue('end_date', addWeeks(s, w));
                           }}
                         />
                       </FormControl>
@@ -987,8 +993,12 @@ export default function CycleForm({
                           mode="single"
                           selected={field.value}
                           onSelect={(date) => {
-                            customEndDateRef.current = true;
                             field.onChange(date);
+                            // A manual end date wins; keep the week count in step for display.
+                            const s = form.getValues('start_date');
+                            if (date && s) {
+                              form.setValue('number_of_weeks', Math.max(1, Math.round(differenceInWeeks(date, s))));
+                            }
                           }}
                           initialFocus
                           className="pointer-events-auto"
