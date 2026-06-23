@@ -190,7 +190,7 @@ export async function getTrainersAtLocation(locationId: string) {
       is_primary,
       trainer_id,
       show_on_club_page,
-      trainer_profiles!inner (
+      trainer_profiles:trainer_profiles_safe!inner (
         id,
         user_id,
         slug,
