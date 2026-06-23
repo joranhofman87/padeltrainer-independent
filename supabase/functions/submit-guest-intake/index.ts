@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
 import {
   mintEventRegistrationInvoice,
   resolveEffectivePaymentMethod,
@@ -459,185 +460,16 @@ Deno.serve(async (req) => {
       console.error("Registration invoice minting failed (non-blocking):", payErr);
     }
 
-    // Send registration confirmation email (non-blocking)
-    if (RESEND_API_KEY && cycleData) {
+    // Send registration confirmation email (non-blocking). Every config value
+    // (lesson count, prices, cycle name, dates, owner, location) is resolved
+    // server-side from the cycle's CURRENT config via the shared composer, so the
+    // email matches the invoice and reflects academy edits immediately.
+    if (RESEND_API_KEY && cycleData && intakeData) {
       try {
-        // Resolve owner name
-        let ownerName = '';
-        if (cycleData.owner_type === 'academy') {
-          const { data: academy } = await adminClient
-            .from("academy_profiles")
-            .select("name")
-            .eq("id", cycleData.owner_id)
-            .single();
-          ownerName = academy?.name || '';
-        } else if (cycleData.owner_type === 'club') {
-          const { data: club } = await adminClient
-            .from("club_profiles")
-            .select("location_id")
-            .eq("id", cycleData.owner_id)
-            .single();
-          if (club?.location_id) {
-            const { data: location } = await adminClient
-              .from("locations")
-              .select("name")
-              .eq("id", club.location_id)
-              .single();
-            ownerName = location?.name || '';
-          }
-        } else if (cycleData.owner_type === 'trainer') {
-          const { data: trainer } = await adminClient
-            .from("trainer_profiles")
-            .select("user_id")
-            .eq("id", cycleData.owner_id)
-            .single();
-          if (trainer?.user_id) {
-            const { data: profile } = await adminClient
-              .from("profiles")
-              .select("full_name")
-              .eq("user_id", trainer.user_id)
-              .single();
-            ownerName = profile?.full_name || '';
-          }
-        }
-
-        const settings = cycleData.settings || {};
-        const confirmationText = settings.confirmation_email_text || '';
-
-        // Resolve location name
-        let cycleLocationName = '';
-        if (cycleData.location_id) {
-          const { data: locData } = await adminClient
-            .from("locations")
-            .select("name")
-            .eq("id", cycleData.location_id)
-            .single();
-          cycleLocationName = locData?.name || '';
-        }
-
-        // Compute price lines for the email.
-        // E-21: `metadata` is caller-controlled JSON and cycle settings are free-form
-        // JSONB — coerce every price/duration to a finite number within sane bounds
-        // before any arithmetic or template interpolation; invalid values omit the
-        // price line instead of mailing NaN/Infinity.
-        const toBoundedNumber = (value: unknown, max = 10000): number | null => {
-          const num = typeof value === "number" ? value
-            : typeof value === "string" && value.trim() !== "" ? Number(value)
-            : NaN;
-          return Number.isFinite(num) && num >= 0 && num <= max ? num : null;
-        };
-
-        const settingsRecord = (cycleData.settings ?? {}) as Record<string, unknown>;
-        const cyclePriceTable: { price?: unknown }[] = Array.isArray(settingsRecord.price_table)
-          ? settingsRecord.price_table
-          : [];
-        const cyclePricePerSession = toBoundedNumber(cycleData.price_per_session);
-        const selectedOption = metadata?.selected_cyclus_option;
-        const selectedOptionLabel = typeof selectedOption?.label === "string"
-          ? selectedOption.label.slice(0, MAX_SHORT_FIELD_LENGTH)
-          : undefined;
-        // Resolve the chosen package against the cycle's CURRENT server config (never the
-        // registrant's possibly-stale form metadata) so the price + lesson count always
-        // reflect what the academy has configured right now. Mirrors the client fix (#45).
-        const serverCyclusOptions = Array.isArray(settingsRecord.cyclus_options)
-          ? (settingsRecord.cyclus_options as Array<Record<string, unknown>>)
-          : [];
-        const serverOption = selectedOptionLabel
-          ? serverCyclusOptions.find((o) => typeof o?.label === "string" && o.label === selectedOptionLabel) ?? null
-          : null;
-        const selectedOptionPrice = toBoundedNumber(serverOption?.price_per_session)
-          ?? toBoundedNumber(selectedOption?.price_per_session);
-        const selectedOptionTotal = toBoundedNumber(serverOption?.total_price);
-        // Lesson/session count shown as "duration" and used for per-lesson totals: the
-        // package's configured number_of_sessions → a validated weeks selection → the date
-        // span (FLOOR, not round — a holiday week must not inflate the count to 11).
-        const durationWeeks = toBoundedNumber(serverOption?.number_of_sessions, 520)
-          || toBoundedNumber(metadata?.preferred_number_of_weeks, 520)
-          || (() => {
-            if (!cycleData.start_date || !cycleData.end_date) return null;
-            const weeks = Math.floor(
-              (new Date(cycleData.end_date).getTime() - new Date(cycleData.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
-            );
-            return Number.isFinite(weeks) ? Math.max(1, weeks) : null;
-          })();
-
-        const standardAllowed = Array.isArray(settingsRecord.lesson_types)
-          ? (settingsRecord.lesson_types as string[])
-          : ['private', 'duo', 'group', 'group3', 'group4', 'kids'];
-        const customLT = Array.isArray(settingsRecord.custom_lesson_types)
-          ? (settingsRecord.custom_lesson_types as string[])
-          : [];
-        const orderedLT = [...standardAllowed, ...customLT];
-
-        const emailPriceLines: { label: string; perLesson: string; total: string }[] = [];
-        const fmtPrice = (v: number) => `€${v.toFixed(2)}`;
-        for (const lt of (lessonTypes || [])) {
-          // Array items are caller-controlled too; a non-string would throw on .charAt
-          if (typeof lt !== "string") continue;
-          let perLesson: number | null = null;
-          if (selectedOption) {
-            perLesson = selectedOptionPrice;
-          } else if (cyclePriceTable.length > 0) {
-            const idx = orderedLT.indexOf(lt);
-            const row = idx >= 0 && idx < cyclePriceTable.length ? cyclePriceTable[idx] : null;
-            if (row) perLesson = toBoundedNumber(row.price);
-          }
-          if (perLesson == null && cyclePricePerSession != null) perLesson = cyclePricePerSession;
-          const total = selectedOption
-            ? (selectedOptionTotal ?? (perLesson != null && durationWeeks ? perLesson * durationWeeks : null))
-            : (perLesson != null && durationWeeks ? perLesson * durationWeeks : null);
-          if (perLesson != null && perLesson > 0) {
-            emailPriceLines.push({
-              label: lt.charAt(0).toUpperCase() + lt.slice(1),
-              perLesson: fmtPrice(perLesson),
-              total: total != null ? fmtPrice(total) : '',
-            });
-          }
-        }
-
-        const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            type: "intake_registration_confirmation",
-            to: email,
-            language: language || 'en',
-            data: {
-              playerName: nameFields.full_name,
-              cycleName: cycleData.name,
-              ownerName,
-              confirmationText,
-              startDate: cycleData.start_date,
-              endDate: cycleData.end_date,
-              enrollmentDeadline: cycleData.enrollment_deadline,
-              locationName: cycleLocationName || undefined,
-              lessonTypes: lessonTypes || [],
-              preferredDurationMinutes: preferredDurationMinutes || undefined,
-              sessionsPerWeek: sessionsPerWeek || undefined,
-              rating: rating || undefined,
-              ratingSystem: ratingSystem || undefined,
-              notes: notes || undefined,
-              phone: phone || undefined,
-              birthDate: birthDate || undefined,
-              selectedPackageLabel: selectedOptionLabel,
-              selectedPackagePrice: selectedOptionPrice || undefined,
-              selectedDurationWeeks: durationWeeks || undefined,
-              priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
-              payUrl: emailPayUrl,
-            },
-          }),
+        await sendRegistrationConfirmationEmail(adminClient, cycleData, intakeData, {
+          payUrl: emailPayUrl,
+          language,
         });
-
-        if (!sendRes.ok) {
-          // PII hygiene (E-22): the send-email error body can echo the recipient
-          // address — log status + intake id only.
-          console.error(`Registration confirmation email failed (status ${sendRes.status}) for intake ${intakeData?.id}`);
-        } else {
-          console.log(`Registration confirmation email sent for intake ${intakeData?.id}`);
-        }
       } catch (confErr) {
         console.error("Confirmation email failed (non-blocking):", confErr);
       }
