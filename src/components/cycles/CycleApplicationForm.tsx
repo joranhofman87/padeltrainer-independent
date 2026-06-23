@@ -997,25 +997,41 @@ export default function CycleApplicationForm({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {priceLines.map((line, i) => (
-                  <div key={i} className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">{line.label}</span>
-                    <span className="font-medium text-right whitespace-nowrap">
-                      {line.perLesson != null && line.perLesson > 0 ? (
-                        <>
-                          {formatCurrency(line.perLesson)}/{t('form.perLesson')}
-                          {line.total != null && lessonCount && (
-                            <span className="text-muted-foreground font-normal ml-2">
-                              {lessonCount} {isLessonUnit ? t('application.form.lessons', 'lessen') : t('application.form.weeks', 'weken')}: {formatCurrency(line.total)}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
+                {cyclusOptions.length > 0 ? (
+                  // Package cycles (e.g. Leden / Niet-leden): show EVERY option with its
+                  // lesson count + total — the price the server actually invoices — so the
+                  // registrant sees all options side by side, not just a per-lesson rate.
+                  cyclusOptions.map((opt, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">{opt.label}</span>
+                      <span className="font-medium text-right whitespace-nowrap">
+                        {opt.number_of_sessions} {t('application.form.lessons', 'lessen')}
+                        {opt.price_per_session != null ? ` · ${formatCurrency(opt.price_per_session)}/${t('form.perLesson')}` : ''}
+                        {opt.total_price != null ? ` · ${formatCurrency(opt.total_price)}` : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  priceLines.map((line, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">{line.label}</span>
+                      <span className="font-medium text-right whitespace-nowrap">
+                        {line.perLesson != null && line.perLesson > 0 ? (
+                          <>
+                            {formatCurrency(line.perLesson)}/{t('form.perLesson')}
+                            {line.total != null && lessonCount && (
+                              <span className="text-muted-foreground font-normal ml-2">
+                                {lessonCount} {isLessonUnit ? t('application.form.lessons', 'lessen') : t('application.form.weeks', 'weken')}: {formatCurrency(line.total)}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </span>
+                    </div>
+                  ))
+                )}
 
                 {selectedCyclusOption && (
                   <div className="flex justify-between">
