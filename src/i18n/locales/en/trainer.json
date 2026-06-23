@@ -437,6 +437,7 @@
       "deleteConfirm": "These players will be removed from your roster (this can be undone later). Their bookings and history are kept.",
       "success": "{{count}} players updated",
       "error": "Bulk action failed. Please try again.",
+      "partial": "{{ok}} done, {{failed}} could not be processed",
       "selectAll": "Select all on page",
       "selectRow": "Select player"
     },

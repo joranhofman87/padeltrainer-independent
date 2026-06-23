@@ -438,6 +438,7 @@
       "deleteConfirm": "Deze spelers worden van je lijst verwijderd (dit kun je later ongedaan maken). Hun boekingen en geschiedenis blijven behouden.",
       "success": "{{count}} spelers bijgewerkt",
       "error": "Bulkactie mislukt. Probeer het opnieuw.",
+      "partial": "{{ok}} gelukt, {{failed}} mislukt",
       "selectAll": "Alles op deze pagina selecteren",
       "selectRow": "Speler selecteren"
     },
