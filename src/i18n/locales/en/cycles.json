@@ -793,6 +793,7 @@
     "payNow": "You pay for the new cycle right away when you confirm your spot.",
     "redirectingToPayment": "Taking you to the payment page…",
     "upfrontUnavailable": "Your spot is reserved. Online payment is not available yet — you will receive an invoice.",
+    "invoiceReady": "Your spot is reserved. Here is your invoice — pay online or by bank transfer.",
     "seriesHeading": "Every {{weekday}} at {{time}}",
     "seriesDetail": "{{count}} sessions · {{from}} to {{to}}",
     "cycleStarts": "The new cycle starts on {{date}}.",
@@ -973,6 +974,10 @@
     "confirmSend": "Create & invite players"
   },
   "rebookShared": {
+    "paymentTitle": "Payment",
+    "upfrontNoPaymentSetup": "Add your payment details first (Mollie or bank details) to enable paying directly.",
+    "upfrontSetupLink": "Set up payment details",
+    "upfrontManualHint": "Players pay immediately via an invoice with bank details (Mollie isn't connected).",
     "holidaysTitle": "Holidays (no training)",
     "holidaysHint": "Add holiday periods. Nothing is scheduled on these days.",
     "holidayName": "Name",

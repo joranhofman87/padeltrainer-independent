@@ -558,12 +558,16 @@ export interface AcceptAndPayResult {
    * - 'deferred': commitment captured; invoiced at cycle start (default flow).
    * - 'upfront': commitment captured AND a Mollie checkout was created —
    *   redirect the player to `checkoutUrl`.
-   * - 'upfront_unavailable': commitment captured, but online checkout could
-   *   not be started (no payment setup / guest claim / payment error). The
-   *   spot is reserved; the academy follows up with an invoice.
+   * - 'upfront_invoiced': commitment captured, online checkout unavailable, but an
+   *   invoice was minted — send the player to `/pay/{publicToken}` (Mollie button or
+   *   bank-transfer instructions). The invoice is also emailed.
+   * - 'upfront_unavailable': commitment captured, but neither checkout nor an
+   *   invoice could be produced (e.g. guest claim, or the academy has no complete
+   *   payment setup). The spot is reserved; the academy follows up manually.
    */
-  mode?: 'deferred' | 'upfront' | 'upfront_unavailable';
+  mode?: 'deferred' | 'upfront' | 'upfront_invoiced' | 'upfront_unavailable';
   checkoutUrl?: string;
+  publicToken?: string;
 }
 
 interface ClaimSlotInfo {
@@ -571,6 +575,33 @@ interface ClaimSlotInfo {
   cyclus_id: string | null;
   cyclus_name: string | null;
   trainer_id: string;
+}
+
+/**
+ * Upfront rebook accept with no online (Mollie) checkout: mint an invoice so the
+ * player has something to pay (bank-transfer instructions on the invoice / pay page)
+ * instead of a dead-end. Falls back to 'upfront_unavailable' only if an invoice
+ * can't be produced — e.g. the academy's invoice business profile is incomplete, or
+ * the edge function isn't deployed yet (graceful, identical to the old behaviour).
+ */
+async function mintRebookInvoiceFallback(
+  accept: { ok: boolean; status?: string; reason?: string; booking_id?: string },
+  bookingIds: string[],
+): Promise<AcceptAndPayResult> {
+  if (bookingIds.length > 0) {
+    try {
+      const { data, error } = await supabase.functions.invoke('create-rebook-invoice', {
+        body: { bookingIds },
+      });
+      const result = data as { ok?: boolean; publicToken?: string } | null;
+      if (!error && result?.ok && result.publicToken) {
+        return { ...accept, mode: 'upfront_invoiced', publicToken: result.publicToken };
+      }
+    } catch {
+      // Fall through to 'upfront_unavailable'.
+    }
+  }
+  return { ...accept, mode: 'upfront_unavailable' };
 }
 
 /**
@@ -693,7 +724,9 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     }
 
     const paymentSetup = await hasValidPaymentSetup(slot.trainer_id, slot.trainer_id, false);
-    if (!paymentSetup.valid) return { ...accept, mode: 'upfront_unavailable' };
+    // No online checkout available — mint an invoice (bank transfer / manual)
+    // instead of leaving the player with a reserved-but-unpayable spot.
+    if (!paymentSetup.valid) return await mintRebookInvoiceFallback(accept, payableBookingIds);
 
     const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
       body: {
@@ -705,7 +738,7 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
       },
     });
     if (paymentError || !paymentData?.checkoutUrl) {
-      return { ...accept, mode: 'upfront_unavailable' };
+      return await mintRebookInvoiceFallback(accept, payableBookingIds);
     }
     return { ...accept, mode: 'upfront', checkoutUrl: paymentData.checkoutUrl as string };
   } catch {

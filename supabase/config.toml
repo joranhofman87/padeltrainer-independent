@@ -187,6 +187,9 @@ verify_jwt = false
 [functions.create-registration-invoice]
 verify_jwt = false
 
+[functions.create-rebook-invoice]
+verify_jwt = false
+
 [functions.forward-invoice]
 verify_jwt = false
 
