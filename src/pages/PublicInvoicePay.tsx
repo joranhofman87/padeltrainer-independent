@@ -832,6 +832,27 @@ export default function PublicInvoicePay() {
             </div>
           )}
 
+          {/* No payment method on file at all — give the player a clear next step
+              instead of a screen with an amount due and no way to pay it. */}
+          {!invoice.hasMollieAccount && !academy?.iban && invoice.status !== "paid" && (
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-2">
+              <p className="font-medium text-foreground">{t("invoice.noPaymentMethodTitle")}</p>
+              <p className="text-muted-foreground">
+                {publicContactEmail ? (
+                  <Trans
+                    i18nKey="invoice.noPaymentMethodContact"
+                    values={{ email: publicContactEmail }}
+                    components={{
+                      a: <a href={`mailto:${publicContactEmail}`} aria-label={publicContactEmail} className="underline" />,
+                    }}
+                  />
+                ) : (
+                  t("invoice.noPaymentMethodNoEmail")
+                )}
+              </p>
+            </div>
+          )}
+
           {/* Contact */}
           {publicContactEmail && (
             <p className="text-xs text-center text-muted-foreground">

@@ -133,6 +133,14 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
                       : `${formatDate(start, 'HH:mm')} - ${formatDate(end, 'HH:mm')}`}
                     {c.price_per_session ? ` · ${formatCurrency(Number(c.price_per_session))} p.s.` : ''}
                   </div>
+                  {c.price_per_session && c.sessions > 1 && (
+                    <div className="text-xs font-medium text-foreground">
+                      {t('rebooking.termTotal', '{{total}} for the full term ({{count}} sessions)', {
+                        total: formatCurrency(Number(c.price_per_session) * c.sessions),
+                        count: c.sessions,
+                      })}
+                    </div>
+                  )}
                   {c.start_date && (
                     <div className="text-xs text-muted-foreground">
                       {/* start_date is a pure DATE — parse at local noon so it never shifts a day */}

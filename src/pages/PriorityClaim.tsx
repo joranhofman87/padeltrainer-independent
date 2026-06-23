@@ -37,6 +37,8 @@ interface ClaimData {
     priority_window_ends_at: string | null;
     trainer_id: string;
   };
+  // Number of weekly sessions in this player's rebook series (term length).
+  sessions: number | null;
   player_name: string | null;
 }
 
@@ -204,7 +206,15 @@ export default function PriorityClaimPage() {
             <div className="flex items-start gap-3">
               <MapPin className="h-5 w-5 mt-0.5 text-muted-foreground" />
               <div className="text-sm">
-                {t('rebooking.perSession', '{{amount}} per session', { amount: formatCurrency(Number(data.slot.price_per_session)) })}
+                <div>{t('rebooking.perSession', '{{amount}} per session', { amount: formatCurrency(Number(data.slot.price_per_session)) })}</div>
+                {(data.sessions ?? 1) > 1 && (
+                  <div className="font-medium text-foreground">
+                    {t('rebooking.termTotal', '{{total}} for the full term ({{count}} sessions)', {
+                      total: formatCurrency(Number(data.slot.price_per_session) * (data.sessions ?? 1)),
+                      count: data.sessions ?? 1,
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -15,6 +15,32 @@ const corsHeaders = {
 
 const APP_BASE = resolveAppBase(Deno.env.get("PUBLIC_APP_URL"));
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Resend rate-limits bursts (HTTP 429). A bulk rebook can fire dozens of invites
+// back to back, so back off and retry on rate-limit errors instead of dropping the
+// invitation. Non-rate-limit errors are returned immediately (the caller releases
+// the claim so a later run can retry). Returns the final Resend error or null.
+async function sendInviteWithRetry(
+  resendClient: Resend,
+  payload: { from: string; to: string[]; subject: string; html: string },
+  maxAttempts = 4,
+): Promise<{ error: unknown | null }> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { error } = await resendClient.emails.send(payload);
+    if (!error) return { error: null };
+    lastError = error;
+    const e = error as { statusCode?: number; name?: string };
+    const blob = JSON.stringify(error ?? {});
+    const isRateLimit = e?.statusCode === 429 || e?.name === "rate_limit_exceeded" ||
+      /\b429\b|rate.?limit/i.test(blob);
+    if (!isRateLimit) return { error };
+    if (attempt < maxAttempts - 1) await sleep(800 * (attempt + 1)); // 0.8s, 1.6s, 2.4s
+  }
+  return { error: lastError };
+}
+
 interface ClaimRow {
   id: string;
   claim_token: string;
@@ -222,10 +248,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     const resendClient = new Resend(resendApiKey);
     let sent = 0;
+    let failed = 0;
+    const failedClaimIds: string[] = [];
 
     for (const c of eligible) {
       const slot = slotMap.get(c.slot_id);
-      if (!slot) continue;
+      if (!slot) { skipped++; continue; }
       const playerKey = c.player_id ?? `g:${c.guest_player_id}`;
       const group = c.rebook_group_id ? groupInfo.get(`${c.rebook_group_id}|${playerKey}`) : undefined;
       const recipientEmail = resolveRecipient({
@@ -234,7 +262,9 @@ const handler = async (req: Request): Promise<Response> => {
         playerEmail: c.profiles?.email,
         guestEmail: c.guest_players?.email,
       });
-      if (!recipientEmail) continue;
+      // No email on file → nothing we can send; count as skipped so the caller's
+      // totals reconcile to the number of claims it asked us to invite.
+      if (!recipientEmail) { skipped++; continue; }
       const recipientName = c.profiles?.full_name || c.guest_players?.full_name || "";
 
       // Times are stored UTC; render in the academy's timezone (default
@@ -316,7 +346,10 @@ const handler = async (req: Request): Promise<Response> => {
         }
       }
 
-      const { error: sendErr } = await resendClient.emails.send({
+      // Pace sends a little so a big batch doesn't slam Resend's rate limit; the
+      // retry wrapper still covers any 429s that slip through.
+      if (sent > 0 || failed > 0) await sleep(120);
+      const { error: sendErr } = await sendInviteWithRetry(resendClient, {
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [recipientEmail],
         subject: testEmail ? "[TEST] Reserveer je plek voor de volgende cyclus" : "Reserveer je plek voor de volgende cyclus",
@@ -324,6 +357,8 @@ const handler = async (req: Request): Promise<Response> => {
       });
       if (sendErr) {
         console.error("send error", sendErr);
+        failed++;
+        failedClaimIds.push(c.id);
         // Release the claim so a later run can retry this invitation.
         if (!isTest && !resend) {
           await supabase
@@ -343,7 +378,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    return new Response(JSON.stringify({ sent, skipped }), {
+    return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
