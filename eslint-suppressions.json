@@ -168,7 +168,7 @@
   },
   "src/components/cycles/CycleApplicationForm.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 14
+      "count": 11
     }
   },
   "src/components/cycles/CycleCard.tsx": {

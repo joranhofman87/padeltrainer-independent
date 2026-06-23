@@ -12,6 +12,7 @@ import {
   buildPayUrl,
   type RegistrationInvoiceCycle,
 } from "../_shared/event-registration-invoice.ts";
+import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,7 +40,7 @@ serve(async (req: Request) => {
     const { data: { user }, error: authError } = await admin.auth.getUser(token);
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { intakeRequestId, paymentMethod } = await req.json();
+    const { intakeRequestId, paymentMethod, language } = await req.json();
     if (!intakeRequestId) return json({ error: "intakeRequestId is required" }, 400);
 
     const { data: profile } = await admin
@@ -51,7 +52,7 @@ serve(async (req: Request) => {
 
     const { data: intake } = await admin
       .from("intake_requests")
-      .select("id, cycle_id, player_id, full_name, invoice_id, lesson_type, metadata")
+      .select("id, cycle_id, player_id, full_name, email, phone, birth_date, rating, rating_system, preferred_duration_minutes, sessions_per_week, location_id, notes, invoice_id, lesson_type, metadata")
       .eq("id", intakeRequestId)
       .single();
     if (!intake) return json({ error: "Registration not found" }, 404);
@@ -85,7 +86,7 @@ serve(async (req: Request) => {
 
     const { data: cycle } = await admin
       .from("cycles")
-      .select("id, owner_type, owner_id, name, type, total_price, price_per_session, price_table, start_date, end_date, currency, settings")
+      .select("id, owner_type, owner_id, name, type, total_price, price_per_session, price_table, start_date, end_date, enrollment_deadline, location_id, currency, settings")
       .eq("id", intake.cycle_id)
       .single<RegistrationInvoiceCycle>();
     if (!cycle) return json({ error: "Cycle not found" }, 404);
@@ -95,37 +96,54 @@ serve(async (req: Request) => {
         | "online" | "cash" | "both" | undefined,
       paymentMethod,
     );
-    if (!method) return json({ ok: false, reason: "no_payment_configured" });
 
-    // Selections come from the stored intake (server-side); the pricing helper
-    // re-validates them against the cycle's config before pricing.
+    // Mint the payable invoice when the cycle is configured for payment. Selections
+    // come from the stored intake (server-side); the pricing helper re-validates
+    // them against the cycle's config before pricing.
     const md = (intake.metadata ?? undefined) as Record<string, unknown> | undefined;
     const selectedOption = md?.selected_cyclus_option as Record<string, unknown> | undefined;
-    const result = await mintEventRegistrationInvoice(
-      admin,
-      cycle,
-      { player_id: profile.id, guest_player_id: null, player_name: intake.full_name || profile.full_name || "Onbekend" },
-      method,
-      {
-        lessonTypes: Array.isArray(intake.lesson_type) ? intake.lesson_type : [],
-        cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
-        durationWeeks: md?.preferred_number_of_weeks,
-      },
-    );
+    let result: Awaited<ReturnType<typeof mintEventRegistrationInvoice>> | null = null;
+    let payUrl: string | null = null;
+    if (method) {
+      result = await mintEventRegistrationInvoice(
+        admin,
+        cycle,
+        { player_id: profile.id, guest_player_id: null, player_name: intake.full_name || profile.full_name || "Onbekend" },
+        method,
+        {
+          lessonTypes: Array.isArray(intake.lesson_type) ? intake.lesson_type : [],
+          cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
+          durationWeeks: md?.preferred_number_of_weeks,
+        },
+      );
+      if (result.ok) {
+        await admin
+          .from("intake_requests")
+          .update({ payment_method: method, invoice_id: result.invoiceId })
+          .eq("id", intake.id);
+        payUrl = method === "online" ? buildPayUrl(result.slug, result.publicToken) : null;
+      }
+    }
 
-    if (!result.ok) return json({ ok: false, reason: result.reason, message: result.message });
+    // Server-authoritative confirmation email (non-blocking), sent once here for
+    // EVERY outcome — free cycle, paid, or a mint hiccup — so a logged-in registrant
+    // always gets an email built from the cycle's CURRENT config. An idempotent retry
+    // returned earlier (intake.invoice_id set), so this never double-sends.
+    try {
+      await sendRegistrationConfirmationEmail(admin, cycle, intake, { payUrl, language });
+    } catch (e) {
+      console.error("Registration confirmation email failed (non-blocking):", String((e as Error)?.message ?? e));
+    }
 
-    await admin
-      .from("intake_requests")
-      .update({ payment_method: method, invoice_id: result.invoiceId })
-      .eq("id", intake.id);
+    if (!method) return json({ ok: false, reason: "no_payment_configured" });
+    if (!result || !result.ok) return json({ ok: false, reason: result?.reason ?? "error", message: result?.message });
 
     return json({
       ok: true,
       method,
       invoiceId: result.invoiceId,
       publicToken: result.publicToken,
-      payUrl: method === "online" ? buildPayUrl(result.slug, result.publicToken) : null,
+      payUrl,
       status: result.status,
     });
   } catch (e) {
