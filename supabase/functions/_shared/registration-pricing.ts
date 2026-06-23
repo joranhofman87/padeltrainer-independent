@@ -96,6 +96,16 @@ export function resolveRegistrationLessonCount(
     const requested = bounded(selections.durationWeeks, 520);
     return requested != null && durationOptions.includes(requested) ? requested : dateWeeks;
   }
+  // Defense in depth: even if the chosen package never reached us (stale client / lost
+  // metadata), when the cycle's packages all agree on a session count that IS the cycle's
+  // real lesson count — use it instead of the raw date span, which a holiday week inflates
+  // (10 lessons across an 11-week span). Display-only; the charge uses `weeks` above.
+  const optionCounts = cyclusOptions
+    .map((o) => bounded(o.number_of_sessions, 520))
+    .filter((n): n is number => n != null);
+  if (optionCounts.length > 0 && optionCounts.every((c) => c === optionCounts[0])) {
+    return optionCounts[0];
+  }
   return dateWeeks;
 }
 
