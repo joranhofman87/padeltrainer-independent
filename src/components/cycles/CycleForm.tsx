@@ -169,7 +169,9 @@ export default function CycleForm({
   const isEdit = !!cycle?.id;
   const isRegistration = formType === 'registration';
   const isEvent = formType === 'event';
-  const customEndDateRef = useRef(false);
+  // True = end_date is user-authoritative (loaded from a saved cycle, or manually
+  // picked) and must NOT be overwritten by the start+weeks auto-sync below.
+  const customEndDateRef = useRef(!!cycle?.end_date);
 
   useEffect(() => {
     getRatingSystems().then(setRatingSystems);
@@ -291,6 +293,9 @@ export default function CycleForm({
         notify_admin_on_submission: (cycle?.settings as any)?.notify_admin_on_submission ?? true,
         notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
       });
+      // Keep the auto-sync guard in step with the freshly-loaded cycle: a saved
+      // end date is authoritative, so the start+weeks effect must not clobber it.
+      customEndDateRef.current = !!cycle?.end_date;
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
       setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
       const settings = cycle?.settings as any;
@@ -937,7 +942,17 @@ export default function CycleForm({
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.numberOfWeeks')}</FormLabel>
                       <FormControl>
-                        <Input type="number" min={1} max={52} {...field} />
+                        <Input
+                          type="number"
+                          min={1}
+                          max={52}
+                          {...field}
+                          onChange={(e) => {
+                            // Editing weeks re-enables the start+weeks auto-fill of end_date.
+                            customEndDateRef.current = false;
+                            field.onChange(e);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
