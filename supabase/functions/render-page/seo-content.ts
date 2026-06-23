@@ -479,8 +479,7 @@ export function renderTopTrainersHtml(city: string, trainers: Array<{ slug: stri
   if (trainers.length === 0) return '';
   const L = labels(lang);
   const items = trainers.map(t => {
-    const rate = t.rate ? ` — €${t.rate}/hr` : '';
-    return `<li><a href="${SITE_URL}/${lang}/trainer/${t.slug}">${esc(t.name)}</a>${rate}</li>`;
+    return `<li><a href="${SITE_URL}/${lang}/trainer/${t.slug}">${esc(t.name)}</a></li>`;
   }).join('');
   return `<section><h2>${esc(L.topTrainers)} ${esc(city)}</h2><ul>${items}</ul></section>`;
 }

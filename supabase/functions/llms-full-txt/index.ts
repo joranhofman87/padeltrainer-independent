@@ -124,12 +124,10 @@ Deno.serve(async (req) => {
       const city = profile?.location || '';
       const slug = t.slug || t.id;
       const specs = t.specializations?.join(', ') || '';
-      const rate = t.hourly_rate ? `€${t.hourly_rate}/hr` : '';
       const verified = t.is_verified ? ' ✓' : '';
-      
+
       output += `- **${name}**${verified}`;
       if (city) output += ` | ${city}`;
-      if (rate) output += ` | ${rate}`;
       if (specs) output += ` | ${specs}`;
       output += ` | ${SITE_URL}/en/trainer/${slug}\n`;
     });

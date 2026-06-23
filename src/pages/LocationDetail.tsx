@@ -712,11 +712,6 @@ export default function LocationDetail() {
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div className="flex items-center justify-between text-sm">
-                          {trainer.trainer_profiles.hourly_rate && (
-                            <span className="font-semibold text-primary">
-                              €{trainer.trainer_profiles.hourly_rate}{t('common:perHour')}
-                            </span>
-                          )}
                           {trainer.trainer_profiles.experience_years && (
                             <span className="text-muted-foreground">
                               {t('common:yearsExperience', { count: trainer.trainer_profiles.experience_years })}
