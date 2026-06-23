@@ -351,9 +351,9 @@ export default function CycleApplicationForm({
         const standardAllowedTypes = [...new Set(rawStandardAllowedTypes.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]))];
         const customTypesEmail = ((cycle.settings as any)?.custom_lesson_types as string[] | undefined) || [];
         const orderedTypesEmail = [...standardAllowedTypes, ...customTypesEmail];
-        const emailEffectiveWeeks = selectedDurationWeeks || (() => {
+        const emailLessonCount = selectedCyclusOption?.number_of_sessions || selectedDurationWeeks || (() => {
           if (!cycle.start_date || !cycle.end_date) return null;
-          return Math.max(1, Math.round(
+          return Math.max(1, Math.floor(
             (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
           ));
         })();
@@ -372,7 +372,9 @@ export default function CycleApplicationForm({
             if (priceRow) perLesson = priceRow.price;
           }
           if (perLesson == null && cycle.price_per_session) perLesson = cycle.price_per_session;
-          const total = perLesson && emailEffectiveWeeks ? perLesson * emailEffectiveWeeks : null;
+          const total = selectedCyclusOption
+            ? (selectedCyclusOption.total_price ?? (perLesson && emailLessonCount ? perLesson * emailLessonCount : null))
+            : (perLesson && emailLessonCount ? perLesson * emailLessonCount : null);
           if (perLesson != null && perLesson > 0) {
             emailPriceLines.push({
               label: displayLabel,
@@ -402,7 +404,7 @@ export default function CycleApplicationForm({
           birthDate: values.birth_date || undefined,
           selectedPackageLabel: selectedCyclusOption?.label || undefined,
           selectedPackagePrice: selectedCyclusOption?.price_per_session || undefined,
-          selectedDurationWeeks: emailEffectiveWeeks || undefined,
+          selectedDurationWeeks: emailLessonCount || undefined,
           priceLines: emailPriceLines.length > 0 ? emailPriceLines : undefined,
           currency: emailCurrency,
         }).catch(err => logger.error('Registration confirmation email failed', err, { component: 'CycleApplicationForm' }));
@@ -1027,12 +1029,16 @@ export default function CycleApplicationForm({
           
           if (watchedLessonTypes.length === 0) return null;
 
-          const effectiveWeeks = selectedDurationWeeks || (() => {
-            if (!cycle.start_date || !cycle.end_date) return null;
-            return Math.max(1, Math.round(
-              (new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
-            ));
-          })();
+          // Number of lessons to price: a chosen cyclus option carries the academy's
+          // real (holiday-adjusted) lesson count; else a chosen duration; else the
+          // cycle's whole-week span — FLOORED so it matches the editor's number-of-weeks
+          // (a Mon->Fri end reads as 10, not the rounded-up 11).
+          const lessonCount = selectedCyclusOption?.number_of_sessions
+            || selectedDurationWeeks
+            || (cycle.start_date && cycle.end_date
+              ? Math.max(1, Math.floor((new Date(cycle.end_date).getTime() - new Date(cycle.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)))
+              : null);
+          const isLessonUnit = !!selectedCyclusOption;
 
           // Build price lines per selected lesson type
           const rawStdTypes = (cycle.settings?.lesson_types as string[] | undefined) || [...STANDARD_LESSON_TYPES];
@@ -1063,7 +1069,11 @@ export default function CycleApplicationForm({
               perLesson = cycle.price_per_session;
             }
 
-            const total = perLesson && effectiveWeeks ? perLesson * effectiveWeeks : null;
+            // For a cyclus option the academy-set total is authoritative (it's what the
+            // server invoices); otherwise price = per-lesson x lesson count.
+            const total = selectedCyclusOption
+              ? (selectedCyclusOption.total_price ?? (perLesson && lessonCount ? perLesson * lessonCount : null))
+              : (perLesson && lessonCount ? perLesson * lessonCount : null);
             priceLines.push({ label: displayLabel, perLesson, total });
           }
 
@@ -1083,9 +1093,9 @@ export default function CycleApplicationForm({
                       {line.perLesson != null && line.perLesson > 0 ? (
                         <>
                           {formatCurrency(line.perLesson)}/{t('form.perLesson')}
-                          {line.total != null && effectiveWeeks && (
+                          {line.total != null && lessonCount && (
                             <span className="text-muted-foreground font-normal ml-2">
-                              {effectiveWeeks}w: {formatCurrency(line.total)}
+                              {lessonCount} {isLessonUnit ? t('application.form.lessons', 'lessen') : t('application.form.weeks', 'weken')}: {formatCurrency(line.total)}
                             </span>
                           )}
                         </>
