@@ -22,6 +22,7 @@ import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/l
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
+import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 
 interface Props {
   academyProfileId: string;
@@ -34,13 +35,6 @@ interface HolidayRange {
   to: string;
 }
 
-interface GroupDetail {
-  weekday: string;
-  time: string;
-  players: number;
-  sessions: number;
-}
-
 // Review summary returned by the dryRun before anything is created/emailed.
 interface ReviewData {
   groups: number;
@@ -48,7 +42,9 @@ interface ReviewData {
   totalSessions: number;
   effWeeks: number;
   suggestedPrice: number | null;
-  groupsDetail: GroupDetail[];
+  groupsDetail: RebookGroupDetail[];
+  noEmailTotal: number;
+  grandInvoiceTotal: number;
 }
 
 /**
@@ -91,6 +87,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [review, setReview] = useState<ReviewData | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [ackNoEmail, setAckNoEmail] = useState(false);
 
   useEffect(() => {
     getCycles('academy', academyProfileId)
@@ -156,13 +153,16 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       const suggestedPrice = data?.suggestedPrice == null ? null : Number(data.suggestedPrice);
       if (!weeks && suggestedWeeks > 0) setWeeks(String(suggestedWeeks));
       if (sessionPrice === '' && suggestedPrice != null) setSessionPrice(String(suggestedPrice));
+      setAckNoEmail(false);
       setReview({
         groups: Number(data?.groups ?? 0),
         players,
         totalSessions: Number(data?.totalSessions ?? 0),
         effWeeks: Number(data?.effWeeks ?? 0),
         suggestedPrice,
-        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as GroupDetail[]) : [],
+        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : [],
+        noEmailTotal: Number(data?.noEmailTotal ?? 0),
+        grandInvoiceTotal: Number(data?.grandInvoiceTotal ?? 0),
       });
       setStep('review');
     } catch (e) {
@@ -399,16 +399,13 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   price: effPrice || '—',
                 })}
               </p>
-              <ul className="border rounded-md divide-y">
-                {review.groupsDetail.map((g, i) => (
-                  <li key={i} className="flex items-center justify-between px-3 py-2">
-                    <span className="font-medium capitalize">{g.weekday} {g.time}</span>
-                    <span className="text-muted-foreground">
-                      {t('newRound.reviewGroupLine', '{{players}} spelers · {{sessions}} sessies', { players: g.players, sessions: g.sessions })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <RebookReviewTable
+                groups={review.groupsDetail}
+                noEmailTotal={review.noEmailTotal}
+                grandInvoiceTotal={review.grandInvoiceTotal}
+                ackNoEmail={ackNoEmail}
+                onAckChange={setAckNoEmail}
+              />
               {holidays.filter((h) => h.from && h.to).length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   {t('newRound.reviewHolidays', 'Vakanties overgeslagen: {{names}}', {
@@ -417,7 +414,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 </p>
               )}
               <p className="font-medium">
-                {t('newRound.reviewEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: review.players })}
+                {t('newRound.reviewEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', {
+                  players: Math.max(0, review.players - review.noEmailTotal),
+                })}
               </p>
             </CardContent>
           </Card>
@@ -426,7 +425,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             <Button variant="ghost" onClick={() => setStep('configure')} disabled={submitting}>
               <ArrowLeft className="h-4 w-4 mr-2" /> {t('newRound.backToConfigure', 'Aanpassen')}
             </Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || (review.noEmailTotal > 0 && !ackNoEmail)}
+            >
               <Send className="h-4 w-4 mr-2" />
               {submitting ? t('common:saving', 'Bezig...') : t('newRound.confirmSend', 'Aanmaken & spelers uitnodigen')}
             </Button>

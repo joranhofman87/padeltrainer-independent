@@ -289,11 +289,40 @@ serve(async (req) => {
     const effWeeks = weeks > 0 ? weeks : suggestedWeeks;
 
     if (dryRun) {
-      // Per-group breakdown for the admin to review BEFORE anything is created
-      // or emailed: weekday + time, how many players (= invites), and how many
-      // sessions will be planned for the next term (after skipping holidays).
+      // Per-group breakdown for the admin to FULLY review BEFORE anything is created
+      // or emailed: weekday + time, the roster (names + whether each has an email, so
+      // the admin can spot players who'd be silently skipped), the holiday-adjusted
+      // session count, and the projected invoice total for the group.
       const weekdayFmt = new Intl.DateTimeFormat("nl-NL", { weekday: "long", timeZone: tz });
       const timeFmt = new Intl.DateTimeFormat("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+
+      // Resolve display names + email-presence for the whole cohort (names only — no
+      // raw email addresses are returned). Email source mirrors the invite resolver:
+      // profiles.email for registered players, guest_players.email for guests; a null
+      // on both means that player would NOT receive an invitation.
+      const playerIds = new Set<string>();
+      const guestIds = new Set<string>();
+      for (const arr of bookingsBySlot.values()) {
+        for (const b of arr) {
+          if (b.player_id) playerIds.add(b.player_id);
+          else if (b.guest_player_id) guestIds.add(b.guest_player_id);
+        }
+      }
+      const infoByKey = new Map<string, { name: string; hasEmail: boolean }>();
+      const loadInfo = async (table: string, ids: string[], keyPrefix: string) => {
+        for (let i = 0; i < ids.length; i += 200) {
+          const { data } = await supabase.from(table).select("id, full_name, email").in("id", ids.slice(i, i + 200));
+          for (const r of data ?? []) {
+            infoByKey.set(`${keyPrefix}${r.id}`, {
+              name: (r.full_name ?? "").trim() || "—",
+              hasEmail: Boolean(r.email && String(r.email).trim()),
+            });
+          }
+        }
+      };
+      await loadInfo("profiles", [...playerIds], "");
+      await loadInfo("guest_players", [...guestIds], "g:");
+
       const groupsDetail = qualifyingSeries.map((series) => {
         const tmpl = series[0];
         const d = new Date(tmpl.start_time);
@@ -302,14 +331,34 @@ serve(async (req) => {
           for (const b of bookingsBySlot.get(src.id) ?? []) cohort.add(b.player_id ?? `g:${b.guest_player_id}`);
         }
         const sessions = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz).length;
+        const roster = [...cohort]
+          .map((k) => infoByKey.get(k) ?? { name: "—", hasEmail: false })
+          .sort((a, b) => a.name.localeCompare(b.name, "nl"));
+        const noEmailCount = roster.filter((r) => !r.hasEmail).length;
+        // Invoice projection — same rule the real invoicing applies: with split_payment
+        // the session price is divided across the group (group total = P × S); without
+        // split each player pays the full price (group total = P × S × N). Assumes
+        // everyone accepts; null when no price is set.
+        const N = cohort.size;
+        const P = sessionPrice ?? tmpl.price_per_session;
+        const splitPayment = tmpl.split_payment === true;
+        const invoiceTotal = P == null ? null : (splitPayment ? P * sessions : P * sessions * N);
         return {
           weekday: weekdayFmt.format(d),
           time: timeFmt.format(d),
-          players: cohort.size,
+          locationId: tmpl.location_id,
+          players: N,
           sessions,
+          pricePerSession: P,
+          splitPayment,
+          invoiceTotal,
+          noEmailCount,
+          roster,
         };
       }).filter((g) => g.players > 0);
       const totalSessions = groupsDetail.reduce((sum, g) => sum + g.sessions * g.players, 0);
+      const noEmailTotal = groupsDetail.reduce((sum, g) => sum + g.noEmailCount, 0);
+      const grandInvoiceTotal = groupsDetail.reduce((sum, g) => sum + (g.invoiceTotal ?? 0), 0);
       return new Response(JSON.stringify({
         ok: true, dryRun: true,
         groups: qualifyingSeries.length,
@@ -319,6 +368,8 @@ serve(async (req) => {
         effWeeks,
         groupsDetail,
         totalSessions,
+        noEmailTotal,
+        grandInvoiceTotal,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
     const effName = targetCycleName || "Volgende ronde";
