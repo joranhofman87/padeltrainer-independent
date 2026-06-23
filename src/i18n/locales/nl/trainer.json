@@ -1391,6 +1391,9 @@
     "paidFilterPaid": "Betaald",
     "paidFilterUnpaid": "Onbetaald / open",
     "paidFilterNoPlayers": "Geen spelers",
+    "visibilityFilterAll": "Alle zichtbaarheid",
+    "visibilityFilterPublic": "Openbaar (op profiel)",
+    "visibilityFilterPrivate": "Privé",
     "price": "Prijs",
     "occupancy": "Bezetting",
     "noCyclesFound": "Geen cycli gevonden",
@@ -1400,7 +1403,15 @@
     "cancel": "Annuleren",
     "saving": "Bezig...",
     "save": "Opslaan",
-    "session": "sessie"
+    "session": "sessie",
+    "bulkDelete": {
+      "button": "Verwijderen",
+      "confirmTitle": "{{count}} cycli verwijderen?",
+      "confirmBody": "Dit verwijdert de geselecteerde cycli en hun open slots definitief. Cycli met spelersboekingen worden overgeslagen (nooit automatisch geannuleerd) en teruggekoppeld. Dit kan niet ongedaan worden gemaakt.",
+      "done": "{{count}} cycli verwijderd",
+      "doneSkipped": "{{deleted}} verwijderd, {{skipped}} overgeslagen (hebben boekingen)",
+      "partial": "{{deleted}} verwijderd, {{skipped}} overgeslagen, {{failed}} mislukt"
+    }
   },
   "pendingAttendance": {
     "title": "Actie vereist",
