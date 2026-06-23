@@ -669,6 +669,13 @@ export function BookForPlayerDialog({
         const lastSlot = slotsToBook[slotsToBook.length - 1];
         
         const { data: { session } } = await supabase.auth.getSession();
+        // Email the STORED booking amount (authoritative — what the invoice has), not a
+        // re-computed client total, so the confirmation can't drift from the charge.
+        const storedByPlayer = new Map<string, number>();
+        for (const row of insertedRows ?? []) {
+          const pid = row.guest_player_id ?? row.player_id;
+          if (pid) storedByPlayer.set(pid, (storedByPlayer.get(pid) ?? 0) + (row.payment_amount ?? 0));
+        }
         await Promise.all(
           selectedPlayers.map((player, playerIndex) =>
             supabase.functions.invoke("send-email", {
@@ -681,7 +688,7 @@ export function BookForPlayerDialog({
                   lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
                   lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
                   location: null,
-                  price: pricePreview.perPlayerTotals[playerIndex] ?? 0,
+                  price: storedByPlayer.get(player.id) ?? pricePreview.perPlayerTotals[playerIndex] ?? 0,
                 },
               },
               headers: {
@@ -771,6 +778,11 @@ export function BookForPlayerDialog({
 
         // Send email notifications
         const { data: { session: emailSession } } = await supabase.auth.getSession();
+        const storedByPlayer = new Map<string, number>();
+        for (const row of insertedRows ?? []) {
+          const pid = row.guest_player_id ?? row.player_id;
+          if (pid) storedByPlayer.set(pid, (storedByPlayer.get(pid) ?? 0) + (row.payment_amount ?? 0));
+        }
         await Promise.all(
           selectedPlayers.map((player, playerIndex) =>
             supabase.functions.invoke("send-email", {
@@ -783,7 +795,7 @@ export function BookForPlayerDialog({
                   lessonDate: format(new Date(slot.start_time), "EEEE, MMMM d, yyyy"),
                   lessonTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
                   location: null,
-                  price: pricePreview.perPlayerTotals[playerIndex] ?? 0,
+                  price: storedByPlayer.get(player.id) ?? pricePreview.perPlayerTotals[playerIndex] ?? 0,
                 },
               },
               headers: {
