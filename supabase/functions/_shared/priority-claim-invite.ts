@@ -19,15 +19,23 @@ export function resolveAppBase(publicAppUrl: string | undefined | null): string 
  * Build the claim URL for an email. For test/preview sends we deliberately emit
  * a non-functional placeholder token so a live token is never delivered to an
  * inbox during previews.
+ *
+ * The claim route is nested under /:lang/* (LanguageRouter sets the page language
+ * from the path segment). Without a prefix, /claim/:token redirects to the browser
+ * default (usually /en/...), so a Dutch email landed on an English page. Prefix with
+ * the email's language — default nl to match the Dutch invite — exactly like the
+ * invoice email's buildPayUrl. The app only serves nl/en, so clamp anything else.
  */
 export function buildClaimUrl(
   appBase: string,
   claimToken: string,
   isTest: boolean,
+  lang = "nl",
 ): string {
   const base = appBase.replace(/\/+$/, "");
   const token = isTest ? "preview" : claimToken;
-  return `${base}/claim/${token}`;
+  const safeLang = lang === "en" ? "en" : "nl";
+  return `${base}/${safeLang}/claim/${token}`;
 }
 
 /**
