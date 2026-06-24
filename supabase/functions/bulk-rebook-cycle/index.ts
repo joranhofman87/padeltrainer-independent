@@ -359,12 +359,18 @@ serve(async (req) => {
       const totalSessions = groupsDetail.reduce((sum, g) => sum + g.sessions * g.players, 0);
       const noEmailTotal = groupsDetail.reduce((sum, g) => sum + g.noEmailCount, 0);
       const grandInvoiceTotal = groupsDetail.reduce((sum, g) => sum + (g.invoiceTotal ?? 0), 0);
+      // Whether the source prices are VAT-inclusive (the new round inherits this), so the
+      // wizard can label the price field. Majority of the qualifying series; null if none.
+      const vatFlags = qualifyingSeries.map((s) => s[0].prices_include_vat === true);
+      const inclCount = vatFlags.filter(Boolean).length;
+      const pricesIncludeVat = vatFlags.length === 0 ? null : inclCount >= vatFlags.length - inclCount;
       return new Response(JSON.stringify({
         ok: true, dryRun: true,
         groups: qualifyingSeries.length,
         players: playerSet.size,
         suggestedWeeks,
         suggestedPrice,
+        pricesIncludeVat,
         effWeeks,
         groupsDetail,
         totalSessions,
