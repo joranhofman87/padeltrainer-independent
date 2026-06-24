@@ -22,6 +22,8 @@ const MUST_BE_PUBLIC = [
   'og-image', 'rating-og-image', 'get-public-rating', 'get-public-invoice', 'render-page', 'sitemap', 'llms-full-txt', 'public-api', 'health-check',
   // public submission + public-token actions
   'submit-guest-intake', 'get-booking-invoice', 'update-public-invoice-details',
+  // self-authenticating: user JWT for owner sends, service-role key for the sweep cron + resume chain
+  'send-campaign-emails',
   // Mollie connect / payment-init (reached from public pay pages / OAuth callbacks)
   'create-invoice-payment', 'create-registration-invoice', 'create-rebook-invoice',
   'mollie-connect-academy', 'mollie-connect-trainer', 'check-mollie-connect-status', 'verify-mollie-payment',
