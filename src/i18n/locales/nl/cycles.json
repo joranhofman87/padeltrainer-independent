@@ -997,6 +997,13 @@
     "registration": "Een open formulier om aanmeldingen van spelers voor een trainingscyclus te verzamelen."
   },
   "rebookCohort": {
+    "pickDate": "Kies een datum",
+    "counting": "Spelers tellen…",
+    "cohortCount": "Dit betreft {{players}} spelers in {{groups}} groepen.",
+    "cohortWeeks": "± {{count}} weken per groep.",
+    "toReview": "Volgende: controleren",
+    "backToEdit": "Terug naar bewerken",
+    "confirmSendCount": "Verstuur {{count}} uitnodigingen",
     "byLocation": "Per locatie (hele groep)",
     "byCycle": "Per cyclus",
     "title": "Hele groep opnieuw boeken",
