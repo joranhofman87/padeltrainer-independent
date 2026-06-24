@@ -18,16 +18,25 @@ describe('resolveAppBase', () => {
 });
 
 describe('buildClaimUrl', () => {
-  it('embeds the real token for a normal send', () => {
+  it('embeds the real token for a normal send, language-prefixed (nl default)', () => {
     expect(buildClaimUrl('https://padeltrainer.ai', 'secret-token', false)).toBe(
-      'https://padeltrainer.ai/claim/secret-token',
+      'https://padeltrainer.ai/nl/claim/secret-token',
     );
   });
 
   it('redacts the token for a test/preview send (no live token in inbox)', () => {
     const url = buildClaimUrl('https://padeltrainer.ai', 'secret-token', true);
-    expect(url).toBe('https://padeltrainer.ai/claim/preview');
+    expect(url).toBe('https://padeltrainer.ai/nl/claim/preview');
     expect(url).not.toContain('secret-token');
+  });
+
+  it('honours an explicit language and clamps unsupported ones to nl', () => {
+    expect(buildClaimUrl('https://padeltrainer.ai', 'tok', false, 'en')).toBe(
+      'https://padeltrainer.ai/en/claim/tok',
+    );
+    expect(buildClaimUrl('https://padeltrainer.ai', 'tok', false, 'fr')).toBe(
+      'https://padeltrainer.ai/nl/claim/tok',
+    );
   });
 });
 
