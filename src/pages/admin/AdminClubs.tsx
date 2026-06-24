@@ -45,7 +45,7 @@ import {
 import { format } from "date-fns";
 import { ClubEditDialog } from "@/components/admin/ClubEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
-import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { useTableSort } from "@/hooks/useTableSort";
 
 // Extended type to include computed fields for sorting

@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useTableSort } from '@/hooks/useTableSort';
-import { SortableTableHead } from '@/components/admin/SortableTableHead';
+import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
