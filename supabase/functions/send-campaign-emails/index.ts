@@ -200,96 +200,105 @@ Deno.serve(async (req) => {
 
     let sentCount = 0;
     let failedCount = 0;
+    let budgetHit = false;
+    const processed = new Set<string>();
 
-    // Send emails one by one
-    for (const recipient of recipients) {
-      try {
-        // Replace personalization variables
-        const fullName = recipient.recipient_name || "there";
-        const firstName = fullName.trim().split(/\s+/)[0] || "there";
-        const personalizedHtml = campaign.body_html
-          .replace(/\{\{first_name\}\}/gi, firstName)
-          .replace(/\{\{name\}\}/gi, fullName);
+    // Edge functions are hard-killed at the wall-clock limit. The old code claimed
+    // every recipient and sent serially (200ms each ≈ 5/s), so a campaign over a few
+    // hundred recipients was killed mid-loop — stranding rows in "sending" and (worse)
+    // never tripping the unconditional status:"sent" below. Now: send in small
+    // concurrent chunks (429-aware), stop before the budget, return any unsent rows to
+    // "pending" so a re-run resumes them, and mark the campaign "sent" ONLY when none
+    // remain — so the operator is never told it finished while recipients are queued.
+    const TIME_BUDGET_MS = 110_000;
+    const CONCURRENCY = 4;
+    const startedAt = Date.now();
 
-        const personalizedSubject = campaign.subject
-          .replace(/\{\{first_name\}\}/gi, firstName)
-          .replace(/\{\{name\}\}/gi, fullName);
+    const sendOne = async (recipient: { id: string; recipient_name: string | null; recipient_email: string }) => {
+      const fullName = recipient.recipient_name || "there";
+      const firstName = fullName.trim().split(/\s+/)[0] || "there";
+      const personalizedHtml = campaign.body_html
+        .replace(/\{\{first_name\}\}/gi, firstName)
+        .replace(/\{\{name\}\}/gi, fullName);
+      const personalizedSubject = campaign.subject
+        .replace(/\{\{first_name\}\}/gi, firstName)
+        .replace(/\{\{name\}\}/gi, fullName);
 
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-          },
-          body: JSON.stringify({
-            from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
-            to: [recipient.recipient_email],
-            subject: personalizedSubject,
-            html: personalizedHtml,
-          }),
-        });
-
-        if (res.ok) {
-          sentCount++;
-          await supabase
-            .from("email_campaign_recipients")
-            .update({ status: "sent", sent_at: new Date().toISOString() })
-            .eq("id", recipient.id);
-        } else {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+            body: JSON.stringify({
+              from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+              to: [recipient.recipient_email],
+              subject: personalizedSubject,
+              html: personalizedHtml,
+            }),
+          });
+          if (res.ok) {
+            sentCount++;
+            processed.add(recipient.id);
+            await supabase.from("email_campaign_recipients")
+              .update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", recipient.id);
+            return;
+          }
+          if (res.status === 429 && attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
           const errBody = await res.text();
           failedCount++;
-          await supabase
-            .from("email_campaign_recipients")
-            .update({ status: "failed", error_message: errBody })
-            .eq("id", recipient.id);
+          processed.add(recipient.id);
+          await supabase.from("email_campaign_recipients")
+            .update({ status: "failed", error_message: errBody.slice(0, 500) }).eq("id", recipient.id);
+          return;
+        } catch (err) {
+          if (attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
+          failedCount++;
+          processed.add(recipient.id);
+          await supabase.from("email_campaign_recipients")
+            .update({ status: "failed", error_message: (err instanceof Error ? err.message : "Unknown error").slice(0, 500) }).eq("id", recipient.id);
+          return;
         }
+      }
+    };
 
-        // Small delay between sends to avoid rate limits
-        await new Promise((r) => setTimeout(r, 200));
-      } catch (err) {
-        failedCount++;
-        await supabase
-          .from("email_campaign_recipients")
-          .update({
-            status: "failed",
-            error_message: err instanceof Error ? err.message : "Unknown error",
-          })
-          .eq("id", recipient.id);
+    for (let i = 0; i < recipients.length; i += CONCURRENCY) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) { budgetHit = true; break; }
+      await Promise.all(recipients.slice(i, i + CONCURRENCY).map(sendOne));
+    }
+
+    // Release any claimed-but-unsent rows back to "pending" so they are never stranded
+    // in "sending" — a re-run (or the stale-takeover above) picks them up.
+    if (budgetHit) {
+      const unprocessed = recipients.filter((r) => !processed.has(r.id)).map((r) => r.id);
+      for (let i = 0; i < unprocessed.length; i += 500) {
+        await supabase.from("email_campaign_recipients").update({ status: "pending" }).in("id", unprocessed.slice(i, i + 500));
       }
     }
 
-    // Recompute totals from the table so a retried partial run reports
-    // cumulative counts instead of only this run's.
-    const countRecipients = async (status: string): Promise<number> => {
-      const { count } = await supabase
-        .from("email_campaign_recipients")
-        .select("*", { count: "exact", head: true })
-        .eq("campaign_id", campaignId)
-        .eq("status", status);
+    // Recompute cumulative totals + whether ANY work remains (pending or sending).
+    const countRecipients = async (status: string | string[]): Promise<number> => {
+      let q = supabase.from("email_campaign_recipients").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId);
+      q = Array.isArray(status) ? q.in("status", status) : q.eq("status", status);
+      const { count } = await q;
       return count ?? 0;
     };
-    const [sentTotal, failedTotal] = await Promise.all([
+    const [sentTotal, failedTotal, remaining] = await Promise.all([
       countRecipients("sent"),
       countRecipients("failed"),
+      countRecipients(["pending", "sending"]),
     ]);
 
-    // Update campaign with results
-    await supabase
-      .from("email_campaigns")
-      .update({
-        status: "sent",
-        sent_count: sentTotal,
-        failed_count: failedTotal,
-        sent_at: new Date().toISOString(),
-      })
-      .eq("id", campaignId);
+    // Only call the campaign "sent" when nothing is left; otherwise keep it "sending".
+    await supabase.from("email_campaigns").update({
+      status: remaining === 0 ? "sent" : "sending",
+      sent_count: sentTotal,
+      failed_count: failedTotal,
+      ...(remaining === 0 ? { sent_at: new Date().toISOString() } : {}),
+    }).eq("id", campaignId);
 
     return new Response(
-      JSON.stringify({ success: true, sent: sentCount, failed: failedCount }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: true, sent: sentCount, failed: failedCount, remaining, complete: remaining === 0 }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Campaign send error:", error);
