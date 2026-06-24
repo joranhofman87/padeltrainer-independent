@@ -48,6 +48,10 @@ Then `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw` for:
 The `_shared/cors.ts` lovable-origin removal bundles into every fn deploy; the `daily-maintenance`
 comment-only change auto-deploys via Vercel. Delete `LOVABLE_API_KEY` from the project secrets once
 all 6 are redeployed.
+## Pending — not yet deployed (P1 #11 batch-job correctness)
+`supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
+
+- [ ] **recalculate-invoices** — bound the unscoped "recalc everything" path at `MAX_UNSCOPED = 2000` so a no-`invoice_ids` admin run can't SELECT + process every draft/sent/pending invoice platform-wide (timeout / OOM at scale). Recalc is idempotent so capping is safe; the response returns `limited: true` + a hint when truncated so the admin can re-run or pass `invoice_ids`. *No behaviour change for scoped (invoice_ids) calls.*
 
 ## Notes
 - The CI changes (rehearsal runner, edge-fn config guard, cron Slack alerts, stale-ref purge) took effect on merge — no manual deploy.
