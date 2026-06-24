@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Send, Save, FileText, History, Loader2, Users, Eye,
-  Trash2, Pencil, X, Plus, FlaskConical, Search,
+  Trash2, Pencil, X, Plus, FlaskConical, Search, RotateCcw,
 } from 'lucide-react';
 import { filterPlayersByQuery } from '@/lib/playerSearch';
 import { format } from 'date-fns';
@@ -113,6 +113,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [isSending, setIsSending] = useState(false);
   const [showConfirmSend, setShowConfirmSend] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   // Draft management
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
@@ -370,6 +371,32 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.campaignError')), variant: 'destructive' });
     } finally {
       setIsSending(false);
+    }
+  };
+
+  // Re-send the recipients of a past campaign that failed (and still have retry budget).
+  const handleRetryFailed = async (campaignId: string) => {
+    setRetryingId(campaignId);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-campaign-emails', {
+        body: { campaignId, retryFailed: true },
+      });
+      if (error) throw error;
+
+      if (data?.retried === 0) {
+        toast({ title: t('emailCampaign.toasts.retryNone'), description: t('emailCampaign.toasts.retryNoneDesc') });
+      } else {
+        toast({
+          title: t('emailCampaign.toasts.retryStarted'),
+          description: t('emailCampaign.toasts.retryStartedDesc', { sent: data?.sent ?? 0, failed: data?.failed ?? 0 }),
+        });
+      }
+      fetchCampaigns();
+    } catch (err) {
+      logger.error('Error retrying failed recipients', err as Error);
+      toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.retryError')), variant: 'destructive' });
+    } finally {
+      setRetryingId(null);
     }
   };
 
@@ -1065,6 +1092,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                             <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
                             <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
                             <TableHead>{t('emailCampaign.history.date')}</TableHead>
+                            <TableHead className="text-right">{t('emailCampaign.history.actions')}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1083,6 +1111,22 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
                                 </TableCell>
                                 <TableCell className="text-muted-foreground text-sm">
                                   {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {c.failed_count > 0 && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7"
+                                      disabled={retryingId === c.id || c.status === 'sending'}
+                                      onClick={() => handleRetryFailed(c.id)}
+                                    >
+                                      {retryingId === c.id
+                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        : <RotateCcw className="h-3.5 w-3.5 mr-1" />}
+                                      {t('emailCampaign.history.retryFailed')}
+                                    </Button>
+                                  )}
                                 </TableCell>
                               </TableRow>
                             ))}

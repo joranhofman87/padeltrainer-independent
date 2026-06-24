@@ -54,6 +54,9 @@ Deno.serve(async (req) => {
     // which already pushed its unsent tail back to "pending". Auth + ownership still run, and
     // the atomic pending->sending claim still prevents any double-send, so this is safe.
     const isResume = body.isResume === true;
+    // An owner clicked "retry failed recipients": re-queue this campaign's failed rows
+    // (still under the attempt cap) before the normal claim+send below.
+    const retryFailed = body.retryFailed === true;
 
     // Helper: verify caller owns the campaign owner (academy or trainer).
     async function verifyOwner(academyId: string | null, trainerId: string | null): Promise<boolean> {
@@ -212,6 +215,29 @@ Deno.serve(async (req) => {
       });
     }
 
+    // RETRY FAILED: re-queue this campaign's failed recipients that still have attempt budget
+    // back to 'pending' so the gate + claim + send below picks them up. Rows at the cap (e.g. a
+    // hard bounce / invalid address) stay 'failed'. The per-recipient Idempotency-Key keeps any
+    // row that actually did deliver from being re-emailed. Owner-gated by the verifyOwner above.
+    const MAX_ATTEMPTS = 3;
+    if (retryFailed && !isResume) {
+      const { data: requeued } = await supabase
+        .from("email_campaign_recipients")
+        .update({ status: "pending" })
+        .eq("campaign_id", campaignId)
+        .eq("status", "failed")
+        .lt("attempt_count", MAX_ATTEMPTS)
+        .select("id");
+      if (!requeued || requeued.length === 0) {
+        // Nothing retryable (no failures, or all at the attempt cap). Return a clean 200 so the
+        // client shows "nothing to retry" rather than treating a 400/409 as an error.
+        return new Response(
+          JSON.stringify({ success: true, retried: 0, sent: 0, failed: 0, remaining: 0, complete: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     // Campaign-level gate: atomically flip to "sending" so a concurrent or
     // retried request bails out instead of re-sending. A campaign stuck in
     // "sending" is only taken over when stale — edge functions are hard-killed
@@ -294,9 +320,12 @@ Deno.serve(async (req) => {
     const CONCURRENCY = 4;
     const startedAt = Date.now();
 
-    const sendOne = async (recipient: { id: string; recipient_name: string | null; recipient_email: string }) => {
+    const sendOne = async (recipient: { id: string; recipient_name: string | null; recipient_email: string; attempt_count: number | null }) => {
       const fullName = recipient.recipient_name || "there";
       const firstName = fullName.trim().split(/\s+/)[0] || "there";
+      // This invocation is one (cross-invocation) attempt; record it so a later "retry failed"
+      // only re-queues rows still under the cap and a hard bounce can't be retried forever.
+      const nextAttemptCount = (recipient.attempt_count ?? 0) + 1;
       const personalizedHtml = campaign.body_html
         .replace(/\{\{first_name\}\}/gi, firstName)
         .replace(/\{\{name\}\}/gi, fullName);
@@ -327,7 +356,7 @@ Deno.serve(async (req) => {
             sentCount++;
             processed.add(recipient.id);
             await supabase.from("email_campaign_recipients")
-              .update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", recipient.id);
+              .update({ status: "sent", sent_at: new Date().toISOString(), attempt_count: nextAttemptCount }).eq("id", recipient.id);
             return;
           }
           if (res.status === 429 && attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
@@ -335,14 +364,14 @@ Deno.serve(async (req) => {
           failedCount++;
           processed.add(recipient.id);
           await supabase.from("email_campaign_recipients")
-            .update({ status: "failed", error_message: errBody.slice(0, 500) }).eq("id", recipient.id);
+            .update({ status: "failed", error_message: errBody.slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
           return;
         } catch (err) {
           if (attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
           failedCount++;
           processed.add(recipient.id);
           await supabase.from("email_campaign_recipients")
-            .update({ status: "failed", error_message: (err instanceof Error ? err.message : "Unknown error").slice(0, 500) }).eq("id", recipient.id);
+            .update({ status: "failed", error_message: (err instanceof Error ? err.message : "Unknown error").slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
           return;
         }
       }
