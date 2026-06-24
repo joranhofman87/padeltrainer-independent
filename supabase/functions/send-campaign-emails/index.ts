@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { isServiceRoleRequest } from "../_shared/service-role-auth.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -14,7 +15,7 @@ Deno.serve(async (req) => {
     if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Supabase config missing");
 
-    // Verify user auth
+    // Verify auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -25,15 +26,25 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Verify JWT
-    const token = authHeader.replace("Bearer ", "");
-    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY") || "");
-    const { data: { user }, error: authError } = await userClient.auth.getUser(token);
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Two trusted callers use the service-role key instead of a user JWT: the daily sweep
+    // cron (api/cron/daily-maintenance.ts) and our OWN resume chain (the self-reinvoke at the
+    // end of the campaign path). isServiceRoleRequest byte-matches the injected key or validates
+    // a service_role JWT carried in apikey+Authorization — exactly how api/_lib/cron.ts calls us.
+    // These skip user-JWT validation + ownership (ownership was enforced when the campaign's
+    // first, user-initiated invocation ran). Everyone else must present a valid user token.
+    const isServiceRole = isServiceRoleRequest(req);
+    let user: { id: string } | null = null;
+    if (!isServiceRole) {
+      const token = authHeader.replace("Bearer ", "");
+      const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY") || "");
+      const { data: { user: authUser }, error: authError } = await userClient.auth.getUser(token);
+      if (authError || !authUser) {
+        return new Response(JSON.stringify({ error: "Invalid token" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      user = authUser;
     }
 
     const body = await req.json();
@@ -44,8 +55,9 @@ Deno.serve(async (req) => {
     // the atomic pending->sending claim still prevents any double-send, so this is safe.
     const isResume = body.isResume === true;
 
-    // Helper: verify caller owns the campaign owner (academy or trainer)
+    // Helper: verify caller owns the campaign owner (academy or trainer).
     async function verifyOwner(academyId: string | null, trainerId: string | null): Promise<boolean> {
+      if (isServiceRole || !user) return isServiceRole; // trusted internal caller — no per-user check
       if (academyId) {
         const { data: isManager } = await supabase.rpc("is_academy_manager", {
           _user_id: user.id,
@@ -62,6 +74,59 @@ Deno.serve(async (req) => {
         return tp?.user_id === user.id;
       }
       return false;
+    }
+
+    // === SWEEP MODE (daily backstop) ===
+    // The service-role cron calls us with {sweep:true} to recover any campaign whose resume
+    // chain never completed — e.g. its first (user-initiated) invocation was hard-killed before
+    // it could schedule a continuation. Find campaigns stuck in 'sending' past the stale window
+    // that still have queued recipients, and re-trigger each as a normal send. The takeover gate
+    // recovers any rows stranded in 'sending', the per-recipient Idempotency-Key prevents
+    // re-emailing anyone already sent, and that invocation's (now service-role) self-reinvoke
+    // chain drains it to completion. Service-role only — a user must never sweep across tenants.
+    if (body.sweep === true) {
+      if (!isServiceRole) {
+        return new Response(JSON.stringify({ error: "Not authorized" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const SWEEP_STALE_MS = 15 * 60 * 1000;
+      const cutoff = new Date(Date.now() - SWEEP_STALE_MS).toISOString();
+      const { data: stuck } = await supabase
+        .from("email_campaigns")
+        .select("id")
+        .eq("status", "sending")
+        .lt("updated_at", cutoff);
+      const triggered: string[] = [];
+      const kicks: Promise<unknown>[] = [];
+      for (const c of stuck ?? []) {
+        const { count } = await supabase
+          .from("email_campaign_recipients")
+          .select("*", { count: "exact", head: true })
+          .eq("campaign_id", c.id)
+          .in("status", ["pending", "sending"]);
+        if ((count ?? 0) === 0) continue;
+        kicks.push(
+          fetch(`${SUPABASE_URL}/functions/v1/send-campaign-emails`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({ campaignId: c.id }),
+          }).catch((e) => console.error("sweep kick failed for", c.id, e)),
+        );
+        triggered.push(c.id);
+      }
+      const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+      if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(Promise.allSettled(kicks));
+      else await Promise.allSettled(kicks);
+      return new Response(JSON.stringify({ success: true, swept: triggered.length, campaigns: triggered }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // === TEST MODE ===
@@ -318,21 +383,22 @@ Deno.serve(async (req) => {
 
     // RESUMPTION: if the time budget cut us off with recipients still queued, nothing
     // else re-invokes this function — so we chain another invocation of ourselves to drain
-    // the tail. We replay the caller's JWT (re-runs auth + ownership) and pass isResume so
-    // the continuation skips the concurrency gate. waitUntil keeps the fetch alive after we
-    // respond. The chain terminates because every pass turns ≥1 full chunk of recipients into
-    // sent/failed, monotonically shrinking `remaining`. Idempotency keys make it double-send-safe.
-    // LIMIT: the replayed access token has ~1h TTL, so the chain self-drains for ~32 hops
-    // (~58 min). A campaign large/throttled enough to outlive that strands in 'sending' with
-    // no autonomous driver until a human re-triggers a send — the stale-takeover gate then
-    // re-claims the leftover rows and the per-recipient Idempotency-Key prevents re-emailing
-    // anyone already sent. A server-side pg_cron sweeper (service role + isResume) would remove
-    // the human step; tracked as a follow-up.
+    // the tail. We authenticate the continuation with the SERVICE-ROLE key (not the caller's
+    // user JWT), so the chain has no token-expiry bound and self-drains a campaign of any size
+    // fully autonomously. isResume skips the concurrency gate (trusted continuation); waitUntil
+    // keeps the fetch alive after we respond. The chain terminates because every pass turns ≥1
+    // full chunk of recipients into sent/failed, monotonically shrinking `remaining`. Idempotency
+    // keys make it double-send-safe. (The daily sweep is only a backstop for a first invocation
+    // that died before it could schedule even one continuation.)
     let continued = false;
     if (budgetHit && remaining > 0) {
       const resume = fetch(`${SUPABASE_URL}/functions/v1/send-campaign-emails`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: authHeader },
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
         body: JSON.stringify({ campaignId, isResume: true }),
       }).then((r) => { if (!r.ok) console.error("campaign self-reinvoke returned", r.status); })
         .catch((e) => console.error("campaign self-reinvoke failed:", e));

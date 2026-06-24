@@ -224,3 +224,9 @@ verify_jwt = false
 
 [functions.health-check]
 verify_jwt = false
+
+# Self-authenticating: validates a user JWT (getUser) for owner sends and the
+# service-role key (isServiceRoleRequest) for the daily sweep cron + its own resume
+# chain. Must stay false so the service-role caller isn't 401'd at the gateway.
+[functions.send-campaign-emails]
+verify_jwt = false
