@@ -92,38 +92,43 @@ Deno.serve(async (req) => {
         });
       }
       const SWEEP_STALE_MS = 15 * 60 * 1000;
+      // Bound the daily backstop's fan-out: under a mass-stranding event (e.g. a Resend
+      // outage across many concurrent blasts) we must NOT fire an unbounded number of
+      // concurrent campaign drives in one tick. Take the oldest-stuck N; the rest are
+      // picked up on the next daily run (each kick is idempotent + self-healing).
+      const SWEEP_MAX = 25;
       const cutoff = new Date(Date.now() - SWEEP_STALE_MS).toISOString();
       const { data: stuck } = await supabase
         .from("email_campaigns")
         .select("id")
         .eq("status", "sending")
-        .lt("updated_at", cutoff);
-      const triggered: string[] = [];
-      const kicks: Promise<unknown>[] = [];
-      for (const c of stuck ?? []) {
+        .lt("updated_at", cutoff)
+        .order("updated_at", { ascending: true })
+        .limit(SWEEP_MAX);
+      // Probe recipient counts in parallel; keep only campaigns that still have queued work.
+      const withQueued = (await Promise.all((stuck ?? []).map(async (c) => {
         const { count } = await supabase
           .from("email_campaign_recipients")
           .select("*", { count: "exact", head: true })
           .eq("campaign_id", c.id)
           .in("status", ["pending", "sending"]);
-        if ((count ?? 0) === 0) continue;
-        kicks.push(
-          fetch(`${SUPABASE_URL}/functions/v1/send-campaign-emails`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: SUPABASE_SERVICE_ROLE_KEY,
-              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            },
-            body: JSON.stringify({ campaignId: c.id }),
-          }).catch((e) => console.error("sweep kick failed for", c.id, e)),
-        );
-        triggered.push(c.id);
-      }
+        return (count ?? 0) > 0 ? c.id : null;
+      }))).filter((id): id is string => id !== null);
+      const kicks = withQueued.map((id) =>
+        fetch(`${SUPABASE_URL}/functions/v1/send-campaign-emails`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({ campaignId: id }),
+        }).catch((e) => console.error("sweep kick failed for", id, e)),
+      );
       const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
       if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(Promise.allSettled(kicks));
       else await Promise.allSettled(kicks);
-      return new Response(JSON.stringify({ success: true, swept: triggered.length, campaigns: triggered }), {
+      return new Response(JSON.stringify({ success: true, swept: withQueued.length, campaigns: withQueued }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
