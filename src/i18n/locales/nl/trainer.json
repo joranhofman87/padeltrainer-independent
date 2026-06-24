@@ -1761,6 +1761,8 @@
       "retryStartedDesc": "{{sent}} verzonden, {{failed}} opnieuw mislukt.",
       "retryNone": "Niets om opnieuw te proberen",
       "retryNoneDesc": "Er zijn geen mislukte ontvangers meer die opnieuw geprobeerd kunnen worden.",
+      "retryQueued": "In wachtrij geplaatst",
+      "retryQueuedDesc": "{{count}} mislukte ontvangers gaan mee met de lopende verzending.",
       "retryError": "Kon mislukte ontvangers niet opnieuw verzenden.",
       "error": "Fout",
       "draftSaved": "Concept opgeslagen",
