@@ -53,6 +53,27 @@ What each role page still owns (do **not** merge these): the receiver/owner cont
 (sync-to-bookings, cancel / mark-paid reason modals, status-history card), status-lock validation,
 and the per-role i18n label namespace (`invoiceForm.*` vs `invoiceEdit.*`).
 
+## Shared invoice list scaffold (slice 2)
+
+The trainer + academy invoice LIST pages (`TrainerInvoices`, `AcademyInvoices`) were near-identical
+in their list *wiring*. The behaviour-preserving wiring is now shared; each page keeps its own data
+fetching, summary RPCs, status enums, tab partition, filters, status badge, and bulk actions.
+
+| Concern | Where it lives |
+| --- | --- |
+| Header-sort affordance + paid-tab default + header-key → RPC sort mapping | `@/components/invoices/useInvoiceListSort` (`useInvoiceListSort`, `mapInvoiceSortKeyToRpc`) |
+| Page-scoped row selection (Set + toggles + `selectedInvoices`) | `@/components/invoices/useInvoiceListSelection` |
+| Windowed pager (first/last + ±2 window + ellipsis, clamps internally) | `@/components/invoices/InvoiceListPagination` |
+| Page-count math | `invoiceListPageCount` in `@/lib/invoicesList` |
+
+Each page still owns: the `useTrainer/AcademyInvoices` RPC call + its scope params, the scoreboard
+summary reads (trainer's single unscoped summary vs academy's filtered fan-out with `isError`
+fallback — **do not** unify the value source), the status-filter `<Select>` enums, the tab partition
+(academy's `unpaid|paid|cancelled` + cancelled-tab status nulling), the trainer/location filters,
+the status badge, every bulk handler, query keys, and nav. The page-reset and selection-clear
+effects also stay in each page because their dependency arrays are page-specific (academy clears on
+trainer/location filter changes; trainer's selection-clear keys on `sort`/`sortDir`).
+
 ### How role labels and slots are injected
 
 - **Labels:** components take a `labels` object of plain strings (and small formatter callbacks,
@@ -86,11 +107,15 @@ path — not a free refactor. If you touch this math, the characterization test 
 
 ## Documented follow-ups (not in this slice)
 
-These are the next reuse targets, intentionally deferred to keep this slice safe and small:
+These are the next reuse targets, intentionally deferred to keep each slice safe and small:
 
-- **Shared invoice LIST scaffold** — the natural next slice (the `SortableTableHead` move sets it
-  up): a sort-config→RPC mapping hook, pagination, bulk-selection hook, stat tiles, and a filters
-  component shared by the trainer/academy invoice list pages.
+- **Invoice list — remaining shared pieces** (slice 2 did the sort/selection/pagination wiring; these
+  ride on deliberate behaviour/visual decisions, so they were left out): converging the status badge
+  onto `computed_status` + the shared `InvoiceStatusBadge` (a visible color/label/tooltip change to
+  the trainer page); a shared stat-tile row that takes `{totalUnpaid, countUnpaid, countPaid}` as
+  props **without owning the query** (trainer's global summary vs academy's filtered fan-out); a
+  shared 9-column header/row config; and adopting `DataTableCard` / `EmptyState` / `ListPageSkeleton`
+  (each a visual change). Sharing the bulk mutation handlers is a separate, money-mutating slice.
 - **Shared player list page** (trainer / academy / club) on the same list scaffold.
 - **Shared date-picker field** (due-date popover/calendar is repeated across forms).
 - **Shared scheduling / calendar components** (agenda day/week views).

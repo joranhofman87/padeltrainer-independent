@@ -10,20 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
+  invoiceListPageCount,
   useAcademyInvoices,
   useAcademyInvoiceSummaryFiltered,
   useAcademyInvoiceCancelledCount,
@@ -31,6 +23,9 @@ import {
   fetchAllAcademyInvoices,
   type AcademyInvoiceRow,
 } from "@/lib/invoicesList";
+import { useInvoiceListSort } from "@/components/invoices/useInvoiceListSort";
+import { useInvoiceListSelection } from "@/components/invoices/useInvoiceListSelection";
+import { InvoiceListPagination } from "@/components/invoices/InvoiceListPagination";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { Input } from "@/components/ui/input";
 import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
@@ -93,7 +88,6 @@ export default function AcademyInvoices() {
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
   const [bulkCancelReason, setBulkCancelReason] = useState("");
@@ -106,28 +100,9 @@ export default function AcademyInvoices() {
   const [page, setPage] = useState(0);
   const debouncedSearch = useDebouncedValue(searchQuery);
 
-  // Header-click sort affordance only; translated to RPC sort/sortDir params below.
-  const { sortConfig, handleSort, setSortConfig } = useTableSort<Invoice>([]);
-
-  // Translate the sortConfig column to the RPC's server-side sort key.
-  const rpcSort =
-    sortConfig.key === "player_name" ? "player_name"
-    : sortConfig.key === "total" ? "total"
-    : sortConfig.key === "due_date" ? "due_date"
-    : sortConfig.key === "_computedStatus" ? "status"
-    : sortConfig.key === "paid_at" ? "paid_at"
-    : "created_at";
-  const rpcSortDir: "asc" | "desc" = sortConfig.direction === "asc" ? "asc" : "desc";
-
-  // Force the paid-tab default sort (paid_at desc) and clear it on the unpaid tab
-  // so the unpaid default falls back to created_at desc — preserved from before.
-  useEffect(() => {
-    if (activeTab === "paid") {
-      setSortConfig({ key: "paid_at" as any, direction: "desc" });
-    } else {
-      setSortConfig({ key: null, direction: null });
-    }
-  }, [activeTab, setSortConfig]);
+  // Shared header-sort wiring: the useTableSort affordance + paid-tab default sort
+  // + the header-key → RPC sort/sortDir mapping (rows come from the server page).
+  const { sortConfig, handleSort, sort: rpcSort, sortDir: rpcSortDir } = useInvoiceListSort(activeTab);
 
   const academyId = activeAcademy?.id;
   const trainerScope = trainerFilter === "all" ? null : trainerFilter;
@@ -180,6 +155,10 @@ export default function AcademyInvoices() {
 
   const filteredInvoices: Invoice[] = overview?.rows ?? [];
 
+  // Shared page-scoped selection (toggle / select-all-visible / selectedInvoices).
+  const { selectedIds, setSelectedIds, toggleSelect, toggleSelectAllVisible, selectedInvoices } =
+    useInvoiceListSelection(filteredInvoices);
+
   // Delivery breakdown for the banner (follows tab + trainer/location, like the scoreboard).
   const { data: deliverySummary } = useAcademyInvoiceDeliverySummary(academyId, {
     tab: activeTab === "paid" ? "paid" : "unpaid",
@@ -193,7 +172,7 @@ export default function AcademyInvoices() {
   const countUnpaid = summary?.countUnpaid ?? 0;
   const countPaid = summary?.countPaid ?? 0;
   const countDraft = summary?.countDraft ?? 0;
-  const pageCount = Math.max(1, Math.ceil((overview?.total ?? 0) / INVOICE_PAGE_SIZE));
+  const pageCount = invoiceListPageCount(overview?.total ?? 0);
 
   // Keep page in range and reset to the first page whenever the query inputs change.
   useEffect(() => {
@@ -204,15 +183,8 @@ export default function AcademyInvoices() {
   }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, rpcSort, rpcSortDir]);
 
   // Clear selection when filters/tab/page change (selection is page-scoped).
-  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, page]);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+  // (setSelectedIds is a stable setter; listed only to satisfy exhaustive-deps.)
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, page, setSelectedIds]);
 
 
   // Fetch trainers for filter (two-step: get user_ids, then profiles for names)
@@ -511,22 +483,8 @@ export default function AcademyInvoices() {
   };
 
   // ========== Bulk actions ==========
-  // Selection is page-scoped (cleared on page change), so resolve against the
-  // visible page rows rather than a full in-memory set.
-  const selectedInvoices = (overview?.rows ?? []).filter((i) => selectedIds.has(i.id));
-
-  const toggleSelectAllVisible = (visible: Invoice[]) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
-      if (allSelected) {
-        visible.forEach((i) => next.delete(i.id));
-      } else {
-        visible.forEach((i) => next.add(i.id));
-      }
-      return next;
-    });
-  };
+  // Selection is page-scoped (cleared on page change); selectedInvoices +
+  // toggleSelectAllVisible come from useInvoiceListSelection above.
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
@@ -1066,44 +1024,7 @@ export default function AcademyInvoices() {
                 ))}
               </div>
 
-              {pageCount > 1 && (
-                <Pagination className="mt-4">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href="#"
-                        aria-disabled={page === 0}
-                        className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
-                      />
-                    </PaginationItem>
-                    {Array.from({ length: pageCount }, (_, i) => i)
-                      .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                      .map((i, idx, arr) => (
-                        <PaginationItem key={i}>
-                          {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                            <span className="px-2 text-muted-foreground">…</span>
-                          ) : null}
-                          <PaginationLink
-                            href="#"
-                            isActive={i === page}
-                            onClick={(e) => { e.preventDefault(); setPage(i); }}
-                          >
-                            {i + 1}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                    <PaginationItem>
-                      <PaginationNext
-                        href="#"
-                        aria-disabled={page >= pageCount - 1}
-                        className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <InvoiceListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
             </>
           )}
         </TabsContent>

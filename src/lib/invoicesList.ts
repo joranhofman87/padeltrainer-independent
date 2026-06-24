@@ -49,6 +49,12 @@ export interface TrainerInvoiceParams {
 }
 
 export const INVOICE_PAGE_SIZE = 50;
+
+/** Total page count for the server-paginated invoice lists (min 1, even when empty). */
+export function invoiceListPageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / INVOICE_PAGE_SIZE));
+}
+
 const SERVER_MAX_PAGE = 500; // get_*_invoices clamp p_limit at 500
 const FETCH_ALL_MAX_ROWS = 20_000;
 const FETCH_ALL_CONCURRENCY = 5;

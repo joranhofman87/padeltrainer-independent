@@ -10,26 +10,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
+  invoiceListPageCount,
   useTrainerInvoices,
   useTrainerInvoiceSummary,
   useTrainerInvoiceDeliverySummary,
   fetchAllTrainerInvoices,
   type TrainerInvoiceRow,
 } from "@/lib/invoicesList";
+import { useInvoiceListSort } from "@/components/invoices/useInvoiceListSort";
+import { useInvoiceListSelection } from "@/components/invoices/useInvoiceListSelection";
+import { InvoiceListPagination } from "@/components/invoices/InvoiceListPagination";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
@@ -79,7 +74,6 @@ export default function TrainerInvoices() {
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -90,24 +84,6 @@ export default function TrainerInvoices() {
 
   // Server-side ILIKE search: debounce the input before it hits the RPC.
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAllVisible = (visible: Invoice[]) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
-      if (allSelected) visible.forEach((i) => next.delete(i.id));
-      else visible.forEach((i) => next.add(i.id));
-      return next;
-    });
-  };
 
   // Fetch trainer profile ID
   const { data: trainerProfile } = useQuery({
@@ -135,32 +111,9 @@ export default function TrainerInvoices() {
     }
   };
 
-  // useTableSort is kept ONLY as the header-click UI affordance; the visible
-  // rows come from the server page, so it sorts nothing locally (empty input).
-  const { sortConfig, handleSort, setSortConfig } = useTableSort<Invoice>([]);
-
-  // Force the paid-tab default sort exactly as before: paid_at desc on the paid
-  // tab, created_at desc (no column chosen) on the unpaid tab.
-  useEffect(() => {
-    if (activeTab === "paid") {
-      setSortConfig({ key: "paid_at" as any, direction: "desc" });
-    } else {
-      setSortConfig({ key: null, direction: null });
-    }
-  }, [activeTab, setSortConfig]);
-
-  // Translate the header-click sortConfig into the RPC sort/sortDir params.
-  const sort: string = (() => {
-    switch (sortConfig.key as string | null) {
-      case "player_name": return "player_name";
-      case "total": return "total";
-      case "due_date": return "due_date";
-      case "_computedStatus": return "status";
-      case "paid_at": return "paid_at";
-      default: return "created_at";
-    }
-  })();
-  const sortDir: "asc" | "desc" = sortConfig.direction === "asc" ? "asc" : "desc";
+  // Shared header-sort wiring: the useTableSort affordance + paid-tab default sort
+  // + the header-key → RPC sort/sortDir mapping (rows come from the server page).
+  const { sortConfig, handleSort, sort, sortDir } = useInvoiceListSort(activeTab);
 
   const tab: "unpaid" | "paid" = activeTab === "paid" ? "paid" : "unpaid";
 
@@ -191,10 +144,13 @@ export default function TrainerInvoices() {
   // VISIBLE LIST = the server page rows only. No client-side re-filter/re-sort.
   const filteredInvoices = overview?.rows ?? [];
 
+  // Shared page-scoped selection (toggle / select-all-visible / selectedInvoices).
+  const { selectedIds, setSelectedIds, toggleSelect, toggleSelectAllVisible, selectedInvoices } =
+    useInvoiceListSelection(filteredInvoices);
+
   const totalUnpaid = sumUnpaid;
 
-  const pageCount = Math.max(1, Math.ceil((overview?.total ?? 0) / INVOICE_PAGE_SIZE));
-  const goToPage = (p: number) => setPage(Math.min(pageCount - 1, Math.max(0, p)));
+  const pageCount = invoiceListPageCount(overview?.total ?? 0);
 
   // Keep the page in range if the result set shrinks (e.g. after a bulk delete).
   useEffect(() => {
@@ -208,9 +164,10 @@ export default function TrainerInvoices() {
 
   // Selection is page-scoped: clear it on any filter/tab/page change so the
   // page-scoped selectedInvoices (rows on the current page) is always safe.
+  // (setSelectedIds is a stable setter; listed only to satisfy exhaustive-deps.)
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [activeTab, statusFilter, deliveryFilter, debouncedSearch, sort, sortDir, page]);
+  }, [activeTab, statusFilter, deliveryFilter, debouncedSearch, sort, sortDir, page, setSelectedIds]);
 
   const invoiceSettingsLabels = buildTrainerInvoiceSettingsLabels(t);
 
@@ -389,9 +346,8 @@ export default function TrainerInvoices() {
   };
 
   // ========== Bulk actions ==========
-  // Selection is page-scoped (cleared on page change), so the selected rows are
-  // exactly the chosen rows on the current page.
-  const selectedInvoices = filteredInvoices.filter((i) => selectedIds.has(i.id));
+  // Selection is page-scoped (cleared on page change); selectedInvoices comes from
+  // useInvoiceListSelection above — the chosen rows on the current page.
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
@@ -815,44 +771,7 @@ export default function TrainerInvoices() {
                 </>
               )}
 
-              {pageCount > 1 && (
-                <Pagination className="mt-4">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href="#"
-                        aria-disabled={page === 0}
-                        className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); goToPage(page - 1); }}
-                      />
-                    </PaginationItem>
-                    {Array.from({ length: pageCount }, (_, i) => i)
-                      .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                      .map((i, idx, arr) => (
-                        <PaginationItem key={i}>
-                          {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                            <span className="px-2 text-muted-foreground">…</span>
-                          ) : null}
-                          <PaginationLink
-                            href="#"
-                            isActive={i === page}
-                            onClick={(e) => { e.preventDefault(); goToPage(i); }}
-                          >
-                            {i + 1}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                    <PaginationItem>
-                      <PaginationNext
-                        href="#"
-                        aria-disabled={page >= pageCount - 1}
-                        className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); goToPage(page + 1); }}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <InvoiceListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
             </TabsContent>
           </Tabs>
         </TabsContent>
