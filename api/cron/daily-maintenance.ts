@@ -5,7 +5,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 // the whole daily-maintenance cron (incl. deferred-rebook invoicing) never runs.
 import { alertCronFailure, invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron.js';
 
-/** Daily: backups, invoice health, enrichment + logo batch (replaces Lovable external cron). */
+/** Daily: backups, invoice health, enrichment, and logo batch jobs. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!verifyCronSecret(req)) {
     rejectUnauthorizedCron(res);
@@ -23,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // campaign stuck 'sending' >15min with queued recipients. No-op when none are stuck.
     { slug: 'send-campaign-emails', body: { sweep: true } },
     // NOTE: enrich-clubs + fetch-location-logos were removed here — they depend on
-    // paid external APIs (Firecrawl + the deprecated Lovable AI gateway) that aren't
+    // paid external APIs (Firecrawl + an AI gateway) that aren't
     // configured, so they only ever failed this cron (207). Re-add with the API keys
     // set if directory auto-enrichment is wanted again.
   ];

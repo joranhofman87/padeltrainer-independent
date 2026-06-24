@@ -1,5 +1,6 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAdmin } from "../_shared/auth.ts";
+import { aiTextModel, generateTextFromPrompt } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,30 +58,11 @@ interface EnrichmentResult {
   academy_created?: string;
 }
 
-async function callLovableAI(prompt: string): Promise<string> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-    }),
+async function callAiGateway(prompt: string): Promise<string> {
+  return generateTextFromPrompt(prompt, {
+    model: aiTextModel("google/gemini-3-flash-preview"),
+    temperature: 0.3,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`AI Gateway error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || "";
 }
 
 async function scrapeWebsite(url: string): Promise<{ markdown: string; links: string[]; logoUrl: string | null } | null> {
@@ -194,7 +176,7 @@ Address: ${address || "unknown"}
 Website content:
 ${websiteContent.substring(0, 8000)}`;
 
-  const response = await callLovableAI(prompt);
+  const response = await callAiGateway(prompt);
 
   const jsonMatch = response.match(/\{[\s\S]*?\}/);
   if (!jsonMatch) {
@@ -261,7 +243,7 @@ If NO separate academy is detected, return:
 { "found": false }`;
 
   try {
-    const response = await callLovableAI(prompt);
+    const response = await callAiGateway(prompt);
     const jsonMatch = response.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return null;
 
@@ -324,7 +306,7 @@ Academy: ${academy.name}
 Website content:
 ${scrapeResult.markdown.substring(0, 8000)}`;
 
-    const response = await callLovableAI(prompt);
+    const response = await callAiGateway(prompt);
     const jsonMatch = response.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
@@ -506,7 +488,7 @@ Return JSON:
 }`;
 
   try {
-    const response = await callLovableAI(prompt);
+    const response = await callAiGateway(prompt);
     const jsonMatch = response.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);

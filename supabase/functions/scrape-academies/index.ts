@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { aiTextModel, fetchChatCompletion, isAiGatewayConfigured } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -167,11 +168,8 @@ function parseListingPage(markdown: string): AcademyListItem[] {
   return academies;
 }
 
-// Call Lovable AI to extract structured data from detail page markdown
-async function extractAcademyData(
-  markdown: string,
-  lovableApiKey: string
-): Promise<ExtractedData> {
+// Use the configured AI gateway to extract structured data from detail page markdown
+async function extractAcademyData(markdown: string): Promise<ExtractedData> {
   const defaultData: ExtractedData = {
     website_url: null,
     contact_email: null,
@@ -185,20 +183,12 @@ async function extractAcademyData(
   };
 
   try {
-    const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `Je bent een data-extractie assistent. Analyseer de markdown van een padelacademie pagina en extraheer gestructureerde data.
+    const response = await fetchChatCompletion({
+      model: aiTextModel("google/gemini-2.5-flash"),
+      messages: [
+        {
+          role: "system",
+          content: `Je bent een data-extractie assistent. Analyseer de markdown van een padelacademie pagina en extraheer gestructureerde data.
               
 Geef je antwoord als JSON met deze structuur:
 {
@@ -221,62 +211,60 @@ Regels:
 - Zoek naar namen van clubs/locaties waar ze lesgeven
 - Zoek naar trainers/coaches namen
 - Identificeer specialisaties: jeugd, beginners, gevorderden, competitie, privéles, groepsles, etc.`,
-            },
-            {
-              role: "user",
-              content: `Extraheer de data uit deze pagina:\n\n${markdown.slice(0, 8000)}`,
-            },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "extract_academy_data",
-                description: "Extract structured academy data from markdown",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    website_url: { type: "string", nullable: true },
-                    contact_email: { type: "string", nullable: true },
-                    phone: { type: "string", nullable: true },
-                    social_instagram: { type: "string", nullable: true },
-                    social_facebook: { type: "string", nullable: true },
-                    social_linkedin: { type: "string", nullable: true },
-                    locations: {
-                      type: "array",
-                      items: { type: "string" },
-                    },
-                    trainers: {
-                      type: "array",
-                      items: { type: "string" },
-                    },
-                    specializations: {
-                      type: "array",
-                      items: { type: "string" },
-                    },
-                  },
-                  required: [
-                    "website_url",
-                    "contact_email",
-                    "phone",
-                    "social_instagram",
-                    "social_facebook",
-                    "social_linkedin",
-                    "locations",
-                    "trainers",
-                    "specializations",
-                  ],
+        },
+        {
+          role: "user",
+          content: `Extraheer de data uit deze pagina:\n\n${markdown.slice(0, 8000)}`,
+        },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "extract_academy_data",
+            description: "Extract structured academy data from markdown",
+            parameters: {
+              type: "object",
+              properties: {
+                website_url: { type: "string", nullable: true },
+                contact_email: { type: "string", nullable: true },
+                phone: { type: "string", nullable: true },
+                social_instagram: { type: "string", nullable: true },
+                social_facebook: { type: "string", nullable: true },
+                social_linkedin: { type: "string", nullable: true },
+                locations: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+                trainers: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+                specializations: {
+                  type: "array",
+                  items: { type: "string" },
                 },
               },
+              required: [
+                "website_url",
+                "contact_email",
+                "phone",
+                "social_instagram",
+                "social_facebook",
+                "social_linkedin",
+                "locations",
+                "trainers",
+                "specializations",
+              ],
             },
-          ],
-          tool_choice: {
-            type: "function",
-            function: { name: "extract_academy_data" },
           },
-        }),
-      }
-    );
+        },
+      ],
+      tool_choice: {
+        type: "function",
+        function: { name: "extract_academy_data" },
+      },
+    });
 
     if (!response.ok) {
       console.error("AI extraction failed:", response.status);
@@ -308,13 +296,12 @@ Regels:
   }
 }
 
-// Generate unique Dutch description using Lovable AI
+// Generate a unique Dutch description using the configured AI gateway
 async function generateUniqueDescription(
   name: string,
   city: string,
   locationNames: string[],
-  specializations: string[],
-  lovableApiKey: string
+  specializations: string[]
 ): Promise<string> {
   try {
     const locationsText =
@@ -327,20 +314,12 @@ async function generateUniqueDescription(
         ? `Specialisaties: ${specializations.join(", ")}`
         : "";
 
-    const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `Je schrijft unieke, feitelijke beschrijvingen voor padelacademies in het Nederlands.
+    const response = await fetchChatCompletion({
+      model: aiTextModel("google/gemini-2.5-flash"),
+      messages: [
+        {
+          role: "system",
+          content: `Je schrijft unieke, feitelijke beschrijvingen voor padelacademies in het Nederlands.
 
 REGELS:
 - Schrijf 2-3 zinnen (maximaal 100 woorden)
@@ -350,21 +329,19 @@ REGELS:
 - Focus op wat deze academie onderscheidt
 - Wees feitelijk, niet promotioneel
 - Gebruik de gegeven informatie om een authentieke beschrijving te maken`,
-            },
-            {
-              role: "user",
-              content: `Schrijf een unieke beschrijving voor deze padelacademie:
+        },
+        {
+          role: "user",
+          content: `Schrijf een unieke beschrijving voor deze padelacademie:
 
 Academie: ${name}
 ${city ? `Stad: ${city}` : ""}
 Aantal locaties: ${locationNames.length || "onbekend"}
 ${locationsText}
 ${specsText}`,
-            },
-          ],
-        }),
-      }
-    );
+        },
+      ],
+    });
 
     if (!response.ok) {
       console.error("AI description generation failed:", response.status);
@@ -400,7 +377,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const firecrawlApiKey = Deno.env.get("FIRECRAWL_API_KEY");
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
 
     if (!firecrawlApiKey) {
       return new Response(
@@ -412,9 +388,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!lovableApiKey) {
+    if (!isAiGatewayConfigured()) {
       return new Response(
-        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
+        JSON.stringify({ error: "AI_GATEWAY_BASE_URL and AI_GATEWAY_API_KEY must be configured" }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -563,10 +539,7 @@ Deno.serve(async (req) => {
 
         // Extract structured data using AI
         await delay(200);
-        const extractedData = await extractAcademyData(
-          detailResult.markdown,
-          lovableApiKey
-        );
+        const extractedData = await extractAcademyData(detailResult.markdown);
 
         // Generate unique description
         await delay(200);
@@ -574,8 +547,7 @@ Deno.serve(async (req) => {
           academy.name,
           academy.city || extractedData.locations[0]?.split(",").pop() || "",
           extractedData.locations,
-          extractedData.specializations,
-          lovableApiKey
+          extractedData.specializations
         );
 
         if (dryRun) {

@@ -30,6 +30,25 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 
 - [ ] **send-invoice-email** — now **attaches the invoice PDF** to the payment email (best-effort: it calls `generate-invoice` for a fresh signed `pdfUrl`, fetches it, and attaches base64; if generation fails it still sends the pay-link email). Previously the payment email was link-only with no PDF. *No deploy = recipients keep getting link-only emails.*
 
+## Pending — replace the Lovable AI gateway (P1 #9, post-2026-06-24)
+
+The 6 AI edge fns no longer hardcode `ai.gateway.lovable.dev` / `LOVABLE_API_KEY`. They now use the
+shared `_shared/ai-gateway.ts`, driven by env (any OpenAI-compatible `/chat/completions` gateway).
+**Set the secrets BEFORE redeploying** — otherwise the AI features throw (content tools) or skip
+(the gated ones):
+
+`supabase secrets set AI_GATEWAY_BASE_URL=<gateway, e.g. https://openrouter.ai/api/v1> AI_GATEWAY_API_KEY=<server-only key> --project-ref ficwbdrzefmblkbkomzw`
+
+Optional overrides: `AI_GATEWAY_TEXT_MODEL` (default `google/gemini-2.5-flash`), `AI_GATEWAY_IMAGE_MODEL` (default `google/gemini-3-pro-image-preview`).
+
+Then `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw` for:
+- [ ] **enrich-clubs**, **scrape-academies**, **generate-proposals** — gated on `isAiGatewayConfigured()`; skip gracefully if unset.
+- [ ] **generate-blog-article**, **translate-blog-article**, **generate-blog-cover** — admin content tools; throw if unset (same as the old `LOVABLE_API_KEY` behaviour).
+
+The `_shared/cors.ts` lovable-origin removal bundles into every fn deploy; the `daily-maintenance`
+comment-only change auto-deploys via Vercel. Delete `LOVABLE_API_KEY` from the project secrets once
+all 6 are redeployed.
+
 ## Notes
 - The CI changes (rehearsal runner, edge-fn config guard, cron Slack alerts, stale-ref purge) took effect on merge — no manual deploy.
 - Dependency-vuln upgrade: the production-runtime fixes shipped (#84, react-router + protobufjs); the dev/build + Vercel-runtime remainder is documented as deferred in `audit/DEPENDENCIES.md`.

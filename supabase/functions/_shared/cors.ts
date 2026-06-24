@@ -8,9 +8,6 @@ const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [
   /^https:\/\/padeltrainer\.ai$/,
   /^https:\/\/www\.padeltrainer\.ai$/,
   /^https:\/\/[^/]+\.vercel\.app$/,
-  /^https:\/\/padeltrainer\.lovable\.app$/,
-  /^https:\/\/[a-z0-9-]+\.lovable\.app$/, // preview + branch domains
-  /^https:\/\/[a-z0-9-]+\.lovable\.dev$/,
   /^https:\/\/padeltrainer\.com$/,
   /^https:\/\/www\.padeltrainer\.com$/,
   /^http:\/\/localhost:8080$/,
