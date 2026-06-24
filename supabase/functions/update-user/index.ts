@@ -118,6 +118,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // SECURITY (IDOR guard): the manager checks above prove the caller manages the
+    // SUBMITTED trainer_profile_id — but that only grants authority over the user who
+    // OWNS that trainer profile. Without this, a manager of trainer A could pass
+    // trainer_profile_id=A together with target_user_id=B (any unrelated non-admin)
+    // and edit B's profile. Resolve the trainer's user_id server-side and revoke the
+    // manager grant unless it matches the target. (Admins and self are unaffected.)
+    if (isAuthorizedManager) {
+      const { data: managedTrainer } = await supabaseAdmin
+        .from("trainer_profiles")
+        .select("user_id")
+        .eq("id", trainer_profile_id)
+        .maybeSingle();
+      if (!managedTrainer || managedTrainer.user_id !== target_user_id) {
+        isAuthorizedManager = false;
+      }
+    }
+
     if (!isAdmin && !isSelf && !isAuthorizedManager) {
       return new Response(
         JSON.stringify({ error: "Unauthorized: You don't have permission to update this user" }),
