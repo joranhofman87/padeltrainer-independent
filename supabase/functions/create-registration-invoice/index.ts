@@ -13,6 +13,7 @@ import {
   type RegistrationInvoiceCycle,
 } from "../_shared/event-registration-invoice.ts";
 import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -147,6 +148,10 @@ serve(async (req: Request) => {
       status: result.status,
     });
   } catch (e) {
-    return json({ error: "internal_error", message: String((e as Error)?.message ?? e) }, 500);
+    const message = String((e as Error)?.message ?? e);
+    // Reachable from the public registration flow with no client to surface the failure —
+    // alert so a money-path break (invoice never minted) is never silent.
+    await notifySlackEdgeError("create-registration-invoice", message);
+    return json({ error: "internal_error", message }, 500);
   }
 });

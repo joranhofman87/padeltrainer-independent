@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
 import { getEnvServiceRoleKey } from "../_shared/service-role-auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
   isInvoiceBusinessProfileComplete,
   resolveAutoCreateBusinessGate,
@@ -763,6 +764,9 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    // Invoice minting can be reached server-side (cron, create-rebook-invoice) where no
+    // client surfaces the failure to PostHog — alert so a money-path break is never silent.
+    await notifySlackEdgeError("auto-create-invoice", message);
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
