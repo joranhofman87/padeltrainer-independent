@@ -3,8 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, CheckCircle2, Clock, XCircle, Users } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { ArrowLeft, Globe, EyeOff, Mail, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -12,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -29,6 +30,10 @@ const STATUS_STYLE: Record<GroupStatus, string> = {
 };
 const STATUS_ORDER: GroupStatus[] = ['rebooked', 'awaiting', 'declined', 'members', 'public'];
 
+type PaymentFilter = 'all' | 'unpaid' | 'paid';
+
+const claimedOf = (g: RebookManageGroup) => g.players.filter((p) => p.response === 'claimed');
+
 export default function AcademyRebookManage() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const navigate = useNavigate();
@@ -40,6 +45,15 @@ export default function AcademyRebookManage() {
     enabled: !!cycleId,
   });
 
+  // Filters
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | GroupStatus>('all');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
+  const [trainerFilter, setTrainerFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
+
+  // Selection + UI state
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [selectedPlayers, setSelectedPlayers] = useState<Map<string, RebookReminderTarget>>(new Map());
   const [busy, setBusy] = useState(false);
@@ -52,6 +66,43 @@ export default function AcademyRebookManage() {
     members: 'Open voor vaste spelers', public: 'Open voor iedereen',
   }[s]);
 
+  const groups = useMemo(() => data?.groups ?? [], [data]);
+
+  const trainerOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of groups) if (g.trainerId) m.set(g.trainerId, g.trainerName || g.trainerId);
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'nl'));
+  }, [groups]);
+  const locationOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of groups) if (g.locationId) m.set(g.locationId, g.locationName || g.locationId);
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'nl'));
+  }, [groups]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return groups.filter((g) => {
+      if (statusFilter !== 'all' && g.status !== statusFilter) return false;
+      if (trainerFilter !== 'all' && g.trainerId !== trainerFilter) return false;
+      if (locationFilter !== 'all' && g.locationId !== locationFilter) return false;
+      if (paymentFilter !== 'all') {
+        const claimed = claimedOf(g);
+        if (paymentFilter === 'unpaid' && !claimed.some((p) => !p.paid)) return false;
+        if (paymentFilter === 'paid' && !(claimed.length > 0 && claimed.every((p) => p.paid))) return false;
+      }
+      if (q) {
+        const hay = `${g.weekday} ${g.time} ${g.trainerName ?? ''} ${g.locationName ?? ''} ${g.players.map((p) => p.name).join(' ')}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [groups, search, statusFilter, paymentFilter, trainerFilter, locationFilter]);
+
+  const toggleExpanded = (id: string) => setExpanded((prev) => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
   const toggleGroup = (id: string) => setSelectedGroups((prev) => {
     const n = new Set(prev);
     if (n.has(id)) n.delete(id); else n.add(id);
@@ -63,10 +114,17 @@ export default function AcademyRebookManage() {
     return n;
   });
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every((g) => selectedGroups.has(g.groupId));
+  const toggleSelectAll = () => setSelectedGroups((prev) => {
+    const n = new Set(prev);
+    if (allFilteredSelected) filtered.forEach((g) => n.delete(g.groupId));
+    else filtered.forEach((g) => n.add(g.groupId));
+    return n;
+  });
+
   const selectedSlotIds = useMemo(() => {
-    if (!data) return [] as string[];
-    return data.groups.filter((g) => selectedGroups.has(g.groupId)).flatMap((g) => g.slotIds);
-  }, [data, selectedGroups]);
+    return groups.filter((g) => selectedGroups.has(g.groupId)).flatMap((g) => g.slotIds);
+  }, [groups, selectedGroups]);
 
   const clearSelection = () => { setSelectedGroups(new Set()); setSelectedPlayers(new Map()); };
 
@@ -110,10 +168,8 @@ export default function AcademyRebookManage() {
     return <div className="p-4 space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /></div>;
   }
 
-  const groups = data?.groups ?? [];
-
   return (
-    <div className="p-4 space-y-4 max-w-5xl mx-auto">
+    <div className="p-4 space-y-4 max-w-6xl mx-auto">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => navigate(`/app/academy/cycles/${cycleId}`)}>
           <ArrowLeft className="h-4 w-4 mr-1" /> {t('common:back', 'Terug')}
@@ -126,9 +182,11 @@ export default function AcademyRebookManage() {
       {/* Summary */}
       <div className="flex flex-wrap gap-2">
         {STATUS_ORDER.map((s) => (
-          <Badge key={s} variant="outline" className={STATUS_STYLE[s]}>
-            {statusLabel(s)}: {data?.counts[s] ?? 0}
-          </Badge>
+          <button key={s} type="button" aria-label={statusLabel(s)} onClick={() => setStatusFilter((cur) => (cur === s ? 'all' : s))}>
+            <Badge variant="outline" className={`${STATUS_STYLE[s]} ${statusFilter === s ? 'ring-2 ring-offset-1 ring-primary/40' : ''}`}>
+              {statusLabel(s)}: {data?.counts[s] ?? 0}
+            </Badge>
+          </button>
         ))}
         <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200">
           {t('rebookManage.paid', 'Betaald')}: {data?.paidCount ?? 0}
@@ -136,6 +194,52 @@ export default function AcademyRebookManage() {
         <Badge variant="outline" className="bg-rose-100 text-rose-800 border-rose-200">
           {t('rebookManage.unpaid', 'Open')}: {data?.unpaidCount ?? 0}
         </Badge>
+      </div>
+
+      {/* Filter toolbar */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('rebookManage.searchPlaceholder', 'Zoek op speler, dag, trainer…')}
+            className="pl-8"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'all' | GroupStatus)}>
+          <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('rebookManage.allStatuses', 'Alle statussen')}</SelectItem>
+            {STATUS_ORDER.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={paymentFilter} onValueChange={(v) => setPaymentFilter(v as PaymentFilter)}>
+          <SelectTrigger className="w-full sm:w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('rebookManage.allPayments', 'Alle betalingen')}</SelectItem>
+            <SelectItem value="unpaid">{t('rebookManage.filterUnpaid', 'Heeft openstaand')}</SelectItem>
+            <SelectItem value="paid">{t('rebookManage.filterPaid', 'Volledig betaald')}</SelectItem>
+          </SelectContent>
+        </Select>
+        {trainerOptions.length > 1 && (
+          <Select value={trainerFilter} onValueChange={setTrainerFilter}>
+            <SelectTrigger className="w-full sm:w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('rebookManage.allTrainers', 'Alle trainers')}</SelectItem>
+              {trainerOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {locationOptions.length > 1 && (
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger className="w-full sm:w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('rebookManage.allLocations', 'Alle locaties')}</SelectItem>
+              {locationOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Bulk bar */}
@@ -159,19 +263,54 @@ export default function AcademyRebookManage() {
         </div>
       )}
 
-      {groups.length === 0 ? (
-        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
-          {t('rebookManage.empty', 'Geen herboekingsgegevens voor deze cyclus.')}
-        </CardContent></Card>
-      ) : (
-        <div className="space-y-2">
-          {groups.map((g) => (
-            <GroupRow key={g.groupId} g={g} statusLabel={statusLabel}
-              selected={selectedGroups.has(g.groupId)} onToggle={() => toggleGroup(g.groupId)}
-              selectedPlayers={selectedPlayers} onTogglePlayer={togglePlayer} t={t} />
-          ))}
-        </div>
-      )}
+      {/* Table */}
+      <div className="rounded-md border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-8">
+                <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="select all sessions" />
+              </TableHead>
+              <TableHead className="w-6" />
+              <TableHead>{t('rebookManage.colSession', 'Sessie')}</TableHead>
+              <TableHead className="hidden md:table-cell">{t('rebookManage.colTrainer', 'Trainer')}</TableHead>
+              <TableHead className="hidden lg:table-cell">{t('rebookManage.colLocation', 'Locatie')}</TableHead>
+              <TableHead>{t('rebookManage.colStatus', 'Status')}</TableHead>
+              <TableHead className="text-right whitespace-nowrap">{t('rebookManage.colRebooked', 'Geherboekt')}</TableHead>
+              <TableHead className="text-right whitespace-nowrap">{t('rebookManage.colPaid', 'Betaald')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                  {groups.length === 0
+                    ? t('rebookManage.empty', 'Geen herboekingsgegevens voor deze cyclus.')
+                    : t('rebookManage.noMatches', 'Geen sessies komen overeen met de filters.')}
+                </TableCell>
+              </TableRow>
+            ) : filtered.map((g) => {
+              const claimed = claimedOf(g);
+              const rebooked = claimed.length;
+              const paid = claimed.filter((p) => p.paid).length;
+              const isOpen = expanded.has(g.groupId);
+              return (
+                <RebookRows
+                  key={g.groupId}
+                  g={g} isOpen={isOpen} rebooked={rebooked} paid={paid}
+                  selected={selectedGroups.has(g.groupId)}
+                  statusLabel={statusLabel}
+                  onToggleSelect={() => toggleGroup(g.groupId)}
+                  onToggleExpand={() => toggleExpanded(g.groupId)}
+                  selectedPlayers={selectedPlayers}
+                  onTogglePlayer={togglePlayer}
+                  t={t}
+                />
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
       {isFetching && <div className="text-xs text-muted-foreground">{t('common:loading', 'Bezig...')}</div>}
 
       <Dialog open={composeOpen} onOpenChange={(o) => { if (!o) setComposeOpen(false); }}>
@@ -204,51 +343,77 @@ export default function AcademyRebookManage() {
   );
 }
 
-function GroupRow({ g, statusLabel, selected, onToggle, selectedPlayers, onTogglePlayer, t }: {
+function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, t }: {
   g: RebookManageGroup;
-  statusLabel: (s: GroupStatus) => string;
+  isOpen: boolean;
+  rebooked: number;
+  paid: number;
   selected: boolean;
-  onToggle: () => void;
+  statusLabel: (s: GroupStatus) => string;
+  onToggleSelect: () => void;
+  onToggleExpand: () => void;
   selectedPlayers: Map<string, RebookReminderTarget>;
   onTogglePlayer: (key: string, target: RebookReminderTarget) => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
-  const rebooked = g.players.filter((p) => p.response === 'claimed').length;
+  const claimedCount = g.players.filter((p) => p.response === 'claimed').length;
   return (
-    <Card>
-      <CardContent className="p-3">
-        <div className="flex items-center gap-2">
-          <Checkbox checked={selected} onCheckedChange={onToggle} aria-label="select session" />
-          <span className="font-medium capitalize">{g.weekday} {g.time}</span>
-          <Badge variant="outline" className={STATUS_STYLE[g.status]}>{statusLabel(g.status)}</Badge>
-          <span className="ml-auto text-xs text-muted-foreground inline-flex items-center gap-1">
-            <Users className="h-3.5 w-3.5" /> {t('rebookManage.seatLine', '{{r}}/{{c}} geherboekt', { r: rebooked, c: g.capacity || g.players.length })}
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5 pl-6">
-          {g.players.map((p) => {
-            const sel = selectedPlayers.has(p.key);
-            const Icon = p.response === 'claimed' ? CheckCircle2 : p.response === 'declined' ? XCircle : Clock;
-            const tone = p.response === 'claimed' ? 'text-emerald-600' : p.response === 'declined' ? 'text-rose-600' : 'text-amber-600';
-            return (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => onTogglePlayer(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId })}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${sel ? 'border-primary bg-primary/10' : 'border-slate-200'}`}
-              >
-                <Icon className={`h-3.5 w-3.5 ${tone}`} />
-                <span>{p.name}</span>
-                {p.response === 'claimed' && (
-                  <span className={p.paid ? 'text-emerald-600' : 'text-rose-600'}>
-                    · {p.paid ? t('rebookManage.paidShort', 'betaald') : t('rebookManage.unpaidShort', 'open')}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+    <>
+      <TableRow className="cursor-pointer" onClick={onToggleExpand}>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label="select session" />
+        </TableCell>
+        <TableCell className="text-muted-foreground">
+          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </TableCell>
+        <TableCell className="font-medium capitalize whitespace-nowrap">{g.weekday} {g.time}</TableCell>
+        <TableCell className="hidden md:table-cell text-muted-foreground">{g.trainerName || '—'}</TableCell>
+        <TableCell className="hidden lg:table-cell text-muted-foreground">{g.locationName || '—'}</TableCell>
+        <TableCell><Badge variant="outline" className={STATUS_STYLE[g.status]}>{statusLabel(g.status)}</Badge></TableCell>
+        <TableCell className="text-right whitespace-nowrap">{rebooked}/{g.capacity || g.players.length}</TableCell>
+        <TableCell className="text-right whitespace-nowrap">
+          {claimedCount === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <span className={paid === claimedCount ? 'text-emerald-600' : 'text-rose-600'}>{paid}/{claimedCount}</span>
+          )}
+        </TableCell>
+      </TableRow>
+      {isOpen && (
+        <TableRow>
+          <TableCell />
+          <TableCell colSpan={7} className="bg-muted/30">
+            {g.players.length === 0 ? (
+              <span className="text-xs text-muted-foreground">{t('rebookManage.noPlayers', 'Geen spelers in deze sessie.')}</span>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 py-1">
+                {g.players.map((p) => {
+                  const sel = selectedPlayers.has(p.key);
+                  const Icon = p.response === 'claimed' ? CheckCircle2 : p.response === 'declined' ? XCircle : Clock;
+                  const tone = p.response === 'claimed' ? 'text-emerald-600' : p.response === 'declined' ? 'text-rose-600' : 'text-amber-600';
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => onTogglePlayer(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId })}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${sel ? 'border-primary bg-primary/10' : 'border-slate-200 bg-background'}`}
+                      title={t('rebookManage.selectForReminder', 'Selecteer voor herinnering')}
+                    >
+                      <Icon className={`h-3.5 w-3.5 ${tone}`} />
+                      <span>{p.name}</span>
+                      {p.response === 'claimed' && (
+                        <span className={p.paid ? 'text-emerald-600' : 'text-rose-600'}>
+                          · {p.paid ? t('rebookManage.paidShort', 'betaald') : t('rebookManage.unpaidShort', 'open')}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   );
 }

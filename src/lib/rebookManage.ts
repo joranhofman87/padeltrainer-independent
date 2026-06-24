@@ -5,6 +5,7 @@
 // availability_slots + slot_priority_claims + invoices.
 import { supabase } from '@/lib/supabaseClient';
 import { releaseSlotToPublic, holdSlotForReview, type PublicReleaseStatus } from '@/lib/priorityClaims';
+import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
 import type { BulkResult, BulkFailure } from '@/lib/academyPlayerBulk';
 
 export type GroupStatus = 'rebooked' | 'awaiting' | 'declined' | 'members' | 'public';
@@ -27,6 +28,8 @@ export interface RebookManageGroup {
   time: string;
   trainerId: string | null;
   locationId: string | null;
+  trainerName: string | null;
+  locationName: string | null;
   slotIds: string[];
   capacity: number;
   status: GroupStatus;
@@ -186,6 +189,8 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       time: new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit' }).format(d),
       trainerId: rep.trainer_id,
       locationId: rep.location_id,
+      trainerName: null,
+      locationName: null,
       slotIds: ids,
       capacity: rep.max_participants ?? 0,
       status,
@@ -193,6 +198,26 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     });
   }
   groups.sort((a, b) => a.weekday.localeCompare(b.weekday) || a.time.localeCompare(b.time));
+
+  // Resolve trainer + location display names for the table columns/filters.
+  const trainerIds = [...new Set(groups.map((g) => g.trainerId).filter((x): x is string => !!x))];
+  const locationIds = [...new Set(groups.map((g) => g.locationId).filter((x): x is string => !!x))];
+  const [trainerNames, { data: locs }] = await Promise.all([
+    trainerIds.length
+      ? fetchTrainerDisplayNamesByProfileIds(trainerIds, supabase, 'rebookManage')
+      : Promise.resolve(new Map<string, string>()),
+    locationIds.length
+      ? supabase.from('locations').select('id, name').in('id', locationIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string | null }> }),
+  ]);
+  const locNameById = new Map<string, string>();
+  for (const l of (locs ?? []) as Array<{ id: string; name: string | null }>) {
+    locNameById.set(l.id, (l.name ?? '').trim());
+  }
+  for (const g of groups) {
+    g.trainerName = g.trainerId ? (trainerNames.get(g.trainerId) ?? null) : null;
+    g.locationName = g.locationId ? (locNameById.get(g.locationId) || null) : null;
+  }
 
   const counts: Record<GroupStatus, number> = { rebooked: 0, awaiting: 0, declined: 0, members: 0, public: 0 };
   for (const grp of groups) counts[grp.status] += 1;
