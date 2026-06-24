@@ -342,15 +342,20 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       if (recErr) throw recErr;
 
       // Invoke edge function
-      const { error: fnErr } = await supabase.functions.invoke('send-campaign-emails', {
+      const { data: fnData, error: fnErr } = await supabase.functions.invoke('send-campaign-emails', {
         body: { campaignId },
       });
 
       if (fnErr) throw fnErr;
 
+      // A large campaign can exceed one invocation's time budget; the function then
+      // self-continues in the background and returns complete:false. Don't claim it's
+      // fully sent in that case — say it's still going (default to "sent" if the field
+      // is absent, e.g. an older deployed function).
+      const stillSending = fnData?.complete === false;
       toast({
-        title: t('emailCampaign.toasts.campaignSent'),
-        description: t('emailCampaign.toasts.campaignSentDesc', { count: recipients.length }),
+        title: t(stillSending ? 'emailCampaign.toasts.campaignSending' : 'emailCampaign.toasts.campaignSent'),
+        description: t(stillSending ? 'emailCampaign.toasts.campaignSendingDesc' : 'emailCampaign.toasts.campaignSentDesc', { count: recipients.length }),
       });
 
       // Reset

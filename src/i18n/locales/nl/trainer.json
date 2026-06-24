@@ -1753,6 +1753,8 @@
       "templateDeleted": "Sjabloon verwijderd",
       "campaignSent": "Campagne verzonden!",
       "campaignSentDesc": "E-mails worden verzonden naar {{count}} ontvangers.",
+      "campaignSending": "Campagne wordt verzonden…",
+      "campaignSendingDesc": "Grote campagne ({{count}} ontvangers) — het verzenden gaat automatisch op de achtergrond door. Volg de voortgang in het overzicht.",
       "campaignError": "Kon campagne niet verzenden.",
       "error": "Fout",
       "draftSaved": "Concept opgeslagen",
