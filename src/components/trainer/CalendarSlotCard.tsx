@@ -4,7 +4,8 @@ import { nl, enUS, es, de, fr, it as itLocale } from "date-fns/locale";
 import { Users, UserPlus, Repeat, Copy, Pencil, Trash2, User, Clock, Check, Lock, LockOpen, MapPin, Euro, GraduationCap } from "lucide-react";
 
 const dateFnsLocales: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr, it: itLocale };
-import { formatSlotRating } from "./SlotRatingPicker";
+import { formatSlotRating } from "@/components/slots/SlotRatingPicker";
+import type { BookedPlayer, SlotWithBookings } from "@/lib/slotTypes";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
@@ -19,40 +20,11 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
 
-export interface BookedPlayer {
-  id: string;
-  bookingId: string;
-  name: string;
-  status: "confirmed" | "pending";
-  isGuest: boolean;
-  skillRating?: number | null;
-  ratingSystem?: string;
-  paymentStatus?: string;
-  paidExternally?: boolean;
-  birthDate?: string | null;
-}
-
-export interface SlotWithBookings {
-  id: string;
-  start_time: string;
-  end_time: string;
-  max_participants: number;
-  price: number | null;
-  active_bookings: number;
-  pending_bookings: number;
-  is_past: boolean;
-  is_public: boolean;
-  cyclus_id: string | null;
-  cyclus_name: string | null;
-  booked_players: BookedPlayer[];
-  location_name: string | null;
-  trainer_id?: string;
-  trainer_name?: string;
-  trainer_avatar?: string;
-  rating_system?: string | null;
-  min_rating?: number | null;
-  max_rating?: number | null;
-}
+// BookedPlayer + SlotWithBookings moved to @/lib/slotTypes (role-neutral, shared
+// by trainer/academy/club calendar surfaces). Re-exported here for back-compat
+// so existing `@/components/trainer/CalendarSlotCard` importers keep working.
+// See docs/FRONTEND_ARCHITECTURE.md.
+export type { BookedPlayer, SlotWithBookings };
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
 

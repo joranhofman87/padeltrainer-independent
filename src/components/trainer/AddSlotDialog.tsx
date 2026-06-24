@@ -48,7 +48,7 @@ import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
 import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
-import { SlotRatingPicker } from "./SlotRatingPicker";
+import { SlotRatingPicker } from "@/components/slots/SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 import {
   expectsBulkGuestBookings,

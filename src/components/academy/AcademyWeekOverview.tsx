@@ -5,7 +5,7 @@ import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/loca
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { type SlotWithBookings } from '@/components/trainer/CalendarSlotCard';
+import { type SlotWithBookings } from '@/lib/slotTypes';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { type SlotWithBookings, type BookedPlayer } from '@/components/trainer/CalendarSlotCard';
+import { type SlotWithBookings, type BookedPlayer } from '@/lib/slotTypes';
 
 // ── Types ──
 

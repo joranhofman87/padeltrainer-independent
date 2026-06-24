@@ -373,6 +373,14 @@
       "count": 1
     }
   },
+  "src/components/slots/SlotRatingPicker.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
   "src/components/trainer/AddPlayerForm.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
@@ -475,14 +483,6 @@
       "count": 1
     },
     "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
-  "src/components/trainer/SlotRatingPicker.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-refresh/only-export-components": {
       "count": 1
     }
   },
@@ -1012,6 +1012,9 @@
     "@typescript-eslint/no-explicit-any": {
       "count": 15
     },
+    "no-restricted-imports": {
+      "count": 3
+    },
     "react-hooks/exhaustive-deps": {
       "count": 2
     }
@@ -1023,6 +1026,9 @@
   },
   "src/pages/academy/AcademyCreateSlot.tsx": {
     "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "no-restricted-imports": {
       "count": 2
     }
   },
@@ -1042,6 +1048,9 @@
   "src/pages/academy/AcademyDashboard.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 19
+    },
+    "no-restricted-imports": {
+      "count": 2
     }
   },
   "src/pages/academy/AcademyIntakeRequests.tsx": {
@@ -1055,6 +1064,9 @@
   "src/pages/academy/AcademyInvoices.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 13
+    },
+    "no-restricted-imports": {
+      "count": 1
     }
   },
   "src/pages/academy/AcademyLocations.tsx": {
@@ -1065,6 +1077,11 @@
   "src/pages/academy/AcademyPlayerDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 16
+    }
+  },
+  "src/pages/academy/AcademyPlayers.tsx": {
+    "no-restricted-imports": {
+      "count": 3
     }
   },
   "src/pages/academy/AcademyProfile.tsx": {
@@ -1083,6 +1100,9 @@
   "src/pages/academy/AcademySlotDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 10
+    },
+    "no-restricted-imports": {
+      "count": 2
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
@@ -1190,6 +1210,9 @@
   },
   "src/pages/club/ClubCalendar.tsx": {
     "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "no-restricted-imports": {
       "count": 1
     },
     "react-hooks/exhaustive-deps": {
