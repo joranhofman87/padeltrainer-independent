@@ -2547,6 +2547,7 @@ export type Database = {
       }
       email_campaign_recipients: {
         Row: {
+          attempt_count: number
           campaign_id: string
           created_at: string
           error_message: string | null
@@ -2557,6 +2558,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          attempt_count?: number
           campaign_id: string
           created_at?: string
           error_message?: string | null
@@ -2567,6 +2569,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          attempt_count?: number
           campaign_id?: string
           created_at?: string
           error_message?: string | null
