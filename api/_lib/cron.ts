@@ -23,10 +23,19 @@ export async function invokeEdgeFunction(
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
   }
 
+  // Send BOTH the apikey and Authorization headers (the standard Supabase pair).
+  // The edge functions authenticate the service role via isServiceRoleRequest, which
+  // first tries a byte-equality match against the runtime-injected
+  // SUPABASE_SERVICE_ROLE_KEY. When JWT signing keys have been rotated, this Vercel
+  // key can be a different *string* than the injected one even though both are valid
+  // service-role JWTs for the project — the byte match then fails. Supplying apikey ==
+  // Authorization lets the function fall back to validating the service_role JWT
+  // claims (isServiceRoleJwtForProject), which is robust to that key-string drift.
   const response = await fetch(`${FICWB_FUNCTIONS_BASE}/${slug}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      apikey: serviceKey,
       Authorization: `Bearer ${serviceKey}`,
     },
     body: JSON.stringify(body),
