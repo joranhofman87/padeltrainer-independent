@@ -15,7 +15,7 @@ import { deriveInvoiceStatus, type InvoiceStatus } from '@/lib/invoiceStatus';
 import { InvoiceStatusBadge } from '@/components/invoices/InvoiceStatusBadge';
 import { InvoiceDeliveryChip } from '@/components/email/InvoiceDeliveryChip';
 import { useInvoicesDeliveryStatus } from '@/lib/emailBounce';
-import { InvoiceEmailDialog } from './InvoiceEmailDialog';
+import { InvoiceEmailDialog } from '@/components/invoices/InvoiceEmailDialog';
 import { EditInvoiceDialog } from '@/components/invoices/EditInvoiceDialog';
 import {
   FileText,

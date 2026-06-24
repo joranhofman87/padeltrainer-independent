@@ -34,7 +34,7 @@ import {
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { Input } from "@/components/ui/input";
 import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
-import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
+import { InvoiceEmailDialog } from "@/components/invoices/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";

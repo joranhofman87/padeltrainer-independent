@@ -1064,9 +1064,6 @@
   "src/pages/academy/AcademyInvoices.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 13
-    },
-    "no-restricted-imports": {
-      "count": 1
     }
   },
   "src/pages/academy/AcademyLocations.tsx": {

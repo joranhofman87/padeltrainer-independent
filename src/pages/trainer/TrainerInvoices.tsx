@@ -31,7 +31,7 @@ import {
   type TrainerInvoiceRow,
 } from "@/lib/invoicesList";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
-import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
+import { InvoiceEmailDialog } from "@/components/invoices/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
