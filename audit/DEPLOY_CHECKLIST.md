@@ -13,6 +13,7 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges. Tick as you go
 - [ ] **send-campaign-emails** — autonomous resume: service-role chain + daily sweep (#81). Ships `config.toml verify_jwt=false` for this fn (so the sweep cron isn't 401'd) — redeploy required. The `daily-maintenance` cron change auto-deploys via Vercel.
 - [ ] **send-campaign-emails** — bounded failed-recipient retry (#82). **Apply the migration below FIRST**, then redeploy — the fn writes `attempt_count`, which 404s if the column isn't there yet.
 - [ ] **auto-create-invoice**, **create-registration-invoice**, **create-rebook-invoice** — Slack alert on the money-path catch (#83). Closes silent server-side invoice-mint failures. Needs the `slack-notify` webhook already configured (it is — other fns use it).
+- [ ] **submit-guest-intake**, **create-registration-invoice** — registration date-span lesson count now FLOORED, not rounded (#86). *Money change — fixes a one-lesson over-charge on non-exact-week date-span cycles.* These bundle the fixed `_shared/registration-pricing.ts`.
 
 _(rows below are appended as later PRs land)_
 

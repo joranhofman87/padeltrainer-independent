@@ -944,6 +944,10 @@ export default function CycleApplicationForm({
           // real (holiday-adjusted) lesson count; else a chosen duration; else the
           // cycle's whole-week span — FLOORED so it matches the editor's number-of-weeks
           // (a Mon->Fri end reads as 10, not the rounded-up 11).
+          // CANONICAL: this must stay in step with the server's resolveRegistrationLessonCount
+          // (supabase/functions/_shared/registration-pricing.ts) — the authority that prices the
+          // invoice + confirmation email. Both floor the date span; keep them aligned. (A single
+          // shared import is the eventual dedup — see audit/PRICING_DEDUP.md.)
           const lessonCount = selectedCyclusOption?.number_of_sessions
             || selectedDurationWeeks
             || (cycle.start_date && cycle.end_date
