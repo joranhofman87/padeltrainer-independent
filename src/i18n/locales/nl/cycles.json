@@ -1112,6 +1112,10 @@
   },
   "rebookManage": {
     "title": "Herboeking beheren",
+    "roundsTitle": "Herboekingen",
+    "roundsDescription": "Beheer een lopende herboeking: wie reageerde, wie betaalde en welke plekken open staan.",
+    "untitledRound": "Herboeking",
+    "roundStarts": "Start {{date}}",
     "status": {
       "rebooked": "Geherboekt",
       "awaiting": "Wacht op reactie",

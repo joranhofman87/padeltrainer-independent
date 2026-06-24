@@ -252,3 +252,33 @@ export async function sendRebookReminder(args: {
   const r = (data ?? {}) as Partial<RebookReminderResult>;
   return { ok: Boolean(r.ok), sent: Number(r.sent ?? 0), skipped: Number(r.skipped ?? 0), failed: Number(r.failed ?? 0), reason: r.reason };
 }
+
+// ===== Discovery: list an academy's rebook rounds =====
+
+export interface RebookRound {
+  id: string;
+  name: string;
+  startDate: string | null; // yyyy-mm-dd
+  status: string; // draft | open | closed | ...
+}
+
+/** The academy's rebooked "new round" cycles (type='cyclus' with a rebook payment
+ *  mode in settings) — the cycles the rebook management view manages. Lets the UI
+ *  offer a way back into each round's overview after the post-launch redirect. */
+export async function listRebookRounds(academyProfileId: string): Promise<RebookRound[]> {
+  const { data, error } = await supabase
+    .from('cycles')
+    .select('id, name, start_date, status, settings, created_at')
+    .eq('owner_type', 'academy')
+    .eq('owner_id', academyProfileId)
+    .eq('type', 'cyclus')
+    .not('settings->>rebook_payment_mode', 'is', null)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((c) => ({
+    id: c.id as string,
+    name: ((c.name as string | null) ?? '').trim(),
+    startDate: (c.start_date as string | null) ?? null,
+    status: (c.status as string | null) ?? 'draft',
+  }));
+}
