@@ -1,0 +1,25 @@
+# Owner Deploy Checklist — pre-scale hardening
+
+Things that **do NOT auto-deploy** (only the Vercel frontend does). Apply these to the
+live project `ficwbdrzefmblkbkomzw` after the matching PR merges. Tick as you go.
+
+## Edge functions to (re)deploy
+`supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
+
+- [ ] **update-user** — IDOR fix (#77). *Security — do this one first.*
+- [ ] **stripe-subscription-webhook**, **og-image**, **rating-og-image**, **get-public-rating**, **health-check** — redeploy so prod matches the new `config.toml` `verify_jwt=false` (#78). Prevents a future deploy from 401-ing them.
+- [ ] **send-email** — HTML-injection escaping for registrant text (#80). *Security — closes the public submit-guest-intake → cross-tenant admin email injection vector.*
+- [ ] **send-campaign-emails** — resumable + accurate sent counts (#80). Stops silently dropping the unprocessed tail on timeout / marking failures as sent.
+
+_(rows below are appended as later PRs land)_
+
+## Migrations to apply
+(none new this wave — the rehearsal/CI/config changes are repo/CI-only)
+
+## Config / dashboard
+- [ ] Confirm `CRON_SECRET` + `SUPABASE_SERVICE_ROLE_KEY` set in Vercel **Production** (already done earlier in the session — re-verify).
+- [ ] Decide production error monitoring (Sentry vs PostHog $exception) — P0-5 observability, still open.
+
+## Notes
+- The CI changes (rehearsal runner, edge-fn config guard, cron Slack alerts, stale-ref purge) take effect on merge — no manual deploy.
+- Dependency-vuln upgrade is **deferred** (blanket `npm audit fix` breaks the build); needs a dedicated surgical pass.
