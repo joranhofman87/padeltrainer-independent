@@ -22,10 +22,20 @@ describe.each(pages)('%s uses the shared invoice-list scaffold', (page) => {
     expect(source).toContain('invoiceListPageCount');
   });
 
-  it('no longer imports useTableSort or the raw Pagination primitives directly', () => {
+  it('uses the shared table, stat tiles and status badge', () => {
+    expect(source).toContain('InvoiceListTable');
+    expect(source).toContain('InvoiceStatTiles');
+    expect(source).toContain('InvoiceListStatusBadge');
+  });
+
+  it('no longer imports useTableSort or the raw Pagination/Table primitives directly', () => {
     expect(source).not.toContain('@/hooks/useTableSort');
     expect(source).not.toContain('@/components/ui/pagination');
     expect(source).not.toContain('PaginationPrevious');
+    // the desktop table now lives in InvoiceListTable, not hand-rolled in the page.
+    // (exact quoted path so it doesn't match @/components/ui/table-toolbar)
+    expect(source).not.toContain('"@/components/ui/table"');
+    expect(source).not.toContain('dataTableCardContentClass');
   });
 
   it('no longer re-inlines the selection Set mutation logic', () => {

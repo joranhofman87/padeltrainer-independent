@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useTableSort } from '@/hooks/useTableSort';
 
 /**
@@ -51,8 +51,15 @@ export function useInvoiceListSort(activeTab: string) {
     }
   }, [activeTab, setSortConfig]);
 
+  // SortableTableHead's onSort hands back a plain string; narrow it to the typed column set so
+  // callers (and the shared list table) need no cast.
+  const handleSortKey = useCallback(
+    (key: string) => handleSort(key as keyof InvoiceSortColumns),
+    [handleSort],
+  );
+
   const sort = mapInvoiceSortKeyToRpc(sortConfig.key);
   const sortDir: 'asc' | 'desc' = sortConfig.direction === 'asc' ? 'asc' : 'desc';
 
-  return { sortConfig, handleSort, sort, sortDir };
+  return { sortConfig, handleSort: handleSortKey, sort, sortDir };
 }

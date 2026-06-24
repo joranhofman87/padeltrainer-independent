@@ -53,11 +53,11 @@ What each role page still owns (do **not** merge these): the receiver/owner cont
 (sync-to-bookings, cancel / mark-paid reason modals, status-history card), status-lock validation,
 and the per-role i18n label namespace (`invoiceForm.*` vs `invoiceEdit.*`).
 
-## Shared invoice list scaffold (slice 2)
+## Shared invoice list scaffold (slices 2–3)
 
-The trainer + academy invoice LIST pages (`TrainerInvoices`, `AcademyInvoices`) were near-identical
-in their list *wiring*. The behaviour-preserving wiring is now shared; each page keeps its own data
-fetching, summary RPCs, status enums, tab partition, filters, status badge, and bulk actions.
+The trainer + academy invoice LIST pages (`TrainerInvoices`, `AcademyInvoices`) were near-identical.
+The shared scaffold below was extracted across two slices; each page keeps its own data fetching,
+summary RPCs, status enums, tab partition, filters, mobile card list, and bulk actions.
 
 | Concern | Where it lives |
 | --- | --- |
@@ -65,14 +65,28 @@ fetching, summary RPCs, status enums, tab partition, filters, status badge, and 
 | Page-scoped row selection (Set + toggles + `selectedInvoices`) | `@/components/invoices/useInvoiceListSelection` |
 | Windowed pager (first/last + ±2 window + ellipsis, clamps internally) | `@/components/invoices/InvoiceListPagination` |
 | Page-count math | `invoiceListPageCount` in `@/lib/invoicesList` |
+| 3-up KPI stat-tile row (values injected as props; never owns a query) | `@/components/invoices/InvoiceStatTiles` |
+| Status badge (server `computed_status` + canonical `InvoiceStatusBadge` + audit tooltip) | `@/components/invoices/InvoiceListStatusBadge` |
+| Desktop table (9 cols; role actions via a `renderActions` slot) | `@/components/invoices/InvoiceListTable` |
 
 Each page still owns: the `useTrainer/AcademyInvoices` RPC call + its scope params, the scoreboard
 summary reads (trainer's single unscoped summary vs academy's filtered fan-out with `isError`
-fallback — **do not** unify the value source), the status-filter `<Select>` enums, the tab partition
-(academy's `unpaid|paid|cancelled` + cancelled-tab status nulling), the trainer/location filters,
-the status badge, every bulk handler, query keys, and nav. The page-reset and selection-clear
-effects also stay in each page because their dependency arrays are page-specific (academy clears on
-trainer/location filter changes; trainer's selection-clear keys on `sort`/`sortDir`).
+fallback — **do not** unify the value source; pass values into `InvoiceStatTiles` as props), the
+status-filter `<Select>` enums, the tab partition (academy's `unpaid|paid|cancelled` + cancelled-tab
+status nulling), the trainer/location filters, the per-row **actions cell** (`ShareDropdown` /
+forward button / `getPaymentUrl` — injected via `InvoiceListTable`'s `renderActions`), the **mobile
+card list** (trainer uses `space-y-3` cards, academy a flush `divide-y` list — intentionally
+divergent, so the shared table is desktop-only), every bulk handler, query keys, and nav. The
+page-reset and selection-clear effects also stay in each page because their dependency arrays are
+page-specific (academy clears on trainer/location filter changes; trainer's selection-clear keys on
+`sort`/`sortDir`).
+
+> **Slice 3 note — the one deliberate visible change.** Adopting `InvoiceListStatusBadge` on the
+> trainer list was a behaviour change: the trainer page previously hand-rolled its badge from raw
+> `status`/`sent_at`/`due_date` and ignored `computed_status`. The server `computed_status` CASE is
+> byte-identical to that old classification, so the *status shown is unchanged* — only the styling
+> (now the canonical `InvoiceStatusBadge` variants) and the new hover audit-tooltip differ, bringing
+> the trainer list in line with academy. This was an explicit, pre-approved change, not a silent one.
 
 ### How role labels and slots are injected
 
@@ -109,13 +123,11 @@ path — not a free refactor. If you touch this math, the characterization test 
 
 These are the next reuse targets, intentionally deferred to keep each slice safe and small:
 
-- **Invoice list — remaining shared pieces** (slice 2 did the sort/selection/pagination wiring; these
-  ride on deliberate behaviour/visual decisions, so they were left out): converging the status badge
-  onto `computed_status` + the shared `InvoiceStatusBadge` (a visible color/label/tooltip change to
-  the trainer page); a shared stat-tile row that takes `{totalUnpaid, countUnpaid, countPaid}` as
-  props **without owning the query** (trainer's global summary vs academy's filtered fan-out); a
-  shared 9-column header/row config; and adopting `DataTableCard` / `EmptyState` / `ListPageSkeleton`
-  (each a visual change). Sharing the bulk mutation handlers is a separate, money-mutating slice.
+- **Invoice list — remaining shared pieces** (slices 2–3 did the sort/selection/pagination wiring,
+  stat tiles, status badge, and the desktop table): adopting `DataTableCard` / `EmptyState` /
+  `ListPageSkeleton` (each a deliberate visual change, not a like-for-like swap); unifying the
+  intentionally-divergent mobile card lists; and sharing the bulk mutation handlers + the sticky bulk
+  bar (a separate, money-mutating slice that needs its own careful test pass).
 - **Shared player list page** (trainer / academy / club) on the same list scaffold.
 - **Shared date-picker field** (due-date popover/calendar is repeated across forms).
 - **Shared scheduling / calendar components** (agenda day/week views).
