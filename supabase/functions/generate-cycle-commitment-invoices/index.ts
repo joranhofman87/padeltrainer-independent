@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
   buildCommitmentInvoicePlan,
   isCycleDueForInvoicing,
@@ -59,6 +60,11 @@ serve(async (req) => {
 
     const report: Array<Record<string, unknown>> = [];
     let invoicesCreated = 0;
+    // Per-batch billing failures. The fn returns HTTP 200 even when individual
+    // committers fail to bill, so the daily-maintenance cron's alertCronFailure
+    // (which only trips on a non-2xx response) never sees them. Accumulate and
+    // raise ONE Slack alert at the end so a silent billing gap surfaces.
+    const failedBatches: Array<{ cycleId: string; playerKey: string; error: string }> = [];
 
     for (const cycle of cycles || []) {
       if (!isCycleDueForInvoicing(cycle.start_date, now)) continue;
@@ -172,12 +178,14 @@ serve(async (req) => {
             });
             if (res.error) {
               logStep("auto-create-invoice failed", { cycleId: cycle.id, playerKey: batch.playerKey, error: String(res.error) });
+              failedBatches.push({ cycleId: cycle.id, playerKey: batch.playerKey, error: String(res.error) });
             } else {
               cycleReport.invoiced += 1;
               invoicesCreated += 1;
             }
           } catch (e) {
             logStep("auto-create-invoice threw", { cycleId: cycle.id, playerKey: batch.playerKey, error: String(e) });
+            failedBatches.push({ cycleId: cycle.id, playerKey: batch.playerKey, error: String(e) });
           }
         }
       }
@@ -185,9 +193,21 @@ serve(async (req) => {
       report.push(cycleReport);
     }
 
-    logStep("done", { dryRun, cyclesProcessed: report.length, invoicesCreated });
+    logStep("done", { dryRun, cyclesProcessed: report.length, invoicesCreated, failedBatches: failedBatches.length });
+
+    // Some committers could not be billed this run — a silent money gap the
+    // cron wrapper can't see (we still return 200). Raise one alert with the
+    // failed batches so the academy/ops can re-run or invoice them manually.
+    if (failedBatches.length > 0) {
+      await notifySlackEdgeError(
+        "generate-cycle-commitment-invoices",
+        `${failedBatches.length} commitment invoice batch(es) failed to draft`,
+        { failedBatches: failedBatches.slice(0, 20), invoicesCreated },
+      );
+    }
+
     return new Response(
-      JSON.stringify({ ok: true, dryRun, invoicesCreated, cycles: report }),
+      JSON.stringify({ ok: true, dryRun, invoicesCreated, failedBatches: failedBatches.length, cycles: report }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {

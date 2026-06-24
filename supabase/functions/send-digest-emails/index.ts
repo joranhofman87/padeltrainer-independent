@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { requireServiceRole } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -279,6 +280,17 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(
       `Digest complete: ${processed} emails sent, ${consumed} items processed, ${failedUsers} users failed (${releasedItems} items released for retry)`
     );
+
+    // Per-user send failures return HTTP 200, so the daily-emails cron wrapper's
+    // alertCronFailure (non-2xx only) never sees them. Their queue items were
+    // released for retry, but a persistent failure would silently loop — alert.
+    if (failedUsers > 0) {
+      await notifySlackEdgeError(
+        "send-digest-emails",
+        `${failedUsers} user digest(s) failed to send`,
+        { failedUsers, processed, releasedItems },
+      );
+    }
 
     return new Response(
       JSON.stringify({ processed, items: consumed, failed: failedUsers, released: releasedItems }),
