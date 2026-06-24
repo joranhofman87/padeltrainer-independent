@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { format, parse } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-} from '@/components/ui/alert-dialog';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronDown, Eye, Send } from 'lucide-react';
+import { ArrowLeft, CalendarIcon, ChevronDown, ChevronRight, Loader2, Send, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { getAcademyLocationsWithDetails } from '@/lib/academy';
@@ -54,6 +54,24 @@ interface ConfirmData {
   groupsDetail: RebookGroupDetail[];
   noEmailTotal: number;
   grandInvoiceTotal: number;
+}
+
+/** A calendar date field over a yyyy-MM-dd string value (matches the app's other date pickers). */
+function DateField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const selected = value ? parse(value, 'yyyy-MM-dd', new Date()) : undefined;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className={cn('w-full justify-start text-left font-normal', !value && 'text-muted-foreground')}>
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {selected ? format(selected, 'd MMM yyyy') : placeholder}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar mode="single" selected={selected} onSelect={(d) => onChange(d ? format(d, 'yyyy-MM-dd') : '')} initialFocus />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export default function RebookCohortWizard({ academyProfileId, backHref }: Props) {
@@ -111,8 +129,6 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       else next.add(id);
       return next;
     });
-    // Any change to the inputs invalidates a previous preview.
-    setPreview(null);
   };
 
   const baseBody = useMemo(
@@ -149,40 +165,46 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
 
   const inputsValid = selectedLocationIds.size > 0 && Boolean(termEndDate) && Boolean(newStartDate);
 
-  const handlePreview = async () => {
-    if (!inputsValid) {
-      toast.error(t('rebookCohort.errFillRequired', 'Kies minstens één locatie en beide datums.'));
-      return;
-    }
+  // Auto-count the cohort the moment location + both dates are set, shown up top —
+  // no manual "preview" click. The headcount/groups depend only on the cohort inputs
+  // (location + dates), so re-run only when those change (not on weeks/price typing).
+  const locKey = useMemo(() => [...selectedLocationIds].sort().join(','), [selectedLocationIds]);
+  useEffect(() => {
+    if (!(selectedLocationIds.size > 0 && termEndDate && newStartDate)) { setPreview(null); return; }
+    let cancelled = false;
     setPreviewing(true);
-    setPreview(null);
-    try {
-      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-        body: { ...baseBody, dryRun: true },
-      });
-      if (error) throw error;
-      const result: PreviewResult = {
-        groups: Number(data?.groups ?? 0),
-        players: Number(data?.players ?? 0),
-        suggestedWeeks: Number(data?.suggestedWeeks ?? 0),
-        suggestedPrice: data?.suggestedPrice == null ? null : Number(data.suggestedPrice),
-      };
-      setPreview(result);
-      // Pre-fill weeks + price from the previous term when the user hasn't set them.
-      if (!weeks && result.suggestedWeeks > 0) setWeeks(String(result.suggestedWeeks));
-      if (sessionPrice === '' && result.suggestedPrice != null) setSessionPrice(String(result.suggestedPrice));
-      if (result.players === 0) {
-        toast.info(t('rebookCohort.previewEmpty', 'Geen spelers gevonden voor deze selectie.'));
+    const handle = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
+          body: { academyProfileId, locationIds: [...selectedLocationIds], termEndDate, newStartDate, paymentMode, requireAdminReview, dryRun: true },
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        const result: PreviewResult = {
+          groups: Number(data?.groups ?? 0),
+          players: Number(data?.players ?? 0),
+          suggestedWeeks: Number(data?.suggestedWeeks ?? 0),
+          suggestedPrice: data?.suggestedPrice == null ? null : Number(data.suggestedPrice),
+        };
+        setPreview(result);
+        // Pre-fill weeks + price from the previous term when the user hasn't set them.
+        setWeeks((w) => (w ? w : (result.suggestedWeeks > 0 ? String(result.suggestedWeeks) : w)));
+        setSessionPrice((p) => (p !== '' ? p : (result.suggestedPrice != null ? String(result.suggestedPrice) : p)));
+      } catch (e) {
+        if (!cancelled) {
+          setPreview(null);
+          toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errPreview', 'Kon de preview niet ophalen. Probeer het opnieuw.')));
+        }
+      } finally {
+        if (!cancelled) setPreviewing(false);
       }
-    } catch (e) {
-      toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errPreview', 'Kon de preview niet ophalen. Probeer het opnieuw.')));
-    } finally {
-      setPreviewing(false);
-    }
-  };
+    }, 600);
+    return () => { cancelled = true; clearTimeout(handle); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academyProfileId, locKey, termEndDate, newStartDate, paymentMode, requireAdminReview]);
 
-  // Build the review summary (what will be created + emailed) BEFORE sending —
-  // a fresh dryRun that reflects the chosen weeks + holidays.
+  // Build the review summary (what will be created + emailed) BEFORE sending — a fresh
+  // dryRun that reflects the chosen weeks + holidays. Opens the full-page review.
   const prepareConfirm = async () => {
     if (!inputsValid || !preview || preview.players <= 0) return;
     setPreparing(true);
@@ -201,6 +223,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         noEmailTotal: Number(data?.noEmailTotal ?? 0),
         grandInvoiceTotal: Number(data?.grandInvoiceTotal ?? 0),
       });
+      window.scrollTo({ top: 0 });
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errPreview', 'Kon de preview niet ophalen. Probeer het opnieuw.')));
     } finally {
@@ -210,7 +233,6 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
 
   const handleSubmit = async () => {
     if (!inputsValid || !preview || preview.players <= 0 || submitting) return;
-    setConfirmData(null);
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
@@ -249,6 +271,52 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     );
   }
 
+  // ===== Review (full page, not a popup — handles a large roster) =====
+  if (confirmData) {
+    const emailCount = Math.max(0, confirmData.players - confirmData.noEmailTotal);
+    return (
+      <div className="container max-w-3xl mx-auto px-4 py-6 space-y-4">
+        <Button variant="ghost" size="sm" onClick={() => { setConfirmData(null); setAckNoEmail(false); }} disabled={submitting}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> {t('rebookCohort.backToEdit', 'Terug naar bewerken')}
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold">{t('rebookCohort.confirmTitle', 'Controleer voordat je verstuurt')}</h1>
+          <p className="text-muted-foreground">
+            {t('rebookCohort.confirmIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:', {
+              name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
+              date: newStartDate ? format(parse(newStartDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : newStartDate,
+              weeks: confirmData.effWeeks ?? '',
+              price: sessionPrice || (preview?.suggestedPrice ?? ''),
+            })}
+          </p>
+        </div>
+        <RebookReviewTable
+          groups={confirmData.groupsDetail}
+          noEmailTotal={confirmData.noEmailTotal}
+          grandInvoiceTotal={confirmData.grandInvoiceTotal}
+          locationName={(id) => locations.find((l) => l.id === id)?.name}
+          ackNoEmail={ackNoEmail}
+          onAckChange={setAckNoEmail}
+        />
+        <p className="text-sm font-medium">
+          {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: emailCount })}
+        </p>
+        <div className="flex flex-wrap justify-end gap-2 sticky bottom-2 rounded-md border bg-background p-2 shadow-sm">
+          <Button variant="outline" onClick={() => { setConfirmData(null); setAckNoEmail(false); }} disabled={submitting}>
+            {t('common:cancel', 'Annuleren')}
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting || (confirmData.noEmailTotal > 0 && !ackNoEmail)}>
+            {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            {submitting
+              ? t('common:saving', 'Bezig...')
+              : t('rebookCohort.confirmSendCount', 'Verstuur {{count}} uitnodigingen', { count: emailCount })}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Configure =====
   return (
     <div className="container max-w-3xl mx-auto px-4 py-6 space-y-6">
       <Button variant="ghost" size="sm" onClick={() => navigate(backHref)}>
@@ -264,6 +332,29 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           )}
         </p>
       </div>
+
+      {/* Live cohort count — appears as soon as location + dates are set */}
+      {inputsValid && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="flex items-center gap-3 py-3 text-sm">
+            <Users className="h-5 w-5 text-primary shrink-0" />
+            {previewing && !preview ? (
+              <span className="text-muted-foreground inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> {t('rebookCohort.counting', 'Spelers tellen…')}
+              </span>
+            ) : preview && preview.players > 0 ? (
+              <span>
+                <span className="font-semibold">{t('rebookCohort.cohortCount', 'Dit betreft {{players}} spelers in {{groups}} groepen.', { players: preview.players, groups: preview.groups })}</span>
+                {preview.suggestedWeeks > 0 && (
+                  <span className="text-muted-foreground"> {t('rebookCohort.cohortWeeks', '± {{count}} weken per groep.', { count: weeks ? Number(weeks) : preview.suggestedWeeks })}</span>
+                )}
+              </span>
+            ) : preview ? (
+              <span className="text-muted-foreground">{t('rebookCohort.previewEmpty', 'Geen spelers gevonden voor deze selectie.')}</span>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -295,28 +386,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <CardContent className="grid sm:grid-cols-2 gap-4">
           <div>
             <Label className="text-xs">{t('rebookCohort.termEnd', 'Einde huidige termijn')}</Label>
-            <Input
-              type="date"
-              value={termEndDate}
-              onChange={(e) => {
-                setTermEndDate(e.target.value);
-                setPreview(null);
-              }}
-            />
+            <DateField value={termEndDate} onChange={setTermEndDate} placeholder={t('rebookCohort.pickDate', 'Kies een datum')} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('rebookCohort.termEndHint', 'De week waarin de huidige termijn eindigt.')}
             </p>
           </div>
           <div>
             <Label className="text-xs">{t('rebookCohort.newStart', 'Start nieuwe ronde')}</Label>
-            <Input
-              type="date"
-              value={newStartDate}
-              onChange={(e) => {
-                setNewStartDate(e.target.value);
-                setPreview(null);
-              }}
-            />
+            <DateField value={newStartDate} onChange={setNewStartDate} placeholder={t('rebookCohort.pickDate', 'Kies een datum')} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('rebookCohort.newStartHint', 'Wanneer de volgende termijn begint.')}
             </p>
@@ -418,81 +495,12 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         </>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rebookCohort.previewTitle', 'Controleren')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Button variant="outline" onClick={handlePreview} disabled={previewing || submitting || !inputsValid}>
-            <Eye className="h-4 w-4 mr-2" />
-            {previewing ? t('common:loading', 'Bezig...') : t('rebookCohort.preview', 'Preview')}
-          </Button>
-          {preview && (
-            <div className="text-sm">
-              <p className="font-medium">
-                {t('rebookCohort.previewResult', '{{players}} spelers in {{groups}} groepen', {
-                  players: preview.players,
-                  groups: preview.groups,
-                })}
-              </p>
-              {(weeks || preview.suggestedWeeks > 0) && (
-                <p className="text-muted-foreground text-xs">
-                  {t('rebookCohort.previewWeeks', '{{count}} weken per groep', {
-                    count: weeks ? Number(weeks) : preview.suggestedWeeks,
-                  })}
-                </p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       <div className="flex justify-end">
         <Button onClick={prepareConfirm} disabled={submitting || previewing || preparing || !preview || preview.players <= 0}>
-          <Send className="h-4 w-4 mr-2" />
-          {preparing ? t('common:loading', 'Bezig...') : t('rebookCohort.confirm', 'Aanmaken & spelers uitnodigen')}
+          {preparing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ChevronRight className="h-4 w-4 mr-2" />}
+          {preparing ? t('common:loading', 'Bezig...') : t('rebookCohort.toReview', 'Volgende: controleren')}
         </Button>
       </div>
-
-      <AlertDialog open={!!confirmData} onOpenChange={(o) => { if (!o) { setConfirmData(null); setAckNoEmail(false); } }}>
-        <AlertDialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('rebookCohort.confirmTitle', 'Controleer voordat je verstuurt')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('rebookCohort.confirmIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:', {
-                name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
-                date: newStartDate,
-                weeks: confirmData?.effWeeks ?? '',
-                price: sessionPrice || (preview?.suggestedPrice ?? ''),
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {confirmData && (
-            <RebookReviewTable
-              groups={confirmData.groupsDetail}
-              noEmailTotal={confirmData.noEmailTotal}
-              grandInvoiceTotal={confirmData.grandInvoiceTotal}
-              locationName={(id) => locations.find((l) => l.id === id)?.name}
-              ackNoEmail={ackNoEmail}
-              onAckChange={setAckNoEmail}
-            />
-          )}
-          <p className="text-sm font-medium">
-            {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', {
-              players: Math.max(0, (confirmData?.players ?? 0) - (confirmData?.noEmailTotal ?? 0)),
-            })}
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleSubmit}
-              disabled={submitting || ((confirmData?.noEmailTotal ?? 0) > 0 && !ackNoEmail)}
-            >
-              {submitting ? t('common:saving', 'Bezig...') : t('rebookCohort.confirmSend', 'Versturen')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

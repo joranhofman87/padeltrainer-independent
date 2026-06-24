@@ -862,6 +862,13 @@
     "registration": "An open form to collect player sign-ups for a training cycle."
   },
   "rebookCohort": {
+    "pickDate": "Pick a date",
+    "counting": "Counting players…",
+    "cohortCount": "This involves {{players}} players in {{groups}} groups.",
+    "cohortWeeks": "± {{count}} weeks per group.",
+    "toReview": "Next: review",
+    "backToEdit": "Back to edit",
+    "confirmSendCount": "Send {{count}} invitations",
     "byLocation": "Per location (whole group)",
     "byCycle": "Per cycle",
     "title": "Rebook a whole group",
