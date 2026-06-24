@@ -584,8 +584,15 @@ serve(async (req) => {
         const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
           body: { claimIds: batch },
         });
-        if (!error && data) invitesSent += batch.length;
-        else failedClaimIds.push(...batch);
+        if (error || !data) {
+          // The whole invocation failed — none of this batch was emailed.
+          failedClaimIds.push(...batch);
+        } else {
+          // Count only what actually went out (the fn over-reported before: a
+          // partial send inside a batch was logged as the full batch length).
+          invitesSent += Number(data.sent ?? 0);
+          if (Array.isArray(data.failedClaimIds)) failedClaimIds.push(...data.failedClaimIds);
+        }
       }
 
       logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length });
