@@ -1,5 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron';
+// NOTE: explicit .js extension is REQUIRED — package.json is "type":"module", so
+// @vercel/node emits ESM and Node's ESM loader does not extension-complete relative
+// imports. Without it the function crashes at import with ERR_MODULE_NOT_FOUND and
+// the whole daily-maintenance cron (incl. deferred-rebook invoicing) never runs.
+import { invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron.js';
 
 /** Daily: backups, invoice health, enrichment + logo batch (replaces Lovable external cron). */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
