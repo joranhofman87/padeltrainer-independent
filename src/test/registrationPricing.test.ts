@@ -47,6 +47,19 @@ describe('computeRegistrationCharge — happy path', () => {
     expect(c!.lineItems[0].description).toBe('Premium');
     expect(c!.total).toBe(250); // server total_price, not the €500 per-lesson path
   });
+
+  it('floors a partial trailing week in the date-span fallback (no over-charge)', () => {
+    // A pure date-span cycle (no package, no duration allow-list) prices on the whole-week
+    // span. 2026-01-05 → 2026-03-20 is 74 days = 10 weeks + 4 days. It must FLOOR to 10 —
+    // matching the cycle editor's differenceInWeeks and the form preview — not round UP to
+    // 11, which would invoice an extra lesson the academy never configured.
+    const c = cycle();
+    c.end_date = '2026-03-20';
+    c.settings = { lesson_types: ['private'], prices_include_vat: true }; // no duration_options / cyclus_options
+    const charge = computeRegistrationCharge(c, VAT, { lessonTypes: ['private'] });
+    expect(charge!.lessonCount).toBe(10); // floored, not 11
+    expect(charge!.lineItems[0].unit_price).toBe(500); // 50 × 10, not 550
+  });
 });
 
 describe('computeRegistrationCharge — SECURITY: client cannot underpay', () => {

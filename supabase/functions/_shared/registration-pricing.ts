@@ -56,14 +56,20 @@ function bounded(value: unknown, max = 10000): number | null {
 
 const MAX_INVOICE_TOTAL = 100000; // defense-in-depth cap on the computed charge
 
-/** The date span rounded to whole weeks. This is the cycle's fallback duration when
+/** The date span as WHOLE weeks (floored). This is the cycle's fallback duration when
  *  there is no package and no duration_options; it is BOTH the count shown in the email
  *  and the multiplier the invoice charges on, so the two can never disagree. (A package
  *  cycle never reaches here — its count is the explicit number_of_sessions the academy
- *  set, e.g. 10 for a 10-lesson term with a holiday week.) */
+ *  set, e.g. 10 for a 10-lesson term with a holiday week.)
+ *
+ *  FLOORED (not rounded) so it matches the source of truth: the cycle editor stores
+ *  number_of_weeks via date-fns `differenceInWeeks` (which truncates the partial trailing
+ *  week), and the registration form preview floors the same span. A `Math.round` here
+ *  over-charged a non-exact-week span by a lesson (a 10-week-plus-3-days term read as 11),
+ *  diverging from both the editor's configured weeks and the price the registrant saw. */
 function dateSpanWeeks(startDate: string | null, endDate: string | null): number | null {
   if (!startDate || !endDate) return null;
-  const w = Math.round(
+  const w = Math.floor(
     (new Date(endDate).getTime() - new Date(startDate).getTime()) / (7 * 24 * 60 * 60 * 1000),
   );
   return Number.isFinite(w) ? Math.max(1, w) : null;
