@@ -1750,6 +1750,8 @@
       "templateDeleted": "Template deleted",
       "campaignSent": "Campaign sent!",
       "campaignSentDesc": "Emails are being sent to {{count}} recipients.",
+      "campaignSending": "Campaign sending…",
+      "campaignSendingDesc": "Large campaign ({{count}} recipients) — sending continues automatically in the background. Track progress in the overview.",
       "campaignError": "Could not send campaign.",
       "draftSaved": "Draft saved",
       "draftSavedDesc": "You can come back to finish it later.",

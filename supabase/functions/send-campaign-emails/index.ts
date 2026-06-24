@@ -38,6 +38,11 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { campaignId, testMode, testEmail, subject: testSubject, bodyHtml: testBodyHtml, academyProfileId, trainerProfileId } = body;
+    // A self-reinvoke (see end of the campaign path) sets this so the continuation skips
+    // the concurrency gate + stale-reset — it IS the trusted continuation of the prior run,
+    // which already pushed its unsent tail back to "pending". Auth + ownership still run, and
+    // the atomic pending->sending claim still prevents any double-send, so this is safe.
+    const isResume = body.isResume === true;
 
     // Helper: verify caller owns the campaign owner (academy or trainer)
     async function verifyOwner(academyId: string | null, trainerId: string | null): Promise<boolean> {
@@ -141,32 +146,37 @@ Deno.serve(async (req) => {
     // retried request bails out instead of re-sending. A campaign stuck in
     // "sending" is only taken over when stale — edge functions are hard-killed
     // well within 15 minutes, so by then the previous runner is dead.
-    const SENDING_STALE_MS = 15 * 60 * 1000;
-    const staleCutoff = new Date(Date.now() - SENDING_STALE_MS).toISOString();
-    const { data: gateRows, error: gateErr } = await supabase
-      .from("email_campaigns")
-      .update({ status: "sending", updated_at: new Date().toISOString() })
-      .eq("id", campaignId)
-      .or(`status.neq.sending,updated_at.lt."${staleCutoff}"`)
-      .select("id");
+    // Skipped for a self-reinvoke continuation (isResume), which is the same
+    // trusted run picking up where its time budget cut it off.
+    if (!isResume) {
+      const SENDING_STALE_MS = 15 * 60 * 1000;
+      const staleCutoff = new Date(Date.now() - SENDING_STALE_MS).toISOString();
+      const { data: gateRows, error: gateErr } = await supabase
+        .from("email_campaigns")
+        .update({ status: "sending", updated_at: new Date().toISOString() })
+        .eq("id", campaignId)
+        .or(`status.neq.sending,updated_at.lt."${staleCutoff}"`)
+        .select("id");
 
-    if (gateErr) throw gateErr;
-    if (!gateRows || gateRows.length === 0) {
-      return new Response(JSON.stringify({ error: "Campaign is already being sent" }), {
-        status: 409,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (gateErr) throw gateErr;
+      if (!gateRows || gateRows.length === 0) {
+        return new Response(JSON.stringify({ error: "Campaign is already being sent" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // A stale takeover can leave rows claimed by the dead runner in "sending";
+      // release them so they are re-claimed below. Safe: the gate guarantees no
+      // other live runner. Up to CONCURRENCY rows may have been mid-flight to Resend
+      // when the old runner died — the per-recipient Idempotency-Key below makes any
+      // such re-send a no-op at Resend, so nobody is double-emailed.
+      await supabase
+        .from("email_campaign_recipients")
+        .update({ status: "pending" })
+        .eq("campaign_id", campaignId)
+        .eq("status", "sending");
     }
-
-    // A stale takeover can leave rows claimed by the dead runner in "sending";
-    // release them so they are re-claimed below. Safe: the gate guarantees no
-    // other live runner. (The single row in flight when the old runner died may
-    // be re-sent — accepted over stranding it forever.)
-    await supabase
-      .from("email_campaign_recipients")
-      .update({ status: "pending" })
-      .eq("campaign_id", campaignId)
-      .eq("status", "sending");
 
     // Atomic claim: only rows this UPDATE moves pending -> sending belong to
     // this run; a concurrent caller claims zero rows and cannot double-send.
@@ -228,7 +238,14 @@ Deno.serve(async (req) => {
         try {
           const res = await fetch("https://api.resend.com/emails", {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${RESEND_API_KEY}`,
+              // One recipient row = one intended email. Keying on its stable id makes a
+              // re-send (stale takeover, or our own resume chain) a no-op at Resend within
+              // its 24h dedupe window, so a crash mid-flight can never double-email anyone.
+              "Idempotency-Key": `campaign-recipient-${recipient.id}`,
+            },
             body: JSON.stringify({
               from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
               to: [recipient.recipient_email],
@@ -289,15 +306,41 @@ Deno.serve(async (req) => {
     ]);
 
     // Only call the campaign "sent" when nothing is left; otherwise keep it "sending".
+    // Refresh updated_at so the stale-takeover clock tracks real activity, not the
+    // start of the very first invocation.
     await supabase.from("email_campaigns").update({
       status: remaining === 0 ? "sent" : "sending",
       sent_count: sentTotal,
       failed_count: failedTotal,
+      updated_at: new Date().toISOString(),
       ...(remaining === 0 ? { sent_at: new Date().toISOString() } : {}),
     }).eq("id", campaignId);
 
+    // RESUMPTION: if the time budget cut us off with recipients still queued, nothing
+    // else re-invokes this function — so we chain another invocation of ourselves to drain
+    // the tail. We replay the caller's JWT (re-runs auth + ownership) and pass isResume so
+    // the continuation skips the concurrency gate. waitUntil keeps the fetch alive after we
+    // respond. The chain terminates because every pass turns ≥1 full chunk of recipients into
+    // sent/failed, monotonically shrinking `remaining`. Idempotency keys make it double-send-safe.
+    let continued = false;
+    if (budgetHit && remaining > 0) {
+      const resume = fetch(`${SUPABASE_URL}/functions/v1/send-campaign-emails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authHeader },
+        body: JSON.stringify({ campaignId, isResume: true }),
+      }).then((r) => { if (!r.ok) console.error("campaign self-reinvoke returned", r.status); })
+        .catch((e) => console.error("campaign self-reinvoke failed:", e));
+      const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+      if (edgeRuntime?.waitUntil) {
+        edgeRuntime.waitUntil(resume);
+      } else {
+        await resume;
+      }
+      continued = true;
+    }
+
     return new Response(
-      JSON.stringify({ success: true, sent: sentCount, failed: failedCount, remaining, complete: remaining === 0 }),
+      JSON.stringify({ success: true, sent: sentCount, failed: failedCount, remaining, complete: remaining === 0, continued }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
