@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "check:edge-config": "node scripts/check-edge-fn-config.mjs",
     "lint:fix": "eslint . --fix",
     "lint:prune": "eslint . --prune-suppressions",
     "lint:baseline": "eslint . --suppress-all",
@@ -26,7 +27,7 @@
     "db:rehearse:invoices-delivery": "node scripts/db/rehearse-invoices-delivery-status.mjs",
     "db:rehearse:player-locations": "node scripts/db/rehearse-players-overview-location-union.mjs",
     "db:rehearse:invoices-partition": "node scripts/db/rehearse-invoices-partition.mjs",
-    "db:rehearse:all": "npm run db:rehearse:players && npm run db:rehearse:coaching && npm run db:rehearse:email && npm run db:rehearse:trainer-invoices && npm run db:rehearse:invoices-delivery && npm run db:rehearse:player-locations && npm run db:rehearse:invoices-partition && npm run db:rehearse:invoice-status",
+    "db:rehearse:all": "node scripts/db/run-all-rehearsals.mjs",
     "db:rehearse:invoice-status": "node scripts/db/rehearse-invoice-status-history.mjs"
   },
   "dependencies": {

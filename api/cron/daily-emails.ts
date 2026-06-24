@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 // NOTE: explicit .js extension is REQUIRED — package.json is "type":"module", so
 // @vercel/node emits ESM and Node's ESM loader does not extension-complete relative
 // imports. Without it the function crashes at import with ERR_MODULE_NOT_FOUND.
-import { invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron.js';
+import { alertCronFailure, invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron.js';
 
 /**
  * Daily (noon, `0 12 * * *`): onboarding-drip queue flush + the daily digest.
@@ -36,5 +36,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const allOk = Object.values(results).every((r) => (r as { ok?: boolean }).ok !== false);
+  if (!allOk) await alertCronFailure('daily-emails', results);
   res.status(allOk ? 200 : 207).json({ jobs: results });
 }

@@ -204,3 +204,23 @@ verify_jwt = false
 
 [functions.academy-update-player-email]
 verify_jwt = false
+
+# Public / self-authenticating functions. These MUST stay verify_jwt = false — they are
+# called WITHOUT a Supabase JWT, so the platform default (verify_jwt = true) would make the
+# gateway 401 them on a fresh deploy. Each authenticates by its own mechanism (Stripe
+# signature, public image, rate-limited public read, public health). Guarded by
+# scripts/check-edge-fn-config.mjs so this can't silently regress.
+[functions.stripe-subscription-webhook]
+verify_jwt = false
+
+[functions.og-image]
+verify_jwt = false
+
+[functions.rating-og-image]
+verify_jwt = false
+
+[functions.get-public-rating]
+verify_jwt = false
+
+[functions.health-check]
+verify_jwt = false
