@@ -322,6 +322,12 @@ Deno.serve(async (req) => {
     // the continuation skips the concurrency gate. waitUntil keeps the fetch alive after we
     // respond. The chain terminates because every pass turns ≥1 full chunk of recipients into
     // sent/failed, monotonically shrinking `remaining`. Idempotency keys make it double-send-safe.
+    // LIMIT: the replayed access token has ~1h TTL, so the chain self-drains for ~32 hops
+    // (~58 min). A campaign large/throttled enough to outlive that strands in 'sending' with
+    // no autonomous driver until a human re-triggers a send — the stale-takeover gate then
+    // re-claims the leftover rows and the per-recipient Idempotency-Key prevents re-emailing
+    // anyone already sent. A server-side pg_cron sweeper (service role + isResume) would remove
+    // the human step; tracked as a follow-up.
     let continued = false;
     if (budgetHit && remaining > 0) {
       const resume = fetch(`${SUPABASE_URL}/functions/v1/send-campaign-emails`, {
