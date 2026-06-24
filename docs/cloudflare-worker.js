@@ -307,9 +307,12 @@ export default {
           });
         }
 
-        // 5xx / 429 / any other non-OK → transient backend failure.
+        // 5xx / 429 / any other non-OK → transient backend failure. 401/403 means a
+        // misconfigured/rotated SUPABASE_ANON_KEY (a hard config outage, not a per-page
+        // issue) — trip the breaker too, so it surfaces as loud circuit-open 503s instead
+        // of silently 503-ing every bot request forever.
         console.error(`Render failed with status ${response.status} for ${url.pathname}`);
-        if (response.status >= 500 || response.status === 429) {
+        if (response.status >= 500 || response.status === 429 || response.status === 401 || response.status === 403) {
           recordCircuitFailure();
         }
       } catch (error) {
