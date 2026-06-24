@@ -84,7 +84,21 @@ interface EmailRequest {
 const EMAIL_LOGO = `<div style="text-align: center; margin-bottom: 24px;"><img src="https://padeltrainer.ai/logo-dark.png" alt="PadelTrainer.ai" width="220" height="40" style="max-width: 220px; height: auto;" /></div>`;
 const BRAND_ORANGE = "#f45d25";
 
-const getEmailContent = (type: string, data: EmailRequest["data"], language?: string) => {
+const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?: string) => {
+  // SECURITY (email HTML injection): every value in `data` originates from user/registrant
+  // input — including the PUBLIC, unauthenticated submit-guest-intake path, whose notes/
+  // playerName/phone reach a DIFFERENT academy's admin inbox (new_intake_registration_admin).
+  // Escape every string field before it is interpolated into any template below so raw input
+  // cannot inject markup, scripts, or links. We clone first so the caller's `data` (used for
+  // recipient resolution / logging) keeps its raw values, and we only touch strings — numbers,
+  // arrays and booleans pass through. URLs stay valid: `&` becomes `&amp;`, which the browser
+  // decodes back to `&` when following an href.
+  const data: EmailRequest["data"] = { ...dataRaw };
+  for (const k of Object.keys(data) as Array<keyof EmailRequest["data"]>) {
+    if (typeof data[k] === "string") {
+      (data as Record<string, unknown>)[k] = sanitizeForHtml(data[k] as string);
+    }
+  }
   switch (type) {
     case "booking_confirmation":
       return {
@@ -1154,6 +1168,20 @@ function sanitizeForHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+// getEmailContent escapes every field for safe HTML *body* interpolation, but the email
+// SUBJECT is a plain-text header (Resend takes it as a JSON string, not raw SMTP / HTML), so
+// entities like &#039; would show literally there. Reverse the escape for the subject only —
+// it round-trips cleanly and stays inert because subjects are never rendered as HTML.
+function unescapeHtml(str: string): string {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&amp;/g, '&'); // last, so an escaped literal entity (&amp;lt;) round-trips
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1220,13 +1248,9 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
       
-      // Sanitize user input before using in HTML email
-      data.name = sanitizeForHtml(data.name || '');
-      data.companyName = sanitizeForHtml(data.companyName || '');
-      data.email = sanitizeForHtml(data.email || '');
-      data.phone = sanitizeForHtml(data.phone || '');
-      data.message = sanitizeForHtml(data.message || '');
-      
+      // HTML-escaping of these fields now happens centrally in getEmailContent (every
+      // string field is escaped before template interpolation), so no per-branch sanitize
+      // is needed here — doing it twice would double-escape (e.g. & -> &amp;amp;).
       console.log("Partner inquiry email (public form submission) - validated and rate limited");
     } else {
       if (!authHeader) {
@@ -1342,7 +1366,7 @@ const handler = async (req: Request): Promise<Response> => {
             .insert({
               user_id: recipientUserId,
               notification_type: prefColumn,
-              payload: { type, to, data, language, subject: getEmailContent(type, data, language).subject },
+              payload: { type, to, data, language, subject: unescapeHtml(getEmailContent(type, data, language).subject) },
               scheduled_for: frequency,
             });
 
@@ -1360,7 +1384,8 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    const { subject, html: emailHtml } = getEmailContent(type, data, language);
+    const { subject: subjectEscaped, html: emailHtml } = getEmailContent(type, data, language);
+    const subject = unescapeHtml(subjectEscaped); // subject is a plain-text header, not HTML
 
     // Add manage notifications footer (except for system emails)
     let finalHtml = emailHtml;
