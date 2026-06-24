@@ -28,11 +28,69 @@ form). Treat the invoice form as the worked example of the pattern below.
 | `useTableSort` | `@/hooks/useTableSort` | Sort key + direction state for tables |
 | `EmptyState` | `@/components/ui/empty-state` | Empty-list / no-results placeholder |
 | `ListPageSkeleton` | `@/components/ui/list-page-skeleton` | Loading skeleton for list pages |
+| `ListPageShell` | `@/components/ui/list-page-shell` | List/table **page** chrome: `AppPage` + `PageHeader` + full-page loading |
+| `ListPageState` | `@/components/ui/list-page-shell` | Loading / error / empty / content switch for a list body |
+| `ListPagination` | `@/components/ui/list-pagination` | Page navigation for paginated lists |
 | `StatTile` | `@/components/ui/stat-tile` | Dashboard metric tile |
 | `Calendar` | `@/components/ui/calendar` | Date picking |
 
 > `SortableTableHead` was moved from `components/admin/` to `components/ui/` in this slice — it is a
 > role-neutral primitive (already used by academy/trainer/cycle pages), not an admin-only one.
+
+## How to build a list/table page
+
+Every list/table page (academy, trainer, club, player, admin) has the same shape. Compose it from the
+shared primitives — don't re-wire the page chrome or the loading/empty/error states by hand.
+**Academy pages are the reference pattern** (e.g. `AcademyTrainers`).
+
+```tsx
+<ListPageShell
+  title={t('trainers.title')}
+  description={t('trainers.description')}
+  actions={<CreateButton />}
+  headerAfter={<p className="mt-2 text-xs text-muted-foreground">{hint}</p>}  // optional sub-header line
+  isLoading={isLoading}                                                       // → full-page skeleton
+>
+  <TableToolbar searchValue={q} onSearchChange={setQ}>{filters}</TableToolbar>
+
+  <ListPageState
+    isEmpty={rows.length === 0}
+    error={error}
+    empty={<EmptyState icon={Users} title={t('empty')} description={t('emptyDescription')} />}
+  >
+    <DataTableCard mobile={<MobileCards rows={rows} />}>
+      <Table className={compactDataTableClass}>
+        <TableHeader>
+          <SortableTableHead sortKey="name" currentSortKey={sort.key} currentDirection={sort.direction} onSort={handleSort}>
+            {t('name')}
+          </SortableTableHead>
+          {/* … */}
+        </TableHeader>
+        <TableBody>{rows.map(renderRow)}</TableBody>
+      </Table>
+    </DataTableCard>
+    <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
+  </ListPageState>
+</ListPageShell>
+```
+
+Rules of thumb:
+- **`ListPageShell`** owns the page chrome (`AppPage` + `PageHeader`) and the *full-page* loading
+  skeleton. Use `isLoading` for "skeleton replaces the whole page"; if the header should stay visible
+  while only the table loads, leave `isLoading` off and wrap just the body in `<ListPageState isLoading>`.
+  `headerAfter` keeps a hint/sub-header tight under the title.
+- **`ListPageState`** standardizes the body's data states with a fixed precedence:
+  **loading → error → empty → content**. Pass the page's own `<EmptyState/>` as `empty` (stays
+  on-brand and pixel-identical). It works inside a `<TabsContent>` too — one per tab.
+- **Sorting**: `useTableSort` + `SortableTableHead` for client-side sort; for server-paged lists drive
+  sort via RPC params (see the invoice list scaffold) and keep `SortableTableHead` wired to that state.
+- **Pagination**: render `ListPagination` inside the ready branch of `ListPageState` so it disappears
+  with loading/empty.
+- **Mobile**: pass a card list to `DataTableCard`'s `mobile` slot (`flushOnMobileCardClass()` for the
+  full-width surface); desktop `<table>` and mobile cards render from the same row data.
+
+Keep page-specific bits (data fetching, columns, filters, bulk actions, dialogs) in the page — the
+shell standardizes the *frame*, not the contents.
 
 ## Shared invoice form (the worked example)
 
