@@ -8,6 +8,7 @@
 // the exact pattern create-registration-invoice uses for event registrations.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,6 +125,10 @@ serve(async (req: Request) => {
 
     return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status });
   } catch (e) {
-    return json({ ok: false, error: "internal_error", message: String((e as Error)?.message ?? e) }, 500);
+    const message = String((e as Error)?.message ?? e);
+    // Player-triggered, but the failure (no bank-transfer invoice minted) can strand an
+    // accepted rebook — alert so the money-path break is never silent.
+    await notifySlackEdgeError("create-rebook-invoice", message);
+    return json({ ok: false, error: "internal_error", message }, 500);
   }
 });
