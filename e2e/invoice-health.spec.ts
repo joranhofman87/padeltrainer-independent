@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://ppkbhdiiqdusdeatgdft.supabase.co';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwa2JoZGlpcWR1c2RlYXRnZGZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0OTk2NDcsImV4cCI6MjA4NDA3NTY0N30.b7rDXbi4FBNc9rREGCCTmip3LVxH03_hm0DQMMyWio0';
+// Fail fast — never fall back to a hardcoded (old ppkbhd) project. Set these in the
+// e2e workflow env, pointing at the current ficwb project (or a disposable test one).
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set for the invoice-health check.');
+}
 
 test.describe('Invoice Health Check', () => {
   test('invoice-health-check returns a valid response', async ({ request }) => {

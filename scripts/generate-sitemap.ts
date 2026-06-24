@@ -5,7 +5,8 @@
  * Run with: bun run scripts/generate-sitemap.ts
  */
 
-const BASE_URL = 'https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://ficwbdrzefmblkbkomzw.supabase.co';
+const BASE_URL = `${SUPABASE_URL}/functions/v1/sitemap`;
 const OUTPUT_DIR = './public';
 const SITEMAPS_DIR = './public/sitemaps';
 

@@ -17,7 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           BODY=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=index")
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap?type=index")
           echo "$BODY" | grep -q '<sitemap>' || (echo "Index missing <sitemap> entries" && exit 1)
           echo "Index OK"
 
@@ -25,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=static" \
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap?type=static" \
             | grep -c '<url>')
           [ "$COUNT" -gt 0 ] || (echo "Static sitemap empty" && exit 1)
           echo "Static: $COUNT URLs"
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=content" \
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap?type=content" \
             | grep -c '<url>')
           [ "$COUNT" -gt 0 ] || (echo "Content sitemap empty" && exit 1)
           echo "Content: $COUNT URLs"
@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=locations&page=1" \
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap?type=locations&page=1" \
             | grep -c '<url>')
           [ "$COUNT" -gt 0 ] || (echo "Locations page 1 empty" && exit 1)
           echo "Locations p1: $COUNT URLs"
@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=cities&page=1" \
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap?type=cities&page=1" \
             | grep -c '<url>')
           [ "$COUNT" -gt 0 ] || (echo "Cities page 1 empty" && exit 1)
           echo "Cities p1: $COUNT URLs"
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           COUNT=$(curl -sf --max-time 120 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap?type=provinces" \
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap?type=provinces" \
             | grep -c '<url>')
           [ "$COUNT" -gt 0 ] || (echo "Provinces empty" && exit 1)
           echo "Provinces: $COUNT URLs"
@@ -70,6 +70,6 @@ jobs:
         run: |
           set -euo pipefail
           BYTES=$(curl -sf --max-time 180 --retry 2 --retry-delay 5 \
-            "https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt" | wc -c)
+            "https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/llms-full-txt" | wc -c)
           [ "$BYTES" -gt 1000 ] || (echo "llms-full.txt suspiciously small" && exit 1)
           echo "llms-full.txt: $BYTES bytes"
