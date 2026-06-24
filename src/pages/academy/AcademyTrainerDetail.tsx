@@ -27,8 +27,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
-import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
-import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
+import { CertificationsPicker } from '@/components/profiles/CertificationsPicker';
+import { SpecializationsPicker } from '@/components/profiles/SpecializationsPicker';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { getTrainerCountry } from '@/lib/certifications';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';

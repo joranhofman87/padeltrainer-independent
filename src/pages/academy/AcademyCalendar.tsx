@@ -58,7 +58,7 @@ import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
 // EditBookingDialog + EditSlotDialog removed — navigating to slot detail page instead
 // SlotDetailDialog removed — now using /app/academy/slot/:slotId page
 
-import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
+import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
 // Legacy week/overview components retired in favor of AgendaWeekByTrainer + AgendaMonth
 import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";

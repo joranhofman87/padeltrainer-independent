@@ -22,8 +22,8 @@ import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratin
 import { LocationPicker } from '@/components/locations/LocationPicker';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
 import { getPlayerLocations, updatePlayerLocations, getTrainerLocations, updateTrainerLocations, TrainerLocationData } from '@/lib/locations';
-import { CertificationsPicker } from '@/components/trainer/CertificationsPicker';
-import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
+import { CertificationsPicker } from '@/components/profiles/CertificationsPicker';
+import { SpecializationsPicker } from '@/components/profiles/SpecializationsPicker';
 import { getTrainerCountry } from '@/lib/certifications';
 import { logger } from '@/lib/logger';
 import { VideoManager } from '@/components/profiles/VideoManager';

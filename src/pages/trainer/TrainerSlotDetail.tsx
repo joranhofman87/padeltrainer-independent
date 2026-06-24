@@ -35,7 +35,7 @@ import { InlineBookPlayer } from '@/components/trainer/InlineBookPlayer';
 import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
 import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
-import { SlotRatingPicker } from '@/components/trainer/SlotRatingPicker';
+import { SlotRatingPicker } from '@/components/slots/SlotRatingPicker';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
