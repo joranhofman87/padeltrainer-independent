@@ -24,6 +24,9 @@ function FooterTopics() {
     queryKey: ['footer-topics', currentLang],
     queryFn: () => getTopics(currentLang),
     staleTime: 1000 * 60 * 30,
+    // Footer hub links are non-critical: skip on a Sanity hiccup instead of retrying (the global
+    // default retries every query, which on the marketing pages caused a request storm).
+    retry: false,
   });
 
   if (!topics || topics.length === 0) return null;
