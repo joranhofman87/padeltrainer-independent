@@ -34,12 +34,15 @@ Deno.serve(async (req) => {
       .slice(0, 19);
     const results: { name: string; row_count: number; size_bytes: number }[] =
       [];
+    const failedQueries: string[] = [];
+    const failedUploads: string[] = [];
 
     for (const table of TABLES_TO_BACKUP) {
       const { data, error } = await supabase.from(table).select("*");
 
       if (error) {
         console.error(`Error querying ${table}:`, error.message);
+        failedQueries.push(table);
         results.push({ name: table, row_count: 0, size_bytes: 0 });
         continue;
       }
@@ -56,6 +59,7 @@ Deno.serve(async (req) => {
 
       if (uploadError) {
         console.error(`Error uploading ${table}:`, uploadError.message);
+        failedUploads.push(table);
       }
 
       results.push({
@@ -111,10 +115,18 @@ Deno.serve(async (req) => {
       console.log(`Retention cleanup: deleted ${deletedCount} backups older than ${RETENTION_DAYS} days`);
     }
 
-    return new Response(JSON.stringify({ ...summary, deleted_old_backups: deletedCount }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // A backup that silently uploads nothing is worse than a loud failure: if any
+    // table failed to query or upload (e.g. a missing `backups` storage bucket makes
+    // every upload fail), return non-2xx so the daily cron surfaces it instead of
+    // reporting a green "backup complete" while saving nothing.
+    const ok = failedQueries.length === 0 && failedUploads.length === 0;
+    return new Response(
+      JSON.stringify({ ...summary, ok, failedQueries, failedUploads, deleted_old_backups: deletedCount }),
+      {
+        status: ok ? 200 : 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (err) {
     console.error("Backup failed:", err);
     return new Response(JSON.stringify({ error: "Backup failed" }), {

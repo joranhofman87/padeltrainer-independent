@@ -15,11 +15,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const jobs: Array<{ slug: string; body?: Record<string, unknown> }> = [
     { slug: 'backup-database' },
     { slug: 'invoice-health-check' },
-    { slug: 'enrich-clubs', body: { batch_size: 5, fill_missing_only: true } },
-    { slug: 'fetch-location-logos', body: { batch_size: 10 } },
     // Deferred rebooking invoicing: creates DRAFT invoices (per-group split) for
     // started cycles' commitments; academies review + send. Idempotent.
     { slug: 'generate-cycle-commitment-invoices' },
+    // NOTE: enrich-clubs + fetch-location-logos were removed here — they depend on
+    // paid external APIs (Firecrawl + the deprecated Lovable AI gateway) that aren't
+    // configured, so they only ever failed this cron (207). Re-add with the API keys
+    // set if directory auto-enrichment is wanted again.
   ];
 
   const results: Record<string, unknown> = {};
