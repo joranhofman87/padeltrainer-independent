@@ -1758,6 +1758,8 @@
       "retryStartedDesc": "{{sent}} sent, {{failed}} failed again.",
       "retryNone": "Nothing to retry",
       "retryNoneDesc": "There are no failed recipients left that can be retried.",
+      "retryQueued": "Queued for retry",
+      "retryQueuedDesc": "{{count}} failed recipients will go out with the send already in progress.",
       "retryError": "Could not retry failed recipients.",
       "draftSaved": "Draft saved",
       "draftSavedDesc": "You can come back to finish it later.",

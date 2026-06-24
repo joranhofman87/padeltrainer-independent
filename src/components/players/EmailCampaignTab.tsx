@@ -385,6 +385,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
 
       if (data?.retried === 0) {
         toast({ title: t('emailCampaign.toasts.retryNone'), description: t('emailCampaign.toasts.retryNoneDesc') });
+      } else if (data?.queued) {
+        // A send was already in progress; the failed rows were re-queued and will go out with it.
+        toast({ title: t('emailCampaign.toasts.retryQueued'), description: t('emailCampaign.toasts.retryQueuedDesc', { count: data?.retried ?? 0 }) });
       } else {
         toast({
           title: t('emailCampaign.toasts.retryStarted'),

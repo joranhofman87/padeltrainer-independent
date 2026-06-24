@@ -217,18 +217,25 @@ Deno.serve(async (req) => {
 
     // RETRY FAILED: re-queue this campaign's failed recipients that still have attempt budget
     // back to 'pending' so the gate + claim + send below picks them up. Rows at the cap (e.g. a
-    // hard bounce / invalid address) stay 'failed'. The per-recipient Idempotency-Key keeps any
-    // row that actually did deliver from being re-emailed. Owner-gated by the verifyOwner above.
+    // hard bounce / invalid address) stay 'failed'. The per-recipient Idempotency-Key keeps a row
+    // that actually delivered from being re-emailed — but only within Resend's ~24h dedupe window;
+    // a row wrongly marked 'failed' (e.g. a network timeout AFTER Resend accepted it) that an owner
+    // retries more than a day later could get a duplicate. Owner-gated by the verifyOwner above.
     const MAX_ATTEMPTS = 3;
+    let retryRequeuedCount = 0;
     if (retryFailed && !isResume) {
-      const { data: requeued } = await supabase
+      const { data: requeued, error: requeueErr } = await supabase
         .from("email_campaign_recipients")
         .update({ status: "pending" })
         .eq("campaign_id", campaignId)
         .eq("status", "failed")
         .lt("attempt_count", MAX_ATTEMPTS)
         .select("id");
-      if (!requeued || requeued.length === 0) {
+      // Surface a real DB error (e.g. the migration hasn't been applied yet) instead of silently
+      // reporting "nothing to retry".
+      if (requeueErr) throw requeueErr;
+      retryRequeuedCount = requeued?.length ?? 0;
+      if (retryRequeuedCount === 0) {
         // Nothing retryable (no failures, or all at the attempt cap). Return a clean 200 so the
         // client shows "nothing to retry" rather than treating a 400/409 as an error.
         return new Response(
@@ -256,6 +263,14 @@ Deno.serve(async (req) => {
 
       if (gateErr) throw gateErr;
       if (!gateRows || gateRows.length === 0) {
+        // A retry that lands while a live run owns the campaign already re-queued the failed rows
+        // above; that live run (or the daily sweep) will send them. Report success, not an error.
+        if (retryRequeuedCount > 0) {
+          return new Response(
+            JSON.stringify({ success: true, retried: retryRequeuedCount, queued: true, complete: false }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
         return new Response(JSON.stringify({ error: "Campaign is already being sent" }), {
           status: 409,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -355,23 +370,28 @@ Deno.serve(async (req) => {
           if (res.ok) {
             sentCount++;
             processed.add(recipient.id);
-            await supabase.from("email_campaign_recipients")
+            const { error: wErr } = await supabase.from("email_campaign_recipients")
               .update({ status: "sent", sent_at: new Date().toISOString(), attempt_count: nextAttemptCount }).eq("id", recipient.id);
+            // If this write fails (e.g. the attempt_count migration hasn't been applied yet) the
+            // row stays 'sending' and would otherwise be invisible — log it instead of swallowing.
+            if (wErr) console.error("recipient status write failed (sent)", recipient.id, wErr.message);
             return;
           }
           if (res.status === 429 && attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
           const errBody = await res.text();
           failedCount++;
           processed.add(recipient.id);
-          await supabase.from("email_campaign_recipients")
+          const { error: wErr } = await supabase.from("email_campaign_recipients")
             .update({ status: "failed", error_message: errBody.slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
+          if (wErr) console.error("recipient status write failed (failed)", recipient.id, wErr.message);
           return;
         } catch (err) {
           if (attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
           failedCount++;
           processed.add(recipient.id);
-          await supabase.from("email_campaign_recipients")
+          const { error: wErr } = await supabase.from("email_campaign_recipients")
             .update({ status: "failed", error_message: (err instanceof Error ? err.message : "Unknown error").slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
+          if (wErr) console.error("recipient status write failed (catch)", recipient.id, wErr.message);
           return;
         }
       }
@@ -412,7 +432,9 @@ Deno.serve(async (req) => {
       sent_count: sentTotal,
       failed_count: failedTotal,
       updated_at: new Date().toISOString(),
-      ...(remaining === 0 ? { sent_at: new Date().toISOString() } : {}),
+      // Stamp sent_at only on the FIRST completion — a later "retry failed" run must not
+      // overwrite the campaign's original send date in the history list.
+      ...(remaining === 0 ? { sent_at: campaign.sent_at ?? new Date().toISOString() } : {}),
     }).eq("id", campaignId);
 
     // RESUMPTION: if the time budget cut us off with recipients still queued, nothing
