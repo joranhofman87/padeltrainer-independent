@@ -38,6 +38,7 @@ interface PreviewResult {
   players: number;
   suggestedWeeks: number;
   suggestedPrice: number | null;
+  pricesIncludeVat: boolean | null;
 }
 
 interface HolidayRange {
@@ -185,6 +186,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           players: Number(data?.players ?? 0),
           suggestedWeeks: Number(data?.suggestedWeeks ?? 0),
           suggestedPrice: data?.suggestedPrice == null ? null : Number(data.suggestedPrice),
+          pricesIncludeVat: data?.pricesIncludeVat == null ? null : Boolean(data.pricesIncludeVat),
         };
         setPreview(result);
         // Pre-fill weeks + price from the previous term when the user hasn't set them.
@@ -421,7 +423,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
             </p>
           </div>
           <div>
-            <Label className="text-xs">{t('rebookCohort.sessionPrice', 'Prijs per sessie (€)')}</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">{t('rebookCohort.sessionPrice', 'Prijs per sessie (€)')}</Label>
+              {preview?.pricesIncludeVat != null && (
+                <span className="text-xs text-muted-foreground">
+                  {preview.pricesIncludeVat ? t('rebookCohort.vatIncl', 'incl. btw') : t('rebookCohort.vatExcl', 'excl. btw')}
+                </span>
+              )}
+            </div>
             <Input
               type="number"
               min={0}

@@ -1004,6 +1004,8 @@
     "toReview": "Volgende: controleren",
     "backToEdit": "Terug naar bewerken",
     "confirmSendCount": "Verstuur {{count}} uitnodigingen",
+    "vatIncl": "incl. btw",
+    "vatExcl": "excl. btw",
     "byLocation": "Per locatie (hele groep)",
     "byCycle": "Per cyclus",
     "title": "Hele groep opnieuw boeken",

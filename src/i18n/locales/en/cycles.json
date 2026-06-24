@@ -869,6 +869,8 @@
     "toReview": "Next: review",
     "backToEdit": "Back to edit",
     "confirmSendCount": "Send {{count}} invitations",
+    "vatIncl": "incl. VAT",
+    "vatExcl": "excl. VAT",
     "byLocation": "Per location (whole group)",
     "byCycle": "Per cycle",
     "title": "Rebook a whole group",
