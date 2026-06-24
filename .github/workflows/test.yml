@@ -28,6 +28,11 @@ jobs:
       - name: Lint (ratcheted)
         run: npm run lint
 
+      # Fails if any public / self-authenticating edge function is not verify_jwt=false
+      # in config.toml (would 401 on deploy — e.g. the Stripe webhook, public images).
+      - name: Edge-function config drift guard
+        run: npm run check:edge-config
+
   test:
     runs-on: ubuntu-latest
 

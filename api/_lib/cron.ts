@@ -52,6 +52,33 @@ export async function invokeEdgeFunction(
   return { ok: response.ok, status: response.status, data };
 }
 
+/**
+ * Slack-alert on cron sub-job failures via the slack-notify edge function. Without this
+ * a failed nightly backup / stalled rebooking-invoice minter / thrown digest is invisible
+ * (Vercel doesn't page on cron non-2xx). Never throws — alerting must not break the cron.
+ */
+export async function alertCronFailure(
+  cronName: string,
+  results: Record<string, unknown>,
+): Promise<void> {
+  const failed = Object.entries(results)
+    .filter(([, r]) => (r as { ok?: boolean }).ok === false)
+    .map(([slug]) => slug);
+  if (failed.length === 0) return;
+  try {
+    await invokeEdgeFunction('slack-notify', {
+      event: 'edge_function_error',
+      data: {
+        function: `${cronName} (Vercel cron)`,
+        error: `Failed jobs: ${failed.join(', ')}`,
+        jobs: results,
+      },
+    });
+  } catch {
+    // Alerting must never break the cron response.
+  }
+}
+
 export async function runCronHandler(
   req: VercelRequest,
   res: VercelResponse,
