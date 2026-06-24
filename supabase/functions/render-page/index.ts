@@ -866,11 +866,17 @@ function page(
     .map(sd => `<script type="application/ld+json">${JSON.stringify(sd)}</script>`)
     .join('\n');
 
+  // The 404 fallback page must not be indexable (defense-in-depth alongside the 404 status
+  // the worker passes through). Detected from the sentinel the notfound branch emits.
+  const robotsMeta = body.includes('<!-- render-page:notfound -->')
+    ? '\n  <meta name="robots" content="noindex">'
+    : '';
+
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">${robotsMeta}
   <title>${esc(title)}</title>
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${canonicalUrl}">

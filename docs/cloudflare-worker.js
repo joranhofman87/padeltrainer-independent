@@ -20,12 +20,15 @@
  * 1. Make sure padeltrainer.ai DNS is on Cloudflare and proxied (orange cloud).
  * 2. Workers & Pages -> Create Worker -> paste the contents of this file.
  * 3. Add route: `padeltrainer.ai/*` -> this worker (zone: padeltrainer.ai).
- * 4. Set Worker environment variables (Settings -> Variables):
- *    - ORIGIN_URL            e.g. https://padeltrainer.lovable.app
- *    - RENDER_FUNCTION_URL   e.g. https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/render-page
- *    - SITEMAP_FUNCTION_URL  e.g. https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/sitemap
- *    - LLMS_FUNCTION_URL     e.g. https://ppkbhdiiqdusdeatgdft.supabase.co/functions/v1/llms-full-txt
- *    - SUPABASE_ANON_KEY     project anon key (required: forwarded as Bearer token to all
+ * 4. Set Worker environment variables (Settings -> Variables) — use the CURRENT project
+ *    (ficwbdrzefmblkbkomzw) and the Vercel origin, NOT the retired Lovable/ppkbhd ones:
+ *    - ORIGIN_URL            the live human origin, e.g. the Vercel deployment URL for padeltrainer.ai
+ *                            (must NOT be https://padeltrainer.lovable.app — that retired deploy is
+ *                            being taken down to kill duplicate content)
+ *    - RENDER_FUNCTION_URL   https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/render-page
+ *    - SITEMAP_FUNCTION_URL  https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/sitemap
+ *    - LLMS_FUNCTION_URL     https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/llms-full-txt
+ *    - SUPABASE_ANON_KEY     ficwb project anon/publishable key (forwarded as Bearer token to all
  *                            Supabase Edge Function calls — proxies AND render-page)
  *
  * Smoke test after deploying:
@@ -111,27 +114,39 @@ function recordCircuitSuccess() {
   circuitFailures = 0;
 }
 
-// ─── Static Fallback HTML ───────────────────────────────────────
-const STATIC_FALLBACK_HTML = `<!DOCTYPE html>
+// ─── Temporary-unavailable fallback (503) ───────────────────────
+// Served when the render backend is failing / rate-limited / the circuit is open. It is
+// noindex and carries NO canonical — crucially it must never be a 200 homepage, which Google
+// reads as a soft-404 + duplicate canonical for whatever URL was requested. A 503 + Retry-After
+// tells crawlers "temporary, come back later" so they neither index it nor drop the real URL.
+const UNAVAILABLE_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PadelTrainer.ai — Find & Book Padel Trainers</title>
-  <meta name="description" content="Find and book certified padel trainers near you. PadelTrainer.ai connects players with the best coaches across Europe.">
-  <meta property="og:title" content="PadelTrainer.ai — Find & Book Padel Trainers">
-  <meta property="og:description" content="Find and book certified padel trainers near you across Europe.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://padeltrainer.ai">
-  <meta property="og:image" content="https://padeltrainer.ai/og-image.png">
-  <link rel="canonical" href="https://padeltrainer.ai">
+  <meta name="robots" content="noindex">
+  <title>Temporarily unavailable — PadelTrainer.ai</title>
 </head>
 <body>
-  <h1>PadelTrainer.ai</h1>
-  <p>Find and book certified padel trainers near you.</p>
-  <p><a href="https://padeltrainer.ai">Visit PadelTrainer.ai</a></p>
+  <h1>Temporarily unavailable</h1>
+  <p>This page couldn't be rendered right now. Please try again shortly.</p>
 </body>
 </html>`;
+
+// A 503 that crawlers should retry, never cache, and never index. Used for ALL transient
+// render failures (5xx/429/network), rate-limited bots, and an open circuit breaker.
+function unavailableResponse(retryAfterSeconds = 120, marker = 'unavailable') {
+  return new Response(UNAVAILABLE_HTML, {
+    status: 503,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Retry-After': String(retryAfterSeconds),
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': 'noindex',
+      'X-Rendered-By': `padeltrainer-${marker}`,
+    },
+  });
+}
 
 // ─── Sitemap Proxy ──────────────────────────────────────────────
 function getSitemapProxyUrl(pathname, sitemapFunctionUrl) {
@@ -219,30 +234,16 @@ export default {
     if (request.method === 'GET' && isBot(userAgent) && shouldPrerender(url.pathname)) {
       const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || '';
 
-      // Rate limit: return static fallback if bot is too aggressive
+      // Rate limit: ask the (over-eager) bot to back off with a 503 — never a 200 page that
+      // would get indexed/canonicalised in place of the real prerender.
       if (isBotRateLimited(clientIP)) {
-        return new Response(STATIC_FALLBACK_HTML, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'public, max-age=60',
-            'X-Rendered-By': 'padeltrainer-static-fallback',
-            'X-Rate-Limited': 'true',
-          },
-        });
+        return unavailableResponse(30, 'rate-limited');
       }
 
-      // Circuit breaker: if backend is failing, don't even try
+      // Circuit breaker: backend is failing — return 503 Retry-After (not a 200 homepage)
+      // for the remaining cooldown so crawlers come back instead of indexing a fallback.
       if (isCircuitOpen()) {
-        return new Response(STATIC_FALLBACK_HTML, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'public, max-age=60',
-            'X-Rendered-By': 'padeltrainer-static-fallback',
-            'X-Circuit-Breaker': 'open',
-          },
-        });
+        return unavailableResponse(300, 'circuit-open');
       }
 
       // Check Cloudflare Cache
@@ -286,8 +287,27 @@ export default {
           ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
           return responseToCache;
         }
-        
-        // Backend error — record failure, serve fallback
+
+        // A 404/410 is a HEALTHY answer for an unknown page — render-page already returns a
+        // proper noindex Not-Found document. Pass the REAL status + body straight through so
+        // crawlers see a true 404 (not a 200 homepage soft-404). Don't trip the circuit breaker.
+        if (response.status === 404 || response.status === 410) {
+          recordCircuitSuccess();
+          const html = await response.text();
+          return new Response(html, {
+            status: response.status,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              // Short cache so a page that later becomes real is re-crawled soon; not cached
+              // under the prerender key, so it never masquerades as a valid page.
+              'Cache-Control': 'public, max-age=300',
+              'X-Robots-Tag': 'noindex',
+              'X-Rendered-By': 'padeltrainer-prerender-notfound',
+            },
+          });
+        }
+
+        // 5xx / 429 / any other non-OK → transient backend failure.
         console.error(`Render failed with status ${response.status} for ${url.pathname}`);
         if (response.status >= 500 || response.status === 429) {
           recordCircuitFailure();
@@ -297,15 +317,9 @@ export default {
         recordCircuitFailure();
       }
 
-      // Fallback on failure
-      return new Response(STATIC_FALLBACK_HTML, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'public, max-age=60',
-          'X-Rendered-By': 'padeltrainer-static-fallback',
-        },
-      });
+      // Transient render failure (5xx / 429 / network). Return 503 Retry-After + noindex —
+      // NEVER a 200 homepage canonical, which would create soft-404s + duplicate canonicals.
+      return unavailableResponse(120, 'render-unavailable');
     }
     
     // --- Human users: proxy to Lovable origin ---

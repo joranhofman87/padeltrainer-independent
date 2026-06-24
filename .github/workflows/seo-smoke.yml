@@ -1,0 +1,30 @@
+name: SEO smoke (production)
+
+# Manual + weekly production SEO crawl/indexing check. Read-only (GETs as Googlebot; the
+# render-page + sitemap edge functions are read-only). Run it AFTER deploying the updated
+# Cloudflare worker — the 404 test stays red until the worker fix is live.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Base URL to test
+        required: false
+        default: https://padeltrainer.ai
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+
+jobs:
+  seo-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run SEO smoke
+        env:
+          SEO_SMOKE_BASE_URL: ${{ github.event.inputs.base_url || 'https://padeltrainer.ai' }}
+        run: npx playwright test e2e/seo-smoke.spec.ts --reporter=line
