@@ -21,7 +21,7 @@ import {
 } from "@/lib/invoicesList";
 import { useInvoiceListSort } from "@/components/invoices/useInvoiceListSort";
 import { useInvoiceListSelection } from "@/components/invoices/useInvoiceListSelection";
-import { InvoiceListPagination } from "@/components/invoices/InvoiceListPagination";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { InvoiceListStatusBadge } from "@/components/invoices/InvoiceListStatusBadge";
 import { InvoiceStatTiles } from "@/components/invoices/InvoiceStatTiles";
@@ -717,7 +717,7 @@ export default function TrainerInvoices() {
                 </>
               )}
 
-              <InvoiceListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
+              <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} className="mt-4" />
             </TabsContent>
           </Tabs>
         </TabsContent>

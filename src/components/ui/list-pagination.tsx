@@ -6,26 +6,29 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
+import { cn } from '@/lib/utils';
 
-interface InvoiceListPaginationProps {
+interface ListPaginationProps {
   page: number;
   pageCount: number;
   /** Called with the target page; the component clamps to [0, pageCount-1] before invoking. */
   onPageChange: (page: number) => void;
+  /** Extra classes for the <Pagination> wrapper (e.g. "mt-4"). */
+  className?: string;
 }
 
 /**
- * Shared windowed pager for the trainer + academy invoice LIST pages. Renders nothing for a single
- * page. Shows first/last + a ±2 window around the current page with '…' gaps, and clamps every
- * navigation internally so callers can pass a bare `setPage`. Extracted verbatim from both pages.
+ * Domain-neutral windowed pager for the server-paginated list pages (invoices, players, …). Renders
+ * nothing for a single page. Shows first/last + a ±2 window around the current page with '…' gaps,
+ * and clamps every navigation internally so callers can pass a bare `setPage`.
  */
-export function InvoiceListPagination({ page, pageCount, onPageChange }: InvoiceListPaginationProps) {
+export function ListPagination({ page, pageCount, onPageChange, className }: ListPaginationProps) {
   if (pageCount <= 1) return null;
 
   const go = (p: number) => onPageChange(Math.min(pageCount - 1, Math.max(0, p)));
 
   return (
-    <Pagination className="mt-4">
+    <Pagination className={cn(className)}>
       <PaginationContent>
         <PaginationItem>
           <PaginationPrevious

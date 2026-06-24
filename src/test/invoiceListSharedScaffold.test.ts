@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 /**
  * Guards slice 2 of the frontend reuse-hardening sprint: the trainer + academy invoice LIST pages
  * must consume the shared list scaffold (useInvoiceListSort / useInvoiceListSelection /
- * InvoiceListPagination / invoiceListPageCount) instead of re-inlining the sort mapping, the
+ * ListPagination / invoiceListPageCount) instead of re-inlining the sort mapping, the
  * selection Set logic, or the windowed pager. If a future edit re-inlines one role, this fails.
  */
 const read = (rel: string) => readFileSync(resolve(__dirname, '..', rel), 'utf8');
@@ -18,7 +18,7 @@ describe.each(pages)('%s uses the shared invoice-list scaffold', (page) => {
   it('uses the shared sort, selection and pagination scaffold', () => {
     expect(source).toContain('useInvoiceListSort');
     expect(source).toContain('useInvoiceListSelection');
-    expect(source).toContain('InvoiceListPagination');
+    expect(source).toContain('ListPagination');
     expect(source).toContain('invoiceListPageCount');
   });
 

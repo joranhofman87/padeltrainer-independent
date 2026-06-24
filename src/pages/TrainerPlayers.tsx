@@ -30,14 +30,7 @@ import { playerKeys, invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { format } from 'date-fns';
 import { SortableHeader } from '@/components/players/usePlayerSort';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { ListPagination } from '@/components/ui/list-pagination';
 import { AddPlayerDialog } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
@@ -738,44 +731,7 @@ export default function TrainerPlayers() {
             </DataTableCard>
           )}
 
-          {pageCount > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    aria-disabled={page === 0}
-                    className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
-                  />
-                </PaginationItem>
-                {Array.from({ length: pageCount }, (_, i) => i)
-                  .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                  .map((i, idx, arr) => (
-                    <PaginationItem key={i}>
-                      {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                        <span className="px-2 text-muted-foreground">…</span>
-                      ) : null}
-                      <PaginationLink
-                        href="#"
-                        isActive={i === page}
-                        onClick={(e) => { e.preventDefault(); setPage(i); }}
-                      >
-                        {i + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    aria-disabled={page >= pageCount - 1}
-                    className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
         </TabsContent>
 
         {/* Create Tab */}

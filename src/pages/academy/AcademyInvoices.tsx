@@ -22,7 +22,7 @@ import {
 } from "@/lib/invoicesList";
 import { useInvoiceListSort } from "@/components/invoices/useInvoiceListSort";
 import { useInvoiceListSelection } from "@/components/invoices/useInvoiceListSelection";
-import { InvoiceListPagination } from "@/components/invoices/InvoiceListPagination";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { Input } from "@/components/ui/input";
 import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
@@ -913,7 +913,7 @@ export default function AcademyInvoices() {
                 ))}
               </div>
 
-              <InvoiceListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
+              <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} className="mt-4" />
             </>
           )}
         </TabsContent>

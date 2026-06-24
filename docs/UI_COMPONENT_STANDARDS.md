@@ -63,7 +63,7 @@ summary RPCs, status enums, tab partition, filters, mobile card list, and bulk a
 | --- | --- |
 | Header-sort affordance + paid-tab default + header-key → RPC sort mapping | `@/components/invoices/useInvoiceListSort` (`useInvoiceListSort`, `mapInvoiceSortKeyToRpc`) |
 | Page-scoped row selection (Set + toggles + `selectedInvoices`) | `@/components/invoices/useInvoiceListSelection` |
-| Windowed pager (first/last + ±2 window + ellipsis, clamps internally) | `@/components/invoices/InvoiceListPagination` |
+| Windowed pager (first/last + ±2 window + ellipsis, clamps internally) | `@/components/ui/list-pagination` (`ListPagination`) — domain-neutral; also used by the player lists. Optional `className` (invoices pass `mt-4`). |
 | Page-count math | `invoiceListPageCount` in `@/lib/invoicesList` |
 | 3-up KPI stat-tile row (values injected as props; never owns a query) | `@/components/invoices/InvoiceStatTiles` |
 | Status badge (server `computed_status` + canonical `InvoiceStatusBadge` + audit tooltip) | `@/components/invoices/InvoiceListStatusBadge` |
@@ -128,7 +128,18 @@ These are the next reuse targets, intentionally deferred to keep each slice safe
   `ListPageSkeleton` (each a deliberate visual change, not a like-for-like swap); unifying the
   intentionally-divergent mobile card lists; and sharing the bulk mutation handlers + the sticky bulk
   bar (a separate, money-mutating slice that needs its own careful test pass).
-- **Shared player list page** (trainer / academy / club) on the same list scaffold.
+- **Player list reuse (trainer + academy only).** A scoping pass found the win is *medium, not big*,
+  and spans only two of the three pages — trainer + academy already share the whole data-fetch stack
+  (`playersOverview.ts`); **club is a genuinely different surface** (flat `club_players` table, client
+  sort, no pagination, inline CRUD) and must be left alone. Done: both adopted the shared
+  `ListPagination`. Next, low-risk: a shared `mapPlayersOverviewRow(row, opts)` pure function +
+  unified `UnifiedPlayer` type (collapses the ~25-line row mapper duplicated in both — note the
+  `trainer_notes`/`academy_notes` field both read `row.academy_notes`, and academy has a *second*
+  `UnifiedPlayer` construction site for guest `originalGuest`). Medium-risk follow-up: a
+  `useVisibleColumns(columns, storageKey)` hook + `PlayerColumnsMenu` (the ~85-line column-visibility
+  + localStorage machinery). Do **not** generalize `useInvoiceListSelection` for academy's bulk
+  selection — its `Map`-with-payload model that survives server pagination is incompatible, and it is
+  the sole consumer.
 - **Shared date-picker field** (due-date popover/calendar is repeated across forms).
 - **Shared scheduling / calendar components** (agenda day/week views).
 - **Consolidate near-duplicate primitives:** `PageHeader` vs `TrainerPageHeader`; `EmptyState` vs
