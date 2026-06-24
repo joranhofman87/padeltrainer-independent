@@ -116,7 +116,7 @@ over time via `npm run lint:prune`.
    - `pages/academy/AcademyCalendar` → trainer `AddSlotDialog`, `BookForPlayerDialog`, `DeleteSlotDialog`
    - `pages/academy/AcademyCreateSlot` → trainer `AddSlotDialog`, `SlotLocationPicker`
    - `pages/academy/AcademyDashboard` → trainer `UnpaidBookingsCard`, `dashboard/DashboardActivityList`
-   - `pages/academy/AcademyInvoices` → trainer `InvoiceEmailDialog`
+   - ~~`pages/academy/AcademyInvoices` → trainer `InvoiceEmailDialog`~~ ✅ resolved (slice 1 — `InvoiceEmailDialog` moved to `components/invoices/`)
    - `pages/academy/AcademyPlayers` → trainer `AddPlayerDialog`, `AddPlayerForm`, `ImportPlayersDialog`
    - `pages/academy/AcademySlotDetail` → trainer `InlineBookPlayer`, `InlineEditBooking`
    - `pages/club/ClubCalendar` → trainer `TrainerCalendarGrid`
@@ -131,6 +131,50 @@ over time via `npm run lint:prune`.
 3. **Fat pages** — `EditProfile` (~1140 lines), `AcademyPlayers` (~1120),
    `TrainerPlayerDetail` (~1000) inline large amounts of JSX/logic that should be
    extracted into components. Extract opportunistically when you touch them.
+
+## Consolidation roadmap (burning down the cross-role debt)
+
+How we turn debt item #1 into shared components, one focused PR at a time.
+
+**Canonical role = academy.** Academy is the most-developed and most-tested surface,
+so its behaviour is the source of truth. For the debt-#1 components this is *free*:
+academy doesn't have its own copy — it already renders trainer's component — so
+**relocating the component to a neutral folder is behaviour-preserving for academy**
+(only the import path changes). Trainer renders the same component too, so it's
+unchanged as well.
+
+**Rules for each relocation slice**
+- **Relocate as-is.** `git mv` the component to a neutral folder and repoint
+  importers — do **not** generalise/rename in the same step (that's what risks
+  changing academy). Generalisation, if ever needed, is a separate later PR.
+- Move a component **with its cluster**: if it relatively-imports siblings, those
+  move together (or it stays put until they can).
+- After the move: `npm run lint` → `npm run lint:prune` (shrinks the baseline) →
+  `npm run build` → `npx vitest run` → confirm `tsc` adds no new errors vs `main` →
+  `grep` that no `@/components/trainer` imports remain in the moved files' consumers.
+
+**Sequenced slices** (easiest/most-isolated first):
+
+1. **Self-contained singles** (no sibling deps — pure single-file moves):
+   - `InvoiceEmailDialog` → `components/invoices/` — clears `AcademyInvoices` fully. ✅ **done (slice 1)**
+   - `SlotLocationPicker` → `components/slots/`
+   - `UnpaidBookingsCard` → `components/booking/`
+   - `dashboard/DashboardActivityList` → a shared dashboard home — clears `AcademyDashboard` (with `UnpaidBookingsCard`)
+2. **Player-dialog cluster** → `components/players/`: `AddPlayerDialog` +
+   `AddPlayerForm` (circular) + `ImportPlayersDialog`. Higher churn — `AddPlayerDialog`
+   is a ~15-importer hub, including the **neutral** `InvoiceCustomerSection` (so this
+   also fixes a neutral→trainer leak). Move the cluster together. Clears `AcademyPlayers`.
+3. **Slot/booking cluster** (largest) → `components/slots/` + `components/booking/`:
+   the slot dialogs (`AddSlotDialog`, `DeleteSlotDialog`, `BookForPlayerDialog`,
+   `InlineBookPlayer`, `InlineEditBooking`) and `TrainerCalendarGrid` all depend on
+   `CalendarSlotCard` (447 lines) + `DayViewSlotCard` + `GuestPlayerSlotCombobox`, so
+   those hubs move with them as one cluster. Clears `AcademyCalendar`,
+   `AcademyCreateSlot`, `AcademySlotDetail`, `ClubCalendar`.
+4. **Divergent variants** (debt #2 — academy canonical, **trainer converges → trainer
+   changes, needs trainer-side testing**): `Trainer/AcademyPlayerDetailsCard`,
+   `Trainer/AcademyInvoiceSettingsCard` (finish routing both through the existing
+   `InvoiceSettingsCardBase`). `AcademySidebar`/`AcademyLayout` vs the trainer
+   equivalents are *legitimately* role-specific chrome — leave them split.
 
 ## See also
 
