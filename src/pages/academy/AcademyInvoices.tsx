@@ -7,23 +7,12 @@ import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useTableSort } from "@/hooks/useTableSort";
-import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
+  invoiceListPageCount,
   useAcademyInvoices,
   useAcademyInvoiceSummaryFiltered,
   useAcademyInvoiceCancelledCount,
@@ -31,6 +20,9 @@ import {
   fetchAllAcademyInvoices,
   type AcademyInvoiceRow,
 } from "@/lib/invoicesList";
+import { useInvoiceListSort } from "@/components/invoices/useInvoiceListSort";
+import { useInvoiceListSelection } from "@/components/invoices/useInvoiceListSelection";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
 import { Input } from "@/components/ui/input";
 import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
@@ -38,10 +30,9 @@ import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
+import { AppPage } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -55,9 +46,9 @@ import { AcademyInvoiceSettingsCard } from "@/components/academy/AcademyInvoiceS
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
 import { nl, enUS } from "date-fns/locale";
 import { canSharePublicPaymentLink } from "@/lib/invoiceSettingsComplete";
-import { type InvoiceStatus } from "@/lib/invoiceStatus";
-import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
-import { InvoiceStatusBadgeTooltip } from "@/components/invoices/InvoiceStatusBadgeTooltip";
+import { InvoiceListStatusBadge } from "@/components/invoices/InvoiceListStatusBadge";
+import { InvoiceStatTiles } from "@/components/invoices/InvoiceStatTiles";
+import { InvoiceListTable } from "@/components/invoices/InvoiceListTable";
 import {
   buildInvoiceSettingsLabels,
   checkInvoiceSettingsGate,
@@ -93,7 +84,6 @@ export default function AcademyInvoices() {
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
   const [bulkCancelReason, setBulkCancelReason] = useState("");
@@ -106,28 +96,9 @@ export default function AcademyInvoices() {
   const [page, setPage] = useState(0);
   const debouncedSearch = useDebouncedValue(searchQuery);
 
-  // Header-click sort affordance only; translated to RPC sort/sortDir params below.
-  const { sortConfig, handleSort, setSortConfig } = useTableSort<Invoice>([]);
-
-  // Translate the sortConfig column to the RPC's server-side sort key.
-  const rpcSort =
-    sortConfig.key === "player_name" ? "player_name"
-    : sortConfig.key === "total" ? "total"
-    : sortConfig.key === "due_date" ? "due_date"
-    : sortConfig.key === "_computedStatus" ? "status"
-    : sortConfig.key === "paid_at" ? "paid_at"
-    : "created_at";
-  const rpcSortDir: "asc" | "desc" = sortConfig.direction === "asc" ? "asc" : "desc";
-
-  // Force the paid-tab default sort (paid_at desc) and clear it on the unpaid tab
-  // so the unpaid default falls back to created_at desc — preserved from before.
-  useEffect(() => {
-    if (activeTab === "paid") {
-      setSortConfig({ key: "paid_at" as any, direction: "desc" });
-    } else {
-      setSortConfig({ key: null, direction: null });
-    }
-  }, [activeTab, setSortConfig]);
+  // Shared header-sort wiring: the useTableSort affordance + paid-tab default sort
+  // + the header-key → RPC sort/sortDir mapping (rows come from the server page).
+  const { sortConfig, handleSort, sort: rpcSort, sortDir: rpcSortDir } = useInvoiceListSort(activeTab);
 
   const academyId = activeAcademy?.id;
   const trainerScope = trainerFilter === "all" ? null : trainerFilter;
@@ -180,6 +151,10 @@ export default function AcademyInvoices() {
 
   const filteredInvoices: Invoice[] = overview?.rows ?? [];
 
+  // Shared page-scoped selection (toggle / select-all-visible / selectedInvoices).
+  const { selectedIds, setSelectedIds, toggleSelect, toggleSelectAllVisible, selectedInvoices } =
+    useInvoiceListSelection(filteredInvoices);
+
   // Delivery breakdown for the banner (follows tab + trainer/location, like the scoreboard).
   const { data: deliverySummary } = useAcademyInvoiceDeliverySummary(academyId, {
     tab: activeTab === "paid" ? "paid" : "unpaid",
@@ -193,7 +168,7 @@ export default function AcademyInvoices() {
   const countUnpaid = summary?.countUnpaid ?? 0;
   const countPaid = summary?.countPaid ?? 0;
   const countDraft = summary?.countDraft ?? 0;
-  const pageCount = Math.max(1, Math.ceil((overview?.total ?? 0) / INVOICE_PAGE_SIZE));
+  const pageCount = invoiceListPageCount(overview?.total ?? 0);
 
   // Keep page in range and reset to the first page whenever the query inputs change.
   useEffect(() => {
@@ -204,15 +179,8 @@ export default function AcademyInvoices() {
   }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, rpcSort, rpcSortDir]);
 
   // Clear selection when filters/tab/page change (selection is page-scoped).
-  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, page]);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+  // (setSelectedIds is a stable setter; listed only to satisfy exhaustive-deps.)
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab, statusFilter, trainerFilter, locationFilter, debouncedSearch, deliveryFilter, page, setSelectedIds]);
 
 
   // Fetch trainers for filter (two-step: get user_ids, then profiles for names)
@@ -511,22 +479,8 @@ export default function AcademyInvoices() {
   };
 
   // ========== Bulk actions ==========
-  // Selection is page-scoped (cleared on page change), so resolve against the
-  // visible page rows rather than a full in-memory set.
-  const selectedInvoices = (overview?.rows ?? []).filter((i) => selectedIds.has(i.id));
-
-  const toggleSelectAllVisible = (visible: Invoice[]) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
-      if (allSelected) {
-        visible.forEach((i) => next.delete(i.id));
-      } else {
-        visible.forEach((i) => next.add(i.id));
-      }
-      return next;
-    });
-  };
+  // Selection is page-scoped (cleared on page change); selectedInvoices +
+  // toggleSelectAllVisible come from useInvoiceListSelection above.
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
@@ -617,20 +571,9 @@ export default function AcademyInvoices() {
     toast.success(t("invoices.bulk.dueDateDone", "Due date updated for {{count}} invoices", { count: ids.length }));
   };
 
-  const getStatusBadge = (invoice: Invoice) => {
-    const status = invoice.computed_status;
-    // 'open' is academy-only (not in the canonical InvoiceStatus); the five
-    // canonical states render via the shared InvoiceStatusBadge.
-    const badge =
-      status === "open" ? (
-        <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>
-      ) : (
-        <InvoiceStatusBadge status={status as InvoiceStatus} />
-      );
-    // Hovering the badge surfaces the last status change (who/when/why) from the
-    // audit trail — fetched lazily so the list stays a single query.
-    return <InvoiceStatusBadgeTooltip invoiceId={invoice.id}>{badge}</InvoiceStatusBadgeTooltip>;
-  };
+  const getStatusBadge = (invoice: Invoice) => (
+    <InvoiceListStatusBadge invoiceId={invoice.id} status={invoice.computed_status} />
+  );
 
   const getPaymentUrl = (inv: Invoice) =>
     `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
@@ -730,26 +673,13 @@ export default function AcademyInvoices() {
         <TabsContent value="overview" className="space-y-4 mt-4">
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Unpaid")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{formatCurrency(totalUnpaid)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open invoices")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{cardCountUnpaid}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">{t("invoices.paid", "Paid")}</p>
-            <p className="font-display text-2xl font-semibold tabular-nums">{cardCountPaid}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <InvoiceStatTiles
+        tiles={[
+          { label: t("invoices.totalUnpaid", "Unpaid"), value: formatCurrency(totalUnpaid) },
+          { label: t("invoices.unpaidCount", "Open invoices"), value: cardCountUnpaid },
+          { label: t("invoices.paid", "Paid"), value: cardCountPaid },
+        ]}
+      />
 
       {/* Bulk Selection Action Bar */}
       {selectedIds.size > 0 && (
@@ -889,130 +819,47 @@ export default function AcademyInvoices() {
           ) : (
             <>
               {/* Desktop Table */}
-              <div className="hidden md:block">
-                <Card>
-                  <CardContent className={dataTableCardContentClass}>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10">
-                          <Checkbox
-                            checked={filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.has(i.id))}
-                            onCheckedChange={() => toggleSelectAllVisible(filteredInvoices)}
-                            aria-label={t("invoices.selectAll", "Select all")}
-                          />
-                        </TableHead>
-                        <TableHead>{t("invoices.number", "Number")}</TableHead>
-                        <TableHead>{t("invoices.player", "Player")}</TableHead>
-                        <TableHead>{t("emailDelivery.column", "Delivery")}</TableHead>
-                        <TableHead>{t("invoices.date", "Date")}</TableHead>
-                        {activeTab === "paid" ? (
-                          <SortableTableHead
-                            sortKey="paid_at"
-                            currentSortKey={sortConfig.key as string | null}
-                            currentDirection={sortConfig.direction}
-                            onSort={(key) => handleSort(key as any)}
-                          >
-                            {t("invoices.paymentDate", "Betaaldatum")}
-                          </SortableTableHead>
-                        ) : (
-                          <SortableTableHead
-                            sortKey="due_date"
-                            currentSortKey={sortConfig.key as string | null}
-                            currentDirection={sortConfig.direction}
-                            onSort={(key) => handleSort(key as any)}
-                          >
-                            {t("invoices.dueDate", "Due")}
-                          </SortableTableHead>
-                        )}
-                        <SortableTableHead
-                          sortKey="total"
-                          currentSortKey={sortConfig.key as string | null}
-                          currentDirection={sortConfig.direction}
-                          onSort={(key) => handleSort(key as any)}
-                          className="text-right"
-                        >
-                          {t("invoices.amount", "Amount")}
-                        </SortableTableHead>
-                        <SortableTableHead
-                          sortKey="_computedStatus"
-                          currentSortKey={sortConfig.key as string | null}
-                          currentDirection={sortConfig.direction}
-                          onSort={(key) => handleSort(key as any)}
-                        >
-                          {t("invoices.status", "Status")}
-                        </SortableTableHead>
-                        <TableHead className="text-right">{t("invoices.actions", "Actions")}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredInvoices.map((inv) => (
-                        <TableRow
-                          key={inv.id}
-                          className="cursor-pointer"
-                          onClick={() => navigate(`/app/academy/invoices/${inv.id}/edit`)}
-                        >
-                          <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selectedIds.has(inv.id)}
-                              onCheckedChange={() => toggleSelect(inv.id)}
-                              aria-label={t("invoices.selectInvoice", "Select {{number}}", { number: inv.invoice_number })}
-                            />
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
-                          <TableCell>{inv.player_name}</TableCell>
-                          <TableCell>
-                            <InvoiceDeliveryChip
-                              deliveryStatus={inv.delivery_status}
-                              hasEmail={invoiceHasEmail(inv)}
-                            />
-                          </TableCell>
-                          <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                          <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              {getStatusBadge(inv)}
-                              {inv.forwarded_at && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {t("invoices.forwardedOn", "Doorgestuurd op {{date}}", { date: format(new Date(inv.forwarded_at), "dd MMM yyyy HH:mm", { locale: dateFnsLocale }) })}
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-end gap-1">
-                              {inv.status !== "paid" && inv.status !== "cancelled" && (
-                                <ShareDropdown invoice={inv} />
-                              )}
-                              {inv.status === "paid" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleForwardInvoice(inv.id)}
-                                  disabled={forwardingId === inv.id}
-                                >
-                                  {forwardingId === inv.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Mail className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  </CardContent>
-                </Card>
-              </div>
+              <InvoiceListTable
+                rows={filteredInvoices}
+                activeTab={activeTab}
+                dateFnsLocale={dateFnsLocale}
+                sortKey={sortConfig.key}
+                sortDirection={sortConfig.direction}
+                onSort={handleSort}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAllVisible}
+                onRowClick={(inv) => navigate(`/app/academy/invoices/${inv.id}/edit`)}
+                labels={{
+                  selectAll: t("invoices.selectAll", "Select all"),
+                  number: t("invoices.number", "Number"),
+                  player: t("invoices.player", "Player"),
+                  delivery: t("emailDelivery.column", "Delivery"),
+                  date: t("invoices.date", "Date"),
+                  paymentDate: t("invoices.paymentDate", "Betaaldatum"),
+                  dueDate: t("invoices.dueDate", "Due"),
+                  amount: t("invoices.amount", "Amount"),
+                  status: t("invoices.status", "Status"),
+                  actions: t("invoices.actions", "Actions"),
+                  selectRow: (n) => t("invoices.selectInvoice", "Select {{number}}", { number: n }),
+                  forwardedOn: (d) => t("invoices.forwardedOn", "Doorgestuurd op {{date}}", { date: d }),
+                }}
+                renderActions={(inv) => (
+                  <>
+                    {inv.status !== "paid" && inv.status !== "cancelled" && <ShareDropdown invoice={inv} />}
+                    {inv.status === "paid" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleForwardInvoice(inv.id)}
+                        disabled={forwardingId === inv.id}
+                      >
+                        {forwardingId === inv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                      </Button>
+                    )}
+                  </>
+                )}
+              />
 
               {/* Mobile Cards — flush divided list (the viewport is the container on a phone) */}
               <div className="md:hidden divide-y divide-border/60 border-y border-border/60">
@@ -1066,44 +913,7 @@ export default function AcademyInvoices() {
                 ))}
               </div>
 
-              {pageCount > 1 && (
-                <Pagination className="mt-4">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href="#"
-                        aria-disabled={page === 0}
-                        className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
-                      />
-                    </PaginationItem>
-                    {Array.from({ length: pageCount }, (_, i) => i)
-                      .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                      .map((i, idx, arr) => (
-                        <PaginationItem key={i}>
-                          {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                            <span className="px-2 text-muted-foreground">…</span>
-                          ) : null}
-                          <PaginationLink
-                            href="#"
-                            isActive={i === page}
-                            onClick={(e) => { e.preventDefault(); setPage(i); }}
-                          >
-                            {i + 1}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                    <PaginationItem>
-                      <PaginationNext
-                        href="#"
-                        aria-disabled={page >= pageCount - 1}
-                        className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} className="mt-4" />
             </>
           )}
         </TabsContent>

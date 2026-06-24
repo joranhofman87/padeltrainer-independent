@@ -66,7 +66,7 @@ import { format } from "date-fns";
 import { AcademyEditDialog } from "@/components/admin/AcademyEditDialog";
 import { AddAcademyDialog } from "@/components/admin/AddAcademyDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
-import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";

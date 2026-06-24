@@ -55,7 +55,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
-import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { useTableSort } from "@/hooks/useTableSort";
 import { logger } from "@/lib/logger";
 

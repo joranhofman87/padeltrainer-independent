@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Columns3, Tags, MapPin, Tag, StickyNote, Trash2, X } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Tags, MapPin, Tag, StickyNote, Trash2, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
@@ -16,14 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
@@ -31,7 +23,8 @@ import {
   usePlayersOverview,
   fetchPlayersOverview,
   fetchAllPlayersOverview,
-  type PlayersOverviewRow,
+  mapPlayersOverviewRow,
+  type UnifiedPlayer,
   type PlayersOverviewFilters,
   type LevelBand,
 } from '@/lib/playersOverview';
@@ -40,14 +33,9 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { supabase } from '@/lib/supabaseClient';
 import { format } from 'date-fns';
 import { SortableHeader } from '@/components/players/usePlayerSort';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { ListPagination } from '@/components/ui/list-pagination';
+import { useVisibleColumns } from '@/components/players/useVisibleColumns';
+import { PlayerColumnsMenu } from '@/components/players/PlayerColumnsMenu';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { TableToolbar } from '@/components/ui/table-toolbar';
@@ -81,38 +69,6 @@ interface TrainerOption {
   id: string;
   name: string;
 }
-
-type UnifiedPlayer = {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  billing_business_name: string | null;
-  skill_rating: number | null;
-  rating_system: string;
-  has_trained: boolean;
-  notes: string | null;
-  created_at: string;
-  type: 'guest' | 'registered';
-  trainer_id?: string;
-  trainer_ids?: string[];
-  trainer_name?: string;
-  originalGuest?: GuestPlayer;
-  location_names?: string[];
-  training_location_ids?: string[];
-  has_active_cyclus?: boolean;
-  source?: string | null;
-  birth_date?: string | null;
-  // Tags & metadata (academy-level)
-  metadata_id?: string;
-  tag_ids?: string[];
-  academy_notes?: string;
-  // Stable keys for metadata lookup
-  guest_player_id?: string | null;
-  profile_id?: string | null;
-  has_overdue_payment?: boolean;
-  email_undeliverable?: boolean;
-};
 
 function getLevelLabel(band: string, t: (key: string, defaultValue: string) => string): string {
   switch (band) {
@@ -204,32 +160,7 @@ export default function AcademyPlayers() {
     { key: 'birthDate', label: tTrainer('players.columns.birthDate', 'Birth date'), isDefault: false },
   ];
   const storageKey = activeAcademy ? `academyPlayers:visibleColumns:${activeAcademy.id}` : null;
-  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
-
-  useEffect(() => {
-    if (!storageKey) return;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ColumnKey[];
-        const valid = parsed.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
-        if (valid.length) setVisibleColumns(valid);
-      }
-    } catch { /* non-fatal: fall back to default columns if stored prefs are unreadable */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  const toggleColumn = (key: ColumnKey) => {
-    setVisibleColumns((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      if (storageKey) {
-        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* non-fatal: best-effort persistence of column prefs */ }
-      }
-      return next;
-    });
-  };
-
-  const isColVisible = (key: ColumnKey) => visibleColumns.includes(key);
+  const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns(ALL_COLUMNS, DEFAULT_COLUMNS, storageKey);
 
   // Fetch trainers, tags and academy locations (filter dropdowns)
   useEffect(() => {
@@ -338,38 +269,15 @@ export default function AcademyPlayers() {
   const totalFiltered = overview?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
-  const sortedPlayers: UnifiedPlayer[] = useMemo(() => {
-    return (overview?.rows ?? []).map((row: PlayersOverviewRow) => ({
-      id: row.guest_player_id ?? `reg-${row.profile_id}`,
-      full_name: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      billing_business_name: row.billing_business_name,
-      skill_rating: row.skill_rating,
-      rating_system: row.rating_system,
-      has_trained: row.has_trained,
-      notes: row.notes,
-      created_at: row.created_at,
-      type: row.player_type as 'guest' | 'registered',
-      trainer_id: row.owner_trainer_id ?? undefined,
-      trainer_ids: row.trainer_ids ?? [],
-      trainer_name: row.player_type === 'guest'
-        ? (row.owner_trainer_id ? (trainerNameMap.get(row.owner_trainer_id) || '—') : t('nav.academy', 'Academy'))
-        : (row.trainer_ids?.length ? trainerNameMap.get(row.trainer_ids[0]) || '—' : '—'),
-      location_names: row.location_names ?? [],
-      training_location_ids: row.location_ids ?? [],
-      has_active_cyclus: row.has_active_cyclus,
-      source: row.source,
-      birth_date: row.birth_date,
-      metadata_id: row.metadata_id ?? undefined,
-      tag_ids: row.tag_ids ?? [],
-      academy_notes: row.academy_notes ?? '',
-      guest_player_id: row.guest_player_id,
-      profile_id: row.profile_id,
-      has_overdue_payment: row.has_overdue_payment,
-      email_undeliverable: row.email_undeliverable,
-    }));
-  }, [overview, trainerNameMap, t]);
+  const sortedPlayers: UnifiedPlayer[] = useMemo(
+    () =>
+      (overview?.rows ?? []).map((row) =>
+        mapPlayersOverviewRow(row, {
+          trainerNames: { map: trainerNameMap, academyLabel: t('nav.academy', 'Academy') },
+        }),
+      ),
+    [overview, trainerNameMap, t],
+  );
 
   // Header count: unfiltered active-player total (removal already applied by
   // the RPC), independent of the table's search/filters.
@@ -513,39 +421,16 @@ export default function AcademyPlayers() {
             searchValue={searchQuery}
             onSearchChange={setSearchQuery}
             trailing={
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="hidden md:inline-flex">
-                    <Columns3 className="mr-2 h-4 w-4" />
-                    {tTrainer('players.columns.button', 'Columns')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>{tTrainer('players.columns.default', 'Default')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>{tTrainer('players.columns.optional', 'Optional')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <PlayerColumnsMenu
+                allColumns={ALL_COLUMNS}
+                isColVisible={isColVisible}
+                onToggle={toggleColumn}
+                labels={{
+                  button: tTrainer('players.columns.button', 'Columns'),
+                  default: tTrainer('players.columns.default', 'Default'),
+                  optional: tTrainer('players.columns.optional', 'Optional'),
+                }}
+              />
             }
           >
             {trainers.length > 0 && (
@@ -904,7 +789,7 @@ export default function AcademyPlayers() {
                                     <PlayerNotesCell
                                       academyId={activeAcademy.id}
                                       playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
-                                      notes={player.academy_notes || ''}
+                                      notes={player.internal_notes || ''}
                                       onChanged={handlePlayerDataChanged}
                                     />
                                   )}
@@ -921,44 +806,7 @@ export default function AcademyPlayers() {
             </DataTableCard>
           )}
 
-          {pageCount > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    aria-disabled={page === 0}
-                    className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
-                  />
-                </PaginationItem>
-                {Array.from({ length: pageCount }, (_, i) => i)
-                  .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                  .map((i, idx, arr) => (
-                    <PaginationItem key={i}>
-                      {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                        <span className="px-2 text-muted-foreground">…</span>
-                      ) : null}
-                      <PaginationLink
-                        href="#"
-                        isActive={i === page}
-                        onClick={(e) => { e.preventDefault(); setPage(i); }}
-                      >
-                        {i + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    aria-disabled={page >= pageCount - 1}
-                    className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
         </TabsContent>
 
         {/* Create Tab */}

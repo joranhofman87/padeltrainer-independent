@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
@@ -15,8 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { formatCurrency } from '@/lib/format';
-import { Loader2, CalendarIcon, Plus, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
+import { Loader2, CalendarIcon, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -26,6 +24,9 @@ import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard
 import { InvoiceStatusHistoryCard } from '@/components/invoices/InvoiceStatusHistoryCard';
 import { annotateInvoiceStatusReason } from '@/lib/invoiceStatusHistory';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
+import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEditor';
+import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary';
+import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoiceFormTotals';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
@@ -40,13 +41,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-interface LineItem {
-  description: string;
-  quantity: number;
-  unit_price: number;
-  amount: number;
-  vat_rate?: number;
-}
+type LineItem = InvoiceFormLineItem;
 
 function parseAddress(address?: string | null): { street: string; zipCode: string; city: string } {
   if (!address) return { street: '', zipCode: '', city: '' };
@@ -115,84 +110,11 @@ export default function AcademyEditInvoice() {
     }
   }, [invoice]);
 
-  const updateLineItem = (index: number, field: keyof LineItem, value: string | number) => {
-    setLineItems(prev => {
-      const updated = [...prev];
-      const item = { ...updated[index] };
-      if (field === 'description') {
-        item.description = value as string;
-      } else if (field === 'quantity') {
-        item.quantity = value === '' || value === 0 ? 0 : (parseInt(String(value)) || 0);
-      } else if (field === 'unit_price') {
-        item.unit_price = Number(value) || 0;
-      } else if (field === 'vat_rate') {
-        item.vat_rate = Number(value) || 0;
-      }
-      item.amount = Math.round(item.quantity * item.unit_price * 100) / 100;
-      updated[index] = item;
-      return updated;
-    });
-  };
-
-  const removeLineItem = (index: number) => {
-    setLineItems(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const { subtotal, vatAmount, total, vatBreakdown } = useMemo(() => {
-    const hasPerItemVat = lineItems.some(li => li.vat_rate !== undefined && li.vat_rate !== vatRate);
-
-    if (hasPerItemVat) {
-      let totalSub = 0;
-      let totalVatAmt = 0;
-      const breakdown: Record<number, { subtotal: number; vat: number }> = {};
-
-      for (const li of lineItems) {
-        const lineTotal = li.quantity * li.unit_price;
-        const lineVatRate = li.vat_rate ?? vatRate;
-        let lineSub: number;
-        let lineVat: number;
-
-        if (pricesIncludeVat) {
-          lineSub = lineTotal / (1 + lineVatRate / 100);
-          lineVat = lineTotal - lineSub;
-        } else {
-          lineSub = lineTotal;
-          lineVat = lineSub * (lineVatRate / 100);
-        }
-
-        totalSub += lineSub;
-        totalVatAmt += lineVat;
-
-        if (!breakdown[lineVatRate]) breakdown[lineVatRate] = { subtotal: 0, vat: 0 };
-        breakdown[lineVatRate].subtotal += lineSub;
-        breakdown[lineVatRate].vat += lineVat;
-      }
-
-      for (const rate in breakdown) {
-        breakdown[rate].subtotal = Math.round(breakdown[rate].subtotal * 100) / 100;
-        breakdown[rate].vat = Math.round(breakdown[rate].vat * 100) / 100;
-      }
-
-      const sub = Math.round(totalSub * 100) / 100;
-      const vat = Math.round(totalVatAmt * 100) / 100;
-      const t = pricesIncludeVat
-        ? Math.round(lineItems.reduce((s, li) => s + li.quantity * li.unit_price, 0) * 100) / 100
-        : Math.round((sub + vat) * 100) / 100;
-
-      return { subtotal: sub, vatAmount: vat, total: t, vatBreakdown: breakdown };
-    }
-
-    const lineTotal = lineItems.reduce((sum, li) => sum + (li.quantity * li.unit_price), 0);
-    if (pricesIncludeVat) {
-      const t = Math.round(lineTotal * 100) / 100;
-      const sub = Math.round((t / (1 + vatRate / 100)) * 100) / 100;
-      return { subtotal: sub, vatAmount: Math.round((t - sub) * 100) / 100, total: t, vatBreakdown: null };
-    } else {
-      const sub = Math.round(lineTotal * 100) / 100;
-      const vat = Math.round(sub * (vatRate / 100) * 100) / 100;
-      return { subtotal: sub, vatAmount: vat, total: Math.round((sub + vat) * 100) / 100, vatBreakdown: null };
-    }
-  }, [lineItems, vatRate, pricesIncludeVat]);
+  const totals = useMemo(
+    () => computeEditInvoiceTotals(lineItems, vatRate, pricesIncludeVat),
+    [lineItems, vatRate, pricesIncludeVat],
+  );
+  const { subtotal, vatAmount, total, vatBreakdown } = totals;
 
   const originalPrices = useMemo(() => {
     if (!invoice?.line_items) return {};
@@ -403,154 +325,42 @@ export default function AcademyEditInvoice() {
         </Card>
 
         {/* Line items */}
-        <Card className={flushOnMobileCardClass()}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('invoiceEdit.lineItems')}</CardTitle>
-              <div className="flex items-center gap-1">
-                <ExtraCostPresetPicker
-                  academyProfileId={activeAcademy?.id}
-                  onSelect={(cost) => {
-                    setLineItems(prev => [...prev, {
-                      description: cost.description,
-                      quantity: 1,
-                      unit_price: cost.price,
-                      amount: cost.price,
-                      vat_rate: cost.vat_rate,
-                    }]);
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    setLineItems(prev => [...prev, {
-                      description: '',
-                      quantity: 1,
-                      unit_price: 0,
-                      amount: 0,
-                      vat_rate: vatRate,
-                    }]);
-                  }}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {t('invoiceEdit.addLineItem')}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {/* Desktop grid */}
-              <div className="hidden md:block space-y-2">
-              <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
-                <span>{t('invoiceEdit.description')}</span>
-                <span>{t('invoiceEdit.quantity')}</span>
-                <span>{t('invoiceEdit.price')}</span>
-                <span>{t('invoiceEdit.vatPercent', 'BTW %')}</span>
-                <span>{t('invoiceEdit.total')}</span>
-                <span></span>
-              </div>
-              {lineItems.map((li, i) => (
-                <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
-                  <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceEdit.description')} className="text-sm" />
-                  <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
-                  <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
-                  <div className="relative">
-                    <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
-                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                  </div>
-                  <div className="text-right text-sm font-medium py-2">{formatCurrency(li.quantity * li.unit_price)}</div>
-                  <Button type="button" variant="ghost" size="icon" aria-label={t('delete')} className="h-7 w-7" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                </div>
-              ))}
-              </div>
-            {/* Mobile stacked cards */}
-            <div className="md:hidden space-y-3">
-              {lineItems.map((li, i) => (
-                <div key={i} className="border rounded-lg p-3 space-y-2 bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <Input value={li.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} placeholder={t('invoiceEdit.description')} className="text-sm flex-1" />
-                    <Button type="button" variant="ghost" size="sm" aria-label={t('invoiceEdit.removeLineItem', 'Remove line item')} className="h-7 w-7 p-0 shrink-0" onClick={() => removeLineItem(i)} disabled={lineItems.length <= 1}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">{t('invoiceEdit.quantity')}</Label>
-                      <Input type="number" value={li.quantity === 0 ? '' : li.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))} onBlur={() => { if (!li.quantity || li.quantity < 1) updateLineItem(i, 'quantity', 1); }} className="text-sm" min={1} />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">{t('invoiceEdit.price')}</Label>
-                      <Input type="number" value={li.unit_price || ''} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="text-sm" step="0.01" min={0} />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">{t('invoiceEdit.vatPercent', 'BTW %')}</Label>
-                      <div className="relative">
-                        <Input type="number" value={li.vat_rate || ''} onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)} className="text-sm pr-5" min={0} max={100} step={1} />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right text-sm font-medium">{t('invoiceEdit.total')}: {formatCurrency(li.quantity * li.unit_price)}</div>
-                </div>
-              ))}
-            </div>
-            </div>
-          </CardContent>
-        </Card>
+        <InvoiceLineItemsEditor
+          lineItems={lineItems}
+          onChange={setLineItems}
+          newRowVatRate={vatRate}
+          labels={{
+            title: t('invoiceEdit.lineItems'),
+            description: t('invoiceEdit.description'),
+            descriptionPlaceholder: t('invoiceEdit.description'),
+            quantity: t('invoiceEdit.quantity'),
+            price: t('invoiceEdit.price'),
+            vatPercent: t('invoiceEdit.vatPercent', 'BTW %'),
+            total: t('invoiceEdit.total'),
+            addRow: t('invoiceEdit.addLineItem'),
+            removeRow: t('invoiceEdit.removeLineItem', 'Remove line item'),
+            formatMobileTotal: (amount) => `${t('invoiceEdit.total')}: ${amount}`,
+          }}
+          presetPicker={(addPreset) => (
+            <ExtraCostPresetPicker academyProfileId={activeAcademy?.id} onSelect={addPreset} />
+          )}
+        />
 
         {/* Settings + Totals */}
         <Card className={flushOnMobileCardClass()}>
           <CardContent className="pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">{t('invoiceEdit.pricesIncludeVat')}</Label>
-              <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
-            </div>
-
-            <Separator />
-
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('invoiceEdit.subtotal')}</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
-                Object.entries(vatBreakdown)
-                  .sort(([a], [b]) => Number(a) - Number(b))
-                  .map(([rate, data]) => (
-                    <div key={rate} className="flex justify-between">
-                      <span className="text-muted-foreground">{t('invoiceEdit.vatWithRate', 'BTW {{rate}}%', { rate })}</span>
-                      <span>{formatCurrency(data.vat)}</span>
-                    </div>
-                  ))
-              ) : (
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    {t('invoiceEdit.vat', 'BTW')}
-                    <Input
-                      type="number"
-                      value={vatRate}
-                      onChange={(e) => setVatRate(Number(e.target.value) || 0)}
-                      className="w-16 h-7 text-sm inline"
-                      min={0}
-                      max={100}
-                      step={1}
-                    />
-                    %
-                  </span>
-                  <span>{formatCurrency(vatAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-base border-t pt-2">
-                <span>{t('invoiceEdit.total')}</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
-            </div>
+            <InvoiceTotalsSummary
+              totals={totals}
+              pricesIncludeVat={pricesIncludeVat}
+              onPricesIncludeVatChange={setPricesIncludeVat}
+              labels={{
+                pricesIncludeVat: t('invoiceEdit.pricesIncludeVat'),
+                subtotal: t('invoiceEdit.subtotal'),
+                total: t('invoiceEdit.total'),
+              }}
+              renderVatRateLabel={(rate) => t('invoiceEdit.vatWithRate', 'BTW {{rate}}%', { rate })}
+              singleRate={{ editable: { value: vatRate, onChange: setVatRate, prefix: t('invoiceEdit.vat', 'BTW') } }}
+            />
 
             <Separator />
 

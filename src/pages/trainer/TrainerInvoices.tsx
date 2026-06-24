@@ -7,30 +7,25 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useTableSort } from "@/hooks/useTableSort";
-import { SortableTableHead } from "@/components/admin/SortableTableHead";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
+  invoiceListPageCount,
   useTrainerInvoices,
   useTrainerInvoiceSummary,
   useTrainerInvoiceDeliverySummary,
   fetchAllTrainerInvoices,
   type TrainerInvoiceRow,
 } from "@/lib/invoicesList";
+import { useInvoiceListSort } from "@/components/invoices/useInvoiceListSort";
+import { useInvoiceListSelection } from "@/components/invoices/useInvoiceListSelection";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { InvoiceDeliveryChip } from "@/components/email/InvoiceDeliveryChip";
+import { InvoiceListStatusBadge } from "@/components/invoices/InvoiceListStatusBadge";
+import { InvoiceStatTiles } from "@/components/invoices/InvoiceStatTiles";
+import { InvoiceListTable } from "@/components/invoices/InvoiceListTable";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -38,12 +33,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
-import { Settings, FileText, Send, CheckCircle, Loader2, AlertCircle, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
+import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { AppPage, dataTableCardContentClass } from "@/components/ui/app-page";
+import { AppPage } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -79,7 +73,6 @@ export default function TrainerInvoices() {
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -90,24 +83,6 @@ export default function TrainerInvoices() {
 
   // Server-side ILIKE search: debounce the input before it hits the RPC.
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAllVisible = (visible: Invoice[]) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = visible.length > 0 && visible.every((i) => next.has(i.id));
-      if (allSelected) visible.forEach((i) => next.delete(i.id));
-      else visible.forEach((i) => next.add(i.id));
-      return next;
-    });
-  };
 
   // Fetch trainer profile ID
   const { data: trainerProfile } = useQuery({
@@ -135,32 +110,9 @@ export default function TrainerInvoices() {
     }
   };
 
-  // useTableSort is kept ONLY as the header-click UI affordance; the visible
-  // rows come from the server page, so it sorts nothing locally (empty input).
-  const { sortConfig, handleSort, setSortConfig } = useTableSort<Invoice>([]);
-
-  // Force the paid-tab default sort exactly as before: paid_at desc on the paid
-  // tab, created_at desc (no column chosen) on the unpaid tab.
-  useEffect(() => {
-    if (activeTab === "paid") {
-      setSortConfig({ key: "paid_at" as any, direction: "desc" });
-    } else {
-      setSortConfig({ key: null, direction: null });
-    }
-  }, [activeTab, setSortConfig]);
-
-  // Translate the header-click sortConfig into the RPC sort/sortDir params.
-  const sort: string = (() => {
-    switch (sortConfig.key as string | null) {
-      case "player_name": return "player_name";
-      case "total": return "total";
-      case "due_date": return "due_date";
-      case "_computedStatus": return "status";
-      case "paid_at": return "paid_at";
-      default: return "created_at";
-    }
-  })();
-  const sortDir: "asc" | "desc" = sortConfig.direction === "asc" ? "asc" : "desc";
+  // Shared header-sort wiring: the useTableSort affordance + paid-tab default sort
+  // + the header-key → RPC sort/sortDir mapping (rows come from the server page).
+  const { sortConfig, handleSort, sort, sortDir } = useInvoiceListSort(activeTab);
 
   const tab: "unpaid" | "paid" = activeTab === "paid" ? "paid" : "unpaid";
 
@@ -191,10 +143,13 @@ export default function TrainerInvoices() {
   // VISIBLE LIST = the server page rows only. No client-side re-filter/re-sort.
   const filteredInvoices = overview?.rows ?? [];
 
+  // Shared page-scoped selection (toggle / select-all-visible / selectedInvoices).
+  const { selectedIds, setSelectedIds, toggleSelect, toggleSelectAllVisible, selectedInvoices } =
+    useInvoiceListSelection(filteredInvoices);
+
   const totalUnpaid = sumUnpaid;
 
-  const pageCount = Math.max(1, Math.ceil((overview?.total ?? 0) / INVOICE_PAGE_SIZE));
-  const goToPage = (p: number) => setPage(Math.min(pageCount - 1, Math.max(0, p)));
+  const pageCount = invoiceListPageCount(overview?.total ?? 0);
 
   // Keep the page in range if the result set shrinks (e.g. after a bulk delete).
   useEffect(() => {
@@ -208,9 +163,10 @@ export default function TrainerInvoices() {
 
   // Selection is page-scoped: clear it on any filter/tab/page change so the
   // page-scoped selectedInvoices (rows on the current page) is always safe.
+  // (setSelectedIds is a stable setter; listed only to satisfy exhaustive-deps.)
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [activeTab, statusFilter, deliveryFilter, debouncedSearch, sort, sortDir, page]);
+  }, [activeTab, statusFilter, deliveryFilter, debouncedSearch, sort, sortDir, page, setSelectedIds]);
 
   const invoiceSettingsLabels = buildTrainerInvoiceSettingsLabels(t);
 
@@ -389,9 +345,8 @@ export default function TrainerInvoices() {
   };
 
   // ========== Bulk actions ==========
-  // Selection is page-scoped (cleared on page change), so the selected rows are
-  // exactly the chosen rows on the current page.
-  const selectedInvoices = filteredInvoices.filter((i) => selectedIds.has(i.id));
+  // Selection is page-scoped (cleared on page change); selectedInvoices comes from
+  // useInvoiceListSelection above — the chosen rows on the current page.
 
   const handleBulkReset = async () => {
     setBulkRunning(true);
@@ -469,24 +424,12 @@ export default function TrainerInvoices() {
     toast.success(t("invoices.bulk.dueDateDone", "Vervaldatum bijgewerkt voor {{count}} facturen", { count: ids.length }));
   };
 
-  const getStatusBadge = (invoice: Invoice) => {
-    if (invoice.status === "paid") {
-      return <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-0"><CheckCircle className="h-3 w-3 mr-1" />{t("invoices.paid", "Betaald")}</Badge>;
-    }
-    if (invoice.status === "cancelled") {
-      return <Badge variant="outline">{t("invoices.cancelled", "Geannuleerd")}</Badge>;
-    }
-    if (invoice.sent_at) {
-      const isOverdue = new Date(invoice.due_date) < new Date();
-      return isOverdue
-        ? <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />{t("invoices.overdue", "Verlopen")}</Badge>
-        : <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{t("invoices.sent", "Verstuurd")}</Badge>;
-    }
-    if (invoice.status === "draft") {
-      return <Badge variant="outline"><FileText className="h-3 w-3 mr-1" />{t("invoices.draft", "Concept")}</Badge>;
-    }
-    return <Badge variant="secondary">{t("invoices.open", "Open")}</Badge>;
-  };
+  // Shared with the academy list: render the server computed_status via InvoiceStatusBadge +
+  // audit-trail tooltip (was hand-rolled here from raw status/sent_at/due_date, ignoring
+  // computed_status). Visible change: trainer badges now match the canonical status styling.
+  const getStatusBadge = (invoice: Invoice) => (
+    <InvoiceListStatusBadge invoiceId={invoice.id} status={invoice.computed_status} />
+  );
 
   const getPaymentUrl = (inv: Invoice) =>
     `${window.location.origin}/pay/${inv.public_token}`;
@@ -612,11 +555,13 @@ export default function TrainerInvoices() {
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.totalUnpaid", "Openstaand")}</p><p className="font-display text-2xl font-semibold tabular-nums">{formatCurrency(totalUnpaid)}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.unpaidCount", "Open facturen")}</p><p className="font-display text-2xl font-semibold tabular-nums">{countUnpaid}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("invoices.paid", "Betaald")}</p><p className="font-display text-2xl font-semibold tabular-nums">{countPaid}</p></CardContent></Card>
-          </div>
+          <InvoiceStatTiles
+            tiles={[
+              { label: t("invoices.totalUnpaid", "Openstaand"), value: formatCurrency(totalUnpaid) },
+              { label: t("invoices.unpaidCount", "Open facturen"), value: countUnpaid },
+              { label: t("invoices.paid", "Betaald"), value: countPaid },
+            ]}
+          />
 
           {/* Tabs + Filters */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
@@ -683,85 +628,42 @@ export default function TrainerInvoices() {
               ) : (
                 <>
                   {/* Desktop Table */}
-                  <div className="hidden md:block">
-                    <Card>
-                      <CardContent className={dataTableCardContentClass}>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-10">
-                              <Checkbox
-                                checked={filteredInvoices.length > 0 && filteredInvoices.every((i) => selectedIds.has(i.id))}
-                                onCheckedChange={() => toggleSelectAllVisible(filteredInvoices)}
-                                aria-label="Select all"
-                              />
-                            </TableHead>
-                            <TableHead>{t("invoices.number", "Nummer")}</TableHead>
-                            <TableHead>{t("invoices.player", "Klant")}</TableHead>
-                            <TableHead>{tDelivery("emailDelivery.column", "Delivery")}</TableHead>
-                            <TableHead>{t("invoices.date", "Datum")}</TableHead>
-                            {activeTab === "paid" ? (
-                              <SortableTableHead sortKey="paid_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
-                                {t("invoices.paymentDate", "Betaaldatum")}
-                              </SortableTableHead>
-                            ) : (
-                              <SortableTableHead sortKey="due_date" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
-                                {t("invoices.dueDate", "Vervaldatum")}
-                              </SortableTableHead>
-                            )}
-                            <SortableTableHead sortKey="total" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)} className="text-right">
-                              {t("invoices.amount", "Bedrag")}
-                            </SortableTableHead>
-                            <SortableTableHead sortKey="_computedStatus" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={(key) => handleSort(key as any)}>
-                              {t("invoices.status", "Status")}
-                            </SortableTableHead>
-                            <TableHead className="text-right">{t("invoices.actions", "Acties")}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredInvoices.map((inv) => (
-                            <TableRow key={inv.id} className="cursor-pointer" onClick={() => navigate(`/app/trainer/invoices/${inv.id}/edit`)}>
-                              <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
-                                <Checkbox
-                                  checked={selectedIds.has(inv.id)}
-                                  onCheckedChange={() => toggleSelect(inv.id)}
-                                  aria-label={`Select ${inv.invoice_number}`}
-                                />
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
-                              <TableCell>{inv.player_name}</TableCell>
-                              <TableCell>
-                                <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={invoiceHasEmail(inv)} />
-                              </TableCell>
-                              <TableCell>{format(new Date(inv.invoice_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                              <TableCell>{activeTab === "paid" ? (inv.paid_at ? format(new Date(inv.paid_at), "dd MMM yyyy", { locale: dateFnsLocale }) : "-") : format(new Date(inv.due_date), "dd MMM yyyy", { locale: dateFnsLocale })}</TableCell>
-                              <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1.5">
-                                  {getStatusBadge(inv)}
-                                  {inv.forwarded_at && (
-                                    <Tooltip><TooltipTrigger asChild><Mail className="h-3.5 w-3.5 text-muted-foreground" /></TooltipTrigger>
-                                      <TooltipContent>Doorgestuurd op {format(new Date(inv.forwarded_at), "dd MMM yyyy HH:mm", { locale: dateFnsLocale })}</TooltipContent></Tooltip>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell onClick={(e) => e.stopPropagation()}>
-                                <div className="flex justify-end gap-1">
-                                  {inv.status !== "paid" && inv.status !== "cancelled" && <ShareDropdown invoice={inv} />}
-                                  {inv.status === "paid" && (
-                                    <Button size="sm" variant="ghost" onClick={() => handleForwardInvoice(inv.id)} disabled={forwardingId === inv.id}>
-                                      {forwardingId === inv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      </CardContent>
-                    </Card>
-                  </div>
+                  <InvoiceListTable
+                    rows={filteredInvoices}
+                    activeTab={activeTab}
+                    dateFnsLocale={dateFnsLocale}
+                    sortKey={sortConfig.key}
+                    sortDirection={sortConfig.direction}
+                    onSort={handleSort}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
+                    onToggleSelectAll={toggleSelectAllVisible}
+                    onRowClick={(inv) => navigate(`/app/trainer/invoices/${inv.id}/edit`)}
+                    labels={{
+                      selectAll: "Select all",
+                      number: t("invoices.number", "Nummer"),
+                      player: t("invoices.player", "Klant"),
+                      delivery: tDelivery("emailDelivery.column", "Delivery"),
+                      date: t("invoices.date", "Datum"),
+                      paymentDate: t("invoices.paymentDate", "Betaaldatum"),
+                      dueDate: t("invoices.dueDate", "Vervaldatum"),
+                      amount: t("invoices.amount", "Bedrag"),
+                      status: t("invoices.status", "Status"),
+                      actions: t("invoices.actions", "Acties"),
+                      selectRow: (n) => `Select ${n}`,
+                      forwardedOn: (d) => `Doorgestuurd op ${d}`,
+                    }}
+                    renderActions={(inv) => (
+                      <>
+                        {inv.status !== "paid" && inv.status !== "cancelled" && <ShareDropdown invoice={inv} />}
+                        {inv.status === "paid" && (
+                          <Button size="sm" variant="ghost" onClick={() => handleForwardInvoice(inv.id)} disabled={forwardingId === inv.id}>
+                            {forwardingId === inv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  />
 
                   {/* Mobile Cards */}
                   <div className="md:hidden space-y-3">
@@ -815,44 +717,7 @@ export default function TrainerInvoices() {
                 </>
               )}
 
-              {pageCount > 1 && (
-                <Pagination className="mt-4">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href="#"
-                        aria-disabled={page === 0}
-                        className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); goToPage(page - 1); }}
-                      />
-                    </PaginationItem>
-                    {Array.from({ length: pageCount }, (_, i) => i)
-                      .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                      .map((i, idx, arr) => (
-                        <PaginationItem key={i}>
-                          {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                            <span className="px-2 text-muted-foreground">…</span>
-                          ) : null}
-                          <PaginationLink
-                            href="#"
-                            isActive={i === page}
-                            onClick={(e) => { e.preventDefault(); goToPage(i); }}
-                          >
-                            {i + 1}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                    <PaginationItem>
-                      <PaginationNext
-                        href="#"
-                        aria-disabled={page >= pageCount - 1}
-                        className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                        onClick={(e) => { e.preventDefault(); goToPage(page + 1); }}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
+              <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} className="mt-4" />
             </TabsContent>
           </Tabs>
         </TabsContent>

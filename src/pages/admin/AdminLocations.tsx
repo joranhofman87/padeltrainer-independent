@@ -45,7 +45,7 @@ import {
   getUniqueCities,
   type Location,
 } from '@/lib/locations';
-import { SortableTableHead } from '@/components/admin/SortableTableHead';
+import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { useTableSort } from '@/hooks/useTableSort';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';

@@ -747,7 +747,8 @@
     "sent": "Sent",
     "paid": "Paid",
     "overdue": "Overdue",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "open": "Open"
   },
   "emailBounce": {
     "badge": "Email bouncing",

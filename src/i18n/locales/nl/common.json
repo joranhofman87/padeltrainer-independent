@@ -758,7 +758,8 @@
     "sent": "Verzonden",
     "paid": "Betaald",
     "overdue": "Vervallen",
-    "cancelled": "Geannuleerd"
+    "cancelled": "Geannuleerd",
+    "open": "Open"
   },
   "emailBounce": {
     "badge": "E-mail komt niet aan",

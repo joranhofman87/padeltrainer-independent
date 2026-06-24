@@ -46,7 +46,7 @@ import { format } from "date-fns";
 import { TrainerEditDialog, type TrainerEditData } from "@/components/admin/TrainerEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
 import { AddTrainerDialog } from "@/components/admin/AddTrainerDialog";
-import { SortableTableHead } from "@/components/admin/SortableTableHead";
+import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { useTableSort } from "@/hooks/useTableSort";
 
 // Extended type to include computed fields for sorting

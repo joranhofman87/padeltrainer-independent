@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Users, UserPlus, Upload, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, RefreshCw, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
@@ -12,17 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import {
   usePlayersOverview,
   fetchPlayersOverview,
   fetchAllPlayersOverview,
-  type PlayersOverviewRow,
+  mapPlayersOverviewRow,
+  type UnifiedPlayer,
   type PlayersOverviewFilters,
   type LevelBand,
 } from '@/lib/playersOverview';
@@ -30,14 +27,9 @@ import { playerKeys, invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { format } from 'date-fns';
 import { SortableHeader } from '@/components/players/usePlayerSort';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { ListPagination } from '@/components/ui/list-pagination';
+import { useVisibleColumns } from '@/components/players/useVisibleColumns';
+import { PlayerColumnsMenu } from '@/components/players/PlayerColumnsMenu';
 import { AddPlayerDialog } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
@@ -61,31 +53,6 @@ const EmailCampaignTab = lazy(() =>
   import('@/components/players/EmailCampaignTab').then((m) => ({ default: m.EmailCampaignTab }))
 );
 
-type UnifiedPlayer = {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  billing_business_name: string | null;
-  skill_rating: number | null;
-  rating_system: string;
-  has_trained: boolean;
-  notes: string | null;
-  created_at: string;
-  type: 'guest' | 'registered';
-  location_names?: string[];
-  has_active_cyclus?: boolean;
-  source?: string | null;
-  birth_date?: string | null;
-  // Tags / metadata
-  metadata_id?: string;
-  tag_ids?: string[];
-  trainer_notes?: string;
-  guest_player_id?: string | null;
-  profile_id?: string | null;
-  has_overdue_payment?: boolean;
-  email_undeliverable?: boolean;
-};
 
 function getLevelLabel(band: string): string {
   switch (band) {
@@ -163,32 +130,7 @@ export default function TrainerPlayers() {
     { key: 'birthDate', label: t('players.columns.birthDate', 'Birth date'), isDefault: false },
   ];
   const storageKey = trainerId ? `trainerPlayers:visibleColumns:${trainerId}` : null;
-  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
-
-  useEffect(() => {
-    if (!storageKey) return;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ColumnKey[];
-        const valid = parsed.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
-        if (valid.length) setVisibleColumns(valid);
-      }
-    } catch { /* non-fatal: ignore corrupt/unavailable localStorage and keep defaults */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  const toggleColumn = (key: ColumnKey) => {
-    setVisibleColumns((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      if (storageKey) {
-        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* non-fatal: persisting column prefs is best-effort */ }
-      }
-      return next;
-    });
-  };
-
-  const isColVisible = (key: ColumnKey) => visibleColumns.includes(key);
+  const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns(ALL_COLUMNS, DEFAULT_COLUMNS, storageKey);
 
   // Resolve trainerId
   useEffect(() => {
@@ -280,32 +222,10 @@ export default function TrainerPlayers() {
   const totalFiltered = overview?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
-  const sortedPlayers: UnifiedPlayer[] = useMemo(() => {
-    return (overview?.rows ?? []).map((row: PlayersOverviewRow) => ({
-      id: row.guest_player_id ?? `reg-${row.profile_id}`,
-      full_name: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      billing_business_name: row.billing_business_name,
-      skill_rating: row.skill_rating,
-      rating_system: row.rating_system,
-      has_trained: row.has_trained,
-      notes: row.notes,
-      created_at: row.created_at,
-      type: row.player_type as 'guest' | 'registered',
-      location_names: row.location_names ?? [],
-      has_active_cyclus: row.has_active_cyclus,
-      source: row.source,
-      birth_date: row.birth_date,
-      metadata_id: row.metadata_id ?? undefined,
-      tag_ids: row.tag_ids ?? [],
-      trainer_notes: row.academy_notes ?? '',
-      guest_player_id: row.guest_player_id,
-      profile_id: row.profile_id,
-      has_overdue_payment: row.has_overdue_payment,
-      email_undeliverable: row.email_undeliverable,
-    }));
-  }, [overview]);
+  const sortedPlayers: UnifiedPlayer[] = useMemo(
+    () => (overview?.rows ?? []).map((row) => mapPlayersOverviewRow(row)),
+    [overview],
+  );
 
   // Header count: unfiltered active-player total (removal already applied by
   // the RPC), independent of the table's search/filters.
@@ -387,39 +307,16 @@ export default function TrainerPlayers() {
             searchValue={searchQuery}
             onSearchChange={setSearchQuery}
             trailing={
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="hidden md:inline-flex">
-                    <Columns3 className="mr-2 h-4 w-4" />
-                    {t('players.columns.button', 'Columns')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>{t('players.columns.default', 'Default')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>{t('players.columns.optional', 'Optional')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <PlayerColumnsMenu
+                allColumns={ALL_COLUMNS}
+                isColVisible={isColVisible}
+                onToggle={toggleColumn}
+                labels={{
+                  button: t('players.columns.button', 'Columns'),
+                  default: t('players.columns.default', 'Default'),
+                  optional: t('players.columns.optional', 'Optional'),
+                }}
+              />
             }
           >
             {allLocations.length > 0 && (
@@ -721,7 +618,7 @@ export default function TrainerPlayers() {
                                       <PlayerNotesCell
                                         trainerId={trainerId}
                                         playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
-                                        notes={player.trainer_notes || ''}
+                                        notes={player.internal_notes || ''}
                                         onChanged={handlePlayerDataChanged}
                                       />
                                     )}
@@ -738,44 +635,7 @@ export default function TrainerPlayers() {
             </DataTableCard>
           )}
 
-          {pageCount > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    aria-disabled={page === 0}
-                    className={page === 0 ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(0, p - 1)); }}
-                  />
-                </PaginationItem>
-                {Array.from({ length: pageCount }, (_, i) => i)
-                  .filter((i) => i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 2)
-                  .map((i, idx, arr) => (
-                    <PaginationItem key={i}>
-                      {idx > 0 && arr[idx - 1] !== i - 1 ? (
-                        <span className="px-2 text-muted-foreground">…</span>
-                      ) : null}
-                      <PaginationLink
-                        href="#"
-                        isActive={i === page}
-                        onClick={(e) => { e.preventDefault(); setPage(i); }}
-                      >
-                        {i + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    aria-disabled={page >= pageCount - 1}
-                    className={page >= pageCount - 1 ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount - 1, p + 1)); }}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+          <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
         </TabsContent>
 
         {/* Create Tab */}

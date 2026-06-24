@@ -12,6 +12,93 @@ import type { Database } from '@/integrations/supabase/types';
 export type PlayersOverviewRow =
   Database['public']['Functions']['get_players_overview']['Returns'][number];
 
+/**
+ * The view-model the trainer + academy player lists render. Both pages previously declared this type
+ * + the row→model mapper near-identically; this is the single shared source. The academy-only fields
+ * (trainer_*, training_location_ids) are populated only in academy mode (see mapPlayersOverviewRow).
+ */
+export interface UnifiedPlayer {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  billing_business_name: string | null;
+  skill_rating: number | null;
+  rating_system: string;
+  has_trained: boolean;
+  notes: string | null;
+  created_at: string;
+  type: 'guest' | 'registered';
+  location_names?: string[];
+  has_active_cyclus?: boolean;
+  source?: string | null;
+  birth_date?: string | null;
+  metadata_id?: string;
+  tag_ids?: string[];
+  /** Internal coaching note — both roles read it from the row's `academy_notes` column. */
+  internal_notes?: string;
+  guest_player_id?: string | null;
+  profile_id?: string | null;
+  has_overdue_payment?: boolean;
+  email_undeliverable?: boolean;
+  // Academy-only (undefined in trainer mode):
+  trainer_id?: string;
+  trainer_ids?: string[];
+  trainer_name?: string;
+  training_location_ids?: string[];
+}
+
+export interface MapPlayerOpts {
+  /**
+   * Academy mode: resolve guest/registered player trainer display names + the "Academy" fallback
+   * label. Omit for trainer mode (the trainer_* fields stay undefined).
+   */
+  trainerNames?: { map: Map<string, string>; academyLabel: string };
+}
+
+/** Map a server players-overview row to the shared UnifiedPlayer view-model. */
+export function mapPlayersOverviewRow(row: PlayersOverviewRow, opts: MapPlayerOpts = {}): UnifiedPlayer {
+  const player: UnifiedPlayer = {
+    id: row.guest_player_id ?? `reg-${row.profile_id}`,
+    full_name: row.full_name,
+    email: row.email,
+    phone: row.phone,
+    billing_business_name: row.billing_business_name,
+    skill_rating: row.skill_rating,
+    rating_system: row.rating_system,
+    has_trained: row.has_trained,
+    notes: row.notes,
+    created_at: row.created_at,
+    type: row.player_type as 'guest' | 'registered',
+    location_names: row.location_names ?? [],
+    has_active_cyclus: row.has_active_cyclus,
+    source: row.source,
+    birth_date: row.birth_date,
+    metadata_id: row.metadata_id ?? undefined,
+    tag_ids: row.tag_ids ?? [],
+    internal_notes: row.academy_notes ?? '',
+    guest_player_id: row.guest_player_id,
+    profile_id: row.profile_id,
+    has_overdue_payment: row.has_overdue_payment,
+    email_undeliverable: row.email_undeliverable,
+  };
+  if (opts.trainerNames) {
+    const { map, academyLabel } = opts.trainerNames;
+    player.trainer_id = row.owner_trainer_id ?? undefined;
+    player.trainer_ids = row.trainer_ids ?? [];
+    player.trainer_name =
+      row.player_type === 'guest'
+        ? row.owner_trainer_id
+          ? map.get(row.owner_trainer_id) || '—'
+          : academyLabel
+        : row.trainer_ids?.length
+          ? map.get(row.trainer_ids[0]) || '—'
+          : '—';
+    player.training_location_ids = row.location_ids ?? [];
+  }
+  return player;
+}
+
 export type LevelBand = 'beginner' | 'intermediate' | 'advanced' | 'pro' | 'unrated';
 
 export interface PlayersOverviewFilters {
