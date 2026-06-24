@@ -22,7 +22,8 @@ import {
   usePlayersOverview,
   fetchPlayersOverview,
   fetchAllPlayersOverview,
-  type PlayersOverviewRow,
+  mapPlayersOverviewRow,
+  type UnifiedPlayer,
   type PlayersOverviewFilters,
   type LevelBand,
 } from '@/lib/playersOverview';
@@ -54,31 +55,6 @@ const EmailCampaignTab = lazy(() =>
   import('@/components/players/EmailCampaignTab').then((m) => ({ default: m.EmailCampaignTab }))
 );
 
-type UnifiedPlayer = {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  billing_business_name: string | null;
-  skill_rating: number | null;
-  rating_system: string;
-  has_trained: boolean;
-  notes: string | null;
-  created_at: string;
-  type: 'guest' | 'registered';
-  location_names?: string[];
-  has_active_cyclus?: boolean;
-  source?: string | null;
-  birth_date?: string | null;
-  // Tags / metadata
-  metadata_id?: string;
-  tag_ids?: string[];
-  trainer_notes?: string;
-  guest_player_id?: string | null;
-  profile_id?: string | null;
-  has_overdue_payment?: boolean;
-  email_undeliverable?: boolean;
-};
 
 function getLevelLabel(band: string): string {
   switch (band) {
@@ -273,32 +249,10 @@ export default function TrainerPlayers() {
   const totalFiltered = overview?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
-  const sortedPlayers: UnifiedPlayer[] = useMemo(() => {
-    return (overview?.rows ?? []).map((row: PlayersOverviewRow) => ({
-      id: row.guest_player_id ?? `reg-${row.profile_id}`,
-      full_name: row.full_name,
-      email: row.email,
-      phone: row.phone,
-      billing_business_name: row.billing_business_name,
-      skill_rating: row.skill_rating,
-      rating_system: row.rating_system,
-      has_trained: row.has_trained,
-      notes: row.notes,
-      created_at: row.created_at,
-      type: row.player_type as 'guest' | 'registered',
-      location_names: row.location_names ?? [],
-      has_active_cyclus: row.has_active_cyclus,
-      source: row.source,
-      birth_date: row.birth_date,
-      metadata_id: row.metadata_id ?? undefined,
-      tag_ids: row.tag_ids ?? [],
-      trainer_notes: row.academy_notes ?? '',
-      guest_player_id: row.guest_player_id,
-      profile_id: row.profile_id,
-      has_overdue_payment: row.has_overdue_payment,
-      email_undeliverable: row.email_undeliverable,
-    }));
-  }, [overview]);
+  const sortedPlayers: UnifiedPlayer[] = useMemo(
+    () => (overview?.rows ?? []).map((row) => mapPlayersOverviewRow(row)),
+    [overview],
+  );
 
   // Header count: unfiltered active-player total (removal already applied by
   // the RPC), independent of the table's search/filters.
@@ -714,7 +668,7 @@ export default function TrainerPlayers() {
                                       <PlayerNotesCell
                                         trainerId={trainerId}
                                         playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
-                                        notes={player.trainer_notes || ''}
+                                        notes={player.internal_notes || ''}
                                         onChanged={handlePlayerDataChanged}
                                       />
                                     )}
