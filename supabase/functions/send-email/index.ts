@@ -87,18 +87,25 @@ const BRAND_ORANGE = "#f45d25";
 const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?: string) => {
   // SECURITY (email HTML injection): every value in `data` originates from user/registrant
   // input — including the PUBLIC, unauthenticated submit-guest-intake path, whose notes/
-  // playerName/phone reach a DIFFERENT academy's admin inbox (new_intake_registration_admin).
-  // Escape every string field before it is interpolated into any template below so raw input
-  // cannot inject markup, scripts, or links. We clone first so the caller's `data` (used for
-  // recipient resolution / logging) keeps its raw values, and we only touch strings — numbers,
-  // arrays and booleans pass through. URLs stay valid: `&` becomes `&amp;`, which the browser
-  // decodes back to `&` when following an href.
-  const data: EmailRequest["data"] = { ...dataRaw };
-  for (const k of Object.keys(data) as Array<keyof EmailRequest["data"]>) {
-    if (typeof data[k] === "string") {
-      (data as Record<string, unknown>)[k] = sanitizeForHtml(data[k] as string);
+  // playerName/phone AND registrant-controlled arrays (lessonTypes, preferredDays,
+  // preferredTimeWindows) reach a DIFFERENT academy's admin inbox (new_intake_registration_admin).
+  // submit-guest-intake validates those arrays for length only — NOT per-item content — so an
+  // item can be arbitrary HTML. Escape EVERY string before any template interpolates it, walking
+  // into arrays and nested objects (priceLines[].label, scheduleEntries[].*, timeWindow {start,end}),
+  // not just top-level fields. escapeDeep is non-mutating (rebuilds objects/arrays), so the caller's
+  // `dataRaw` keeps its raw values for recipient resolution / logging. Numbers/booleans pass through.
+  // URLs stay valid: `&` becomes `&amp;`, which the browser decodes back to `&` when following an href.
+  const escapeDeep = (v: unknown): unknown => {
+    if (typeof v === "string") return sanitizeForHtml(v);
+    if (Array.isArray(v)) return v.map(escapeDeep);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).map(([key, val]) => [key, escapeDeep(val)]),
+      );
     }
-  }
+    return v;
+  };
+  const data = escapeDeep(dataRaw) as EmailRequest["data"];
   switch (type) {
     case "booking_confirmation":
       return {
