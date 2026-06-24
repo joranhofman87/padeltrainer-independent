@@ -15,6 +15,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:edge": "deno test --allow-env --allow-net supabase/functions/_shared/",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "i18n:check": "bun scripts/check-i18n-parity.ts",

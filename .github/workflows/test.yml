@@ -65,3 +65,22 @@ jobs:
 
       - name: Check i18n parity (en + nl)
         run: bun scripts/check-i18n-parity.ts
+
+  # Pure unit tests for the Deno edge functions (auth gates, Mollie payment-ready, guest-name
+  # resolution). These previously ran in NO CI (pre-scale audit P0 #3). The function-dir
+  # index.test.ts files are INTEGRATION tests — they fetch a *deployed* function and need
+  # VITE_SUPABASE_* secrets, so they are intentionally NOT in this gate (run them against a
+  # deployed env separately, like the seo-smoke workflow).
+  edge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Edge-function unit tests (deno)
+        run: deno test --allow-env --allow-net supabase/functions/_shared/
