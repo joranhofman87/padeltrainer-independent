@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Users, UserPlus, Upload, Mail, RefreshCw, Columns3, Tags } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, RefreshCw, Tags } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
@@ -12,10 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -32,6 +28,8 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { format } from 'date-fns';
 import { SortableHeader } from '@/components/players/usePlayerSort';
 import { ListPagination } from '@/components/ui/list-pagination';
+import { useVisibleColumns } from '@/components/players/useVisibleColumns';
+import { PlayerColumnsMenu } from '@/components/players/PlayerColumnsMenu';
 import { AddPlayerDialog } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
@@ -132,32 +130,7 @@ export default function TrainerPlayers() {
     { key: 'birthDate', label: t('players.columns.birthDate', 'Birth date'), isDefault: false },
   ];
   const storageKey = trainerId ? `trainerPlayers:visibleColumns:${trainerId}` : null;
-  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
-
-  useEffect(() => {
-    if (!storageKey) return;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ColumnKey[];
-        const valid = parsed.filter((k) => ALL_COLUMNS.some((c) => c.key === k));
-        if (valid.length) setVisibleColumns(valid);
-      }
-    } catch { /* non-fatal: ignore corrupt/unavailable localStorage and keep defaults */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  const toggleColumn = (key: ColumnKey) => {
-    setVisibleColumns((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      if (storageKey) {
-        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* non-fatal: persisting column prefs is best-effort */ }
-      }
-      return next;
-    });
-  };
-
-  const isColVisible = (key: ColumnKey) => visibleColumns.includes(key);
+  const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns(ALL_COLUMNS, DEFAULT_COLUMNS, storageKey);
 
   // Resolve trainerId
   useEffect(() => {
@@ -334,39 +307,16 @@ export default function TrainerPlayers() {
             searchValue={searchQuery}
             onSearchChange={setSearchQuery}
             trailing={
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="hidden md:inline-flex">
-                    <Columns3 className="mr-2 h-4 w-4" />
-                    {t('players.columns.button', 'Columns')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>{t('players.columns.default', 'Default')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>{t('players.columns.optional', 'Optional')}</DropdownMenuLabel>
-                  {ALL_COLUMNS.filter((c) => !c.isDefault).map((c) => (
-                    <DropdownMenuCheckboxItem
-                      key={c.key}
-                      checked={isColVisible(c.key)}
-                      onCheckedChange={() => toggleColumn(c.key)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {c.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <PlayerColumnsMenu
+                allColumns={ALL_COLUMNS}
+                isColVisible={isColVisible}
+                onToggle={toggleColumn}
+                labels={{
+                  button: t('players.columns.button', 'Columns'),
+                  default: t('players.columns.default', 'Default'),
+                  optional: t('players.columns.optional', 'Optional'),
+                }}
+              />
             }
           >
             {allLocations.length > 0 && (

@@ -131,14 +131,17 @@ These are the next reuse targets, intentionally deferred to keep each slice safe
 - **Player list reuse (trainer + academy only).** A scoping pass found the win is *medium, not big*,
   and spans only two of the three pages — trainer + academy already share the whole data-fetch stack
   (`playersOverview.ts`); **club is a genuinely different surface** (flat `club_players` table, client
-  sort, no pagination, inline CRUD) and must be left alone. **Done:** both adopted the shared
-  `ListPagination`, and the shared `mapPlayersOverviewRow(row, opts)` + unified `UnifiedPlayer` type
-  in `playersOverview.ts` (the old per-page `trainer_notes`/`academy_notes` field — both sourced from
-  `row.academy_notes` — was unified to `internal_notes`). **Remaining, medium-risk:** a
-  `useVisibleColumns(columns, storageKey)` hook + `PlayerColumnsMenu` (the ~85-line column-visibility
-  + localStorage machinery duplicated in both). Do **not** generalize `useInvoiceListSelection` for
-  academy's bulk selection — its `Map`-with-payload model that survives server pagination is
-  incompatible, and it is the sole consumer.
+  sort, no pagination, inline CRUD) and must be left alone. **Done (trainer + academy both adopted):**
+  the shared `ListPagination`; `mapPlayersOverviewRow(row, opts)` + unified `UnifiedPlayer` type in
+  `playersOverview.ts` (the old per-page `trainer_notes`/`academy_notes` field — both sourced from
+  `row.academy_notes` — was unified to `internal_notes`); and `useVisibleColumns(allColumns,
+  defaultColumns, storageKey)` + `PlayerColumnsMenu` under `src/components/players/` (the
+  column-visibility state + best-effort localStorage persistence + the "Columns" dropdown). Each page
+  keeps its own `ColumnKey` union, `ALL_COLUMNS` descriptors (the table header reads them) and
+  `storageKey`. Do **not** generalize `useInvoiceListSelection` for academy's bulk selection — its
+  `Map`-with-payload model that survives server pagination is incompatible, and it is the sole
+  consumer. What's left is genuinely role-specific (cell-renderer switch, filter bar) and not worth
+  forcing into a shared component.
 - **Shared date-picker field** (due-date popover/calendar is repeated across forms).
 - **Shared scheduling / calendar components** (agenda day/week views).
 - **Consolidate near-duplicate primitives:** `PageHeader` vs `TrainerPageHeader`; `EmptyState` vs
