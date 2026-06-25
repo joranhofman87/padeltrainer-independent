@@ -5007,6 +5007,8 @@ export type Database = {
           invited_at: string | null
           player_id: string | null
           rebook_group_id: string | null
+          reminded_at: string | null
+          reminder_count: number
           responded_at: string | null
           slot_id: string
           source_slot_id: string | null
@@ -5023,6 +5025,8 @@ export type Database = {
           invited_at?: string | null
           player_id?: string | null
           rebook_group_id?: string | null
+          reminded_at?: string | null
+          reminder_count?: number
           responded_at?: string | null
           slot_id: string
           source_slot_id?: string | null
@@ -5039,6 +5043,8 @@ export type Database = {
           invited_at?: string | null
           player_id?: string | null
           rebook_group_id?: string | null
+          reminded_at?: string | null
+          reminder_count?: number
           responded_at?: string | null
           slot_id?: string
           source_slot_id?: string | null
@@ -7361,6 +7367,10 @@ export type Database = {
       book_slot_for_payment: {
         Args: { _payment_amount: number; _player_id: string; _slot_id: string }
         Returns: string
+      }
+      bump_rebook_reminders: {
+        Args: { p_guest_ids: string[]; p_player_ids: string[]; p_slot_ids: string[] }
+        Returns: undefined
       }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
