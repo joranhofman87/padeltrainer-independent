@@ -990,6 +990,22 @@
     "backToConfigure": "Edit",
     "confirmSend": "Create & invite players"
   },
+  "editEndDate": {
+    "title": "Edit end date",
+    "loadFailed": "Couldn't load the cycle.",
+    "label": "New end date",
+    "hint": "This only changes the cycle's end date. Invoices stay unchanged.",
+    "invalid": "The end date must be on or after the start date.",
+    "checking": "Checking sessions…",
+    "noneAfter": "No sessions after this date.",
+    "afterCount": "{{count}} sessions fall after the new end date.",
+    "protected": "{{count}} of these have bookings and will be kept.",
+    "removeUnbooked": "Remove the {{count}} empty sessions (no bookings)",
+    "saved": "End date updated",
+    "savedWithTrim": "End date updated · {{count}} sessions removed",
+    "saveFailed": "Couldn't update the end date. Please try again.",
+    "save": "Save"
+  },
   "rebookManage": {
     "title": "Manage rebooking",
     "roundsTitle": "Rebookings",

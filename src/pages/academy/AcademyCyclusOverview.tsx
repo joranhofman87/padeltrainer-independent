@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Search, Users, Eye, EyeOff, Euro, Trash2 } from 'lucide-react';
+import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { EditCycleEndDateDialog } from '@/components/cycles/EditCycleEndDateDialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
@@ -80,6 +81,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [filterPaid, setFilterPaid] = useState<PaidFilterValue>('all');
   const [filterVisibility, setFilterVisibility] = useState<'all' | 'public' | 'private'>('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editEndDateGroup, setEditEndDateGroup] = useState<CyclusGroup | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
 
   // Bulk actions
@@ -934,12 +936,13 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <SortableTableHead sortKey="payment_status_summary" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.paymentStatus')}</SortableTableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.price')}</TableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.occupancy')}</TableHead>
+                <TableHead className="w-[44px]" aria-label={t('editEndDate.title', 'Einddatum aanpassen')} />
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
                     {t('cyclesTab.noCyclesFound')}
                   </TableCell>
                 </TableRow>
@@ -987,6 +990,19 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                       {group.price_per_session != null ? formatPrice(group.price_per_session) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{getStatusBadge(group)}</TableCell>
+                    <TableCell className="w-[44px]" onClick={(e) => e.stopPropagation()}>
+                      {group.cyclus_id && group.has_slots && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title={t('editEndDate.title', 'Einddatum aanpassen')}
+                          onClick={() => setEditEndDateGroup(group)}
+                        >
+                          <CalendarClock className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -1024,6 +1040,17 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                     {getPaymentBadge(group)}
                     {getStatusBadge(group)}
                     {getTypeBadge(group.type)}
+                    {group.cyclus_id && group.has_slots && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title={t('editEndDate.title', 'Einddatum aanpassen')}
+                        onClick={(e) => { e.stopPropagation(); setEditEndDateGroup(group); }}
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -1053,6 +1080,14 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           ))
         )}
       </div>
+
+      <EditCycleEndDateDialog
+        open={!!editEndDateGroup}
+        onOpenChange={(o) => { if (!o) setEditEndDateGroup(null); }}
+        cyclusId={editEndDateGroup?.cyclus_id ?? null}
+        cyclusName={editEndDateGroup?.cyclus_name ?? ''}
+        onSaved={fetchCyclusData}
+      />
 
       {/* Bulk Price Dialog */}
       <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
