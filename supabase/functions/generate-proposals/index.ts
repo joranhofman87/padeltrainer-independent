@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiTextModel, fetchChatCompletion, isAiGatewayConfigured } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -389,50 +390,42 @@ Deno.serve(async (req) => {
     let aiRules: { type: string; condition: string; value: any }[] = [];
     if (additionalCriteria && additionalCriteria.trim()) {
       try {
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-        if (LOVABLE_API_KEY) {
-          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
-              messages: [
-                {
-                  role: "system",
-                  content: `You parse scheduling criteria into structured rules. Return JSON array of rules. Each rule has: type (one of: "min_participants", "max_participants", "time_restriction", "lesson_type_restriction"), condition (e.g. "evening", "daytime", "kids"), value (number or string). Example input: "kids lessons only during the day, evening always 4 players" => [{"type":"time_restriction","condition":"kids","value":"06:00-18:00"},{"type":"min_participants","condition":"evening","value":4}]`
-                },
-                { role: "user", content: additionalCriteria }
-              ],
-              tools: [{
-                type: "function",
-                function: {
-                  name: "parse_rules",
-                  description: "Parse scheduling criteria into structured rules",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      rules: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            type: { type: "string" },
-                            condition: { type: "string" },
-                            value: {}
-                          },
-                          required: ["type", "condition", "value"]
-                        }
+        if (isAiGatewayConfigured()) {
+          const aiResponse = await fetchChatCompletion({
+            model: aiTextModel("google/gemini-2.5-flash"),
+            messages: [
+              {
+                role: "system",
+                content: `You parse scheduling criteria into structured rules. Return JSON array of rules. Each rule has: type (one of: "min_participants", "max_participants", "time_restriction", "lesson_type_restriction"), condition (e.g. "evening", "daytime", "kids"), value (number or string). Example input: "kids lessons only during the day, evening always 4 players" => [{"type":"time_restriction","condition":"kids","value":"06:00-18:00"},{"type":"min_participants","condition":"evening","value":4}]`
+              },
+              { role: "user", content: additionalCriteria }
+            ],
+            tools: [{
+              type: "function",
+              function: {
+                name: "parse_rules",
+                description: "Parse scheduling criteria into structured rules",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    rules: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          type: { type: "string" },
+                          condition: { type: "string" },
+                          value: {}
+                        },
+                        required: ["type", "condition", "value"]
                       }
-                    },
-                    required: ["rules"]
-                  }
+                    }
+                  },
+                  required: ["rules"]
                 }
-              }],
-              tool_choice: { type: "function", function: { name: "parse_rules" } }
-            }),
+              }
+            }],
+            tool_choice: { type: "function", function: { name: "parse_rules" } }
           });
 
           if (aiResponse.ok) {
@@ -825,9 +818,10 @@ Deno.serve(async (req) => {
 
         let groupSuccess = true;
         for (const req of groupRequests) {
+          const timeResult = calculateTimeScore(bestSlot, req, normalizedWeights.time_match);
           const rationale: RationaleItem[] = [
             { type: "group_cohesion", score: 50, detail: `Group of ${groupRequests.length} placed together (${linkStrategy})` },
-            calculateTimeScore(bestSlot, req, normalizedWeights.time_match),
+            { type: "time_match", score: timeResult.score, detail: timeResult.detail },
           ];
           const totalScore = rationale.reduce((sum, r) => sum + r.score, 0);
 

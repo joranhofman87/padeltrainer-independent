@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireAdmin } from "../_shared/auth.ts";
 import { restrictedCors } from "../_shared/cors.ts";
+import { aiTextModel, fetchChatCompletion } from "../_shared/ai-gateway.ts";
 
 Deno.serve(async (req) => {
   const corsHeaders = restrictedCors(req);
@@ -16,8 +17,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
 
     // Fetch topic
     const { data: topic, error: topicError } = await supabase
@@ -51,42 +50,35 @@ Write the COMPLETE article. Do not stop early. Include a proper conclusion secti
 
 Return a JSON object using the suggest_article tool.`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: 'You are a padel content expert writing for PadelTrainer.ai.' },
-          { role: 'user', content: prompt },
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'suggest_article',
-            description: 'Return the generated article',
-            parameters: {
-              type: 'object',
-              properties: {
-                title: { type: 'string' },
-                slug: { type: 'string', description: 'URL-friendly slug' },
-                excerpt: { type: 'string', description: 'Short summary, max 160 chars' },
-                body_html: { type: 'string', description: 'Article body in clean HTML' },
-                meta_title: { type: 'string', description: 'SEO title, max 60 chars' },
-                meta_description: { type: 'string', description: 'SEO description, max 155 chars' },
-                tags: { type: 'array', items: { type: 'string' }, description: '3-5 relevant tags' },
-              },
-              required: ['title', 'slug', 'excerpt', 'body_html', 'meta_title', 'meta_description', 'tags'],
-              additionalProperties: false,
+    const response = await fetchChatCompletion({
+      model: aiTextModel('google/gemini-2.5-flash'),
+      messages: [
+        { role: 'system', content: 'You are a padel content expert writing for PadelTrainer.ai.' },
+        { role: 'user', content: prompt },
+      ],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'suggest_article',
+          description: 'Return the generated article',
+          parameters: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              slug: { type: 'string', description: 'URL-friendly slug' },
+              excerpt: { type: 'string', description: 'Short summary, max 160 chars' },
+              body_html: { type: 'string', description: 'Article body in clean HTML' },
+              meta_title: { type: 'string', description: 'SEO title, max 60 chars' },
+              meta_description: { type: 'string', description: 'SEO description, max 155 chars' },
+              tags: { type: 'array', items: { type: 'string' }, description: '3-5 relevant tags' },
             },
+            required: ['title', 'slug', 'excerpt', 'body_html', 'meta_title', 'meta_description', 'tags'],
+            additionalProperties: false,
           },
-        }],
-        tool_choice: { type: 'function', function: { name: 'suggest_article' } },
-        max_tokens: 16384,
-      }),
+        },
+      }],
+      tool_choice: { type: 'function', function: { name: 'suggest_article' } },
+      max_tokens: 16384,
     });
 
     if (!response.ok) {
