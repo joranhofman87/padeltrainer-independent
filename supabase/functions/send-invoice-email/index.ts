@@ -404,12 +404,54 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    // Attach the actual invoice PDF so the recipient gets a proper invoice, not
+    // just a payment link. Best-effort: if the PDF can't be (re)generated or
+    // fetched we still send the email (with the pay link) — the payment request
+    // must never be blocked by PDF generation. We call generate-invoice (which
+    // rebuilds + stores the current PDF and returns a short-lived signed URL),
+    // so the attachment always matches the invoice's current state.
+    let attachments: Array<{ filename: string; content: string }> | undefined;
+    try {
+      const genRes = await fetch(`${supabaseUrl}/functions/v1/generate-invoice`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ invoiceId: invoice.id }),
+      });
+      if (genRes.ok) {
+        const genJson = await genRes.json().catch(() => null);
+        const pdfUrl = genJson?.pdfUrl as string | undefined;
+        if (pdfUrl) {
+          const pdfRes = await fetch(pdfUrl);
+          if (pdfRes.ok) {
+            const bytes = new Uint8Array(await pdfRes.arrayBuffer());
+            let binary = "";
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            attachments = [{ filename: `${invoice.invoice_number}.pdf`, content: btoa(binary) }];
+            logStep("pdf_attached", { invoiceId, bytes: bytes.length });
+          } else {
+            logStep("pdf_fetch_failed", { invoiceId, status: pdfRes.status });
+          }
+        } else {
+          logStep("pdf_url_missing", { invoiceId });
+        }
+      } else {
+        logStep("pdf_generate_failed", { invoiceId, status: genRes.status });
+      }
+    } catch (pdfErr) {
+      logStep("pdf_attach_error", { invoiceId, error: String(pdfErr).slice(0, 200) });
+    }
+
     const { data: sendData, error: sendError } = await resend.emails.send({
       from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
       to: [sendTo],
       subject: testEmail ? `[TEST] ${subject}` : subject,
       html,
       reply_to: replyTo || undefined,
+      attachments,
     });
 
     // Record the outcome into delivery tracking (never the test sends). A

@@ -30,7 +30,7 @@ import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
+import { Settings, FileText, Send, Loader2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning, Download, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
@@ -82,6 +82,7 @@ export default function AcademyInvoices() {
   const [locationFilter, setLocationFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
@@ -478,6 +479,18 @@ export default function AcademyInvoices() {
     setForwardingId(null);
   };
 
+  // Download the invoice PDF via the shared helper (generate-invoice → signed
+  // URL → browser download); reused by trainer/player invoice surfaces.
+  const handleDownloadInvoicePdf = async (invoice: Invoice) => {
+    setDownloadingId(invoice.id);
+    const { downloadInvoicePdf } = await import("@/lib/downloadInvoicePdf");
+    const ok = await downloadInvoicePdf(invoice.id, invoice.invoice_number);
+    if (!ok) {
+      toast.error(t("invoices.downloadFailed", "Kon factuur niet downloaden"));
+    }
+    setDownloadingId(null);
+  };
+
   // ========== Bulk actions ==========
   // Selection is page-scoped (cleared on page change); selectedInvoices +
   // toggleSelectAllVisible come from useInvoiceListSelection above.
@@ -578,20 +591,29 @@ export default function AcademyInvoices() {
   const getPaymentUrl = (inv: Invoice) =>
     `${window.location.origin}/nl/academies/${activeAcademy?.slug}/pay/${inv.public_token}`;
 
+  // Per-row invoice actions menu (academy = the reference for the shared
+  // invoice list). Status-aware: unpaid rows can share/send/mark-sent, paid rows
+  // can forward to the bookkeeper, and EVERY row can download the PDF.
   const ShareDropdown = ({ invoice }: { invoice: Invoice }) => {
     const shareable = canSharePublicPaymentLink(invoice);
     const isDraft = invoice.status === "draft";
     const isSending = sendingInvoiceIds.has(invoice.id);
+    const isPaid = invoice.status === "paid";
+    const isCancelled = invoice.status === "cancelled";
+    const isUnpaid = !isPaid && !isCancelled;
+    const isForwarding = forwardingId === invoice.id;
+    const isDownloading = downloadingId === invoice.id;
+    const busy = isSending || isForwarding || isDownloading;
 
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost" disabled={isSending} aria-label={t("invoices.shareActions", "Share invoice")}>
-            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+          <Button size="sm" variant="ghost" disabled={busy} aria-label={t("invoices.invoiceActions", "Invoice actions")}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {shareable ? (
+          {isUnpaid && (shareable ? (
             <DropdownMenuItem
               onClick={() => {
                 navigator.clipboard.writeText(getPaymentUrl(invoice));
@@ -608,19 +630,21 @@ export default function AcademyInvoices() {
                 "Complete invoice settings and send this invoice before sharing a payment link.",
               )}
             </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem
-            disabled={isSending}
-            onClick={() => {
-              if (isSending) return;
-              if (!ensureInvoiceSettingsComplete()) return;
-              sendInvoiceMutation.mutate(invoice);
-            }}
-          >
-            {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
-            {t("invoices.sendViaEmail", "Verstuur via e-mail")}
-          </DropdownMenuItem>
-          {invoice.status !== "sent" && !invoice.sent_at && (
+          ) : null)}
+          {isUnpaid && (
+            <DropdownMenuItem
+              disabled={isSending}
+              onClick={() => {
+                if (isSending) return;
+                if (!ensureInvoiceSettingsComplete()) return;
+                sendInvoiceMutation.mutate(invoice);
+              }}
+            >
+              {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
+              {t("invoices.sendViaEmail", "Verstuur via e-mail")}
+            </DropdownMenuItem>
+          )}
+          {isUnpaid && invoice.status !== "sent" && !invoice.sent_at && (
             <DropdownMenuItem
               onClick={() => {
                 if (!ensureInvoiceSettingsComplete()) return;
@@ -631,6 +655,16 @@ export default function AcademyInvoices() {
               {t("invoices.markAsSent", "Markeer als verstuurd")}
             </DropdownMenuItem>
           )}
+          {isPaid && (
+            <DropdownMenuItem disabled={isForwarding} onClick={() => handleForwardInvoice(invoice.id)}>
+              {isForwarding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
+              {t("invoices.forwardToBookkeeper", "Forward")}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem disabled={isDownloading} onClick={() => handleDownloadInvoicePdf(invoice)}>
+            {isDownloading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            {t("invoices.downloadPdf", "Download PDF")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -844,21 +878,7 @@ export default function AcademyInvoices() {
                   selectRow: (n) => t("invoices.selectInvoice", "Select {{number}}", { number: n }),
                   forwardedOn: (d) => t("invoices.forwardedOn", "Doorgestuurd op {{date}}", { date: d }),
                 }}
-                renderActions={(inv) => (
-                  <>
-                    {inv.status !== "paid" && inv.status !== "cancelled" && <ShareDropdown invoice={inv} />}
-                    {inv.status === "paid" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleForwardInvoice(inv.id)}
-                        disabled={forwardingId === inv.id}
-                      >
-                        {forwardingId === inv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                      </Button>
-                    )}
-                  </>
-                )}
+                renderActions={(inv) => <ShareDropdown invoice={inv} />}
               />
 
               {/* Mobile Cards — flush divided list (the viewport is the container on a phone) */}
@@ -898,15 +918,7 @@ export default function AcademyInvoices() {
                         <span className="font-bold text-lg">{formatCurrency(inv.total)}</span>
                       </div>
                       <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                        {inv.status !== "paid" && inv.status !== "cancelled" && (
-                          <ShareDropdown invoice={inv} />
-                        )}
-                        {inv.status === "paid" && (
-                          <Button size="sm" variant="outline" onClick={() => handleForwardInvoice(inv.id)} disabled={forwardingId === inv.id}>
-                            {forwardingId === inv.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
-                            {t("invoices.forwardToBookkeeper", "Forward")}
-                          </Button>
-                        )}
+                        <ShareDropdown invoice={inv} />
                       </div>
                     </CardContent>
                   </Card>
