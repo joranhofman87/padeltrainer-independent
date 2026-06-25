@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GOLDEN: registration↔cycle settings split contract > the FORM-ONLY allowlist is frozen (snapshot — any change must be reviewed) 1`] = `
+[
+  "lesson_types",
+  "custom_lesson_types",
+  "show_preferred_trainer",
+  "show_price_indication",
+  "cyclus_options",
+  "duration_options",
+  "available_duration_minutes",
+  "price_columns",
+  "prices_include_vat",
+  "success_message",
+  "confirmation_email_text",
+  "payment_methods",
+  "rating_system",
+  "default_duration_minutes",
+  "available_days",
+  "max_participants",
+  "notify_admin_on_submission",
+  "notify_admin_emails",
+  "pricing_note",
+]
+`;

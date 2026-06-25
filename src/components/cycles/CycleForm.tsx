@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
-import { CalendarIcon, Loader2, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Lock, Plus, Trash2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Form,
@@ -86,6 +87,13 @@ interface CycleFormProps {
   formType?: 'registration' | 'cyclus' | 'event';
   /** When set, locks the rating system selector to this value */
   trainerRatingSystem?: string | null;
+  /**
+   * Slice 0 of the registration↔cycle split: when this cycle's form config now lives in the
+   * `registrations` table, lock editing here (disable fields + submit + a banner) so the legacy
+   * cycle editor can't write `cycles.settings` and diverge from the live public form. Superseded
+   * by the registration editor (Slice 4).
+   */
+  locked?: boolean;
 }
 
 export default function CycleForm({
@@ -100,6 +108,7 @@ export default function CycleForm({
   trainerHourlyRate,
   formType = 'cyclus',
   trainerRatingSystem: fixedRatingSystem,
+  locked = false,
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -524,6 +533,9 @@ export default function CycleForm({
   useUnsavedChangesGuard(form.formState.isDirty || hasDraftChanges);
 
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
+    // Slice 0 (registration↔cycle split): when this cycle's form now lives in the `registrations`
+    // table, block writes here so the legacy editor can't diverge from the live public form.
+    if (locked) return;
     setIsSubmitting(true);
     try {
       const customLessonTypes = [customLessonType1.trim(), customLessonType2.trim()].filter(Boolean);
@@ -654,6 +666,16 @@ export default function CycleForm({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
+            {locked && (
+              <Alert>
+                <Lock className="h-4 w-4" />
+                <AlertTitle>{t('form.registrationLockedTitle')}</AlertTitle>
+                <AlertDescription>{t('form.registrationLockedBody')}</AlertDescription>
+              </Alert>
+            )}
+            {/* Slice 0: a disabled <fieldset> natively disables every input inside when the form is
+                locked; the action buttons below stay outside it so Cancel always works. */}
+            <fieldset disabled={locked} className="space-y-4 border-0 p-0 m-0 min-w-0 disabled:opacity-70">
             {(isRegistration || isEvent) && (
               <FormField
                 control={form.control}
@@ -2418,6 +2440,8 @@ export default function CycleForm({
             )}
 
 
+            </fieldset>
+
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t">
               <Button
                 type="button"
@@ -2427,7 +2451,7 @@ export default function CycleForm({
               >
                 {t('common:cancel', 'Cancel')}
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || locked}>
                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : isRegistration ? t('form.saveRegistration', 'Save Registration') : t('form.save')}
               </Button>
               {!isEdit && (
