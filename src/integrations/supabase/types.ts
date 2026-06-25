@@ -1429,6 +1429,8 @@ export type Database = {
           notes: string | null
           original_amount: number | null
           paid_at: string | null
+          paid_by_guest_player_id: string | null
+          paid_by_player_id: string | null
           paid_externally: boolean | null
           payment_amount: number | null
           payment_status: string
@@ -1451,6 +1453,8 @@ export type Database = {
           notes?: string | null
           original_amount?: number | null
           paid_at?: string | null
+          paid_by_guest_player_id?: string | null
+          paid_by_player_id?: string | null
           paid_externally?: boolean | null
           payment_amount?: number | null
           payment_status?: string
@@ -1473,6 +1477,8 @@ export type Database = {
           notes?: string | null
           original_amount?: number | null
           paid_at?: string | null
+          paid_by_guest_player_id?: string | null
+          paid_by_player_id?: string | null
           paid_externally?: boolean | null
           payment_amount?: number | null
           payment_status?: string
@@ -7851,6 +7857,15 @@ export type Database = {
       }
       rebook_group_apply: {
         Args: { _keep_keys?: Json; _new_guest_ids?: string[]; _token: string }
+        Returns: Json
+      }
+      rebook_group_manage: {
+        Args: {
+          _invoice_id?: string
+          _keep_keys?: Json
+          _new_guest_ids?: string[]
+          _token: string
+        }
         Returns: Json
       }
       recalc_cycle_split_count: {
