@@ -91,8 +91,17 @@ Both independently concluded: **the money/security/capacity/RLS *runtime* core i
 ```
 npm ci && npx tsc --noEmit && npm run lint && npm test && npm run db:rehearse:all && npm run build
 npm audit --omit=dev --audit-level=moderate          # target: clean or documented
-deno test supabase/functions/                         # NEW required job
-npx playwright test --project=chromium --project=<mobile>   # NEW PR gate
+npm run test:edge   # ✅ WIRED — deno edge-fn UNIT tests (_shared/: auth, mollie-payment-ready, names)
+npx playwright test --project=chromium --project=<mobile>   # NEW PR gate (P1 #8 — still open)
 ```
+
+> **P0 #3 deno-test status (wired 2026-06-24):** the required `edge-tests` CI job runs the
+> edge-function **unit** tests (`npm run test:edge` → `deno test supabase/functions/_shared/`). The
+> function-dir `index.test.ts` files (backup-database, create-invoice-payment, get-booking-invoice,
+> render-page, sitemap, send-priority-claim-invitation, generate-proposals) are **integration tests**:
+> they `fetch()` a *deployed* function and need `VITE_SUPABASE_*` secrets, so they are NOT in the unit
+> gate. They run locally against a deployed env; 4 currently have assertions that have drifted vs the
+> hardened deployed functions (auth error shape now `{error:'unauthorized'}`; SEO content) — reconcile
+> them in a **deployed-env smoke workflow** alongside the P1 #8 E2E/mobile gate.
 
 **Bottom line:** Two independent audits converged on the same verdict and, between them, found **8 P0s** (3 security/auth/email, 5 reliability/CI/ops) — none in the runtime money core, all in the *machinery that keeps it safe under change*. Closing them (most are 1–2 days, several are quick wins) makes this a confident GO.
