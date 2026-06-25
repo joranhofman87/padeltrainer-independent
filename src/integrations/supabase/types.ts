@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -1501,6 +1506,41 @@ export type Database = {
             columns: ["lesson_id"]
             isOneToOne: false
             referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_paid_by_guest_player_id_fkey"
+            columns: ["paid_by_guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_paid_by_player_id_fkey"
+            columns: ["paid_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_paid_by_player_id_fkey"
+            columns: ["paid_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_paid_by_player_id_fkey"
+            columns: ["paid_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_paid_by_player_id_fkey"
+            columns: ["paid_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
             referencedColumns: ["id"]
           },
           {
@@ -3106,6 +3146,7 @@ export type Database = {
           preferred_trainer_ids: string[] | null
           rating: number | null
           rating_system: string | null
+          registration_id: string | null
           sessions_per_week: number | null
           skip_reason: string | null
           status: string
@@ -3134,6 +3175,7 @@ export type Database = {
           preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
+          registration_id?: string | null
           sessions_per_week?: number | null
           skip_reason?: string | null
           status?: string
@@ -3162,6 +3204,7 @@ export type Database = {
           preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
+          registration_id?: string | null
           sessions_per_week?: number | null
           skip_reason?: string | null
           status?: string
@@ -3222,6 +3265,13 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
             referencedColumns: ["id"]
           },
         ]
@@ -3315,6 +3365,7 @@ export type Database = {
           public_token: string
           public_token_revoked_at: string | null
           rebook_group_id: string | null
+          registration_id: string | null
           sent_at: string | null
           split_count: number | null
           status: string
@@ -3352,6 +3403,7 @@ export type Database = {
           public_token?: string
           public_token_revoked_at?: string | null
           rebook_group_id?: string | null
+          registration_id?: string | null
           sent_at?: string | null
           split_count?: number | null
           status?: string
@@ -3389,6 +3441,7 @@ export type Database = {
           public_token?: string
           public_token_revoked_at?: string | null
           rebook_group_id?: string | null
+          registration_id?: string | null
           sent_at?: string | null
           split_count?: number | null
           status?: string
@@ -3469,6 +3522,13 @@ export type Database = {
             columns: ["player_id"]
             isOneToOne: false
             referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "registrations"
             referencedColumns: ["id"]
           },
           {
@@ -4715,6 +4775,78 @@ export type Database = {
         }
         Relationships: []
       }
+      registrations: {
+        Row: {
+          created_at: string
+          currency: string
+          description: string | null
+          enrollment_deadline: string | null
+          format: string
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          owner_type: string
+          price_table: Json | null
+          settings: Json
+          source_cycle_id: string
+          status: string
+          total_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          enrollment_deadline?: string | null
+          format?: string
+          id?: string
+          location_id?: string | null
+          name: string
+          owner_id: string
+          owner_type: string
+          price_table?: Json | null
+          settings?: Json
+          source_cycle_id: string
+          status?: string
+          total_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          enrollment_deadline?: string | null
+          format?: string
+          id?: string
+          location_id?: string | null
+          name?: string
+          owner_id?: string
+          owner_type?: string
+          price_table?: Json | null
+          settings?: Json
+          source_cycle_id?: string
+          status?: string
+          total_price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registrations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registrations_source_cycle_id_fkey"
+            columns: ["source_cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_tag_selections: {
         Row: {
           created_at: string
@@ -5070,6 +5202,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "slot_priority_claims_booked_by_guest_player_id_fkey"
+            columns: ["booked_by_guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_booked_by_player_id_fkey"
+            columns: ["booked_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_booked_by_player_id_fkey"
+            columns: ["booked_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_booked_by_player_id_fkey"
+            columns: ["booked_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_booked_by_player_id_fkey"
+            columns: ["booked_by_player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "slot_priority_claims_booking_id_fkey"
             columns: ["booking_id"]
@@ -7387,7 +7554,11 @@ export type Database = {
         Returns: string
       }
       bump_rebook_reminders: {
-        Args: { p_guest_ids: string[]; p_player_ids: string[]; p_slot_ids: string[] }
+        Args: {
+          p_guest_ids: string[]
+          p_player_ids: string[]
+          p_slot_ids: string[]
+        }
         Returns: undefined
       }
       check_enrichment_job_status: { Args: never; Returns: Json }
@@ -8110,4 +8281,3 @@ export const Constants = {
     },
   },
 } as const
-
