@@ -3314,6 +3314,7 @@ export type Database = {
           prices_include_vat: boolean
           public_token: string
           public_token_revoked_at: string | null
+          rebook_group_id: string | null
           sent_at: string | null
           split_count: number | null
           status: string
@@ -3350,6 +3351,7 @@ export type Database = {
           prices_include_vat?: boolean
           public_token?: string
           public_token_revoked_at?: string | null
+          rebook_group_id?: string | null
           sent_at?: string | null
           split_count?: number | null
           status?: string
@@ -3386,6 +3388,7 @@ export type Database = {
           prices_include_vat?: boolean
           public_token?: string
           public_token_revoked_at?: string | null
+          rebook_group_id?: string | null
           sent_at?: string | null
           split_count?: number | null
           status?: string

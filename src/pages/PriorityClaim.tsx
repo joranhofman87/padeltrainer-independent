@@ -258,6 +258,7 @@ export default function PriorityClaimPage() {
               group={group}
               paymentMode={paymentMode}
               mode={groupMode}
+              invoiceId={group.group_invoice_id ?? undefined}
               onBack={() => setGroupMode(null)}
               onDone={onGroupDone}
             />

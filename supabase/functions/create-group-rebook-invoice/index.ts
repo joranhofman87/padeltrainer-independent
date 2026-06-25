@@ -18,6 +18,8 @@ const corsHeaders = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
 
+interface GroupInvoice { id: string; public_token: string; status: string }
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -25,6 +27,33 @@ serve(async (req: Request) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const admin = createClient(supabaseUrl, serviceKey);
     const serviceAuth = { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
+
+    /** The single active (non-cancelled) invoice tagged to this group, or null. The unique partial
+     *  index on invoices(rebook_group_id) WHERE status<>'cancelled' guarantees at most one. */
+    const activeGroupInvoice = async (groupId: string): Promise<GroupInvoice | null> => {
+      const { data } = await admin
+        .from("invoices")
+        .select("id, public_token, status")
+        .eq("rebook_group_id", groupId)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data as GroupInvoice | null)?.public_token ? (data as GroupInvoice) : null;
+    };
+
+    /** Best-effort Mollie checkout for an UNPAID invoice (paid invoices need none; the client falls
+     *  back to the /pay/:token bank-transfer page with the same publicToken). */
+    const startCheckout = async (inv: GroupInvoice): Promise<string | undefined> => {
+      if (inv.status === "paid") return undefined;
+      try {
+        const { data: pay } = await admin.functions.invoke("create-invoice-payment", {
+          body: { publicToken: inv.public_token, invoiceId: inv.id },
+          headers: serviceAuth,
+        });
+        return (pay as { paymentUrl?: string })?.paymentUrl;
+      } catch (_) { return undefined; }
+    };
 
     const { token } = await req.json();
     if (!token || typeof token !== "string") return json({ ok: false, error: "token is required" }, 400);
@@ -37,6 +66,17 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (!claim) return json({ ok: false, error: "claim_not_found" }, 404);
     if (!claim.rebook_group_id) return json({ ok: false, reason: "not_a_group" });
+
+    // DOUBLE-PAY GUARD (sequential): the rebooking invite goes to EVERY group member, so any of them
+    // can click "pay for the group". If this group already has an active invoice (someone paid-first,
+    // or this caller returning), hand THAT one back — never mint a second. The unique partial index
+    // on invoices(rebook_group_id) WHERE status<>'cancelled' makes a 2nd active invoice impossible.
+    const existing = await activeGroupInvoice(claim.rebook_group_id);
+    if (existing) {
+      const checkoutUrl = await startCheckout(existing);
+      return json({ ok: true, alreadyStarted: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status, checkoutUrl });
+    }
+
     if (claim.status !== "pending") return json({ ok: false, reason: "already_responded", status: claim.status });
 
     // 1) Book ONLY the captain's own seat (group accept filters to the captain's player); the
@@ -70,28 +110,50 @@ serve(async (req: Request) => {
       return json({ ok: false, reason: (aci as { reason?: string })?.reason ?? "business_incomplete" });
     }
 
-    // 4) Read back the invoice + its public pay token (handles fresh + deduped re-runs).
-    const { data: invoice } = await admin
+    // 4) Read back the invoice + its public pay token (handles fresh + deduped re-runs). Scope to
+    //    the captain's recipient identity — the captain's bookings are theirs alone, so this can
+    //    only ever match the invoice we just minted, never another member's.
+    let rb = admin
       .from("invoices")
       .select("id, public_token, status")
       .overlaps("booking_ids", bookingIds)
       .neq("status", "cancelled")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    rb = claim.player_id ? rb.eq("player_id", claim.player_id) : rb.eq("guest_player_id", claim.guest_player_id!);
+    const { data: invoice } = await rb.maybeSingle();
     if (!invoice?.public_token) return json({ ok: false, reason: "no_invoice" });
 
-    // 5) Create the Mollie checkout (best-effort). If unavailable, the client falls back to the
-    //    /pay/:token bank-transfer page with the same publicToken.
-    let checkoutUrl: string | undefined;
-    try {
-      const { data: pay } = await admin.functions.invoke("create-invoice-payment", {
-        body: { publicToken: invoice.public_token, invoiceId: invoice.id },
-        headers: serviceAuth,
-      });
-      checkoutUrl = (pay as { paymentUrl?: string })?.paymentUrl;
-    } catch (_) { /* fall through to the invoice/bank-transfer page */ }
+    // 5) Tag the invoice to the group → discoverable by the double-pay guard + trips the unique
+    //    partial index if a concurrent payer already won. On conflict (or any tag error): cancel our
+    //    duplicate, undo the seat we just booked (back to pending so this member can pay the winning
+    //    invoice instead), and hand back the winner — so exactly ONE invoice is ever payable.
+    const { error: tagErr } = await admin.from("invoices")
+      .update({ rebook_group_id: claim.rebook_group_id }).eq("id", invoice.id);
+    if (tagErr) {
+      // Lost the unique-index race (or a transient tag error). Our just-minted invoice must NEVER be
+      // payable. Cancel it and VERIFY that succeeded before handing out any pay link — if the cancel
+      // fails we surface an error and never expose this invoice's token (it stays dormant, link-less).
+      const { error: cancelErr } = await admin.from("invoices")
+        .update({ status: "cancelled" }).eq("id", invoice.id);
+      if (cancelErr) return json({ ok: false, reason: "mint_conflict", message: String(cancelErr) });
+      // Best-effort: release the seat we just booked so this member can pay the winning invoice.
+      await admin.from("bookings").update({ status: "cancelled" }).in("id", bookingIds);
+      await admin.from("slot_priority_claims")
+        .update({ status: "pending", booking_id: null, responded_at: null })
+        .eq("rebook_group_id", claim.rebook_group_id).in("booking_id", bookingIds);
+      // Hand back the winner if it's already tagged; otherwise the client retries → the guard wins.
+      const winner = await activeGroupInvoice(claim.rebook_group_id);
+      if (winner) {
+        const checkoutUrl = await startCheckout(winner);
+        return json({ ok: true, alreadyStarted: true, invoiceId: winner.id, publicToken: winner.public_token, status: winner.status, checkoutUrl });
+      }
+      return json({ ok: false, reason: "retry" });
+    }
 
+    // 6) Create the Mollie checkout (best-effort). If unavailable, the client falls back to the
+    //    /pay/:token bank-transfer page with the same publicToken.
+    const checkoutUrl = await startCheckout(invoice as GroupInvoice);
     return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status, checkoutUrl });
   } catch (e) {
     const message = String((e as Error)?.message ?? e);

@@ -564,6 +564,8 @@ export interface RebookGroup {
   can_rebook_group: boolean;
   /** True once the captain has PAID their group seat — they may then assign/change the roster. */
   can_manage_group?: boolean;
+  /** The single active group invoice (upfront) — manage links covered teammates onto it. */
+  group_invoice_id?: string | null;
   self_key: string;
   slot: Record<string, unknown>;
   sessions: number;
@@ -624,6 +626,8 @@ export async function applyRebookGroup(token: string, args: {
 export interface GroupRebookInvoiceResult {
   ok: boolean;
   reason?: string;
+  /** True when the group already had an active invoice — the caller is sent to THAT one, not a 2nd. */
+  alreadyStarted?: boolean;
   invoiceId?: string;
   publicToken?: string;
   status?: string;
