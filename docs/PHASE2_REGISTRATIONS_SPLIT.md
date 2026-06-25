@@ -42,6 +42,17 @@ The public form URL is built in **`src/lib/cycleRegistrationUrl.ts`** (single he
 - **Owner action after deploy:** regenerate the QR codes / re-share the new links for the live forms (the app now emits the new canonical URL); old printed QR codes continue to work via the redirect.
 
 ## Step 3 — Backfill (ONE transaction, self-rolling-back)
+
+> **⚠️ SUPERSEDED — do not run the SQL in this section.** The hardened, adversarially-reviewed cutover
+> now lives in **[`PHASE2_STEP3_CUTOVER.sql`](./PHASE2_STEP3_CUTOVER.sql)** with its operational
+> **[`PHASE2_STEP3_RUNBOOK.md`](./PHASE2_STEP3_RUNBOOK.md)** (pre-flight + GO gate + open questions).
+> It is intentionally NOT a tracked migration (run by hand, once, after the deploy gate). The block
+> below is kept only as the conceptual draft; the hardened version adds: content-checksum tripwires on
+> bookings/slots, re-run-safe verification (state invariant, not delta-equality), a `name IS NOT NULL`
+> guard symmetric across INSERT + the type-flip (no orphaned forms), `currency` COALESCE, a NULL-named
+> slot-owner hard-abort gate, and two pre-flight blocker canaries (NULL-named slot owners;
+> `price_per_session`-only paid forms).
+
 Run as a single `BEGIN … COMMIT` with verification before COMMIT; any mismatch → `ROLLBACK` (zero data loss, no restore needed). Backup snapshot taken first as the catastrophic backstop.
 
 ```sql
