@@ -67,6 +67,32 @@ interface SlotRow {
   academy_profile_id: string | null;
 }
 
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Personalization tokens — same set the reminder + invoice emails use.
+const substituteVars = (text: string, fullName: string) => {
+  const full = (fullName || "").trim();
+  const first = full.split(/\s+/)[0] || full;
+  const last = full.includes(" ") ? full.slice(full.indexOf(" ") + 1).trim() : "";
+  return text
+    .replace(/\{first_name\}/g, first)
+    .replace(/\{last_name\}/g, last)
+    .replace(/\{full_name\}/g, full);
+};
+
+// The academy's optional custom message → escaped, token-substituted paragraphs (or ''
+// when none). Substitute BEFORE escaping so an injected name is escaped too.
+const renderCustomMessage = (message: string, fullName: string): string => {
+  const msg = (message || "").trim();
+  if (!msg) return "";
+  const paras = substituteVars(msg, fullName)
+    .split("\n")
+    .map((line) => `<p style="color:#374151;line-height:1.6;margin:0 0 8px;">${escapeHtml(line)}</p>`)
+    .join("");
+  return `<div style="background:#ffffff;border-left:3px solid #f45d25;padding:8px 0 8px 14px;margin:16px 0;">${paras}</div>`;
+};
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -106,13 +132,16 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const body = await req.json();
-    const { claimIds, slotId, testEmail, resend } = body as {
+    const { claimIds, slotId, testEmail, resend, customMessage } = body as {
       claimIds?: string[];
       slotId?: string;
       testEmail?: string;
       resend?: boolean;
+      customMessage?: string;
     };
     const isTest = !!testEmail;
+    // Optional academy-authored intro injected at the top of every invite (escaped + tokenized).
+    const inviteMessage = typeof customMessage === "string" ? customMessage.trim().slice(0, 2000) : "";
 
     if (!(claimIds && claimIds.length) && !slotId) {
       return new Response(JSON.stringify({ error: "claimIds or slotId required" }), {
@@ -323,6 +352,7 @@ const handler = async (req: Request): Promise<Response> => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color:#1a1a1a;">
           <h2 style="margin:0 0 12px;">Hou je je vaste plek?${slot.cyclus_name ? ` (${slot.cyclus_name})` : ""}</h2>
           <p style="color:#374151;line-height:1.6;">${recipientName ? `Hi ${recipientName},` : "Hi,"}</p>
+          ${renderCustomMessage(inviteMessage, recipientName)}
           <p style="color:#374151;line-height:1.6;">Je hebt voorrang om je vaste plek voor de volgende cyclus te houden. Laat ons weten of je doorgaat.</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0;">
             <div style="font-weight:600;">${fmtDate}</div>

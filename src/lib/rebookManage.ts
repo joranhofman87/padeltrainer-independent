@@ -20,6 +20,8 @@ export interface RebookManagePlayer {
   response: 'claimed' | 'pending' | 'declined';
   paid: boolean;
   hasInvoice: boolean;
+  /** When this invitee was last sent a rebook reminder (max across their claims). */
+  lastRemindedAt: string | null;
 }
 
 export interface RebookManageGroup {
@@ -38,6 +40,9 @@ export interface RebookManageGroup {
 
 export interface RebookManageData {
   cycleName: string;
+  /** The academy's saved invite message for this round (cycles.settings.rebook_invitation_message);
+   *  used to pre-fill the reminder composer. '' when none was set. */
+  invitationMessage: string;
   groups: RebookManageGroup[];
   counts: Record<GroupStatus, number>;
   paidCount: number;
@@ -88,15 +93,20 @@ function claimsStateOf(responses: Array<'claimed' | 'pending' | 'declined'>): Cl
 
 export async function getCycleRebookStatus(cycleId: string): Promise<RebookManageData> {
   const [{ data: cycle }, { data: slots }] = await Promise.all([
-    supabase.from('cycles').select('name').eq('id', cycleId).maybeSingle(),
+    supabase.from('cycles').select('name, settings').eq('id', cycleId).maybeSingle(),
     supabase
       .from('availability_slots')
       .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at')
       .eq('cyclus_id', cycleId),
   ]);
+  const invitationMessage = (() => {
+    const s = (cycle?.settings ?? null) as { rebook_invitation_message?: unknown } | null;
+    return typeof s?.rebook_invitation_message === 'string' ? s.rebook_invitation_message : '';
+  })();
   const slotRows = (slots ?? []) as SlotRow[];
   const empty: RebookManageData = {
     cycleName: cycle?.name ?? '',
+    invitationMessage,
     groups: [],
     counts: { rebooked: 0, awaiting: 0, declined: 0, members: 0, public: 0 },
     paidCount: 0,
@@ -109,7 +119,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const [{ data: claims }, { data: invoices }] = await Promise.all([
     supabase
       .from('slot_priority_claims')
-      .select('id, slot_id, player_id, guest_player_id, status, rebook_group_id')
+      .select('id, slot_id, player_id, guest_player_id, status, rebook_group_id, reminded_at')
       .in('slot_id', slotIds),
     supabase
       .from('invoices')
@@ -122,6 +132,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     guest_player_id: string | null;
     status: string;
     rebook_group_id: string | null;
+    reminded_at: string | null;
   }>;
 
   // Names.
@@ -169,7 +180,14 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         response: resp,
         paid: paidKeys.has(pk),
         hasInvoice: invoicedKeys.has(pk),
+        lastRemindedAt: existing?.lastRemindedAt ?? null,
       });
+    }
+    // Accumulate the most-recent reminder across this player's claims, independent of
+    // which claim won the response rank above.
+    const cur = g.players.get(pk)!;
+    if (c.reminded_at && (!cur.lastRemindedAt || new Date(c.reminded_at) > new Date(cur.lastRemindedAt))) {
+      cur.lastRemindedAt = c.reminded_at;
     }
   }
 
@@ -225,7 +243,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const paidCount = allPlayers.filter((p) => p.paid).length;
   const unpaidCount = allPlayers.filter((p) => p.response === 'claimed' && !p.paid).length;
 
-  return { cycleName: cycle?.name ?? '', groups, counts, paidCount, unpaidCount };
+  return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, paidCount, unpaidCount };
 }
 
 // ===== Bulk levers (resilient, per-slot) =====

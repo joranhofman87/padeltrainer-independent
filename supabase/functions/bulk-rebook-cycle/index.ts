@@ -144,6 +144,11 @@ serve(async (req) => {
     const sessionPrice: number | null = body?.sessionPrice == null || body?.sessionPrice === ""
       ? null
       : Number(body.sessionPrice);
+    // Optional academy-authored message injected into each invite email + saved on the cycle
+    // (so a later reminder can pre-fill it). Escaped + token-substituted by send-priority-claim-invitation.
+    const invitationMessage: string = typeof body?.invitationMessage === "string"
+      ? body.invitationMessage.trim().slice(0, 2000)
+      : "";
 
     if (!newStartDate || (!sourceCyclusId && (!academyProfileId || locationIds.length === 0 || !termEndDate))) {
       return new Response(JSON.stringify({ error: "newStartDate plus either sourceCyclusId, or academyProfileId + locationIds + termEndDate, are required" }), {
@@ -442,7 +447,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null },
+        settings: { rebook_payment_mode: paymentMode, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null },
       })
       .select("id, name")
       .single();
@@ -588,7 +593,7 @@ serve(async (req) => {
       for (let i = 0; i < representativeClaimIds.length; i += 50) {
         const batch = representativeClaimIds.slice(i, i + 50);
         const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
-          body: { claimIds: batch },
+          body: { claimIds: batch, customMessage: invitationMessage || undefined },
         });
         if (error || !data) {
           // The whole invocation failed — none of this batch was emailed.
