@@ -17,6 +17,7 @@ import { Calendar, Clock, AlertCircle, MapPin, Building2, User } from 'lucide-re
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { getRegistration, registrationToCycle } from '@/lib/registrations';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
@@ -64,9 +65,22 @@ export default function CycleRegistration() {
     setIsLoading(true);
     setLoadFailed(false);
     try {
-      // Fetch cycle — getCycle resolves null only on a definitive "no such
-      // row"; failed requests (network/5xx) throw and surface the retry state.
-      const cycleData = await getCycle(cycleId);
+      // Dual-read (registration↔cycle split): a registration FORM now lives in its own
+      // `registrations` table, but the URL param may be either the registration's own id
+      // (canonical) or the legacy source-cycle id (already-shared links + printed QR codes).
+      // getRegistration resolves both; if we matched via the legacy id, redirect to the
+      // canonical /register/:registrationId. When no registration exists (pre-backfill, or a
+      // plain cyclus/event still on `cycles`), fall back to getCycle — unchanged behaviour.
+      const reg = await getRegistration(cycleId);
+      if (reg && reg.id !== cycleId) {
+        navigate(window.location.pathname.replace(cycleId, reg.id) + window.location.search, {
+          replace: true,
+        });
+        return;
+      }
+      // getCycle resolves null only on a definitive "no such row"; failed requests
+      // (network/5xx) throw and surface the retry state.
+      const cycleData = reg ? registrationToCycle(reg) : await getCycle(cycleId);
       if (!cycleData) {
         setCycle(null);
         return;
@@ -229,7 +243,7 @@ export default function CycleRegistration() {
     } finally {
       setIsLoading(false);
     }
-  }, [cycleId, user]);
+  }, [cycleId, user, navigate]);
 
   useEffect(() => {
     fetchData();
@@ -383,12 +397,14 @@ export default function CycleRegistration() {
               
               {/* Meta info */}
               <div className="flex flex-wrap gap-x-4 gap-y-2">
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
-                  <span>
-                    {format(new Date(cycle.start_date), 'MMM d')} - {format(new Date(cycle.end_date), 'MMM d, yyyy')}
-                  </span>
-                </div>
+                {cycle.start_date && cycle.end_date && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    <span>
+                      {format(new Date(cycle.start_date), 'MMM d')} - {format(new Date(cycle.end_date), 'MMM d, yyyy')}
+                    </span>
+                  </div>
+                )}
                 {cycle.enrollment_deadline && (
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Clock className="h-4 w-4" />

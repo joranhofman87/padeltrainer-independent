@@ -2,17 +2,51 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const maybeSingle = vi.fn();
 const order = vi.fn();
-// Chainable builder: select/eq return the chain; maybeSingle/order are the terminal resolvers.
+const inFn = vi.fn();
+// Chainable builder: select/eq return the chain; maybeSingle/order/in are the terminal resolvers.
 const chain = {
   select: () => chain,
   eq: () => chain,
   order: (...a: unknown[]) => order(...a),
+  in: (...a: unknown[]) => inFn(...a),
   maybeSingle: () => maybeSingle(),
 } as const;
 
 vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => chain } }));
+// listRegistrationCycles delegates the legacy half to getCyclesWithCounts — stub it so the test
+// exercises only the merge/dedupe/count logic.
+vi.mock('@/lib/cycles', () => ({ getCyclesWithCounts: vi.fn() }));
 
-import { getRegistration, listRegistrations } from '@/lib/registrations';
+import {
+  getRegistration,
+  listRegistrations,
+  registrationToCycle,
+  listRegistrationCycles,
+  type Registration,
+} from '@/lib/registrations';
+import { getCyclesWithCounts } from '@/lib/cycles';
+
+const baseReg = (over: Partial<Registration> = {}): Registration => ({
+  id: 'r1',
+  source_cycle_id: 'c1',
+  owner_type: 'academy',
+  owner_id: 'a1',
+  format: 'registration',
+  name: 'Zomer 2026',
+  description: null,
+  start_date: '2026-04-01',
+  end_date: '2026-06-24',
+  enrollment_deadline: null,
+  status: 'open',
+  total_price: 120,
+  currency: 'EUR',
+  price_table: [{ label: 'Duo', price: 60 }],
+  location_id: 'loc1',
+  settings: { payment_methods: 'online' },
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-02T00:00:00Z',
+  ...over,
+});
 
 describe('registrations lib', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -49,5 +83,43 @@ describe('registrations lib', () => {
   it('listRegistrations throws on error', async () => {
     order.mockResolvedValueOnce({ data: null, error: { message: 'boom' } });
     await expect(listRegistrations('academy', 'a1')).rejects.toBeTruthy();
+  });
+
+  it('registrationToCycle maps the form onto the source cycle id + format→type', () => {
+    const c = registrationToCycle(baseReg());
+    expect(c.id).toBe('c1'); // SOURCE cycle id, not the registration id — drives intake.cycle_id
+    expect(c.type).toBe('registration'); // format → type
+    expect(c.total_price).toBe(120);
+    expect(c.price_table).toEqual([{ label: 'Duo', price: 60 }]);
+    expect(c.start_date).toBe('2026-04-01'); // span carried → per-lesson (price × weeks) stays correct
+    expect(c.end_date).toBe('2026-06-24');
+    expect(c.location_id).toBe('loc1');
+    expect((c.settings as Record<string, unknown>).payment_methods).toBe('online');
+  });
+
+  it('registrationToCycle tolerates an event with no price_table', () => {
+    const c = registrationToCycle(baseReg({ format: 'event', price_table: null }));
+    expect(c.type).toBe('event');
+    expect(c.price_table).toBeNull();
+  });
+
+  it('listRegistrationCycles dedupes by source cycle id (migrated registration wins) + counts intakes', async () => {
+    // Legacy half: one un-migrated cycle (cOld) + one cycle (c1) that has ALSO been migrated.
+    vi.mocked(getCyclesWithCounts).mockResolvedValueOnce([
+      { id: 'cOld', type: 'event', created_at: '2026-03-01T00:00:00Z', _intakeCount: 2 },
+      { id: 'c1', type: 'registration', created_at: '2026-01-01T00:00:00Z', _intakeCount: 99 },
+    ] as never);
+    // Registrations half: the migrated form for c1.
+    order.mockResolvedValueOnce({ data: [baseReg({ id: 'r1', source_cycle_id: 'c1' })], error: null });
+    // Intake count for the migrated source cycle c1 → two rows.
+    inFn.mockResolvedValueOnce({ data: [{ cycle_id: 'c1' }, { cycle_id: 'c1' }], error: null });
+
+    const rows = await listRegistrationCycles('academy', 'a1');
+
+    // c1 appears ONCE (the migrated registration, not the legacy duplicate); cOld stays.
+    expect(rows.map((r) => r.id).sort()).toEqual(['c1', 'cOld']);
+    const c1 = rows.find((r) => r.id === 'c1')!;
+    expect(c1.type).toBe('registration'); // from the mapped registration, not the legacy '99' row
+    expect(c1._intakeCount).toBe(2); // counted from intake_requests, not the stale legacy count
   });
 });

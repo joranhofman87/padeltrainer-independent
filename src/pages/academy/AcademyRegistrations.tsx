@@ -5,7 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
-import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
+import { type Cycle } from '@/lib/cycles';
+import { listRegistrationCycles } from '@/lib/registrations';
 import CyclesTable from '@/components/cycles/CyclesTable';
 import RebookRoundsSection from '@/components/cycles/RebookRoundsSection';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
@@ -56,7 +57,7 @@ export default function AcademyRegistrations() {
     if (!activeAcademy) return;
     setIsLoading(true);
     try {
-      const data = await getCyclesWithCounts('academy', activeAcademy.id, ['registration', 'event']);
+      const data = await listRegistrationCycles('academy', activeAcademy.id);
       setCycles(data);
     } catch (error) {
       logger.error('Error fetching cycles', error as Error, { component: 'AcademyRegistrations' });

@@ -47,18 +47,24 @@ Run as a single `BEGIN … COMMIT` with verification before COMMIT; any mismatch
 ```sql
 BEGIN;
 
--- (a) one registrations row per registration/event cycle (copy form config; source_cycle_id back-ref)
+-- (a) one registrations row per registration/event cycle (copy form config; source_cycle_id back-ref).
+-- start_date/end_date are copied too (added in 20260628100100): per-lesson forms price as
+-- (price × weeks) where weeks falls back to the start→end span, so the span must travel with the form
+-- or post-backfill those forms preview + charge €0. Also copy created_at so list ordering is preserved.
 INSERT INTO public.registrations (id, source_cycle_id, owner_type, owner_id, format, name, description,
-       enrollment_deadline, status, total_price, currency, price_table, location_id, settings)
+       start_date, end_date, enrollment_deadline, status, total_price, currency, price_table, location_id,
+       settings, created_at)
 SELECT gen_random_uuid(), c.id, c.owner_type, c.owner_id, c.type, c.name, c.description,
-       c.enrollment_deadline, c.status, c.total_price, c.currency, c.price_table, c.location_id,
+       c.start_date, c.end_date, c.enrollment_deadline, c.status, c.total_price, c.currency,
+       c.price_table, c.location_id,
        -- copy only the FORM keys out of cycles.settings (training keys stay on the cycle):
        (select jsonb_object_agg(k, c.settings->k) from unnest(ARRAY[
           'lesson_types','custom_lesson_types','show_preferred_trainer','show_price_indication',
           'cyclus_options','duration_options','available_duration_minutes','price_columns',
           'prices_include_vat','success_message','confirmation_email_text','payment_methods',
           'min_skill_rating','max_skill_rating','applicable_trainer_ids'
-       ]) k where c.settings ? k)
+       ]) k where c.settings ? k),
+       c.created_at
 FROM public.cycles c
 WHERE c.type IN ('registration','event')
   AND NOT EXISTS (SELECT 1 FROM public.registrations r WHERE r.source_cycle_id = c.id);  -- idempotent

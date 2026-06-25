@@ -406,6 +406,42 @@ Deno.serve(async (req) => {
       console.error("Auto-follow failed (non-blocking):", followErr);
     }
 
+    // Registration↔cycle split: the public FORM may now live in its own `registrations` row
+    // (the source cycle then becomes a plain training cycle, type='cyclus'). Resolve it by
+    // source_cycle_id so paid registrations keep minting and the invoice links to the
+    // registration. Pre-backfill (no row) we fall back to the legacy cycle — unchanged behaviour.
+    let registration: Record<string, any> | null = null;
+    try {
+      const { data } = await adminClient
+        .from("registrations")
+        .select("id, source_cycle_id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
+        .eq("source_cycle_id", cycleId)
+        .maybeSingle();
+      registration = (data as Record<string, any> | null) ?? null;
+    } catch (regErr) {
+      console.error("registration lookup failed (non-blocking):", regErr);
+    }
+    // The object the payment path reads pricing + payment_methods from: the canonical
+    // registration form when present, else the legacy cycle.
+    const formForPayment: RegistrationInvoiceCycle | null = registration
+      ? {
+          id: registration.source_cycle_id,
+          owner_type: registration.owner_type,
+          owner_id: registration.owner_id,
+          name: registration.name,
+          type: registration.format,
+          total_price: registration.total_price ?? null,
+          price_per_session: null,
+          price_table: registration.price_table ?? null,
+          currency: registration.currency ?? null,
+          settings: (registration.settings as Record<string, unknown> | null) ?? null,
+          // The training span drives (price × weeks) per-lesson pricing — carried on the
+          // registration so the charge stays correct after the source cycle becomes type='cyclus'.
+          start_date: registration.start_date ?? null,
+          end_date: registration.end_date ?? null,
+        }
+      : (cycleData as RegistrationInvoiceCycle | null);
+
     // Mint a payable invoice for paid event registrations and reuse the existing
     // Mollie invoice flow. Non-blocking: a mint failure never fails the
     // registration (it stays saved, just unpaid). `paymentInfo` feeds the
@@ -416,19 +452,19 @@ Deno.serve(async (req) => {
       | null = null;
     let emailPayUrl: string | undefined;
     try {
-      const method = cycleData
+      const method = formForPayment
         ? resolveEffectivePaymentMethod(
-            (cycleData.settings as Record<string, unknown> | null)?.payment_methods as
+            (formForPayment.settings as Record<string, unknown> | null)?.payment_methods as
               | "online" | "cash" | "both" | undefined,
             paymentMethod,
           )
         : null;
-      if (cycleData && (cycleData.type === "event" || cycleData.type === "registration") && method) {
+      if (formForPayment && (formForPayment.type === "event" || formForPayment.type === "registration") && method) {
         const md = (metadata ?? undefined) as Record<string, unknown> | undefined;
         const selectedOption = md?.selected_cyclus_option as Record<string, unknown> | undefined;
         const result = await mintEventRegistrationInvoice(
           adminClient,
-          cycleData as RegistrationInvoiceCycle,
+          formForPayment,
           {
             player_id: playerId,
             guest_player_id: guestPlayerId,
@@ -440,6 +476,7 @@ Deno.serve(async (req) => {
             cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
             durationWeeks: md?.preferred_number_of_weeks,
           },
+          registration?.id ?? null,
         );
         if (result.ok) {
           await adminClient
