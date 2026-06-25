@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,18 +18,27 @@ interface Props {
   invoiceIds: string[];
   language: string;
   onSent: () => void;
+  /** Pre-fill the message with the academy's saved default. */
+  defaultMessage?: string;
+  /** Persist the current message as the account default (parent owns the write). */
+  onSaveDefault?: (message: string) => void;
 }
 
-export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, onSent }: Props) {
+export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, onSent, defaultMessage = "", onSaveDefault }: Props) {
   const { t } = useTranslation("academy");
   const { user } = useAuth();
-  const [customMessage, setCustomMessage] = useState("");
+  const [customMessage, setCustomMessage] = useState(defaultMessage);
   const [markAsSent, setMarkAsSent] = useState(true);
   const [sending, setSending] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [testSending, setTestSending] = useState(false);
+
+  // Re-seed from the saved default each time the dialog opens.
+  useEffect(() => {
+    if (open) setCustomMessage(defaultMessage);
+  }, [open, defaultMessage]);
 
   const handlePreview = async () => {
     if (invoiceIds.length === 0) return;
@@ -184,6 +193,8 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
                 "Hi {first_name},\n\nHere is your invoice. Let me know if you have any questions.\n\nThanks!"
               )}
               variablesHelp={t("invoices.bulk.variablesHelp", "Insert variable:")}
+              onSaveDefault={onSaveDefault ? () => onSaveDefault(customMessage) : undefined}
+              saveDefaultLabel={t("invoices.bulk.saveAsDefault", "Save as default")}
             />
 
             <div className="flex items-center gap-2">

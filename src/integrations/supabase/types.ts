@@ -661,6 +661,7 @@ export type Database = {
           iban: string | null
           id: string
           invoice_banner_color: string | null
+          invoice_email_message: string | null
           invoice_forward_emails: string[] | null
           invoice_include_year: boolean
           invoice_language: string
@@ -715,6 +716,7 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_banner_color?: string | null
+          invoice_email_message?: string | null
           invoice_forward_emails?: string[] | null
           invoice_include_year?: boolean
           invoice_language?: string
@@ -769,6 +771,7 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_banner_color?: string | null
+          invoice_email_message?: string | null
           invoice_forward_emails?: string[] | null
           invoice_include_year?: boolean
           invoice_language?: string
