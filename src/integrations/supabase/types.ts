@@ -4780,6 +4780,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          end_date: string | null
           enrollment_deadline: string | null
           format: string
           id: string
@@ -4790,6 +4791,7 @@ export type Database = {
           price_table: Json | null
           settings: Json
           source_cycle_id: string
+          start_date: string | null
           status: string
           total_price: number | null
           updated_at: string
@@ -4798,6 +4800,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          end_date?: string | null
           enrollment_deadline?: string | null
           format?: string
           id?: string
@@ -4808,6 +4811,7 @@ export type Database = {
           price_table?: Json | null
           settings?: Json
           source_cycle_id: string
+          start_date?: string | null
           status?: string
           total_price?: number | null
           updated_at?: string
@@ -4816,6 +4820,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          end_date?: string | null
           enrollment_deadline?: string | null
           format?: string
           id?: string
@@ -4826,6 +4831,7 @@ export type Database = {
           price_table?: Json | null
           settings?: Json
           source_cycle_id?: string
+          start_date?: string | null
           status?: string
           total_price?: number | null
           updated_at?: string
