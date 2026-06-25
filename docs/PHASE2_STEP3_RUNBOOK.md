@@ -55,6 +55,44 @@ The `registrations` rows + additive `registration_id` columns are harmless to le
 
 ---
 
+## Optional: export outstanding invoices (extra before/after double-check)
+
+Belt-and-suspenders on top of the in-transaction amount guard (check 1c). Run in the Supabase SQL editor and **Download CSV**, once BEFORE the cutover and once AFTER — every amount must match; only `registration_id` changes (NULL → filled).
+
+```sql
+-- (1) the invoices the cutover actually touches (outstanding registration/event invoices)
+SELECT
+  i.invoice_number, i.status,
+  i.total, i.subtotal, i.vat_amount, i.vat_rate, i.currency,
+  i.invoice_date, i.due_date, i.player_name,
+  i.cycle_id, c.name AS cycle_name, c.type AS cycle_type,
+  i.registration_id, i.id AS invoice_id
+FROM invoices i
+JOIN cycles c ON c.id = i.cycle_id
+WHERE i.cycle_id IS NOT NULL
+  AND c.type IN ('registration','event')
+  AND i.status NOT IN ('paid','cancelled')
+ORDER BY i.invoice_number;
+
+-- (2) ALL outstanding invoices (broader AR snapshot)
+SELECT
+  i.invoice_number, i.status, i.total, i.subtotal, i.vat_amount, i.vat_rate,
+  i.currency, i.invoice_date, i.due_date, i.player_name,
+  i.cycle_id, i.registration_id, i.id AS invoice_id
+FROM invoices i
+WHERE i.status NOT IN ('paid','cancelled')
+ORDER BY i.invoice_number;
+
+-- (3) one-line totals — fastest before/after compare
+SELECT count(*) AS outstanding_count, sum(total) AS sum_total,
+       sum(subtotal) AS sum_subtotal, sum(vat_amount) AS sum_vat
+FROM invoices WHERE status NOT IN ('paid','cancelled');
+```
+
+(Drop the `status NOT IN ('paid','cancelled')` filter to capture the full ledger incl. paid — the cutover guard locks every invoice's amount regardless of status.)
+
+---
+
 ## PRE-FLIGHT SQL (read-only — run FIRST, writes nothing)
 
 ```sql
