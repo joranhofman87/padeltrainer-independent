@@ -92,8 +92,55 @@ serve(async (req: Request) => {
       .single<RegistrationInvoiceCycle>();
     if (!cycle) return json({ error: "Cycle not found" }, 404);
 
+    // Registration↔cycle split: prefer the canonical `registrations` form (resolved by
+    // source_cycle_id) for pricing + payment config so paid registrations keep minting after the
+    // source cycle becomes type='cyclus'; fall back to the legacy cycle pre-backfill.
+    type RegistrationRow = {
+      id: string;
+      source_cycle_id: string;
+      owner_type: string;
+      owner_id: string;
+      format: string;
+      name: string;
+      total_price: number | null;
+      price_table: RegistrationInvoiceCycle["price_table"];
+      currency: string | null;
+      settings: Record<string, unknown> | null;
+      start_date: string | null;
+      end_date: string | null;
+    };
+    let registration: RegistrationRow | null = null;
+    try {
+      const { data } = await admin
+        .from("registrations")
+        .select("id, source_cycle_id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
+        .eq("source_cycle_id", intake.cycle_id)
+        .maybeSingle();
+      registration = (data as RegistrationRow | null) ?? null;
+    } catch (regErr) {
+      console.error("registration lookup failed (non-blocking):", regErr);
+    }
+    const formForPayment: RegistrationInvoiceCycle = registration
+      ? {
+          id: registration.source_cycle_id,
+          owner_type: registration.owner_type,
+          owner_id: registration.owner_id,
+          name: registration.name,
+          type: registration.format,
+          total_price: registration.total_price ?? null,
+          price_per_session: null,
+          price_table: registration.price_table ?? null,
+          currency: registration.currency ?? null,
+          settings: (registration.settings as Record<string, unknown> | null) ?? null,
+          // The training span drives (price × weeks) per-lesson pricing — carried on the
+          // registration so the charge stays correct after the source cycle becomes type='cyclus'.
+          start_date: registration.start_date ?? null,
+          end_date: registration.end_date ?? null,
+        }
+      : cycle;
+
     const method = resolveEffectivePaymentMethod(
-      (cycle.settings as Record<string, unknown> | null)?.payment_methods as
+      (formForPayment.settings as Record<string, unknown> | null)?.payment_methods as
         | "online" | "cash" | "both" | undefined,
       paymentMethod,
     );
@@ -108,7 +155,7 @@ serve(async (req: Request) => {
     if (method) {
       result = await mintEventRegistrationInvoice(
         admin,
-        cycle,
+        formForPayment,
         { player_id: profile.id, guest_player_id: null, player_name: intake.full_name || profile.full_name || "Onbekend" },
         method,
         {
@@ -116,6 +163,7 @@ serve(async (req: Request) => {
           cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
           durationWeeks: md?.preferred_number_of_weeks,
         },
+        registration?.id ?? null,
       );
       if (result.ok) {
         await admin

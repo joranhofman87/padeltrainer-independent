@@ -42,23 +42,40 @@ The public form URL is built in **`src/lib/cycleRegistrationUrl.ts`** (single he
 - **Owner action after deploy:** regenerate the QR codes / re-share the new links for the live forms (the app now emits the new canonical URL); old printed QR codes continue to work via the redirect.
 
 ## Step 3 — Backfill (ONE transaction, self-rolling-back)
+
+> **⚠️ SUPERSEDED — do not run the SQL in this section.** The hardened, adversarially-reviewed cutover
+> now lives in **[`PHASE2_STEP3_CUTOVER.sql`](./PHASE2_STEP3_CUTOVER.sql)** with its operational
+> **[`PHASE2_STEP3_RUNBOOK.md`](./PHASE2_STEP3_RUNBOOK.md)** (pre-flight + GO gate + open questions).
+> It is intentionally NOT a tracked migration (run by hand, once, after the deploy gate). The block
+> below is kept only as the conceptual draft; the hardened version adds: content-checksum tripwires on
+> bookings/slots, re-run-safe verification (state invariant, not delta-equality), a `name IS NOT NULL`
+> guard symmetric across INSERT + the type-flip (no orphaned forms), `currency` COALESCE, a NULL-named
+> slot-owner hard-abort gate, and two pre-flight blocker canaries (NULL-named slot owners;
+> `price_per_session`-only paid forms).
+
 Run as a single `BEGIN … COMMIT` with verification before COMMIT; any mismatch → `ROLLBACK` (zero data loss, no restore needed). Backup snapshot taken first as the catastrophic backstop.
 
 ```sql
 BEGIN;
 
--- (a) one registrations row per registration/event cycle (copy form config; source_cycle_id back-ref)
+-- (a) one registrations row per registration/event cycle (copy form config; source_cycle_id back-ref).
+-- start_date/end_date are copied too (added in 20260628100100): per-lesson forms price as
+-- (price × weeks) where weeks falls back to the start→end span, so the span must travel with the form
+-- or post-backfill those forms preview + charge €0. Also copy created_at so list ordering is preserved.
 INSERT INTO public.registrations (id, source_cycle_id, owner_type, owner_id, format, name, description,
-       enrollment_deadline, status, total_price, currency, price_table, location_id, settings)
+       start_date, end_date, enrollment_deadline, status, total_price, currency, price_table, location_id,
+       settings, created_at)
 SELECT gen_random_uuid(), c.id, c.owner_type, c.owner_id, c.type, c.name, c.description,
-       c.enrollment_deadline, c.status, c.total_price, c.currency, c.price_table, c.location_id,
+       c.start_date, c.end_date, c.enrollment_deadline, c.status, c.total_price, c.currency,
+       c.price_table, c.location_id,
        -- copy only the FORM keys out of cycles.settings (training keys stay on the cycle):
        (select jsonb_object_agg(k, c.settings->k) from unnest(ARRAY[
           'lesson_types','custom_lesson_types','show_preferred_trainer','show_price_indication',
           'cyclus_options','duration_options','available_duration_minutes','price_columns',
           'prices_include_vat','success_message','confirmation_email_text','payment_methods',
           'min_skill_rating','max_skill_rating','applicable_trainer_ids'
-       ]) k where c.settings ? k)
+       ]) k where c.settings ? k),
+       c.created_at
 FROM public.cycles c
 WHERE c.type IN ('registration','event')
   AND NOT EXISTS (SELECT 1 FROM public.registrations r WHERE r.source_cycle_id = c.id);  -- idempotent

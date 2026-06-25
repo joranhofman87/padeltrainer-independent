@@ -19,6 +19,7 @@ import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { ProfileLayout } from '@/components/profiles/ProfileLayout';
 import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { getRegistration, registrationToCycle } from '@/lib/registrations';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
@@ -101,7 +102,18 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
               } as OwnerBranding;
             });
 
-      const cyclePromise = getCycle(cycleId);
+      // Dual-read (registration↔cycle split): resolve the FORM from the new `registrations`
+      // table by the canonical registration id OR the legacy source-cycle id (already-shared
+      // branded links + printed QR). On a legacy match, redirect to the canonical id; otherwise
+      // fall back to the cycle (pre-backfill / plain cyclus-event) — unchanged behaviour.
+      const reg = await getRegistration(cycleId);
+      if (reg && reg.id !== cycleId) {
+        navigate(window.location.pathname.replace(cycleId, reg.id) + window.location.search, {
+          replace: true,
+        });
+        return;
+      }
+      const cyclePromise = reg ? Promise.resolve(registrationToCycle(reg)) : getCycle(cycleId);
 
       const [ownerData, cycleData] = await Promise.all([ownerPromise, cyclePromise]);
 
@@ -163,7 +175,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
     } finally {
       setIsLoading(false);
     }
-  }, [cycleId, slug, ownerType]);
+  }, [cycleId, slug, ownerType, navigate]);
 
   useEffect(() => {
     fetchPublicData();

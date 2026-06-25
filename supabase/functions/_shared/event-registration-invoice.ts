@@ -102,6 +102,9 @@ export async function mintEventRegistrationInvoice(
   recipient: RegistrationInvoiceRecipient,
   method: EffectivePaymentMethod,
   selections?: RegistrationSelections,
+  // The registration↔cycle split: when the form lives in its own `registrations` row, link the
+  // invoice to it alongside cycle_id. Nullable (pre-backfill / legacy callers pass nothing).
+  registrationId?: string | null,
 ): Promise<MintResult> {
   if (cycle.type !== "event" && cycle.type !== "registration") return { ok: false, reason: "not_paid_event" };
   // v1: events/registrations are academy-owned; trainer/club are a follow-on.
@@ -249,6 +252,7 @@ export async function mintEventRegistrationInvoice(
         academy_profile_id: cycle.owner_id,
         trainer_id: null,
         cycle_id: cycle.id,
+        registration_id: registrationId ?? null,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate.toISOString().split("T")[0],
         due_date: dueDate.toISOString().split("T")[0],
@@ -270,7 +274,8 @@ export async function mintEventRegistrationInvoice(
     if (!res.error) {
       // Audit trail for money movement (no PII beyond ids).
       console.log("registration invoice minted", JSON.stringify({
-        invoiceId: res.data.id, academyId: cycle.owner_id, cycleId: cycle.id, type: cycle.type,
+        invoiceId: res.data.id, academyId: cycle.owner_id, cycleId: cycle.id,
+        registrationId: registrationId ?? null, type: cycle.type,
         total: charge.total, vatRate: charge.vatRate, lines: charge.lineItems.length, method,
       }));
       return ok(res.data);
