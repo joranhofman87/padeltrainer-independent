@@ -30,6 +30,7 @@ Running the cutover **before** that deploy means, during the gap, every `/regist
 4. **Apply.** Run `PHASE2_STEP3_CUTOVER.sql` as-is (final `COMMIT;`). Success → the same `NOTICE`. Any anomaly → `RAISE EXCEPTION`, full rollback, zero rows changed → fix the cause and re-run (idempotent + re-run-safe).
 5. **Post-commit verification.** Re-run pre-flight **F** and compare to the recorded baseline:
    - `bookings`, `availability_slots`, `bookings_ck`, `slots_ck`, `cycles` → **UNCHANGED**.
+   - **`invoices_sum_total`, `invoices_sum_subtotal`, `invoices_sum_vat`, `invoices_total_ck` → IDENTICAL** (the no-amount-change guarantee; the cutover's check (1c) already hard-rolls-back if any per-invoice amount moved, so this is a second human-visible confirmation).
    - `cycles_cyclus` → **+2**; `cycles_registration` + `cycles_event` combined → **−2**.
    - `intake_requests`, `invoices` → unchanged or grown (never dropped).
    - Spot-check: a paid registration invoice's `/pay/:token` still shows paid and its row now has a non-null `registration_id`; a legacy `/register/:cycleId` link resolves + redirects to canonical; the academy agenda now shows the 2 cycles as trainer-grouped cyclus entries.
@@ -122,6 +123,13 @@ SELECT
   (SELECT md5(coalesce(string_agg(id::text, ',' ORDER BY id), '')) FROM availability_slots) AS slots_ck,
   (SELECT count(*) FROM intake_requests)                                                    AS intake_requests,
   (SELECT count(*) FROM invoices)                                                           AS invoices,
+  -- invoice money totals — these MUST be identical post-commit (the migration only adds
+  -- registration_id; check (1c) in the cutover hard-rolls-back if any amount moved):
+  (SELECT coalesce(sum(total), 0)      FROM invoices)                                       AS invoices_sum_total,
+  (SELECT coalesce(sum(subtotal), 0)   FROM invoices)                                       AS invoices_sum_subtotal,
+  (SELECT coalesce(sum(vat_amount), 0) FROM invoices)                                       AS invoices_sum_vat,
+  (SELECT md5(coalesce(string_agg(id::text || '|' || coalesce(total::text,''), ',' ORDER BY id), ''))
+     FROM invoices)                                                                         AS invoices_total_ck,
   (SELECT count(*) FROM cycles)                                                             AS cycles,
   (SELECT count(*) FROM cycles WHERE type='cyclus')                                         AS cycles_cyclus,
   (SELECT count(*) FROM cycles WHERE type='registration')                                   AS cycles_registration,

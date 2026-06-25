@@ -69,6 +69,15 @@ SELECT
        AND EXISTS (SELECT 1 FROM public.availability_slots s WHERE s.cyclus_id = c.id)
   ) AS already_flipped;
 
+-- INVOICE AMOUNT SNAPSHOT — every current invoice's money fields, captured BEFORE any write.
+-- The only write this migration makes to invoices is `SET registration_id` (additive); it must
+-- NEVER alter an amount. Check (1c) below re-compares each of these rows post-write and ROLLS BACK
+-- if a single value moved. `status` is intentionally NOT snapshotted here: a concurrent legitimate
+-- payment may flip status during the apply window without touching any amount.
+CREATE TEMP TABLE _invoice_amounts_before ON COMMIT DROP AS
+SELECT id, total, subtotal, vat_amount, vat_rate, line_items::text AS line_items_txt
+FROM public.invoices;
+
 -- ---------------------------------------------------------------------------
 -- (a) One registrations row per NAMED registration/event cycle. Copies all
 --     form-facing fields + start_date/end_date/created_at + the FORM-ONLY
@@ -184,6 +193,27 @@ BEGIN
   IF (SELECT count(*) FROM public.invoices) < base.invoices THEN
     RAISE EXCEPTION 'invoices count DROPPED: % -> %', base.invoices, (SELECT count(*) FROM public.invoices);
   END IF;
+
+  -- (1c) OUTSTANDING-INVOICE AMOUNTS UNCHANGED — the headline guarantee. Every invoice that existed
+  --      before this migration must still have byte-identical money fields. The migration only adds
+  --      registration_id, so this MUST hold; if any total/subtotal/vat/line_items moved (e.g. an
+  --      unforeseen trigger, or a concurrent edit), the whole transaction ROLLS BACK. IS DISTINCT
+  --      FROM is NULL-safe.
+  SELECT count(*) INTO bad
+    FROM _invoice_amounts_before b
+    JOIN public.invoices i ON i.id = b.id
+   WHERE i.total            IS DISTINCT FROM b.total
+      OR i.subtotal         IS DISTINCT FROM b.subtotal
+      OR i.vat_amount       IS DISTINCT FROM b.vat_amount
+      OR i.vat_rate         IS DISTINCT FROM b.vat_rate
+      OR i.line_items::text IS DISTINCT FROM b.line_items_txt;
+  IF bad > 0 THEN RAISE EXCEPTION 'outstanding invoice AMOUNTS changed on % invoice(s) — rolled back', bad; END IF;
+
+  -- (1d) NO pre-existing invoice vanished.
+  SELECT count(*) INTO bad
+    FROM _invoice_amounts_before b
+   WHERE NOT EXISTS (SELECT 1 FROM public.invoices i WHERE i.id = b.id);
+  IF bad > 0 THEN RAISE EXCEPTION 'pre-existing invoices missing post-migration: %', bad; END IF;
 
   -- (2) INSERT COUNT MATCHES the planned (name-guarded) work.
   n_reg_now := (SELECT count(*) FROM public.registrations);
