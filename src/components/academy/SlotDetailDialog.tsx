@@ -19,7 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { SlotWithBookings, BookedPlayer } from '@/components/trainer/CalendarSlotCard';
+import { SlotWithBookings, BookedPlayer } from '@/lib/slotTypes';
 
 interface SlotDetail {
   id: string;

@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { SlotRatingPicker } from "./SlotRatingPicker";
+import { SlotRatingPicker } from "@/components/slots/SlotRatingPicker";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import {
   Dialog,

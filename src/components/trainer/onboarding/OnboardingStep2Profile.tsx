@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { TrainerLocationPicker, TrainerLocationSelection } from '@/components/locations/TrainerLocationPicker';
-import { SpecializationsPicker } from '@/components/trainer/SpecializationsPicker';
+import { SpecializationsPicker } from '@/components/profiles/SpecializationsPicker';
 import { getRatingSystems, type RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratingSystems';
 import { Phone } from 'lucide-react';
 import { toast } from 'sonner';
