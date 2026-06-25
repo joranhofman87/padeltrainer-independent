@@ -17,6 +17,9 @@ export function BannerZone({ zone, category, className }: BannerZoneProps) {
     queryKey: ['banners', zone, i18n.language, category],
     queryFn: () => getBannersByZone(zone, { language: i18n.language, category }),
     staleTime: 1000 * 60 * 10,
+    // Sponsor banners are non-critical chrome: if Sanity is slow/unreachable, render nothing
+    // rather than storming the network with retries (the global default retries every query).
+    retry: false,
   });
 
   const banner = useMemo(() => pickWeightedBanner(banners ?? []), [banners]);
