@@ -13,6 +13,7 @@ import {
   declineClaimWithToken,
   acceptClaimAndStartPayment,
   createGroupRebookInvoice,
+  sendRebookGroupConfirmations,
   getCycleRebookPaymentMode,
   getCycleStartDate,
   type RebookPaymentMode,
@@ -196,6 +197,8 @@ export default function PriorityClaimPage() {
           : paymentMode === 'upfront'
             ? t('rebookGroup.doneUpfront', 'Je groep is opnieuw ingeschreven. Je ontvangt één factuur voor de hele groep.')
             : t('rebookGroup.done', 'Je groep is opnieuw ingeschreven. Iedereens plek is gereserveerd.'));
+      // Notify everyone the captain just booked (fire-and-forget; idempotent server-side).
+      if (token) sendRebookGroupConfirmations(token);
       // Refresh so can_manage_group + the latest roster are reflected on return.
       loadClaim();
     }

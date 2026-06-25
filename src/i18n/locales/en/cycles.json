@@ -1033,6 +1033,7 @@
     "doneManage": "Your group has been saved. Everyone is booked and covered by your payment.",
     "bookedByCaptain": "{{name}} already re-booked your group — you're in. Your spot is reserved.",
     "alreadyDone": "This group has already been re-booked.",
+    "rateLimited": "You've added too many players in a row. Please wait a few minutes and try again.",
     "firstName": "First name",
     "lastName": "Last name",
     "email": "Email",

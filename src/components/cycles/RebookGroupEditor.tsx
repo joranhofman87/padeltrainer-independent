@@ -91,7 +91,12 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
       }
       onDone(res);
     } catch (e) {
-      toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/rate_limit/i.test(msg)) {
+        toast.error(t('rebookGroup.rateLimited', 'Je hebt te veel spelers achter elkaar toegevoegd. Wacht een paar minuten en probeer het opnieuw.'));
+      } else {
+        toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
+      }
     } finally {
       setSubmitting(false);
     }

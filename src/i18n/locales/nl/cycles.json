@@ -1168,6 +1168,7 @@
     "doneManage": "Je groep is opgeslagen. Iedereen is ingeschreven en valt onder jouw betaling.",
     "bookedByCaptain": "{{name}} heeft je groep al opnieuw ingeschreven — je doet mee. Je plek is gereserveerd.",
     "alreadyDone": "Deze groep is al opnieuw ingeschreven.",
+    "rateLimited": "Je hebt te veel spelers achter elkaar toegevoegd. Wacht een paar minuten en probeer het opnieuw.",
     "firstName": "Voornaam",
     "lastName": "Achternaam",
     "email": "E-mail",

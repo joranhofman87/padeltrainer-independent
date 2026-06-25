@@ -654,6 +654,15 @@ export async function manageRebookGroup(token: string, args: {
   return (data as RebookGroupApplyResult) ?? { ok: false };
 }
 
+/** Phase 4: fire-and-forget — email the people the captain just booked ("X re-booked you" /
+ *  "you've been added by X"). Idempotent server-side via confirmation_sent_at, so a dropped call
+ *  is recovered on the next group action; never block the UI on it. */
+export function sendRebookGroupConfirmations(token: string): void {
+  void supabase.functions
+    .invoke('send-rebook-group-confirmation', { body: { token } })
+    .catch(() => { /* best-effort; the edge fn is idempotent */ });
+}
+
 export interface AcceptAndPayResult {
   ok: boolean;
   status?: string;
