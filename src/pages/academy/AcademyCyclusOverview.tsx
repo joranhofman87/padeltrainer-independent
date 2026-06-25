@@ -678,8 +678,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           const slotIds = (slotRows || []).map((s: { id: string }) => s.id);
           if (slotIds.length > 0) {
             // Re-verify no booking appeared since the list loaded (never cascade a booking).
+            // Canonical occupying statuses (confirmed/pending/pending_approval) — must not miss one.
             const { data: booked } = await supabase.from('bookings').select('slot_id')
-              .in('slot_id', slotIds).in('status', ['confirmed', 'booked', 'pending']);
+              .in('slot_id', slotIds).in('status', [...CAPACITY_OCCUPYING_STATUSES]);
             if ((booked || []).length > 0) { skipped++; continue; }
             const { error } = await supabase.from('availability_slots').delete().in('id', slotIds);
             if (error) throw error;

@@ -8,6 +8,7 @@ import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { sendBookingCancellation } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { recalculateInvoiceAfterRemoval } from "@/lib/invoiceSync";
+import { filterDeletableSlotIds } from "@/lib/slotDeleteGuard";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -277,16 +278,21 @@ export function DeleteSlotDialog({
             await handleInvoiceUpdates(cancelledBookingIds);
           }
 
-          const { error: deleteError } = await supabase
-            .from("availability_slots")
-            .delete()
-            .in("id", slotIds);
-
-          if (deleteError) throw deleteError;
+          // SAFETY: bookings.slot_id is ON DELETE CASCADE. Only delete slots with no active booking
+          // left (any that still hold an occupying booking — incl. pending_approval, or one that
+          // landed concurrently — are kept rather than silently cascade-deleted).
+          const deletableSlotIds = await filterDeletableSlotIds(slotIds);
+          if (deletableSlotIds.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("availability_slots")
+              .delete()
+              .in("id", deletableSlotIds);
+            if (deleteError) throw deleteError;
+          }
 
           toast({
             title: t("calendar.cyclusDeleted", "Cyclus deleted"),
-            description: t("calendar.cyclusDeletedDescription", "Deleted {{count}} slots and cancelled associated bookings", { count: slotIds.length }),
+            description: t("calendar.cyclusDeletedDescription", "Deleted {{count}} slots and cancelled associated bookings", { count: deletableSlotIds.length }),
           });
         }
       } else {
@@ -353,6 +359,18 @@ export function DeleteSlotDialog({
           await handleInvoiceUpdates(cancelledBookingIds);
         }
 
+        // SAFETY: refuse to cascade-delete a slot that still holds an active booking (e.g. a
+        // pending_approval one the cancel step above doesn't cover, or one that landed concurrently).
+        const deletable = await filterDeletableSlotIds([slot.id]);
+        if (deletable.length === 0) {
+          toast({
+            title: t("calendar.slotHasBooking", "Can't delete this slot"),
+            description: t("calendar.slotHasBookingDescription", "It still has an active booking. Cancel the booking first, then delete."),
+            variant: "destructive",
+          });
+          setIsDeleting(false);
+          return;
+        }
         const { error } = await supabase
           .from("availability_slots")
           .delete()

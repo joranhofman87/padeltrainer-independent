@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
 import { resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
 import type { GuestResolveScope } from '@/lib/playerResolve';
+import { filterDeletableSlotIds } from '@/lib/slotDeleteGuard';
 
 // Types
 export interface PriceTableRow {
@@ -1445,13 +1446,21 @@ export async function saveCycleScoringWeights(
 
 // Reset all proposals for a cycle (delete proposed_assignments, generated slots, and set intake_requests back to 'new')
 export async function resetProposals(cycleId: string): Promise<{ reset: number }> {
-  // Step 0: Delete generated availability slots for this cycle
-  const { error: slotsDeleteError } = await supabase
+  // Step 0: Delete generated availability slots for this cycle — but NEVER a slot that already has
+  // an active booking (bookings.slot_id is ON DELETE CASCADE → it would silently delete the booking).
+  const { data: cycleSlots, error: cycleSlotsError } = await supabase
     .from('availability_slots')
-    .delete()
+    .select('id')
     .eq('cyclus_id', cycleId);
-
-  if (slotsDeleteError) throw slotsDeleteError;
+  if (cycleSlotsError) throw cycleSlotsError;
+  const deletableSlotIds = await filterDeletableSlotIds((cycleSlots ?? []).map((s) => s.id));
+  if (deletableSlotIds.length > 0) {
+    const { error: slotsDeleteError } = await supabase
+      .from('availability_slots')
+      .delete()
+      .in('id', deletableSlotIds);
+    if (slotsDeleteError) throw slotsDeleteError;
+  }
 
   // Get ALL intake requests for this cycle
   const { data: allRequests, error: allFetchError } = await supabase
@@ -1777,7 +1786,12 @@ export async function deleteSlot(slotId: string): Promise<void> {
     }
   }
 
-  // 4. Delete the slot itself
+  // 4. Delete the slot itself — but NEVER if it still has an active booking (bookings.slot_id is
+  //    ON DELETE CASCADE, so the delete would silently remove the booking).
+  const deletable = await filterDeletableSlotIds([slotId]);
+  if (deletable.length === 0) {
+    throw new Error('Cannot delete a session that still has an active booking.');
+  }
   const { error } = await supabase
     .from('availability_slots')
     .delete()
