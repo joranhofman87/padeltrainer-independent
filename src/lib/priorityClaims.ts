@@ -549,6 +549,75 @@ export async function acceptClaimWithToken(token: string) {
   return data as { ok: boolean; status?: string; reason?: string; booking_id?: string } | null;
 }
 
+// ===== Group-captain rebooking: one member re-books the whole group =====
+
+export interface RebookGroupMember {
+  key: string; // 'p:<uuid>' | 'g:<uuid>' — opaque to the UI, parsed back by rebook_group_apply
+  first_name: string;
+  status: 'claimed' | 'pending' | 'declined';
+  is_self: boolean;
+  has_email: boolean;
+}
+
+export interface RebookGroup {
+  rebook_group_id: string;
+  can_rebook_group: boolean;
+  self_key: string;
+  slot: Record<string, unknown>;
+  sessions: number;
+  members: RebookGroupMember[];
+}
+
+export interface RebookGroupApplyResult {
+  ok: boolean;
+  group?: boolean;
+  reason?: string;
+  rebook_group_id?: string;
+  booked?: number;
+  declined?: number;
+  added?: number;
+  skipped_full?: number;
+  booking_ids?: string[];
+}
+
+/** Roster of the token's rebook group (first name + status only — PII-trimmed). Null when
+ *  the claim isn't part of a group (legacy single claim) or the token is unknown. */
+export async function fetchRebookGroupByToken(token: string): Promise<RebookGroup | null> {
+  const { data, error } = await supabase.rpc('get_rebook_group_by_token', { _token: token });
+  if (error) throw error;
+  return (data as RebookGroup | null) ?? null;
+}
+
+/** Token-gated mint of a new guest player for the group (the anon captain can't write
+ *  guest_players directly). Returns the guest_players.id to pass to applyRebookGroup. */
+export async function createRebookGroupGuest(token: string, input: {
+  firstName: string; lastName?: string; email?: string; phone?: string;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('create_rebook_group_guest', {
+    _token: token,
+    _first_name: input.firstName,
+    _last_name: input.lastName ?? null,
+    _email: input.email ?? null,
+    _phone: input.phone ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Re-book the whole group: keep the listed members, decline the rest (pending only), and add
+ *  the given new guest ids — all capacity-guarded + atomic. */
+export async function applyRebookGroup(token: string, args: {
+  keepKeys: string[]; newGuestIds?: string[];
+}): Promise<RebookGroupApplyResult> {
+  const { data, error } = await supabase.rpc('rebook_group_apply', {
+    _token: token,
+    _keep_keys: args.keepKeys,
+    _new_guest_ids: args.newGuestIds ?? [],
+  });
+  if (error) throw error;
+  return (data as RebookGroupApplyResult) ?? { ok: false };
+}
+
 export interface AcceptAndPayResult {
   ok: boolean;
   status?: string;

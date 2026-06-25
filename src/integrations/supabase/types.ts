@@ -4998,8 +4998,11 @@ export type Database = {
       }
       slot_priority_claims: {
         Row: {
+          booked_by_guest_player_id: string | null
+          booked_by_player_id: string | null
           booking_id: string | null
           claim_token: string
+          confirmation_sent_at: string | null
           created_at: string
           decline_reason: string | null
           guest_player_id: string | null
@@ -5016,8 +5019,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          booked_by_guest_player_id?: string | null
+          booked_by_player_id?: string | null
           booking_id?: string | null
           claim_token?: string
+          confirmation_sent_at?: string | null
           created_at?: string
           decline_reason?: string | null
           guest_player_id?: string | null
@@ -5034,8 +5040,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          booked_by_guest_player_id?: string | null
+          booked_by_player_id?: string | null
           booking_id?: string | null
           claim_token?: string
+          confirmation_sent_at?: string | null
           created_at?: string
           decline_reason?: string | null
           guest_player_id?: string | null
@@ -7391,6 +7400,16 @@ export type Database = {
         Args: { _club_profile_id: string }
         Returns: boolean
       }
+      create_rebook_group_guest: {
+        Args: {
+          _email?: string
+          _first_name: string
+          _last_name?: string
+          _phone?: string
+          _token: string
+        }
+        Returns: string
+      }
       digits_only: { Args: { _value: string }; Returns: string }
       fold_search_text: { Args: { _value: string }; Returns: string }
       gen_random_bytes: { Args: { len: number }; Returns: string }
@@ -7664,6 +7683,7 @@ export type Database = {
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
+      get_rebook_group_by_token: { Args: { _token: string }; Returns: Json }
       get_trainer_invoice_delivery_summary: {
         Args: { p_tab?: string; p_trainer_id: string }
         Returns: {
@@ -7828,6 +7848,10 @@ export type Database = {
           p_user_type: string
         }
         Returns: undefined
+      }
+      rebook_group_apply: {
+        Args: { _keep_keys?: Json; _new_guest_ids?: string[]; _token: string }
+        Returns: Json
       }
       recalc_cycle_split_count: {
         Args: { _cyclus_id: string }
