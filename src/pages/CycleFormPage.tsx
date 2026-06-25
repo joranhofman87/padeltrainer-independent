@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft } from 'lucide-react';
 import { getCycle, type Cycle } from '@/lib/cycles';
+import { getRegistration } from '@/lib/registrations';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useClubContext } from '@/components/club/ClubLayout';
@@ -43,6 +44,9 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [cycle, setCycle] = useState<Cycle | null>(null);
+  // Slice 0 (registration↔cycle split): true when the cycle being edited has been split into a
+  // `registrations` row — the legacy editor is then locked so it can't diverge from the live form.
+  const [formLocked, setFormLocked] = useState(false);
 
   // Trainer-specific state
   const [trainerId, setTrainerId] = useState<string | null>(null);
@@ -211,6 +215,10 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
         if (cycleId) {
           const cycleData = await getCycle(cycleId);
           setCycle(cycleData);
+          // Lock the legacy editor if this cycle's form now lives in the registrations table
+          // (resolves by id OR source_cycle_id). A duplicate (else-branch) is a new cycle → unlocked.
+          const reg = await getRegistration(cycleId);
+          setFormLocked(!!reg);
         } else if (duplicateFromId) {
           const cycleData = await getCycle(duplicateFromId);
           if (cycleData) {
@@ -279,6 +287,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
         onSuccess={handleSuccess}
         onCancel={handleCancel}
         formType={formType}
+        locked={formLocked}
         locations={locations}
         trainerHourlyRate={trainerHourlyRate}
         trainerRatingSystem={trainerRatingSystem}

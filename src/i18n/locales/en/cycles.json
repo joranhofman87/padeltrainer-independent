@@ -73,6 +73,8 @@
     "pricingHelp": "Set either price per session or a fixed package price",
     "save": "Save Cycle",
     "saveRegistration": "Save Registration",
+    "registrationLockedTitle": "Editing moved to the registration editor",
+    "registrationLockedBody": "This form is now managed separately so it stays in sync with the live registration page. Editing it here is temporarily disabled — the dedicated registration editor is coming soon.",
     "saveAndOpen": "Save & Open Enrollment",
     "allowSingleBooking": "Allow individual lesson booking",
     "allowSingleBookingHelp": "When off, players must book the entire cycle",
