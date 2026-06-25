@@ -52,6 +52,7 @@ all 6 are redeployed.
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
 - [ ] **recalculate-invoices** — bound the unscoped "recalc everything" path at `MAX_UNSCOPED = 2000` so a no-`invoice_ids` admin run can't SELECT + process every draft/sent/pending invoice platform-wide (timeout / OOM at scale). Recalc is idempotent so capping is safe; the response returns `limited: true` + a hint when truncated so the admin can re-run or pass `invoice_ids`. *No behaviour change for scoped (invoice_ids) calls.*
+- [ ] **generate-cycle-commitment-invoices**, **send-digest-emails**, **process-onboarding-emails** — per-failure Slack alerting on the batch jobs. These return HTTP 200 even when individual items fail (a committer not billed / a digest or onboarding email not sent), so the daily-maintenance / daily-emails cron wrappers' `alertCronFailure` (non-2xx only) never surfaced them. Each fn now raises **one** `notifySlackEdgeError` per run when its partial-failure count is > 0. Needs the `slack-notify` webhook already configured (it is). *Observability only — no behaviour change to the happy path.*
 
 ## Notes
 - The CI changes (rehearsal runner, edge-fn config guard, cron Slack alerts, stale-ref purge) took effect on merge — no manual deploy.

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireAdmin, requireServiceRole } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -313,6 +314,18 @@ const handler = async (req: Request): Promise<Response> => {
 
         failCount++;
       }
+    }
+
+    // Per-item failures return HTTP 200, so the daily-emails cron wrapper's
+    // alertCronFailure (non-2xx only) never sees them. Each failed item is
+    // already marked 'failed' in the queue (won't retry), so a silent failure
+    // means an onboarding email that never goes out — alert.
+    if (failCount > 0) {
+      await notifySlackEdgeError(
+        "process-onboarding-emails",
+        `${failCount} onboarding email(s) failed to send`,
+        { failCount, successCount, processed: pendingEmails.length },
+      );
     }
 
     return new Response(
