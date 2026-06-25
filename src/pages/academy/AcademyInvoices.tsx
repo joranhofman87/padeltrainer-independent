@@ -86,6 +86,7 @@ export default function AcademyInvoices() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null; customMessage: string }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '' });
   const [composeInvoice, setComposeInvoice] = useState<Invoice | null>(null);
+  const [defaultEmailMessage, setDefaultEmailMessage] = useState("");
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
@@ -256,6 +257,37 @@ export default function AcademyInvoices() {
     },
     enabled: !!activeAcademy?.id,
   });
+
+  // Tolerant load of the academy's saved default invoice-email message. If the
+  // migration isn't applied yet the column-select errors → data is null → "" ,
+  // so the feature degrades to blank and deploy order doesn't matter.
+  useEffect(() => {
+    if (!academyId) { setDefaultEmailMessage(""); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("academy_profiles")
+        .select("invoice_email_message")
+        .eq("id", academyId)
+        .maybeSingle();
+      if (!cancelled) setDefaultEmailMessage(data?.invoice_email_message ?? "");
+    })();
+    return () => { cancelled = true; };
+  }, [academyId]);
+
+  const handleSaveDefaultMessage = async (message: string) => {
+    if (!academyId) return;
+    const { error } = await supabase
+      .from("academy_profiles")
+      .update({ invoice_email_message: message.trim() || null })
+      .eq("id", academyId);
+    if (error) {
+      toast.error(t("invoices.send.saveDefaultFailed", "Could not save default message"));
+      return;
+    }
+    setDefaultEmailMessage(message.trim());
+    toast.success(t("invoices.send.savedDefault", "Saved as your default message"));
+  };
 
   const invoiceSettingsLabels = buildInvoiceSettingsLabels(t, "academy");
 
@@ -955,6 +987,8 @@ export default function AcademyInvoices() {
         playerName={composeInvoice?.player_name}
         language={i18n.language || "nl"}
         replyToSettingsHref="/app/academy/invoices?tab=settings"
+        defaultMessage={defaultEmailMessage}
+        onSaveDefault={handleSaveDefaultMessage}
         sending={composeInvoice ? sendingInvoiceIds.has(composeInvoice.id) : false}
         onSend={(customMessage) => {
           const invoice = composeInvoice;
@@ -976,6 +1010,8 @@ export default function AcademyInvoices() {
         onClose={() => setBulkEmailOpen(false)}
         invoiceIds={[...selectedIds]}
         language={i18n.language || "nl"}
+        defaultMessage={defaultEmailMessage}
+        onSaveDefault={handleSaveDefaultMessage}
         onSent={() => {
           setSelectedIds(new Set());
           invalidateInvoicesAndPlayers();

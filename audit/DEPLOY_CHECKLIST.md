@@ -19,6 +19,7 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 
 ## Migrations to apply
 - [x] **`20260624130000_email_campaign_recipient_attempt_count.sql`** (#82) — adds `email_campaign_recipients.attempt_count`. Additive + backward-compatible; applied before redeploying send-campaign-emails.
+- [ ] **`20260625120000_academy_invoice_email_message.sql`** — adds nullable `academy_profiles.invoice_email_message` (the "Save as default" invoice-email template). Additive + backward-compatible; the frontend reads/writes it tolerantly (degrades to blank if absent), so deploy order doesn't matter — apply whenever. Frontend auto-deploys via Vercel.
 
 ## Config / dashboard
 - [x] `CRON_SECRET` + `SUPABASE_SERVICE_ROLE_KEY` set in Vercel **Production** (verified).

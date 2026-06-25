@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { Save } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,9 @@ interface InvoiceEmailMessageFieldProps {
   /** Helper text before the variable-insert buttons, e.g. "Insert variable:". */
   variablesHelp: string;
   id?: string;
+  /** When provided, renders a "Save as default" button (persisting is the caller's job). */
+  onSaveDefault?: () => void;
+  saveDefaultLabel?: string;
 }
 
 /**
@@ -35,6 +39,8 @@ export function InvoiceEmailMessageField({
   placeholder,
   variablesHelp,
   id = "invoice-email-message",
+  onSaveDefault,
+  saveDefaultLabel,
 }: InvoiceEmailMessageFieldProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -82,6 +88,19 @@ export function InvoiceEmailMessageField({
             {token}
           </Button>
         ))}
+        {onSaveDefault && saveDefaultLabel && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs ml-auto"
+            onClick={onSaveDefault}
+            disabled={disabled}
+          >
+            <Save className="h-3.5 w-3.5 mr-1" />
+            {saveDefaultLabel}
+          </Button>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">{value.length}/{INVOICE_EMAIL_MESSAGE_MAX}</p>
     </div>
