@@ -57,6 +57,12 @@ Deno.serve(async (req) => {
       if (Array.isArray(body.invoice_ids)) invoiceIds = body.invoice_ids;
     } catch { /* no body */ }
 
+    // Safety cap for the unscoped "recalc everything" path. Without invoice_ids this would SELECT +
+    // process EVERY draft/sent/pending invoice platform-wide, which can time out / OOM the function
+    // at scale (pre-scale audit P1 #11). Recalc is idempotent, so capping the batch is safe; the
+    // response flags when it truncated so the (admin) caller can target a set via invoice_ids.
+    const MAX_UNSCOPED = 2000;
+
     // Fetch unpaid invoices
     let query = supabaseAdmin
       .from("invoices")
@@ -65,6 +71,8 @@ Deno.serve(async (req) => {
 
     if (invoiceIds && invoiceIds.length > 0) {
       query = query.in("id", invoiceIds);
+    } else {
+      query = query.limit(MAX_UNSCOPED);
     }
 
     const { data: invoices, error: fetchErr } = await query;
@@ -281,6 +289,11 @@ Deno.serve(async (req) => {
     const updatedCount = results.filter((r) => r.updated).length;
     const changedCount = results.filter((r) => r.changed).length;
 
+    // Signal when the unscoped batch hit the safety cap so the caller knows the run was partial
+    // and can target the remaining invoices via invoice_ids (recalc is idempotent — rerunning is safe).
+    const limited =
+      (!invoiceIds || invoiceIds.length === 0) && invoices.length === MAX_UNSCOPED;
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -288,6 +301,12 @@ Deno.serve(async (req) => {
         total_invoices: invoices.length,
         changed: changedCount,
         updated: updatedCount,
+        ...(limited
+          ? {
+              limited: true,
+              hint: `Processed the first ${MAX_UNSCOPED} unpaid invoices (safety cap). Re-run, or pass invoice_ids to target a specific set.`,
+            }
+          : {}),
         results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
