@@ -1125,6 +1125,22 @@
     "backToConfigure": "Aanpassen",
     "confirmSend": "Aanmaken & spelers uitnodigen"
   },
+  "editEndDate": {
+    "title": "Einddatum aanpassen",
+    "loadFailed": "Kon de cyclus niet laden.",
+    "label": "Nieuwe einddatum",
+    "hint": "Dit verandert alleen de einddatum van de cyclus. Facturen blijven ongewijzigd.",
+    "invalid": "De einddatum moet op of na de startdatum liggen.",
+    "checking": "Sessies controleren…",
+    "noneAfter": "Geen sessies na deze datum.",
+    "afterCount": "{{count}} sessies vallen na de nieuwe einddatum.",
+    "protected": "{{count}} hiervan hebben boekingen en blijven behouden.",
+    "removeUnbooked": "Verwijder de {{count}} lege sessies (zonder boekingen)",
+    "saved": "Einddatum bijgewerkt",
+    "savedWithTrim": "Einddatum bijgewerkt · {{count}} sessies verwijderd",
+    "saveFailed": "Kon de einddatum niet bijwerken. Probeer het opnieuw.",
+    "save": "Opslaan"
+  },
   "rebookManage": {
     "title": "Herboeking beheren",
     "roundsTitle": "Herboekingen",

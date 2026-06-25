@@ -507,6 +507,73 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   return toCycle(data);
 }
 
+// Bookings in any of these statuses occupy a session → that session must NEVER be
+// silently deleted (bookings.slot_id is ON DELETE CASCADE, so deleting the slot would
+// drop the booking). Use the canonical capacity set, which includes pending_approval.
+import { CAPACITY_OCCUPYING_STATUSES } from './lessons';
+
+/** Current start/end dates of a cycle (for prefilling + validating the end-date editor). */
+export async function getCycleDates(cycleId: string): Promise<{ start_date: string | null; end_date: string | null }> {
+  const { data, error } = await supabase
+    .from('cycles')
+    .select('start_date, end_date')
+    .eq('id', cycleId)
+    .maybeSingle();
+  if (error) throw error;
+  return { start_date: data?.start_date ?? null, end_date: data?.end_date ?? null };
+}
+
+export interface OutOfRangeSlots {
+  /** Unbooked sessions after the proposed end date — safe to delete. */
+  removableIds: string[];
+  /** Sessions after the proposed end date that have an active booking — must be kept. */
+  protectedCount: number;
+}
+
+/** Find the sessions of a cyclus that fall AFTER a proposed end date, split into
+ *  removable (no active booking) vs protected (booked). Used by the end-date editor's
+ *  trim preview. A session counts as out-of-range when its start is strictly after the
+ *  end-of-day of `endDate` (yyyy-mm-dd), so sessions ON the end date stay in range.
+ *  Scans the whole cyclus (all trainers) — end_date is a cycle-wide field. */
+export async function findSlotsAfterDate(cyclusId: string, endDate: string): Promise<OutOfRangeSlots> {
+  const { data: slots, error } = await supabase
+    .from('availability_slots')
+    .select('id')
+    .eq('cyclus_id', cyclusId)
+    .gt('start_time', `${endDate}T23:59:59`);
+  if (error) throw error;
+  const ids = (slots ?? []).map((s: { id: string }) => s.id);
+  if (ids.length === 0) return { removableIds: [], protectedCount: 0 };
+  const { data: booked } = await supabase
+    .from('bookings')
+    .select('slot_id')
+    .in('slot_id', ids)
+    .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
+  const bookedSet = new Set((booked ?? []).map((b: { slot_id: string }) => b.slot_id));
+  const removableIds = ids.filter((id) => !bookedSet.has(id));
+  return { removableIds, protectedCount: ids.length - removableIds.length };
+}
+
+/** Delete the given sessions, re-verifying right before deletion that none gained an
+ *  occupying booking since the preview (a player booking is never silently cancelled).
+ *  Deleting an availability_slot CASCADES (FK ON DELETE CASCADE) to its bookings, claims,
+ *  session reports + notes — which is exactly why the booking re-check is the load-bearing
+ *  guard here. Invoices are not FK-linked to slots, so they are untouched. */
+export async function deleteUnbookedSlots(slotIds: string[]): Promise<number> {
+  if (slotIds.length === 0) return 0;
+  const { data: booked } = await supabase
+    .from('bookings')
+    .select('slot_id')
+    .in('slot_id', slotIds)
+    .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
+  const bookedSet = new Set((booked ?? []).map((b: { slot_id: string }) => b.slot_id));
+  const safe = slotIds.filter((id) => !bookedSet.has(id));
+  if (safe.length === 0) return 0;
+  const { error } = await supabase.from('availability_slots').delete().in('id', safe);
+  if (error) throw error;
+  return safe.length;
+}
+
 export async function deleteCycle(cycleId: string): Promise<void> {
   const { error } = await supabase
     .from('cycles')
