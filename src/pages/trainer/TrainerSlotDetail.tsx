@@ -13,6 +13,7 @@ import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { filterDeletableSlotIds } from '@/lib/slotDeleteGuard';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -287,18 +288,23 @@ export default function TrainerSlotDetail() {
         slotIdsToDelete = (cyclusSlots || []).map(s => s.id);
       } else { slotIdsToDelete = [detail.id]; }
 
-      const { data: slotBookings } = await supabase.from('bookings').select('id').in('slot_id', slotIdsToDelete).in('status', [...CAPACITY_OCCUPYING_STATUSES]);
+      // SAFETY: bookings.slot_id is ON DELETE CASCADE — deleting a slot deletes its bookings. Never
+      // delete a slot that still has an active (occupying) booking; restrict the delete accordingly.
+      const deletableSlotIds = await filterDeletableSlotIds(slotIdsToDelete);
+      if (deletableSlotIds.length === 0) {
+        toast({
+          title: t('calendar.slotHasBooking', 'Kan deze sessie niet verwijderen'),
+          description: t('calendar.slotHasBookingDescription', 'Er is nog een actieve boeking. Annuleer eerst de boeking en verwijder daarna.'),
+          variant: 'destructive',
+        });
+        return;
+      }
+      const { data: slotBookings } = await supabase.from('bookings').select('id').in('slot_id', deletableSlotIds).in('status', [...CAPACITY_OCCUPYING_STATUSES]);
       const bookingIdsToRemove = (slotBookings || []).map(b => b.id);
 
-      if (deleteCyclus && detail.cyclus_id) {
-        const { error } = await supabase.from('availability_slots').delete().eq('cyclus_id', detail.cyclus_id).gte('start_time', new Date().toISOString());
-        if (error) throw error;
-        toast({ title: t('calendar.cyclusDeleted', 'Cyclus verwijderd') });
-      } else {
-        const { error } = await supabase.from('availability_slots').delete().eq('id', detail.id);
-        if (error) throw error;
-        toast({ title: t('calendar.slotDeleted', 'Sessie verwijderd') });
-      }
+      const { error } = await supabase.from('availability_slots').delete().in('id', deletableSlotIds);
+      if (error) throw error;
+      toast({ title: deleteCyclus ? t('calendar.cyclusDeleted', 'Cyclus verwijderd') : t('calendar.slotDeleted', 'Sessie verwijderd') });
 
       if (bookingIdsToRemove.length > 0) { try { await syncInvoicesAfterBookingRemoval(bookingIdsToRemove); } catch (e) { logger.error('Sync fail', e as Error); } }
       if (detail.cyclus_id) { try { await syncSplitCountForCycle(detail.cyclus_id); } catch (e) { logger.error('Sync fail', e as Error); } }

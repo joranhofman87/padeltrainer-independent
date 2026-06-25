@@ -15,6 +15,7 @@ import { CAPACITY_OCCUPYING_STATUSES, getSlotCapacity } from '@/lib/lessons';
 import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { filterDeletableSlotIds } from '@/lib/slotDeleteGuard';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
@@ -530,30 +531,33 @@ export default function AcademySlotDetail() {
         slotIdsToDelete = [detail.id];
       }
 
-      // Get bookings for these slots to sync invoices
+      // SAFETY: bookings.slot_id is ON DELETE CASCADE — deleting a slot deletes its bookings. This
+      // path previously deleted the slot directly, silently cascade-removing any active booking.
+      // Restrict the delete to slots with NO active (occupying) booking; the rest are kept.
+      const deletableSlotIds = await filterDeletableSlotIds(slotIdsToDelete);
+      if (deletableSlotIds.length === 0) {
+        toast({
+          title: tTrainer('calendar.slotHasBooking', "Can't delete this slot"),
+          description: tTrainer('calendar.slotHasBookingDescription', 'It still has an active booking. Cancel the booking first, then delete.'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Occupying bookings on the deletable slots (none, by construction) → sync invoices after.
       const { data: slotBookings } = await supabase
         .from('bookings')
         .select('id')
-        .in('slot_id', slotIdsToDelete)
+        .in('slot_id', deletableSlotIds)
         .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
       const bookingIdsToRemove = (slotBookings || []).map(b => b.id);
 
-      if (deleteCyclus && detail.cyclus_id) {
-        const { error } = await supabase
-          .from('availability_slots')
-          .delete()
-          .eq('cyclus_id', detail.cyclus_id)
-          .gte('start_time', new Date().toISOString());
-        if (error) throw error;
-        toast({ title: tTrainer('calendar.cyclusDeleted', 'Cyclus deleted') });
-      } else {
-        const { error } = await supabase
-          .from('availability_slots')
-          .delete()
-          .eq('id', detail.id);
-        if (error) throw error;
-        toast({ title: tTrainer('calendar.slotDeleted', 'Slot deleted') });
-      }
+      const { error } = await supabase
+        .from('availability_slots')
+        .delete()
+        .in('id', deletableSlotIds);
+      if (error) throw error;
+      toast({ title: deleteCyclus ? tTrainer('calendar.cyclusDeleted', 'Cyclus deleted') : tTrainer('calendar.slotDeleted', 'Slot deleted') });
 
       // Sync invoices after deletion
       if (bookingIdsToRemove.length > 0) {

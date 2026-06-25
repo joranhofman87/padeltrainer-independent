@@ -491,16 +491,33 @@ Deno.serve(async (req) => {
     const effectiveStartDate = startDate || cycle.start_date;
 
     // ===== Delete old cycle slots before creating new ones =====
-    console.log(`Cleaning up old slots for cycle ${cycleId}...`);
-    const { error: deleteOldSlotsError } = await supabase
+    // SAFETY: bookings.slot_id is ON DELETE CASCADE, so deleting a slot deletes its bookings.
+    // Only delete UNBOOKED candidate slots — never a session that already has an active booking
+    // (a finalized registration). Canonical occupying statuses = confirmed/pending/pending_approval.
+    console.log(`Cleaning up old UNBOOKED slots for cycle ${cycleId}...`);
+    const OCCUPYING_STATUSES = ["confirmed", "pending", "pending_approval"];
+    const { data: oldSlots } = await supabase
       .from("availability_slots")
-      .delete()
+      .select("id, bookings(status)")
       .eq("cyclus_id", cycleId);
-
-    if (deleteOldSlotsError) {
-      console.error("Error deleting old slots:", deleteOldSlotsError);
-    } else {
-      console.log(`Deleted old cycle slots for cycle ${cycleId}`);
+    const deletableSlotIds = (oldSlots ?? [])
+      .filter((s: { bookings?: { status: string }[] }) =>
+        !(s.bookings ?? []).some((b) => OCCUPYING_STATUSES.includes(b.status)))
+      .map((s: { id: string }) => s.id);
+    const keptBooked = (oldSlots ?? []).length - deletableSlotIds.length;
+    if (keptBooked > 0) {
+      console.warn(`generate-proposals: kept ${keptBooked} booked slot(s) for cycle ${cycleId} (not deleted)`);
+    }
+    if (deletableSlotIds.length > 0) {
+      const { error: deleteOldSlotsError } = await supabase
+        .from("availability_slots")
+        .delete()
+        .in("id", deletableSlotIds);
+      if (deleteOldSlotsError) {
+        console.error("Error deleting old slots:", deleteOldSlotsError);
+      } else {
+        console.log(`Deleted ${deletableSlotIds.length} old unbooked slot(s) for cycle ${cycleId}`);
+      }
     }
 
     // ===== STEP 1: Generate new slots from trainer availability =====
@@ -656,12 +673,11 @@ Deno.serve(async (req) => {
       trainerIds.push(cycle.owner_id);
     }
 
-    // Fetch availability slots for THIS CYCLE only (cyclus_id match)
+    // Fetch availability slots for THIS CYCLE only (cyclus_id match).
     let slotsQuery = supabase
       .from("availability_slots")
       .select("*, max_participants")
-      .eq("cyclus_id", cycleId)
-      .eq("", false);
+      .eq("cyclus_id", cycleId);
 
     if (trainerIds.length > 0) {
       slotsQuery = slotsQuery.in("trainer_id", trainerIds);
