@@ -562,6 +562,8 @@ export interface RebookGroupMember {
 export interface RebookGroup {
   rebook_group_id: string;
   can_rebook_group: boolean;
+  /** True once the captain has PAID their group seat — they may then assign/change the roster. */
+  can_manage_group?: boolean;
   self_key: string;
   slot: Record<string, unknown>;
   sessions: number;
@@ -614,6 +616,39 @@ export async function applyRebookGroup(token: string, args: {
     _token: token,
     _keep_keys: args.keepKeys,
     _new_guest_ids: args.newGuestIds ?? [],
+  });
+  if (error) throw error;
+  return (data as RebookGroupApplyResult) ?? { ok: false };
+}
+
+export interface GroupRebookInvoiceResult {
+  ok: boolean;
+  reason?: string;
+  invoiceId?: string;
+  publicToken?: string;
+  status?: string;
+  checkoutUrl?: string;
+}
+
+/** UPFRONT pay-first: books the captain's own seat + mints ONE group invoice (the fixed full
+ *  court price) + starts a Mollie checkout. The captain assigns the roster AFTER paying
+ *  (manageRebookGroup). Teammates stay pending (slot held) until then. */
+export async function createGroupRebookInvoice(token: string): Promise<GroupRebookInvoiceResult> {
+  const { data, error } = await supabase.functions.invoke('create-group-rebook-invoice', { body: { token } });
+  if (error) return { ok: false, reason: error.message };
+  return (data as GroupRebookInvoiceResult) ?? { ok: false };
+}
+
+/** UPFRONT post-payment roster management: assign/change players who are COVERED by the
+ *  captain's group payment (booked already-paid, paid_by the captain). */
+export async function manageRebookGroup(token: string, args: {
+  keepKeys: string[]; newGuestIds?: string[]; invoiceId?: string;
+}): Promise<RebookGroupApplyResult> {
+  const { data, error } = await supabase.rpc('rebook_group_manage', {
+    _token: token,
+    _keep_keys: args.keepKeys,
+    _new_guest_ids: args.newGuestIds ?? [],
+    _invoice_id: args.invoiceId ?? null,
   });
   if (error) throw error;
   return (data as RebookGroupApplyResult) ?? { ok: false };

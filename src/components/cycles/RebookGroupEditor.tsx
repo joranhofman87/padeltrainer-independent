@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/format';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import {
-  applyRebookGroup, createRebookGroupGuest,
+  applyRebookGroup, manageRebookGroup, createRebookGroupGuest,
   type RebookGroup, type RebookGroupApplyResult, type RebookPaymentMode,
 } from '@/lib/priorityClaims';
 import { AddGroupMemberFields, type NewGroupMember } from './AddGroupMemberFields';
@@ -15,6 +15,15 @@ interface Props {
   token: string;
   group: RebookGroup;
   paymentMode: RebookPaymentMode;
+  /**
+   * 'apply'  = deferred cycles — book the group now; each player is billed their own split
+   *            share when the cycle starts (no payment up front).
+   * 'manage' = upfront cycles, AFTER the captain has paid the fixed group price — assign/change
+   *            the roster; the booked members are COVERED by that payment (no extra charge).
+   */
+  mode?: 'apply' | 'manage';
+  /** The captain's paid group invoice — only in 'manage' mode; links covered bookings onto it. */
+  invoiceId?: string;
   onBack: () => void;
   /** Called after a successful group re-book with the RPC result. */
   onDone: (result: RebookGroupApplyResult) => void;
@@ -25,7 +34,7 @@ interface Props {
  * (keep/remove), lets the captain add new people (minimal details), and applies the
  * roster diff + booking in one atomic call. The captain row is always kept.
  */
-export function RebookGroupEditor({ token, group, paymentMode, onBack, onDone }: Props) {
+export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', invoiceId, onBack, onDone }: Props) {
   const { t } = useTranslation('cycles');
   // Default: keep everyone who hasn't already declined; the captain is forced-kept server-side.
   const [keep, setKeep] = useState<Set<string>>(
@@ -64,12 +73,16 @@ export function RebookGroupEditor({ token, group, paymentMode, onBack, onDone }:
         newGuestIds.push(id);
       }
       const keepKeys = group.members.filter((m) => keep.has(m.key) && !m.is_self).map((m) => m.key);
-      const res = await applyRebookGroup(token, { keepKeys, newGuestIds });
+      const res = mode === 'manage'
+        ? await manageRebookGroup(token, { keepKeys, newGuestIds, invoiceId })
+        : await applyRebookGroup(token, { keepKeys, newGuestIds });
       if (!res.ok) {
         if (res.reason === 'window_expired') {
           toast.error(t('rebooking.errorExpired', 'The reservation period has expired.'));
         } else if (res.reason === 'already_responded') {
           toast.info(t('rebookGroup.alreadyDone', 'Deze groep is al opnieuw ingeschreven.'));
+        } else if (res.reason === 'not_paid') {
+          toast.error(t('rebookGroup.notPaid', 'Rond eerst de betaling af om je groep samen te stellen.'));
         } else {
           toast.error(t('rebooking.errorGeneric', 'Something went wrong. Please try again.'));
         }
@@ -94,7 +107,11 @@ export function RebookGroupEditor({ token, group, paymentMode, onBack, onDone }:
 
       <div className="flex items-start gap-2 text-sm">
         <Users className="h-5 w-5 mt-0.5 text-muted-foreground shrink-0" />
-        <p className="text-muted-foreground">{t('rebookGroup.intro', 'Schrijf je hele groep opnieuw in voor de volgende cyclus. Houd dezelfde spelers of pas de groep aan.')}</p>
+        <p className="text-muted-foreground">
+          {mode === 'manage'
+            ? t('rebookGroup.introManage', 'Je betaling is rond. Stel hieronder je groep samen — deze spelers vallen onder jouw betaling.')
+            : t('rebookGroup.intro', 'Schrijf je hele groep opnieuw in voor de volgende cyclus. Houd dezelfde spelers of pas de groep aan.')}
+        </p>
       </div>
 
       {/* Current members */}
@@ -147,16 +164,20 @@ export function RebookGroupEditor({ token, group, paymentMode, onBack, onDone }:
         <div className="rounded-md bg-muted/50 p-3 text-sm">
           <p className="font-medium">{t('rebookGroup.summary', '{{count}} spelers · {{total}} voor de hele termijn', { count: keptCount, total: formatCurrency(groupTotal) })}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {paymentMode === 'upfront'
-              ? t('rebookGroup.payNote', 'Jij rekent de hele groep in één keer af.')
-              : t('rebookGroup.payLaterNote', 'Je betaalt pas wanneer de cyclus start; de prijs wordt over de groep verdeeld.')}
+            {mode === 'manage'
+              ? t('rebookGroup.coveredNote', 'Al betaald — deze spelers vallen onder jouw betaling.')
+              : paymentMode === 'upfront'
+                ? t('rebookGroup.payNote', 'Jij rekent de hele groep in één keer af.')
+                : t('rebookGroup.payLaterNote', 'Je betaalt pas wanneer de cyclus start; de prijs wordt over de groep verdeeld.')}
           </p>
         </div>
       )}
 
       <Button onClick={handleSubmit} disabled={submitting || keptCount === 0} className="w-full">
         {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
-        {t('rebookGroup.confirm', 'Groep opnieuw inschrijven')}
+        {mode === 'manage'
+          ? t('rebookGroup.confirmManage', 'Groep opslaan')
+          : t('rebookGroup.confirm', 'Groep opnieuw inschrijven')}
       </Button>
     </div>
   );
