@@ -24,6 +24,8 @@ interface Props {
   sending?: boolean;
   /** Fire the actual send — the parent owns the mutation (success/no-email/refresh). */
   onSend: (customMessage: string) => void;
+  /** Persist the current message as the account default (parent owns the write). */
+  onSaveDefault?: (message: string) => void;
 }
 
 /**
@@ -43,6 +45,7 @@ export function SendInvoiceEmailDialog({
   replyToSettingsHref,
   sending = false,
   onSend,
+  onSaveDefault,
 }: Props) {
   const { t } = useTranslation("academy");
   const [message, setMessage] = useState(defaultMessage);
@@ -113,6 +116,8 @@ export function SendInvoiceEmailDialog({
                 "Hi {first_name},\n\nHere is your invoice. Let me know if you have any questions.\n\nThanks!",
               )}
               variablesHelp={t("invoices.send.variablesHelp", "Insert variable:")}
+              onSaveDefault={onSaveDefault ? () => onSaveDefault(message) : undefined}
+              saveDefaultLabel={t("invoices.send.saveAsDefault", "Save as default")}
             />
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
