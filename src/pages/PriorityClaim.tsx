@@ -339,7 +339,11 @@ export default function PriorityClaimPage() {
                   {acting ? '…' : t('rebooking.release', 'No, release my spot')}
                 </Button>
               </div>
-              {group?.can_rebook_group && group.members.length > 1 && (
+              {/* Group re-book is offered for DEFERRED cycles only (roster-first → book → each
+                  player billed their own share at cycle start). The UPFRONT flow must be
+                  pay-first (Phase 3) so new guests/bookings are never created before payment
+                  lands — until then the upfront entry is intentionally hidden. */}
+              {paymentMode === 'deferred_split' && group?.can_rebook_group && group.members.length > 1 && (
                 <button
                   type="button"
                   onClick={() => setGroupMode(true)}
