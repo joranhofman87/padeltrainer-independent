@@ -9,14 +9,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
-import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger';
-import { AppPage } from '@/components/ui/app-page';
-import { PageHeader } from '@/components/ui/page-header';
+import { ListPageShell, ListPageState } from '@/components/ui/list-page-shell';
 import {
   Table,
   TableBody,
@@ -162,47 +160,39 @@ export default function AcademyTrainers() {
       .slice(0, 2);
   };
 
-  if (loading) {
-    return (
-      <AppPage>
-        <ListPageSkeleton />
-      </AppPage>
-    );
-  }
-
   const activeTrainers = trainers.filter((t) => t.status === 'active');
 
   return (
-    <AppPage>
-      <div>
-        <PageHeader
-          title={t('trainers.title')}
-          description={t('trainers.description')}
-          actions={
-            activeAcademy && user && profile ? (
-            <div className="flex items-center gap-2">
-              <CreateAcademyTrainerDialog
-                academyProfileId={activeAcademy.id}
-                onTrainerCreated={fetchData}
-              />
-              <InviteAcademyTrainerDialog
-                academyProfileId={activeAcademy.id}
-                academyName={activeAcademy.name}
-                inviterId={user.id}
-                inviterName={profile.full_name || t('badge')}
-                onInviteSent={fetchData}
-              />
-            </div>
-            ) : undefined
-          }
-        />
+    <ListPageShell
+      isLoading={loading}
+      title={t('trainers.title')}
+      description={t('trainers.description')}
+      actions={
+        activeAcademy && user && profile ? (
+          <div className="flex items-center gap-2">
+            <CreateAcademyTrainerDialog
+              academyProfileId={activeAcademy.id}
+              onTrainerCreated={fetchData}
+            />
+            <InviteAcademyTrainerDialog
+              academyProfileId={activeAcademy.id}
+              academyName={activeAcademy.name}
+              inviterId={user.id}
+              inviterName={profile.full_name || t('badge')}
+              onInviteSent={fetchData}
+            />
+          </div>
+        ) : undefined
+      }
+      headerAfter={
         <p className="mt-2 text-xs text-muted-foreground">
           {t(
             'trainers.createOrInviteHint',
             'Create Trainer: you set up the account and share the login details yourself. Invite Trainer: the trainer receives an email and signs up on their own.'
           )}
         </p>
-      </div>
+      }
+    >
 
       {/* Add yourself as trainer banner */}
       {canAddSelf.canAdd && (
@@ -239,15 +229,18 @@ export default function AcademyTrainers() {
         </TabsList>
 
         <TabsContent value="active">
-          {activeTrainers.length === 0 ? (
-            <Card className="overflow-hidden border-border/80 shadow-sm">
-              <EmptyState
-                icon={Users}
-                title={t('trainers.empty')}
-                description={t('trainers.emptyDescription')}
-              />
-            </Card>
-          ) : (
+          <ListPageState
+            isEmpty={activeTrainers.length === 0}
+            empty={
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <EmptyState
+                  icon={Users}
+                  title={t('trainers.empty')}
+                  description={t('trainers.emptyDescription')}
+                />
+              </Card>
+            }
+          >
             <DataTableCard
               testId="academy-trainers-table-scroll"
               className={flushOnMobileCardClass()}
@@ -422,19 +415,22 @@ export default function AcademyTrainers() {
                 </TableBody>
               </Table>
             </DataTableCard>
-          )}
+          </ListPageState>
         </TabsContent>
 
         <TabsContent value="pending">
-          {pendingInvitations.length === 0 ? (
-            <Card className="overflow-hidden border-border/80 shadow-sm">
-              <EmptyState
-                icon={Clock}
-                title={t('trainerInvitation.noPending')}
-                description={t('trainerInvitation.noPendingDescription')}
-              />
-            </Card>
-          ) : (
+          <ListPageState
+            isEmpty={pendingInvitations.length === 0}
+            empty={
+              <Card className="overflow-hidden border-border/80 shadow-sm">
+                <EmptyState
+                  icon={Clock}
+                  title={t('trainerInvitation.noPending')}
+                  description={t('trainerInvitation.noPendingDescription')}
+                />
+              </Card>
+            }
+          >
             <div className="space-y-3">
               {pendingInvitations.map((invitation) => (
                 <Card key={invitation.id}>
@@ -474,9 +470,9 @@ export default function AcademyTrainers() {
                 </Card>
               ))}
             </div>
-          )}
+          </ListPageState>
         </TabsContent>
       </Tabs>
-    </AppPage>
+    </ListPageShell>
   );
 }

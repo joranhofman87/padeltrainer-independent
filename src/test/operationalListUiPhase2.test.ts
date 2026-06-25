@@ -10,7 +10,10 @@ describe('Phase 2 operational list UI', () => {
     expect(source).toContain('DataTableCard');
     expect(source).toContain('compactDataTableClass');
     expect(source).toContain('EmptyState');
-    expect(source).toContain('ListPageSkeleton');
+    // Page chrome + loading skeleton + empty/content switching now come via the
+    // shared list-page shell (which renders ListPageSkeleton internally).
+    expect(source).toContain('ListPageShell');
+    expect(source).toContain('ListPageState');
   });
 
   it('TrainerBookings uses AppPage and shared primitives', () => {
