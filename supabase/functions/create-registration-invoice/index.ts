@@ -95,14 +95,28 @@ serve(async (req: Request) => {
     // Registration↔cycle split: prefer the canonical `registrations` form (resolved by
     // source_cycle_id) for pricing + payment config so paid registrations keep minting after the
     // source cycle becomes type='cyclus'; fall back to the legacy cycle pre-backfill.
-    let registration: Record<string, any> | null = null;
+    type RegistrationRow = {
+      id: string;
+      source_cycle_id: string;
+      owner_type: string;
+      owner_id: string;
+      format: string;
+      name: string;
+      total_price: number | null;
+      price_table: RegistrationInvoiceCycle["price_table"];
+      currency: string | null;
+      settings: Record<string, unknown> | null;
+      start_date: string | null;
+      end_date: string | null;
+    };
+    let registration: RegistrationRow | null = null;
     try {
       const { data } = await admin
         .from("registrations")
         .select("id, source_cycle_id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
         .eq("source_cycle_id", intake.cycle_id)
         .maybeSingle();
-      registration = (data as Record<string, any> | null) ?? null;
+      registration = (data as RegistrationRow | null) ?? null;
     } catch (regErr) {
       console.error("registration lookup failed (non-blocking):", regErr);
     }

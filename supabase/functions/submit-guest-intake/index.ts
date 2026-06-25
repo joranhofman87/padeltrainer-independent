@@ -410,14 +410,28 @@ Deno.serve(async (req) => {
     // (the source cycle then becomes a plain training cycle, type='cyclus'). Resolve it by
     // source_cycle_id so paid registrations keep minting and the invoice links to the
     // registration. Pre-backfill (no row) we fall back to the legacy cycle — unchanged behaviour.
-    let registration: Record<string, any> | null = null;
+    type RegistrationRow = {
+      id: string;
+      source_cycle_id: string;
+      owner_type: string;
+      owner_id: string;
+      format: string;
+      name: string;
+      total_price: number | null;
+      price_table: RegistrationInvoiceCycle["price_table"];
+      currency: string | null;
+      settings: Record<string, unknown> | null;
+      start_date: string | null;
+      end_date: string | null;
+    };
+    let registration: RegistrationRow | null = null;
     try {
       const { data } = await adminClient
         .from("registrations")
         .select("id, source_cycle_id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
         .eq("source_cycle_id", cycleId)
         .maybeSingle();
-      registration = (data as Record<string, any> | null) ?? null;
+      registration = (data as RegistrationRow | null) ?? null;
     } catch (regErr) {
       console.error("registration lookup failed (non-blocking):", regErr);
     }
