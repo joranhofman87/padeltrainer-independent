@@ -60,10 +60,11 @@ The `registrations` rows + additive `registration_id` columns are harmless to le
 Belt-and-suspenders on top of the in-transaction amount guard (check 1c). Run in the Supabase SQL editor and **Download CSV**, once BEFORE the cutover and once AFTER — every amount must match; only `registration_id` changes (NULL → filled).
 
 ```sql
--- (1) the invoices the cutover actually touches (outstanding registration/event invoices)
+-- (1) the invoices the cutover actually touches (outstanding registration/event invoices).
+--     NOTE: invoices has NO currency column (currency lives on cycles) — do not select i.currency.
 SELECT
   i.invoice_number, i.status,
-  i.total, i.subtotal, i.vat_amount, i.vat_rate, i.currency,
+  i.total, i.subtotal, i.vat_amount, i.vat_rate, i.prices_include_vat,
   i.invoice_date, i.due_date, i.player_name,
   i.cycle_id, c.name AS cycle_name, c.type AS cycle_type,
   i.registration_id, i.id AS invoice_id
@@ -77,7 +78,7 @@ ORDER BY i.invoice_number;
 -- (2) ALL outstanding invoices (broader AR snapshot)
 SELECT
   i.invoice_number, i.status, i.total, i.subtotal, i.vat_amount, i.vat_rate,
-  i.currency, i.invoice_date, i.due_date, i.player_name,
+  i.prices_include_vat, i.invoice_date, i.due_date, i.player_name,
   i.cycle_id, i.registration_id, i.id AS invoice_id
 FROM invoices i
 WHERE i.status NOT IN ('paid','cancelled')
