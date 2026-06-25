@@ -1,8 +1,7 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -11,6 +10,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { InvoiceEmailMessageField } from "./InvoiceEmailMessageField";
 
 interface Props {
   open: boolean;
@@ -19,12 +19,6 @@ interface Props {
   language: string;
   onSent: () => void;
 }
-
-const VARIABLES = [
-  { token: "{first_name}", labelKey: "insertFirstName", fallback: "First name" },
-  { token: "{last_name}", labelKey: "insertLastName", fallback: "Last name" },
-  { token: "{full_name}", labelKey: "insertFullName", fallback: "Full name" },
-];
 
 export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, onSent }: Props) {
   const { t } = useTranslation("academy");
@@ -36,24 +30,6 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
   const [previewLoading, setPreviewLoading] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [testSending, setTestSending] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const insertVariable = (token: string) => {
-    const el = textareaRef.current;
-    if (!el) {
-      setCustomMessage((m) => m + token);
-      return;
-    }
-    const start = el.selectionStart ?? customMessage.length;
-    const end = el.selectionEnd ?? customMessage.length;
-    const next = customMessage.slice(0, start) + token + customMessage.slice(end);
-    setCustomMessage(next.slice(0, 2000));
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + token.length;
-      el.setSelectionRange(pos, pos);
-    });
-  };
 
   const handlePreview = async () => {
     if (invoiceIds.length === 0) return;
@@ -197,42 +173,18 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
                 .
               </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="custom-msg">
-                {t("invoices.bulk.messageLabel", "Email message")}
-              </Label>
-              <Textarea
-                id="custom-msg"
-                ref={textareaRef}
-                value={customMessage}
-                onChange={(e) => setCustomMessage(e.target.value.slice(0, 2000))}
-                placeholder={t(
-                  "invoices.bulk.messagePlaceholder",
-                  "Hi {first_name},\n\nHere is your invoice. Let me know if you have any questions.\n\nThanks!"
-                )}
-                rows={8}
-                disabled={sending}
-              />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-muted-foreground mr-1">
-                  {t("invoices.bulk.variablesHelp", "Insert variable:")}
-                </span>
-                {VARIABLES.map((v) => (
-                  <Button
-                    key={v.token}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => insertVariable(v.token)}
-                    disabled={sending}
-                  >
-                    {v.token}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">{customMessage.length}/2000</p>
-            </div>
+            <InvoiceEmailMessageField
+              id="custom-msg"
+              value={customMessage}
+              onChange={setCustomMessage}
+              disabled={sending}
+              label={t("invoices.bulk.messageLabel", "Email message")}
+              placeholder={t(
+                "invoices.bulk.messagePlaceholder",
+                "Hi {first_name},\n\nHere is your invoice. Let me know if you have any questions.\n\nThanks!"
+              )}
+              variablesHelp={t("invoices.bulk.variablesHelp", "Insert variable:")}
+            />
 
             <div className="flex items-center gap-2">
               <Checkbox id="mark-sent" checked={markAsSent} onCheckedChange={(v) => setMarkAsSent(!!v)} disabled={sending} />
