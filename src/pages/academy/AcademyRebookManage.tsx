@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -33,6 +33,10 @@ const STATUS_ORDER: GroupStatus[] = ['rebooked', 'awaiting', 'declined', 'member
 type PaymentFilter = 'all' | 'unpaid' | 'paid';
 
 const claimedOf = (g: RebookManageGroup) => g.players.filter((p) => p.response === 'claimed');
+
+/** Server caps the reminder message at 2000 chars (send-rebook-reminder); mirror it here. */
+const REMINDER_MESSAGE_MAX = 2000;
+const fmtReminded = (iso: string) => new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 
 export default function AcademyRebookManage() {
   const { cycleId } = useParams<{ cycleId: string }>();
@@ -128,6 +132,31 @@ export default function AcademyRebookManage() {
 
   const clearSelection = () => { setSelectedGroups(new Set()); setSelectedPlayers(new Map()); };
 
+  // Select every still-awaiting (non-responder) player within the current filters — the
+  // common reminder case; individual chip selection keeps it fully flexible for other cases.
+  const selectNonResponders = () => setSelectedPlayers((prev) => {
+    const n = new Map(prev);
+    for (const g of filtered) for (const p of g.players) {
+      if (p.response === 'pending') n.set(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId });
+    }
+    return n;
+  });
+  const pendingInFilter = useMemo(
+    () => filtered.reduce((sum, g) => sum + g.players.filter((p) => p.response === 'pending').length, 0),
+    [filtered],
+  );
+
+  // Awareness for "don't double-nudge": how many of the selected players were already reminded.
+  const remindedKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const g of groups) for (const p of g.players) if (p.lastRemindedAt) s.add(p.key);
+    return s;
+  }, [groups]);
+  const selectedAlreadyReminded = useMemo(
+    () => [...selectedPlayers.keys()].filter((k) => remindedKeys.has(k)).length,
+    [selectedPlayers, remindedKeys],
+  );
+
   const runBulk = async (fn: (ids: string[]) => ReturnType<typeof bulkReleaseToPublic>, doneKey: string, fallback: string) => {
     if (selectedSlotIds.length === 0) return;
     setBusy(true);
@@ -161,6 +190,7 @@ export default function AcademyRebookManage() {
         toast.success(t('rebookManage.reminderDone', '{{sent}} herinneringen verstuurd', { sent: res.sent }));
       }
       setComposeOpen(false); setSubject(''); setMessage(''); clearSelection();
+      refetch(); // refresh "last reminded" chips + already-reminded counts so we don't double-nudge
     } finally { setBusy(false); }
   };
 
@@ -242,6 +272,16 @@ export default function AcademyRebookManage() {
         )}
       </div>
 
+      {/* Quick-pick the non-responders for a reminder (respects the active filters) */}
+      {pendingInFilter > 0 && (
+        <div>
+          <Button size="sm" variant="outline" onClick={selectNonResponders}>
+            <Clock className="h-4 w-4 mr-1" />
+            {t('rebookManage.selectNonResponders', 'Selecteer wachtenden ({{n}})', { n: pendingInFilter })}
+          </Button>
+        </div>
+      )}
+
       {/* Bulk bar */}
       {(selectedGroups.size > 0 || selectedPlayers.size > 0) && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-background p-2 shadow-sm">
@@ -256,7 +296,8 @@ export default function AcademyRebookManage() {
             onClick={() => runBulk(bulkHoldSlots, 'rebookManage.madePrivate', '{{count}} sessies verborgen')}>
             <EyeOff className="h-4 w-4 mr-1" /> {t('rebookManage.makePrivate', 'Verbergen')}
           </Button>
-          <Button size="sm" disabled={busy || selectedPlayers.size === 0} onClick={() => setComposeOpen(true)}>
+          <Button size="sm" disabled={busy || selectedPlayers.size === 0}
+            onClick={() => { if (!message.trim() && data?.invitationMessage) setMessage(data.invitationMessage); setComposeOpen(true); }}>
             <Mail className="h-4 w-4 mr-1" /> {t('rebookManage.emailReminder', 'Herinnering mailen')}
           </Button>
           <Button size="sm" variant="ghost" onClick={clearSelection}>{t('common:clear', 'Wissen')}</Button>
@@ -324,11 +365,23 @@ export default function AcademyRebookManage() {
               <Input value={subject} maxLength={120} onChange={(e) => setSubject(e.target.value)}
                 placeholder={t('rebookManage.composeSubjectPlaceholder', 'Herinnering: bevestig je plek')} />
             </div>
-            <div>
-              <Label>{t('rebookManage.composeMessage', 'Bericht')}</Label>
-              <Textarea value={message} maxLength={1000} rows={5} onChange={(e) => setMessage(e.target.value)}
-                placeholder={t('rebookManage.composeMessagePlaceholder', 'Korte herinnering aan je spelers…')} />
-              <p className="text-xs text-muted-foreground mt-1">{t('rebookManage.composeHint', 'Platte tekst. We voegen je academienaam en een knop naar hun uitnodiging toe.')}</p>
+            <div className="space-y-1">
+              <EmailMessageField
+                id="rebook-reminder-message"
+                value={message}
+                onChange={setMessage}
+                disabled={busy}
+                maxLength={REMINDER_MESSAGE_MAX}
+                label={t('rebookManage.composeMessage', 'Bericht')}
+                placeholder={t('rebookManage.composeMessagePlaceholder', 'Korte herinnering aan je spelers…')}
+                variablesHelp={t('rebookManage.composeVariablesHelp', 'Voeg variabele toe:')}
+              />
+              <p className="text-xs text-muted-foreground">{t('rebookManage.composeHint', 'We voegen je academienaam en een knop naar hun uitnodiging toe.')}</p>
+              {selectedAlreadyReminded > 0 && (
+                <p className="text-xs text-amber-600">
+                  {t('rebookManage.alreadyReminded', '{{n}} van deze spelers zijn al eerder herinnerd.', { n: selectedAlreadyReminded })}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -404,6 +457,14 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                       {p.response === 'claimed' && (
                         <span className={p.paid ? 'text-emerald-600' : 'text-rose-600'}>
                           · {p.paid ? t('rebookManage.paidShort', 'betaald') : t('rebookManage.unpaidShort', 'open')}
+                        </span>
+                      )}
+                      {p.lastRemindedAt && (
+                        <span
+                          className="text-muted-foreground"
+                          title={t('rebookManage.lastReminded', 'Laatst herinnerd op {{date}}', { date: fmtReminded(p.lastRemindedAt) })}
+                        >
+                          · {t('rebookManage.remindedShort', 'herinnerd')} {fmtReminded(p.lastRemindedAt)}
                         </span>
                       )}
                     </button>

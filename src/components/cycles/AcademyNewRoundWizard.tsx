@@ -23,6 +23,7 @@ import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
+import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 
 interface Props {
@@ -89,6 +90,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
+  const [invitationMessage, setInvitationMessage] = useState('');
 
   useEffect(() => {
     getCycles('academy', academyProfileId)
@@ -128,8 +130,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       weeks: weeks ? Number(weeks) : 0,
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
+      invitationMessage: invitationMessage.trim() || null,
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -407,6 +410,18 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   players: Math.max(0, review.players - review.noEmailTotal),
                 })}
               </p>
+              <div className="rounded-md border p-3">
+                <EmailMessageField
+                  id="rebook-invite-message"
+                  value={invitationMessage}
+                  onChange={setInvitationMessage}
+                  disabled={submitting}
+                  maxLength={2000}
+                  label={t('newRound.inviteMessageLabel', 'Persoonlijk bericht in de uitnodiging (optioneel)')}
+                  placeholder={t('newRound.inviteMessagePlaceholder', 'Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.')}
+                  variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                />
+              </div>
             </CardContent>
           </Card>
 

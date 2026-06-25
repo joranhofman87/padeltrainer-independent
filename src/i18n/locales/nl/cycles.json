@@ -1061,7 +1061,10 @@
     "confirmIntro": "Je maakt \"{{name}}\" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:",
     "confirmGroupLine": "{{players}} spelers · {{sessions}} sessies",
     "confirmEmails": "{{players}} spelers krijgen nu een uitnodiging per e-mail.",
-    "confirmSend": "Versturen"
+    "confirmSend": "Versturen",
+    "inviteMessageLabel": "Persoonlijk bericht in de uitnodiging (optioneel)",
+    "inviteMessagePlaceholder": "Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.",
+    "inviteVariablesHelp": "Voeg variabele toe:"
   },
   "newRound": {
     "defaultCycleName": "Volgende ronde {{year}}",
@@ -1116,6 +1119,9 @@
     "reviewGroupLine": "{{players}} spelers · {{sessions}} sessies",
     "reviewHolidays": "Vakanties overgeslagen: {{names}}",
     "reviewEmails": "{{players}} spelers krijgen nu een uitnodiging per e-mail.",
+    "inviteMessageLabel": "Persoonlijk bericht in de uitnodiging (optioneel)",
+    "inviteMessagePlaceholder": "Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.",
+    "inviteVariablesHelp": "Voeg variabele toe:",
     "backToConfigure": "Aanpassen",
     "confirmSend": "Aanmaken & spelers uitnodigen"
   },
@@ -1169,8 +1175,13 @@
     "composeSubjectPlaceholder": "Herinnering: bevestig je plek",
     "composeMessage": "Bericht",
     "composeMessagePlaceholder": "Korte herinnering aan je spelers…",
-    "composeHint": "Platte tekst. We voegen je academienaam en een knop naar hun uitnodiging toe.",
-    "composeSend": "Versturen"
+    "composeHint": "We voegen je academienaam en een knop naar hun uitnodiging toe.",
+    "composeVariablesHelp": "Voeg variabele toe:",
+    "composeSend": "Versturen",
+    "selectNonResponders": "Selecteer wachtenden ({{n}})",
+    "alreadyReminded": "{{n}} van deze spelers zijn al eerder herinnerd.",
+    "lastReminded": "Laatst herinnerd op {{date}}",
+    "remindedShort": "herinnerd"
   },
   "rebookShared": {
     "paymentTitle": "Betaling",

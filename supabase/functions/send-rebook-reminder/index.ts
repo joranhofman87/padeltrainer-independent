@@ -25,6 +25,20 @@ const json = (body: unknown, status = 200) =>
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Personalization tokens — same set the rebook invite + invoice emails use, so a reminder
+// pre-filled from the saved invite text renders {first_name} etc. instead of showing them raw.
+// Substitute BEFORE escaping (the per-line escape below covers both the academy text and the
+// substituted name).
+const substituteVars = (text: string, fullName: string) => {
+  const full = (fullName || "").trim();
+  const first = full.split(/\s+/)[0] || full;
+  const last = full.includes(" ") ? full.slice(full.indexOf(" ") + 1).trim() : "";
+  return text
+    .replace(/\{first_name\}/g, first)
+    .replace(/\{last_name\}/g, last)
+    .replace(/\{full_name\}/g, full);
+};
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -43,7 +57,7 @@ serve(async (req: Request) => {
 
     const { cycleId, targets, subject, message } = await req.json();
     const subj = typeof subject === "string" ? subject.trim().slice(0, 120) : "";
-    const msg = typeof message === "string" ? message.trim().slice(0, 1000) : "";
+    const msg = typeof message === "string" ? message.trim().slice(0, 2000) : "";
     const targetList: Array<{ player_id: string | null; guest_player_id: string | null }> =
       Array.isArray(targets) ? targets : [];
     if (!cycleId || !subj || !msg || targetList.length === 0) {
@@ -97,6 +111,9 @@ serve(async (req: Request) => {
     const recipients = [...byPlayer.values()].slice(0, MAX_RECIPIENTS);
     const resend = new Resend(resendKey);
     let sent = 0, skipped = 0, failed = 0;
+    // Player/guest ids that actually received a reminder — used to stamp reminded_at after the loop.
+    const sentPlayerIds: string[] = [];
+    const sentGuestIds: string[] = [];
 
     for (const c of recipients) {
       const email = resolveRecipient({
@@ -106,7 +123,7 @@ serve(async (req: Request) => {
       if (!email) { skipped++; continue; }
       const name = c.profiles?.full_name || c.guest_players?.full_name || "";
       const cta = buildClaimUrl(APP_BASE, c.claim_token, false);
-      const body = msg.split("\n").map((line) => `<p style="color:#374151;line-height:1.6;">${escapeHtml(line)}</p>`).join("");
+      const body = substituteVars(msg, name).split("\n").map((line) => `<p style="color:#374151;line-height:1.6;">${escapeHtml(line)}</p>`).join("");
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           ${cycle?.name ? `<h2 style="color:${BRAND};">${escapeHtml(cycle.name)}</h2>` : ""}
@@ -126,6 +143,19 @@ serve(async (req: Request) => {
       });
       if (sendErr) { console.error("send error", sendErr); failed++; continue; }
       sent++;
+      if (c.player_id) sentPlayerIds.push(c.player_id);
+      else if (c.guest_player_id) sentGuestIds.push(c.guest_player_id);
+    }
+
+    // Stamp reminded_at + bump reminder_count on the claims we actually emailed (atomic RPC;
+    // best-effort — the emails already went out, so a stamp failure must not fail the response).
+    if (sentPlayerIds.length > 0 || sentGuestIds.length > 0) {
+      const { error: stampErr } = await supabase.rpc("bump_rebook_reminders", {
+        p_slot_ids: slotIds,
+        p_player_ids: sentPlayerIds,
+        p_guest_ids: sentGuestIds,
+      });
+      if (stampErr) console.error("reminded_at stamp failed", stampErr);
     }
 
     return json({ ok: true, sent, skipped, failed });

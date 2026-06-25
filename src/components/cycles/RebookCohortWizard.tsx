@@ -20,6 +20,7 @@ import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
+import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 
 interface Props {
@@ -105,6 +106,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
+  const [invitationMessage, setInvitationMessage] = useState('');
 
   useEffect(() => {
     getAcademyLocationsWithDetails(academyProfileId)
@@ -146,6 +148,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       weeks: weeks ? Number(weeks) : 0,
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
+      invitationMessage: invitationMessage.trim() || null,
     }),
     [
       academyProfileId,
@@ -161,6 +164,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       weeks,
       sessionPrice,
       holidays,
+      invitationMessage,
     ],
   );
 
@@ -303,6 +307,18 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <p className="text-sm font-medium">
           {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: emailCount })}
         </p>
+        <div className="rounded-md border p-3">
+          <EmailMessageField
+            id="rebook-invite-message"
+            value={invitationMessage}
+            onChange={setInvitationMessage}
+            disabled={submitting}
+            maxLength={2000}
+            label={t('rebookCohort.inviteMessageLabel', 'Persoonlijk bericht in de uitnodiging (optioneel)')}
+            placeholder={t('rebookCohort.inviteMessagePlaceholder', 'Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.')}
+            variablesHelp={t('rebookCohort.inviteVariablesHelp', 'Voeg variabele toe:')}
+          />
+        </div>
         <div className="flex flex-wrap justify-end gap-2 sticky bottom-2 rounded-md border bg-background p-2 shadow-sm">
           <Button variant="outline" onClick={() => { setConfirmData(null); setAckNoEmail(false); }} disabled={submitting}>
             {t('common:cancel', 'Annuleren')}

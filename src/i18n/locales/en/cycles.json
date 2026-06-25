@@ -926,7 +926,10 @@
     "confirmIntro": "You are creating \"{{name}}\" from {{date}} ({{weeks}} weeks, € {{price}} per session). This will invite the following players by email now:",
     "confirmGroupLine": "{{players}} players · {{sessions}} sessions",
     "confirmEmails": "{{players}} players will be emailed an invitation now.",
-    "confirmSend": "Send"
+    "confirmSend": "Send",
+    "inviteMessageLabel": "Personal message in the invitation (optional)",
+    "inviteMessagePlaceholder": "E.g. Great to have you back! Confirm your regular spot for the next round below.",
+    "inviteVariablesHelp": "Insert variable:"
   },
   "newRound": {
     "defaultCycleName": "Next round {{year}}",
@@ -981,6 +984,9 @@
     "reviewGroupLine": "{{players}} players · {{sessions}} sessions",
     "reviewHolidays": "Holidays skipped: {{names}}",
     "reviewEmails": "{{players}} players will be emailed an invitation now.",
+    "inviteMessageLabel": "Personal message in the invitation (optional)",
+    "inviteMessagePlaceholder": "E.g. Great to have you back! Confirm your regular spot for the next round below.",
+    "inviteVariablesHelp": "Insert variable:",
     "backToConfigure": "Edit",
     "confirmSend": "Create & invite players"
   },
@@ -1034,8 +1040,13 @@
     "composeSubjectPlaceholder": "Reminder: confirm your spot",
     "composeMessage": "Message",
     "composeMessagePlaceholder": "A short reminder to your players…",
-    "composeHint": "Plain text. We add your academy name and a button to their invitation.",
-    "composeSend": "Send"
+    "composeHint": "We add your academy name and a button to their invitation.",
+    "composeVariablesHelp": "Insert variable:",
+    "composeSend": "Send",
+    "selectNonResponders": "Select awaiting ({{n}})",
+    "alreadyReminded": "{{n}} of these players were already reminded.",
+    "lastReminded": "Last reminded on {{date}}",
+    "remindedShort": "reminded"
   },
   "rebookShared": {
     "paymentTitle": "Payment",
