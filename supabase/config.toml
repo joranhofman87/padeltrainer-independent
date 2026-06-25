@@ -181,6 +181,12 @@ verify_jwt = false
 [functions.get-public-invoice]
 verify_jwt = false
 
+[functions.create-group-rebook-invoice]
+verify_jwt = false
+
+[functions.send-rebook-group-confirmation]
+verify_jwt = false
+
 [functions.create-invoice-payment]
 verify_jwt = false
 

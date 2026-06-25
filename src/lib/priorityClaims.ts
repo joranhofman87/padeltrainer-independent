@@ -549,6 +549,124 @@ export async function acceptClaimWithToken(token: string) {
   return data as { ok: boolean; status?: string; reason?: string; booking_id?: string } | null;
 }
 
+// ===== Group-captain rebooking: one member re-books the whole group =====
+
+export interface RebookGroupMember {
+  key: string; // 'p:<uuid>' | 'g:<uuid>' — opaque to the UI, parsed back by rebook_group_apply
+  first_name: string;
+  status: 'claimed' | 'pending' | 'declined';
+  is_self: boolean;
+  has_email: boolean;
+}
+
+export interface RebookGroup {
+  rebook_group_id: string;
+  can_rebook_group: boolean;
+  /** True once the captain has PAID their group seat — they may then assign/change the roster. */
+  can_manage_group?: boolean;
+  /** The single active group invoice (upfront) — manage links covered teammates onto it. */
+  group_invoice_id?: string | null;
+  self_key: string;
+  slot: Record<string, unknown>;
+  sessions: number;
+  members: RebookGroupMember[];
+}
+
+export interface RebookGroupApplyResult {
+  ok: boolean;
+  group?: boolean;
+  reason?: string;
+  rebook_group_id?: string;
+  booked?: number;
+  declined?: number;
+  added?: number;
+  skipped_full?: number;
+  skipped_existing?: number;
+  booking_ids?: string[];
+}
+
+/** Roster of the token's rebook group (first name + status only — PII-trimmed). Null when
+ *  the claim isn't part of a group (legacy single claim) or the token is unknown. */
+export async function fetchRebookGroupByToken(token: string): Promise<RebookGroup | null> {
+  const { data, error } = await supabase.rpc('get_rebook_group_by_token', { _token: token });
+  if (error) throw error;
+  return (data as RebookGroup | null) ?? null;
+}
+
+/** Token-gated mint of a new guest player for the group (the anon captain can't write
+ *  guest_players directly). Returns the guest_players.id to pass to applyRebookGroup. */
+export async function createRebookGroupGuest(token: string, input: {
+  firstName: string; lastName?: string; email?: string; phone?: string;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('create_rebook_group_guest', {
+    _token: token,
+    _first_name: input.firstName,
+    _last_name: input.lastName ?? null,
+    _email: input.email ?? null,
+    _phone: input.phone ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Re-book the whole group: keep the listed members, decline the rest (pending only), and add
+ *  the given new guest ids — all capacity-guarded + atomic. */
+export async function applyRebookGroup(token: string, args: {
+  keepKeys: string[]; newGuestIds?: string[];
+}): Promise<RebookGroupApplyResult> {
+  const { data, error } = await supabase.rpc('rebook_group_apply', {
+    _token: token,
+    _keep_keys: args.keepKeys,
+    _new_guest_ids: args.newGuestIds ?? [],
+  });
+  if (error) throw error;
+  return (data as RebookGroupApplyResult) ?? { ok: false };
+}
+
+export interface GroupRebookInvoiceResult {
+  ok: boolean;
+  reason?: string;
+  /** True when the group already had an active invoice — the caller is sent to THAT one, not a 2nd. */
+  alreadyStarted?: boolean;
+  invoiceId?: string;
+  publicToken?: string;
+  status?: string;
+  checkoutUrl?: string;
+}
+
+/** UPFRONT pay-first: books the captain's own seat + mints ONE group invoice (the fixed full
+ *  court price) + starts a Mollie checkout. The captain assigns the roster AFTER paying
+ *  (manageRebookGroup). Teammates stay pending (slot held) until then. */
+export async function createGroupRebookInvoice(token: string): Promise<GroupRebookInvoiceResult> {
+  const { data, error } = await supabase.functions.invoke('create-group-rebook-invoice', { body: { token } });
+  if (error) return { ok: false, reason: error.message };
+  return (data as GroupRebookInvoiceResult) ?? { ok: false };
+}
+
+/** UPFRONT post-payment roster management: assign/change players who are COVERED by the
+ *  captain's group payment (booked already-paid, paid_by the captain). */
+export async function manageRebookGroup(token: string, args: {
+  keepKeys: string[]; newGuestIds?: string[]; invoiceId?: string;
+}): Promise<RebookGroupApplyResult> {
+  const { data, error } = await supabase.rpc('rebook_group_manage', {
+    _token: token,
+    _keep_keys: args.keepKeys,
+    _new_guest_ids: args.newGuestIds ?? [],
+    _invoice_id: args.invoiceId ?? null,
+  });
+  if (error) throw error;
+  return (data as RebookGroupApplyResult) ?? { ok: false };
+}
+
+/** Phase 4: fire-and-forget — email the people the captain just booked ("X re-booked you" /
+ *  "you've been added by X"). Idempotent server-side via confirmation_sent_at, so a dropped call
+ *  is recovered on the next group action; never block the UI on it. */
+export function sendRebookGroupConfirmations(token: string): void {
+  void supabase.functions
+    .invoke('send-rebook-group-confirmation', { body: { token } })
+    .catch(() => { /* best-effort; the edge fn is idempotent */ });
+}
+
 export interface AcceptAndPayResult {
   ok: boolean;
   status?: string;
