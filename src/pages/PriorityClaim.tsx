@@ -9,15 +9,19 @@ import { toast } from 'sonner';
 import { CalendarClock, MapPin, CheckCircle2, XCircle } from 'lucide-react';
 import {
   fetchClaimByToken,
+  fetchRebookGroupByToken,
   declineClaimWithToken,
   acceptClaimAndStartPayment,
   getCycleRebookPaymentMode,
   getCycleStartDate,
   type RebookPaymentMode,
+  type RebookGroup,
+  type RebookGroupApplyResult,
 } from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
+import { RebookGroupEditor } from '@/components/cycles/RebookGroupEditor';
 
 interface ClaimData {
   claim: {
@@ -40,6 +44,8 @@ interface ClaimData {
   // Number of weekly sessions in this player's rebook series (term length).
   sessions: number | null;
   player_name: string | null;
+  // First name of the group member who re-booked this spot on the viewer's behalf, else null.
+  booked_by_captain_name: string | null;
 }
 
 export default function PriorityClaimPage() {
@@ -55,25 +61,30 @@ export default function PriorityClaimPage() {
   const [accepted, setAccepted] = useState(false);
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
+  const [group, setGroup] = useState<RebookGroup | null>(null);
+  const [groupMode, setGroupMode] = useState(false);
 
   const loadClaim = useCallback(() => {
     if (!token) return;
     setLoading(true);
     setLoadFailed(false);
+    setGroupMode(false);
     fetchClaimByToken(token)
       // A null result is a definitive "no such claim"; a throw is a failed
       // request (network/5xx) — the link may still be valid, so offer a retry.
       .then(async (res) => {
         const claim = res as unknown as ClaimData | null;
         setData(claim);
-        // Mode-aware copy + "starts on" date: read the cycle in parallel (cycles
-        // with status 'open' are publicly readable; both fall back gracefully).
-        const [mode, startDate] = await Promise.all([
+        // Mode-aware copy + "starts on" date + the group roster (for the "re-book the
+        // whole group" option): read in parallel; each falls back gracefully.
+        const [mode, startDate, grp] = await Promise.all([
           getCycleRebookPaymentMode(claim?.slot?.cyclus_id),
           getCycleStartDate(claim?.slot?.cyclus_id),
+          fetchRebookGroupByToken(token).catch(() => null),
         ]);
         setPaymentMode(mode);
         setCycleStartDate(startDate);
+        setGroup(grp);
       })
       .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
@@ -136,6 +147,18 @@ export default function PriorityClaimPage() {
     }
   };
 
+  // Captain re-booked the whole group. Booking is done; the single group payment is wired
+  // in Phase 3 (today: deferred cycles bill per-player later, upfront gets one invoice).
+  const onGroupDone = (res: RebookGroupApplyResult) => {
+    setGroupMode(false);
+    if (res.ok) {
+      setAccepted(true);
+      toast.success(paymentMode === 'upfront'
+        ? t('rebookGroup.doneUpfront', 'Je groep is opnieuw ingeschreven. Je ontvangt één factuur voor de hele groep.')
+        : t('rebookGroup.done', 'Je groep is opnieuw ingeschreven. Iedereens plek is gereserveerd.'));
+    }
+  };
+
   if (loading) {
     return (
       <div className="container max-w-xl mx-auto py-12 px-4">
@@ -174,6 +197,29 @@ export default function PriorityClaimPage() {
   const end = new Date(data.slot.end_time);
   // The player can still keep/release → show the "how it works" explainer.
   const actionable = !accepted && !declined && status !== 'claimed' && status !== 'declined' && !windowEnded;
+
+  // Captain editor takes over the card body when re-booking the whole group.
+  if (groupMode && group && token) {
+    return (
+      <div className="container max-w-xl mx-auto py-12 px-4">
+        <Helmet><title>{t('rebookGroup.title', 'Schrijf je groep opnieuw in')}</title><meta name="robots" content="noindex" /></Helmet>
+        <Card>
+          <CardHeader>
+            <CardTitle>{data.slot.cyclus_name ?? t('rebookGroup.title', 'Schrijf je groep opnieuw in')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RebookGroupEditor
+              token={token}
+              group={group}
+              paymentMode={paymentMode}
+              onBack={() => setGroupMode(false)}
+              onDone={onGroupDone}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container max-w-xl mx-auto py-12 px-4">
@@ -258,7 +304,10 @@ export default function PriorityClaimPage() {
 
           {accepted || status === 'claimed' ? (
             <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="h-5 w-5" /> {t('rebooking.reserved', "Your spot is reserved. You'll receive an invoice when the cycle starts.")}
+              <CheckCircle2 className="h-5 w-5" />
+              {!accepted && data.booked_by_captain_name
+                ? t('rebookGroup.bookedByCaptain', '{{name}} heeft je groep al opnieuw ingeschreven — je doet mee. Je plek is gereserveerd.', { name: data.booked_by_captain_name })
+                : t('rebooking.reserved', "Your spot is reserved. You'll receive an invoice when the cycle starts.")}
             </div>
           ) : declined || status === 'declined' ? (
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -271,23 +320,35 @@ export default function PriorityClaimPage() {
               <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <Button
-                onClick={onClaim}
-                disabled={acting}
-                variant={intent === 'decline' ? 'outline' : 'default'}
-                className="flex-1"
-              >
-                {acting ? t('rebooking.working', 'Working…') : t('rebooking.keep', 'Yes, keep my spot')}
-              </Button>
-              <Button
-                onClick={onDecline}
-                disabled={acting}
-                variant={intent === 'decline' ? 'default' : 'outline'}
-                className="flex-1"
-              >
-                {acting ? '…' : t('rebooking.release', 'No, release my spot')}
-              </Button>
+            <div className="space-y-3 pt-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  onClick={onClaim}
+                  disabled={acting}
+                  variant={intent === 'decline' ? 'outline' : 'default'}
+                  className="flex-1"
+                >
+                  {acting ? t('rebooking.working', 'Working…') : t('rebooking.keep', 'Yes, keep my spot')}
+                </Button>
+                <Button
+                  onClick={onDecline}
+                  disabled={acting}
+                  variant={intent === 'decline' ? 'default' : 'outline'}
+                  className="flex-1"
+                >
+                  {acting ? '…' : t('rebooking.release', 'No, release my spot')}
+                </Button>
+              </div>
+              {group?.can_rebook_group && group.members.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setGroupMode(true)}
+                  disabled={acting}
+                  className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2"
+                >
+                  {t('rebookGroup.entry', 'Boek je voor de anderen ook? Schrijf de hele groep opnieuw in →')}
+                </button>
+              )}
             </div>
           )}
         </CardContent>
