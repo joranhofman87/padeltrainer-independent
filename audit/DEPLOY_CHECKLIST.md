@@ -24,6 +24,11 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 - [x] `CRON_SECRET` + `SUPABASE_SERVICE_ROLE_KEY` set in Vercel **Production** (verified).
 - [x] Production error monitoring — **resolved**: PostHog `$exception` (client) + Slack alerts (cron + critical edge fns) cover it; no Sentry needed (#83, see `audit/MONITORING.md`).
 
+## Pending — not yet deployed (invoice PDF)
+`supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
+
+- [ ] **send-invoice-email** — now **attaches the invoice PDF** to the payment email (best-effort: it calls `generate-invoice` for a fresh signed `pdfUrl`, fetches it, and attaches base64; if generation fails it still sends the pay-link email). Previously the payment email was link-only with no PDF. *No deploy = recipients keep getting link-only emails.*
+
 ## Notes
 - The CI changes (rehearsal runner, edge-fn config guard, cron Slack alerts, stale-ref purge) took effect on merge — no manual deploy.
 - Dependency-vuln upgrade: the production-runtime fixes shipped (#84, react-router + protobufjs); the dev/build + Vercel-runtime remainder is documented as deferred in `audit/DEPENDENCIES.md`.
