@@ -250,8 +250,10 @@ DECLARE
   v_booked integer := 0;
   v_declined integer := 0;
   v_skipped_full integer := 0;
+  v_skipped_existing integer := 0;
   v_added integer := 0;
   v_is_own boolean;
+  v_existing_booking uuid;
   v_booking_ids uuid[] := '{}';
   k text;
   rec record;
@@ -318,12 +320,34 @@ BEGIN
     FOR UPDATE OF spc
   LOOP
     PERFORM pg_advisory_xact_lock(hashtextextended(rec.slot_id::text, 0));
-    SELECT count(*) INTO v_seats FROM public.bookings
-      WHERE slot_id = rec.slot_id AND COALESCE(status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap');
-    IF v_seats >= COALESCE(rec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
-
     v_is_own := (rec.player_id IS NOT DISTINCT FROM v_cap_player
                  AND rec.guest_player_id IS NOT DISTINCT FROM v_cap_guest);
+
+    -- If this member already holds an ACTIVE booking on the slot — matched to the M-17
+    -- unique-active-booking index set ('pending'/'confirmed'/'completed') — never INSERT a
+    -- duplicate (it would raise 23505 and abort the whole group). Just mark their claim
+    -- claimed against the existing booking + keep it in the group's booking set.
+    SELECT id INTO v_existing_booking FROM public.bookings
+      WHERE slot_id = rec.slot_id
+        AND player_id IS NOT DISTINCT FROM rec.player_id
+        AND guest_player_id IS NOT DISTINCT FROM rec.guest_player_id
+        AND status IN ('pending', 'confirmed', 'completed')
+      LIMIT 1;
+    IF v_existing_booking IS NOT NULL THEN
+      UPDATE public.slot_priority_claims
+        SET status = 'claimed', responded_at = now(), booking_id = v_existing_booking,
+            booked_by_player_id = CASE WHEN v_is_own THEN NULL ELSE v_cap_player END,
+            booked_by_guest_player_id = CASE WHEN v_is_own THEN NULL ELSE v_cap_guest END
+        WHERE id = rec.id;
+      v_booking_ids := array_append(v_booking_ids, v_existing_booking);
+      v_skipped_existing := v_skipped_existing + 1;
+      CONTINUE;
+    END IF;
+
+    -- Capacity: count only seats actually occupied (the canonical occupying set).
+    SELECT count(*) INTO v_seats FROM public.bookings
+      WHERE slot_id = rec.slot_id AND status IN ('confirmed', 'pending', 'pending_approval');
+    IF v_seats >= COALESCE(rec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
 
     INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status, payment_status, created_at, updated_at)
     VALUES (rec.slot_id, rec.player_id, rec.guest_player_id, 'confirmed', 'pending', now(), now())
@@ -350,13 +374,18 @@ BEGIN
         WHERE spc.rebook_group_id = v_group
         ORDER BY 1
       LOOP
-        IF EXISTS (SELECT 1 FROM public.slot_priority_claims
-                   WHERE slot_id = slotrec.slot_id AND guest_player_id = gid) THEN
-          CONTINUE; -- already a member of this slot
-        END IF;
         PERFORM pg_advisory_xact_lock(hashtextextended(slotrec.slot_id::text, 0));
+        -- Already a member (claim) OR already actively booked on this slot → don't duplicate.
+        -- The active-booking check matches the M-17 unique index set, preventing 23505.
+        IF EXISTS (SELECT 1 FROM public.slot_priority_claims
+                   WHERE slot_id = slotrec.slot_id AND guest_player_id = gid)
+           OR EXISTS (SELECT 1 FROM public.bookings
+                   WHERE slot_id = slotrec.slot_id AND guest_player_id = gid
+                     AND status IN ('pending', 'confirmed', 'completed')) THEN
+          CONTINUE;
+        END IF;
         SELECT count(*) INTO v_seats FROM public.bookings
-          WHERE slot_id = slotrec.slot_id AND COALESCE(status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap');
+          WHERE slot_id = slotrec.slot_id AND status IN ('confirmed', 'pending', 'pending_approval');
         IF v_seats >= COALESCE(slotrec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
 
         INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status, created_at, updated_at)
@@ -376,12 +405,13 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
-    'ok', v_booked > 0,
+    'ok', (v_booked > 0 OR v_skipped_existing > 0),
     'group', true,
     'rebook_group_id', v_group,
     'booked', v_booked,
     'declined', v_declined,
     'added', v_added,
+    'skipped_existing', v_skipped_existing,
     'skipped_full', v_skipped_full,
     'booking_ids', to_jsonb(v_booking_ids)
   );

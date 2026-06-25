@@ -577,6 +577,7 @@ export interface RebookGroupApplyResult {
   declined?: number;
   added?: number;
   skipped_full?: number;
+  skipped_existing?: number;
   booking_ids?: string[];
 }
 
