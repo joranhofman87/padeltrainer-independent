@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
 import { InvoiceEmailDialog } from "@/components/trainer/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
+import { SendInvoiceEmailDialog } from "@/components/invoices/SendInvoiceEmailDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning } from "lucide-react";
@@ -82,7 +83,8 @@ export default function AcademyInvoices() {
   const [locationFilter, setLocationFilter] = useState("all");
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
-  const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null; customMessage: string }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '' });
+  const [composeInvoice, setComposeInvoice] = useState<Invoice | null>(null);
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
@@ -291,9 +293,9 @@ export default function AcademyInvoices() {
   // Send single invoice (with email)
   type SendInvoiceResult = { noEmail: boolean; skipped?: boolean; email?: string; invoice?: Invoice };
   const sendInvoiceMutation = useMutation({
-    mutationFn: async (invoice: Invoice): Promise<SendInvoiceResult> => {
+    mutationFn: async ({ invoice, customMessage }: { invoice: Invoice; customMessage?: string }): Promise<SendInvoiceResult> => {
       const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id },
+        body: { invoiceId: invoice.id, customMessage },
       });
       if (fnError) throw fnError;
 
@@ -318,23 +320,26 @@ export default function AcademyInvoices() {
 
       return { noEmail: false, email: data?.email };
     },
-    onMutate: (invoice) => {
+    onMutate: ({ invoice }) => {
       setSendingInvoiceIds((prev) => new Set(prev).add(invoice.id));
     },
-    onSettled: (_data, _error, invoice) => {
+    onSettled: (_data, _error, { invoice }) => {
       setSendingInvoiceIds((prev) => {
         const next = new Set(prev);
         next.delete(invoice.id);
         return next;
       });
     },
-    onSuccess: (result) => {
+    onSuccess: (result, { customMessage }) => {
       if (result.noEmail && result.invoice) {
+        // Carry the composed message into the address-collection fallback so the
+        // retry sends the same message the academy just wrote.
         setEmailDialog({
           open: true,
           invoiceId: result.invoice.id,
           playerName: result.invoice.player_name,
           guestPlayerId: result.invoice.guest_player_id,
+          customMessage: customMessage ?? "",
         });
         return;
       }
@@ -423,14 +428,14 @@ export default function AcademyInvoices() {
   };
 
   const handleEmailSubmitAndSend = async (email: string) => {
-    const { invoiceId, guestPlayerId } = emailDialog;
+    const { invoiceId, guestPlayerId, customMessage } = emailDialog;
 
     if (guestPlayerId) {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
 
     const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", {
-      body: { invoiceId },
+      body: { invoiceId, customMessage },
     });
 
     // Only mark sent after a confirmed delivery
@@ -614,7 +619,7 @@ export default function AcademyInvoices() {
             onClick={() => {
               if (isSending) return;
               if (!ensureInvoiceSettingsComplete()) return;
-              sendInvoiceMutation.mutate(invoice);
+              setComposeInvoice(invoice);
             }}
           >
             {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
@@ -931,9 +936,25 @@ export default function AcademyInvoices() {
         </TabsContent>
       </Tabs>
 
+      <SendInvoiceEmailDialog
+        open={!!composeInvoice}
+        onClose={() => setComposeInvoice(null)}
+        invoiceId={composeInvoice?.id ?? null}
+        playerName={composeInvoice?.player_name}
+        language={i18n.language || "nl"}
+        replyToSettingsHref="/app/academy/invoices?tab=settings"
+        sending={composeInvoice ? sendingInvoiceIds.has(composeInvoice.id) : false}
+        onSend={(customMessage) => {
+          const invoice = composeInvoice;
+          if (!invoice) return;
+          setComposeInvoice(null);
+          sendInvoiceMutation.mutate({ invoice, customMessage });
+        }}
+      />
+
       <InvoiceEmailDialog
         open={emailDialog.open}
-        onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null })}
+        onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '' })}
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
