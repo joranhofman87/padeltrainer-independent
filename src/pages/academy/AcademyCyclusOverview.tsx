@@ -55,6 +55,10 @@ interface CyclusGroup {
   status: string;
   type: string;
   has_slots: boolean;
+  /** True when a real `cycles` row backs this group (phase 1) — false for orphan cyclus_id groups
+   * (slots only, no cycles row). Drives row-click: real cycle → the cycle-detail view; orphan → its
+   * first session. */
+  has_cycle_row: boolean;
   payment_status_summary: CyclusGroupPaymentStatus;
 }
 
@@ -368,6 +372,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             status: cycle.status || 'draft',
             type: cycle.type || 'cyclus',
             has_slots: false,
+            has_cycle_row: true,
             payment_status_summary: 'no_players',
           });
         } else {
@@ -462,6 +467,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               status: cycle.status || 'draft',
               type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
               has_slots: true,
+              has_cycle_row: true,
               payment_status_summary: paymentSummaryForSlots(seriesSlots.map((s: { id: string }) => s.id)),
             });
           });
@@ -521,6 +527,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             status: 'active',
             type: 'cyclus',
             has_slots: true,
+            has_cycle_row: false,
             payment_status_summary: paymentSummaryForSlots(trainerSlots.map((s: { id: string }) => s.id)),
           });
         });
@@ -742,7 +749,12 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   };
 
   const handleRowClick = (group: CyclusGroup) => {
-    if (group.first_slot_id) {
+    if (group.has_cycle_row) {
+      // Real cycle → the cycle-detail centerpiece (the wrapper redirects a registration/event type
+      // to its workflow at /registrations/:id).
+      navigate(`/app/academy/cycles/${group.cyclus_id}`);
+    } else if (group.first_slot_id) {
+      // Orphan cyclus_id group (slots only, no cycles row) → its first session.
       navigate(`/app/academy/slot/${group.first_slot_id}`);
     } else {
       navigate(`/app/academy/registrations?cycle=${group.cyclus_id}`);

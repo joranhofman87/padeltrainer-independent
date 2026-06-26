@@ -79,14 +79,21 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   }
 
   const ownerId = ownerType === 'trainer' ? trainerId : ownerType === 'academy' ? activeAcademy?.id : activeClub?.id;
-  // After editing an academy cycle, return to that cycle's detail page (where
-  // the editor was opened from); creating/duplicating returns to the list.
+  // After editing, return to where the editor was opened from; creating returns to the list. This
+  // form edits registrations/events, so an academy edit returns to the relocated registration detail
+  // (/registrations/:id) — falling back to the cyclus detail (/cycles/:id) only for the rare case the
+  // loaded cycle is actually a training cyclus.
+  // This form edits registrations/events, so default an academy edit back to the registration detail;
+  // only a confirmed training cyclus returns to the cyclus detail. (backPath below is used after the
+  // cycle has loaded, so `cycle` is populated by the time it matters.)
+  const academyEditBackPath =
+    cycle && cycle.type === 'cyclus' ? `/app/academy/cycles/${cycleId}` : `/app/academy/registrations/${cycleId}`;
   const backPath =
     ownerType === 'trainer'
       ? '/app/trainer/cycles'
       : ownerType === 'academy'
         ? cycleId
-          ? `/app/academy/cycles/${cycleId}`
+          ? academyEditBackPath
           : '/app/academy/registrations'
         : '/app/club/registrations';
 

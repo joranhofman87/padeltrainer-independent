@@ -88,11 +88,11 @@ export default function AcademyRegistrations() {
         description={t('noRegistrationsDescription', 'Create registrations to collect player interest')}
         actions={
           <>
-          <Button onClick={() => navigate('/app/academy/cycles/new?type=registration')}>
+          <Button onClick={() => navigate('/app/academy/registrations/new?type=registration')}>
             <Plus className="h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
-          <Button variant="outline" onClick={() => navigate('/app/academy/cycles/new?type=event')}>
+          <Button variant="outline" onClick={() => navigate('/app/academy/registrations/new?type=event')}>
             <PartyPopper className="h-4 w-4" />
             {t('createEvent', 'Create Event')}
           </Button>
@@ -124,7 +124,7 @@ export default function AcademyRegistrations() {
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
             {t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
           </p>
-          <Button onClick={() => navigate('/app/academy/cycles/new?type=registration')}>
+          <Button onClick={() => navigate('/app/academy/registrations/new?type=registration')}>
             <Plus className="mr-2 h-4 w-4" />
             {t('createRegistration', 'Create Registration')}
           </Button>
@@ -133,8 +133,8 @@ export default function AcademyRegistrations() {
         <CyclesTable
           cycles={cycles}
           locations={locations}
-          onEdit={(c) => navigate(`/app/academy/cycles/${c.id}`)}
-          onDuplicate={(c) => navigate(`/app/academy/cycles/new?type=registration&duplicateFrom=${c.id}`)}
+          onEdit={(c) => navigate(`/app/academy/registrations/${c.id}`)}
+          onDuplicate={(c) => navigate(`/app/academy/registrations/new?type=registration&duplicateFrom=${c.id}`)}
           onDeleted={fetchCycles}
           ownerType="academy"
           ownerSlug={activeAcademy?.slug}

@@ -174,6 +174,7 @@ const AcademyRebookCohort = lazy(() => import('@/pages/academy/AcademyRebookCoho
 const TrainerBulkCopySlots = lazy(() => import('@/pages/trainer/TrainerBulkCopySlots'));
 const PriorityClaim = lazy(() => import('@/pages/PriorityClaim'));
 const AcademyCycleDetail = lazy(() => import('@/pages/academy/AcademyCycleDetail'));
+const AcademyCycleDetailView = lazy(() => import('@/pages/academy/AcademyCycleDetailView'));
 const AcademyRebookManage = lazy(() => import('@/pages/academy/AcademyRebookManage'));
 const AcademyCalendar = lazy(() => import('@/pages/academy/AcademyCalendar'));
 const AcademyAgenda = lazy(() => import('@/pages/academy/AcademyAgenda'));
@@ -344,11 +345,16 @@ export function DomainRouter() {
           <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=cycles" replace />} />
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="registrations" element={<AcademyRegistrations />} />
+          {/* Registration WORKFLOW (intake → proposals → approve) lives under /registrations. */}
+          <Route path="registrations/new" element={<CycleFormPage ownerType="academy" />} />
+          <Route path="registrations/:cycleId" element={<AcademyCycleDetail />} />
+          <Route path="registrations/:cycleId/edit" element={<CycleFormPage ownerType="academy" />} />
           <Route path="cycles" element={<Navigate to="/app/academy/registrations" replace />} />
           <Route path="cycles/bulk-copy" element={<AcademyBulkCopySlots />} />
           <Route path="cycles/rebook" element={<AcademyRebookCohort />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="academy" />} />
-          <Route path="cycles/:cycleId" element={<AcademyCycleDetail />} />
+          {/* Training CYCLE detail = the Slice-9 centerpiece view. */}
+          <Route path="cycles/:cycleId" element={<AcademyCycleDetailView />} />
           <Route path="cycles/:cycleId/rebook" element={<AcademyRebookManage />} />
           <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="academy" />} />
           <Route path="calendar" element={<AcademyCalendar />} />
