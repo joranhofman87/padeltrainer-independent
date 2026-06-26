@@ -1,28 +1,110 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import type { ReactElement } from 'react';
 import { renderWithCycles } from './renderWithCycles';
+import { supabaseMock, setMockData } from './fixtures/supabaseMock';
 import type { CycleDetail } from '@/lib/cycleDetail';
+import type { SlotEditFormSlot, SlotEditFormValues } from '@/components/slots/SlotEditForm';
 
-const { mockUseCycleDetail, mockApplyDelete, mockSyncSplit, mockSyncPrice, mockUpdatePricing } = vi.hoisted(() => ({
+const {
+  mockUseCycleDetail,
+  mockApplyDelete,
+  mockSyncSplit,
+  mockSyncPrice,
+  mockUpdatePricing,
+  mockApplyEdit,
+  editOverride,
+  mockToast,
+} = vi.hoisted(() => ({
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
   mockSyncSplit: vi.fn(() => Promise.resolve()),
   mockSyncPrice: vi.fn(() => Promise.resolve()),
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
+  mockApplyEdit: vi.fn(),
+  editOverride: { current: {} as Partial<SlotEditFormValues> },
+  mockToast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
+vi.mock('@/lib/supabaseClient', () => ({ supabase: supabaseMock }));
 vi.mock('@/lib/cycleDetail', () => ({ useCycleDetail: () => mockUseCycleDetail() }));
 vi.mock('@/lib/slotDeleteGuard', () => ({ applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a) }));
 vi.mock('@/lib/invoiceSync', () => ({
   syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
   syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
 }));
-vi.mock('@/lib/cycles', () => ({ updateCyclePricing: (...a: unknown[]) => mockUpdatePricing(...a) }));
+vi.mock('@/lib/cycles', () => ({
+  updateCyclePricing: (...a: unknown[]) => mockUpdatePricing(...a),
+  applySlotEditToCycle: (...a: unknown[]) => mockApplyEdit(...a),
+}));
+// Derive a full SlotEditFormValues from a slot exactly like SlotEditForm's init, so the stub emits
+// the rep slot's baseline + the test's override → the component's buildCycleEditPatch is deterministic.
+function formValuesFromSlot(slot: SlotEditFormSlot, over: Partial<SlotEditFormValues> = {}): SlotEditFormValues {
+  const start = new Date(slot.start_time);
+  const end = new Date(slot.end_time);
+  return {
+    date: format(start, 'yyyy-MM-dd'),
+    startTime: format(start, 'HH:mm'),
+    duration: Math.round((end.getTime() - start.getTime()) / 60000),
+    trainerId: slot.trainer_id,
+    locationId: slot.location_id || 'none',
+    maxParticipants: slot.max_participants,
+    ratingSystem: slot.rating_system,
+    minRating: slot.min_rating,
+    maxRating: slot.max_rating,
+    cyclusName: slot.cyclus_name || '',
+    isMarkedFull: !slot.is_public,
+    pricePerSession: '',
+    totalPrice: '',
+    splitPayment: false,
+    pricesIncludeVat: true,
+    extraCosts: [],
+    ...over,
+  };
+}
+// Stub the (large) shared edit form: stub-save emits baseline + override.
+vi.mock('@/components/slots/SlotEditForm', () => ({
+  SlotEditForm: ({
+    slot,
+    onSubmit,
+    onCancel,
+  }: {
+    slot: SlotEditFormSlot;
+    onSubmit: (v: SlotEditFormValues, applyToCyclus: boolean) => void;
+    onCancel: () => void;
+  }) => (
+    <div data-testid="slot-edit-form">
+      <button onClick={() => onSubmit(formValuesFromSlot(slot, editOverride.current), true)}>stub-save</button>
+      <button onClick={onCancel}>stub-cancel</button>
+    </div>
+  ),
+}));
 // The pricing card's preset picker fetches presets on mount — stub it so the modal renders cheaply.
 vi.mock('@/components/settings/ExtraCostPresetPicker', () => ({ ExtraCostPresetPicker: () => null }));
-vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
+vi.mock('sonner', () => ({ toast: mockToast }));
 const { CycleDetailView } = await import('@/components/cycles/CycleDetailView');
+
+// The representative slot openEditModal fetches (a full availability_slots row).
+const repSlotRow = {
+  id: 's1',
+  start_time: '2099-07-06T18:00:00Z',
+  end_time: '2099-07-06T19:00:00Z',
+  trainer_id: 't1',
+  location_id: 'loc1',
+  max_participants: 4,
+  rating_system: 'knltb',
+  min_rating: null,
+  max_rating: null,
+  cyclus_id: 'cy1',
+  cyclus_name: 'Zomercyclus',
+  is_public: true,
+  price_per_session: 25,
+  total_price: null,
+  split_payment: false,
+  prices_include_vat: true,
+  extra_costs: [],
+};
 
 // Far-future dates so the slots are always in the whole-cycle delete scope (future-only), regardless
 // of when the test runs.
@@ -65,6 +147,12 @@ beforeEach(() => {
   mockSyncPrice.mockResolvedValue(undefined);
   mockUpdatePricing.mockReset();
   mockUpdatePricing.mockResolvedValue(undefined);
+  mockApplyEdit.mockReset();
+  editOverride.current = {};
+  mockToast.mockReset();
+  mockToast.success.mockReset();
+  mockToast.error.mockReset();
+  setMockData({ availability_slots: [repSlotRow] });
 });
 
 describe('CycleDetailView (Slice 9b/9c)', () => {
@@ -84,10 +172,65 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     expect(screen.getByText('1×')).toBeInTheDocument();
   });
 
-  it('is read-only by default — no Delete CTA without canEdit', () => {
+  it('is read-only by default — no edit/delete CTAs without canEdit', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
     expect(screen.queryByRole('button', { name: /Delete cycle/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit whole cycle/ })).not.toBeInTheDocument();
+  });
+
+  it('edit whole cycle: open → no change → toast nothing, RPC not called', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    editOverride.current = {};
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    await screen.findByTestId('slot-edit-form'); // modal opened after the rep-slot fetch
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(screen.queryByTestId('slot-edit-form')).not.toBeInTheDocument());
+    expect(mockApplyEdit).not.toHaveBeenCalled(); // empty patch short-circuits
+  });
+
+  it('edit whole cycle: change capacity → applySlotEditToCycle(cycleId, future ids, diff) + onMutated', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyEdit.mockResolvedValue({ updatedCount: 2, blockedCount: 0, blockedSlotIds: [] });
+    editOverride.current = { maxParticipants: 6 };
+    const onMutated = vi.fn();
+    renderView(
+      <CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} onMutated={onMutated} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    await screen.findByTestId('slot-edit-form');
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalledWith('cy1', ['s1', 's2'], { maxParticipants: 6 }));
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it('edit whole cycle: a fully-blocked capacity shrink surfaces as an error toast (nothing changed)', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyEdit.mockResolvedValue({ updatedCount: 0, blockedCount: 2, blockedSlotIds: ['s1', 's2'] });
+    editOverride.current = { maxParticipants: 1 };
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    await screen.findByTestId('slot-edit-form');
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalled());
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it('edit whole cycle: all-past cycle → guarded (no modal, no RPC)', () => {
+    mockUseCycleDetail.mockReturnValue({
+      data: {
+        ...sampleDetail,
+        slots: sampleDetail.slots.map((s) => ({ ...s, start_time: '2020-01-01T18:00:00Z', end_time: '2020-01-01T19:00:00Z' })),
+      },
+      isLoading: false,
+      isError: false,
+    });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    expect(screen.queryByTestId('slot-edit-form')).not.toBeInTheDocument();
+    expect(mockApplyEdit).not.toHaveBeenCalled();
   });
 
   it('opens a single session on row click', () => {

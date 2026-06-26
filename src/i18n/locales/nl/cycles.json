@@ -1337,6 +1337,16 @@
       "cancel": "Annuleren",
       "saved": "Prijs bijgewerkt",
       "error": "Opslaan mislukt. Probeer het opnieuw."
+    },
+    "edit": {
+      "title": "Hele cyclus bewerken",
+      "description": "Wijzigingen gelden voor alle toekomstige sessies in deze cyclus.",
+      "updated": "{{count}} sessies bijgewerkt",
+      "blocked": "{{count}} sessies niet aangepast — er zijn meer spelers geboekt dan de nieuwe capaciteit",
+      "nothing": "Geen wijzigingen om door te voeren",
+      "noFuture": "Geen toekomstige sessies om te bewerken",
+      "loadError": "Kon de sessie niet laden. Probeer het opnieuw.",
+      "error": "Bijwerken mislukt. Probeer het opnieuw."
     }
   }
 }
