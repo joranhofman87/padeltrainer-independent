@@ -231,7 +231,7 @@ export default function AcademyCycleDetail() {
       });
       if (academyId) invalidateAll('academy', academyId, cycleId);
       navigate('/app/academy/intake-requests/overview', {
-        state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/cycles/${cycleId}?step=approve`, timezone: academyTimezone },
+        state: { slots: scheduleSlots, cycleId, backPath: `/app/academy/registrations/${cycleId}?step=approve`, timezone: academyTimezone },
       });
     } catch (error: any) {
       toast.error(getFriendlyErrorMessage(error, t('pricing.saveError', 'Failed to save pricing')));
@@ -604,7 +604,7 @@ export default function AcademyCycleDetail() {
   if (!cycle) {
     return (
       <div className="container mx-auto px-4 py-6 space-y-4">
-        <Button variant="ghost" size="icon" aria-label={tCommon('aria.goBack', 'Go back')} onClick={() => navigate('/app/academy/cycles')}>
+        <Button variant="ghost" size="icon" aria-label={tCommon('aria.goBack', 'Go back')} onClick={() => navigate('/app/academy/registrations')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="space-y-2">
@@ -622,7 +622,7 @@ export default function AcademyCycleDetail() {
       {/* Header */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label={tCommon('aria.goBack', 'Go back')} onClick={() => navigate('/app/academy/cycles')}>
+          <Button variant="ghost" size="icon" aria-label={tCommon('aria.goBack', 'Go back')} onClick={() => navigate('/app/academy/registrations')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1 min-w-0">
@@ -651,7 +651,7 @@ export default function AcademyCycleDetail() {
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('actions.shareLink')}
             </Button>
-            <Button variant="outline" size="icon" aria-label={tCommon('aria.settings', 'Settings')} className="h-9 w-9" onClick={() => navigate(`/app/academy/cycles/${cycle.id}/edit`)}>
+            <Button variant="outline" size="icon" aria-label={tCommon('aria.settings', 'Settings')} className="h-9 w-9" onClick={() => navigate(`/app/academy/registrations/${cycle.id}/edit`)}>
               <Settings className="h-4 w-4" />
             </Button>
             <DropdownMenu>
@@ -661,7 +661,7 @@ export default function AcademyCycleDetail() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => navigate(`/app/academy/cycles/new?type=${cycle.type}&duplicateFrom=${cycle.id}`)}>
+                <DropdownMenuItem onClick={() => navigate(`/app/academy/registrations/new?type=${cycle.type}&duplicateFrom=${cycle.id}`)}>
                   <Copy className="h-4 w-4 mr-2" />
                   {t('common:duplicate', 'Duplicate')}
                 </DropdownMenuItem>
