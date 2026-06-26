@@ -37,6 +37,7 @@ import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
 import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
 import { SlotEditForm, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
+import { useAuth } from '@/hooks/useAuth';
 import { applySlotEditToCycle } from '@/lib/cycles';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
@@ -99,6 +100,7 @@ export default function AcademySlotDetail() {
   const { t: tTrainer } = useTranslation('trainer');
   const { t: tCommon } = useTranslation('common');
   const { toast } = useToast();
+  const { user } = useAuth();
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
   const { activeAcademy } = useAcademyContext();
 
