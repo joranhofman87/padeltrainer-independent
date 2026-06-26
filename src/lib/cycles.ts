@@ -2175,8 +2175,13 @@ export async function updateCyclePricing(
   }
 ) {
   // Atomic: the RPC updates the cycle row AND all linked slots in ONE
-  // transaction, so billing (which reads the slot columns) can never drift from
-  // the cycle after a partial client-side write. (Was two separate updates.)
+  // transaction (id-ordered slot lock — shares the canonical cycle→slots lock
+  // order with applySlotEditToCycle/applySlotDeleteToCycle), so billing (which
+  // reads the slot columns) can never drift from the cycle after a partial
+  // client-side write. (Was two separate updates.) NOTE: this only pushes the
+  // price; the caller still runs syncInvoicesAfterPriceChange afterward to
+  // rebuild affected invoice line-item amounts + PDFs (the pricing engine + PDF
+  // regen can't run in Postgres).
   const { error } = await supabase.rpc('update_cycle_pricing', {
     _cycle_id: cycleId,
     _price_per_session: pricing.price_per_session,
