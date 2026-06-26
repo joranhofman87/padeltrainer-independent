@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const maybeSingle = vi.fn();
 const order = vi.fn();
 const inFn = vi.fn();
+const rpcFn = vi.fn();
 // Chainable builder: select/eq return the chain; maybeSingle/order/in are the terminal resolvers.
 const chain = {
   select: () => chain,
@@ -12,7 +13,7 @@ const chain = {
   maybeSingle: () => maybeSingle(),
 } as const;
 
-vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => chain } }));
+vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => chain, rpc: (...a: unknown[]) => rpcFn(...a) } }));
 // listRegistrationCycles delegates the legacy half to getCyclesWithCounts — stub it so the test
 // exercises only the merge/dedupe/count logic.
 vi.mock('@/lib/cycles', () => ({ getCyclesWithCounts: vi.fn() }));
@@ -22,6 +23,8 @@ import {
   listRegistrations,
   registrationToCycle,
   listRegistrationCycles,
+  createRegistration,
+  updateRegistration,
   type Registration,
 } from '@/lib/registrations';
 import { getCyclesWithCounts } from '@/lib/cycles';
@@ -121,5 +124,40 @@ describe('registrations lib', () => {
     const c1 = rows.find((r) => r.id === 'c1')!;
     expect(c1.type).toBe('registration'); // from the mapped registration, not the legacy '99' row
     expect(c1._intakeCount).toBe(2); // counted from intake_requests, not the stale legacy count
+  });
+
+  it('createRegistration calls create_registration_with_cycle with mapped params (FULL settings — RPC splits) + returns the row', async () => {
+    rpcFn.mockResolvedValueOnce({ data: baseReg({ id: 'rNew', source_cycle_id: 'cNew' }), error: null });
+    const r = await createRegistration({
+      owner_type: 'academy', owner_id: 'a1', format: 'registration', name: 'New form',
+      start_date: '2026-06-01', end_date: '2026-08-01',
+      settings: { payment_methods: 'cash', scoring_weights: { x: 1 } }, // full → RPC keeps form subset
+    });
+    expect(rpcFn).toHaveBeenCalledWith('create_registration_with_cycle', expect.objectContaining({
+      p_owner_type: 'academy', p_owner_id: 'a1', p_format: 'registration', p_name: 'New form',
+      p_start_date: '2026-06-01', p_end_date: '2026-08-01',
+      p_settings: { payment_methods: 'cash', scoring_weights: { x: 1 } },
+      p_status: 'draft', p_currency: 'EUR', p_is_always_open: false,
+    }));
+    expect(r.id).toBe('rNew');
+  });
+
+  it('updateRegistration is keyed on the source cycle, sends no owner params, and passes null (RPC preserves) for unset fields', async () => {
+    rpcFn.mockResolvedValueOnce({ data: baseReg({ source_cycle_id: 'cEdit' }), error: null });
+    const r = await updateRegistration('cEdit', { format: 'event', name: 'Edited', status: 'open' });
+    expect(rpcFn).toHaveBeenCalledWith('update_registration_with_cycle', expect.objectContaining({
+      p_source_cycle_id: 'cEdit', p_format: 'event', p_name: 'Edited', p_status: 'open',
+    }));
+    const args = rpcFn.mock.calls[0][1] as Record<string, unknown>;
+    expect('p_owner_type' in args).toBe(false); // authorizes against the existing cycle, not caller input
+    expect(args.p_currency).toBeNull(); // unset → null → RPC keeps the existing value
+    expect(args.p_is_always_open).toBeNull();
+    expect(r.source_cycle_id).toBe('cEdit');
+  });
+
+  it('createRegistration throws on RPC error', async () => {
+    rpcFn.mockResolvedValueOnce({ data: null, error: { message: 'not_authorized_for_owner' } });
+    await expect(createRegistration({ owner_type: 'trainer', owner_id: 't1', format: 'registration', name: 'X' }))
+      .rejects.toBeTruthy();
   });
 });
