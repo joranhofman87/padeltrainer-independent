@@ -334,8 +334,27 @@ export async function getCyclesWithCounts(
       cycle._intakeCount = countMap.get(cycle.id) || 0;
     });
   }
-  
+
   return cycles;
+}
+
+/**
+ * Per-cycle intake counts in ONE GROUP BY via the `count_cycles_intakes` RPC (Phase 4 F2a),
+ * replacing the unbounded `intake_requests` client scan in getCyclesWithCounts / listRegistrationCycles
+ * at 10k+ scale. Returns a Map keyed by cycle id; cycles with zero intakes are absent (treat as 0).
+ * RLS-scoped (the RPC is SECURITY INVOKER). A consuming slice wires this in behind a graceful
+ * fallback so it is safe before the owner deploys the migration.
+ */
+export async function countCyclesIntakes(cycleIds: string[]): Promise<Map<string, number>> {
+  if (cycleIds.length === 0) return new Map();
+  const { data, error } = await supabase.rpc('count_cycles_intakes' as never, {
+    _cycle_ids: cycleIds,
+  } as never);
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as Array<{ cycle_id: string; n: number | string }>;
+  const counts = new Map<string, number>();
+  for (const row of rows) counts.set(row.cycle_id, Number(row.n));
+  return counts;
 }
 
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
