@@ -82,5 +82,11 @@ jobs:
         with:
           deno-version: v2.x
 
+      # --no-check: this job is Deno-only (no `npm ci`), so there is no node_modules/ and Deno's
+      # type-check phase cannot resolve "@types/node" (referenced transitively by the supabase-js
+      # type defs) — which made the whole job die BEFORE running a single test. The edge functions
+      # run as plain JS at deploy time (types are stripped), so the value here is RUNNING the unit
+      # tests (auth gates, pricing math, payment-ready); --no-check restores that. (Full type-checking
+      # of the edge functions against npm types in Deno is a separate, harder effort.)
       - name: Edge-function unit tests (deno)
-        run: deno test --allow-env --allow-net supabase/functions/_shared/
+        run: deno test --no-check --allow-env --allow-net supabase/functions/_shared/
