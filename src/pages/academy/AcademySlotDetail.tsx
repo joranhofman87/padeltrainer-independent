@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Lock, MapPin, Users, Pencil,
-  Trash2, UserPlus, DollarSign, Loader2, Save, X, Check, Plus, Minus,
+  Trash2, UserPlus, DollarSign, Loader2, Save, X, Check,
   AlertTriangle, Settings, FileText, CheckCircle2,
 } from 'lucide-react';
 import { isPast } from 'date-fns';
@@ -41,6 +41,7 @@ import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
 import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
 import { SlotRatingPicker } from '@/components/slots/SlotRatingPicker';
+import { ExtraCostsEditor } from '@/components/slots/ExtraCostsEditor';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/lib/slotTypes';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
@@ -893,69 +894,12 @@ export default function AcademySlotDetail() {
                         <Separator />
 
                         {/* Extra costs */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs">{t('calendar.extraCosts', 'Extra costs')}</Label>
-                            {!isCycleSlot && (
-                              <Button
-                                type="button" size="sm" variant="ghost" className="h-6 px-2 gap-1 text-xs"
-                                onClick={() => setEditExtraCosts([...editExtraCosts, { description: '', amount: 0, type: 'one_time' }])}
-                              >
-                                <Plus className="h-3 w-3" /> {tCommon('add', 'Add')}
-                              </Button>
-                            )}
-                          </div>
-                          {editExtraCosts.map((ec, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <Input
-                                className={`flex-1 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`}
-                                placeholder={t('calendar.description', 'Description')}
-                                value={ec.description}
-                                disabled={isCycleSlot}
-                                onChange={e => {
-                                  const updated = [...editExtraCosts];
-                                  updated[idx] = { ...updated[idx], description: e.target.value };
-                                  setEditExtraCosts(updated);
-                                }}
-                              />
-                              <Input
-                                className={`w-20 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`}
-                                type="number" step="0.01" min={0}
-                                placeholder="€"
-                                value={ec.amount || ''}
-                                disabled={isCycleSlot}
-                                onChange={e => {
-                                  const updated = [...editExtraCosts];
-                                  updated[idx] = { ...updated[idx], amount: Number(e.target.value) };
-                                  setEditExtraCosts(updated);
-                                }}
-                              />
-                              <Select
-                                value={ec.type}
-                                disabled={isCycleSlot}
-                                onValueChange={v => {
-                                  const updated = [...editExtraCosts];
-                                  updated[idx] = { ...updated[idx], type: v as 'one_time' | 'per_session' };
-                                  setEditExtraCosts(updated);
-                                }}
-                              >
-                                <SelectTrigger className={`w-28 h-8 text-xs ${isCycleSlot ? 'opacity-60' : ''}`}><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="one_time">{t('calendar.oneTime', 'One-time')}</SelectItem>
-                                  <SelectItem value="per_session">{t('calendar.perSession', 'Per session')}</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              {!isCycleSlot && (
-                                <Button
-                                  type="button" size="icon" aria-label={tCommon('remove', 'Remove')} variant="ghost" className="h-8 w-8 shrink-0"
-                                  onClick={() => setEditExtraCosts(editExtraCosts.filter((_, i) => i !== idx))}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                        <ExtraCostsEditor
+                          value={editExtraCosts}
+                          onChange={setEditExtraCosts}
+                          disabled={isCycleSlot}
+                          namespace="academy"
+                        />
                       </>
                     );
                   })()}
