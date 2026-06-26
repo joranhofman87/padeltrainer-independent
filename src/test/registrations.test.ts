@@ -25,9 +25,33 @@ import {
   listRegistrationCycles,
   createRegistration,
   updateRegistration,
+  cycleInputToRegistrationInput,
+  isMissingRegistrationRpc,
   type Registration,
 } from '@/lib/registrations';
 import { getCyclesWithCounts } from '@/lib/cycles';
+import type { CycleInput } from '@/lib/cycles';
+
+const cycleInput = (over: Partial<CycleInput> = {}): CycleInput => ({
+  owner_type: 'academy',
+  owner_id: 'a1',
+  name: 'Zomer 2026',
+  description: 'desc',
+  start_date: '2026-06-01',
+  end_date: '2026-08-01',
+  enrollment_deadline: null,
+  is_always_open: false,
+  settings: { payment_methods: 'cash', scoring_weights: { x: 1 } },
+  status: 'draft',
+  type: 'registration',
+  location_id: 'loc1',
+  price_per_session: 30,
+  total_price: 120,
+  currency: 'EUR',
+  terms: 'terms text',
+  price_table: null,
+  ...over,
+});
 
 const baseReg = (over: Partial<Registration> = {}): Registration => ({
   id: 'r1',
@@ -159,5 +183,34 @@ describe('registrations lib', () => {
     rpcFn.mockResolvedValueOnce({ data: null, error: { message: 'not_authorized_for_owner' } });
     await expect(createRegistration({ owner_type: 'trainer', owner_id: 't1', format: 'registration', name: 'X' }))
       .rejects.toBeTruthy();
+  });
+
+  it('cycleInputToRegistrationInput maps type→format, DROPS price_per_session, passes FULL settings through', () => {
+    const out = cycleInputToRegistrationInput(cycleInput({ type: 'registration', price_per_session: 30 }));
+    expect(out.format).toBe('registration');
+    expect('price_per_session' in out).toBe(false); // registrations have no per-session price
+    expect(out.settings).toEqual({ payment_methods: 'cash', scoring_weights: { x: 1 } }); // FULL — the RPC splits
+    expect(out.owner_type).toBe('academy');
+    expect(out.owner_id).toBe('a1');
+    expect(out.total_price).toBe(120);
+    expect(out.terms).toBe('terms text');
+    expect(out.start_date).toBe('2026-06-01');
+    expect(out.is_always_open).toBe(false);
+  });
+
+  it('cycleInputToRegistrationInput maps an event cycle to format=event', () => {
+    expect(cycleInputToRegistrationInput(cycleInput({ type: 'event' })).format).toBe('event');
+  });
+
+  it('cycleInputToRegistrationInput maps anything non-event (defensive) to format=registration', () => {
+    expect(cycleInputToRegistrationInput(cycleInput({ type: 'cyclus' as never })).format).toBe('registration');
+  });
+
+  it('isMissingRegistrationRpc is true only for the not-deployed RPC codes', () => {
+    expect(isMissingRegistrationRpc({ code: 'PGRST202' })).toBe(true);
+    expect(isMissingRegistrationRpc({ code: '42883' })).toBe(true);
+    expect(isMissingRegistrationRpc({ code: '23505' })).toBe(false); // a real DB error rethrows
+    expect(isMissingRegistrationRpc(null)).toBe(false);
+    expect(isMissingRegistrationRpc(new Error('boom'))).toBe(false);
   });
 });

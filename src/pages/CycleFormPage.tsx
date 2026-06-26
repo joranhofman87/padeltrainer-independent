@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft } from 'lucide-react';
 import { getCycle, type Cycle } from '@/lib/cycles';
-import { getRegistration } from '@/lib/registrations';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useClubContext } from '@/components/club/ClubLayout';
@@ -44,9 +43,6 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [cycle, setCycle] = useState<Cycle | null>(null);
-  // Slice 0 (registration↔cycle split): true when the cycle being edited has been split into a
-  // `registrations` row — the legacy editor is then locked so it can't diverge from the live form.
-  const [formLocked, setFormLocked] = useState(false);
 
   // Trainer-specific state
   const [trainerId, setTrainerId] = useState<string | null>(null);
@@ -222,10 +218,6 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
         if (cycleId) {
           const cycleData = await getCycle(cycleId);
           setCycle(cycleData);
-          // Lock the legacy editor if this cycle's form now lives in the registrations table
-          // (resolves by id OR source_cycle_id). A duplicate (else-branch) is a new cycle → unlocked.
-          const reg = await getRegistration(cycleId);
-          setFormLocked(!!reg);
         } else if (duplicateFromId) {
           const cycleData = await getCycle(duplicateFromId);
           if (cycleData) {
@@ -263,6 +255,12 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   const formType: 'registration' | 'event' =
     cycleId && cycle ? (cycle.type === 'event' ? 'event' : 'registration') : requestedType;
 
+  // The editor writes registrations/events through the canonical write path. Only a (rare) plain
+  // training cyclus loaded for edit stays on the legacy cycle write — never mint a registration for
+  // a training cycle. Decided on the LOADED cycle's type (formType never yields 'cyclus').
+  const writeTarget: 'cycle' | 'registration' =
+    cycleId && cycle?.type === 'cyclus' ? 'cycle' : 'registration';
+
   const title = cycleId
     ? formType === 'event' ? t('editEvent', 'Edit Event') : t('editRegistration', 'Edit Registration')
     : formType === 'event' ? t('createEvent', 'Create Event') : t('createRegistration', 'Create Registration');
@@ -299,7 +297,7 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
         onSuccess={handleSuccess}
         onCancel={handleCancel}
         formType={formType}
-        locked={formLocked}
+        writeTarget={writeTarget}
         locations={locations}
         trainerHourlyRate={trainerHourlyRate}
         trainerRatingSystem={trainerRatingSystem}
