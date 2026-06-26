@@ -281,6 +281,11 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
 
       {/* Form */}
       <CycleForm
+        // Remount per cycle so navigating between edit pages (SPA, same route) re-initialises the
+        // form from the new cycle's defaultValues — the legacy `if (open)` reset effect is dead in
+        // this full-page editor (kept dead on purpose: it clobbered manual dates, #44), so without a
+        // key the form would show the previous cycle's stale values.
+        key={cycleId ?? 'new'}
         cycle={cycle || undefined}
         ownerType={ownerType}
         ownerId={ownerId}

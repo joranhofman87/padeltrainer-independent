@@ -10,6 +10,8 @@
 
 -- Delete-guard hot path: "does this slot have an active (capacity-occupying) booking?" (F2b delete).
 -- Partial index keyed on slot_id, only the occupying statuses → tiny + exactly matches the predicate.
+-- SYNC: this status list mirrors CAPACITY_OCCUPYING_STATUSES in src/lib/lessons.ts (findBookedSlotIds).
+-- If that constant changes, change this WHERE clause too or the index stops matching the query.
 CREATE INDEX IF NOT EXISTS idx_bookings_slot_status
   ON public.bookings (slot_id)
   WHERE status IN ('confirmed', 'pending', 'pending_approval');
