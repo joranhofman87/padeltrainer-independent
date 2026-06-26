@@ -137,6 +137,10 @@ export default function TrainerScheduleOverview() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [tab, setTab] = useState<TabValue>("current");
+  // Scale guard: load only the recent past by default (all current + future are always loaded since
+  // the bound has no upper limit). "Load older" widens the window so no history is ever lost.
+  const HISTORY_WINDOW_STEP = 12; // months added per "load older" click
+  const [historyMonths, setHistoryMonths] = useState(6);
   const [search, setSearch] = useState("");
   const [filterDay, setFilterDay] = useState("all");
   const [filterLocation, setFilterLocation] = useState("all");
@@ -188,12 +192,18 @@ export default function TrainerScheduleOverview() {
 
   const dateFnsLocale = localeMap[i18n.language] || enUS;
 
-  const { data: slots, isLoading } = useQuery({
-    queryKey: ["trainer-schedule-overview", user?.id],
+  const { data: slots, isLoading, isFetching } = useQuery({
+    queryKey: ["trainer-schedule-overview", user?.id, historyMonths],
     queryFn: async () => {
       if (!user) return [];
       const tp = await getTrainerProfile(user.id);
       if (!tp) return [];
+
+      // Lower-bound the fetch to the last `historyMonths` (no upper bound → all current + future
+      // sessions always load). Widening historyMonths via "Load older" re-runs this query with an
+      // earlier bound, so older history is loaded on demand and never silently dropped.
+      const historyStart = new Date();
+      historyStart.setMonth(historyStart.getMonth() - historyMonths);
 
       const { data, error } = await supabase
         .from("availability_slots")
@@ -206,6 +216,7 @@ export default function TrainerScheduleOverview() {
           )
         `)
         .eq("trainer_id", tp.id)
+        .gte("start_time", historyStart.toISOString())
         .order("start_time", { ascending: true });
 
       if (error) throw error;
@@ -1477,6 +1488,23 @@ export default function TrainerScheduleOverview() {
           );
         })}
       </div>
+
+      {/* Load older: the default fetch covers the recent window + all future; this widens the past
+          window on demand so deep history stays reachable without loading it up-front. */}
+      {tab === "past" && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={() => setHistoryMonths((m) => m + HISTORY_WINDOW_STEP)}
+          >
+            {isFetching
+              ? t("scheduleOverview.loadingOlder", "Loading…")
+              : t("scheduleOverview.loadOlder", "Load older sessions")}
+          </Button>
+        </div>
+      )}
 
       {/* Edit Cycle Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>

@@ -37,6 +37,8 @@
     "current": "Huidig",
     "future": "Toekomst",
     "past": "Verleden",
+    "loadOlder": "Oudere sessies laden",
+    "loadingOlder": "Laden…",
     "search": "Zoek cyclus of speler...",
     "cycle": "Cyclus",
     "individualSessions": "Individuele sessies",
