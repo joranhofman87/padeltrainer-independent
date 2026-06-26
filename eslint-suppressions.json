@@ -1313,7 +1313,7 @@
       "count": 8
     },
     "react-hooks/exhaustive-deps": {
-      "count": 2
+      "count": 1
     }
   },
   "src/test/setup.ts": {
