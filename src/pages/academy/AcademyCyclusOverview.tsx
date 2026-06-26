@@ -732,19 +732,37 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     }
     setBulkUpdating(true);
     try {
-      const slotIds = await getSelectedSlotIds();
+      // Per-group so we can keep each backing cycle row's price in sync with its slots. The old path
+      // wrote slot prices directly but left cycles.price_per_session stale → a cycle↔slot divergence
+      // (the cycle display + future re-bookings drift from what's actually billed).
+      const groups = sortedData.filter((g) => selectedIds.has(g.group_key) && g.cyclus_id);
+      const slotIds: string[] = [];
+      const realCycleIds = new Set<string>();
+      for (const g of groups) {
+        const [cyclusId, trainerId] = g.group_key.split('::');
+        let sq = supabase.from('availability_slots').select('id').eq('cyclus_id', cyclusId);
+        if (trainerId) sq = sq.eq('trainer_id', trainerId);
+        const { data: slotRows } = await sq;
+        (slotRows || []).forEach((s: { id: string }) => slotIds.push(s.id));
+        if (g.has_cycle_row) realCycleIds.add(cyclusId);
+      }
       if (slotIds.length === 0) {
         toast({ title: t('cyclesTab.noSlotsFound') });
         return;
       }
+      // 1. Push the new price onto the selected slots (the billing source of truth).
       for (let i = 0; i < slotIds.length; i += 500) {
         const chunk = slotIds.slice(i, i + 500);
-        await supabase
-          .from('availability_slots')
-          .update({ price_per_session: price })
-          .in('id', chunk);
+        await supabase.from('availability_slots').update({ price_per_session: price }).in('id', chunk);
       }
-      // Sync invoices
+      // 2. Keep each real cycle row's stored price in sync so the cycle display + future re-bookings
+      //    don't drift from the slots. Only price_per_session is written — extra_costs / VAT / split
+      //    are preserved. (NOT updateCyclePricing: that re-pushes to the WHOLE cyclus, but the overview
+      //    groups by (cyclus_id, trainer_id); a targeted price write respects the selected granularity.)
+      for (const cyclusId of realCycleIds) {
+        await supabase.from('cycles').update({ price_per_session: price }).eq('id', cyclusId);
+      }
+      // 3. Rebuild affected unpaid invoices.
       await syncInvoicesAfterPriceChange(slotIds);
       toast({ title: t('cyclesTab.priceUpdated', { count: slotIds.length }) });
       setPriceDialogOpen(false);
