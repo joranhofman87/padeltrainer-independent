@@ -1242,6 +1242,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "availability_slots_cyclus_id_fkey"
+            columns: ["cyclus_id"]
+            isOneToOne: false
+            referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "availability_slots_lesson_id_fkey"
             columns: ["lesson_id"]
             isOneToOne: false

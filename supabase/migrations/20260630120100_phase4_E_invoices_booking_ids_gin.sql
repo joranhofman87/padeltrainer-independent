@@ -1,0 +1,37 @@
+-- ============================================================================
+-- PHASE 4 · ITEM E — GIN index on invoices.booking_ids (uuid[])
+-- ============================================================================
+--
+-- WHY
+--   The invoice-sync hot path resolves "which invoice(s) reference this
+--   booking" with array-overlap queries on invoices.booking_ids
+--   (src/lib/invoiceSync.ts, the mollie-webhook write-back, mark-paid). Today
+--   booking_ids (uuid[], added 20260118102744) has NO index, so every such
+--   lookup is a sequential scan of invoices. At 50k+ invoices this is the kind
+--   of unbounded scan the scale audit flagged.
+--
+--   A GIN index with the default array_ops opclass supports the containment /
+--   overlap operators (@>, <@, &&, =) used by Supabase's .contains()/.overlaps()
+--   filters, turning those scans into index lookups.
+--
+-- IDEMPOTENT: IF NOT EXISTS; re-running is a no-op.
+--
+-- LOCKING NOTE
+--   Plain CREATE INDEX takes a brief SHARE lock that blocks invoice WRITES
+--   while it builds. For this app's invoice volume that is sub-second, and it
+--   keeps the statement transaction-safe so it applies cleanly under
+--   `supabase db reset` (CI) and `supabase db push`.
+--
+--   If, on production, the invoices table is large enough that even a brief
+--   write-lock matters, the owner may instead build it WITHOUT a write-lock by
+--   running this ONE statement on its own in the SQL editor (it must NOT be
+--   inside a transaction) BEFORE applying this migration:
+--
+--       CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_invoices_booking_ids_gin
+--         ON public.invoices USING gin (booking_ids);
+--
+--   The IF NOT EXISTS below then no-ops, so doing so is fully compatible.
+-- ============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_invoices_booking_ids_gin
+  ON public.invoices USING gin (booking_ids);
