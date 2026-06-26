@@ -24,7 +24,8 @@ import { useTableSort } from '@/hooks/useTableSort';
 import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
-import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
+import { syncInvoicesAfterPriceChange, syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import {
   computeCyclusGroupPaymentStatus,
   matchesPaidFilter,
@@ -683,14 +684,24 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           if (trainerId) sq = sq.eq('trainer_id', trainerId);
           const { data: slotRows } = await sq;
           const slotIds = (slotRows || []).map((s: { id: string }) => s.id);
-          if (slotIds.length > 0) {
-            // Re-verify no booking appeared since the list loaded (never cascade a booking).
-            // Canonical occupying statuses (confirmed/pending/pending_approval) — must not miss one.
-            const { data: booked } = await supabase.from('bookings').select('slot_id')
-              .in('slot_id', slotIds).in('status', [...CAPACITY_OCCUPYING_STATUSES]);
-            if ((booked || []).length > 0) { skipped++; continue; }
-            const { error } = await supabase.from('availability_slots').delete().in('id', slotIds);
-            if (error) throw error;
+          if (slotIds.length === 0) { deleted++; continue; }
+          // Atomic delete (the same canonical RPC the slot-detail + cycle-detail use): it locks the
+          // bookings FOR UPDATE and KEEPS any slot that gained a booking since the list loaded —
+          // closing the re-check-then-delete TOCTOU vs bookings.slot_id ON DELETE CASCADE. A real
+          // cycle (has_cycle_row) drives the in-transaction split recalc.
+          const res = await applySlotDeleteToCycle(g.has_cycle_row ? cyclusId : null, slotIds);
+          if (res.deletedCount === 0 && res.protectedCount > 0) {
+            // a booking raced in after the list loaded → the whole group is kept
+            skipped++;
+            continue;
+          }
+          // The RPC stamps split_count but not invoice line items — rebuild them for a real cycle.
+          if (res.deletedCount > 0 && g.has_cycle_row) {
+            try {
+              await syncSplitCountForCycle(cyclusId);
+            } catch (e) {
+              logger.error('Failed to sync split count after bulk cyclus delete', e as Error);
+            }
           }
           deleted++;
         } catch (e) {
