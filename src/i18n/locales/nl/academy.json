@@ -120,6 +120,8 @@
     "pricesIncludeVat": "Prijzen zijn inclusief btw",
     "pricingManagedByCycle": "Prijzen worden op cyclusniveau beheerd.",
     "removeFailed": "Speler verwijderen mislukt",
+    "removedButSyncFailed": "Speler verwijderd, maar facturen konden niet volledig worden bijgewerkt",
+    "removedSyncFailedDesc": "Sommige facturen brengen de verwijderde speler mogelijk nog in rekening of tonen de verkeerde verdeling. Controleer de facturen van deze cyclus.",
     "searchPlayer": "Zoeken…",
     "showAll": "Alles tonen",
     "slotDetail": "Sessiedetails",

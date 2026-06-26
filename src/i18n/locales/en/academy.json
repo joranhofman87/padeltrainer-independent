@@ -793,6 +793,8 @@
     "pricesIncludeVat": "Prices include VAT",
     "pricingManagedByCycle": "Pricing is managed at the cycle level.",
     "removeFailed": "Failed to remove player",
+    "removedButSyncFailed": "Player removed, but invoices could not be fully updated",
+    "removedSyncFailedDesc": "Some invoices may still bill the removed player or show the wrong split. Please review this cycle's invoices.",
     "searchPlayer": "Search…",
     "showAll": "Show all",
     "slotDetail": "Session Details",
