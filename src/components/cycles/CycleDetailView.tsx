@@ -21,7 +21,9 @@ import {
 import { useCycleDetail, type CycleDetailSlot } from '@/lib/cycleDetail';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { logger } from '@/lib/logger';
 
 export interface CycleDetailViewProps {
   cycleId: string;
@@ -91,19 +93,32 @@ export function CycleDetailView({
   const handleDeleteCycle = async () => {
     setDeleting(true);
     try {
-      // Atomic, booked-slot-protecting delete (F2). cycleId drives the invoice split recalc; the RPC
-      // keeps any session that still holds an active booking and reports it back as protectedCount.
+      // Atomic, booked-slot-protecting delete (F2). cycleId drives the in-transaction split-count
+      // stamp; the RPC keeps any session that still holds an active booking (reported as
+      // protectedCount) so only empty sessions are ever removed.
       const res = await applySlotDeleteToCycle(cycleId, futureSlotIds);
+      if (res.deletedCount > 0) {
+        // The RPC only stamps invoices.split_count — it does NOT rebuild line-item amounts. Rebuild
+        // them now (matches the slot-detail delete path + the RPC's documented contract). Non-fatal:
+        // the delete already committed, so a resync hiccup must not surface as a delete failure.
+        try {
+          await syncSplitCountForCycle(cycleId);
+        } catch (e) {
+          logger.error('Failed to sync split count after cycle delete', e as Error);
+        }
+      }
       const parts: string[] = [];
       if (res.deletedCount > 0) parts.push(t('detail.delete.removed', { count: res.deletedCount }));
       if (res.protectedCount > 0) parts.push(t('detail.delete.kept', { count: res.protectedCount }));
       if (parts.length === 0) parts.push(t('detail.delete.nothing'));
       const message = parts.join(' · ');
+      // Close first so the (now-disabled) confirm can't be re-fired and any parent refetch happens
+      // with the dialog already dismissed.
+      setDeleteOpen(false);
       if (res.deletedCount > 0) toast.success(message);
       else toast(message);
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
       onMutated?.();
-      setDeleteOpen(false);
     } catch (err) {
       toast.error(getFriendlyErrorMessage(err, t('detail.delete.error')));
     } finally {

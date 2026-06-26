@@ -5,12 +5,14 @@ import type { ReactElement } from 'react';
 import { renderWithCycles } from './renderWithCycles';
 import type { CycleDetail } from '@/lib/cycleDetail';
 
-const { mockUseCycleDetail, mockApplyDelete } = vi.hoisted(() => ({
+const { mockUseCycleDetail, mockApplyDelete, mockSyncSplit } = vi.hoisted(() => ({
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
+  mockSyncSplit: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('@/lib/cycleDetail', () => ({ useCycleDetail: () => mockUseCycleDetail() }));
 vi.mock('@/lib/slotDeleteGuard', () => ({ applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a) }));
+vi.mock('@/lib/invoiceSync', () => ({ syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a) }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 const { CycleDetailView } = await import('@/components/cycles/CycleDetailView');
 
@@ -47,6 +49,8 @@ function renderView(ui: ReactElement) {
 beforeEach(() => {
   mockUseCycleDetail.mockReset();
   mockApplyDelete.mockReset();
+  mockSyncSplit.mockReset();
+  mockSyncSplit.mockResolvedValue(undefined);
 });
 
 describe('CycleDetailView (Slice 9b/9c)', () => {
@@ -90,7 +94,19 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     // confirm (exact "Delete", not "Delete cycle")
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
     await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1', 's2']));
+    // RPC stamps split_count but not line items → caller must resync (RPC contract).
+    await waitFor(() => expect(mockSyncSplit).toHaveBeenCalledWith('cy1'));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it('delete cycle: skips the invoice resync when nothing was deleted', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 2, protectedSlotIds: ['s1', 's2'] });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    fireEvent.click(screen.getByRole('button', { name: /Delete cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
+    expect(mockSyncSplit).not.toHaveBeenCalled();
   });
 
   it('delete cycle: cancel does NOT call the RPC', () => {
