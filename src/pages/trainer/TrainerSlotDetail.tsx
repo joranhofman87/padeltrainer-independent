@@ -5,7 +5,7 @@ import { format, isPast } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Lock, MapPin, Users, Pencil,
-  Trash2, UserPlus, DollarSign, Loader2, Save, X, Check,
+  Trash2, UserPlus, DollarSign, Loader2, Check,
   FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
@@ -23,11 +23,9 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -36,8 +34,7 @@ import { InlineBookPlayer } from '@/components/trainer/InlineBookPlayer';
 import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
 import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
-import { SlotRatingPicker } from '@/components/slots/SlotRatingPicker';
-import { ExtraCostsEditor } from '@/components/slots/ExtraCostsEditor';
+import { SlotEditForm, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
@@ -80,22 +77,6 @@ export default function TrainerSlotDetail() {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [editDate, setEditDate] = useState('');
-  const [editStartTime, setEditStartTime] = useState('');
-  const [editDuration, setEditDuration] = useState(60);
-  const [editLocationId, setEditLocationId] = useState('none');
-  const [editMaxParticipants, setEditMaxParticipants] = useState(4);
-  const [editRatingSystem, setEditRatingSystem] = useState<string | null>(null);
-  const [editMinRating, setEditMinRating] = useState<number | null>(null);
-  const [editMaxRating, setEditMaxRating] = useState<number | null>(null);
-  const [editCyclusName, setEditCyclusName] = useState('');
-  const [editPricePerSession, setEditPricePerSession] = useState<string>('');
-  const [editTotalPrice, setEditTotalPrice] = useState<string>('');
-  const [editSplitPayment, setEditSplitPayment] = useState(false);
-  const [editPricesIncludeVat, setEditPricesIncludeVat] = useState(true);
-  const [editExtraCosts, setEditExtraCosts] = useState<ExtraCost[]>([]);
-  const [editIsMarkedFull, setEditIsMarkedFull] = useState(false);
-  const [applyToCyclus, setApplyToCyclus] = useState(false);
 
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -186,63 +167,40 @@ export default function TrainerSlotDetail() {
     })();
   }, [user?.id]);
 
-  // Auto-open edit mode
+  // Auto-open edit mode. SlotEditForm initialises its own fields from the slot (key={slot.id}).
   const autoEditTriggered = useRef(false);
   useEffect(() => {
     if (detail && !autoEditTriggered.current) {
       autoEditTriggered.current = true;
-      startEditing();
+      setIsEditing(true);
     }
   }, [detail]);
 
-  const startEditing = () => {
-    if (!detail) return;
-    const start = new Date(detail.start_time);
-    const end = new Date(detail.end_time);
-    setEditDate(format(start, 'yyyy-MM-dd'));
-    setEditStartTime(format(start, 'HH:mm'));
-    setEditDuration(Math.round((end.getTime() - start.getTime()) / 60000));
-    setEditLocationId(detail.location_id || 'none');
-    setEditMaxParticipants(detail.max_participants);
-    setEditRatingSystem(detail.rating_system);
-    setEditMinRating(detail.min_rating);
-    setEditMaxRating(detail.max_rating);
-    setEditCyclusName(detail.cyclus_name || '');
-    setEditPricePerSession(detail.price_per_session != null ? String(detail.price_per_session) : '');
-    setEditTotalPrice(detail.total_price != null ? String(detail.total_price) : '');
-    setEditSplitPayment(detail.split_payment);
-    setEditPricesIncludeVat(detail.prices_include_vat);
-    setEditExtraCosts(detail.extra_costs ? [...detail.extra_costs] : []);
-    setEditIsMarkedFull(!detail.is_public);
-    setApplyToCyclus(false);
-    setIsEditing(true);
-  };
-
-  const handleSave = async () => {
+  const handleSave = async (values: SlotEditFormValues, applyToCyclus: boolean) => {
     if (!detail) return;
     setSaving(true);
     try {
-      const [hours, minutes] = editStartTime.split(':').map(Number);
-      const startDateTime = new Date(editDate);
+      const [hours, minutes] = values.startTime.split(':').map(Number);
+      const startDateTime = new Date(values.date);
       startDateTime.setHours(hours, minutes, 0, 0);
       const endDateTime = new Date(startDateTime);
-      endDateTime.setMinutes(endDateTime.getMinutes() + editDuration);
+      endDateTime.setMinutes(endDateTime.getMinutes() + values.duration);
 
       const isCycleSlot = !!detail.cyclus_id;
       const updatePayload: any = {
         start_time: startDateTime.toISOString(), end_time: endDateTime.toISOString(),
-        location_id: editLocationId === 'none' ? null : editLocationId,
-        max_participants: editMaxParticipants,
-        rating_system: editRatingSystem, min_rating: editMinRating, max_rating: editMaxRating,
-        cyclus_name: editCyclusName || null, is_public: !editIsMarkedFull,
+        location_id: values.locationId === 'none' ? null : values.locationId,
+        max_participants: values.maxParticipants,
+        rating_system: values.ratingSystem, min_rating: values.minRating, max_rating: values.maxRating,
+        cyclus_name: values.cyclusName || null, is_public: !values.isMarkedFull,
       };
 
       if (!isCycleSlot) {
-        updatePayload.price_per_session = editPricePerSession ? Number(editPricePerSession) : null;
-        updatePayload.total_price = editTotalPrice ? Number(editTotalPrice) : null;
-        updatePayload.split_payment = editSplitPayment;
-        updatePayload.prices_include_vat = editPricesIncludeVat;
-        updatePayload.extra_costs = editExtraCosts.length > 0 ? editExtraCosts : null;
+        updatePayload.price_per_session = values.pricePerSession ? Number(values.pricePerSession) : null;
+        updatePayload.total_price = values.totalPrice ? Number(values.totalPrice) : null;
+        updatePayload.split_payment = values.splitPayment;
+        updatePayload.prices_include_vat = values.pricesIncludeVat;
+        updatePayload.extra_costs = values.extraCosts.length > 0 ? values.extraCosts : null;
       }
 
       if (applyToCyclus && detail.cyclus_id) {
@@ -256,18 +214,18 @@ export default function TrainerSlotDetail() {
           const csStart = new Date(cs.start_time);
           csStart.setMinutes(csStart.getMinutes() + timeOfDayDiff);
           const csEnd = new Date(csStart);
-          csEnd.setMinutes(csEnd.getMinutes() + editDuration);
+          csEnd.setMinutes(csEnd.getMinutes() + values.duration);
           await supabase.from('availability_slots').update({ ...updatePayload, start_time: csStart.toISOString(), end_time: csEnd.toISOString() }).eq('id', cs.id);
         }
         toast({ title: t('calendar.cyclusUpdated', 'Cyclus bijgewerkt') });
-        const priceChanged = detail.price_per_session !== (editPricePerSession ? Number(editPricePerSession) : null);
+        const priceChanged = detail.price_per_session !== (values.pricePerSession ? Number(values.pricePerSession) : null);
         if (priceChanged && cyclusSlots) {
           try { await syncInvoicesAfterPriceChange(cyclusSlots.map(s => s.id)); } catch (e) { logger.error('Failed to sync invoices', e as Error); }
         }
       } else {
         const { error } = await supabase.from('availability_slots').update(updatePayload).eq('id', detail.id);
         if (error) throw error;
-        const priceChanged = detail.price_per_session !== (editPricePerSession ? Number(editPricePerSession) : null);
+        const priceChanged = detail.price_per_session !== (values.pricePerSession ? Number(values.pricePerSession) : null);
         if (priceChanged) { try { await syncInvoicesAfterPriceChange([detail.id]); } catch (e) { logger.error('Failed to sync invoices', e as Error); } }
         toast({ title: t('calendar.slotUpdated', 'Sessie bijgewerkt') });
       }
@@ -393,88 +351,16 @@ export default function TrainerSlotDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               {isEditing ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label className="text-xs">{t('calendar.date', 'Datum')}</Label><Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">{t('calendar.time', 'Tijd')}</Label><Input type="time" value={editStartTime} onChange={e => setEditStartTime(e.target.value)} /></div>
-                  </div>
-
-                  <div className="space-y-1.5"><Label className="text-xs">{t('calendar.duration', 'Duur')}</Label>
-                    <Select value={String(editDuration)} onValueChange={v => setEditDuration(Number(v))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="30">30 min</SelectItem><SelectItem value="45">45 min</SelectItem>
-                        <SelectItem value="60">60 min</SelectItem><SelectItem value="90">90 min</SelectItem><SelectItem value="120">120 min</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {locations.length > 0 && (
-                    <div className="space-y-1.5"><Label className="text-xs">{t('calendar.location', 'Locatie')}</Label>
-                      <Select value={editLocationId} onValueChange={setEditLocationId}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">{t('calendar.noLocation', 'Geen locatie')}</SelectItem>
-                          {locations.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {(() => {
-                    const isCycleSlot = !!detail.cyclus_id;
-                    return (
-                      <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1.5"><Label className="text-xs">{t('calendar.maxParticipants', 'Max deelnemers')}</Label>
-                            <Input type="number" min={1} max={20} value={editMaxParticipants} onChange={e => setEditMaxParticipants(Number(e.target.value))} /></div>
-                          <div className="space-y-1.5"><Label className="text-xs">{t('calendar.price', 'Prijs')}</Label>
-                            <Input type="number" step="0.01" min={0} value={editPricePerSession} onChange={e => setEditPricePerSession(e.target.value)} placeholder="€" disabled={isCycleSlot} className={isCycleSlot ? 'opacity-60' : ''} /></div>
-                        </div>
-                        <div className="space-y-1.5"><Label className="text-xs">{t('calendar.totalPrice', 'Totaalprijs (hele cyclus)')}</Label>
-                          <Input type="number" step="0.01" min={0} value={editTotalPrice} onChange={e => setEditTotalPrice(e.target.value)} placeholder="€" disabled={isCycleSlot} className={isCycleSlot ? 'opacity-60' : ''} /></div>
-                        {isCycleSlot && (
-                          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                            <DollarSign className="h-3.5 w-3.5 shrink-0" />
-                            <span>{t('calendar.pricingManagedByCycle', 'Prijs wordt beheerd op cyclus-niveau.')}</span>
-                          </div>
-                        )}
-                        <Separator />
-                        <div className="flex items-center justify-between"><Label className="text-xs">{t('calendar.pricesIncludeVat', 'Inclusief BTW')}</Label><Switch checked={editPricesIncludeVat} onCheckedChange={setEditPricesIncludeVat} disabled={isCycleSlot} /></div>
-                        <div className="flex items-center justify-between">
-                          <div><Label className="text-xs">{t('calendar.splitPayment', 'Gesplitste betaling')}</Label><p className="text-[10px] text-muted-foreground">{t('calendar.splitPaymentDesc', 'Elke speler betaalt apart')}</p></div>
-                          <Switch checked={editSplitPayment} onCheckedChange={setEditSplitPayment} disabled={isCycleSlot} />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-muted-foreground" /><Label className="text-xs">{t('calendar.markPrivate', 'Privé')}</Label></div>
-                          <Switch checked={editIsMarkedFull} onCheckedChange={setEditIsMarkedFull} />
-                        </div>
-                        <Separator />
-                        <ExtraCostsEditor
-                          value={editExtraCosts}
-                          onChange={setEditExtraCosts}
-                          disabled={isCycleSlot}
-                          namespace="trainer"
-                        />
-                      </>
-                    );
-                  })()}
-
-                  <Separator />
-                  <SlotRatingPicker ratingSystem={editRatingSystem} minRating={editMinRating} maxRating={editMaxRating} onChange={vals => { setEditRatingSystem(vals.ratingSystem); setEditMinRating(vals.minRating); setEditMaxRating(vals.maxRating); }} fixedRatingSystem={trainerRatingSystem} />
-
-                  {detail.cyclus_id && (
-                    <>
-                      <div className="space-y-1.5"><Label className="text-xs">{t('calendar.cyclusName', 'Cyclusnaam')}</Label><Input value={editCyclusName} onChange={e => setEditCyclusName(e.target.value)} /></div>
-                      <div className="flex items-center space-x-2"><Checkbox id="apply-cyclus" checked={applyToCyclus} onCheckedChange={c => setApplyToCyclus(!!c)} /><Label htmlFor="apply-cyclus" className="text-xs font-normal cursor-pointer">{t('calendar.applyToCyclus', 'Toepassen op alle toekomstige sessies')}</Label></div>
-                    </>
-                  )}
-
-                  <div className="flex gap-2 pt-2">
-                    <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}{tCommon('save', 'Opslaan')}</Button>
-                    <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} disabled={saving} className="gap-1.5"><X className="h-3.5 w-3.5" />{tCommon('cancel', 'Annuleren')}</Button>
-                  </div>
-                </div>
+                <SlotEditForm
+                  key={detail.id}
+                  slot={detail}
+                  namespace="trainer"
+                  locations={locations}
+                  fixedRatingSystem={trainerRatingSystem}
+                  isSaving={saving}
+                  onSubmit={handleSave}
+                  onCancel={() => setIsEditing(false)}
+                />
               ) : (
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
