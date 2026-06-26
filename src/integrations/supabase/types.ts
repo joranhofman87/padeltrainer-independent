@@ -7555,6 +7555,22 @@ export type Database = {
         Args: { p_invoice_id: string; p_reason: string }
         Returns: undefined
       }
+      apply_slot_delete_to_cycle: {
+        Args: { _cycle_id: string; _slot_ids: string[] }
+        Returns: {
+          deleted_count: number
+          protected_count: number
+          protected_slot_ids: string[]
+        }[]
+      }
+      apply_slot_edit_to_cycle: {
+        Args: { _cycle_id: string; _patch: Json; _slot_ids: string[] }
+        Returns: {
+          blocked_count: number
+          blocked_slot_ids: string[]
+          updated_count: number
+        }[]
+      }
       book_slot_for_payment: {
         Args: { _payment_amount: number; _player_id: string; _slot_id: string }
         Returns: string
@@ -7585,6 +7601,13 @@ export type Database = {
       club_has_managers: {
         Args: { _club_profile_id: string }
         Returns: boolean
+      }
+      count_cycles_intakes: {
+        Args: { _cycle_ids: string[] }
+        Returns: {
+          cycle_id: string
+          n: number
+        }[]
       }
       create_rebook_group_guest: {
         Args: {
