@@ -19,7 +19,13 @@ export interface CycleEditBaseline {
   isMarkedFull: boolean;
 }
 
-/** Derive the baseline from the representative slot — verbatim from SlotEditForm's init effect. */
+/**
+ * Derive the baseline from the representative slot — VERBATIM from SlotEditForm's init effect,
+ * including the local-time `format(date, 'HH:mm')` for startTime. This must mirror the form exactly:
+ * the baseline and the form are both derived from the same slot in the same session, so an untouched
+ * time compares equal (shift 0). Switching to UTC extraction here would disagree with the form's
+ * local-time seed and manufacture a spurious shift — do NOT.
+ */
 export function slotEditBaselineFromSlot(slot: SlotEditFormSlot): CycleEditBaseline {
   const start = new Date(slot.start_time);
   const end = new Date(slot.end_time);

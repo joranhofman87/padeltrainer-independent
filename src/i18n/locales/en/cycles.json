@@ -1209,6 +1209,7 @@
       "updated": "{{count}} sessions updated",
       "blocked": "{{count}} sessions left unchanged — more players are booked than the new capacity",
       "nothing": "No changes to apply",
+      "noFuture": "No future sessions to edit",
       "loadError": "Could not load the session. Please try again.",
       "error": "Could not update. Please try again."
     }

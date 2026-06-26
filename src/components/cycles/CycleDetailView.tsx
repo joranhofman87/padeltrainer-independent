@@ -100,6 +100,8 @@ export function CycleDetailView({
   const [editLoading, setEditLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editRepSlot, setEditRepSlot] = useState<SlotEditFormSlot | null>(null);
+  // Bumped on every open so the form always remounts + re-inits, even if two reps share a start_time.
+  const [editEpoch, setEditEpoch] = useState(0);
   // Future (not-yet-started) sessions are the whole-cycle edit/delete scope (matches the slot-detail
   // "future only" rule). The delete RPC keeps any still-booked session; the edit RPC keeps any slot
   // it would have to shrink below its occupancy.
@@ -206,8 +208,13 @@ export function CycleDetailView({
   };
 
   const openEditModal = async () => {
-    // Representative session = the first FUTURE slot (the edit scope), else the first slot. Its
-    // current time-of-day is the reference the relative shift is computed against.
+    // Nothing to edit if every session is in the past (the scope is future-only).
+    if (futureSlotIds.length === 0) {
+      toast(t('detail.edit.noFuture'));
+      return;
+    }
+    // Representative session = the first FUTURE slot (the edit scope). Its current time-of-day is the
+    // reference the relative shift is computed against.
     const rep = slots.find((s) => new Date(s.start_time).getTime() >= Date.now()) ?? slots[0];
     if (!rep) return;
     setEditLoading(true);
@@ -238,6 +245,7 @@ export function CycleDetailView({
         prices_include_vat: row.prices_include_vat ?? true,
         extra_costs: (row.extra_costs as ExtraCost[] | null) ?? null,
       });
+      setEditEpoch((e) => e + 1);
       setEditOpen(true);
     } catch (err) {
       toast.error(getFriendlyErrorMessage(err, t('detail.edit.loadError')));
@@ -247,7 +255,7 @@ export function CycleDetailView({
   };
 
   const handleSaveEdit = async (values: SlotEditFormValues) => {
-    if (!editRepSlot) return;
+    if (!editRepSlot || savingEdit) return; // guard against a fast double-submit
     // Diff against the representative slot → only changed fields go in the patch (omitted keys are
     // kept per-slot, so a time-only edit can't reshape another session). See cycleEditPatch.ts.
     const patch = buildCycleEditPatch(values, slotEditBaselineFromSlot(editRepSlot));
@@ -258,6 +266,9 @@ export function CycleDetailView({
     }
     setSavingEdit(true);
     try {
+      // No invoice resync here: this is a NON-price edit (time/trainer/location/capacity). Billing
+      // reads slot price × bookings, and split_count is player-count-based — none of which this edit
+      // touches (the capacity guard blocks any shrink below occupancy rather than dropping players).
       const res = await applySlotEditToCycle(cycleId, futureSlotIds, patch);
       const parts: string[] = [];
       if (res.updatedCount > 0) parts.push(t('detail.edit.updated', { count: res.updatedCount }));
@@ -265,8 +276,10 @@ export function CycleDetailView({
       if (parts.length === 0) parts.push(t('detail.edit.nothing'));
       const message = parts.join(' · ');
       setEditOpen(false);
-      // A blocked-only result is NOT a success — surface it as a warning, not a green toast.
-      if (res.updatedCount > 0 && res.blockedCount === 0) toast.success(message);
+      // The capacity guard is all-or-nothing, so updatedCount XOR blockedCount. A blocked result means
+      // NOTHING changed → surface it as an error, not a benign toast.
+      if (res.updatedCount > 0) toast.success(message);
+      else if (res.blockedCount > 0) toast.error(message);
       else toast(message);
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
       onMutated?.();
@@ -510,7 +523,7 @@ export function CycleDetailView({
           </DialogHeader>
           {editRepSlot && (
             <SlotEditForm
-              key={editRepSlot.start_time}
+              key={editEpoch}
               slot={editRepSlot}
               // The form's calendar.* labels live in trainer.json/academy.json (NOT cycles.json) — use
               // 'trainer' (a complete, translated set) so the modal isn't dropped to English defaults.

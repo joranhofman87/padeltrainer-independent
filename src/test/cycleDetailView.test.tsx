@@ -16,6 +16,7 @@ const {
   mockUpdatePricing,
   mockApplyEdit,
   editOverride,
+  mockToast,
 } = vi.hoisted(() => ({
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
   mockApplyEdit: vi.fn(),
   editOverride: { current: {} as Partial<SlotEditFormValues> },
+  mockToast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 vi.mock('@/lib/supabaseClient', () => ({ supabase: supabaseMock }));
 vi.mock('@/lib/cycleDetail', () => ({ useCycleDetail: () => mockUseCycleDetail() }));
@@ -80,7 +82,7 @@ vi.mock('@/components/slots/SlotEditForm', () => ({
 }));
 // The pricing card's preset picker fetches presets on mount — stub it so the modal renders cheaply.
 vi.mock('@/components/settings/ExtraCostPresetPicker', () => ({ ExtraCostPresetPicker: () => null }));
-vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
+vi.mock('sonner', () => ({ toast: mockToast }));
 const { CycleDetailView } = await import('@/components/cycles/CycleDetailView');
 
 // The representative slot openEditModal fetches (a full availability_slots row).
@@ -147,6 +149,9 @@ beforeEach(() => {
   mockUpdatePricing.mockResolvedValue(undefined);
   mockApplyEdit.mockReset();
   editOverride.current = {};
+  mockToast.mockReset();
+  mockToast.success.mockReset();
+  mockToast.error.mockReset();
   setMockData({ availability_slots: [repSlotRow] });
 });
 
@@ -198,6 +203,34 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     fireEvent.click(screen.getByText('stub-save'));
     await waitFor(() => expect(mockApplyEdit).toHaveBeenCalledWith('cy1', ['s1', 's2'], { maxParticipants: 6 }));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it('edit whole cycle: a fully-blocked capacity shrink surfaces as an error toast (nothing changed)', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyEdit.mockResolvedValue({ updatedCount: 0, blockedCount: 2, blockedSlotIds: ['s1', 's2'] });
+    editOverride.current = { maxParticipants: 1 };
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    await screen.findByTestId('slot-edit-form');
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalled());
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it('edit whole cycle: all-past cycle → guarded (no modal, no RPC)', () => {
+    mockUseCycleDetail.mockReturnValue({
+      data: {
+        ...sampleDetail,
+        slots: sampleDetail.slots.map((s) => ({ ...s, start_time: '2020-01-01T18:00:00Z', end_time: '2020-01-01T19:00:00Z' })),
+      },
+      isLoading: false,
+      isError: false,
+    });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    expect(screen.queryByTestId('slot-edit-form')).not.toBeInTheDocument();
+    expect(mockApplyEdit).not.toHaveBeenCalled();
   });
 
   it('opens a single session on row click', () => {
