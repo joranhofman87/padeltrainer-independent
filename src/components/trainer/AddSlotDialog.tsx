@@ -47,7 +47,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
-import { SlotLocationPicker, type SlotLocation } from "./SlotLocationPicker";
+import { SlotLocationPicker, type SlotLocation } from "@/components/slots/SlotLocationPicker";
 import { SlotRatingPicker } from "@/components/slots/SlotRatingPicker";
 import { getTrainerAcademy, type AcademyProfile } from "@/lib/academy";
 import {

@@ -80,7 +80,7 @@ export function SlotLocationPicker({
 
         if (!error && trainerLocations) {
           const locs = trainerLocations
-            .map((tl: any) => tl.locations)
+            .map((tl) => (tl as { locations: SlotLocation | null }).locations)
             .filter(Boolean) as SlotLocation[];
           setLocations(locs);
           
@@ -96,6 +96,10 @@ export function SlotLocationPicker({
     };
 
     fetchLocations();
+    // value/onChange are intentionally excluded: this effect refetches only when
+    // the trainer or available-locations source changes. Including the selected
+    // value or the onChange callback would refetch on every selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainerId, availableLocations]);
 
   const selectedLocation = useMemo(() => {

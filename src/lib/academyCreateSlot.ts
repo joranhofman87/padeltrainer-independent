@@ -1,4 +1,4 @@
-import type { SlotLocation } from "@/components/trainer/SlotLocationPicker";
+import type { SlotLocation } from "@/components/slots/SlotLocationPicker";
 
 export type AcademyCreateSlotPrerequisiteKind = "trainer" | "location";
 export type AcademyCreateSlotPrerequisiteSeverity = "blocking" | "warning";

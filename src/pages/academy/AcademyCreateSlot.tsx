@@ -13,7 +13,7 @@ import {
   getAcademyCreateSlotPrerequisites,
   mapAcademyLocationsToSlotLocations,
 } from "@/lib/academyCreateSlot";
-import type { SlotLocation } from "@/components/trainer/SlotLocationPicker";
+import type { SlotLocation } from "@/components/slots/SlotLocationPicker";
 
 export default function AcademyCreateSlot() {
   const { t } = useTranslation("academy");
