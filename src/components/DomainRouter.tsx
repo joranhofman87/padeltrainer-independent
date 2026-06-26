@@ -113,6 +113,7 @@ const TrainerPlayers = lazy(() => import('@/pages/TrainerPlayers'));
 const TrainerPlayerDetail = lazy(() => import('@/pages/trainer/TrainerPlayerDetail'));
 const TrainerCyclus = lazy(() => import('@/pages/TrainerCyclus'));
 const TrainerCycles = lazy(() => import('@/pages/TrainerCycles'));
+const TrainerCycleDetailView = lazy(() => import('@/pages/trainer/TrainerCycleDetailView'));
 const TrainerIntakeRequests = lazy(() => import('@/pages/TrainerIntakeRequests'));
 const ProposalOverviewPage = lazy(() => import('@/pages/ProposalOverviewPage'));
 const TrainerWaitingList = lazy(() => import('@/pages/TrainerWaitingList'));
@@ -265,6 +266,8 @@ export function DomainRouter() {
           <Route path="cycles" element={<TrainerCycles />} />
           <Route path="cycles/bulk-copy" element={<TrainerBulkCopySlots />} />
           <Route path="cycles/new" element={<CycleFormPage ownerType="trainer" />} />
+          {/* Training CYCLE detail = the Slice-9 centerpiece view. */}
+          <Route path="cycles/:cycleId" element={<TrainerCycleDetailView />} />
           <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="trainer" />} />
           <Route path="intake-requests" element={<TrainerIntakeRequests />} />
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />

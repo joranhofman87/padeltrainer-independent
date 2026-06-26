@@ -1787,6 +1787,7 @@
     "sessions": "sessions",
     "subtitle": "Manage your recurring training groups",
     "title": "Training Cycles",
+    "manageCycle": "Manage cycle",
     "tryDifferentSearch": "Try a different search term",
     "upcoming": "upcoming",
     "viewInCalendar": "View in Calendar"
