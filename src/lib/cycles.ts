@@ -357,6 +357,95 @@ export async function countCyclesIntakes(cycleIds: string[]): Promise<Map<string
   return counts;
 }
 
+/** A partial slot edit. Only the fields you set are written; an explicit `null` clears the column.
+ *  `startShiftMinutes` + `durationMinutes` go together (relative time shift; omit one and neither
+ *  applies). Price fields are intentionally absent — edit those via {@link updateCyclePricing}. */
+export interface SlotEditPatch {
+  startShiftMinutes?: number;
+  durationMinutes?: number;
+  trainerId?: string | null;
+  locationId?: string | null;
+  maxParticipants?: number | null;
+  ratingSystem?: string | null;
+  minRating?: number | null;
+  maxRating?: number | null;
+  cyclusName?: string | null;
+  isPublic?: boolean;
+}
+
+export interface SlotEditResult {
+  /** Slots actually updated. */
+  updatedCount: number;
+  /** Slots that blocked the edit because their occupancy exceeds the requested max_participants. */
+  blockedCount: number;
+  /** The blocking slot ids — surface them ("can't shrink: N players booked"); the edit was a no-op. */
+  blockedSlotIds: string[];
+}
+
+/**
+ * Atomic, set-based slot edit / apply-to-cycle via the `apply_slot_edit_to_cycle` RPC (Phase 4 F2).
+ *
+ * Replaces the non-atomic per-slot "apply to whole cyclus" client loop. Applies a relative time
+ * shift + non-price fields to every `slotIds` row in ONE statement, with an ALL-OR-NOTHING
+ * capacity-shrink guard: if a requested `maxParticipants` would shrink any slot below its occupancy,
+ * NOTHING is updated and the offending slots come back in `blockedSlotIds`.
+ *
+ * Adoption notes (Slice 7b):
+ *  • Omitted keys are KEPT per-slot — there is no normalization. To reproduce the client's
+ *    whole-cyclus overwrite, populate EVERY non-price field, not a changed-only diff.
+ *  • `startShiftMinutes` + `durationMinutes` travel together (both or neither; throws otherwise). A
+ *    pure resize passes `startShiftMinutes: 0`.
+ *  • Relative-shift + cycle-scope + NON-PRICE only. Single-slot absolute-time edits and any price
+ *    write stay on the existing path / {@link updateCyclePricing} (slot = price source of truth).
+ *
+ * INERT until Slice 7b adopts it; wrap callers in a graceful fallback before the owner deploys the
+ * migration. `cycleId` may be null (orphan-cyclus slots).
+ */
+export async function applySlotEditToCycle(
+  cycleId: string | null,
+  slotIds: string[],
+  patch: SlotEditPatch,
+): Promise<SlotEditResult> {
+  if ((patch.startShiftMinutes === undefined) !== (patch.durationMinutes === undefined)) {
+    throw new Error('applySlotEditToCycle: startShiftMinutes and durationMinutes must be provided together');
+  }
+  const p: Record<string, unknown> = {};
+  // Round the integer-typed fields so a fractional value can't abort the server-side ::int cast.
+  if (patch.startShiftMinutes !== undefined) p.start_shift_minutes = Math.round(patch.startShiftMinutes);
+  if (patch.durationMinutes !== undefined) p.duration_minutes = Math.round(patch.durationMinutes);
+  if (patch.maxParticipants !== undefined) {
+    p.max_participants = patch.maxParticipants === null ? null : Math.round(patch.maxParticipants);
+  }
+  if (patch.trainerId !== undefined) p.trainer_id = patch.trainerId;
+  if (patch.locationId !== undefined) p.location_id = patch.locationId;
+  if (patch.ratingSystem !== undefined) p.rating_system = patch.ratingSystem;
+  if (patch.minRating !== undefined) p.min_rating = patch.minRating;
+  if (patch.maxRating !== undefined) p.max_rating = patch.maxRating;
+  if (patch.cyclusName !== undefined) p.cyclus_name = patch.cyclusName;
+  if (patch.isPublic !== undefined) p.is_public = patch.isPublic;
+
+  if (slotIds.length === 0 || Object.keys(p).length === 0) {
+    return { updatedCount: 0, blockedCount: 0, blockedSlotIds: [] };
+  }
+
+  const { data, error } = await supabase.rpc('apply_slot_edit_to_cycle' as never, {
+    _cycle_id: cycleId,
+    _slot_ids: slotIds,
+    _patch: p,
+  } as never);
+  if (error) throw error;
+  const row = (data as unknown as Array<{
+    updated_count: number | string;
+    blocked_count: number | string;
+    blocked_slot_ids: string[] | null;
+  }>)?.[0];
+  return {
+    updatedCount: Number(row?.updated_count ?? 0),
+    blockedCount: Number(row?.blocked_count ?? 0),
+    blockedSlotIds: row?.blocked_slot_ids ?? [],
+  };
+}
+
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
