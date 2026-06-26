@@ -52,6 +52,11 @@ vi.mock('@/lib/lessons', () => ({
 
 vi.mock('@/lib/reviews', () => ({
   getPlayerReview: vi.fn().mockResolvedValue({ data: null }),
+  getReviewedBookingIds: vi.fn().mockResolvedValue(new Set()),
+}));
+
+vi.mock('@/lib/trainerDisplayNames', () => ({
+  fetchTrainerDisplayNamesByProfileIds: vi.fn().mockResolvedValue(new Map()),
 }));
 
 vi.mock('@/components/reviews/ReviewForm', () => ({
@@ -73,14 +78,21 @@ vi.mock('@/lib/icsGenerator', () => ({
 import PlayerBookings from './PlayerBookings';
 
 function chainResolve(data: unknown) {
-  const result = Promise.resolve({ data, error: null });
+  const resolved = { data, error: null };
+  const promise = () => Promise.resolve(resolved);
+  // Builder methods return the chain; the awaited terminals return real Promises. `.order()` may be
+  // terminal (upcoming/all fetch) OR chained into `.range()` (paginated past), so it returns a
+  // Promise that also carries a `.range`. Covers upcoming (.gte/.order) + paginated (.not/.range).
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
     neq: () => chain,
     in: () => chain,
-    order: () => result,
-    maybeSingle: () => result,
+    not: () => chain,
+    gte: () => chain,
+    maybeSingle: () => promise(),
+    range: () => promise(),
+    order: () => Object.assign(promise(), { range: () => promise() }),
   };
   return chain;
 }

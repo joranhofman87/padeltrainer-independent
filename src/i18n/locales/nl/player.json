@@ -292,6 +292,8 @@
     "cancelSuccess": "Boeking geannuleerd",
     "cancelError": "Annuleren van boeking mislukt",
     "loadError": "Trainingen laden mislukt",
+    "loadOlder": "Oudere boekingen laden",
+    "loadingOlder": "Laden…",
     "status": {
       "confirmed": "Bevestigd",
       "pending": "In afwachting",

@@ -292,6 +292,8 @@
     "cancelSuccess": "Booking cancelled",
     "cancelError": "Failed to cancel booking",
     "loadError": "Failed to load trainings",
+    "loadOlder": "Load older bookings",
+    "loadingOlder": "Loading…",
     "status": {
       "confirmed": "Confirmed",
       "pending": "Pending",
