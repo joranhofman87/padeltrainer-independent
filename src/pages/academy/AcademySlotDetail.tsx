@@ -14,8 +14,8 @@ import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames'
 import { CAPACITY_OCCUPYING_STATUSES, getSlotCapacity } from '@/lib/lessons';
 import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { syncInvoicesAfterPriceChange, syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from '@/lib/invoiceSync';
-import { filterDeletableSlotIds } from '@/lib/slotDeleteGuard';
+import { syncInvoicesAfterPriceChange, syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
@@ -466,24 +466,25 @@ export default function AcademySlotDetail() {
     if (!detail) return;
     setDeleting(true);
     try {
-      // Collect booking IDs before deleting slots
-      let slotIdsToDelete: string[] = [];
+      // The whole-cycle scope is future-only; a single delete is just this slot.
+      let slotIds: string[];
       if (deleteCyclus && detail.cyclus_id) {
         const { data: cyclusSlots } = await supabase
           .from('availability_slots')
           .select('id')
           .eq('cyclus_id', detail.cyclus_id)
           .gte('start_time', new Date().toISOString());
-        slotIdsToDelete = (cyclusSlots || []).map(s => s.id);
+        slotIds = (cyclusSlots || []).map((s) => s.id);
       } else {
-        slotIdsToDelete = [detail.id];
+        slotIds = [detail.id];
       }
 
-      // SAFETY: bookings.slot_id is ON DELETE CASCADE — deleting a slot deletes its bookings. This
-      // path previously deleted the slot directly, silently cascade-removing any active booking.
-      // Restrict the delete to slots with NO active (occupying) booking; the rest are kept.
-      const deletableSlotIds = await filterDeletableSlotIds(slotIdsToDelete);
-      if (deletableSlotIds.length === 0) {
+      // Canonical atomic delete (same RPC CycleDetailView uses): locks the bookings FOR UPDATE,
+      // deletes only the slots with NO active booking, and stamps invoices.split_count — closing the
+      // old check-then-delete TOCTOU vs bookings.slot_id ON DELETE CASCADE. Booked slots are kept.
+      const res = await applySlotDeleteToCycle(detail.cyclus_id ?? null, slotIds);
+
+      if (res.deletedCount === 0) {
         toast({
           title: tTrainer('calendar.slotHasBooking', "Can't delete this slot"),
           description: tTrainer('calendar.slotHasBookingDescription', 'It still has an active booking. Cancel the booking first, then delete.'),
@@ -492,31 +493,7 @@ export default function AcademySlotDetail() {
         return;
       }
 
-      // Occupying bookings on the deletable slots (none, by construction) → sync invoices after.
-      const { data: slotBookings } = await supabase
-        .from('bookings')
-        .select('id')
-        .in('slot_id', deletableSlotIds)
-        .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
-      const bookingIdsToRemove = (slotBookings || []).map(b => b.id);
-
-      const { error } = await supabase
-        .from('availability_slots')
-        .delete()
-        .in('id', deletableSlotIds);
-      if (error) throw error;
-      toast({ title: deleteCyclus ? tTrainer('calendar.cyclusDeleted', 'Cyclus deleted') : tTrainer('calendar.slotDeleted', 'Slot deleted') });
-
-      // Sync invoices after deletion
-      if (bookingIdsToRemove.length > 0) {
-        try {
-          await syncInvoicesAfterBookingRemoval(bookingIdsToRemove);
-        } catch (e) {
-          logger.error('Failed to sync invoices after slot deletion', e as Error);
-        }
-      }
-
-      // Recalculate split count for remaining players in the cycle
+      // The RPC stamps split_count but not invoice line items — rebuild them for the cycle.
       if (detail.cyclus_id) {
         try {
           await syncSplitCountForCycle(detail.cyclus_id);
@@ -525,6 +502,7 @@ export default function AcademySlotDetail() {
         }
       }
 
+      toast({ title: deleteCyclus ? tTrainer('calendar.cyclusDeleted', 'Cyclus deleted') : tTrainer('calendar.slotDeleted', 'Slot deleted') });
       navigate('/app/academy/calendar');
     } catch (error: any) {
       logger.error('Error deleting slot', error, { slotId: detail.id });
