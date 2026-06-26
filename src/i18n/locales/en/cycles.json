@@ -1184,6 +1184,16 @@
       "allPaid": "Paid",
       "hasUnpaid": "Outstanding",
       "noPlayers": "—"
+    },
+    "delete": {
+      "confirmTitle": "Delete this cycle?",
+      "confirmBody": "Empty future sessions will be removed. Booked sessions are kept — cancel their bookings first if you want to remove those too.",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "removed": "{{count}} sessions removed",
+      "kept": "{{count}} booked sessions kept",
+      "nothing": "No empty future sessions to remove",
+      "error": "Could not delete. Please try again."
     }
   }
 }

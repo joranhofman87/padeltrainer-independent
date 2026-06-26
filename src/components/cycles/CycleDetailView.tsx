@@ -1,27 +1,39 @@
-import type { ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Pencil, Trash2, Euro, CalendarDays, AlertCircle } from 'lucide-react';
+import { Users, Trash2, CalendarDays, AlertCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useCycleDetail, type CycleDetailSlot } from '@/lib/cycleDetail';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
+import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
 export interface CycleDetailViewProps {
   cycleId: string;
   /** Navigate to a single session (the slot-detail page) — the per-slot edit + coaching-notes surface. */
   onOpenSlot: (slotId: string) => void;
   /**
-   * Cycle-scope actions — wired in Slice 9c. When a handler is omitted its CTA is hidden, so a
-   * read-only role (e.g. club) simply passes none and gets a view-only page.
+   * Edit/delete capability. Academy + trainer pass true; club passes false → view-only. Gates the
+   * cycle-scope action CTAs. (Edit-whole-cycle + price land in follow-up slices; 9c-1 wires Delete.)
    */
-  onEditWholeCycle?: () => void;
-  onEditPrice?: () => void;
-  onDeleteCycle?: () => void;
+  canEdit?: boolean;
+  /** Called after a successful cycle-scope mutation, so the wrapper can refetch its own surfaces. */
+  onMutated?: () => void;
   /** i18n namespace (default 'cycles' — the neutral home for cycle UI strings). */
   namespace?: string;
 }
@@ -35,14 +47,22 @@ export interface CycleDetailViewProps {
 export function CycleDetailView({
   cycleId,
   onOpenSlot,
-  onEditWholeCycle,
-  onEditPrice,
-  onDeleteCycle,
+  canEdit = false,
+  onMutated,
   namespace = 'cycles',
 }: CycleDetailViewProps) {
   const { t, i18n } = useTranslation(namespace);
   const dateLocale = i18n.language?.startsWith('nl') ? nl : enUS;
   const { data, isLoading, isError } = useCycleDetail(cycleId);
+  const queryClient = useQueryClient();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // Future (not-yet-started) sessions are the whole-cycle delete scope (matches the slot-detail
+  // "future only" rule). The RPC keeps any still-booked session; we only ever remove empty ones.
+  const futureSlotIds = useMemo(
+    () => (data?.slots ?? []).filter((s) => new Date(s.start_time).getTime() >= Date.now()).map((s) => s.id),
+    [data],
+  );
 
   if (isLoading) return <CycleDetailSkeleton />;
   if (isError || !data) {
@@ -67,7 +87,29 @@ export function CycleDetailView({
   const periodStart = slots[0]?.start_time ?? cycle?.start_date ?? null;
   const periodEnd = slots[slots.length - 1]?.end_time ?? cycle?.end_date ?? null;
   const locationName = cycle?.location?.name ?? null;
-  const hasActions = !!(onEditWholeCycle || onEditPrice || onDeleteCycle);
+
+  const handleDeleteCycle = async () => {
+    setDeleting(true);
+    try {
+      // Atomic, booked-slot-protecting delete (F2). cycleId drives the invoice split recalc; the RPC
+      // keeps any session that still holds an active booking and reports it back as protectedCount.
+      const res = await applySlotDeleteToCycle(cycleId, futureSlotIds);
+      const parts: string[] = [];
+      if (res.deletedCount > 0) parts.push(t('detail.delete.removed', { count: res.deletedCount }));
+      if (res.protectedCount > 0) parts.push(t('detail.delete.kept', { count: res.protectedCount }));
+      if (parts.length === 0) parts.push(t('detail.delete.nothing'));
+      const message = parts.join(' · ');
+      if (res.deletedCount > 0) toast.success(message);
+      else toast(message);
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+      setDeleteOpen(false);
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.delete.error')));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fmtDayTime = (slot: CycleDetailSlot) => {
     const start = parseISO(slot.start_time);
@@ -119,26 +161,17 @@ export function CycleDetailView({
                 {t('detail.summary', { players: totalPlayers, sessions: totalSlots })}
               </p>
             </div>
-            {hasActions && (
+            {canEdit && (
               <div className="flex items-center gap-2 flex-wrap shrink-0">
-                {onEditWholeCycle && (
-                  <Button variant="default" size="sm" onClick={onEditWholeCycle}>
-                    <Pencil className="h-4 w-4 mr-1.5" />
-                    {t('detail.editWholeCycle')}
-                  </Button>
-                )}
-                {onEditPrice && (
-                  <Button variant="outline" size="sm" onClick={onEditPrice}>
-                    <Euro className="h-4 w-4 mr-1.5" />
-                    {t('detail.editPrice')}
-                  </Button>
-                )}
-                {onDeleteCycle && (
-                  <Button variant="outline" size="sm" onClick={onDeleteCycle} className="text-destructive hover:text-destructive">
-                    <Trash2 className="h-4 w-4 mr-1.5" />
-                    {t('detail.deleteCycle')}
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeleteOpen(true)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  {t('detail.deleteCycle')}
+                </Button>
               </div>
             )}
           </div>
@@ -234,6 +267,29 @@ export function CycleDetailView({
           )}
         </CardContent>
       </Card>
+
+      {/* Delete-cycle confirmation */}
+      <AlertDialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('detail.delete.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.delete.confirmBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+              {t('detail.delete.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeleteCycle()}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              {t('detail.delete.confirm')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

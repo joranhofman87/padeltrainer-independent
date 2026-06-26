@@ -1319,6 +1319,16 @@
       "allPaid": "Betaald",
       "hasUnpaid": "Openstaand",
       "noPlayers": "—"
+    },
+    "delete": {
+      "confirmTitle": "Deze cyclus verwijderen?",
+      "confirmBody": "Lege toekomstige sessies worden verwijderd. Geboekte sessies blijven behouden — annuleer eerst hun boekingen als je die ook wilt verwijderen.",
+      "confirm": "Verwijderen",
+      "cancel": "Annuleren",
+      "removed": "{{count}} sessies verwijderd",
+      "kept": "{{count}} geboekte sessies behouden",
+      "nothing": "Geen lege toekomstige sessies om te verwijderen",
+      "error": "Verwijderen mislukt. Probeer het opnieuw."
     }
   }
 }
