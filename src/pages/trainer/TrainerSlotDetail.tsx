@@ -35,6 +35,8 @@ import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
 import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
 import { SlotEditForm, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
+import { applySlotEditToCycle } from '@/lib/cycles';
+import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
@@ -204,23 +206,23 @@ export default function TrainerSlotDetail() {
       }
 
       if (applyToCyclus && detail.cyclus_id) {
-        const { data: cyclusSlots, error: fetchError } = await supabase
-          .from('availability_slots').select('id, start_time').eq('cyclus_id', detail.cyclus_id)
-          .gte('start_time', new Date().toISOString()).order('start_time');
+        // Canonical whole-cycle edit — same atomic RPC + change-diff as CycleDetailView (one path for
+        // "edit the whole cycle"). Only changed fields apply to future sessions; the capacity guard
+        // blocks any shrink below occupancy. Non-price path → no invoice resync.
+        const { data: futureSlots, error: fetchError } = await supabase
+          .from('availability_slots').select('id').eq('cyclus_id', detail.cyclus_id)
+          .gte('start_time', new Date().toISOString());
         if (fetchError) throw fetchError;
-        const originalStart = new Date(detail.start_time);
-        const timeOfDayDiff = (hours * 60 + minutes) - (originalStart.getHours() * 60 + originalStart.getMinutes());
-        for (const cs of (cyclusSlots || [])) {
-          const csStart = new Date(cs.start_time);
-          csStart.setMinutes(csStart.getMinutes() + timeOfDayDiff);
-          const csEnd = new Date(csStart);
-          csEnd.setMinutes(csEnd.getMinutes() + values.duration);
-          await supabase.from('availability_slots').update({ ...updatePayload, start_time: csStart.toISOString(), end_time: csEnd.toISOString() }).eq('id', cs.id);
-        }
-        toast({ title: t('calendar.cyclusUpdated', 'Cyclus bijgewerkt') });
-        const priceChanged = detail.price_per_session !== (values.pricePerSession ? Number(values.pricePerSession) : null);
-        if (priceChanged && cyclusSlots) {
-          try { await syncInvoicesAfterPriceChange(cyclusSlots.map(s => s.id)); } catch (e) { logger.error('Failed to sync invoices', e as Error); }
+        const futureSlotIds = (futureSlots || []).map((s) => s.id);
+        const patch = buildCycleEditPatch(values, slotEditBaselineFromSlot(detail));
+        const res =
+          Object.keys(patch).length > 0
+            ? await applySlotEditToCycle(detail.cyclus_id, futureSlotIds, patch)
+            : { updatedCount: 0, blockedCount: 0, blockedSlotIds: [] };
+        if (res.blockedCount > 0 && res.updatedCount === 0) {
+          toast({ title: tCommon('error'), description: t('calendar.cyclusEditBlocked', '{{count}} sessions left unchanged — more players are booked than the new capacity', { count: res.blockedCount }), variant: 'destructive' });
+        } else {
+          toast({ title: t('calendar.cyclusUpdated', 'Cyclus bijgewerkt') });
         }
       } else {
         const { error } = await supabase.from('availability_slots').update(updatePayload).eq('id', detail.id);

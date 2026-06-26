@@ -1032,6 +1032,7 @@
     "costDescription": "bijv. Baanhuur",
     "courtType": "Baantype",
     "cyclusUpdated": "Cyclus bijgewerkt",
+    "cyclusEditBlocked": "{{count}} sessies niet aangepast — er zijn meer spelers geboekt dan de nieuwe capaciteit",
     "cyclusUpdatedDescription": "{{count}} tijdslots in de cyclus bijgewerkt",
     "deleteSlotConfirm": "Weet je zeker dat je deze sessie wilt verwijderen?",
     "details": "Details",
