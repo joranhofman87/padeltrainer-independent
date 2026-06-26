@@ -1194,6 +1194,14 @@
       "kept": "{{count}} booked sessions kept",
       "nothing": "No empty future sessions to remove",
       "error": "Could not delete. Please try again."
+    },
+    "price": {
+      "title": "Edit cycle pricing",
+      "description": "Update the per-session price and extra costs for the whole cycle. Unpaid invoices are updated.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Pricing updated",
+      "error": "Could not save. Please try again."
     }
   }
 }

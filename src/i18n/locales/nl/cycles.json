@@ -1329,6 +1329,14 @@
       "kept": "{{count}} geboekte sessies behouden",
       "nothing": "Geen lege toekomstige sessies om te verwijderen",
       "error": "Verwijderen mislukt. Probeer het opnieuw."
+    },
+    "price": {
+      "title": "Cyclusprijs aanpassen",
+      "description": "Pas de prijs per sessie en extra kosten aan voor de hele cyclus. Onbetaalde facturen worden bijgewerkt.",
+      "save": "Opslaan",
+      "cancel": "Annuleren",
+      "saved": "Prijs bijgewerkt",
+      "error": "Opslaan mislukt. Probeer het opnieuw."
     }
   }
 }
