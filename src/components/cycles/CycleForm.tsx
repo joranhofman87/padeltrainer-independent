@@ -488,7 +488,9 @@ export default function CycleForm({
   };
 
   const restoreDraft = () => {
-    if (!pendingDraft) return;
+    // Slice 0: a locked (split) form must not restore a draft — it can't be saved, and a stale draft
+    // must never survive to a later unlocked state and diverge from the registration.
+    if (!pendingDraft || locked) return;
     try {
       const values: Record<string, unknown> = { ...pendingDraft.values };
       for (const key of ['start_date', 'end_date', 'enrollment_deadline'] as const) {
@@ -650,7 +652,7 @@ export default function CycleForm({
 
   return (
     <div className="space-y-6">
-        {pendingDraft && (
+        {pendingDraft && !locked && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
             <span>{t('form.draftFound', 'Niet-opgeslagen concept gevonden. Wil je verdergaan waar je gebleven was?')}</span>
             <div className="flex gap-2">
