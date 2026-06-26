@@ -43,7 +43,8 @@ import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
-import { AddPlayerDialog, GuestPlayer } from '@/components/trainer/AddPlayerDialog';
+import { AddPlayerDialog } from '@/components/trainer/AddPlayerDialog';
+import type { GuestPlayer } from '@/components/players/guestPlayer';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { useSearchParams, Link } from 'react-router-dom';

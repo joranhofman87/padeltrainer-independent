@@ -56,7 +56,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
+import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
 import {
   Collapsible,
   CollapsibleContent,

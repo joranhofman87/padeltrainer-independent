@@ -12,7 +12,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { playerComboboxSearchValue } from "@/lib/playerSearch";
-import type { GuestPlayer } from "./AddPlayerDialog";
+import type { GuestPlayer } from "./guestPlayer";
 
 /**
  * GuestPlayer plus optional billing fields: callers that have them (e.g. rows

@@ -36,7 +36,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
-import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
+import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
 import { BookedPlayer } from "./CalendarSlotCard";
 import { Check, Clock } from "lucide-react";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
