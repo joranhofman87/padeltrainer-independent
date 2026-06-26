@@ -33,35 +33,12 @@ import {
   type CyclusGroupPaymentStatus,
   type PaidFilterValue,
 } from '@/lib/cyclusGroupPayment';
-
-interface CyclusGroup {
-  group_key: string; // composite: cyclus_id + trainer_id
-  cyclus_id: string;
-  cyclus_name: string;
-  trainer_name: string;
-  trainer_id: string;
-  location_name: string | null;
-  day_time: string;
-  period_start: string;
-  period_end: string;
-  sessions: number;
-  player_names: string[];
-  player_count: number;
-  price_per_session: number | null;
-  max_participants: number;
-  max_booked: number;
-  /** True when any slot in the cyclus is public (showcased as bookable on the profile). */
-  is_public: boolean;
-  first_slot_id: string | null;
-  status: string;
-  type: string;
-  has_slots: boolean;
-  /** True when a real `cycles` row backs this group (phase 1) — false for orphan cyclus_id groups
-   * (slots only, no cycles row). Drives row-click: real cycle → the cycle-detail view; orphan → its
-   * first session. */
-  has_cycle_row: boolean;
-  payment_status_summary: CyclusGroupPaymentStatus;
-}
+import {
+  mapCyclusGroupRow,
+  isMissingCyclusGroupsRpc,
+  type CyclusGroup,
+  type AcademyCyclusGroupRow,
+} from '@/lib/academyCyclusGroups';
 
 type TimeFilter = 'current' | 'future' | 'past' | 'all';
 
@@ -117,7 +94,56 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const fetchCyclusData = async () => {
     if (!activeAcademy) return;
     setLoading(true);
+    try {
+      const viaRpc = await fetchGroupsViaRpc(activeAcademy.id);
+      setGroups(viaRpc ?? (await buildGroupsClientSide()));
+    } catch (error) {
+      logger.error('Error fetching cyclus overview', error as Error, { component: 'AcademyCyclusOverview' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Server-side aggregation (Phase 3 P0): one RPC returns the already-grouped rows instead of
+  // streaming the academy's entire slot/booking/intake set to the browser. Returns null when the
+  // RPC is unavailable (not yet deployed → PGRST202/42883) or errors, so the caller falls back to
+  // the proven client aggregation — zero behaviour change in the deploy gap. The CLIENT still does
+  // the locale formatting (day_time + the per-series registration label) in mapCyclusGroupRow.
+  const fetchGroupsViaRpc = async (academyId: string): Promise<CyclusGroup[] | null> => {
+    const { data, error } = await supabase.rpc(
+      'get_academy_cyclus_groups' as never,
+      { p_academy_id: academyId } as never,
+    );
+    if (error) {
+      if (isMissingCyclusGroupsRpc(error)) {
+        logger.info('get_academy_cyclus_groups not deployed yet — using client aggregation', { component: 'AcademyCyclusOverview' });
+      } else {
+        logger.error('get_academy_cyclus_groups failed — falling back to client aggregation', error as Error, { component: 'AcademyCyclusOverview' });
+      }
+      return null;
+    }
+    const rows = (data ?? []) as AcademyCyclusGroupRow[];
+    // The RPC's period_end is the LAST slot's start; day_time needs the FIRST slot's END. Fetch it
+    // for the handful of first_slot_ids (one per group) — cheap vs the whole-academy client scan.
+    const firstSlotIds = [...new Set(rows.map((r) => r.first_slot_id).filter(Boolean))] as string[];
+    const firstSlotEndById: Record<string, string> = {};
+    if (firstSlotIds.length > 0) {
+      const { data: slotEnds } = await supabase
+        .from('availability_slots')
+        .select('id, end_time')
+        .in('id', firstSlotIds);
+      (slotEnds ?? []).forEach((s: { id: string; end_time: string | null }) => {
+        if (s.end_time) firstSlotEndById[s.id] = s.end_time;
+      });
+    }
+    return rows.map((r) => mapCyclusGroupRow(r, firstSlotEndById, dateLocale));
+  };
+
+  // Legacy client-side aggregation — the graceful fallback when the RPC is unavailable.
+  // Behaviour-frozen: the body below is unchanged; it just returns the groups instead of setting
+  // state (and no longer owns the loading flag, which fetchCyclusData manages).
+  const buildGroupsClientSide = async (): Promise<CyclusGroup[]> => {
+    if (!activeAcademy) return [];
     try {
       // Get academy trainer IDs
       const { data: academyTrainers } = await supabase
@@ -534,11 +560,10 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         });
       });
 
-      setGroups(grouped);
+      return grouped;
     } catch (error) {
-      logger.error('Error fetching cyclus overview', error as Error, { component: 'AcademyCyclusOverview' });
-    } finally {
-      setLoading(false);
+      logger.error('Error building cyclus overview (client fallback)', error as Error, { component: 'AcademyCyclusOverview' });
+      return [];
     }
   };
 
