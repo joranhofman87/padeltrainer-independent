@@ -37,6 +37,8 @@
     "current": "Current",
     "future": "Future",
     "past": "Past",
+    "loadOlder": "Load older sessions",
+    "loadingOlder": "Loading…",
     "search": "Search cycle or player...",
     "cycle": "Cycle",
     "individualSessions": "Individual Sessions",
