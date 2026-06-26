@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import { getCyclesWithCounts, type Cycle, type CycleSettings } from '@/lib/cycles';
+import { getCyclesWithCounts, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
 
 /**
  * The intake-FORM half of the registration↔cycle split (Phase 2).
@@ -62,6 +62,45 @@ export interface RegistrationInput {
   settings?: Record<string, unknown>;
   terms?: string | null;
   is_always_open?: boolean;
+}
+
+/**
+ * True when an RPC failed because the function isn't in PostgREST's schema cache yet — i.e. the
+ * write-path migration (20260630130000) hasn't been applied to the DB. supabase-js surfaces this as
+ * PostgrestError `PGRST202` (and Postgres `42883`). The editor uses this to fall back to the legacy
+ * cycle write during the window where the FE has auto-deployed but the owner hasn't applied the
+ * migration. (Same shape as the documented fallback in src/lib/invoicesList.ts.)
+ */
+export function isMissingRegistrationRpc(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return code === 'PGRST202' || code === '42883';
+}
+
+/**
+ * Map the `CycleInput` the editor (CycleForm) already builds → `RegistrationInput`. The shapes are
+ * 1:1 except: `type` → `format` (a registration is only 'registration' | 'event'), and
+ * `price_per_session` is dropped (registrations have no per-session price; the form already nulls it).
+ * The FULL settings pass through — the RPC keeps the FORM-only subset on the registration.
+ */
+export function cycleInputToRegistrationInput(input: CycleInput): RegistrationInput {
+  return {
+    owner_type: input.owner_type,
+    owner_id: input.owner_id,
+    format: input.type === 'event' ? 'event' : 'registration',
+    name: input.name,
+    description: input.description ?? null,
+    start_date: input.start_date ?? null,
+    end_date: input.end_date ?? null,
+    enrollment_deadline: input.enrollment_deadline ?? null,
+    status: (input.status as Registration['status']) ?? 'draft',
+    total_price: input.total_price ?? null,
+    currency: input.currency,
+    price_table: input.price_table ?? null,
+    location_id: input.location_id ?? null,
+    settings: (input.settings ?? {}) as Record<string, unknown>,
+    terms: input.terms ?? null,
+    is_always_open: input.is_always_open,
+  };
 }
 
 /**

@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
-import { CalendarIcon, Loader2, Lock, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { createRegistration, updateRegistration, registrationToCycle, cycleInputToRegistrationInput, isMissingRegistrationRpc } from '@/lib/registrations';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Form,
@@ -88,12 +88,12 @@ interface CycleFormProps {
   /** When set, locks the rating system selector to this value */
   trainerRatingSystem?: string | null;
   /**
-   * Slice 0 of the registration↔cycle split: when this cycle's form config now lives in the
-   * `registrations` table, lock editing here (disable fields + submit + a banner) so the legacy
-   * cycle editor can't write `cycles.settings` and diverge from the live public form. Superseded
-   * by the registration editor (Slice 4).
+   * Where the editor writes on submit. 'registration' (the default for the registration/event editor)
+   * routes through createRegistration/updateRegistration — the canonical write path that keeps the
+   * form↔training-cycle split. 'cycle' keeps the legacy createCycle/updateCycle path (only if a plain
+   * training cyclus is ever edited here). Set by CycleFormPage from the loaded cycle's type.
    */
-  locked?: boolean;
+  writeTarget?: 'cycle' | 'registration';
 }
 
 export default function CycleForm({
@@ -108,7 +108,7 @@ export default function CycleForm({
   trainerHourlyRate,
   formType = 'cyclus',
   trainerRatingSystem: fixedRatingSystem,
-  locked = false,
+  writeTarget = 'cycle',
 }: CycleFormProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -488,9 +488,7 @@ export default function CycleForm({
   };
 
   const restoreDraft = () => {
-    // Slice 0: a locked (split) form must not restore a draft — it can't be saved, and a stale draft
-    // must never survive to a later unlocked state and diverge from the registration.
-    if (!pendingDraft || locked) return;
+    if (!pendingDraft) return;
     try {
       const values: Record<string, unknown> = { ...pendingDraft.values };
       for (const key of ['start_date', 'end_date', 'enrollment_deadline'] as const) {
@@ -535,9 +533,6 @@ export default function CycleForm({
   useUnsavedChangesGuard(form.formState.isDirty || hasDraftChanges);
 
   const onSubmit = async (values: FormValues, andOpen: boolean = false) => {
-    // Slice 0 (registration↔cycle split): when this cycle's form now lives in the `registrations`
-    // table, block writes here so the legacy editor can't diverge from the live public form.
-    if (locked) return;
     setIsSubmitting(true);
     try {
       const customLessonTypes = [customLessonType1.trim(), customLessonType2.trim()].filter(Boolean);
@@ -631,11 +626,28 @@ export default function CycleForm({
           : null,
       };
 
+      // Defensive: never mint a registration for a plain training cyclus, even if the prop says so.
+      // CycleFormPage already decides this from cycle.type; this is belt-and-braces for a future refactor.
+      const effectiveTarget = isEdit && cycle?.type === 'cyclus' ? 'cycle' : writeTarget;
       let result: Cycle;
-      if (isEdit) {
-        result = await updateCycle(cycle.id, input);
+      if (effectiveTarget === 'registration') {
+        // Canonical registration write — atomically keeps the form↔training-cycle split (the RPC).
+        // Graceful fallback: in the window where the FE has deployed but the owner hasn't applied the
+        // write-path migration, the RPC is missing (PGRST202) → use the legacy cycle write so create/
+        // edit still works. Everything else (a real error) rethrows.
+        const regInput = cycleInputToRegistrationInput(input);
+        try {
+          const reg = isEdit
+            ? await updateRegistration(cycle.id, regInput)
+            : await createRegistration(regInput);
+          result = registrationToCycle(reg);
+        } catch (err) {
+          if (!isMissingRegistrationRpc(err)) throw err;
+          logger.warn('registration write RPC not deployed; using legacy cycle write', { component: 'CycleForm' });
+          result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
+        }
       } else {
-        result = await createCycle(input);
+        result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
       }
 
       clearDraft();
@@ -652,7 +664,7 @@ export default function CycleForm({
 
   return (
     <div className="space-y-6">
-        {pendingDraft && !locked && (
+        {pendingDraft && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
             <span>{t('form.draftFound', 'Niet-opgeslagen concept gevonden. Wil je verdergaan waar je gebleven was?')}</span>
             <div className="flex gap-2">
@@ -668,16 +680,7 @@ export default function CycleForm({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => onSubmit(v, false))} className="space-y-4">
-            {locked && (
-              <Alert>
-                <Lock className="h-4 w-4" />
-                <AlertTitle>{t('form.registrationLockedTitle')}</AlertTitle>
-                <AlertDescription>{t('form.registrationLockedBody')}</AlertDescription>
-              </Alert>
-            )}
-            {/* Slice 0: a disabled <fieldset> natively disables every input inside when the form is
-                locked; the action buttons below stay outside it so Cancel always works. */}
-            <fieldset disabled={locked} className="space-y-4 border-0 p-0 m-0 min-w-0 disabled:opacity-70">
+            <fieldset className="space-y-4 border-0 p-0 m-0 min-w-0">
             {(isRegistration || isEvent) && (
               <FormField
                 control={form.control}
@@ -2453,7 +2456,7 @@ export default function CycleForm({
               >
                 {t('common:cancel', 'Cancel')}
               </Button>
-              <Button type="submit" disabled={isSubmitting || locked}>
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : isRegistration ? t('form.saveRegistration', 'Save Registration') : t('form.save')}
               </Button>
               {!isEdit && (

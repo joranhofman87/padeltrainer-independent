@@ -73,8 +73,6 @@
     "pricingHelp": "Stel een prijs per les of een vast pakketprijs in",
     "save": "Cyclus opslaan",
     "saveRegistration": "Inschrijving opslaan",
-    "registrationLockedTitle": "Bewerken verplaatst naar de inschrijvingseditor",
-    "registrationLockedBody": "Dit formulier wordt nu apart beheerd zodat het synchroon blijft met de live inschrijfpagina. Bewerken is hier tijdelijk uitgeschakeld — de speciale inschrijvingseditor komt binnenkort.",
     "saveAndOpen": "Opslaan & inschrijving openen",
     "allowSingleBooking": "Individuele les boeking toestaan",
     "allowSingleBookingHelp": "Indien uit, moeten spelers de hele cyclus boeken",
