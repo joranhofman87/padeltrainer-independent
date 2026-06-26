@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, CalendarDays, AlertCircle, Loader2 } from 'lucide-react';
+import { Users, Trash2, Euro, CalendarDays, AlertCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -18,10 +18,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import CyclePricingCard from '@/components/cycles/CyclePricingCard';
 import { useCycleDetail, type CycleDetailSlot } from '@/lib/cycleDetail';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
-import { syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
+import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
 
@@ -31,9 +41,13 @@ export interface CycleDetailViewProps {
   onOpenSlot: (slotId: string) => void;
   /**
    * Edit/delete capability. Academy + trainer pass true; club passes false → view-only. Gates the
-   * cycle-scope action CTAs. (Edit-whole-cycle + price land in follow-up slices; 9c-1 wires Delete.)
+   * Delete-cycle CTA. (Edit-whole-cycle lands in a follow-up slice.)
    */
   canEdit?: boolean;
+  /** Cycle-pricing capability — gates the Edit-price CTA + modal. */
+  canEditPrice?: boolean;
+  /** Academy profile id for the pricing modal's extra-cost preset picker (null/omit for trainer). */
+  academyProfileId?: string | null;
   /** Called after a successful cycle-scope mutation, so the wrapper can refetch its own surfaces. */
   onMutated?: () => void;
   /** i18n namespace (default 'cycles' — the neutral home for cycle UI strings). */
@@ -50,6 +64,8 @@ export function CycleDetailView({
   cycleId,
   onOpenSlot,
   canEdit = false,
+  canEditPrice = false,
+  academyProfileId,
   onMutated,
   namespace = 'cycles',
 }: CycleDetailViewProps) {
@@ -59,6 +75,13 @@ export function CycleDetailView({
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Cycle-pricing modal state (seeded from the cycle on open).
+  const [priceOpen, setPriceOpen] = useState(false);
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [pricePerSession, setPricePerSession] = useState<number | null>(null);
+  const [extraCosts, setExtraCosts] = useState<ExtraCost[]>([]);
+  const [splitPayment, setSplitPayment] = useState(false);
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   // Future (not-yet-started) sessions are the whole-cycle delete scope (matches the slot-detail
   // "future only" rule). The RPC keeps any still-booked session; we only ever remove empty ones.
   const futureSlotIds = useMemo(
@@ -126,6 +149,43 @@ export function CycleDetailView({
     }
   };
 
+  const openPriceModal = () => {
+    // Seed from the cycle's stored pricing (slot price is the source of truth; the cycle row carries
+    // the template the bulk editor pushes down).
+    setPricePerSession(cycle?.price_per_session ?? null);
+    setExtraCosts((cycle?.settings?.extra_costs as ExtraCost[] | undefined) ?? []);
+    setSplitPayment(cycle?.settings?.split_payment ?? false);
+    setPricesIncludeVat(cycle?.settings?.prices_include_vat ?? true);
+    setPriceOpen(true);
+  };
+
+  const handleSavePrice = async () => {
+    setSavingPrice(true);
+    try {
+      await updateCyclePricing(cycleId, {
+        price_per_session: pricePerSession,
+        extra_costs: extraCosts,
+        split_payment: splitPayment,
+        prices_include_vat: pricesIncludeVat,
+      });
+      // updateCyclePricing pushes the price onto every slot but does NOT rebuild invoices — resync the
+      // affected (unpaid) invoice line items. Non-fatal: the price already saved.
+      try {
+        await syncInvoicesAfterPriceChange(slots.map((s) => s.id));
+      } catch (e) {
+        logger.error('Failed to sync invoices after cycle price change', e as Error);
+      }
+      setPriceOpen(false);
+      toast.success(t('detail.price.saved'));
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.price.error')));
+    } finally {
+      setSavingPrice(false);
+    }
+  };
+
   const fmtDayTime = (slot: CycleDetailSlot) => {
     const start = parseISO(slot.start_time);
     const end = parseISO(slot.end_time);
@@ -176,17 +236,25 @@ export function CycleDetailView({
                 {t('detail.summary', { players: totalPlayers, sessions: totalSlots })}
               </p>
             </div>
-            {canEdit && (
+            {(canEdit || canEditPrice) && (
               <div className="flex items-center gap-2 flex-wrap shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDeleteOpen(true)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-1.5" />
-                  {t('detail.deleteCycle')}
-                </Button>
+                {canEditPrice && (
+                  <Button variant="outline" size="sm" onClick={openPriceModal}>
+                    <Euro className="h-4 w-4 mr-1.5" />
+                    {t('detail.editPrice')}
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeleteOpen(true)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    {t('detail.deleteCycle')}
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -305,6 +373,36 @@ export function CycleDetailView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit-cycle-pricing modal */}
+      <Dialog open={priceOpen} onOpenChange={(o) => !savingPrice && setPriceOpen(o)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('detail.price.title')}</DialogTitle>
+            <DialogDescription>{t('detail.price.description')}</DialogDescription>
+          </DialogHeader>
+          <CyclePricingCard
+            pricePerSession={pricePerSession}
+            extraCosts={extraCosts}
+            splitPayment={splitPayment}
+            pricesIncludeVat={pricesIncludeVat}
+            onPricePerSessionChange={setPricePerSession}
+            onExtraCostsChange={setExtraCosts}
+            onSplitPaymentChange={setSplitPayment}
+            onPricesIncludeVatChange={setPricesIncludeVat}
+            academyProfileId={academyProfileId}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPriceOpen(false)} disabled={savingPrice}>
+              {t('detail.price.cancel')}
+            </Button>
+            <Button onClick={() => void handleSavePrice()} disabled={savingPrice}>
+              {savingPrice && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              {t('detail.price.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

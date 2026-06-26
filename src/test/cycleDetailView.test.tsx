@@ -5,14 +5,22 @@ import type { ReactElement } from 'react';
 import { renderWithCycles } from './renderWithCycles';
 import type { CycleDetail } from '@/lib/cycleDetail';
 
-const { mockUseCycleDetail, mockApplyDelete, mockSyncSplit } = vi.hoisted(() => ({
+const { mockUseCycleDetail, mockApplyDelete, mockSyncSplit, mockSyncPrice, mockUpdatePricing } = vi.hoisted(() => ({
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
   mockSyncSplit: vi.fn(() => Promise.resolve()),
+  mockSyncPrice: vi.fn(() => Promise.resolve()),
+  mockUpdatePricing: vi.fn(() => Promise.resolve()),
 }));
 vi.mock('@/lib/cycleDetail', () => ({ useCycleDetail: () => mockUseCycleDetail() }));
 vi.mock('@/lib/slotDeleteGuard', () => ({ applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a) }));
-vi.mock('@/lib/invoiceSync', () => ({ syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a) }));
+vi.mock('@/lib/invoiceSync', () => ({
+  syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
+  syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
+}));
+vi.mock('@/lib/cycles', () => ({ updateCyclePricing: (...a: unknown[]) => mockUpdatePricing(...a) }));
+// The pricing card's preset picker fetches presets on mount — stub it so the modal renders cheaply.
+vi.mock('@/components/settings/ExtraCostPresetPicker', () => ({ ExtraCostPresetPicker: () => null }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 const { CycleDetailView } = await import('@/components/cycles/CycleDetailView');
 
@@ -25,6 +33,8 @@ const sampleDetail: CycleDetail = {
     status: 'open',
     start_date: null,
     end_date: null,
+    price_per_session: 25,
+    settings: { extra_costs: [], split_payment: false, prices_include_vat: true },
     location: { id: 'l1', name: 'Court A', city: 'Amsterdam' },
   } as unknown as CycleDetail['cycle'],
   slots: [
@@ -51,6 +61,10 @@ beforeEach(() => {
   mockApplyDelete.mockReset();
   mockSyncSplit.mockReset();
   mockSyncSplit.mockResolvedValue(undefined);
+  mockSyncPrice.mockReset();
+  mockSyncPrice.mockResolvedValue(undefined);
+  mockUpdatePricing.mockReset();
+  mockUpdatePricing.mockResolvedValue(undefined);
 });
 
 describe('CycleDetailView (Slice 9b/9c)', () => {
@@ -115,6 +129,32 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Delete cycle/ }));
     fireEvent.click(screen.getByRole('button', { name: /Cancel/ }));
     expect(mockApplyDelete).not.toHaveBeenCalled();
+  });
+
+  it('edit price: CTA hidden unless canEditPrice', () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    expect(screen.queryByRole('button', { name: /Edit price/ })).not.toBeInTheDocument();
+  });
+
+  it('edit price: opens modal → Save calls updateCyclePricing + resync + onMutated', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    const onMutated = vi.fn();
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEditPrice onMutated={onMutated} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit price/ }));
+    expect(screen.getByText('Edit cycle pricing')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('25')).toBeInTheDocument(); // seeded price_per_session
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+    await waitFor(() =>
+      expect(mockUpdatePricing).toHaveBeenCalledWith('cy1', {
+        price_per_session: 25,
+        extra_costs: [],
+        split_payment: false,
+        prices_include_vat: true,
+      }),
+    );
+    await waitFor(() => expect(mockSyncPrice).toHaveBeenCalledWith(['s1', 's2']));
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
   it('loading → no cycle content yet', () => {
