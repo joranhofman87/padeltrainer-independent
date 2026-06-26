@@ -419,6 +419,10 @@ export default function TrainerCyclus() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => navigate(`/app/trainer/cycles/${cyclus.cyclus_id}`)}>
+                              <ChevronRight className="mr-2 h-4 w-4" />
+                              {t("cyclus.manageCycle", "Cyclus beheren")}
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => navigate("/trainer/calendar")}>
                               <Calendar className="mr-2 h-4 w-4" />
                               {t("cyclus.viewInCalendar", "View in Calendar")}
