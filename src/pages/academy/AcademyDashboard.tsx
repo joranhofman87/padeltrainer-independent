@@ -35,7 +35,7 @@ import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { StatTile } from '@/components/ui/stat-tile';
-import { DashboardSectionHeader } from '@/components/trainer/dashboard/DashboardActivityList';
+import { DashboardSectionHeader } from '@/components/dashboard/DashboardActivityList';
 
 const DASHBOARD_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 

@@ -40,7 +40,7 @@ import {
   DashboardSectionHeader,
   DashboardActivityRow,
   DashboardPaymentBadge,
-} from '@/components/trainer/dashboard/DashboardActivityList';
+} from '@/components/dashboard/DashboardActivityList';
 
 interface DashboardStats {
   totalStudents: number;
