@@ -18,6 +18,9 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 - [x] **submit-guest-intake**, **create-registration-invoice** — registration date-span lesson count now FLOORED, not rounded (#86). *Money change — fixes a one-lesson over-charge on non-exact-week date-span cycles.* These bundle the fixed `_shared/registration-pricing.ts`.
 
 ## Migrations to apply
+- [ ] **Phase 4 · C + E** — see `docs/PHASE4_CE_INTEGRITY_INDEX_RUNBOOK.md`. Two additive, idempotent, non-destructive migrations:
+  - **`20260630120000_phase4_C_cyclus_id_fk.sql`** — adds FK `availability_slots.cyclus_id → cycles.id` **NOT VALID** + `ON DELETE SET NULL`. Stops any NEW orphan slot group at the DB. Existing orphans untouched; clean them up + `VALIDATE` later via the runbook's STEP 2 (pre-flight count → run the prepared backfill `20260612230000` → validate). After applying, **regenerate `types.ts`** (the PR hand-adds the matching FK relationship so the drift gate stays green; regen confirms).
+  - **`20260630120100_phase4_E_invoices_booking_ids_gin.sql`** — GIN index on `invoices.booking_ids` so the invoice-sync `.overlaps()` lookups stop sequential-scanning. Plain `CREATE INDEX` (txn-safe); use the runbook's `CONCURRENTLY` form first only if invoices is large.
 - [x] **`20260624130000_email_campaign_recipient_attempt_count.sql`** (#82) — adds `email_campaign_recipients.attempt_count`. Additive + backward-compatible; applied before redeploying send-campaign-emails.
 - [ ] **`20260625120000_academy_invoice_email_message.sql`** — adds nullable `academy_profiles.invoice_email_message` (the "Save as default" invoice-email template). Additive + backward-compatible; the frontend reads/writes it tolerantly (degrades to blank if absent), so deploy order doesn't matter — apply whenever. Frontend auto-deploys via Vercel.
 
