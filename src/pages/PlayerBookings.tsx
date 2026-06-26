@@ -18,7 +18,7 @@ import { cancelBooking } from '@/lib/lessons';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getReviewedBookingIds } from '@/lib/reviews';
-import { fetchPlayerBookings, type PlayerBooking } from '@/lib/playerBookings';
+import { fetchUpcomingPlayerBookings, fetchPlayerBookingsPage, type PlayerBooking } from '@/lib/playerBookings';
 import { PlayerInvoicesTab } from '@/components/player/PlayerInvoicesTab';
 import { useTranslation } from 'react-i18next';
 import { downloadIcsFile } from '@/lib/icsGenerator';
@@ -32,6 +32,8 @@ interface BookingWithDetails extends PlayerBooking {
   hasReview: boolean;
 }
 
+const PAST_PAGE_SIZE = 20;
+
 export default function PlayerBookings() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
@@ -39,24 +41,35 @@ export default function PlayerBookings() {
   const { toast } = useToast();
   const { t } = useTranslation('player');
 
-  const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
+  const [upcomingBookings, setUpcomingBookings] = useState<BookingWithDetails[]>([]);
+  const [pastBookings, setPastBookings] = useState<BookingWithDetails[]>([]);
+  const [pastOffset, setPastOffset] = useState(0);
+  const [hasMorePast, setHasMorePast] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [reviewDialogOpen, setReviewDialogOpen] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<BookingWithDetails | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
+  // Batched review lookup (one IN query instead of one request per booking).
+  const attachReviews = useCallback(async (list: PlayerBooking[]): Promise<BookingWithDetails[]> => {
+    const reviewedIds = await getReviewedBookingIds(list.map((b) => b.id));
+    return list.map((booking) => ({ ...booking, hasReview: reviewedIds.has(booking.id) }));
+  }, []);
+
   const fetchBookings = useCallback(async () => {
     if (!profile?.id) return;
     try {
-      const list = await fetchPlayerBookings(profile.id);
-      // Batched review lookup (kept here so the shared fetch stays UI-agnostic):
-      // one IN query instead of one request per booking.
-      const reviewedIds = await getReviewedBookingIds(list.map((b) => b.id));
-      const withReviews = list.map((booking) => ({
-        ...booking,
-        hasReview: reviewedIds.has(booking.id),
-      }));
-      setBookings(withReviews);
+      // Upcoming is fetched in full (naturally bounded); the Past tab is paginated. Passing the
+      // upcoming ids to the past query keeps each page pure-past, so no history is ever lost and a
+      // long-tenured player never loads their entire booking history up-front.
+      const upcoming = await fetchUpcomingPlayerBookings(profile.id);
+      const upcomingWithReviews = await attachReviews(upcoming);
+      const firstPast = await fetchPlayerBookingsPage(profile.id, PAST_PAGE_SIZE, 0, upcoming.map((b) => b.id));
+      setUpcomingBookings(upcomingWithReviews);
+      setPastBookings(await attachReviews(firstPast.bookings));
+      setPastOffset(PAST_PAGE_SIZE);
+      setHasMorePast(firstPast.hasMore);
     } catch {
       toast({
         title: t('bookings.loadError'),
@@ -65,7 +78,28 @@ export default function PlayerBookings() {
     } finally {
       setLoadingBookings(false);
     }
-  }, [profile?.id, toast, t]);
+  }, [profile?.id, toast, t, attachReviews]);
+
+  const loadMorePast = useCallback(async () => {
+    if (!profile?.id || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchPlayerBookingsPage(
+        profile.id,
+        PAST_PAGE_SIZE,
+        pastOffset,
+        upcomingBookings.map((b) => b.id),
+      );
+      const withReviews = await attachReviews(page.bookings);
+      setPastBookings((prev) => [...prev, ...withReviews]);
+      setPastOffset((o) => o + PAST_PAGE_SIZE);
+      setHasMorePast(page.hasMore);
+    } catch {
+      toast({ title: t('bookings.loadError'), variant: 'destructive' });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [profile?.id, loadingMore, pastOffset, upcomingBookings, attachReviews, toast, t]);
 
   useEffect(() => {
     if (user && profile?.id) {
@@ -113,14 +147,9 @@ export default function PlayerBookings() {
     }
   };
 
-  // Guard against a null slot (e.g. a booked slot a trainer later marked private)
-  // so the page never crashes on a missing start_time.
-  const upcomingBookings = bookings.filter(
-    (b) => b.status !== 'cancelled' && b.start_time && !isPast(parseISO(b.start_time))
-  );
-  const pastBookings = bookings.filter(
-    (b) => b.status === 'cancelled' || !b.start_time || isPast(parseISO(b.start_time))
-  );
+  // upcomingBookings / pastBookings are fetched + paginated in state (above). Upcoming = future,
+  // non-cancelled, visible slot; past = everything else (cancelled / past / made-private), loaded
+  // page by page via "load older". A null start_time (slot made private) lands in past, as before.
 
   const handleDownloadCalendar = (bookingsToExport: BookingWithDetails[]) => {
     const events = bookingsToExport
@@ -174,7 +203,7 @@ export default function PlayerBookings() {
             {t('bookings.tabs.upcoming')} ({upcomingBookings.length})
           </TabsTrigger>
           <TabsTrigger value="past">
-            {t('bookings.tabs.past')} ({pastBookings.length})
+            {t('bookings.tabs.past')} ({pastBookings.length}{hasMorePast ? '+' : ''})
           </TabsTrigger>
           <TabsTrigger value="invoices" className="gap-1">
             <FileText className="h-4 w-4" />
@@ -342,6 +371,15 @@ export default function PlayerBookings() {
                     </Card>
                   );
                 })}
+                {hasMorePast && (
+                  <div className="flex justify-center pt-2">
+                    <Button variant="outline" size="sm" disabled={loadingMore} onClick={loadMorePast}>
+                      {loadingMore
+                        ? t('bookings.loadingOlder', 'Loading…')
+                        : t('bookings.loadOlder', 'Load older bookings')}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </TabsContent>
