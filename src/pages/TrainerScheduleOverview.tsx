@@ -10,7 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { getTrainerProfile } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
-import { syncInvoicesAfterBookingRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
+import { syncSplitCountForCycle } from "@/lib/invoiceSync";
+import { cancelBookingsAndSync } from "@/lib/bookings";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -930,23 +931,19 @@ export default function TrainerScheduleOverview() {
   const handleRemovePlayer = async () => {
     if (!removeBookingId) return;
     setRemovingBooking(true);
-    const { error } = await supabase
-      .from("bookings")
-      .update({ status: "cancelled" })
-      .eq("id", removeBookingId);
-    if (error) {
+    // Canonical cancel + invoice reconcile (src/lib/bookings.ts) so the
+    // booking↔invoice write matches every other remove-player path. The cancel
+    // commits before the sync, so a sync failure is surfaced as a stale-invoice
+    // warning rather than a false "removed".
+    const { cancelError, syncError } = await cancelBookingsAndSync([removeBookingId]);
+    if (cancelError) {
       setRemovingBooking(false);
-      toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
+      toast({ title: "Error", description: getFriendlyErrorMessage(cancelError, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
       return;
     }
-    // Sync affected invoices — surface a failure instead of a false "removed"
-    // (the booking cancel already committed).
-    let syncFailed = false;
-    try {
-      await syncInvoicesAfterBookingRemoval([removeBookingId]);
-    } catch (err) {
-      syncFailed = true;
-      logger.error("Invoice sync failed after player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+    const syncFailed = !!syncError;
+    if (syncError) {
+      logger.error("Invoice sync failed after player removal", syncError, { component: 'TrainerScheduleOverview' });
     }
     setRemovingBooking(false);
     setRemoveBookingId(null);
@@ -1073,20 +1070,19 @@ export default function TrainerScheduleOverview() {
         const cancelledIds = (bookingsToCancel || []).map(b => b.id);
 
         if (cancelledIds.length > 0) {
-          await supabase
-            .from("bookings")
-            .update({ status: 'cancelled' })
-            .in("id", cancelledIds);
+          // Canonical cancel + invoice reconcile (src/lib/bookings.ts), shared
+          // with handleRemovePlayer. A cancel failure now surfaces (was
+          // previously unchecked → could silently proceed as if removed).
+          const { cancelError, syncError } = await cancelBookingsAndSync(cancelledIds);
+          if (cancelError) throw cancelError;
 
-          // Sync affected invoices + recalc the split. If either fails, the
-          // removed player may still be billed / the split is stale — surface it
-          // instead of a false "success" (the booking cancel already committed).
-          let syncFailed = false;
-          try {
-            await syncInvoicesAfterBookingRemoval(cancelledIds);
-          } catch (err) {
-            syncFailed = true;
-            logger.error("Invoice sync failed after cycle player removal", err instanceof Error ? err : new Error(String(err)), { component: 'TrainerScheduleOverview' });
+          // Surface a sync failure instead of a false "success": the removed
+          // player may still be billed / the split is stale (the cancel already
+          // committed). The cycle-scope split recalc stays here (not a per-
+          // booking concern).
+          let syncFailed = !!syncError;
+          if (syncError) {
+            logger.error("Invoice sync failed after cycle player removal", syncError, { component: 'TrainerScheduleOverview' });
           }
           try {
             await syncSplitCountForCycle(editCycleId);
