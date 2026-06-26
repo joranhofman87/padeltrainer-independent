@@ -15,7 +15,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/components/trainer/GuestPlayerSlotCombobox', () => ({
+vi.mock('@/components/players/GuestPlayerSlotCombobox', () => ({
   GuestPlayerSlotCombobox: ({
     onValueChange,
     'data-testid': testId,

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ComponentProps } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GuestPlayerSlotCombobox } from "./GuestPlayerSlotCombobox";
-import type { GuestPlayer } from "./AddPlayerDialog";
+import type { GuestPlayer } from "./guestPlayer";
 
 const players: GuestPlayer[] = [
   {
