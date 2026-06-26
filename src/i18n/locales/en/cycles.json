@@ -1202,6 +1202,15 @@
       "cancel": "Cancel",
       "saved": "Pricing updated",
       "error": "Could not save. Please try again."
+    },
+    "edit": {
+      "title": "Edit whole cycle",
+      "description": "Changes apply to all future sessions in this cycle.",
+      "updated": "{{count}} sessions updated",
+      "blocked": "{{count}} sessions left unchanged — more players are booked than the new capacity",
+      "nothing": "No changes to apply",
+      "loadError": "Could not load the session. Please try again.",
+      "error": "Could not update. Please try again."
     }
   }
 }

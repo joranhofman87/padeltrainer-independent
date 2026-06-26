@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Euro, CalendarDays, AlertCircle, Loader2 } from 'lucide-react';
+import { Users, Trash2, Euro, Pencil, CalendarDays, AlertCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -27,11 +27,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import CyclePricingCard from '@/components/cycles/CyclePricingCard';
+import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
+import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, type CycleDetailSlot } from '@/lib/cycleDetail';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
-import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
+import { updateCyclePricing, applySlotEditToCycle, type ExtraCost } from '@/lib/cycles';
+import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
 
@@ -41,13 +44,19 @@ export interface CycleDetailViewProps {
   onOpenSlot: (slotId: string) => void;
   /**
    * Edit/delete capability. Academy + trainer pass true; club passes false → view-only. Gates the
-   * Delete-cycle CTA. (Edit-whole-cycle lands in a follow-up slice.)
+   * Edit-whole-cycle + Delete-cycle CTAs.
    */
   canEdit?: boolean;
   /** Cycle-pricing capability — gates the Edit-price CTA + modal. */
   canEditPrice?: boolean;
   /** Academy profile id for the pricing modal's extra-cost preset picker (null/omit for trainer). */
   academyProfileId?: string | null;
+  /** Trainer options for the edit-whole-cycle form (academy passes; trainer omits → self only). */
+  trainers?: { id: string; name: string }[];
+  /** Location options for the edit-whole-cycle form. */
+  locations?: { id: string; name: string }[];
+  /** Locks the rating picker to the owner's rating system (passed through to SlotEditForm). */
+  fixedRatingSystem?: string | null;
   /** Called after a successful cycle-scope mutation, so the wrapper can refetch its own surfaces. */
   onMutated?: () => void;
   /** i18n namespace (default 'cycles' — the neutral home for cycle UI strings). */
@@ -66,6 +75,9 @@ export function CycleDetailView({
   canEdit = false,
   canEditPrice = false,
   academyProfileId,
+  trainers,
+  locations = [],
+  fixedRatingSystem,
   onMutated,
   namespace = 'cycles',
 }: CycleDetailViewProps) {
@@ -82,8 +94,15 @@ export function CycleDetailView({
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>([]);
   const [splitPayment, setSplitPayment] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
-  // Future (not-yet-started) sessions are the whole-cycle delete scope (matches the slot-detail
-  // "future only" rule). The RPC keeps any still-booked session; we only ever remove empty ones.
+  // Edit-whole-cycle modal state. editRepSlot is the representative session (a full row fetched on
+  // open) that seeds the form + the change-detection baseline.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editRepSlot, setEditRepSlot] = useState<SlotEditFormSlot | null>(null);
+  // Future (not-yet-started) sessions are the whole-cycle edit/delete scope (matches the slot-detail
+  // "future only" rule). The delete RPC keeps any still-booked session; the edit RPC keeps any slot
+  // it would have to shrink below its occupancy.
   const futureSlotIds = useMemo(
     () => (data?.slots ?? []).filter((s) => new Date(s.start_time).getTime() >= Date.now()).map((s) => s.id),
     [data],
@@ -186,6 +205,78 @@ export function CycleDetailView({
     }
   };
 
+  const openEditModal = async () => {
+    // Representative session = the first FUTURE slot (the edit scope), else the first slot. Its
+    // current time-of-day is the reference the relative shift is computed against.
+    const rep = slots.find((s) => new Date(s.start_time).getTime() >= Date.now()) ?? slots[0];
+    if (!rep) return;
+    setEditLoading(true);
+    try {
+      const { data: row, error } = await supabase
+        .from('availability_slots')
+        .select(
+          'start_time, end_time, trainer_id, location_id, max_participants, rating_system, min_rating, max_rating, cyclus_id, cyclus_name, is_public, price_per_session, total_price, split_payment, prices_include_vat, extra_costs',
+        )
+        .eq('id', rep.id)
+        .maybeSingle();
+      if (error || !row) throw error ?? new Error('representative slot not found');
+      setEditRepSlot({
+        start_time: row.start_time,
+        end_time: row.end_time,
+        trainer_id: row.trainer_id ?? '',
+        location_id: row.location_id ?? null,
+        max_participants: row.max_participants ?? 4,
+        rating_system: row.rating_system ?? null,
+        min_rating: row.min_rating ?? null,
+        max_rating: row.max_rating ?? null,
+        cyclus_id: row.cyclus_id ?? null,
+        cyclus_name: row.cyclus_name ?? null,
+        is_public: row.is_public ?? true,
+        price_per_session: row.price_per_session ?? null,
+        total_price: row.total_price ?? null,
+        split_payment: row.split_payment ?? false,
+        prices_include_vat: row.prices_include_vat ?? true,
+        extra_costs: (row.extra_costs as ExtraCost[] | null) ?? null,
+      });
+      setEditOpen(true);
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.edit.loadError')));
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleSaveEdit = async (values: SlotEditFormValues) => {
+    if (!editRepSlot) return;
+    // Diff against the representative slot → only changed fields go in the patch (omitted keys are
+    // kept per-slot, so a time-only edit can't reshape another session). See cycleEditPatch.ts.
+    const patch = buildCycleEditPatch(values, slotEditBaselineFromSlot(editRepSlot));
+    if (Object.keys(patch).length === 0) {
+      setEditOpen(false);
+      toast(t('detail.edit.nothing'));
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const res = await applySlotEditToCycle(cycleId, futureSlotIds, patch);
+      const parts: string[] = [];
+      if (res.updatedCount > 0) parts.push(t('detail.edit.updated', { count: res.updatedCount }));
+      if (res.blockedCount > 0) parts.push(t('detail.edit.blocked', { count: res.blockedCount }));
+      if (parts.length === 0) parts.push(t('detail.edit.nothing'));
+      const message = parts.join(' · ');
+      setEditOpen(false);
+      // A blocked-only result is NOT a success — surface it as a warning, not a green toast.
+      if (res.updatedCount > 0 && res.blockedCount === 0) toast.success(message);
+      else toast(message);
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.edit.error')));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const fmtDayTime = (slot: CycleDetailSlot) => {
     const start = parseISO(slot.start_time);
     const end = parseISO(slot.end_time);
@@ -238,6 +329,12 @@ export function CycleDetailView({
             </div>
             {(canEdit || canEditPrice) && (
               <div className="flex items-center gap-2 flex-wrap shrink-0">
+                {canEdit && (
+                  <Button variant="default" size="sm" onClick={() => void openEditModal()} disabled={editLoading}>
+                    {editLoading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Pencil className="h-4 w-4 mr-1.5" />}
+                    {t('detail.editWholeCycle')}
+                  </Button>
+                )}
                 {canEditPrice && (
                   <Button variant="outline" size="sm" onClick={openPriceModal}>
                     <Euro className="h-4 w-4 mr-1.5" />
@@ -401,6 +498,31 @@ export function CycleDetailView({
               {t('detail.price.save')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit-whole-cycle modal */}
+      <Dialog open={editOpen} onOpenChange={(o) => !savingEdit && setEditOpen(o)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('detail.edit.title')}</DialogTitle>
+            <DialogDescription>{t('detail.edit.description')}</DialogDescription>
+          </DialogHeader>
+          {editRepSlot && (
+            <SlotEditForm
+              key={editRepSlot.start_time}
+              slot={editRepSlot}
+              // The form's calendar.* labels live in trainer.json/academy.json (NOT cycles.json) — use
+              // 'trainer' (a complete, translated set) so the modal isn't dropped to English defaults.
+              namespace="trainer"
+              trainers={trainers}
+              locations={locations}
+              fixedRatingSystem={fixedRatingSystem}
+              isSaving={savingEdit}
+              onSubmit={(values) => void handleSaveEdit(values)}
+              onCancel={() => setEditOpen(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
