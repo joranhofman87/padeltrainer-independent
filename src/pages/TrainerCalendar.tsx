@@ -38,7 +38,7 @@ import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/Agenda
 import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
-import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
+import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 
 import { supabase } from "@/lib/supabaseClient";
 import { getSlotCapacity } from "@/lib/lessons";
@@ -515,7 +515,7 @@ export default function TrainerCalendar() {
           if (!open) setSlotToDelete(null);
         }}
         slot={slotToDelete}
-        trainerId={trainerId || ""}
+        ownerType="trainer"
         onSlotDeleted={handleSlotsCreated}
       />
     </>

@@ -54,7 +54,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { BulkCreateContent } from "@/components/trainer/AddSlotDialog";
 import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
-import { DeleteSlotDialog } from "@/components/trainer/DeleteSlotDialog";
+import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 // EditBookingDialog + EditSlotDialog removed — navigating to slot detail page instead
 // SlotDetailDialog removed — now using /app/academy/slot/:slotId page
 
@@ -1125,7 +1125,7 @@ export default function AcademyCalendar() {
               if (!open) setSlotToDelete(null);
             }}
             slot={slotToDelete}
-            trainerId={slotToDelete?.trainer_id || getTrainerIdForSlot()}
+            ownerType="academy"
             onSlotDeleted={handleSlotsCreated}
           />
 

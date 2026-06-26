@@ -20,14 +20,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { SlotWithBookings } from "./CalendarSlotCard";
+import type { SlotWithBookings } from "@/lib/slotTypes";
 
 interface DeleteSlotDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   slot: SlotWithBookings | null;
-  trainerId: string;
+  /**
+   * Owner role of the surface opening the dialog. Currently unused by the body (the cascade is
+   * identical for both calendars today); accepted so the now-neutral component has a role-aware
+   * prop for the Slice-6 per-role cascade work instead of the old trainer-only `trainerId`.
+   */
+  ownerType?: 'trainer' | 'academy' | 'club';
   onSlotDeleted: () => void;
+}
+
+interface InvoiceLineItem {
+  unit_price?: number;
 }
 
 interface InvoiceInfo {
@@ -37,14 +46,18 @@ interface InvoiceInfo {
   booking_ids: string[];
   total: number;
   vat_rate: number;
-  line_items: any[];
+  line_items: InvoiceLineItem[];
 }
+
+// Minimal shapes for the supabase nested-join reads below — keeps this now-neutral component free of
+// `any` (the joins are only read for a display name / email).
+type TrainerJoin = { profiles?: { full_name?: string | null } | null } | null;
+type PlayerContact = { full_name?: string | null; email?: string | null } | null;
 
 export function DeleteSlotDialog({
   open,
   onOpenChange,
   slot,
-  trainerId: _trainerId,
   onSlotDeleted,
 }: DeleteSlotDialogProps) {
   const { t } = useTranslation("trainer");
@@ -99,6 +112,10 @@ export function DeleteSlotDialog({
         checkAffectedInvoices(slot);
       }
     }
+    // Intentionally keyed on the stable slot PRIMITIVES (id + cyclus_id), not the `slot` object —
+    // re-running on every new object identity would re-fire the invoice/cyclus-count fetches on each
+    // render. checkAffectedInvoices is a stable closure. (Pre-existing behavior, preserved on lift.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, slot?.cyclus_id, slot?.id]);
 
   const checkAffectedInvoices = async (slotData: SlotWithBookings) => {
@@ -129,7 +146,7 @@ export function DeleteSlotDialog({
       setAffectedInvoices((invoices || []).map(inv => ({
         ...inv,
         booking_ids: inv.booking_ids || [],
-        line_items: inv.line_items as any[] || [],
+        line_items: (inv.line_items as unknown as InvoiceLineItem[]) || [],
       })));
     } catch (err) {
       logger.error("Error checking invoices", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' });
@@ -246,15 +263,15 @@ export function DeleteSlotDialog({
             if (notifyPlayers) {
               for (const booking of bookingsToCancel) {
                 const slotDetails = slotsWithDetails?.find(s => s.id === booking.slot_id);
-                const trainerProfile = slotDetails?.trainer as any;
+                const trainerProfile = slotDetails?.trainer as unknown as TrainerJoin;
                 const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
                 const lessonTitle = slotDetails?.cyclus_name || "Training session";
                 const lessonDate = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "MMMM d, yyyy") : "";
                 const lessonTime = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "HH:mm") : "";
 
                 const playerInfo = booking.guest_player_id 
-                  ? (booking.guest_players as any)
-                  : (booking.profiles as any);
+                  ? (booking.guest_players as unknown as PlayerContact)
+                  : (booking.profiles as unknown as PlayerContact);
 
                 if (playerInfo?.email) {
                   sendBookingCancellation(
@@ -328,7 +345,7 @@ export function DeleteSlotDialog({
                 .eq("id", slot.id)
                 .single();
 
-              const trainerProfile = slotWithDetails?.trainer as any;
+              const trainerProfile = slotWithDetails?.trainer as unknown as TrainerJoin;
               const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
               const lessonTitle = slotWithDetails?.cyclus_name || "Training session";
               const lessonDate = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "MMMM d, yyyy") : "";
@@ -336,8 +353,8 @@ export function DeleteSlotDialog({
 
               for (const booking of bookingsToCancel) {
                 const playerInfo = booking.guest_player_id 
-                  ? (booking.guest_players as any)
-                  : (booking.profiles as any);
+                  ? (booking.guest_players as unknown as PlayerContact)
+                  : (booking.profiles as unknown as PlayerContact);
 
                 if (playerInfo?.email) {
                   sendBookingCancellation(
@@ -386,7 +403,7 @@ export function DeleteSlotDialog({
 
       onSlotDeleted();
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Error deleting slot", error instanceof Error ? error : new Error(String(error)), { component: 'DeleteSlotDialog' });
       toast({
         title: t("common:error"),
