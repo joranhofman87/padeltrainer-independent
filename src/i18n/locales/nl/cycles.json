@@ -1291,5 +1291,34 @@
     "countClaimed": "{{count}} bevestigd",
     "countDeclined": "{{count}} afgemeld",
     "declinedTitle": "Afgemeld"
+  },
+  "detail": {
+    "untitledCycle": "Naamloze cyclus",
+    "summary": "{{players}} spelers · {{sessions}} sessies",
+    "loadError": "De cyclus kon niet geladen worden. Probeer het opnieuw.",
+    "notFoundTitle": "Cyclus niet gevonden",
+    "notFoundDescription": "Deze cyclus bestaat niet (meer) of je hebt er geen toegang toe.",
+    "editWholeCycle": "Hele cyclus bewerken",
+    "editPrice": "Prijs bewerken",
+    "deleteCycle": "Cyclus verwijderen",
+    "sessions": {
+      "title": "Sessies",
+      "empty": "Deze cyclus heeft nog geen sessies.",
+      "occupancy": "Bezetting",
+      "players": "Spelers",
+      "payment": "Betaling",
+      "when": "Wanneer",
+      "noPlayers": "Geen spelers"
+    },
+    "roster": {
+      "title": "Spelers in deze cyclus",
+      "empty": "Nog geen spelers ingedeeld.",
+      "sessionCount": "{{count}}×"
+    },
+    "payment": {
+      "allPaid": "Betaald",
+      "hasUnpaid": "Openstaand",
+      "noPlayers": "—"
+    }
   }
 }

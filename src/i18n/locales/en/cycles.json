@@ -1156,5 +1156,34 @@
     "countClaimed": "{{count}} confirmed",
     "countDeclined": "{{count}} declined",
     "declinedTitle": "Opted out"
+  },
+  "detail": {
+    "untitledCycle": "Untitled cycle",
+    "summary": "{{players}} players · {{sessions}} sessions",
+    "loadError": "The cycle could not be loaded. Please try again.",
+    "notFoundTitle": "Cycle not found",
+    "notFoundDescription": "This cycle no longer exists or you don't have access to it.",
+    "editWholeCycle": "Edit whole cycle",
+    "editPrice": "Edit price",
+    "deleteCycle": "Delete cycle",
+    "sessions": {
+      "title": "Sessions",
+      "empty": "This cycle has no sessions yet.",
+      "occupancy": "Occupancy",
+      "players": "Players",
+      "payment": "Payment",
+      "when": "When",
+      "noPlayers": "No players"
+    },
+    "roster": {
+      "title": "Players in this cycle",
+      "empty": "No players assigned yet.",
+      "sessionCount": "{{count}}×"
+    },
+    "payment": {
+      "allPaid": "Paid",
+      "hasUnpaid": "Outstanding",
+      "noPlayers": "—"
+    }
   }
 }
