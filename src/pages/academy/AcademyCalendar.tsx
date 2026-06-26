@@ -45,6 +45,7 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { fetchTrainerDisplayNamesByProfileIds } from "@/lib/trainerDisplayNames";
 import { logger } from "@/lib/logger";
+import { cancelBookingsAndSync } from "@/lib/bookings";
 import {
   parseAcademyCalendarTab,
   ACADEMY_CALENDAR_PRIMARY_TABS,
@@ -597,18 +598,27 @@ export default function AcademyCalendar() {
   };
 
   const handleRemovePlayer = async (bookingId: string) => {
-    try {
-      const { error } = await supabase
-        .from('bookings')
-        .update({ status: 'cancelled' })
-        .eq('id', bookingId);
-      if (error) throw error;
-      toast({ title: t('calendar.playerRemoved', { defaultValue: 'Player removed from slot' }) });
-      fetchSlots();
-    } catch (error) {
-      logger.error('Error removing player', error as Error, { component: 'AcademyCalendar' });
+    // Canonical cancel + invoice reconcile (src/lib/bookings.ts), same path as
+    // the trainer schedule. Previously the academy removed the player WITHOUT
+    // reconciling invoices → the removed player could still be billed / the
+    // split stay stale. Now reconciled; a sync failure is surfaced separately.
+    const { cancelError, syncError } = await cancelBookingsAndSync([bookingId]);
+    if (cancelError) {
+      logger.error('Error removing player', cancelError as Error, { component: 'AcademyCalendar' });
       toast({ title: t('calendar.removeFailed', { defaultValue: 'Failed to remove player' }), variant: 'destructive' });
+      return;
     }
+    if (syncError) {
+      logger.error('Invoice sync failed after academy player removal', syncError, { component: 'AcademyCalendar' });
+      toast({
+        title: t('calendar.removedButSyncFailed', { defaultValue: 'Player removed, but invoices could not be fully updated' }),
+        description: t('calendar.removedSyncFailedDesc', { defaultValue: "Some invoices may still bill the removed player or show the wrong split. Please review this cycle's invoices." }),
+        variant: 'destructive',
+      });
+    } else {
+      toast({ title: t('calendar.playerRemoved', { defaultValue: 'Player removed from slot' }) });
+    }
+    fetchSlots();
   };
 
   const handleBookForPlayer = (slot: SlotWithBookings) => {
