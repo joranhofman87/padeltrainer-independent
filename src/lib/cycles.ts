@@ -316,20 +316,11 @@ export async function getCyclesWithCounts(
   if (error) throw error;
   
   const cycles = (data || []).map(toCycle);
-  
-  // Get intake counts for all cycles
+
+  // Per-cycle intake counts via the indexed count_cycles_intakes RPC (ONE GROUP BY) instead of an
+  // unbounded client scan of intake_requests — see countCyclesIntakesWithFallback (D-20d).
   if (cycles.length > 0) {
-    const cycleIds = cycles.map(c => c.id);
-    const { data: intakeCounts } = await supabase
-      .from('intake_requests')
-      .select('cycle_id')
-      .in('cycle_id', cycleIds);
-    
-    const countMap = new Map<string, number>();
-    intakeCounts?.forEach(row => {
-      countMap.set(row.cycle_id, (countMap.get(row.cycle_id) || 0) + 1);
-    });
-    
+    const countMap = await countCyclesIntakesWithFallback(cycles.map(c => c.id));
     cycles.forEach(cycle => {
       cycle._intakeCount = countMap.get(cycle.id) || 0;
     });
@@ -355,6 +346,27 @@ export async function countCyclesIntakes(cycleIds: string[]): Promise<Map<string
   const counts = new Map<string, number>();
   for (const row of rows) counts.set(row.cycle_id, Number(row.n));
   return counts;
+}
+
+/**
+ * {@link countCyclesIntakes} via the indexed RPC, with a graceful fallback to the original
+ * (unbounded) client scan when the RPC isn't deployed yet (local/CI before the migration), so
+ * consumers like {@link getCyclesWithCounts} are safe either way. The supabase-js codes 'PGRST202'
+ * (not in schema cache) / Postgres '42883' (no such function) signal the missing RPC.
+ */
+export async function countCyclesIntakesWithFallback(cycleIds: string[]): Promise<Map<string, number>> {
+  if (cycleIds.length === 0) return new Map();
+  try {
+    return await countCyclesIntakes(cycleIds);
+  } catch (e) {
+    const code = (e as { code?: string } | null)?.code;
+    if (code !== 'PGRST202' && code !== '42883') throw e;
+    const { data } = await supabase.from('intake_requests').select('cycle_id').in('cycle_id', cycleIds);
+    const counts = new Map<string, number>();
+    (data ?? []).forEach((row: { cycle_id: string }) =>
+      counts.set(row.cycle_id, (counts.get(row.cycle_id) || 0) + 1));
+    return counts;
+  }
 }
 
 /** A partial slot edit. Only the fields you set are written; an explicit `null` clears the column.
