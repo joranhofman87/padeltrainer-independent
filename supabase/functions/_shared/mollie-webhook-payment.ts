@@ -66,3 +66,37 @@ export function shouldRunBookingPaidSideEffects(
 ): boolean {
   return mollieStatus === "paid" && !bookingsAlreadyPaid;
 }
+
+/** The minimal Supabase surface the write-back helpers need — so they can be unit-tested against a
+ * PGlite-backed client without standing up the edge runtime. */
+// deno-lint-ignore no-explicit-any
+export interface MollieWriteClient { from(table: string): any }
+
+/**
+ * Booking-payment write-back from a Mollie webhook, ALWAYS guarded by `payment_status != 'paid'`.
+ *
+ * The guard serves two purposes at once:
+ *  - (E-15 idempotency) for the PAID transition it is the atomic claim — only still-unpaid rows
+ *    transition, so duplicate concurrent deliveries transition zero rows and can't double-run the
+ *    paid side-effects; the returned rows ARE the ones this call transitioned.
+ *  - (no-downgrade) for any NON-paid delivery (open/pending/failed/expired arriving late or out of
+ *    order) it ensures an already-PAID booking is never overwritten back to pending/failed. The
+ *    handler previously applied this guard only for paid/cancelled, so a stale `open`/`pending`
+ *    delivery could downgrade a paid booking — this makes the guard unconditional.
+ *
+ * @returns the rows THIS call transitioned (empty = the bookings were already paid).
+ */
+export async function applyBookingPaymentWriteback(
+  supabase: MollieWriteClient,
+  bookingIds: string[],
+  updateData: Record<string, unknown>,
+): Promise<{ id: string }[]> {
+  const { data, error } = await supabase
+    .from("bookings")
+    .update(updateData)
+    .in("id", bookingIds)
+    .neq("payment_status", "paid")
+    .select("id");
+  if (error) throw new Error(`Failed to update bookings: ${error.message}`);
+  return (data ?? []) as { id: string }[];
+}
