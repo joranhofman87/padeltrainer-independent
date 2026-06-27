@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -658,9 +659,8 @@ export function LocationEditDialog({
                 {clubFormData.subscription_status !== 'active' && (
                   <div className="space-y-2">
                     <Label htmlFor="club_trial_ends">Trial Ends At</Label>
-                    <Input
+                    <DateInputField
                       id="club_trial_ends"
-                      type="date"
                       value={clubFormData.trial_ends_at?.split('T')[0] || ''}
                       onChange={e =>
                         setClubFormData(prev =>

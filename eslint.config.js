@@ -70,6 +70,19 @@ export default tseslint.config(
       // Custom: icon-only Buttons must have aria-label. Backlog burned down to 0,
       // so this is now an error to keep it there.
       "local/button-icon-aria-label": "error",
+      // Date fields must use the shared <DateInputField> (consistent normalization +
+      // one seam for a future custom picker), never a raw <Input type="date">. The
+      // single sanctioned <Input type="date"> lives in date-input-field.tsx with an
+      // inline disable.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'JSXOpeningElement[name.name="Input"] > JSXAttribute[name.name="type"][value.value="date"]',
+          message:
+            'Use <DateInputField> from @/components/ui/date-input-field instead of <Input type="date"> so date fields stay consistent.',
+        },
+      ],
     },
   },
   // ── Role-isolation overrides ──────────────────────────────────────────────

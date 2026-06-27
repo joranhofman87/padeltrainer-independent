@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { Loader2, Save, X, DollarSign, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -181,7 +182,7 @@ export function SlotEditForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label className="text-xs">{tRole('calendar.date', 'Date')}</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInputField value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">{tRole('calendar.time', 'Time')}</Label>
