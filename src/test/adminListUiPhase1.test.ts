@@ -4,47 +4,57 @@ import { resolve } from 'node:path';
 
 const read = (rel: string) => readFileSync(resolve(__dirname, '..', rel), 'utf8');
 
-const sharedPrimitives = [
-  'AppPage',
-  'PageHeader',
+// Table primitives every admin list page must use directly — these are NOT
+// hidden behind ListPageShell, so they stay literal assertions.
+const tablePrimitives = [
   'TableToolbar',
   'DataTableCard',
   'compactDataTableClass',
   'EmptyState',
-  'ListPageSkeleton',
 ] as const;
 
+/**
+ * A page provides the standard list-page chrome (AppPage + PageHeader + a
+ * full-page loading skeleton) either directly, or — canonically — through
+ * `ListPageShell`, which composes all three internally (see
+ * src/components/ui/list-page-shell.tsx). Accepting the shell keeps this an
+ * architecture guard rather than a brittle "must import AppPage" check, so a
+ * page migrated onto the shell still passes while a page that drops to a
+ * bespoke `container mx-auto` shell still fails.
+ */
+function usesListPageChrome(source: string): boolean {
+  if (source.includes('ListPageShell')) return true;
+  return (
+    source.includes('AppPage') &&
+    source.includes('PageHeader') &&
+    source.includes('ListPageSkeleton')
+  );
+}
+
+function expectStandardAdminListPage(source: string) {
+  expect(usesListPageChrome(source)).toBe(true);
+  for (const primitive of tablePrimitives) {
+    expect(source).toContain(primitive);
+  }
+  expect(source).not.toContain('container mx-auto');
+}
+
 describe('Phase 1 admin list UI', () => {
-  it('AdminUsers uses shared list primitives', () => {
-    const source = read('pages/admin/AdminUsers.tsx');
-    for (const primitive of sharedPrimitives) {
-      expect(source).toContain(primitive);
-    }
-    expect(source).not.toContain('container mx-auto');
+  it('AdminUsers uses the canonical list-page chrome + table primitives', () => {
+    expectStandardAdminListPage(read('pages/admin/AdminUsers.tsx'));
   });
 
-  it('AdminTrainers uses shared list primitives', () => {
-    const source = read('pages/admin/AdminTrainers.tsx');
-    for (const primitive of sharedPrimitives) {
-      expect(source).toContain(primitive);
-    }
-    expect(source).not.toContain('container mx-auto');
+  it('AdminTrainers uses the canonical list-page chrome + table primitives', () => {
+    expectStandardAdminListPage(read('pages/admin/AdminTrainers.tsx'));
   });
 
-  it('AdminAcademies uses shared list primitives', () => {
-    const source = read('pages/admin/AdminAcademies.tsx');
-    for (const primitive of sharedPrimitives) {
-      expect(source).toContain(primitive);
-    }
-    expect(source).not.toContain('container mx-auto');
+  it('AdminAcademies uses the canonical list-page chrome + table primitives', () => {
+    expectStandardAdminListPage(read('pages/admin/AdminAcademies.tsx'));
   });
 
-  it('AdminGuestPlayers uses shared list primitives and StatTile', () => {
+  it('AdminGuestPlayers uses the canonical list-page chrome + table primitives + StatTile', () => {
     const source = read('pages/admin/AdminGuestPlayers.tsx');
-    for (const primitive of sharedPrimitives) {
-      expect(source).toContain(primitive);
-    }
+    expectStandardAdminListPage(source);
     expect(source).toContain('StatTile');
-    expect(source).not.toContain('container mx-auto');
   });
 });
