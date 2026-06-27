@@ -13,7 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -94,18 +94,16 @@ export function EditAcademyLocationDialog({
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="editContractStart">{t('locations.contractStart')}</Label>
-                <Input
+                <DateInputField
                   id="editContractStart"
-                  type="date"
                   value={contractStart}
                   onChange={(e) => setContractStart(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="editContractEnd">{t('locations.contractEnd')}</Label>
-                <Input
+                <DateInputField
                   id="editContractEnd"
-                  type="date"
                   value={contractEnd}
                   onChange={(e) => setContractEnd(e.target.value)}
                 />

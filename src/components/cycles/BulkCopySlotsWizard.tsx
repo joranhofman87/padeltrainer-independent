@@ -4,6 +4,7 @@ import { differenceInCalendarWeeks } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -262,7 +263,7 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
                 </div>
                 <div>
                   <Label className="text-xs">{t('bulkCopy.newStart', 'Startdatum')}</Label>
-                  <Input type="date" value={newCycleStart} onChange={(e) => setNewCycleStart(e.target.value)} />
+                  <DateInputField value={newCycleStart} onChange={(e) => setNewCycleStart(e.target.value)} />
                 </div>
               </div>
             ) : (

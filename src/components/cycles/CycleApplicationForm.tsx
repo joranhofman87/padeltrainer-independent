@@ -13,6 +13,7 @@ import { logger } from '@/lib/logger';
 import TermsAcceptance from '@/components/booking/TermsAcceptance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -549,7 +550,7 @@ export default function CycleApplicationForm({
                 <FormItem>
                   <FormLabel>{t('application.form.birthDate')}</FormLabel>
                   <FormControl>
-                    <Input {...field} type="date" />
+                    <DateInputField {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

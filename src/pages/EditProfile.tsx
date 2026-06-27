@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
@@ -645,9 +646,8 @@ export default function EditProfile() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="birth_date">{t('birthDate', 'Date of birth')}</Label>
-                  <Input
+                  <DateInputField
                     id="birth_date"
-                    type="date"
                     value={formData.birth_date}
                     onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
                   />

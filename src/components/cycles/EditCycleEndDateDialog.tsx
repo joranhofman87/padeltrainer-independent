@@ -6,7 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -117,9 +117,8 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="cycle-end-date">{t('editEndDate.label', 'Nieuwe einddatum')}</Label>
-              <Input
+              <DateInputField
                 id="cycle-end-date"
-                type="date"
                 value={endDate}
                 min={startDate ?? undefined}
                 onChange={(e) => setEndDate(e.target.value)}
