@@ -1163,7 +1163,7 @@
     "notFoundDescription": "This cycle no longer exists or you don't have access to it.",
     "editWholeCycle": "Edit whole cycle",
     "editPrice": "Edit price",
-    "deleteCycle": "Delete cycle",
+    "deleteCycle": "Remove future sessions",
     "sessions": {
       "title": "Sessions",
       "empty": "This cycle has no sessions yet.",
@@ -1184,7 +1184,7 @@
       "noPlayers": "—"
     },
     "delete": {
-      "confirmTitle": "Delete this cycle?",
+      "confirmTitle": "Remove future sessions?",
       "confirmBody": "Empty future sessions will be removed. Booked sessions are kept — cancel their bookings first if you want to remove those too.",
       "confirm": "Delete",
       "cancel": "Cancel",

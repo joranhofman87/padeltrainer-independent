@@ -1298,7 +1298,7 @@
     "notFoundDescription": "Deze cyclus bestaat niet (meer) of je hebt er geen toegang toe.",
     "editWholeCycle": "Hele cyclus bewerken",
     "editPrice": "Prijs bewerken",
-    "deleteCycle": "Cyclus verwijderen",
+    "deleteCycle": "Toekomstige sessies verwijderen",
     "sessions": {
       "title": "Sessies",
       "empty": "Deze cyclus heeft nog geen sessies.",
@@ -1319,7 +1319,7 @@
       "noPlayers": "—"
     },
     "delete": {
-      "confirmTitle": "Deze cyclus verwijderen?",
+      "confirmTitle": "Toekomstige sessies verwijderen?",
       "confirmBody": "Lege toekomstige sessies worden verwijderd. Geboekte sessies blijven behouden — annuleer eerst hun boekingen als je die ook wilt verwijderen.",
       "confirm": "Verwijderen",
       "cancel": "Annuleren",

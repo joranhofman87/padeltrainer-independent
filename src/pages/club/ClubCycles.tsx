@@ -6,7 +6,8 @@ import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
-import { getCyclesWithCounts, type Cycle } from '@/lib/cycles';
+import { type Cycle } from '@/lib/cycles';
+import { listRegistrationCycles } from '@/lib/registrations';
 import CyclesTable from '@/components/cycles/CyclesTable';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { logger } from '@/lib/logger';
@@ -40,7 +41,9 @@ export default function ClubCycles() {
 
     setIsLoading(true);
     try {
-      const data = await getCyclesWithCounts('club', activeClub.id);
+      // Registrations page → dual-read the canonical registrations table UNIONed with legacy
+      // registration/event cycles, deduped by source cycle (parity with AcademyRegistrations).
+      const data = await listRegistrationCycles('club', activeClub.id);
       setCycles(data);
     } catch (error: any) {
       logger.error('Error fetching cycles', error as Error, { component: 'ClubCycles', clubId: activeClub?.id });
