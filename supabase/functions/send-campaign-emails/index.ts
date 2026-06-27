@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { isServiceRoleRequest } from "../_shared/service-role-auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -473,6 +474,13 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("Campaign send error:", error);
+    // A crash in the campaign sender (DB error, Resend outage, requeue failure)
+    // was previously visible only in the function logs — alert ops so a stalled
+    // campaign send is noticed. notifySlackEdgeError never throws.
+    await notifySlackEdgeError(
+      "send-campaign-emails",
+      error instanceof Error ? error.message : String(error),
+    );
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       {
