@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { GuestPlayer } from "./AddPlayerDialog";
+import { GuestPlayer } from "@/components/players/AddPlayerDialog";
 
 interface BookingDetails {
   id: string;

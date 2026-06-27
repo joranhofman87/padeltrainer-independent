@@ -27,7 +27,7 @@ import {
   Loader2,
   Link2,
 } from "lucide-react";
-import { GuestPlayer } from "./AddPlayerDialog";
+import { GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { csvHasGuestNameColumn, guestNameFieldsFromCsvRow } from "@/lib/guestPlayerCsvName";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 

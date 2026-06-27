@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
-import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
+import { AddPlayerDialog, GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
 import { SlotLocationPicker, type SlotLocation } from "@/components/slots/SlotLocationPicker";
 import { SlotRatingPicker } from "@/components/slots/SlotRatingPicker";

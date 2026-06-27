@@ -24,7 +24,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getMarketingUrl } from '@/lib/domains';
 import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { UnpaidBookingsCard } from '@/components/dashboard/UnpaidBookingsCard';
 import { useAcademyUndeliverableRecipients } from '@/lib/emailBounce';
 import { AcademyPublicLinkCard } from '@/components/academy/AcademyPublicLinkCard';
 import { useQuery } from '@tanstack/react-query';

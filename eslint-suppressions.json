@@ -263,6 +263,11 @@
       "count": 6
     }
   },
+  "src/components/dashboard/UnpaidBookingsCard.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
   "src/components/featured/FeaturedSection.tsx": {
     "react-refresh/only-export-components": {
       "count": 1
@@ -314,12 +319,28 @@
       "count": 1
     }
   },
+  "src/components/players/AddPlayerForm.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
   "src/components/players/EmailCampaignTab.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 17
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
+    }
+  },
+  "src/components/players/ImportPlayersDialog.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
     }
   },
   "src/components/players/ManagePlayerTagsDialog.tsx": {
@@ -373,31 +394,20 @@
       "count": 1
     }
   },
+  "src/components/slots/AddSlotDialog.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    }
+  },
   "src/components/slots/SlotRatingPicker.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1
     },
     "react-refresh/only-export-components": {
       "count": 1
-    }
-  },
-  "src/components/trainer/AddPlayerForm.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-refresh/only-export-components": {
-      "count": 1
-    }
-  },
-  "src/components/trainer/AddSlotDialog.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 5
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 3
     }
   },
   "src/components/trainer/BookForPlayerDialog.tsx": {
@@ -426,11 +436,6 @@
       "count": 1
     },
     "react-refresh/only-export-components": {
-      "count": 1
-    }
-  },
-  "src/components/trainer/ImportPlayersDialog.tsx": {
-    "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
   },
@@ -486,11 +491,6 @@
   "src/components/trainer/TrainerSetupChecklist.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
-    }
-  },
-  "src/components/trainer/UnpaidBookingsCard.tsx": {
-    "react-refresh/only-export-components": {
-      "count": 1
     }
   },
   "src/components/trainer/onboarding/OnboardingStep1Profile.tsx": {
@@ -992,7 +992,7 @@
       "count": 15
     },
     "no-restricted-imports": {
-      "count": 2
+      "count": 1
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
@@ -1006,9 +1006,6 @@
   "src/pages/academy/AcademyCreateSlot.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
-    },
-    "no-restricted-imports": {
-      "count": 1
     }
   },
   "src/pages/academy/AcademyCycleDetail.tsx": {
@@ -1027,9 +1024,6 @@
   "src/pages/academy/AcademyDashboard.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 19
-    },
-    "no-restricted-imports": {
-      "count": 1
     }
   },
   "src/pages/academy/AcademyIntakeRequests.tsx": {
@@ -1053,11 +1047,6 @@
   "src/pages/academy/AcademyPlayerDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 16
-    }
-  },
-  "src/pages/academy/AcademyPlayers.tsx": {
-    "no-restricted-imports": {
-      "count": 3
     }
   },
   "src/pages/academy/AcademyProfile.tsx": {
@@ -1365,7 +1354,7 @@
   },
   "supabase/functions/finalize-proposals/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 4
+      "count": 2
     }
   },
   "supabase/functions/generate-blog-cover/index.ts": {

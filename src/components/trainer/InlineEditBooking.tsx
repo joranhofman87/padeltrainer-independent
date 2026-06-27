@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { GuestPlayer } from "./AddPlayerDialog";
+import { GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
 interface BookingDetails {

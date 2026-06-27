@@ -2,7 +2,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BulkCreateContent } from "@/components/trainer/AddSlotDialog";
+import { BulkCreateContent } from "@/components/slots/AddSlotDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
