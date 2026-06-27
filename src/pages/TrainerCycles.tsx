@@ -7,7 +7,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
-import { getCycles, type Cycle } from '@/lib/cycles';
+import { type Cycle } from '@/lib/cycles';
+import { listRegistrationCycles } from '@/lib/registrations';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import CycleCard from '@/components/cycles/CycleCard';
 import { logger } from '@/lib/logger';
@@ -41,7 +42,10 @@ export default function TrainerCycles() {
     if (!trainerId) return;
     setIsLoading(true);
     try {
-      const data = await getCycles('trainer', trainerId);
+      // Registrations page → dual-read the canonical registrations table (form rows) UNIONed with
+      // any legacy registration/event cycles, deduped by source cycle. Matches AcademyRegistrations;
+      // training cycli (type='cyclus', e.g. from rebooking) are managed in the schedule overview.
+      const data = await listRegistrationCycles('trainer', trainerId);
       setCycles(data);
     } catch (error: any) {
       logger.error('Error fetching cycles', error instanceof Error ? error : new Error(String(error)), { component: 'TrainerCycles' });

@@ -175,7 +175,7 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
   it('is read-only by default — no edit/delete CTAs without canEdit', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
-    expect(screen.queryByRole('button', { name: /Delete cycle/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Remove future sessions/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Edit whole cycle/ })).not.toBeInTheDocument();
   });
 
@@ -247,8 +247,8 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     const onMutated = vi.fn();
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
     // CTA opens the confirm dialog
-    fireEvent.click(screen.getByRole('button', { name: /Delete cycle/ }));
-    // confirm (exact "Delete", not "Delete cycle")
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
+    // confirm (the AlertDialog "Delete" action)
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
     await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1', 's2']));
     // RPC stamps split_count but not line items → caller must resync (RPC contract).
@@ -260,7 +260,7 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 2, protectedSlotIds: ['s1', 's2'] });
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    fireEvent.click(screen.getByRole('button', { name: /Delete cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
     await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
     expect(mockSyncSplit).not.toHaveBeenCalled();
@@ -269,7 +269,7 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
   it('delete cycle: cancel does NOT call the RPC', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    fireEvent.click(screen.getByRole('button', { name: /Delete cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
     fireEvent.click(screen.getByRole('button', { name: /Cancel/ }));
     expect(mockApplyDelete).not.toHaveBeenCalled();
   });
