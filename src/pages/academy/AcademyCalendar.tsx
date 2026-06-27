@@ -54,7 +54,7 @@ import {
 } from "@/lib/academyCalendarTab";
 import { useToast } from "@/hooks/use-toast";
 import { BulkCreateContent } from "@/components/slots/AddSlotDialog";
-import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
+import { BookForPlayerDialog } from "@/components/booking/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 // EditBookingDialog + EditSlotDialog removed — navigating to slot detail page instead
 // SlotDetailDialog removed — now using /app/academy/slot/:slotId page

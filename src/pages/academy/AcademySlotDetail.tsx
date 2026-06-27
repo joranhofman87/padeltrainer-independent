@@ -32,8 +32,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { InlineBookPlayer } from '@/components/trainer/InlineBookPlayer';
-import { InlineEditBooking } from '@/components/trainer/InlineEditBooking';
+import { InlineBookPlayer } from '@/components/booking/InlineBookPlayer';
+import { InlineEditBooking } from '@/components/booking/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
 import { usePlayerCoachingNotes } from '@/lib/coachingNotes';
 import { SlotEditForm, type SlotEditFormValues } from '@/components/slots/SlotEditForm';

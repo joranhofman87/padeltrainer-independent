@@ -114,6 +114,24 @@
       "count": 1
     }
   },
+  "src/components/booking/BookForPlayerDialog.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/components/booking/InlineBookPlayer.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/components/booking/InlineEditBooking.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
   "src/components/club/ClaimClubDialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
@@ -410,14 +428,6 @@
       "count": 1
     }
   },
-  "src/components/trainer/BookForPlayerDialog.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/components/trainer/DuplicateCyclusDialog.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1
@@ -442,16 +452,6 @@
   "src/components/trainer/ImportPlayersTab.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
-    }
-  },
-  "src/components/trainer/InlineBookPlayer.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
-  "src/components/trainer/InlineEditBooking.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
     }
   },
   "src/components/trainer/InvoiceList.tsx": {
@@ -991,9 +991,6 @@
     "@typescript-eslint/no-explicit-any": {
       "count": 15
     },
-    "no-restricted-imports": {
-      "count": 1
-    },
     "react-hooks/exhaustive-deps": {
       "count": 2
     }
@@ -1065,9 +1062,6 @@
   "src/pages/academy/AcademySlotDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 10
-    },
-    "no-restricted-imports": {
-      "count": 2
     },
     "react-hooks/exhaustive-deps": {
       "count": 1
