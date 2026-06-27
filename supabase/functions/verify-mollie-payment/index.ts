@@ -73,8 +73,16 @@ async function refreshTokenIfNeeded(
     });
 
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json();
+      const errorData = await tokenResponse.json().catch(() => ({}));
       logStep("Token refresh failed", errorData);
+      // Mollie rejected the refresh token — the connection is broken; payment
+      // verification (and online payments) will fail until the account reconnects.
+      // Alert ops; this was previously silent (logStep only).
+      await notifySlackError(
+        "verify-mollie-payment",
+        "Mollie token refresh failed — payment verification will fail until the account reconnects",
+        { entityType, entityId, mollieStatus: tokenResponse.status, mollieError: (errorData as { error?: string })?.error ?? null },
+      );
       return accountData.access_token;
     }
 

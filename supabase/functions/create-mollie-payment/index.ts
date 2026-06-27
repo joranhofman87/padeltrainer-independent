@@ -91,8 +91,19 @@ async function refreshTokenIfNeeded(
     });
 
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json();
+      const errorData = await tokenResponse.json().catch(() => ({}));
       logStep("Token refresh failed", errorData);
+      // Mollie rejected the refresh token (e.g. invalid_grant) — the connection is
+      // broken and the academy/trainer cannot take online payments until they
+      // reconnect. Alert ops; this was previously silent (logStep only).
+      await notifySlack(supabaseClient, "edge_function_error", {
+        function: "create-mollie-payment",
+        error: "Mollie token refresh failed — payments will fail until the account reconnects",
+        entityType,
+        entityId,
+        mollieStatus: tokenResponse.status,
+        mollieError: (errorData as { error?: string })?.error ?? null,
+      });
       return accountData.access_token;
     }
 
