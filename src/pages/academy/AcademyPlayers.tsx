@@ -36,13 +36,11 @@ import { SortableHeader } from '@/components/players/usePlayerSort';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { useVisibleColumns } from '@/components/players/useVisibleColumns';
 import { PlayerColumnsMenu } from '@/components/players/PlayerColumnsMenu';
-import { AppPage } from '@/components/ui/app-page';
-import { PageHeader } from '@/components/ui/page-header';
+import { ListPageShell } from '@/components/ui/list-page-shell';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
-import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { AddPlayerDialog } from '@/components/players/AddPlayerDialog';
 import type { GuestPlayer } from '@/components/players/guestPlayer';
 import { AddPlayerForm } from '@/components/players/AddPlayerForm';
@@ -340,21 +338,14 @@ export default function AcademyPlayers() {
     handlePlayerDataChanged();
   };
 
-  if (loading) {
-    return (
-      <AppPage>
-        <ListPageSkeleton />
-      </AppPage>
-    );
-  }
-
   return (
-    <AppPage className="space-y-4">
-      <PageHeader
-        title={t('nav.players')}
-        count={activePlayerCount}
-        countLabel={{ one: tTrainer('players.countOne', 'player'), other: tTrainer('players.countOther', 'players') }}
-        actions={
+    <ListPageShell
+      isLoading={loading}
+      className="space-y-4"
+      title={t('nav.players')}
+      count={activePlayerCount}
+      countLabel={{ one: tTrainer('players.countOne', 'player'), other: tTrainer('players.countOther', 'players') }}
+      actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setShowManageTags(true)} aria-label={tTrainer('players.tags.manageButton', 'Tags')}>
               <Tags className="h-4 w-4" />
@@ -372,7 +363,7 @@ export default function AcademyPlayers() {
             </Button>
           </>
         }
-      />
+    >
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center gap-3">
@@ -968,6 +959,6 @@ export default function AcademyPlayers() {
           onChanged={handlePlayerDataChanged}
         />
       )}
-    </AppPage>
+    </ListPageShell>
   );
 }

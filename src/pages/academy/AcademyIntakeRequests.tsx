@@ -10,8 +10,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { List, CalendarDays, AlertCircle, UserPlus, Download } from 'lucide-react';
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { PageHeader } from '@/components/ui/page-header';
 import { AppPage } from '@/components/ui/app-page';
+import { ListPageShell } from '@/components/ui/list-page-shell';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
@@ -242,12 +242,11 @@ export default function AcademyIntakeRequests() {
   }
 
   return (
-    <AppPage className="space-y-4">
-      {/* Header */}
-      <PageHeader
-        title={t('intakeRequests.title')}
-        countText={t('intakeRequests.noRequestsDescription')}
-        actions={
+    <ListPageShell
+      className="space-y-4"
+      title={t('intakeRequests.title')}
+      countText={t('intakeRequests.noRequestsDescription')}
+      actions={
           <>
             <Button size="sm" variant="outline" onClick={() => setShowAddDialog(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
@@ -272,7 +271,7 @@ export default function AcademyIntakeRequests() {
             </Button>
           </>
         }
-      />
+    >
 
       {/* Workflow Steps */}
       <ProposalWorkflowSteps
@@ -593,6 +592,6 @@ export default function AcademyIntakeRequests() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppPage>
+    </ListPageShell>
   );
 }
