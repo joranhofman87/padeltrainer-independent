@@ -1778,6 +1778,8 @@
     "createFirst": "Create your first training cycle from the calendar",
     "cyclusDeleted": "Cyclus deleted",
     "cyclusDeletedDescription": "Deleted {{count}} sessions",
+    "cyclusPartiallyKept": "{{count}} session(s) kept — a booking came in during deletion",
+    "invoiceSyncFailed": "The sessions were cancelled, but a linked invoice could not be updated. Please check the invoice.",
     "deleteConfirmDescription": "This will delete all {{count}} sessions in '{{name}}' and cancel any associated bookings. This action cannot be undone.",
     "deleteConfirmTitle": "Delete Training Cycle?",
     "deleteCyclus": "Delete Cyclus",

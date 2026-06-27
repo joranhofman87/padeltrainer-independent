@@ -1781,6 +1781,8 @@
     "createFirst": "Maak je eerste trainingscyclus aan vanuit de kalender",
     "cyclusDeleted": "Cyclus verwijderd",
     "cyclusDeletedDescription": "{{count}} sessies verwijderd",
+    "cyclusPartiallyKept": "{{count}} sessie(s) behouden — er kwam een boeking binnen tijdens het verwijderen",
+    "invoiceSyncFailed": "De sessies zijn geannuleerd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur.",
     "deleteConfirmDescription": "Hiermee verwijder je alle {{count}} sessies in '{{name}}' en worden gekoppelde boekingen geannuleerd. Dit kan niet ongedaan worden gemaakt.",
     "deleteConfirmTitle": "Trainingscyclus verwijderen?",
     "deleteCyclus": "Cyclus verwijderen",
