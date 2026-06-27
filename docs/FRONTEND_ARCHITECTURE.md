@@ -180,4 +180,8 @@ unchanged as well.
 
 - [UI_COMPONENT_STANDARDS.md](./UI_COMPONENT_STANDARDS.md) — when to extract a shared
   component, the props/slot pattern, and the shared invoice/player examples.
+- [DOMAIN_MODEL.md](./DOMAIN_MODEL.md) — the entity map (registrations/cycles/slots/bookings/
+  invoices) + the canonical write boundaries + money/data invariants.
+- [EXTENDING_THE_DOMAIN.md](./EXTENDING_THE_DOMAIN.md) — the playbook + PR checklist + critical-flow
+  test matrix for changing the scheduling/money domain safely.
 - [AGENTS.md](../AGENTS.md) — the short version of these rules for AI assistants.
