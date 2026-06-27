@@ -179,7 +179,11 @@ serve(async (req: Request) => {
     // always gets an email built from the cycle's CURRENT config. An idempotent retry
     // returned earlier (intake.invoice_id set), so this never double-sends.
     try {
-      await sendRegistrationConfirmationEmail(admin, cycle, intake, { payUrl, language });
+      // Build the email from the SAME pricing source the invoice mint used (formForPayment = the
+      // canonical registration form when present), so the quoted price/lesson-count can never diverge
+      // from the invoice. The cycle still supplies enrollment_deadline + location_id (formForPayment
+      // omits them). When there's no registration, formForPayment === cycle (no-op).
+      await sendRegistrationConfirmationEmail(admin, { ...cycle, ...formForPayment }, intake, { payUrl, language });
     } catch (e) {
       console.error("Registration confirmation email failed (non-blocking):", String((e as Error)?.message ?? e));
     }
