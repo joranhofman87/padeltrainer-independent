@@ -32,8 +32,7 @@ import { SendInvoiceEmailDialog } from "@/components/invoices/SendInvoiceEmailDi
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, FileText, Send, Loader2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning, Download, MoreHorizontal } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
-import { AppPage } from "@/components/ui/app-page";
+import { ListPageShell, ListPageState } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -708,12 +707,10 @@ export default function AcademyInvoices() {
   };
 
   return (
-    <AppPage>
-      {/* Header */}
-      <PageHeader
-        title={t("invoices.title", "Facturen")}
-        description={t("invoices.description", "Beheer facturen voor je academy")}
-        actions={
+    <ListPageShell
+      title={t("invoices.title", "Facturen")}
+      description={t("invoices.description", "Beheer facturen voor je academy")}
+      actions={
           <>
             {countDraft > 0 && (
               <Button size="sm" variant="outline" onClick={handleSendAllDrafts} disabled={sendingAll}>
@@ -729,7 +726,7 @@ export default function AcademyInvoices() {
             </Button>
           </>
         }
-      />
+    >
 
       {/* Page-level tabs: Overview / Settings */}
       <Tabs value={pageTab} onValueChange={(v) => setSearchParams(v === "settings" ? { tab: "settings" } : {})}>
@@ -876,18 +873,23 @@ export default function AcademyInvoices() {
         </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">
-          {isLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredInvoices.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p>{t("invoices.noInvoices", "No invoices found")}</p>
-              </CardContent>
-            </Card>
-          ) : (
+          <ListPageState
+            isLoading={isLoading}
+            loadingFallback={
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            }
+            isEmpty={filteredInvoices.length === 0}
+            empty={
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p>{t("invoices.noInvoices", "No invoices found")}</p>
+                </CardContent>
+              </Card>
+            }
+          >
             <>
               {/* Desktop Table */}
               <InvoiceListTable
@@ -964,7 +966,7 @@ export default function AcademyInvoices() {
 
               <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} className="mt-4" />
             </>
-          )}
+          </ListPageState>
         </TabsContent>
       </Tabs>
 
@@ -1099,6 +1101,6 @@ export default function AcademyInvoices() {
         </AlertDialogContent>
       </AlertDialog>
 
-    </AppPage>
+    </ListPageShell>
   );
 }
