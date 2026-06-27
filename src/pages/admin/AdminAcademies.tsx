@@ -4,12 +4,10 @@ import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { AppPage } from "@/components/ui/app-page";
-import { PageHeader } from "@/components/ui/page-header";
+import { ListPageShell } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   Table,
   TableBody,
@@ -263,20 +261,12 @@ export default function AdminAcademies() {
     }
   };
 
-  if (academiesLoading) {
-    return (
-      <AppPage>
-        <ListPageSkeleton />
-      </AppPage>
-    );
-  }
-
   return (
-    <AppPage>
-      <PageHeader
-        title="Academy Management"
-        description="View and manage academies in the system"
-        actions={
+    <ListPageShell
+      isLoading={academiesLoading}
+      title="Academy Management"
+      description="View and manage academies in the system"
+      actions={
           <>
             <Button
               variant="outline"
@@ -301,7 +291,7 @@ export default function AdminAcademies() {
             </Button>
           </>
         }
-      />
+    >
 
       <TableToolbar
         searchPlaceholder="Search by name or email..."
@@ -589,6 +579,6 @@ export default function AdminAcademies() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppPage>
+    </ListPageShell>
   );
 }
