@@ -5,12 +5,10 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { AppPage } from "@/components/ui/app-page";
-import { PageHeader } from "@/components/ui/page-header";
+import { ListPageShell, ListPageState } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Search, UserCheck, UserX, Users } from "lucide-react";
 import { format } from "date-fns";
@@ -75,20 +73,12 @@ export default function AdminGuestPlayers() {
     return gp.academy_profiles?.name || "—";
   };
 
-  if (isLoading) {
-    return (
-      <AppPage>
-        <ListPageSkeleton />
-      </AppPage>
-    );
-  }
-
   return (
-    <AppPage>
-      <PageHeader
-        title="Registrations"
-        description="Guest players from intake forms and manual registrations"
-      />
+    <ListPageShell
+      isLoading={isLoading}
+      title="Registrations"
+      description="Guest players from intake forms and manual registrations"
+    >
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatTile
@@ -141,11 +131,14 @@ export default function AdminGuestPlayers() {
         </Select>
       </TableToolbar>
 
-      {filtered.length === 0 ? (
-        <Card className="overflow-hidden border-border/80 shadow-sm">
-          <EmptyState icon={Search} title="No registrations found" />
-        </Card>
-      ) : (
+      <ListPageState
+        isEmpty={filtered.length === 0}
+        empty={
+          <Card className="overflow-hidden border-border/80 shadow-sm">
+            <EmptyState icon={Search} title="No registrations found" />
+          </Card>
+        }
+      >
         <DataTableCard>
           <Table className={compactDataTableClass}>
             <TableHeader>
@@ -207,7 +200,7 @@ export default function AdminGuestPlayers() {
             </TableBody>
           </Table>
         </DataTableCard>
-      )}
-    </AppPage>
+      </ListPageState>
+    </ListPageShell>
   );
 }
