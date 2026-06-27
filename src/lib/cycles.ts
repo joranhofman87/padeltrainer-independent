@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { logger } from '@/lib/logger';
 import { resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
 import type { GuestResolveScope } from '@/lib/playerResolve';
-import { filterDeletableSlotIds } from '@/lib/slotDeleteGuard';
+import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 
 // Types
 export interface PriceTableRow {
@@ -670,17 +670,12 @@ export async function findSlotsAfterDate(cyclusId: string, endDate: string): Pro
  *  guard here. Invoices are not FK-linked to slots, so they are untouched. */
 export async function deleteUnbookedSlots(slotIds: string[]): Promise<number> {
   if (slotIds.length === 0) return 0;
-  const { data: booked } = await supabase
-    .from('bookings')
-    .select('slot_id')
-    .in('slot_id', slotIds)
-    .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
-  const bookedSet = new Set((booked ?? []).map((b: { slot_id: string }) => b.slot_id));
-  const safe = slotIds.filter((id) => !bookedSet.has(id));
-  if (safe.length === 0) return 0;
-  const { error } = await supabase.from('availability_slots').delete().in('id', safe);
-  if (error) throw error;
-  return safe.length;
+  // Atomic delete via the canonical RPC: it locks each slot + its bookings FOR UPDATE and KEEPS any
+  // that holds a booking, instead of the old check-then-delete (which could cascade-destroy a
+  // booking that landed between the booking check and the DELETE). No cycle id → no split recompute,
+  // which matches this trim's prior behaviour (it only removes unbooked tail sessions).
+  const res = await applySlotDeleteToCycle(null, slotIds);
+  return res.deletedCount;
 }
 
 export async function deleteCycle(cycleId: string): Promise<void> {
@@ -1561,13 +1556,12 @@ export async function resetProposals(cycleId: string): Promise<{ reset: number }
     .select('id')
     .eq('cyclus_id', cycleId);
   if (cycleSlotsError) throw cycleSlotsError;
-  const deletableSlotIds = await filterDeletableSlotIds((cycleSlots ?? []).map((s) => s.id));
-  if (deletableSlotIds.length > 0) {
-    const { error: slotsDeleteError } = await supabase
-      .from('availability_slots')
-      .delete()
-      .in('id', deletableSlotIds);
-    if (slotsDeleteError) throw slotsDeleteError;
+  // Atomic delete via the canonical RPC (locks slots + bookings FOR UPDATE; keeps any booked one)
+  // instead of the old check-then-delete. Proposal slots are pre-booking, but this closes the
+  // cascade-delete race defensively and matches every other delete path.
+  const proposalSlotIds = (cycleSlots ?? []).map((s) => s.id);
+  if (proposalSlotIds.length > 0) {
+    await applySlotDeleteToCycle(null, proposalSlotIds);
   }
 
   // Get ALL intake requests for this cycle
@@ -1896,15 +1890,12 @@ export async function deleteSlot(slotId: string): Promise<void> {
 
   // 4. Delete the slot itself — but NEVER if it still has an active booking (bookings.slot_id is
   //    ON DELETE CASCADE, so the delete would silently remove the booking).
-  const deletable = await filterDeletableSlotIds([slotId]);
-  if (deletable.length === 0) {
+  // Atomic delete via the canonical RPC. Only block when a booking actually PROTECTED the slot —
+  // an already-deleted/nonexistent slot returns 0 deleted + 0 protected and stays a benign no-op.
+  const res = await applySlotDeleteToCycle(null, [slotId]);
+  if (res.protectedCount > 0) {
     throw new Error('Cannot delete a session that still has an active booking.');
   }
-  const { error } = await supabase
-    .from('availability_slots')
-    .delete()
-    .eq('id', slotId);
-  if (error) throw error;
 }
 
 // Create a new empty slot for the proposal schedule grid

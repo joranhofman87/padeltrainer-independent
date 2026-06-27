@@ -14,6 +14,7 @@ import { format, addMinutes, isBefore, startOfToday, startOfDay, addWeeks, setHo
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
+import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { createCycle } from '@/lib/cycles';
 
 import { toast } from 'sonner';
@@ -148,7 +149,9 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
   };
 
   const handleRemoveSlot = async (slotId: string) => {
-    await supabase.from('availability_slots').delete().eq('id', slotId);
+    // Atomic + guarded delete (keeps the slot if it somehow holds a booking) rather than a bare
+    // cascade delete; onboarding slots are drafts, so this is defence-in-depth + consistency.
+    await applySlotDeleteToCycle(null, [slotId]);
     setSlots((prev) => prev.filter((s) => s.id !== slotId));
   };
 
