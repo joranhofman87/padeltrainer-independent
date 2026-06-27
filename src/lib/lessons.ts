@@ -94,13 +94,6 @@ export async function getAvailableSlotsForTrainer(trainerId: string) {
   return { data: availableSlots, error: null };
 }
 
-export async function deleteAvailabilitySlot(slotId: string) {
-  return supabase
-    .from('availability_slots')
-    .delete()
-    .eq('id', slotId);
-}
-
 // Booking CRUD
 export interface PaginationOptions {
   page?: number;

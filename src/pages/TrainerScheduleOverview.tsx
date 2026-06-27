@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { cancelBookingsAndSync } from "@/lib/bookings";
+import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -658,33 +659,22 @@ export default function TrainerScheduleOverview() {
               }
             }
           } else if (newCount < cycleSlots.length) {
-            // Remove trailing slots without active bookings
+            // Remove trailing slots without active bookings. Route through the atomic
+            // guard (the canonical RPC slot-detail / cycle-detail already use): it locks
+            // the bookings FOR UPDATE and KEEPS any trailing slot that gained a booking
+            // since the list loaded — closing the client check-then-delete TOCTOU vs
+            // bookings.slot_id ON DELETE CASCADE (a concurrent booking landing between the
+            // check and the delete would otherwise be cascade-destroyed). Only unbooked
+            // slots are ever deleted, so no booking is removed and no invoice changes.
             const slotsToRemove = cycleSlots.length - newCount;
             const trailingSlots = cycleSlots.slice(-slotsToRemove);
-            // Check for active bookings
-            const { data: bookingsCheck } = await supabase
-              .from("bookings")
-              .select("slot_id")
-              .in("slot_id", trailingSlots.map((s) => s.id))
-              .neq("status", "cancelled");
+            const res = await applySlotDeleteToCycle(editCycleId, trailingSlots.map((s) => s.id));
 
-            const bookedSlotIds = new Set((bookingsCheck || []).map((b) => b.slot_id));
-            const deletableSlots = trailingSlots.filter((s) => !bookedSlotIds.has(s.id));
-            const blockedCount = trailingSlots.length - deletableSlots.length;
-
-            if (blockedCount > 0) {
+            if (res.protectedCount > 0) {
               toast({
-                title: t("scheduleOverview.cannotRemoveBookedSlots", "Cannot remove {{count}} session(s) with active bookings", { count: blockedCount }),
+                title: t("scheduleOverview.cannotRemoveBookedSlots", "Cannot remove {{count}} session(s) with active bookings", { count: res.protectedCount }),
                 variant: "destructive",
               });
-            }
-
-            if (deletableSlots.length > 0) {
-              const { error: deleteSlotsErr } = await supabase
-                .from("availability_slots")
-                .delete()
-                .in("id", deletableSlots.map((s) => s.id));
-              if (deleteSlotsErr) throw deleteSlotsErr;
             }
           }
         }

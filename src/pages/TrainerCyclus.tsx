@@ -49,6 +49,8 @@ import {
 import { format, parseISO, isPast } from "date-fns";
 import { logger } from "@/lib/logger";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
+import { cancelBookingsAndSync } from "@/lib/bookings";
+import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import CycleFillRateCard from "@/components/cycles/CycleFillRateCard";
 
 interface CyclusInfo {
@@ -263,26 +265,54 @@ export default function TrainerCyclus() {
       if (fetchError) throw fetchError;
 
       const slotIds = slots?.map((s) => s.id) || [];
+      let deletedCount = slotIds.length;
 
       if (slotIds.length > 0) {
-        // Cancel all bookings
-        await supabase
+        // Cancel + reconcile the invoice for EVERY booking the slot delete will
+        // destroy, FIRST. The old path raw-UPDATEd bookings to cancelled but never
+        // synced invoices, so a cancelled player kept being billed by their unpaid
+        // invoice (the same stale-billing bug already fixed for the academy
+        // remove-player path). We gather all non-cancelled bookings (not just the
+        // capacity-occupying ones) because applySlotDeleteToCycle cascades the slot's
+        // bookings via ON DELETE CASCADE — a `completed` booking can sit in an unpaid
+        // commitment invoice (generate-cycle-commitment-invoices bills status != 'cancelled'),
+        // so syncing must cover exactly what the cascade removes. cancelBookingsAndSync
+        // soft-cancels + rebuilds the affected unpaid invoices in one place; it leaves
+        // paid invoices untouched and is a safe no-op on already-cancelled rows.
+        const { data: activeBookings } = await supabase
           .from("bookings")
-          .update({ status: "cancelled" })
-          .in("slot_id", slotIds);
+          .select("id")
+          .in("slot_id", slotIds)
+          .neq("status", "cancelled");
+        const bookingIds = (activeBookings ?? []).map((b) => b.id);
 
-        // Delete all slots
-        const { error: deleteError } = await supabase
-          .from("availability_slots")
-          .delete()
-          .in("id", slotIds);
+        const { cancelError, syncError } = await cancelBookingsAndSync(bookingIds);
+        if (cancelError) throw cancelError;
+        if (syncError) {
+          toast({
+            title: t("common:error"),
+            description: t("cyclus.invoiceSyncFailed", "The sessions were cancelled, but a linked invoice could not be updated. Please check the invoice."),
+            variant: "destructive",
+          });
+        }
 
-        if (deleteError) throw deleteError;
+        // Delete the slots through the atomic guard (no more raw cascade DELETE). With
+        // every booking cancelled, no slot holds an occupying booking so all delete; a
+        // non-zero protectedCount means a booking raced in after we gathered the list —
+        // surface it rather than silently leaving sessions behind.
+        const res = await applySlotDeleteToCycle(deletingCyclus.cyclus_id, slotIds);
+        deletedCount = res.deletedCount;
+        if (res.protectedCount > 0) {
+          toast({
+            title: t("cyclus.cyclusPartiallyKept", "{{count}} session(s) kept — a booking came in during deletion", { count: res.protectedCount }),
+            variant: "destructive",
+          });
+        }
       }
 
       toast({
         title: t("cyclus.cyclusDeleted", "Cyclus deleted"),
-        description: t("cyclus.cyclusDeletedDescription", "Deleted {{count}} sessions", { count: slotIds.length }),
+        description: t("cyclus.cyclusDeletedDescription", "Deleted {{count}} sessions", { count: deletedCount }),
       });
 
       fetchCyclusList();

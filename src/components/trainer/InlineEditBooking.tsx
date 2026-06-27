@@ -4,7 +4,7 @@ import { Loader2, CreditCard, RefreshCw, Trash2, Info, X, Receipt } from "lucide
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
-import { syncInvoicesAfterBookingRemoval } from "@/lib/invoiceSync";
+import { cancelBookingsAndSync } from "@/lib/bookings";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -141,15 +141,16 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from("bookings").delete().eq("id", booking.id);
-      if (error) throw error;
-      // Invoices reference bookings via a booking_ids array (no FK), so the
-      // deleted booking would keep being billed. Recalculate unpaid invoices;
-      // paid invoices are intentionally left untouched (trainer was warned).
-      try {
-        await syncInvoicesAfterBookingRemoval([booking.id]);
-      } catch (syncError) {
-        logger.error("Error recalculating invoices after booking removal", syncError as Error, { component: "InlineEditBooking" });
+      // Soft-cancel (status='cancelled') + reconcile invoices via the canonical
+      // facade instead of a hard delete. A hard delete lost history and, via
+      // bookings.slot_id ON DELETE CASCADE, was unsafe; it also reconciled AFTER
+      // deleting, so a sync failure orphaned the booking_id on the invoice with no
+      // row left to recover. The facade cancels FIRST (the row survives as
+      // 'cancelled') then syncs, surfacing the two failure modes separately.
+      const { cancelError, syncError } = await cancelBookingsAndSync([booking.id]);
+      if (cancelError) throw cancelError;
+      if (syncError) {
+        logger.error("Error recalculating invoices after booking removal", syncError, { component: "InlineEditBooking" });
         toast({
           title: tCommon("error"),
           description: t("bookings.invoiceSyncFailed", "The player was removed, but a linked invoice could not be updated. Please check the invoice."),
