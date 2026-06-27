@@ -184,4 +184,6 @@ unchanged as well.
   invoices) + the canonical write boundaries + money/data invariants.
 - [EXTENDING_THE_DOMAIN.md](./EXTENDING_THE_DOMAIN.md) — the playbook + PR checklist + critical-flow
   test matrix for changing the scheduling/money domain safely.
+- [adr/](./adr/) — Architecture Decision Records (the *why* behind the registrations/cycles split,
+  slot-as-price-truth, the mutation-boundary facades, and rebooking).
 - [AGENTS.md](../AGENTS.md) — the short version of these rules for AI assistants.

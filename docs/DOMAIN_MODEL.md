@@ -7,7 +7,9 @@
 > cascade booking loss, paid→pending downgrades). When in doubt, route the write through the
 > canonical function named below rather than issuing a raw `supabase.from(...).insert/update/delete`.
 
-Related: [`SCHEDULING_ARCHITECTURE.md`](./SCHEDULING_ARCHITECTURE.md) (academy-first UX strategy),
+Related: [`EXTENDING_THE_DOMAIN.md`](./EXTENDING_THE_DOMAIN.md) (the change playbook + PR checklist + test
+matrix), [`adr/`](./adr/) (the *why* behind these decisions),
+[`SCHEDULING_ARCHITECTURE.md`](./SCHEDULING_ARCHITECTURE.md) (academy-first UX strategy),
 [`FRONTEND_ARCHITECTURE.md`](./FRONTEND_ARCHITECTURE.md) (component/role isolation),
 [`PHASE2_REGISTRATIONS_SPLIT.md`](./PHASE2_REGISTRATIONS_SPLIT.md) (the migration that created the split).
 
