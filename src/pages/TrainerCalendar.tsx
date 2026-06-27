@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
+import { TrainerCalendarGrid } from "@/components/agenda/TrainerCalendarGrid";
 import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/AgendaWeekByTrainer";
 import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";

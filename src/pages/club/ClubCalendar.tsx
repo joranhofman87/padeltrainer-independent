@@ -26,7 +26,7 @@ import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
 import { ClubAddSlotDialog } from "@/components/club/ClubAddSlotDialog";
 import { supabase } from "@/lib/supabaseClient";
-import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
+import { TrainerCalendarGrid } from "@/components/agenda/TrainerCalendarGrid";
 import { SlotWithBookings } from "@/lib/slotTypes";
 
 interface ClubSlot {
