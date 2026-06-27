@@ -84,98 +84,41 @@ serve(async (req: Request) => {
 
     console.log(`Finalizing proposals for cycle: ${cycle_id}`);
 
-    // 1. ATOMICALLY claim the proposed intake requests by flipping them to
-    // 'booked' in a single UPDATE ... WHERE status='proposed' RETURNING. Postgres
-    // row-locks each matched row, so when two admins finalize the same cycle at
-    // once each call only receives the rows IT actually transitioned — neither
-    // reprocesses the other's intake requests (was: both read status='proposed'
-    // and both created bookings + invoices → duplicates).
-    const { data: intakeRequests, error: irError } = await supabaseAdmin
-      .from("intake_requests")
-      .update({ status: "booked" as any })
-      .eq("cycle_id", cycle_id)
-      .eq("status", "proposed")
-      .select("id, guest_player_id, player_id");
+    const errors: string[] = [];
 
-    if (irError) throw irError;
+    // 1-3. ATOMIC: claim the proposed intakes (→'booked'), create one booking per proposed
+    // assignment, and confirm those assignments — all in ONE transaction inside the
+    // finalize_cycle_proposals RPC. All-or-nothing: a crash or a failing booking INSERT rolls the
+    // whole thing back (intakes stay 'proposed', no bookings) so the caller can safely re-run. This
+    // closes the previous orphan window where the claim flipped intakes to 'booked' first and a
+    // mid-way failure left them booked with no bookings + no way to re-finalize. Concurrency is
+    // unchanged: two finalizes of the same cycle contend on the claim UPDATE; the loser claims zero.
+    // Invoicing (step 5) deliberately stays out here — it is an HTTP invoke and is re-runnable.
+    const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc(
+      "finalize_cycle_proposals" as any,
+      { p_cycle_id: cycle_id } as any,
+    );
 
-    if (!intakeRequests || intakeRequests.length === 0) {
+    if (rpcError) throw rpcError;
+
+    const finalizeResult = (rpcResult ?? {}) as {
+      booked_intakes?: number;
+      bookings?: { id: string; player_id: string | null; guest_player_id: string | null; slot_id: string }[];
+    };
+    const bookedIntakes = finalizeResult.booked_intakes ?? 0;
+    // Bookings THIS run actually created — the invoicing step bills only these, never a blind
+    // re-query of every pending booking on the cycle's slots.
+    const createdBookings = finalizeResult.bookings ?? [];
+
+    if (bookedIntakes === 0) {
       return new Response(JSON.stringify({ booked: 0, bookings_created: 0, errors: [], message: "No proposed intake requests found" }), {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
-    const intakeIds = intakeRequests.map((ir: any) => ir.id);
-
-    // 2. Fetch all proposed_assignments for these intake requests
-    const { data: assignments, error: paError } = await supabaseAdmin
-      .from("proposed_assignments")
-      .select("id, intake_request_id, slot_id, trainer_id, status")
-      .in("intake_request_id", intakeIds)
-      .eq("status", "proposed");
-
-    if (paError) throw paError;
-
-    const errors: string[] = [];
-    // Bookings THIS run actually created — the invoicing step bills only these,
-    // never a blind re-query of every pending booking on the cycle's slots.
-    const createdBookings: {
-      id: string;
-      player_id: string | null;
-      guest_player_id: string | null;
-      slot_id: string;
-    }[] = [];
-
-    // 3. For each assignment, create a booking and confirm the assignment
-    for (const assignment of (assignments || [])) {
-      try {
-        const intakeRequest = intakeRequests.find((ir: any) => ir.id === assignment.intake_request_id);
-        if (!intakeRequest) continue;
-
-        // Create booking record
-        const bookingData: any = {
-          slot_id: assignment.slot_id,
-          status: "confirmed",
-          payment_status: "pending",
-        };
-
-        // Link to guest_player or registered player
-        if (intakeRequest.guest_player_id) {
-          bookingData.guest_player_id = intakeRequest.guest_player_id;
-        }
-        if (intakeRequest.player_id) {
-          bookingData.player_id = intakeRequest.player_id;
-        }
-
-        const { data: createdBooking, error: bookingError } = await supabaseAdmin
-          .from("bookings")
-          .insert(bookingData)
-          .select("id, player_id, guest_player_id, slot_id")
-          .single();
-
-        if (bookingError || !createdBooking) {
-          // Raw DB text stays in logs; the errors array is returned to the caller.
-          console.error(`Error creating booking for assignment ${assignment.id}:`, bookingError);
-          errors.push(`Booking failed for assignment ${assignment.id}`);
-          continue;
-        }
-
-        createdBookings.push(createdBooking);
-
-        // Update assignment status to confirmed
-        await supabaseAdmin
-          .from("proposed_assignments")
-          .update({ status: "confirmed" })
-          .eq("id", assignment.id);
-      } catch (err) {
-        console.error(`Error processing assignment ${assignment.id}:`, err);
-        errors.push(`Error processing assignment ${assignment.id}`);
-      }
-    }
-
     const bookingsCreated = createdBookings.length;
-    // intake_requests are already 'booked' from the atomic claim in step 1.
+    // intake_requests are already 'booked' from the atomic claim in the RPC.
 
     // 5. Auto-generate invoices for upfront payment cycles
     let invoicesCreated = 0;
@@ -306,11 +249,11 @@ serve(async (req: Request) => {
       console.log(`Skipping invoice generation: payment_timing=${paymentTiming}`);
     }
 
-    console.log(`Finalized: ${intakeRequests.length} intake requests, ${bookingsCreated} bookings created, ${invoicesCreated} invoices created`);
+    console.log(`Finalized: ${bookedIntakes} intake requests, ${bookingsCreated} bookings created, ${invoicesCreated} invoices created`);
 
     return new Response(
       JSON.stringify({
-        booked: intakeRequests.length,
+        booked: bookedIntakes,
         bookings_created: bookingsCreated,
         invoices_created: invoicesCreated,
         errors,
