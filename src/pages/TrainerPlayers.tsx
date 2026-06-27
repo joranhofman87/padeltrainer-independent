@@ -34,7 +34,7 @@ import { AddPlayerDialog } from '@/components/trainer/AddPlayerDialog';
 import { AddPlayerForm } from '@/components/trainer/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/trainer/ImportPlayersDialog';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
-import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { AppPage } from '@/components/ui/app-page';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { TableToolbar } from '@/components/ui/table-toolbar';
@@ -388,10 +388,10 @@ export default function TrainerPlayers() {
 
           {sortedPlayers.length === 0 ? (
             <Card className="overflow-hidden border-border/80 shadow-sm">
-              <DashboardEmptyState
+              <EmptyState variant="trainer"
                 icon={Users}
-                message={searchQuery ? t('players.noPlayersFound') : t('players.empty', 'No players yet')}
-                hint={searchQuery ? t('players.tryDifferentSearch') : t('players.emptyDescription', 'Players will appear here once they book with you.')}
+                title={searchQuery ? t('players.noPlayersFound') : t('players.empty', 'No players yet')}
+                description={searchQuery ? t('players.tryDifferentSearch') : t('players.emptyDescription', 'Players will appear here once they book with you.')}
               />
               {!searchQuery && (
                 <div className="flex justify-center border-t border-border/60 px-4 pb-8 pt-2">

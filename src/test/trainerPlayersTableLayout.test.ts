@@ -70,7 +70,8 @@ describe('TrainerPlayers table row layout', () => {
     expect(source).toContain('invalidateAllPlayerData');
   });
 
-  it('keeps DashboardEmptyState for empty list', () => {
-    expect(source).toContain('DashboardEmptyState');
+  it('uses the shared EmptyState (trainer variant) for the empty list', () => {
+    expect(source).toContain('EmptyState');
+    expect(source).toContain('variant="trainer"');
   });
 });

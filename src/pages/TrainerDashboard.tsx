@@ -27,7 +27,7 @@ import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceC
 import { getTrainerAcademy } from '@/lib/academy';
 import { useQuery } from '@tanstack/react-query';
 import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
-import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { DashboardSetupBanner } from '@/components/trainer/dashboard/DashboardSetupBanner';
 import { computeTrainerPaymentsSetupComplete } from '@/lib/trainerSetupPlan';
 import { getAcademyPaymentInfo } from '@/lib/academyTrainerPayments';
@@ -449,10 +449,10 @@ export default function TrainerDashboard() {
             {activityLoading ? (
               <ActivityListSkeleton />
             ) : recentBookings.length === 0 ? (
-              <DashboardEmptyState
+              <EmptyState variant="trainer"
                 icon={ClipboardList}
-                message={t('bookings.empty')}
-                hint={t('dashboard.emptyBookingsHint')}
+                title={t('bookings.empty')}
+                description={t('dashboard.emptyBookingsHint')}
               />
             ) : (
               <div>
@@ -500,7 +500,7 @@ export default function TrainerDashboard() {
             {activityLoading ? (
               <ActivityListSkeleton />
             ) : upcomingSlots.length === 0 ? (
-              <DashboardEmptyState icon={CalendarDays} message={t('availability.noSlots')} />
+              <EmptyState variant="trainer" icon={CalendarDays} title={t('availability.noSlots')} />
             ) : (
               <div>
                 {upcomingSlots.map((slot) => {

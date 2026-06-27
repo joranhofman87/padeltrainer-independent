@@ -1,0 +1,15 @@
+# Deploy the Cloudflare bot-prerender worker straight from this repo (no dashboard paste).
+#   npx wrangler login        # one-time, opens browser
+#   npx wrangler deploy       # deploys docs/cloudflare-worker.js
+#
+# keep_vars = true → wrangler will NOT touch the 5 environment variables already set in the
+# Cloudflare dashboard (ORIGIN_URL, RENDER/SITEMAP/LLMS_FUNCTION_URL, SUPABASE_ANON_KEY).
+name = "padeltrainer"
+main = "docs/cloudflare-worker.js"
+compatibility_date = "2024-11-01"
+keep_vars = true
+
+routes = [
+  { pattern = "padeltrainer.ai/*", zone_name = "padeltrainer.ai" },
+  { pattern = "www.padeltrainer.ai/*", zone_name = "padeltrainer.ai" },
+]
