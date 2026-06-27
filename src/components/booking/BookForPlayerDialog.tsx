@@ -65,7 +65,7 @@ import {
 import { Loader2, UserPlus, Clock, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
 import { AddPlayerDialog, GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { Badge } from "@/components/ui/badge";
-import { BookedPlayer } from "@/components/trainer/CalendarSlotCard";
+import { BookedPlayer } from "@/lib/slotTypes";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";

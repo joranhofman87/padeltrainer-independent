@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 import { AddPlayerDialog, GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
-import { BookedPlayer } from "@/components/trainer/CalendarSlotCard";
+import { BookedPlayer } from "@/lib/slotTypes";
 import { Check, Clock } from "lucide-react";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 

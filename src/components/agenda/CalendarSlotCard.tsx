@@ -20,9 +20,9 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
 
-// BookedPlayer + SlotWithBookings moved to @/lib/slotTypes (role-neutral, shared
-// by trainer/academy/club calendar surfaces). Re-exported here for back-compat
-// so existing `@/components/trainer/CalendarSlotCard` importers keep working.
+// BookedPlayer + SlotWithBookings live in @/lib/slotTypes (role-neutral, shared
+// by trainer/academy/club calendar surfaces). Re-exported here for convenience;
+// prefer importing the types directly from @/lib/slotTypes.
 // See docs/FRONTEND_ARCHITECTURE.md.
 export type { BookedPlayer, SlotWithBookings };
 

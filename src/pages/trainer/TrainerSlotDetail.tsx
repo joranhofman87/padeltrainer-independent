@@ -38,7 +38,7 @@ import { SlotEditForm, type SlotEditFormValues } from '@/components/slots/SlotEd
 import { applySlotEditToCycle } from '@/lib/cycles';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
-import { BookedPlayer } from '@/components/trainer/CalendarSlotCard';
+import { BookedPlayer } from '@/lib/slotTypes';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
 import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
 import SlotTierControlCard from '@/components/cycles/SlotTierControlCard';
