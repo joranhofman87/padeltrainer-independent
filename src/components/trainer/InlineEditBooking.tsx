@@ -4,7 +4,7 @@ import { Loader2, CreditCard, RefreshCw, Trash2, Info, X, Receipt } from "lucide
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
-import { cancelBookingsAndSync } from "@/lib/bookings";
+import { cancelBookingsAndSync, reconcileBookingInvoices } from "@/lib/bookings";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -127,6 +127,14 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       }
       const { error } = await supabase.from("bookings").update(updates).eq("id", booking.id);
       if (error) throw error;
+      // Reconcile any invoice that bills this booking to its bookings' real paid state
+      // (flips to paid only when fully covered) — the booking write alone left it stale.
+      try {
+        await reconcileBookingInvoices([booking.id]);
+      } catch (syncErr) {
+        logger.error("Invoice reconcile after booking edit failed", syncErr as Error, { component: "InlineEditBooking" });
+        toast({ title: tCommon("error"), description: t("bookings.invoiceSyncFailed", "The booking was saved, but a linked invoice could not be updated. Please check the invoice."), variant: "destructive" });
+      }
       toast({ title: t("bookings.bookingUpdated", "Booking updated") });
       onBookingUpdated();
       onClose();

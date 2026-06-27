@@ -63,6 +63,7 @@
     "markAsPaid": "Mark as paid",
     "markAsUnpaid": "Mark as unpaid",
     "paymentUpdated": "Payment status updated",
+    "invoiceSyncFailed": "Payment saved, but a linked invoice could not be updated. Please check the invoice.",
     "removePlayer": "Remove player",
     "removePlayerConfirm": "Are you sure you want to remove this player from the session?",
     "playerRemoved": "Player removed from session",
@@ -1519,6 +1520,7 @@
     "mollieConnectedDescription": "Your account is now set up to receive payments",
     "paymentRecorded": "Payment Recorded",
     "paymentRecordedDescription": "The booking has been marked as paid",
+    "invoiceSyncFailed": "Payment recorded, but a linked invoice could not be updated. Please check the invoice.",
     "markPaidError": "Could not record the payment. Please try again.",
     "settingsUpdateError": "Could not update your payment settings. Please try again."
   },

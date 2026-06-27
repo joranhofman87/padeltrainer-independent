@@ -40,6 +40,7 @@ import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
+import { reconcileBookingInvoices } from '@/lib/bookings';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -305,10 +306,18 @@ export default function TrainerEarnings() {
         description: getFriendlyErrorMessage(error, t('earningsPage.markPaidError', 'Could not record the payment. Please try again.')),
         variant: 'destructive',
       });
-    } else {
-      toast({ title: t('earningsPage.paymentRecorded'), description: t('earningsPage.paymentRecordedDescription') });
-      fetchEarnings();
+      return;
     }
+    // Reconcile the linked invoice to the booking's real paid state (paid only when
+    // fully covered) — recording the payment alone left the invoice stale.
+    try {
+      await reconcileBookingInvoices([bookingId]);
+    } catch (syncErr) {
+      logger.error('Invoice reconcile after mark-paid failed', syncErr as Error, { component: 'TrainerEarnings' });
+      toast({ title: t('common:error', 'Error'), description: t('earningsPage.invoiceSyncFailed', 'Payment recorded, but a linked invoice could not be updated. Please check the invoice.'), variant: 'destructive' });
+    }
+    toast({ title: t('earningsPage.paymentRecorded'), description: t('earningsPage.paymentRecordedDescription') });
+    fetchEarnings();
   };
 
   const handleCreateInvoice = () => {

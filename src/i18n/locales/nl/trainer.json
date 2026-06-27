@@ -63,6 +63,7 @@
     "markAsPaid": "Markeer als betaald",
     "markAsUnpaid": "Markeer als onbetaald",
     "paymentUpdated": "Betalingsstatus bijgewerkt",
+    "invoiceSyncFailed": "Betaling opgeslagen, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur.",
     "removePlayer": "Speler verwijderen",
     "removePlayerConfirm": "Weet je zeker dat je deze speler wilt verwijderen uit de sessie?",
     "playerRemoved": "Speler verwijderd uit sessie",
@@ -1522,6 +1523,7 @@
     "mollieConnectedDescription": "Je account is nu ingesteld om betalingen te ontvangen",
     "paymentRecorded": "Betaling geregistreerd",
     "paymentRecordedDescription": "De boeking is gemarkeerd als betaald",
+    "invoiceSyncFailed": "Betaling geregistreerd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur.",
     "markPaidError": "Kon de betaling niet opslaan. Probeer het opnieuw.",
     "settingsUpdateError": "Kon je betalingsinstellingen niet bijwerken. Probeer het opnieuw."
   },
