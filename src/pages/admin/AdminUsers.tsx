@@ -7,12 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AppPage } from "@/components/ui/app-page";
-import { PageHeader } from "@/components/ui/page-header";
+import { ListPageShell, ListPageState } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   Table,
   TableBody,
@@ -519,20 +517,12 @@ export default function AdminUsers() {
     }
   };
 
-  if (usersLoading) {
-    return (
-      <AppPage>
-        <ListPageSkeleton />
-      </AppPage>
-    );
-  }
-
   return (
-    <AppPage>
-      <PageHeader
-        title="User Management"
-        description="Manage users, roles, and access"
-      />
+    <ListPageShell
+      isLoading={usersLoading}
+      title="User Management"
+      description="Manage users, roles, and access"
+    >
 
       <TableToolbar
         searchPlaceholder="Search by name or email..."
@@ -564,11 +554,14 @@ export default function AdminUsers() {
         </Select>
       </TableToolbar>
 
-      {filteredUsers.length === 0 ? (
-        <Card className="overflow-hidden border-border/80 shadow-sm">
-          <EmptyState icon={Users} title="No users found" />
-        </Card>
-      ) : (
+      <ListPageState
+        isEmpty={filteredUsers.length === 0}
+        empty={
+          <Card className="overflow-hidden border-border/80 shadow-sm">
+            <EmptyState icon={Users} title="No users found" />
+          </Card>
+        }
+      >
         <DataTableCard>
           <Table className={compactDataTableClass}>
           <TableHeader>
@@ -697,7 +690,7 @@ export default function AdminUsers() {
           </TableBody>
         </Table>
         </DataTableCard>
-      )}
+      </ListPageState>
 
       {/* Footer */}
       <p className="text-sm text-muted-foreground">
@@ -1008,6 +1001,6 @@ export default function AdminUsers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppPage>
+    </ListPageShell>
   );
 }
