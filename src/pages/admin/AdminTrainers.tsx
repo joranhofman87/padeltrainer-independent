@@ -4,12 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { AppPage } from "@/components/ui/app-page";
-import { PageHeader } from "@/components/ui/page-header";
+import { ListPageShell } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   Table,
   TableBody,
@@ -151,26 +149,18 @@ export default function AdminTrainers() {
     }
   };
 
-  if (trainersLoading) {
-    return (
-      <AppPage>
-        <ListPageSkeleton />
-      </AppPage>
-    );
-  }
-
   return (
-    <AppPage>
-      <PageHeader
-        title="Trainer Management"
-        description="View and manage trainer subscriptions"
-        actions={
-          <Button onClick={() => setAddDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Trainer
-          </Button>
-        }
-      />
+    <ListPageShell
+      isLoading={trainersLoading}
+      title="Trainer Management"
+      description="View and manage trainer subscriptions"
+      actions={
+        <Button onClick={() => setAddDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Trainer
+        </Button>
+      }
+    >
 
       <TableToolbar
         searchPlaceholder="Search by name or email..."
@@ -351,6 +341,6 @@ export default function AdminTrainers() {
         onOpenChange={setAddDialogOpen}
         onSuccess={() => invalidateTrainers()}
       />
-    </AppPage>
+    </ListPageShell>
   );
 }
