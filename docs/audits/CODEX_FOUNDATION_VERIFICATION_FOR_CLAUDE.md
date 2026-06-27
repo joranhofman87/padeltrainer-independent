@@ -61,6 +61,153 @@ git pull --ff-only
 git checkout -b hardening/foundation-verification-fixes
 ```
 
+## Mandatory Operating Loop For Claude
+
+Do **not** treat this as a normal "make the requested edits" task. Treat it as a verification-and-hardening sprint.
+
+For every finding below, use this loop:
+
+1. **Verify the current state first.**
+   - Inspect the latest code.
+   - Confirm whether the finding is still true.
+   - If the finding is stale, document why with file references.
+
+2. **Classify the risk before editing.**
+   - P0: can corrupt bookings/payments/security or block production use.
+   - P1: must fix before inviting more academies/trainers.
+   - P2: cleanup/follow-up, not a blocker.
+
+3. **Make the smallest safe fix.**
+   - Prefer domain-service/RPC/edge-function ownership over UI-local patches.
+   - Avoid visual rewrites while fixing booking/payment/domain behavior.
+   - Avoid broad refactors unless required to make the invariant enforceable.
+
+4. **Add a regression test.**
+   - If a bug existed, add a test that fails on the old behavior.
+   - If the fix is a guardrail, add a test/lint/check that prevents reintroduction.
+   - If a test is impossible locally, document the reason and add the closest static or unit regression test.
+
+5. **Run targeted checks.**
+   - Run the narrow test/check for the changed area first.
+   - Then run the broader required checks listed later in this document.
+
+6. **Self-audit the final diff.**
+   - Re-read every changed file.
+   - Search for sibling role surfaces that should also change.
+   - Search for duplicated patterns introduced by the fix.
+   - Search for new direct writes to high-risk tables.
+   - Confirm docs match the code after the change.
+
+7. **Only then report completion.**
+   - Never say "done", "scale-ready", or "safe to merge" while required tests are failing or while a production deploy item is unknown.
+
+## Definition Of Done For This Claude Session
+
+This session is complete only when all of the following are true:
+
+- The public single-slot online booking issue is verified and fixed or convincingly disproved with code evidence.
+- The full Vitest suite is green, or any remaining failure is explicitly outside this branch and documented with evidence.
+- The mutation-boundary audit exists and high-risk direct writes are either fixed or deliberately allowlisted.
+- The deploy checklist accurately distinguishes "merged in repo" from "live in production".
+- Stale docs are corrected so future AI/devs do not redo completed work or follow outdated guidance.
+- All required checks have been run, or any missing local tool/runtime is documented clearly.
+- The final response includes remaining risks and the next phase.
+
+If any of these cannot be completed, stop and report the blocker instead of drifting into unrelated work.
+
+## Anti-Drift Execution Contract
+
+Previous prompts were not always completed fully. To prevent that, this session must produce explicit evidence artifacts, not just a narrative summary.
+
+Claude must follow this contract:
+
+1. **Create or update a worklog before editing code.**
+
+   Create:
+
+   ```txt
+   docs/audits/FOUNDATION_VERIFICATION_WORKLOG.md
+   ```
+
+   The worklog must contain this table and be updated as work progresses:
+
+   | Item | Status | Evidence | Files touched | Tests/checks | Remaining risk |
+   |---|---|---|---|---|---|
+   | Public single-slot online booking | not started / verifying / fixed / disproved / blocked | file refs + explanation | paths | commands | notes |
+   | Vitest red suite | not started / verifying / fixed / disproved / blocked | file refs + explanation | paths | commands | notes |
+   | Mutation-boundary audit | not started / verifying / fixed / disproved / blocked | file refs + explanation | paths | commands | notes |
+   | Deploy checklist ambiguity | not started / verifying / fixed / disproved / blocked | file refs + explanation | paths | commands | notes |
+   | Stale docs | not started / verifying / fixed / disproved / blocked | file refs + explanation | paths | commands | notes |
+
+2. **Do not mark an item fixed without evidence.**
+
+   Every "fixed" status requires:
+
+   - exact file references
+   - what changed
+   - which test/check proves it
+   - what would fail if the bug came back
+
+3. **Do not skip unresolved items silently.**
+
+   If an item is not fixed, it must be marked:
+
+   - `disproved`
+   - `blocked`
+   - `intentionally deferred`
+   - `still open/blocking`
+
+   A deferred item needs a clear reason and next action.
+
+4. **Do not move to broad roadmap work until P0/P1 verification is complete.**
+
+   The foundation roadmap is included for sequencing, but this session's first responsibility is to close or disprove the Codex findings. Do not start broad performance/observability/staging work while the public booking issue, red tests, mutation-boundary audit, deploy checklist ambiguity, or stale docs are unresolved.
+
+5. **Use checkpoint commits or clearly separated change groups.**
+
+   If committing, split work into reviewable commits:
+
+   - booking/payment correctness
+   - tests
+   - mutation-boundary audit/docs
+   - deploy checklist/docs
+
+   If not committing, still keep the final summary grouped this way.
+
+6. **Run a final "fresh reviewer" pass.**
+
+   Before the final response, pretend you are reviewing another engineer's PR. Look for:
+
+   - behavior changed without tests
+   - tests updated to match code instead of catching bugs
+   - docs claiming more than code proves
+   - direct dangerous writes left unexplained
+   - production/manual deploy ambiguity
+   - role-specific duplicate fixes that should be shared
+
+7. **Final response must include the worklog status table.**
+
+   The final response should summarize the worklog table. Do not provide only a prose summary.
+
+## Hard Stop Conditions
+
+Stop and report instead of continuing if any of these occur:
+
+- latest `main` does not match the expected repo or cannot be pulled
+- tests fail in a way that may be caused by your changes and you cannot fix them
+- the public booking/payment behavior is ambiguous and cannot be resolved from code
+- a required production credential/deploy action is needed
+- a migration may be destructive or unexpected
+- fixing one item requires a broad rewrite of unrelated booking/cycle/invoice behavior
+- you cannot prove the fix with a test or documented check
+
+When stopped, report:
+
+- exact blocker
+- evidence
+- safest next action
+- what was already changed, if anything
+
 ## Executive Summary From Codex
 
 Claude's previous work is directionally strong and much of the summary is true.
@@ -1046,6 +1193,75 @@ deno check supabase/functions/<function>/index.ts
 
 If touching migrations/DB behavior, run relevant PGlite rehearsal scripts and update `npm run db:rehearse:all` if adding a new invariant.
 
+## Mandatory Self-Audit Before Final Response
+
+Before writing the final response, Claude must perform and report this self-audit:
+
+### 1. Re-run The Original Findings
+
+Re-check each Codex finding:
+
+- public single-slot online booking double-insert/orphan-pending risk
+- red Vitest suite
+- direct dangerous booking/invoice mutations still in UI
+- deploy checklist/live-production ambiguity
+- stale frontend/domain docs
+
+For each one, report one of:
+
+- fixed
+- disproved
+- intentionally deferred
+- still open/blocking
+
+Include file references for each status.
+
+### 2. Search For Regression Patterns
+
+Run searches equivalent to these and report the result:
+
+```bash
+rg -n "from\\(['\\\"]bookings['\\\"]\\)\\.(insert|update|delete|upsert)|from\\(\\\"bookings\\\"\\)\\.(insert|update|delete|upsert)" src/pages src/components src/lib
+rg -n "from\\(['\\\"]invoices['\\\"]\\)\\.(insert|update|delete|upsert)|from\\(\\\"invoices\\\"\\)\\.(insert|update|delete|upsert)" src/pages src/components src/lib
+rg -n "@/components/trainer|from ['\\\"].*components/trainer" src/pages/academy src/components/academy src/pages/club src/components/club src/components/player || true
+rg -n "<Input[^>]*type=\\\"date\\\"|type=\\\"date\\\"" src --glob "*.tsx"
+```
+
+Do not necessarily make all results disappear. Instead:
+
+- high-risk direct writes must be moved or allowlisted
+- cross-role trainer imports should remain zero
+- raw date inputs should only exist inside the canonical `DateInputField`
+
+### 3. Verify Tests Prove The Fix
+
+For every code fix, identify the test that would fail if the bug came back.
+
+If there is no such test, add one or explicitly explain why the fix is not complete.
+
+### 4. Review The Final Diff Like A Reviewer
+
+Check:
+
+- no unrelated feature work
+- no accidental production/deploy changes
+- no broad visual redesign
+- no hardcoded academy/player/test data
+- no credentials or secrets
+- no new role-specific duplicate of a shared pattern
+- no new direct mutation path that bypasses the intended domain owner
+- no docs claiming production is deployed unless verified
+
+### 5. Produce A Merge Readiness Verdict
+
+Use exactly one of:
+
+- **Safe to merge**
+- **Not safe to merge yet**
+- **Technically safe but production deploy/manual step remains**
+
+Explain the verdict in one short paragraph.
+
 ## Final Response Requirements For Claude
 
 Report:
@@ -1095,4 +1311,3 @@ After that, continue the roadmap:
 5. run performance/index audit
 6. add observability and alerts
 7. add staging/deploy safety
-
