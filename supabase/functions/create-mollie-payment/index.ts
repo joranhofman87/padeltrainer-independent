@@ -167,7 +167,7 @@ serve(async (req) => {
     }
     logStep("Player profile found", { profileId: playerProfile.id });
 
-    const { slotId, amount: clientAmount, description, trainerId, redirectUrl, bookingIds } = await req.json();
+    const { slotId, amount: clientAmount, description, trainerId, redirectUrl, bookingIds, notes } = await req.json();
     logStep("Request payload", { slotId, trainerId, bookingIds, clientAmountIgnored: clientAmount });
 
     if (!slotId || !trainerId) {
@@ -562,11 +562,26 @@ serve(async (req) => {
       // Capacity-gated insert: the service-role client bypasses
       // enforce_booking_slot_tier, so route through book_slot_for_payment which
       // takes the per-slot advisory lock + capacity check before inserting.
-      const { data: newBookingId, error: bookingError } = await supabase.rpc("book_slot_for_payment", {
-        _slot_id: slotId,
-        _player_id: playerProfile.id,
-        _payment_amount: expectedAmount,
+      // The page no longer inserts the booking (Option A boundary), so forward
+      // the player's note here.
+      const baseArgs = { _slot_id: slotId, _player_id: playerProfile.id, _payment_amount: expectedAmount };
+      const noteVal = typeof notes === "string" && notes.trim() ? notes.trim() : null;
+      let { data: newBookingId, error: bookingError } = await supabase.rpc("book_slot_for_payment", {
+        ...baseArgs,
+        _notes: noteVal,
       });
+      // Deploy-gap resilience: if the migration adding `_notes` isn't applied yet,
+      // PostgREST can't find the 4-arg overload (PGRST202 / 42883). Retry the
+      // pre-notes 3-arg signature so booking creation never breaks on deploy order.
+      if (
+        bookingError &&
+        (bookingError.code === "PGRST202" ||
+          bookingError.code === "42883" ||
+          (bookingError.message || "").includes("book_slot_for_payment"))
+      ) {
+        logStep("book_slot_for_payment _notes overload missing — retrying 3-arg", {});
+        ({ data: newBookingId, error: bookingError } = await supabase.rpc("book_slot_for_payment", baseArgs));
+      }
 
       if (bookingError) {
         if ((bookingError.message || "").includes("slot_full")) {
