@@ -27,7 +27,7 @@ import {
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { TrainerIconWell } from '@/components/trainer/shell/TrainerIconWell';
 import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
-import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { EarningsBookingRow } from '@/components/trainer/earnings/EarningsBookingRow';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -710,10 +710,10 @@ export default function TrainerEarnings() {
           <TabsContent value="pending" className="space-y-3">
             {pendingPayments.length === 0 ? (
               <Card className="overflow-hidden border-border/80 shadow-sm">
-                <DashboardEmptyState
+                <EmptyState variant="trainer"
                   icon={CheckCircle2}
-                  message={t('earningsPage.allCaughtUp')}
-                  hint={t('earningsPage.noPendingPayments')}
+                  title={t('earningsPage.allCaughtUp')}
+                  description={t('earningsPage.noPendingPayments')}
                 />
               </Card>
             ) : (
@@ -779,10 +779,10 @@ export default function TrainerEarnings() {
           <TabsContent value="history" className="space-y-3">
             {completedBookings.filter(b => b.payment_status === 'paid').length === 0 ? (
               <Card className="overflow-hidden border-border/80 shadow-sm">
-                <DashboardEmptyState
+                <EmptyState variant="trainer"
                   icon={Euro}
-                  message={t('earningsPage.noPaymentHistory')}
-                  hint={t('earningsPage.completedPaymentsAppear')}
+                  title={t('earningsPage.noPaymentHistory')}
+                  description={t('earningsPage.completedPaymentsAppear')}
                 />
               </Card>
             ) : (

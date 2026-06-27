@@ -13,7 +13,7 @@ import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import CycleCard from '@/components/cycles/CycleCard';
 import { logger } from '@/lib/logger';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
-import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function TrainerCycles() {
   const { t } = useTranslation('cycles');
@@ -118,10 +118,10 @@ export default function TrainerCycles() {
 
       {cycles.length === 0 ? (
         <div className="rounded-lg border border-border/80 bg-card shadow-sm">
-          <DashboardEmptyState
+          <EmptyState variant="trainer"
             icon={CalendarDays}
-            message={t('noRegistrations', 'No registrations yet')}
-            hint={t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
+            title={t('noRegistrations', 'No registrations yet')}
+            description={t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
           />
           <div className="flex justify-center border-t border-border/60 px-4 pb-8 pt-2">
             <Button

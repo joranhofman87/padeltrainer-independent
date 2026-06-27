@@ -15,7 +15,7 @@ import { List, CalendarDays, AlertCircle, Download, UserPlus } from 'lucide-reac
 import ProposalWorkflowSteps from '@/components/cycles/ProposalWorkflowSteps';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
-import { DashboardEmptyState } from '@/components/trainer/dashboard/DashboardEmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { 
   generateProposals,
@@ -412,10 +412,10 @@ export default function TrainerIntakeRequests() {
       {viewMode === 'list' ? (
         filteredRequests.length === 0 ? (
           <Card className="overflow-hidden border-border/80 shadow-sm">
-            <DashboardEmptyState
+            <EmptyState variant="trainer"
               icon={List}
-              message={t('intakeRequests.noRequests')}
-              hint={t('intakeRequests.noRequestsDescription')}
+              title={t('intakeRequests.noRequests')}
+              description={t('intakeRequests.noRequestsDescription')}
             />
           </Card>
         ) : (
