@@ -11,7 +11,7 @@
  */
 import type { PGlite } from '@electric-sql/pglite';
 
-type FilterKind = 'eq' | 'in' | 'overlaps';
+type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps';
 interface Filter { kind: FilterKind; col: string; val: unknown; }
 interface SupaResult<T> { data: T; error: { message: string } | null; }
 
@@ -38,6 +38,7 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
   select(columns = '*') { this.columns = columns; return this; }
   update(data: Record<string, unknown>) { this.op = 'update'; this.updateData = data; return this; }
   eq(col: string, val: unknown) { this.filters.push({ kind: 'eq', col, val }); return this; }
+  neq(col: string, val: unknown) { this.filters.push({ kind: 'neq', col, val }); return this; }
   in(col: string, val: unknown[]) { this.filters.push({ kind: 'in', col, val }); return this; }
   overlaps(col: string, val: unknown[]) { this.filters.push({ kind: 'overlaps', col, val }); return this; }
   maybeSingle() { this.singleRow = true; return this.run(); }
@@ -56,6 +57,8 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
       params.push(f.kind === 'overlaps' || f.kind === 'in' ? f.val : f.val);
       const p = `$${params.length}`;
       if (f.kind === 'eq') return `${f.col} = ${p}`;
+      // `<>` matches PostgREST .neq(): NULL-unsafe, so a NULL column does NOT pass the filter.
+      if (f.kind === 'neq') return `${f.col} <> ${p}`;
       if (f.kind === 'in') return `${f.col} = ANY(${p})`;
       return `${f.col} && ${p}`; // overlaps
     });

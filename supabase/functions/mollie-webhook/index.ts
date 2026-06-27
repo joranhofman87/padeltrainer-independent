@@ -9,6 +9,7 @@ import {
 } from "../_shared/mollie-webhook-metadata.ts";
 import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
 import {
+  applyBookingPaymentWriteback,
   evaluateInvoicePayment,
   shouldRunBookingPaidSideEffects,
 } from "../_shared/mollie-webhook-payment.ts";
@@ -630,33 +631,25 @@ serve(async (req) => {
       updateData.paid_at = new Date().toISOString();
     }
 
-    let bookingUpdate = supabase
-      .from("bookings")
-      .update(updateData)
-      .in("id", bookingIds);
-
-    // Never un-confirm a booking that's already PAID just because a stale Mollie
-    // payment later failed/expired/cancelled (e.g. the player paid out-of-band
-    // in cash after starting an online payment).
-    // For the paid transition the same predicate doubles as the atomic
-    // idempotency claim (E-15): only rows still unpaid are transitioned, and
-    // the returned rows tell us whether THIS request performed the transition
-    // — duplicate concurrent deliveries (or a verify-mollie-payment race)
-    // then cannot double-run the side effects below.
-    if (payment.status === "paid" || bookingStatus === "cancelled") {
-      bookingUpdate = bookingUpdate.neq("payment_status", "paid");
-    }
-
-    const { data: transitionedRows, error: updateError } = await bookingUpdate.select("id");
-
-    if (updateError) {
-      logStep("Failed to update bookings", { error: updateError.message });
-      throw new Error(`Failed to update bookings: ${updateError.message}`);
-    }
+    // Never un-confirm or downgrade a booking that's already PAID — for ANY
+    // webhook status. A stale `open`/`pending` delivery arriving after the paid
+    // one must not reset the booking to pending, and a later failed/expired
+    // delivery must not cancel an out-of-band (cash) paid booking. For the paid
+    // transition the same `payment_status != 'paid'` predicate doubles as the
+    // atomic idempotency claim (E-15): only rows still unpaid are transitioned,
+    // and the returned rows tell us whether THIS request performed the
+    // transition — duplicate concurrent deliveries (or a verify-mollie-payment
+    // race) then cannot double-run the side effects below. The guard now lives
+    // in applyBookingPaymentWriteback so it is unconditional + unit-tested.
+    const transitionedRows = await applyBookingPaymentWriteback(
+      supabase,
+      bookingIds,
+      updateData,
+    );
 
     logStep("Bookings updated successfully", {
       count: bookingIds.length,
-      transitioned: transitionedRows?.length ?? 0,
+      transitioned: transitionedRows.length,
     });
 
     // If payment is paid, mark any matching priority claim as 'claimed'
