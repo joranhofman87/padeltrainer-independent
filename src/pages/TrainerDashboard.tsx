@@ -22,7 +22,7 @@ import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { getTrainerShortUrl } from '@/lib/domains';
-import { UnpaidBookingsCard } from '@/components/trainer/UnpaidBookingsCard';
+import { UnpaidBookingsCard } from '@/components/dashboard/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
 import { useQuery } from '@tanstack/react-query';

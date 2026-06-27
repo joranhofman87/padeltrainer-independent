@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BulkCreateContent } from "@/components/trainer/AddSlotDialog";
+import { BulkCreateContent } from "@/components/slots/AddSlotDialog";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { AcademyCreateSlotPrerequisites } from "@/components/academy/AcademyCreateSlotPrerequisites";
 import { useEffect, useState } from "react";

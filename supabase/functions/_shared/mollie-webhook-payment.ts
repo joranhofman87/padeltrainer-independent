@@ -70,6 +70,7 @@ export function shouldRunBookingPaidSideEffects(
 /** The minimal Supabase surface the write-back helpers need — so they can be unit-tested against a
  * PGlite-backed client without standing up the edge runtime. */
 // deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberate test-seam: the minimal Supabase write surface, left untyped so a PGlite client can stand in
 export interface MollieWriteClient { from(table: string): any }
 
 /**

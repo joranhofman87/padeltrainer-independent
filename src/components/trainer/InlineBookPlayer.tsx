@@ -34,7 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
-import { AddPlayerDialog, GuestPlayer } from "./AddPlayerDialog";
+import { AddPlayerDialog, GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
 import { BookedPlayer } from "./CalendarSlotCard";

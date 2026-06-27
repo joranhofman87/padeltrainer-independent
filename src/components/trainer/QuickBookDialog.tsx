@@ -34,7 +34,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { GuestPlayer } from "./AddPlayerDialog";
+import { GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { cn } from "@/lib/utils";
 import { calculateSlotPrice, applyDiscount, formatPrice } from "@/lib/pricing";
 
