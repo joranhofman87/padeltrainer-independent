@@ -7,8 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { sendBookingCancellation } from "@/lib/email";
 import { logger } from "@/lib/logger";
-import { recalculateInvoiceAfterRemoval } from "@/lib/invoiceSync";
-import { filterDeletableSlotIds } from "@/lib/slotDeleteGuard";
+import { recalculateInvoiceAfterRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
+import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -295,21 +295,24 @@ export function DeleteSlotDialog({
             await handleInvoiceUpdates(cancelledBookingIds);
           }
 
-          // SAFETY: bookings.slot_id is ON DELETE CASCADE. Only delete slots with no active booking
-          // left (any that still hold an occupying booking — incl. pending_approval, or one that
-          // landed concurrently — are kept rather than silently cascade-deleted).
-          const deletableSlotIds = await filterDeletableSlotIds(slotIds);
-          if (deletableSlotIds.length > 0) {
-            const { error: deleteError } = await supabase
-              .from("availability_slots")
-              .delete()
-              .in("id", deletableSlotIds);
-            if (deleteError) throw deleteError;
+          // Atomic delete via the canonical RPC (same one the cycle-detail view + slot detail use):
+          // it locks each candidate slot + its bookings FOR UPDATE, deletes only the empty ones, and
+          // KEEPS any that still hold an occupying booking (incl. pending_approval, or one that raced
+          // in after the cancel above) — closing the check-then-delete TOCTOU vs the slot_id ON DELETE
+          // CASCADE that would otherwise destroy that booking.
+          const res = await applySlotDeleteToCycle(slot.cyclus_id, slotIds);
+          // The RPC stamps split_count but not invoice line items — rebuild them for the new divisor.
+          if (res.deletedCount > 0) {
+            try {
+              await syncSplitCountForCycle(slot.cyclus_id);
+            } catch (e) {
+              logger.error("Failed to sync split count after cyclus delete", e instanceof Error ? e : new Error(String(e)), { component: 'DeleteSlotDialog' });
+            }
           }
 
           toast({
             title: t("calendar.cyclusDeleted", "Cyclus deleted"),
-            description: t("calendar.cyclusDeletedDescription", "Deleted {{count}} slots and cancelled associated bookings", { count: deletableSlotIds.length }),
+            description: t("calendar.cyclusDeletedDescription", "Deleted {{count}} slots and cancelled associated bookings", { count: res.deletedCount }),
           });
         }
       } else {
@@ -376,10 +379,12 @@ export function DeleteSlotDialog({
           await handleInvoiceUpdates(cancelledBookingIds);
         }
 
-        // SAFETY: refuse to cascade-delete a slot that still holds an active booking (e.g. a
-        // pending_approval one the cancel step above doesn't cover, or one that landed concurrently).
-        const deletable = await filterDeletableSlotIds([slot.id]);
-        if (deletable.length === 0) {
+        // Atomic delete via the canonical RPC (locks the slot + its bookings FOR UPDATE). A slot that
+        // still holds an active booking (e.g. a pending_approval one the cancel above doesn't cover,
+        // or one that raced in) is KEPT, not cascade-deleted — surfaced as deletedCount === 0.
+        const res = await applySlotDeleteToCycle(slot.cyclus_id ?? null, [slot.id]);
+        if (res.protectedCount > 0) {
+          // A booking protected it (deletedCount 0 + protectedCount 0 = already gone → treat as done).
           toast({
             title: t("calendar.slotHasBooking", "Can't delete this slot"),
             description: t("calendar.slotHasBookingDescription", "It still has an active booking. Cancel the booking first, then delete."),
@@ -388,12 +393,14 @@ export function DeleteSlotDialog({
           setIsDeleting(false);
           return;
         }
-        const { error } = await supabase
-          .from("availability_slots")
-          .delete()
-          .eq("id", slot.id);
-
-        if (error) throw error;
+        // Deleting a session from a real cyclus restamps split_count — rebuild the invoice line items.
+        if (slot.cyclus_id) {
+          try {
+            await syncSplitCountForCycle(slot.cyclus_id);
+          } catch (e) {
+            logger.error("Failed to sync split count after slot delete", e instanceof Error ? e : new Error(String(e)), { component: 'DeleteSlotDialog' });
+          }
+        }
 
         toast({
           title: t("calendar.slotDeleted", "Slot deleted"),
