@@ -36,7 +36,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { TrainerCalendarGrid } from "@/components/agenda/TrainerCalendarGrid";
 import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/AgendaWeekByTrainer";
 import AgendaMonth from "@/components/agenda/AgendaMonth";
-import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
+import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
 import { BookForPlayerDialog } from "@/components/booking/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 

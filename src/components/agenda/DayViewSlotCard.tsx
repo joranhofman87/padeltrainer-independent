@@ -35,7 +35,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useTranslation } from "react-i18next";
-import { SlotWithBookings, BookedPlayer } from "./CalendarSlotCard";
+import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
 
 type SlotStatus = "free" | "partial" | "full" | "past" | "private";
 
