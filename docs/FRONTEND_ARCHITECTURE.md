@@ -105,76 +105,67 @@ Practical checks:
 - If you're duplicating JSX/logic into a second role, stop and lift it to a neutral
   folder instead (that's the whole point of the layering).
 
-## Known architecture debt (tracked, not fixed here)
+## Known architecture debt (tracked)
 
-These are real and intentionally **not** addressed in the doc/guardrail PR — they're
-larger refactors. The guardrail freezes them (no *new* instances) and they burn down
-over time via `npm run lint:prune`.
-
-1. **Academy/club reuse trainer components directly** — the existing cross-role
-   imports, baselined in `eslint-suppressions.json` (`no-restricted-imports`):
-   - `pages/academy/AcademyCalendar` → trainer `AddSlotDialog`, `BookForPlayerDialog`, `DeleteSlotDialog`
-   - `pages/academy/AcademyCreateSlot` → trainer `AddSlotDialog`, `SlotLocationPicker`
-   - `pages/academy/AcademyDashboard` → trainer `UnpaidBookingsCard`, `dashboard/DashboardActivityList`
-   - ~~`pages/academy/AcademyInvoices` → trainer `InvoiceEmailDialog`~~ ✅ resolved (slice 1 — `InvoiceEmailDialog` moved to `components/invoices/`)
-   - `pages/academy/AcademyPlayers` → trainer `AddPlayerDialog`, `AddPlayerForm`, `ImportPlayersDialog`
-   - `pages/academy/AcademySlotDetail` → trainer `InlineBookPlayer`, `InlineEditBooking`
-   - `pages/club/ClubCalendar` → trainer `TrainerCalendarGrid`
-
-   **Burn-down:** move each of these into a neutral folder (most are slot/booking/player
-   dialogs → `components/slots`, `components/booking`, or `components/players`), repoint
-   trainer + academy/club importers, then `npm run lint:prune` to shrink the baseline.
-2. **Parallel role variants that should share a base** — `TrainerPlayerDetailsCard`
-   vs `AcademyPlayerDetailsCard`; `TrainerInvoiceSettingsCard` vs
-   `AcademyInvoiceSettingsCard` (a shared `InvoiceSettingsCardBase` already exists —
-   finish routing both through it); `TrainerPageHeader` vs the generic `PageHeader`.
+1. ~~**Academy/club reuse trainer components directly**~~ ✅ **RESOLVED (2026-06).** The
+   cross-role `no-restricted-imports` baseline is now **0** — every academy/club/player
+   page is structurally barred from importing `components/trainer`, and the guardrail
+   keeps it there. The shared pieces were relocated to neutral folders (move-as-is):
+   player dialogs (`AddPlayerDialog`/`AddPlayerForm`/`ImportPlayersDialog`) →
+   `components/players`; `UnpaidBookingsCard` → `components/dashboard`; `AddSlotDialog`
+   → `components/slots`; `BookForPlayerDialog`/`InlineBookPlayer`/`InlineEditBooking` →
+   `components/booking`; `TrainerCalendarGrid` + `CalendarSlotCard` + `DayViewSlotCard`
+   → `components/agenda`; `InvoiceEmailDialog` → `components/invoices`. Those neutral
+   folders import **no** `components/trainer` anything.
+2. **Parallel role variants that should share a base** — ~~`TrainerPlayerDetailsCard`
+   vs `AcademyPlayerDetailsCard`~~ ✅ now share `components/players/PlayerDetailsCard`
+   (+ `PlayerRemoveCard`), thin role wrappers injecting the role-specific writer/copy.
+   **Still split:** `TrainerInvoiceSettingsCard` vs `AcademyInvoiceSettingsCard` (a
+   shared `InvoiceSettingsCardBase` exists — finish routing both through it);
+   `TrainerPageHeader` vs the generic `PageHeader`.
 3. **Fat pages** — `EditProfile` (~1140 lines), `AcademyPlayers` (~1120),
    `TrainerPlayerDetail` (~1000) inline large amounts of JSX/logic that should be
    extracted into components. Extract opportunistically when you touch them.
 
-## Consolidation roadmap (burning down the cross-role debt)
+> **Other guards (besides role isolation):** date fields must use
+> `components/ui/date-input-field` (`DateInputField`), never a raw `<Input type="date">`
+> — enforced by a `no-restricted-syntax` lint rule. List/table pages should use
+> `components/ui/list-page-shell` (`ListPageShell` + `ListPageState`) — see
+> UI_COMPONENT_STANDARDS.
 
-How we turn debt item #1 into shared components, one focused PR at a time.
+## Relocating a shared component to a neutral folder (the recipe)
 
-**Canonical role = academy.** Academy is the most-developed and most-tested surface,
-so its behaviour is the source of truth. For the debt-#1 components this is *free*:
-academy doesn't have its own copy — it already renders trainer's component — so
-**relocating the component to a neutral folder is behaviour-preserving for academy**
-(only the import path changes). Trainer renders the same component too, so it's
-unchanged as well.
+Debt #1 was burned all the way down with this recipe (baseline now 0). Reuse it for any
+future relocation, and for finishing debt #2.
+
+**Canonical role = academy.** Academy is the most-developed and most-tested surface, so
+its behaviour is the source of truth. For a component academy already renders out of
+`components/trainer`, **relocating it to a neutral folder is behaviour-preserving for
+academy** (only the import path changes); trainer renders the same component, unchanged.
 
 **Rules for each relocation slice**
-- **Relocate as-is.** `git mv` the component to a neutral folder and repoint
-  importers — do **not** generalise/rename in the same step (that's what risks
-  changing academy). Generalisation, if ever needed, is a separate later PR.
-- Move a component **with its cluster**: if it relatively-imports siblings, those
-  move together (or it stays put until they can).
-- After the move: `npm run lint` → `npm run lint:prune` (shrinks the baseline) →
-  `npm run build` → `npx vitest run` → confirm `tsc` adds no new errors vs `main` →
-  `grep` that no `@/components/trainer` imports remain in the moved files' consumers.
+- **Relocate as-is.** `git mv` the component to a neutral folder and repoint importers —
+  do **not** generalise/rename in the same step (that's what risks changing academy).
+  Generalisation, if ever needed, is a separate later PR.
+- Move a component **with its cluster**: if it relatively-imports siblings, those move
+  together. Type-only deps can instead repoint to the canonical type module (e.g.
+  `BookedPlayer`/`SlotWithBookings` → `@/lib/slotTypes`), decoupling the consumer from
+  the component entirely.
+- A neutral folder is **unrestricted** by the role-isolation rule, so a moved component
+  importing back into `components/trainer` won't fail lint — but it's a residual
+  coupling. Move its trainer-side deps too (or repoint type-only ones to a `lib` module)
+  so the neutral folder is genuinely trainer-free.
+- After the move: `git add -A`, then **verify `git diff --cached --stat` shows the
+  importer repoints — not just the `git mv` rename.** A partial `git add` that lists the
+  pre-move path aborts and stages only the rename; the build passes locally (the repoints
+  are still in your working tree) but `main` breaks. Then `npm run lint` →
+  `npm run lint:prune` → `npm run build` → `npx tsc --noEmit` → `grep` that no
+  `@/components/trainer` imports remain in the moved files' consumers.
 
-**Sequenced slices** (easiest/most-isolated first):
-
-1. **Self-contained singles** (no sibling deps — pure single-file moves):
-   - `InvoiceEmailDialog` → `components/invoices/` — clears `AcademyInvoices` fully. ✅ **done (slice 1)**
-   - `SlotLocationPicker` → `components/slots/`
-   - `UnpaidBookingsCard` → `components/booking/`
-   - `dashboard/DashboardActivityList` → a shared dashboard home — clears `AcademyDashboard` (with `UnpaidBookingsCard`)
-2. **Player-dialog cluster** → `components/players/`: `AddPlayerDialog` +
-   `AddPlayerForm` (circular) + `ImportPlayersDialog`. Higher churn — `AddPlayerDialog`
-   is a ~15-importer hub, including the **neutral** `InvoiceCustomerSection` (so this
-   also fixes a neutral→trainer leak). Move the cluster together. Clears `AcademyPlayers`.
-3. **Slot/booking cluster** (largest) → `components/slots/` + `components/booking/`:
-   the slot dialogs (`AddSlotDialog`, `DeleteSlotDialog`, `BookForPlayerDialog`,
-   `InlineBookPlayer`, `InlineEditBooking`) and `TrainerCalendarGrid` all depend on
-   `CalendarSlotCard` (447 lines) + `DayViewSlotCard` + `GuestPlayerSlotCombobox`, so
-   those hubs move with them as one cluster. Clears `AcademyCalendar`,
-   `AcademyCreateSlot`, `AcademySlotDetail`, `ClubCalendar`.
-4. **Divergent variants** (debt #2 — academy canonical, **trainer converges → trainer
-   changes, needs trainer-side testing**): `Trainer/AcademyPlayerDetailsCard`,
-   `Trainer/AcademyInvoiceSettingsCard` (finish routing both through the existing
-   `InvoiceSettingsCardBase`). `AcademySidebar`/`AcademyLayout` vs the trainer
-   equivalents are *legitimately* role-specific chrome — leave them split.
+**Remaining (debt #2):** route `Trainer/AcademyInvoiceSettingsCard` through the existing
+`InvoiceSettingsCardBase` (academy canonical → trainer converges → needs trainer-side
+testing). `AcademySidebar`/`AcademyLayout` vs the trainer equivalents are *legitimately*
+role-specific chrome — leave them split.
 
 ## See also
 
