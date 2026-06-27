@@ -517,7 +517,11 @@ Deno.serve(async (req) => {
     // email matches the invoice and reflects academy edits immediately.
     if (RESEND_API_KEY && cycleData && intakeData) {
       try {
-        await sendRegistrationConfirmationEmail(adminClient, cycleData, intakeData, {
+        // Build the email from the SAME pricing source the invoice mint used (formForPayment =
+        // the canonical registration form when present), so the quoted price/lesson-count can never
+        // diverge from the invoice. The cycle still supplies enrollment_deadline + location_id, which
+        // formForPayment omits. When there's no registration, formForPayment === cycleData (no-op).
+        await sendRegistrationConfirmationEmail(adminClient, { ...cycleData, ...(formForPayment ?? {}) }, intakeData, {
           payUrl: emailPayUrl,
           language,
         });
