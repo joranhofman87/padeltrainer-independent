@@ -11,7 +11,7 @@ import { getTrainerProfile } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncSplitCountForCycle } from "@/lib/invoiceSync";
-import { cancelBookingsAndSync } from "@/lib/bookings";
+import { cancelBookingsAndSync, setBookingPaymentAndReconcile } from "@/lib/bookings";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
@@ -909,23 +909,25 @@ export default function TrainerScheduleOverview() {
     }
   };
 
-  // Toggle payment
+  // Toggle payment — route through the canonical facade so the linked invoice is
+  // reconciled (marked paid when fully covered / reverted when not), never left stale.
   const handleTogglePayment = async (bookingId: string, currentStatus: string) => {
     setTogglingPayment(bookingId);
-    const newStatus = currentStatus === "paid" ? "pending" : "paid";
-    const updates: Record<string, unknown> = {
-      payment_status: newStatus,
-      paid_at: newStatus === "paid" ? new Date().toISOString() : null,
-      paid_externally: newStatus === "paid" ? true : false,
-    };
-    const { error } = await supabase.from("bookings").update(updates).eq("id", bookingId);
+    const { bookingError, invoiceSyncError } = await setBookingPaymentAndReconcile(
+      bookingId,
+      currentStatus !== "paid",
+    );
     setTogglingPayment(null);
-    if (error) {
-      toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
+    if (bookingError) {
+      toast({ title: "Error", description: getFriendlyErrorMessage(bookingError, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
+      return;
+    }
+    if (invoiceSyncError) {
+      toast({ title: "Error", description: t("scheduleOverview.invoiceSyncFailed", "Payment saved, but a linked invoice could not be updated. Please check the invoice."), variant: "destructive" });
     } else {
       toast({ title: t("scheduleOverview.paymentUpdated", "Payment status updated") });
-      invalidate();
     }
+    invalidate();
   };
 
   // Remove player
