@@ -37,7 +37,7 @@ import { TrainerCalendarGrid } from "@/components/trainer/TrainerCalendarGrid";
 import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/AgendaWeekByTrainer";
 import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { SlotWithBookings, BookedPlayer } from "@/components/trainer/CalendarSlotCard";
-import { BookForPlayerDialog } from "@/components/trainer/BookForPlayerDialog";
+import { BookForPlayerDialog } from "@/components/booking/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 
 import { supabase } from "@/lib/supabaseClient";

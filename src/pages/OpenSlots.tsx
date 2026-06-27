@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { BookForPlayerDialog } from '@/components/trainer/BookForPlayerDialog';
+import { BookForPlayerDialog } from '@/components/booking/BookForPlayerDialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 
