@@ -509,12 +509,14 @@ export default function BookLesson() {
           setBooking(false);
           return;
         }
-        const { error } = await supabase.from('bookings').insert({
-          player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'pending', payment_status: 'pending',
-        }).select().single();
-        if (error) throw error;
+        // Mutation boundary (Option A): do NOT insert the booking here. The
+        // capacity-locked create-mollie-payment edge function owns online
+        // single-slot booking creation via book_slot_for_payment — passing no
+        // bookingIds tells it to create exactly one booking under the per-slot
+        // advisory lock. Inserting here too would double-insert (the previous
+        // P0). `notes` is forwarded so the edge function/RPC can persist it.
         const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
-          body: { slotId: selectedSlot.id, amount: price, description: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), trainerId: trainer.id },
+          body: { slotId: selectedSlot.id, amount: price, description: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), trainerId: trainer.id, notes: notes || null },
         });
         if (paymentError) throw paymentError;
         if (paymentData?.checkoutUrl) { window.location.href = paymentData.checkoutUrl; } else { throw new Error('No checkout URL received'); }

@@ -5,6 +5,23 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 
 > ✅ **All items below were deployed by the owner on 2026-06-24.** Kept for the audit trail.
 
+## 🔴 P0 — single-slot online booking double-insert (PR #183, 2026-06-27)
+
+Codex foundation-verification Finding 1. The **frontend** half (the page no longer
+inserts the booking) auto-deploys via Vercel and stops the double-insert immediately.
+These two restore the player's `notes` on the edge-created booking. The edge function
+falls back to the 3-arg RPC if the migration isn't applied yet, so order is forgiving —
+but **apply the migration first** for cleanliness:
+
+1. [ ] Migration **`20260701130000_book_slot_for_payment_notes.sql`** — adds an optional
+  `_notes` param to `book_slot_for_payment` (drops the old 3-arg, creates a 4-arg with
+  `DEFAULT NULL`, so legacy 3-arg calls still resolve). Additive, non-destructive.
+2. [ ] Redeploy **create-mollie-payment** — forwards the player's `notes` into the RPC;
+  also deploy-gap-resilient (retries the 3-arg call on `PGRST202`/`42883`).
+
+Verify after: a public single-slot online booking creates **exactly one** pending booking
+(not two), and the note appears on it.
+
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
