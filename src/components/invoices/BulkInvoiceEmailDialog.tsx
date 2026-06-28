@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Send, Eye, Mail, Info } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
+import { markInvoicesSent } from "@/lib/invoices";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { InvoiceEmailMessageField } from "./InvoiceEmailMessageField";
@@ -108,9 +109,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
           } else if (data?.success) {
             sent++;
             if (mark) {
-              await supabase.from("invoices")
-                .update({ status: "sent", sent_at: new Date().toISOString() })
-                .eq("id", id);
+              await markInvoicesSent([id]);
             }
           } else {
             failed++;
