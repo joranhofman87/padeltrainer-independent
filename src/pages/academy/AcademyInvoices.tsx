@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
+import { deleteOrCancelInvoices } from "@/lib/invoices";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -566,21 +567,20 @@ export default function AcademyInvoices() {
 
   const handleBulkDelete = async () => {
     setBulkRunning(true);
-    const drafts = selectedInvoices.filter((i) => i.status === "draft").map((i) => i.id);
-    const others = selectedInvoices.filter((i) => i.status !== "draft").map((i) => i.id);
+    // Drafts hard-deleted, everything else soft-cancelled — owned by the facade
+    // so a paid invoice can never be hard-deleted in a bulk action.
+    const { deletedIds, cancelledIds, deleteError, cancelError } = await deleteOrCancelInvoices(selectedInvoices);
     let ok = 0, fail = 0;
-    if (drafts.length) {
-      const { error } = await supabase.from("invoices").delete().in("id", drafts);
-      if (error) fail += drafts.length; else ok += drafts.length;
+    if (deletedIds.length) {
+      if (deleteError) fail += deletedIds.length; else ok += deletedIds.length;
     }
-    if (others.length) {
-      const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
-      if (error) fail += others.length;
+    if (cancelledIds.length) {
+      if (cancelError) fail += cancelledIds.length;
       else {
-        ok += others.length;
+        ok += cancelledIds.length;
         // record WHY they were cancelled (best-effort; never blocks the action)
         const reason = bulkCancelReason.trim();
-        if (reason) await Promise.all(others.map((id) => annotateInvoiceStatusReason(id, reason).catch(() => {})));
+        if (reason) await Promise.all(cancelledIds.map((id) => annotateInvoiceStatusReason(id, reason).catch(() => {})));
       }
     }
     setBulkRunning(false);

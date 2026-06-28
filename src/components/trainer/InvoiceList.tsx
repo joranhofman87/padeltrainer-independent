@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
@@ -318,53 +319,33 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     setActionLoading(null);
   };
 
+  // Draft → hard-delete; anything else → soft-cancel (audit trail). The facade
+  // owns that partition so a paid invoice can never be hard-deleted here.
+  const removeInvoice = async (invoice: Invoice) => {
+    const { deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    if (deleteError || cancelError) {
+      toast({
+        title: 'Fout',
+        description: invoice.status === 'draft' ? 'Kon factuur niet verwijderen' : 'Kon factuur niet annuleren',
+        variant: 'destructive',
+      });
+    } else {
+      toast({ title: invoice.status === 'draft' ? 'Factuur verwijderd' : 'Factuur geannuleerd' });
+      refreshAfterInvoiceWrite();
+    }
+  };
+
   const handleDelete = async (invoice: Invoice) => {
     setDeleteConfirm({ open: false, invoice: null });
     setActionLoading(invoice.id);
-
-    if (invoice.status === 'draft') {
-      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
-      if (error) {
-        toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
-      } else {
-        toast({ title: 'Factuur verwijderd' });
-        refreshAfterInvoiceWrite();
-      }
-    } else {
-      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
-      if (error) {
-        toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
-      } else {
-        toast({ title: 'Factuur geannuleerd' });
-        refreshAfterInvoiceWrite();
-      }
-    }
+    await removeInvoice(invoice);
     setActionLoading(null);
   };
 
   const handleVoidInvoice = async (invoice: Invoice) => {
     setVoidConfirm({ open: false, invoice: null });
     setActionLoading(invoice.id);
-
-    if (invoice.status === 'draft') {
-      // Hard-delete drafts
-      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
-      if (error) {
-        toast({ title: 'Fout', description: 'Kon factuur niet verwijderen', variant: 'destructive' });
-      } else {
-        toast({ title: 'Factuur verwijderd' });
-        refreshAfterInvoiceWrite();
-      }
-    } else {
-      // Cancel sent/overdue/paid invoices for audit trail
-      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
-      if (error) {
-        toast({ title: 'Fout', description: 'Kon factuur niet annuleren', variant: 'destructive' });
-      } else {
-        toast({ title: 'Factuur geannuleerd' });
-        refreshAfterInvoiceWrite();
-      }
-    }
+    await removeInvoice(invoice);
     setActionLoading(null);
   };
 

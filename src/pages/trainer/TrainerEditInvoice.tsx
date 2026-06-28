@@ -13,6 +13,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
+import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
@@ -170,15 +171,11 @@ export default function TrainerEditInvoice() {
 
   const handleDelete = async () => {
     if (!invoice) return;
-    if (isDraft) {
-      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
-      if (error) { toast.error(t('invoiceEdit.deleteError')); return; }
-      toast.success(tTrainer('invoices.deleted', 'Invoice deleted'));
-    } else {
-      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
-      if (error) { toast.error(t('invoiceEdit.deleteError')); return; }
-      toast.success(tTrainer('invoices.cancelled', 'Invoice cancelled'));
-    }
+    // Draft → hard-delete; anything else → soft-cancel (audit trail). The facade
+    // owns that partition so a paid invoice can never be hard-deleted here.
+    const { deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    if (deleteError || cancelError) { toast.error(t('invoiceEdit.deleteError')); return; }
+    toast.success(isDraft ? tTrainer('invoices.deleted', 'Invoice deleted') : tTrainer('invoices.cancelled', 'Invoice cancelled'));
     queryClient.invalidateQueries({ queryKey: ['trainer-invoices'] });
     navigate('/app/trainer/invoices');
   };
