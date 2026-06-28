@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import { getCyclesWithCounts, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
+import { getCyclesWithCounts, countCyclesIntakesWithFallback, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
 
 /**
  * The intake-FORM half of the registration↔cycle split (Phase 2).
@@ -234,13 +234,10 @@ export async function listRegistrationCycles(
   // Intake counts for the migrated registrations, keyed on the source/training cycle id — the
   // same key getCyclesWithCounts counts on, since intake_requests.cycle_id stays the source cycle.
   if (mapped.length > 0) {
-    const ids = mapped.map((c) => c.id);
-    const { data: intakeRows } = await supabase
-      .from('intake_requests')
-      .select('cycle_id')
-      .in('cycle_id', ids);
-    const counts = new Map<string, number>();
-    intakeRows?.forEach((r) => counts.set(r.cycle_id, (counts.get(r.cycle_id) ?? 0) + 1));
+    // Count via the indexed count_cycles_intakes RPC (same path getCyclesWithCounts uses),
+    // not a client-side scan of intake_requests. The helper falls back to the JS count only
+    // when the RPC isn't deployed (PGRST202), so behaviour is identical pre-deploy.
+    const counts = await countCyclesIntakesWithFallback(mapped.map((c) => c.id));
     mapped.forEach((c) => {
       c._intakeCount = counts.get(c.id) ?? 0;
     });
