@@ -7,6 +7,7 @@ import {
   DollarSign, Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
@@ -160,10 +161,7 @@ export function SlotDetailDialog({
   const togglePrivate = async () => {
     if (!detail) return;
     const newVal = !detail.is_public;
-    const { error } = await supabase
-      .from('availability_slots')
-      .update({ is_public: newVal })
-      .eq('id', detail.id);
+    const { error } = await setSlotVisibility(detail.id, newVal);
     if (error) {
       logger.error('Error toggling private', error, { slotId: detail.id });
       return;

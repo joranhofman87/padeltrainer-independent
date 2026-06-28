@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { isPast } from 'date-fns';
 import { supabase } from '@/lib/supabaseClient';
+import { setSlotVisibility } from '@/lib/slots';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
 import { CAPACITY_OCCUPYING_STATUSES, getSlotCapacity } from '@/lib/lessons';
 import { logger } from '@/lib/logger';
@@ -452,10 +453,7 @@ export default function AcademySlotDetail() {
   const togglePrivate = async () => {
     if (!detail) return;
     const newVal = !detail.is_public;
-    const { error } = await supabase
-      .from('availability_slots')
-      .update({ is_public: newVal })
-      .eq('id', detail.id);
+    const { error } = await setSlotVisibility(detail.id, newVal);
     if (error) {
       logger.error('Error toggling private', error, { slotId: detail.id });
       return;

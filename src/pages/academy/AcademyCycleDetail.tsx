@@ -56,6 +56,7 @@ import {
 import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
+import { setSlotVisibility } from '@/lib/slots';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import IntakeRequestsTable from '@/components/cycles/IntakeRequestsTable';
 import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
@@ -578,10 +579,7 @@ export default function AcademyCycleDetail() {
       // Optimistic update
       setScheduleSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_public: !value } : s));
       try {
-        const { error } = await supabase
-          .from('availability_slots')
-          .update({ is_public: !value })
-          .eq('id', slotId);
+        const { error } = await setSlotVisibility(slotId, !value);
         if (error) throw error;
       } catch (error: any) {
         // Revert
