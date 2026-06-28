@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 import { cancelBookingsAndSync } from '@/lib/bookings';
+import { logger } from '@/lib/logger';
 
 export interface CyclePaymentParams {
   /**
@@ -50,7 +51,17 @@ export async function initiateCyclePayment(
   if (error || !checkoutUrl) {
     // Roll back the just-inserted bookings so a failed checkout leaves no
     // capacity-occupying orphan, then surface the ORIGINAL failure unchanged.
-    await cancelBookingsAndSync(bookingIds, client);
+    const { cancelError } = await cancelBookingsAndSync(bookingIds, client);
+    if (cancelError) {
+      // Payment creation failed AND the rollback cancel failed — the bookings
+      // linger as capacity-occupying orphans. Surface it (a sweep / manual
+      // cleanup may be needed) rather than swallowing it silently.
+      logger.error(
+        'Cycle payment rollback failed to cancel orphan bookings',
+        cancelError instanceof Error ? cancelError : new Error(String(cancelError)),
+        { component: 'cyclePayment', action: 'rollback', bookingIds },
+      );
+    }
     throw error ?? new Error('No checkout URL received');
   }
 

@@ -14,6 +14,11 @@ vi.mock('@/lib/bookings', () => ({
   cancelBookingsAndSync: (...args: unknown[]) => cancelBookingsAndSync(...args),
 }));
 
+const loggerError = vi.fn();
+vi.mock('@/lib/logger', () => ({
+  logger: { error: (...args: unknown[]) => loggerError(...args), warn: vi.fn(), info: vi.fn() },
+}));
+
 import { initiateCyclePayment } from '@/lib/cyclePayment';
 
 function makeClient(invokeResult: { data: unknown; error: unknown }) {
@@ -31,6 +36,7 @@ const params = {
 beforeEach(() => {
   cancelBookingsAndSync.mockReset();
   cancelBookingsAndSync.mockResolvedValue({ cancelError: null, syncError: null });
+  loggerError.mockReset();
 });
 
 describe('initiateCyclePayment', () => {
@@ -59,5 +65,14 @@ describe('initiateCyclePayment', () => {
 
     await expect(initiateCyclePayment(params, client as never)).rejects.toThrow('No checkout URL received');
     expect(cancelBookingsAndSync).toHaveBeenCalledWith(['b1', 'b2'], client);
+  });
+
+  it('rethrows the ORIGINAL payment error (not the cancel error) and logs when the rollback itself fails', async () => {
+    const err = { message: 'mollie boom' };
+    const client = makeClient({ data: null, error: err });
+    cancelBookingsAndSync.mockResolvedValue({ cancelError: { message: 'cancel write failed' }, syncError: null });
+
+    await expect(initiateCyclePayment(params, client as never)).rejects.toBe(err);
+    expect(loggerError).toHaveBeenCalled();
   });
 });
