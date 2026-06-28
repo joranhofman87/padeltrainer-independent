@@ -615,10 +615,10 @@ export default function TrainerScheduleOverview() {
                   const createdBookings = data as { id: string; player_id: string | null; guest_player_id: string | null }[] | null;
 
                   // Add new booking IDs to unpaid invoices so section 3b recalculates them.
-                  // Behaviour-frozen extraction — owner: src/lib/cycleEditInvoiceSync.ts
-                  // (carries known bug A1; see docs/audits/TSO_INVOICE_WRITES_AUDIT.md).
+                  // Owner: src/lib/cycleEditInvoiceSync.ts (per-player routing; see
+                  // docs/audits/TSO_INVOICE_WRITES_AUDIT.md).
                   await mergeNewBookingIdsIntoCycleInvoices(
-                    { createdBookings: createdBookings ?? [], existingBookings, existingSlotIds },
+                    { createdBookings: createdBookings ?? [], existingSlotIds },
                     supabase,
                   );
                 }
