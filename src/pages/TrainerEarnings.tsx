@@ -31,7 +31,11 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { EarningsBookingRow } from '@/components/trainer/earnings/EarningsBookingRow';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { bookingReceivedAmount, isReceivedPayment, sumReceivedInRange } from '@/lib/trainerEarnings';
+import { bookingReceivedAmount, computeEarningsSummary, type EarningsSummary } from '@/lib/trainerEarnings';
+
+// Bounded recent window loaded for the displayed pending/history lists (the headline tiles are
+// aggregated server-side over ALL bookings, so they stay accurate regardless of this cap).
+const EARNINGS_LIST_LIMIT = 500;
 import { getBookedPlayerName } from '@/lib/bookedPlayerName';
 import { supabase } from '@/lib/supabaseClient';
 // CreateInvoiceDialog removed — now using /app/trainer/invoices/new page
@@ -105,6 +109,7 @@ export default function TrainerEarnings() {
   const { toast } = useToast();
   
   const [bookings, setBookings] = useState<EarningsBooking[]>([]);
+  const [summary, setSummary] = useState<EarningsSummary>({ total: 0, thisMonth: 0, lastMonth: 0, pending: 0, pendingCount: 0, completedPaidCount: 0 });
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
@@ -189,7 +194,14 @@ export default function TrainerEarnings() {
       return;
     }
 
-    const { data, error } = await supabase
+    const now = new Date();
+    const windows = {
+      thisStart: startOfMonth(now),
+      thisEnd: endOfMonth(now),
+      lastStart: startOfMonth(subMonths(now, 1)),
+      lastEnd: endOfMonth(subMonths(now, 1)),
+    };
+    const listQuery = () => supabase
       .from('bookings')
       .select(`
         id,
@@ -208,11 +220,55 @@ export default function TrainerEarnings() {
       .in('status', ['completed', 'confirmed', 'cancelled'])
       .order('created_at', { ascending: false });
 
-    if (error) {
-      logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });
+    // Headline tiles from the server-side summary (aggregated over ALL the trainer's bookings); the
+    // displayed lists load only a bounded recent window. Pre-deploy (RPC not in the schema cache →
+    // PGRST202 / Postgres 42883) fall back to the legacy full load + the same JS aggregation, so the
+    // page never breaks in the migration deploy gap.
+    const summaryRes = await supabase.rpc('get_trainer_earnings_summary' as never, {
+      p_this_month_start: windows.thisStart.toISOString(),
+      p_this_month_end: windows.thisEnd.toISOString(),
+      p_last_month_start: windows.lastStart.toISOString(),
+      p_last_month_end: windows.lastEnd.toISOString(),
+    } as never);
+    const sumErr = summaryRes.error as { code?: string } | null;
+
+    if (sumErr && sumErr.code !== 'PGRST202' && sumErr.code !== '42883') {
+      logger.error('Error fetching earnings summary', undefined, { error: sumErr, component: 'TrainerEarnings' });
       setLoadError(true);
+      setLoadingData(false);
+      return;
+    }
+
+    if (!sumErr) {
+      const row = ((summaryRes.data ?? []) as unknown as Array<{
+        total_earnings: number | string; this_month: number | string; last_month: number | string;
+        pending_amount: number | string; pending_count: number | string; completed_paid_count: number | string;
+      }>)[0];
+      setSummary(row
+        ? {
+            total: Number(row.total_earnings) || 0, thisMonth: Number(row.this_month) || 0,
+            lastMonth: Number(row.last_month) || 0, pending: Number(row.pending_amount) || 0,
+            pendingCount: Number(row.pending_count) || 0, completedPaidCount: Number(row.completed_paid_count) || 0,
+          }
+        : { total: 0, thisMonth: 0, lastMonth: 0, pending: 0, pendingCount: 0, completedPaidCount: 0 });
+      const { data, error } = await listQuery().limit(EARNINGS_LIST_LIMIT);
+      if (error) {
+        logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });
+        setLoadError(true);
+      } else {
+        setBookings((data as unknown as EarningsBooking[]) || []);
+      }
     } else {
-      setBookings((data as any) || []);
+      // RPC not deployed yet — legacy full load, summary computed in JS from the same set.
+      const { data, error } = await listQuery();
+      if (error) {
+        logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });
+        setLoadError(true);
+      } else {
+        const all = (data as unknown as EarningsBooking[]) || [];
+        setBookings(all);
+        setSummary(computeEarningsSummary(all, windows));
+      }
     }
     setLoadingData(false);
   };
@@ -324,36 +380,26 @@ export default function TrainerEarnings() {
     navigate('/app/trainer/invoices/new');
   };
 
-  // Calculate earnings
-  const now = new Date();
-  const thisMonthStart = startOfMonth(now);
-  const thisMonthEnd = endOfMonth(now);
-  const lastMonthStart = startOfMonth(subMonths(now, 1));
-  const lastMonthEnd = endOfMonth(subMonths(now, 1));
-
+  // Earnings = money actually received (payment_status='paid' + paid_at), gross, no fee — the shared
+  // rule the TrainerDashboard "Revenue" tile also uses. The four headline tiles come from `summary`
+  // (the server-side get_trainer_earnings_summary RPC, computed over ALL the trainer's bookings; or,
+  // pre-deploy, the JS computeEarningsSummary over the loaded set). The lists below derive from the
+  // bounded recent window in `bookings`.
   const completedBookings = bookings.filter(b => b.status === 'completed');
-
-  // Earnings = money actually received (payment_status='paid' + paid_at), gross,
-  // no fee — the shared rule the TrainerDashboard "Revenue" tile also uses, so
-  // the two tiles always agree.
   const getAmount = (b: EarningsBooking) => bookingReceivedAmount(b);
 
-  const totalEarnings = bookings
-    .filter(isReceivedPayment)
-    .reduce((sum, b) => sum + getAmount(b), 0);
+  const totalEarnings = summary.total;
+  const thisMonthEarnings = summary.thisMonth;
+  const lastMonthEarnings = summary.lastMonth;
 
-  const thisMonthEarnings = sumReceivedInRange(bookings, thisMonthStart, thisMonthEnd);
-
-  const lastMonthEarnings = sumReceivedInRange(bookings, lastMonthStart, lastMonthEnd);
-
-  const pendingPayments = bookings.filter(b => 
-    (b.status === 'completed' || b.status === 'confirmed') && 
+  const pendingPayments = bookings.filter(b =>
+    (b.status === 'completed' || b.status === 'confirmed') &&
     (b.payment_status === 'pending' || b.payment_status === 'invoiced')
   );
-  
-  const pendingAmount = pendingPayments.reduce((sum, b) => sum + getAmount(b), 0);
 
-  const monthlyGrowth = lastMonthEarnings > 0 
+  const pendingAmount = summary.pending;
+
+  const monthlyGrowth = lastMonthEarnings > 0
     ? ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings * 100).toFixed(0)
     : thisMonthEarnings > 0 ? '+100' : '0';
 
@@ -686,7 +732,7 @@ export default function TrainerEarnings() {
             label={t('earningsPage.pending')}
             value={formatCurrency(pendingAmount)}
             icon={CreditCard}
-            subtext={`${pendingPayments.length} payments`}
+            subtext={`${summary.pendingCount} payments`}
             highlight={pendingAmount > 0}
           />
         </section>

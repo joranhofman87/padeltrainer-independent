@@ -10,6 +10,7 @@
  */
 
 export interface EarningsBookingLike {
+  status?: string | null;
   payment_status?: string | null;
   paid_at?: string | null;
   payment_amount?: number | null;
@@ -47,4 +48,55 @@ export function sumReceivedInRange(
     if (Number.isNaN(t) || t < startMs || t > endMs) return sum;
     return sum + bookingReceivedAmount(b);
   }, 0);
+}
+
+/** The headline earnings numbers the TrainerEarnings tiles show (aggregated over ALL bookings). */
+export interface EarningsSummary {
+  total: number;
+  thisMonth: number;
+  lastMonth: number;
+  pending: number;
+  /** Count of open (pending/invoiced) completed/confirmed bookings — the accurate headline count
+   *  (the displayed list is a bounded recent window, so its length can be smaller). */
+  pendingCount: number;
+  /** Count of completed + paid bookings. */
+  completedPaidCount: number;
+}
+
+/** This-month / last-month windows (browser-local; the browser owns the user's tz). */
+export interface EarningsMonthWindows {
+  thisStart: Date;
+  thisEnd: Date;
+  lastStart: Date;
+  lastEnd: Date;
+}
+
+/**
+ * The TrainerEarnings headline aggregation, computed in JS from a loaded booking set. This is the
+ * canonical reference the server-side `get_trainer_earnings_summary` RPC is golden-tested against,
+ * AND the fallback the page uses when the RPC isn't deployed yet. `pending` mirrors the page's tile:
+ * status in (completed, confirmed) AND payment received-pending (pending/invoiced).
+ */
+export function computeEarningsSummary(
+  bookings: EarningsBookingLike[],
+  w: EarningsMonthWindows,
+): EarningsSummary {
+  return {
+    total: bookings.filter(isReceivedPayment).reduce((s, b) => s + bookingReceivedAmount(b), 0),
+    thisMonth: sumReceivedInRange(bookings, w.thisStart, w.thisEnd),
+    lastMonth: sumReceivedInRange(bookings, w.lastStart, w.lastEnd),
+    pending: bookings
+      .filter(
+        (b) =>
+          (b.status === 'completed' || b.status === 'confirmed') &&
+          (b.payment_status === 'pending' || b.payment_status === 'invoiced'),
+      )
+      .reduce((s, b) => s + bookingReceivedAmount(b), 0),
+    pendingCount: bookings.filter(
+      (b) =>
+        (b.status === 'completed' || b.status === 'confirmed') &&
+        (b.payment_status === 'pending' || b.payment_status === 'invoiced'),
+    ).length,
+    completedPaidCount: bookings.filter((b) => b.status === 'completed' && b.payment_status === 'paid').length,
+  };
 }

@@ -913,7 +913,7 @@
   },
   "src/pages/TrainerEarnings.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 3
+      "count": 2
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
