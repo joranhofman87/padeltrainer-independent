@@ -137,6 +137,17 @@ and fixes in one PR makes the money diff unreviewable. Sequence:
    extend-by-1; Test B: exclusive multi-rate + dropped `line[1..n]` + stale
    breakdown). Fix the mutation-boundary mis-count in the same PR (reformat so
    `WRITE_RE` catches the merge write, set the allowlist to the true count).
+   - **✅ PR-1a SHIPPED (Write A):** `mergeNewBookingIdsIntoCycleInvoices` lives
+     in `src/lib/cycleEditInvoiceSync.ts`, called verbatim from TSO; pinned by
+     `src/test/cycleEditInvoiceSync.pglite.test.ts` (per-player misroute = bug
+     A1; group invoice = accidentally-correct; paid-invoice excluded = A2). The
+     **mutation-boundary mis-count is resolved by the extraction itself** — the
+     previously-uncounted merge write (the interrupting comment hid it from
+     `WRITE_RE`) is gone from `src/pages`; it now lives in the unscanned `src/lib`
+     domain layer, so no comment-reformat/allowlist bump is needed for it. TSO
+     stays allowlisted at 3 (the recalc write leaves in PR-1b → 3→2 there).
+   - **⏳ PR-1b (Write B):** extract `recalcCycleInvoiceTotals` + Test B; then
+     decrement the TSO allowlist 3→2 (the recalc write moves to lib).
 2. **PR-2 (BEHAVIOUR CHANGE — matcher fix):** replace the broken `.find` with a
    real per-player join (SELECT `player_id/guest_player_id` on both reads; match
    `inv.booking_ids` to the right players' new bookings); flip Test A to correct.
