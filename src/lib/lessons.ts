@@ -9,9 +9,13 @@ export const DEFAULT_MAX_PARTICIPANTS = 4;
  *  pending_approval IS occupying — the player has requested the seat and is
  *  awaiting the trainer's decision, so it must not be overbookable. cancelled /
  *  cancelled_swap / rejected / completed do not hold a future seat. */
-// SYNC: the partial index `idx_bookings_slot_status` (migration 20260629120000) hardcodes this same
-// status list in its WHERE clause for the delete-guard hot path. If this set changes, update that
-// index's predicate too or it will stop matching findBookedSlotIds.
+// SYNC: this allowlist is mirrored server-side and must be kept identical:
+//  - the partial index `idx_bookings_slot_status` (migration 20260629120000) WHERE clause
+//    (delete-guard hot path / findBookedSlotIds), and
+//  - the five DB capacity counts — enforce_booking_slot_tier, book_slot_for_payment,
+//    respond_to_priority_claim's two counts, and swap_member_booking — aligned to this list
+//    in migration 20260702140000.
+// If this set changes, update those predicates too or server occupancy will diverge from the app.
 export const CAPACITY_OCCUPYING_STATUSES = ['confirmed', 'pending', 'pending_approval'] as const;
 
 export function isOccupyingStatus(status: string | null | undefined): boolean {
