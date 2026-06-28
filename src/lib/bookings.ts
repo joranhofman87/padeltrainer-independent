@@ -155,3 +155,35 @@ export async function setBookingPaymentAndReconcile(
   }
   return { bookingError: null, invoiceSyncError: null };
 }
+
+/**
+ * Insert booking row(s) — the single write point for booking creation.
+ *
+ * The twin of {@link insertAvailabilitySlots} in `src/lib/slots.ts`. Accepts one
+ * row or an array (the cyclus paths pass arrays); pass `returning` to get the
+ * inserted rows back via `.select(returning)` (e.g. `'id'`, or the surface's
+ * `INSERTED_BOOKING_SELECT` projection for the add-player invoice flow) — the
+ * result is always an ARRAY (no `.single()`).
+ *
+ * Row shape is intentionally permissive: each surface (cyclus bulk-book,
+ * book-for-player, inline add-player) builds its OWN fully-typed literal.
+ * `payment_amount` / `payment_status` / `status` / `guest_player_id`-vs-
+ * `player_id` are money-path and stay author-controlled at the call site — this
+ * owns only the raw write so it can't diverge per screen. Capacity is enforced
+ * by the `enforce_booking_slot_tier` DB trigger, not here. Pure pass-through:
+ * rows are NOT normalized, so an `undefined` key still drops (supabase-js) and a
+ * column default applies, exactly as an inline insert would.
+ */
+export async function insertBookings(
+  rows: Record<string, unknown> | Record<string, unknown>[],
+  client: SupabaseClient<Database> = supabase,
+  returning?: string,
+): Promise<{ data: unknown; error: unknown }> {
+  const query = client.from('bookings').insert(rows as never);
+  if (returning) {
+    const { data, error } = await query.select(returning);
+    return { data, error: error ?? null };
+  }
+  const { error } = await query;
+  return { data: null, error: error ?? null };
+}

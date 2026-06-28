@@ -5,6 +5,7 @@ import { format, differenceInMinutes } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { supabase } from "@/lib/supabaseClient";
+import { insertBookings } from "@/lib/bookings";
 import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import {
@@ -597,10 +598,11 @@ export function BookForPlayerDialog({
           });
         });
 
-        const { data: insertedRows, error: bookingError } = await supabase
-          .from("bookings")
-          .insert(bookingsToInsert)
-          .select(INSERTED_BOOKING_SELECT);
+        const { data: insertedRows, error: bookingError } = await insertBookings(
+          bookingsToInsert,
+          supabase,
+          INSERTED_BOOKING_SELECT,
+        );
 
         if (bookingError) throw bookingError;
 
@@ -727,10 +729,11 @@ export function BookForPlayerDialog({
           discountReason: discountReason || null,
         });
 
-        const { data: insertedRows, error: bookingError } = await supabase
-          .from("bookings")
-          .insert(bookingsToInsert)
-          .select(INSERTED_BOOKING_SELECT);
+        const { data: insertedRows, error: bookingError } = await insertBookings(
+          bookingsToInsert,
+          supabase,
+          INSERTED_BOOKING_SELECT,
+        );
 
         if (bookingError) throw bookingError;
 

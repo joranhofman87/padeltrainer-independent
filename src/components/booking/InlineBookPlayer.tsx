@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { differenceInMinutes } from "date-fns";
 import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { insertBookings } from "@/lib/bookings";
 import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
@@ -430,10 +431,11 @@ export function InlineBookPlayer({
           );
         });
 
-        const { data: insertedRows, error } = await supabase
-          .from("bookings")
-          .insert(bookingsToInsert)
-          .select(INSERTED_BOOKING_SELECT);
+        const { data: insertedRows, error } = await insertBookings(
+          bookingsToInsert,
+          supabase,
+          INSERTED_BOOKING_SELECT,
+        );
         if (error) throw error;
         insertSucceeded = true;
 
@@ -518,10 +520,11 @@ export function InlineBookPlayer({
           }),
         );
 
-        const { data: insertedRows, error } = await supabase
-          .from("bookings")
-          .insert(bookingsToInsert)
-          .select(INSERTED_BOOKING_SELECT);
+        const { data: insertedRows, error } = await insertBookings(
+          bookingsToInsert,
+          supabase,
+          INSERTED_BOOKING_SELECT,
+        );
         if (error) throw error;
         insertSucceeded = true;
 

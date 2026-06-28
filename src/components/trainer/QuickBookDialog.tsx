@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { format, addDays, differenceInMinutes } from "date-fns";
 import { Loader2, Calendar, Clock, Repeat, Percent, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { insertBookings } from "@/lib/bookings";
 import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
@@ -234,9 +235,7 @@ export function QuickBookDialog({
         };
       });
 
-      const { error: insertError } = await supabase
-        .from("bookings")
-        .insert(bookingsToInsert);
+      const { error: insertError } = await insertBookings(bookingsToInsert);
 
       if (insertError) throw insertError;
 

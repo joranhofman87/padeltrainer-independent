@@ -5,7 +5,7 @@ vi.mock('@/lib/invoiceSync', () => ({
 }));
 
 import { syncInvoicesAfterBookingRemoval } from '@/lib/invoiceSync';
-import { cancelBookingsAndSync } from './bookings';
+import { cancelBookingsAndSync, insertBookings } from './bookings';
 
 const syncMock = syncInvoicesAfterBookingRemoval as unknown as ReturnType<typeof vi.fn>;
 
@@ -64,5 +64,71 @@ describe('cancelBookingsAndSync', () => {
     expect(r.cancelError).toBeNull();
     expect(r.syncError).toBeInstanceOf(Error);
     expect((r.syncError as Error).message).toBe('boom');
+  });
+});
+
+/**
+ * Characterization test for the booking-insert write point. Pins the table +
+ * rows passed through, the `.select(returning)`-only-when-asked behaviour, and
+ * the `{ data, error }` (error coerced to null) shape — so the surfaces routed
+ * through it stay behaviour-frozen.
+ */
+function mockInsertClient(opts: { error?: unknown; data?: unknown } = {}) {
+  const calls = { table: null as string | null, rows: null as unknown, select: null as string | null };
+  const client = {
+    from(table: string) {
+      calls.table = table;
+      return {
+        insert(rows: unknown) {
+          calls.rows = rows;
+          const settle = () => Promise.resolve({ error: opts.error ?? null });
+          return {
+            select(cols: string) {
+              calls.select = cols;
+              return Promise.resolve({ data: opts.data ?? null, error: opts.error ?? null });
+            },
+            then(onF: (v: { error: unknown }) => unknown, onR?: (e: unknown) => unknown) {
+              return settle().then(onF, onR);
+            },
+          };
+        },
+      };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { client: client as any, calls };
+}
+
+describe('insertBookings', () => {
+  it('inserts the given rows into bookings (array, no returning → plain insert)', async () => {
+    const { client, calls } = mockInsertClient();
+    const rows = [{ slot_id: 's', guest_player_id: 'g', status: 'confirmed' }];
+    const res = await insertBookings(rows, client);
+    expect(calls.table).toBe('bookings');
+    expect(calls.rows).toEqual(rows);
+    expect(calls.select).toBeNull();
+    expect(res).toEqual({ data: null, error: null });
+  });
+
+  it('accepts a single-object row the same as an array', async () => {
+    const { client, calls } = mockInsertClient();
+    const row = { slot_id: 's', player_id: 'p', status: 'confirmed', payment_amount: 25 };
+    await insertBookings(row, client);
+    expect(calls.rows).toEqual(row);
+  });
+
+  it('returns the inserted rows when `returning` is given', async () => {
+    const inserted = [{ id: 'b1' }, { id: 'b2' }];
+    const { client, calls } = mockInsertClient({ data: inserted });
+    const res = await insertBookings([{ slot_id: 's' }], client, 'id');
+    expect(calls.select).toBe('id');
+    expect(res.data).toEqual(inserted);
+    expect(res.error).toBeNull();
+  });
+
+  it('surfaces the insert error (and coerces undefined → null)', async () => {
+    const err = { message: 'capacity full', code: 'P0001' };
+    const res = await insertBookings([{ slot_id: 's' }], mockInsertClient({ error: err }).client);
+    expect(res.error).toBe(err);
   });
 });
