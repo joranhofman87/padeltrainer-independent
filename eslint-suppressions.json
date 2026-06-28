@@ -665,6 +665,11 @@
       "count": 9
     }
   },
+  "src/lib/cycleEditInvoiceSync.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
   "src/lib/cycles.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 4
@@ -950,7 +955,7 @@
   },
   "src/pages/TrainerScheduleOverview.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 12
+      "count": 7
     }
   },
   "src/pages/TrainerSettings.tsx": {

@@ -146,8 +146,16 @@ and fixes in one PR makes the money diff unreviewable. Sequence:
      `WRITE_RE`) is gone from `src/pages`; it now lives in the unscanned `src/lib`
      domain layer, so no comment-reformat/allowlist bump is needed for it. TSO
      stays allowlisted at 3 (the recalc write leaves in PR-1b → 3→2 there).
-   - **⏳ PR-1b (Write B):** extract `recalcCycleInvoiceTotals` + Test B; then
-     decrement the TSO allowlist 3→2 (the recalc write moves to lib).
+   - **✅ PR-1b SHIPPED (Write B):** `recalcCycleInvoiceTotals` lives in
+     `src/lib/cycleEditInvoiceSync.ts`, called verbatim from TSO; pinned by
+     `src/test/cycleEditInvoiceTotals.pglite.test.ts` (B1 line[0]-only drop; B2
+     unmarked-split re-priced at FULL vs marked stays split; B3 exclusive
+     multi-rate total 15.07 ≠ subtotal+vat 15.06; B4 stale vat_breakdown). The
+     5 `any` annotations moved with the body (eslint-suppressions: TSO 12→7, new
+     file +5) and the recalc invoice `.update` left `src/pages` → TSO
+     mutation-boundary allowlist **3→2**. Adversarial review = VERBATIM. **The
+     two bespoke writes now both live in the tested lib owner — PR-1 (inert
+     freeze) is COMPLETE.** Next: PR-2 (matcher fix) + PR-3 (canonical recalc).
 2. **PR-2 (BEHAVIOUR CHANGE — matcher fix):** replace the broken `.find` with a
    real per-player join (SELECT `player_id/guest_player_id` on both reads; match
    `inv.booking_ids` to the right players' new bookings); flip Test A to correct.
