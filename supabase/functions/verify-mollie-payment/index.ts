@@ -7,6 +7,7 @@ import {
 } from "../_shared/booking-access.ts";
 import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
 import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
+import { findCancelledPaidBookings } from "../_shared/mollie-webhook-payment.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[VERIFY-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
@@ -282,7 +283,7 @@ serve(async (req) => {
 
     const { data: relatedBookings } = await supabase
       .from("bookings")
-      .select("id, payment_amount")
+      .select("id, payment_amount, status, payment_status")
       .in("id", metadataIds);
 
     const expectedSum = (relatedBookings || []).reduce(
@@ -312,13 +313,29 @@ serve(async (req) => {
     }
 
     if (isPaid) {
+      // A paid payment landing on a CANCELLED booking (rolled back after a
+      // payment-creation hiccup, then completed out of band). The
+      // status!='cancelled' guard on the UPDATE below refuses to resurrect it —
+      // but the money WAS received, so surface it for a manual refund / review
+      // instead of letting a real payment vanish silently.
+      const cancelledPaid = findCancelledPaidBookings(relatedBookings || []);
+      if (cancelledPaid.length > 0) {
+        logStep("Paid payment on CANCELLED booking(s) — manual refund needed", { cancelledPaid, paymentId: payment.id });
+        await notifySlackError("verify-mollie-payment", "Paid Mollie payment landed on CANCELLED booking(s) — money received, no active booking. Manual refund / review needed.", {
+          bookingIds: cancelledPaid,
+          paymentId: payment.id,
+        });
+      }
+
       // M-26: mark EVERY booking covered by this payment paid (the amount
       // check above already verified the sum across all of them), mirroring
       // the webhook. The `.neq` + `.select` make this UPDATE an atomic
       // idempotency claim shared with the webhook (E-15): whichever request
       // transitions the rows first runs the paid side effects (invoice
       // creation + confirmation email) exactly once; the other sees zero
-      // transitioned rows and skips them.
+      // transitioned rows and skips them. The status!='cancelled' guard mirrors
+      // applyBookingPaymentWriteback so a late payment can't resurrect a
+      // cancelled booking on this path either.
       const { data: transitionedRows, error: updateError } = await supabase
         .from("bookings")
         .update({
@@ -329,6 +346,7 @@ serve(async (req) => {
         })
         .in("id", metadataIds)
         .neq("payment_status", "paid")
+        .neq("status", "cancelled")
         .select("id");
 
       if (updateError) {

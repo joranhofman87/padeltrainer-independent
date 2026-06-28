@@ -74,18 +74,26 @@ export function shouldRunBookingPaidSideEffects(
 export interface MollieWriteClient { from(table: string): any }
 
 /**
- * Booking-payment write-back from a Mollie webhook, ALWAYS guarded by `payment_status != 'paid'`.
+ * Booking-payment write-back from a Mollie webhook, ALWAYS guarded by
+ * `payment_status != 'paid'` AND `status != 'cancelled'`.
  *
- * The guard serves two purposes at once:
- *  - (E-15 idempotency) for the PAID transition it is the atomic claim — only still-unpaid rows
- *    transition, so duplicate concurrent deliveries transition zero rows and can't double-run the
- *    paid side-effects; the returned rows ARE the ones this call transitioned.
+ * The guards serve three purposes at once:
+ *  - (E-15 idempotency) for the PAID transition `payment_status != 'paid'` is the atomic claim —
+ *    only still-unpaid rows transition, so duplicate concurrent deliveries transition zero rows and
+ *    can't double-run the paid side-effects; the returned rows ARE the ones this call transitioned.
  *  - (no-downgrade) for any NON-paid delivery (open/pending/failed/expired arriving late or out of
  *    order) it ensures an already-PAID booking is never overwritten back to pending/failed. The
  *    handler previously applied this guard only for paid/cancelled, so a stale `open`/`pending`
  *    delivery could downgrade a paid booking — this makes the guard unconditional.
+ *  - (no-resurrection) `status != 'cancelled'` ensures a booking that was CANCELLED (e.g. the
+ *    BookLesson online-cycle rollback soft-cancels its bookings when payment creation fails, while
+ *    leaving payment_status='pending') can never be flipped back to paid/confirmed by a late
+ *    Mollie webhook for a payment that was created just before the failure. The caller detects the
+ *    "paid payment landed on a cancelled booking" case via {@link findCancelledPaidBookings} and
+ *    alerts for a manual refund instead of silently auto-confirming.
  *
- * @returns the rows THIS call transitioned (empty = the bookings were already paid).
+ * @returns the rows THIS call transitioned (empty = already paid OR cancelled — see the caller's
+ *   {@link findCancelledPaidBookings} check to tell the two apart).
  */
 export async function applyBookingPaymentWriteback(
   supabase: MollieWriteClient,
@@ -97,7 +105,23 @@ export async function applyBookingPaymentWriteback(
     .update(updateData)
     .in("id", bookingIds)
     .neq("payment_status", "paid")
+    .neq("status", "cancelled")
     .select("id");
   if (error) throw new Error(`Failed to update bookings: ${error.message}`);
   return (data ?? []) as { id: string }[];
+}
+
+/**
+ * Bookings that a *paid* Mollie payment is landing on while they are already
+ * CANCELLED (and not yet paid). With the `status != 'cancelled'` guard in
+ * {@link applyBookingPaymentWriteback} these are NOT resurrected — but the money
+ * WAS received, so the caller must alert for a manual refund / review rather
+ * than letting a real payment vanish silently. Returns the offending ids.
+ */
+export function findCancelledPaidBookings(
+  rows: { id: string; status?: string | null; payment_status?: string | null }[],
+): string[] {
+  return rows
+    .filter((b) => b.status === "cancelled" && b.payment_status !== "paid")
+    .map((b) => b.id);
 }

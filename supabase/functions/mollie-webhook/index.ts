@@ -11,6 +11,7 @@ import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-e
 import {
   applyBookingPaymentWriteback,
   evaluateInvoicePayment,
+  findCancelledPaidBookings,
   shouldRunBookingPaidSideEffects,
 } from "../_shared/mollie-webhook-payment.ts";
 
@@ -588,13 +589,28 @@ serve(async (req) => {
     if (payment.status === "paid") {
       const { data: amountRows, error: amountRowsError } = await supabase
         .from("bookings")
-        .select("id, payment_amount")
+        .select("id, payment_amount, status, payment_status")
         .in("id", bookingIds);
 
       // M-25: a transient DB failure must not silently skip the amount check
       // (expectedSum would be 0) — fail so Mollie retries.
       if (amountRowsError) {
         throw new Error(`Booking amount lookup failed: ${amountRowsError.message}`);
+      }
+
+      // A paid payment landing on a CANCELLED booking (e.g. the BookLesson
+      // online-cycle rollback soft-cancelled it after a payment-creation hiccup,
+      // then the payment completed out of band). applyBookingPaymentWriteback's
+      // status!='cancelled' guard refuses to resurrect it — but the money WAS
+      // received, so surface it for a manual refund / review instead of letting
+      // a real payment vanish silently.
+      const cancelledPaid = findCancelledPaidBookings(amountRows || []);
+      if (cancelledPaid.length > 0) {
+        logStep("Paid payment on CANCELLED booking(s) — manual refund needed", { cancelledPaid, paymentId: payment.id });
+        await notifySlackError("mollie-webhook", "Paid Mollie payment landed on CANCELLED booking(s) — money received, no active booking. Manual refund / review needed.", {
+          bookingIds: cancelledPaid,
+          paymentId: payment.id,
+        });
       }
 
       const expectedSum = (amountRows || []).reduce(
