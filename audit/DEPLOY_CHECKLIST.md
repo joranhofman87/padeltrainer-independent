@@ -3,7 +3,10 @@
 Things that **do NOT auto-deploy** (only the Vercel frontend does). Apply these to the
 live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 
-> ✅ **All items below were deployed by the owner on 2026-06-24.** Kept for the audit trail.
+> **Current state (verified 2026-06-28):** all migrations are LIVE and all edge functions are
+> CURRENT **except the 6 deferred AI-gateway functions** — see the two reconciliation sections
+> below. The dated `[x]`/`[ ]` markers in the lower sections are the historical audit trail; the
+> two "verified 2026-06-28" sections are authoritative.
 
 ## ✅ P0 — single-slot online booking double-insert (PR #183) — DEPLOYED 2026-06-28
 
@@ -35,13 +38,24 @@ state with `supabase functions list` (below). Owner-deferred: the AI-gateway fun
 **Stop and investigate** if `migration list` / `db push --dry-run` ever shows an *unexpected*
 migration (one you did not just merge) — that signals drift between repo and prod.
 
-### Edge functions changed since 2026-06-24 — confirm current via `functions list`
-`create-mollie-payment` (redeployed 2026-06-28 ✅), `verify-mollie-payment`,
-`create-invoice-payment`, `mollie-webhook`, `finalize-proposals`, `generate-proposals`,
-`create-registration-invoice`, `submit-guest-intake`, `send-campaign-emails`,
-`create-group-rebook-invoice`, `send-rebook-group-confirmation`. Redeploy any whose
-`UPDATED_AT` predates its PR. Plus the still-pending `send-invoice-email` (PDF attach) and
-the batch-job + AI-gateway items in the sections below.
+### Edge functions — CONFIRMED via `supabase functions list` (2026-06-28)
+
+Every edge function whose code changed this cycle is deployed **after** its change landed —
+prod matches repo:
+
+| Function(s) | Live version | Deployed (UTC) |
+|---|---|---|
+| `create-mollie-payment` | v15 | 2026-06-27 14:41 |
+| `mollie-webhook` · `verify-mollie-payment` · `create-invoice-payment` · `finalize-proposals` · `send-campaign-emails` | — | 2026-06-27 11:23 |
+| `submit-guest-intake` · `create-registration-invoice` | — | 2026-06-27 09:26 |
+| `create-group-rebook-invoice` · `send-rebook-group-confirmation` | v1 | 2026-06-25 14:38 |
+| `bulk-rebook-cycle` · `send-rebook-reminder` · `send-priority-claim-invitation` | — | 2026-06-25 09:57 |
+| `send-invoice-email` (PDF attach) | v20 | 2026-06-25 08:18 |
+| `recalculate-invoices` · `generate-cycle-commitment-invoices` · `send-digest-emails` · `process-onboarding-emails` | — | 2026-06-25 08:18–19 |
+
+**The only stale functions are the 6 AI-gateway ones — still v6 (2026-06-02), deferred by
+owner decision** (see the AI-gateway section). Not a gap. ✅ Nothing left to deploy except if
+you ever turn the AI features on.
 
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
@@ -55,23 +69,27 @@ the batch-job + AI-gateway items in the sections below.
 - [x] **auto-create-invoice**, **create-registration-invoice**, **create-rebook-invoice** — Slack alert on the money-path catch (#83). Closes silent server-side invoice-mint failures. Needs the `slack-notify` webhook already configured (it is — other fns use it).
 - [x] **submit-guest-intake**, **create-registration-invoice** — registration date-span lesson count now FLOORED, not rounded (#86). *Money change — fixes a one-lesson over-charge on non-exact-week date-span cycles.* These bundle the fixed `_shared/registration-pricing.ts`.
 
-## Migrations to apply
-- [ ] **Phase 4 · C + E** — see `docs/PHASE4_CE_INTEGRITY_INDEX_RUNBOOK.md`. Two additive, idempotent, non-destructive migrations:
+## Migrations to apply  *(all LIVE as of 2026-06-28 — `db push --dry-run` shows nothing pending)*
+- [x] **Phase 4 · C + E** — LIVE. see `docs/PHASE4_CE_INTEGRITY_INDEX_RUNBOOK.md`. Two additive, idempotent, non-destructive migrations:
   - **`20260630120000_phase4_C_cyclus_id_fk.sql`** — adds FK `availability_slots.cyclus_id → cycles.id` **NOT VALID** + `ON DELETE SET NULL`. Stops any NEW orphan slot group at the DB. Existing orphans untouched; clean them up + `VALIDATE` later via the runbook's STEP 2 (pre-flight count → run the prepared backfill `20260612230000` → validate). After applying, **regenerate `types.ts`** (the PR hand-adds the matching FK relationship so the drift gate stays green; regen confirms).
   - **`20260630120100_phase4_E_invoices_booking_ids_gin.sql`** — GIN index on `invoices.booking_ids` so the invoice-sync `.overlaps()` lookups stop sequential-scanning. Plain `CREATE INDEX` (txn-safe); use the runbook's `CONCURRENTLY` form first only if invoices is large.
 - [x] **`20260624130000_email_campaign_recipient_attempt_count.sql`** (#82) — adds `email_campaign_recipients.attempt_count`. Additive + backward-compatible; applied before redeploying send-campaign-emails.
-- [ ] **`20260625120000_academy_invoice_email_message.sql`** — adds nullable `academy_profiles.invoice_email_message` (the "Save as default" invoice-email template). Additive + backward-compatible; the frontend reads/writes it tolerantly (degrades to blank if absent), so deploy order doesn't matter — apply whenever. Frontend auto-deploys via Vercel.
+- [x] **`20260625120000_academy_invoice_email_message.sql`** — LIVE. adds nullable `academy_profiles.invoice_email_message` (the "Save as default" invoice-email template). Additive + backward-compatible.
 
 ## Config / dashboard
 - [x] `CRON_SECRET` + `SUPABASE_SERVICE_ROLE_KEY` set in Vercel **Production** (verified).
 - [x] Production error monitoring — **resolved**: PostHog `$exception` (client) + Slack alerts (cron + critical edge fns) cover it; no Sentry needed (#83, see `audit/MONITORING.md`).
 
-## Pending — not yet deployed (invoice PDF)
-`supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
+## ✅ Invoice PDF — DEPLOYED (send-invoice-email v20, 2026-06-25)
 
-- [ ] **send-invoice-email** — now **attaches the invoice PDF** to the payment email (best-effort: it calls `generate-invoice` for a fresh signed `pdfUrl`, fetches it, and attaches base64; if generation fails it still sends the pay-link email). Previously the payment email was link-only with no PDF. *No deploy = recipients keep getting link-only emails.*
+- [x] **send-invoice-email** — **attaches the invoice PDF** to the payment email (best-effort: it calls `generate-invoice` for a fresh signed `pdfUrl`, fetches it, and attaches base64; if generation fails it still sends the pay-link email). Live at v20 (2026-06-25). *(If unsure the attach works, send yourself a test invoice email and check for the PDF.)*
 
-## Pending — replace the Lovable AI gateway (P1 #9, post-2026-06-24)
+## 🟡 DEFERRED by owner — replace the Lovable AI gateway (P1 #9)
+
+> **Status 2026-06-28:** all 6 still at **v6 (2026-06-02)** — intentionally NOT redeployed (the AI
+> admin features aren't needed now and they require the secrets below). This is the only group not
+> current with the repo, and it's by choice. `generate-proposals` is AI-gated and no-ops without the
+> gateway, so the `.eq` fix bundled in it has no live effect until you enable the gateway anyway.
 
 The 6 AI edge fns no longer hardcode `ai.gateway.lovable.dev` / `LOVABLE_API_KEY`. They now use the
 shared `_shared/ai-gateway.ts`, driven by env (any OpenAI-compatible `/chat/completions` gateway).
@@ -89,11 +107,10 @@ Then `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw` for:
 The `_shared/cors.ts` lovable-origin removal bundles into every fn deploy; the `daily-maintenance`
 comment-only change auto-deploys via Vercel. Delete `LOVABLE_API_KEY` from the project secrets once
 all 6 are redeployed.
-## Pending — not yet deployed (P1 #11 batch-job correctness)
-`supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
+## ✅ Batch-job correctness (P1 #11) — DEPLOYED 2026-06-25
 
-- [ ] **recalculate-invoices** — bound the unscoped "recalc everything" path at `MAX_UNSCOPED = 2000` so a no-`invoice_ids` admin run can't SELECT + process every draft/sent/pending invoice platform-wide (timeout / OOM at scale). Recalc is idempotent so capping is safe; the response returns `limited: true` + a hint when truncated so the admin can re-run or pass `invoice_ids`. *No behaviour change for scoped (invoice_ids) calls.*
-- [ ] **generate-cycle-commitment-invoices**, **send-digest-emails**, **process-onboarding-emails** — per-failure Slack alerting on the batch jobs. These return HTTP 200 even when individual items fail (a committer not billed / a digest or onboarding email not sent), so the daily-maintenance / daily-emails cron wrappers' `alertCronFailure` (non-2xx only) never surfaced them. Each fn now raises **one** `notifySlackEdgeError` per run when its partial-failure count is > 0. Needs the `slack-notify` webhook already configured (it is). *Observability only — no behaviour change to the happy path.*
+- [x] **recalculate-invoices** (v8, 2026-06-25) — bounds the unscoped "recalc everything" path at `MAX_UNSCOPED = 2000`. *No behaviour change for scoped (invoice_ids) calls.*
+- [x] **generate-cycle-commitment-invoices**, **send-digest-emails**, **process-onboarding-emails** (2026-06-25) — per-failure Slack alerting on the batch jobs. These return HTTP 200 even when individual items fail (a committer not billed / a digest or onboarding email not sent), so the daily-maintenance / daily-emails cron wrappers' `alertCronFailure` (non-2xx only) never surfaced them. Each fn now raises **one** `notifySlackEdgeError` per run when its partial-failure count is > 0. Needs the `slack-notify` webhook already configured (it is). *Observability only — no behaviour change to the happy path.*
 
 ## Notes
 - The CI changes (rehearsal runner, edge-fn config guard, cron Slack alerts, stale-ref purge) took effect on merge — no manual deploy.
