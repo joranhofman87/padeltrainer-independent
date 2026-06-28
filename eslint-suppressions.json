@@ -989,7 +989,7 @@
   },
   "src/pages/academy/AcademyCalendar.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 15
+      "count": 9
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
