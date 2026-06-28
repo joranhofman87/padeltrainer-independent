@@ -169,14 +169,31 @@ and fixes in one PR makes the money diff unreviewable. Sequence:
    type were dropped from the merge (TSO still uses `existingBookings` for its own
    auto-booking). **Still open (NOT this PR):** A2 (status set — flagged owner
    decision) + A3 (cross-rerun idempotency).
-3. **PR-3 (BEHAVIOUR CHANGE — recalc replacement):** delete the bespoke recalc
-   and route through the canonical pipeline (`buildCycleLineItems` +
-   `calculateVatTotals` + `split_count`-first + guarded `updated_at`/status
-   optimistic write); flip Test B to canonical values.
+3. **PR-3 (BEHAVIOUR CHANGE — recalc replacement): ✅ SHIPPED.** The bespoke
+   recalc is deleted; `syncInvoicesAfterCycleEdit(cyclusId)` now DELEGATES to the
+   canonical `syncInvoicesAfterPriceChange` (the same resync CycleDetailView /
+   slot-detail edits use) — rebuilds all line items from the real bookings, reads
+   `invoices.split_count`, `total = round2(subtotal+vat)`, clears stale
+   `vat_breakdown`, guarded `updated_at` optimistic write. Fixes B1–B5 + the
+   TOCTOU. Unpaid-status set aligned to `['sent','draft','overdue']` (A2 closed,
+   passed explicitly since the canonical default omits `overdue`). The recalc is
+   GATED in TSO to an actual price/extra-cost/length/VAT-mode change (a benign
+   rename no longer rewrites every overlapping invoice). R1 fix: `cycles.settings.
+   extra_costs` is persisted before the recalc (the canonical resolver prefers it
+   over the slot value). Test B flipped to canonical (B1 rebuild / B2 split from
+   split_count / B3 total 15.06=subtotal+vat / B4 breakdown cleared). 3-lens
+   adversarial review = correct-ship. **Known consequences (intended — they make
+   TSO consistent with every other cycle-price-edit path):** explicit per-booking
+   `payment_amount` lines don't re-price on a price edit (M-21); manual invoice
+   lines are rebuilt away; invoice discovery is via `confirmed/pending` bookings.
+   **Pre-existing gap (NOT a regression, NOT addressed here):** toggling split
+   **OFF** on an already-invoiced cyclus does not un-split the existing invoices
+   (the old bespoke recalc never un-split either; only OFF→ON re-splits). Needs an
+   owner decision + a symmetric un-split path if desired.
 
-**End state:** one owner `syncInvoicesAfterCycleEdit(cyclusId)` that both TSO
-invoice paths call, collapsing the two bespoke writes into one guarded canonical
-pass and aligning the unpaid-status set.
+**End state REACHED:** one owner `syncInvoicesAfterCycleEdit(cyclusId)` collapsing
+the two bespoke writes into guarded canonical passes, with the unpaid-status set
+aligned. Both fix PRs (#210 PR-2, PR-3) and the inert freeze (#208/#209) are done.
 
 ## Open questions for the owner (decisions, not assumptions)
 

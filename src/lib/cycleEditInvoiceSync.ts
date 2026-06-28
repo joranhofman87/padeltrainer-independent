@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
+import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 
 /**
  * Domain owner for the two bespoke invoice writes that live inside the trainer
@@ -11,8 +12,10 @@ import type { Database } from '@/integrations/supabase/types';
  *  - Write A (`mergeNewBookingIdsIntoCycleInvoices`): bug A1 FIXED (PR-2) — the
  *    player→invoice matcher now routes each player's new bookings to the right
  *    invoice. A2 (status set) / A3 (cross-rerun idempotency) remain open.
- *  - Write B (`recalcCycleInvoiceTotals`): still behaviour-frozen, carries bugs
- *    B1–B5; PR-3 routes it through the canonical pipeline.
+ *  - Write B (`syncInvoicesAfterCycleEdit`): bugs B1–B5 + the TOCTOU FIXED (PR-3)
+ *    — the bespoke recalc is gone; it now delegates to the canonical
+ *    `syncInvoicesAfterPriceChange` resync (the same path every other cycle
+ *    price/extra-cost edit uses).
  */
 
 /** A freshly-inserted booking on the newly-added sessions, as the merge reads it. */
@@ -103,194 +106,37 @@ export async function mergeNewBookingIdsIntoCycleInvoices(
   }
 }
 
-/** An extra-cost row as the cyclus-edit form holds it (mirrors TSO's local `ExtraCost`). */
-export interface CycleEditExtraCost {
-  description: string;
-  price: number;
-  type?: 'per_session' | 'one_time';
-  vat_rate?: number;
-}
-
-export interface RecalcCycleInvoiceTotalsParams {
-  /** The cyclus being saved (its slots → bookings → overlapping unpaid invoices). */
-  cyclusId: string;
-  /** The cyclus name, used to label the fallback session line (`cycleEditData.name`). */
-  cycleName: string;
-  /** Per-session price to re-derive line totals from (`null` = leave unit prices as-is). */
-  sessionPrice: number | null;
-  /** The current cyclus extra costs to rebuild the extra-cost line items from. */
-  extraCosts: CycleEditExtraCost[];
-  /** Whether the cyclus prices are VAT-inclusive (`cycleEditData.pricesIncludeVat`). */
-  pricesIncludeVat: boolean;
-}
+/** The canonical unpaid set both cyclus-edit writes target (owner-confirmed): drops the
+ *  dead `pending`, includes `overdue`. `syncInvoicesAfterPriceChange`'s own default omits
+ *  `overdue`, so it must be passed explicitly. */
+const CYCLE_EDIT_UNPAID_STATUSES = ['sent', 'draft', 'overdue'];
 
 /**
- * Write B — rebuild `line_items` and overwrite `subtotal / vat_amount / total /
- * vat_breakdown` (+ null `pdf_url`) on every overlapping unpaid invoice. Runs on
- * EVERY cyclus-edit save (including no-op renames). This is the write that sets
- * the total the customer pays.
+ * Write B — re-derive line items + totals for a cyclus's unpaid invoices after a
+ * price / extra-cost / length edit. Delegates to the canonical cycle resync
+ * {@link syncInvoicesAfterPriceChange} — the SAME path CycleDetailView and the
+ * slot-detail price edits use — which rebuilds ALL line items from the real
+ * bookings (`buildCycleLineItems`/`calculateVatTotals`), reads the authoritative
+ * `invoices.split_count`, and writes through the guarded optimistic lock. This
+ * replaces the former bespoke recalc that carried bugs B1–B5 + a TOCTOU.
  *
- * ⚠️ KNOWN BUGS (pinned by the characterization test, NOT fixed here):
- *  - B1 (P0): "first-item-only" session rebuild keeps `line_items[0]` and DROPS
- *    `[1..n]` (the `filter((_item, idx) => idx === 0)`), so per-session invoices
- *    collapse to one week and manual lines/discounts in `[1..n]` are deleted.
- *  - B2 (P0): split count is read from the `(1/N)` description marker ONLY,
- *    ignoring `invoices.split_count` (not even selected) → a structural-split
- *    invoice with no marker text is re-priced at FULL (N× overcharge).
- *  - B3 (P1): the exclusive multi-rate `total` accumulates UNROUNDED per-line VAT
- *    and rounds once, so it diverges from `subtotal + vat_amount` by ~1¢.
- *  - B4 (P1): `vat_breakdown` is only spread when the NEW result is multi-rate, so
- *    a multi→single-rate edit leaves a STALE breakdown on the row.
- *  - B5 (P2): extra-cost builder keys on `type==='per_session'` and omits the
- *    canonical `price<=0`/blank skip.
- * Plus: no `updated_at`/status optimistic lock at the write (TOCTOU). PR-3 deletes
- * this body and routes through the canonical `invoiceCalc`/`invoiceSync` pipeline.
+ * Contract — the CALLER (TSO) must, BEFORE calling:
+ *  1. gate this to an actual price/extra-cost/length change (a benign rename must
+ *     NOT re-derive every overlapping invoice); and
+ *  2. ensure the cycle's slots AND `cycles.settings.extra_costs` carry the fresh
+ *     values — the canonical extra-cost resolver reads `settings.extra_costs` in
+ *     preference to the slot value, so a stale settings entry would otherwise win.
  */
-export async function recalcCycleInvoiceTotals(
-  params: RecalcCycleInvoiceTotalsParams,
-  client: SupabaseClient<Database> = supabase,
-): Promise<void> {
-  const { cyclusId, cycleName, sessionPrice, extraCosts, pricesIncludeVat } = params;
+export async function syncInvoicesAfterCycleEdit(cyclusId: string): Promise<void> {
+  if (!cyclusId) return;
 
-  const { data: syncSlotIds } = await client
+  const { data: slots } = await supabase
     .from('availability_slots')
     .select('id')
     .eq('cyclus_id', cyclusId);
 
-  if (syncSlotIds && syncSlotIds.length > 0) {
-    const syncSlotIdList = syncSlotIds.map((s) => s.id);
-    const { data: syncBookings } = await client
-      .from('bookings')
-      .select('id')
-      .in('slot_id', syncSlotIdList)
-      .neq('status', 'cancelled');
+  const slotIds = (slots ?? []).map((s) => s.id);
+  if (slotIds.length === 0) return;
 
-    if (syncBookings && syncBookings.length > 0) {
-      const syncBookingIdList = syncBookings.map((b) => b.id);
-
-      const { data: matchingUnpaidInvoices } = await client
-        .from('invoices')
-        .select('id, booking_ids, line_items, vat_rate, status')
-        .in('status', ['draft', 'sent', 'pending', 'overdue'])
-        .overlaps('booking_ids', syncBookingIdList);
-
-      if (matchingUnpaidInvoices && matchingUnpaidInvoices.length > 0) {
-        for (const inv of matchingUnpaidInvoices) {
-          const existingItems = (inv.line_items as any[]) || [];
-          const bookingCount = (inv.booking_ids as string[])?.length || 1;
-
-          // Detect split count from existing line items (e.g. "(1/2)" → 2)
-          let splitCount = 1;
-          for (const item of existingItems) {
-            const splitMatch = item.description?.match(/\(1\/(\d+)\)/);
-            if (splitMatch) { splitCount = parseInt(splitMatch[1], 10); break; }
-          }
-
-          const baseSessionItems = existingItems.filter(
-            (_item: any, idx: number) => idx === 0,
-          );
-
-          const sessionItems = (baseSessionItems.length > 0
-            ? baseSessionItems
-            : [{
-              description: `${cycleName.trim()} (${bookingCount} weken)`,
-              quantity: bookingCount,
-              unit_price: sessionPrice ?? 0,
-            }]
-          ).map((item: any) => {
-            if (sessionPrice !== null) {
-              const splitPrice = splitCount > 1
-                ? Math.round((sessionPrice / splitCount) * 100) / 100
-                : sessionPrice;
-              return {
-                ...item,
-                unit_price: splitPrice,
-                amount: (item.quantity ?? 1) * splitPrice,
-              };
-            }
-            return item;
-          });
-
-          // Build extra cost line items from current cycle settings
-          const extraCostItems = extraCosts.map((ec: any) => {
-            const isPerSession = ec.type === "per_session";
-            const bookingCount = (inv.booking_ids as string[])?.length || 1;
-            let ecPrice = ec.price;
-            if (splitCount > 1) {
-              ecPrice = Math.round((ecPrice / splitCount) * 100) / 100;
-            }
-            const ecDesc = `${ec.description}${isPerSession ? " (per sessie)" : ""}`;
-            return {
-              description: splitCount > 1 ? `${ecDesc} (1/${splitCount})` : ecDesc,
-              quantity: isPerSession ? bookingCount : 1,
-              unit_price: ecPrice,
-              amount: ecPrice * (isPerSession ? bookingCount : 1),
-              vat_rate: ec.vat_rate ?? inv.vat_rate ?? 21,
-            };
-          });
-
-          const updatedItems = [...sessionItems, ...extraCostItems];
-
-          // Recalculate totals
-          const vatRate = inv.vat_rate || 21;
-          const pricesIncVat = pricesIncludeVat;
-
-          // Check for multi-rate VAT
-          const rates = updatedItems.map((it: any) => it.vat_rate ?? vatRate);
-          const hasMultiRate = new Set(rates).size > 1;
-
-          let subtotal = 0;
-          let vatAmount = 0;
-          let total = 0;
-          const vatBreakdown: Record<number, { subtotal: number; vat: number }> = {};
-
-          for (const item of updatedItems) {
-            const lineTotal = item.quantity * item.unit_price;
-            const lineVatRate = item.vat_rate ?? vatRate;
-
-            let lineSub: number;
-            let lineVat: number;
-            if (pricesIncVat) {
-              lineSub = lineTotal / (1 + lineVatRate / 100);
-              lineVat = lineTotal - lineSub;
-            } else {
-              lineSub = lineTotal;
-              lineVat = lineTotal * (lineVatRate / 100);
-            }
-
-            subtotal += lineSub;
-            vatAmount += lineVat;
-            total += pricesIncVat ? lineTotal : lineTotal + lineVat;
-
-            if (hasMultiRate) {
-              if (!vatBreakdown[lineVatRate]) {
-                vatBreakdown[lineVatRate] = { subtotal: 0, vat: 0 };
-              }
-              vatBreakdown[lineVatRate].subtotal += lineSub;
-              vatBreakdown[lineVatRate].vat += lineVat;
-            }
-          }
-
-          // Round breakdown values
-          for (const rate in vatBreakdown) {
-            vatBreakdown[rate].subtotal = Math.round(vatBreakdown[rate].subtotal * 100) / 100;
-            vatBreakdown[rate].vat = Math.round(vatBreakdown[rate].vat * 100) / 100;
-          }
-
-          const { error: invRecalcErr } = await client
-            .from('invoices')
-            .update({
-              line_items: updatedItems,
-              subtotal: Math.round(subtotal * 100) / 100,
-              vat_amount: Math.round(vatAmount * 100) / 100,
-              total: Math.round(total * 100) / 100,
-              ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
-              pdf_url: null,
-            })
-            .eq('id', inv.id);
-          if (invRecalcErr) throw invRecalcErr;
-        }
-      }
-    }
-  }
+  await syncInvoicesAfterPriceChange(slotIds, { statuses: CYCLE_EDIT_UNPAID_STATUSES });
 }
