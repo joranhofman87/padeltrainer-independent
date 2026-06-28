@@ -1,6 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import type { Locale } from 'date-fns';
 import type { CyclusGroupPaymentStatus } from './cyclusGroupPayment';
+import { isMissingRpc } from '@/lib/deployDrift';
 
 /**
  * One grouped cyclus-overview row as the academy page renders it. Produced two ways that MUST stay
@@ -66,8 +67,7 @@ export interface AcademyCyclusGroupRow {
 /** supabase-js returns code 'PGRST202' (function not in schema cache) / Postgres '42883'
  * (function does not exist) when the migration is not yet applied → fall back to the client path. */
 export function isMissingCyclusGroupsRpc(error: unknown): boolean {
-  const code = (error as { code?: string } | null)?.code;
-  return code === 'PGRST202' || code === '42883';
+  return isMissingRpc(error);
 }
 
 /**

@@ -44,6 +44,7 @@ import { InvoiceSettingsCard } from '@/components/trainer/InvoiceSettingsCard';
 import { getAcademyPaymentInfo, type AcademyPaymentInfo } from '@/lib/academyTrainerPayments';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
+import { isMissingRpc, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { reconcileBookingInvoices } from '@/lib/bookings';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
@@ -232,7 +233,7 @@ export default function TrainerEarnings() {
     } as never);
     const sumErr = summaryRes.error as { code?: string } | null;
 
-    if (sumErr && sumErr.code !== 'PGRST202' && sumErr.code !== '42883') {
+    if (sumErr && !isMissingRpc(sumErr)) {
       logger.error('Error fetching earnings summary', undefined, { error: sumErr, component: 'TrainerEarnings' });
       setLoadError(true);
       setLoadingData(false);
@@ -260,6 +261,7 @@ export default function TrainerEarnings() {
       }
     } else {
       // RPC not deployed yet — legacy full load, summary computed in JS from the same set.
+      reportDeployDriftFallback('get_trainer_earnings_summary', { trainerId: trainerProfile.id });
       const { data, error } = await listQuery();
       if (error) {
         logger.error('Error fetching earnings', undefined, { error, component: 'TrainerEarnings' });

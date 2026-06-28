@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { logger } from '@/lib/logger';
+import { reportDeployDriftFallback } from '@/lib/deployDrift';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
@@ -643,7 +644,7 @@ export default function CycleForm({
           result = registrationToCycle(reg);
         } catch (err) {
           if (!isMissingRegistrationRpc(err)) throw err;
-          logger.warn('registration write RPC not deployed; using legacy cycle write', { component: 'CycleForm' });
+          reportDeployDriftFallback('registration_write_rpc', { isEdit });
           result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
         }
       } else {

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { getCyclesWithCounts, countCyclesIntakesWithFallback, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
+import { isMissingRpc } from '@/lib/deployDrift';
 
 /**
  * The intake-FORM half of the registration↔cycle split (Phase 2).
@@ -72,8 +73,7 @@ export interface RegistrationInput {
  * migration. (Same shape as the documented fallback in src/lib/invoicesList.ts.)
  */
 export function isMissingRegistrationRpc(error: unknown): boolean {
-  const code = (error as { code?: string } | null)?.code;
-  return code === 'PGRST202' || code === '42883';
+  return isMissingRpc(error);
 }
 
 /**

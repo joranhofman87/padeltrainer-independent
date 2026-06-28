@@ -20,6 +20,7 @@ import { EditCycleEndDateDialog } from '@/components/cycles/EditCycleEndDateDial
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { reportDeployDriftFallback } from '@/lib/deployDrift';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableTableHead } from '@/components/ui/sortable-table-head';
@@ -117,7 +118,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     );
     if (error) {
       if (isMissingCyclusGroupsRpc(error)) {
-        logger.info('get_academy_cyclus_groups not deployed yet — using client aggregation', { component: 'AcademyCyclusOverview' });
+        reportDeployDriftFallback('get_academy_cyclus_groups', { academyId });
       } else {
         logger.error('get_academy_cyclus_groups failed — falling back to client aggregation', error as Error, { component: 'AcademyCyclusOverview' });
       }

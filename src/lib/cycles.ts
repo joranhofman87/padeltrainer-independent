@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
 import type { GuestResolveScope } from '@/lib/playerResolve';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { isMissingRpc, reportDeployDriftFallback } from '@/lib/deployDrift';
 
 // Types
 export interface PriceTableRow {
@@ -359,8 +360,8 @@ export async function countCyclesIntakesWithFallback(cycleIds: string[]): Promis
   try {
     return await countCyclesIntakes(cycleIds);
   } catch (e) {
-    const code = (e as { code?: string } | null)?.code;
-    if (code !== 'PGRST202' && code !== '42883') throw e;
+    if (!isMissingRpc(e)) throw e;
+    reportDeployDriftFallback('count_cycles_intakes', { cycleCount: cycleIds.length });
     const { data } = await supabase.from('intake_requests').select('cycle_id').in('cycle_id', cycleIds);
     const counts = new Map<string, number>();
     (data ?? []).forEach((row: { cycle_id: string }) =>
