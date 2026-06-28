@@ -1,5 +1,6 @@
 import { corsHeaders, requireUser } from "../_shared/auth.ts";
 import { canManageInvoice } from "../_shared/invoice-access.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -76,6 +77,9 @@ Deno.serve(async (req) => {
 
     if (updErr) {
       console.error("sync-invoice-to-bookings booking update failed:", updErr);
+      // Real-time alert: this is the invoice-paid → bookings-not divergence the
+      // daily invoice-health-check would only catch next morning.
+      await notifySlackEdgeError("sync-invoice-to-bookings", `booking write-back failed: ${updErr.message}`, { bookingIds });
       return new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -106,6 +110,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     // Log full detail server-side; never echo raw DB error text to callers.
     console.error("sync-invoice-to-bookings error:", err);
+    await notifySlackEdgeError("sync-invoice-to-bookings", err instanceof Error ? err.message : String(err));
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
