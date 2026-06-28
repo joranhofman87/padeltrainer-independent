@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { createCycle } from '@/lib/cycles';
+import { expandWeeklySessions, insertAvailabilitySlots } from '@/lib/slots';
 
 import { toast } from 'sonner';
 
@@ -119,24 +120,21 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
 
       const slotPrice = Math.round(parseFloat(price) * (parseInt(duration) / 60) * 100) / 100;
 
-      const { data, error } = await supabase
-        .from('availability_slots')
-        .insert({
-          trainer_id: trainerId,
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          is_recurring: false,
-          max_participants: parseInt(maxParticipants),
-          price_per_session: slotPrice,
-        })
-        .select()
-        .single();
+      const { data, error } = await insertAvailabilitySlots({
+        trainer_id: trainerId,
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        is_recurring: false,
+        max_participants: parseInt(maxParticipants),
+        price_per_session: slotPrice,
+      }, supabase, '*');
 
       if (error) throw error;
 
+      const inserted = (data as { id: string }[])[0];
       setSlots((prev) => [
         ...prev,
-        { id: data.id, date: startTime, time: slotTime },
+        { id: inserted.id, date: startTime, time: slotTime },
       ]);
       setSlotTime('09:00');
       setSlotDate(undefined);
@@ -193,14 +191,11 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       createdCycleId = cycle.id;
       const cyclusId = cycle.id;
 
-      for (let week = 0; week < weeks; week++) {
-        const slotStart = addWeeks(baseStart, week);
-        const slotEnd = addMinutes(slotStart, durationMin);
-
+      for (const session of expandWeeklySessions(baseStart, durationMin, weeks)) {
         slotsToInsert.push({
           trainer_id: trainerId,
-          start_time: slotStart.toISOString(),
-          end_time: slotEnd.toISOString(),
+          start_time: session.start.toISOString(),
+          end_time: session.end.toISOString(),
           is_recurring: false,
           cyclus_id: cyclusId,
           cyclus_name: name,
@@ -209,9 +204,7 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
         });
       }
 
-      const { error } = await supabase
-        .from('availability_slots')
-        .insert(slotsToInsert);
+      const { error } = await insertAvailabilitySlots(slotsToInsert);
 
       if (error) throw error;
 

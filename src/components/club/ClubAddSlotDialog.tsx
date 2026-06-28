@@ -38,6 +38,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { createCycle } from "@/lib/cycles";
+import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
 import { getUserClubProfiles } from "@/lib/club";
 import { formatDate } from "@/lib/format";
 
@@ -116,7 +117,7 @@ export function ClubAddSlotDialog({
       const startDateTime = setMinutes(setHours(slotDate, hours), minutes);
       const endDateTime = addMinutes(startDateTime, slotDuration);
 
-      const { error } = await supabase.from("availability_slots").insert({
+      const { error } = await insertAvailabilitySlots({
         trainer_id: selectedTrainerId,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
@@ -449,14 +450,11 @@ export function ClubBulkCreateSheet({
         const cyclusId = cycle.id;
         createdCycleIds.push(cyclusId);
 
-        for (let week = 0; week < config.recurrenceWeeks; week++) {
-          const currentSlotStart = addWeeks(slotStart, week);
-          const currentSlotEnd = addMinutes(currentSlotStart, config.durationMinutes);
-
+        for (const session of expandWeeklySessions(slotStart, config.durationMinutes, config.recurrenceWeeks)) {
           slotsToInsert.push({
             trainer_id: config.trainerId,
-            start_time: currentSlotStart.toISOString(),
-            end_time: currentSlotEnd.toISOString(),
+            start_time: session.start.toISOString(),
+            end_time: session.end.toISOString(),
             cyclus_id: cyclusId,
             cyclus_name: config.cyclusName,
             location_id: clubLocationId || null,
@@ -476,7 +474,7 @@ export function ClubBulkCreateSheet({
         return;
       }
 
-      const { error } = await supabase.from("availability_slots").insert(slotsToInsert);
+      const { error } = await insertAvailabilitySlots(slotsToInsert);
       if (error) throw error;
       slotsInserted = true;
 
