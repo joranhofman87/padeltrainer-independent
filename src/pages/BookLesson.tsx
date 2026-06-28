@@ -13,6 +13,7 @@ import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { initiateCyclePayment } from '@/lib/cyclePayment';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
 import { useTranslation } from 'react-i18next';
@@ -381,7 +382,7 @@ export default function BookLesson() {
           paid_externally: paymentTiming === 'manual' ? true : undefined,
         }));
 
-        const { error } = await supabase.from('bookings').insert(bookings).select('id');
+        const { data: insertedCycleBookings, error } = await supabase.from('bookings').insert(bookings).select('id');
         if (error) throw error;
 
         try {
@@ -427,10 +428,11 @@ export default function BookLesson() {
         } else {
           // Payment setup was already validated above (P-03), before the
           // bookings were inserted — no re-check needed here.
-          const { data: createdBookings } = await supabase.from('bookings').select('id')
-            .eq('player_id', profile.id).in('slot_id', selectedCyclus.slots.map(s => s.id))
-            .eq('status', 'pending').order('created_at', { ascending: false });
-          const bookingIds = createdBookings?.map(b => b.id) || [];
+          // A2: charge EXACTLY the bookings we just inserted. The previous
+          // re-query by (player_id, slot_id, status='pending') could fold a
+          // stale abandoned-checkout pending row into this payment and
+          // mis-spread the split amount across more rows than intended.
+          const bookingIds = (insertedCycleBookings ?? []).map(b => b.id);
           // Calculate payment amount: if split_payment, divide by number of confirmed players + this player
           let paymentAmount = selectedCyclus.totalPrice;
           if (cycleSettings?.split_payment) {
@@ -443,11 +445,17 @@ export default function BookLesson() {
             const totalPlayers = Math.max(existingPlayers || 1, 1);
             paymentAmount = Math.round((selectedCyclus.totalPrice / totalPlayers) * 100) / 100;
           }
-          const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
-            body: { slotId: selectedCyclus.slots[0].id, amount: paymentAmount, description: cyclusLessonTitle, trainerId: trainer.id, bookingIds },
+          // A3: create the Mollie payment and, on failure, soft-cancel the
+          // just-inserted bookings so a failed checkout never strands
+          // capacity-occupying orphans (see src/lib/cyclePayment.ts).
+          const { checkoutUrl } = await initiateCyclePayment({
+            bookingIds,
+            slotId: selectedCyclus.slots[0].id,
+            amount: paymentAmount,
+            description: cyclusLessonTitle,
+            trainerId: trainer.id,
           });
-          if (paymentError) throw paymentError;
-          if (paymentData?.checkoutUrl) { window.location.href = paymentData.checkoutUrl; } else { throw new Error('No checkout URL received'); }
+          window.location.href = checkoutUrl;
         }
         return;
       }

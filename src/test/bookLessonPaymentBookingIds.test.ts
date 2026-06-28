@@ -37,4 +37,28 @@ describe('BookLesson — online booking creation has a single owner (no double-i
     }
     expect(count).toBeGreaterThan(0);
   });
+
+  /**
+   * A2 (Codex foundation-verification): the online-cycle payment must charge
+   * EXACTLY the bookings it just inserted — captured from the insert's
+   * `.select('id')` result — not a re-query by status that could fold a prior
+   * abandoned-checkout pending row into the payment.
+   */
+  it('cycle online payment charges the just-inserted ids, not a status re-query', () => {
+    // captures the insert result and reuses it for the payment
+    expect(source).toMatch(/insertedCycleBookings/);
+    expect(source).toMatch(/\.insert\(bookings\)\.select\(\s*['"]id['"]\s*\)/);
+    // the removed bug: a re-read of pending bookings ordered by created_at
+    expect(source).not.toMatch(/\.eq\(\s*['"]status['"]\s*,\s*['"]pending['"]\s*\)\s*\.order\(\s*['"]created_at['"]/);
+  });
+
+  /**
+   * A3 (Codex foundation-verification): the online-cycle payment goes through
+   * initiateCyclePayment, which soft-cancels the just-inserted bookings if
+   * payment creation fails — so a failed checkout leaves no orphan pending
+   * bookings occupying capacity. The page must not hand-roll the invoke.
+   */
+  it('cycle online payment is owned by initiateCyclePayment (rollback-on-failure)', () => {
+    expect(source).toMatch(/initiateCyclePayment\(/);
+  });
 });
