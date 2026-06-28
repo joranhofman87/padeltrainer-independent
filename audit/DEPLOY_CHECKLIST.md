@@ -7,6 +7,39 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 > CURRENT **except the 6 deferred AI-gateway functions** — see the two reconciliation sections
 > below. The dated `[x]`/`[ ]` markers in the lower sections are the historical audit trail; the
 > two "verified 2026-06-28" sections are authoritative.
+>
+> **Foundation Tier A (PRs #187 · #188 · #189, merged 2026-06-28):** see the dedicated section
+> immediately below — A1 capacity migration LIVE; `mollie-webhook` + `verify-mollie-payment`
+> redeployed from `main` (post-merge); #187 is frontend-only.
+
+## ✅ Foundation Tier A — booking correctness (PRs #187 · #188 · #189) — 2026-06-28
+
+The grounded Codex roadmap Tier A (booking-domain hardening). All three merged to `main`
+2026-06-28, each characterization/rehearsal-tested **and** adversarially reviewed before merge.
+
+1. [x] **#187 — online-cycle payment exact-ids + orphan rollback** (`src/lib/cyclePayment.ts`).
+  **Frontend-only — auto-deploys via Vercel.** No migration, no edge-fn redeploy
+  (`create-mollie-payment` already accepts `bookingIds`).
+2. [x] **#189 — staff/guest slot-capacity guard.** Migration
+  **`20260702120000_enforce_capacity_for_staff_bookings.sql`** — LIVE (applied via
+  `db push --linked` 2026-06-28; the same push also finally *recorded*
+  `20260701130000` in remote history, fixing the earlier dashboard-apply drift). Additive —
+  replaces the `enforce_booking_slot_tier` function body so capacity is enforced for all
+  authenticated inserts; trigger DDL unchanged; no data change. `friendlyError` change is
+  frontend (auto-deploys).
+3. [x] **#188 — webhook can't resurrect a cancelled booking.** **DEPLOYED 2026-06-28 from `main`**
+  (`mollie-webhook` + `verify-mollie-payment`). Adds the `status != 'cancelled'` write-back guard
+  + a Slack alert when a paid payment lands on a cancelled booking.
+  - *Deploy gotcha that bit us:* the FIRST redeploy ran from the A1 feature branch (`main` + A1
+    only, NOT #188) and a `git pull` on stale `main` said "Already up to date", so the guard did
+    NOT ship until the PRs were merged. **Always merge to `main` first, `git pull`, then deploy.**
+    Proof the re-deploy shipped it: `verify-mollie-payment`'s upload manifest now includes
+    `_shared/mollie-webhook-payment.ts` (only imported once #188 added `findCancelledPaidBookings`).
+  - Commands: `supabase functions deploy {mollie-webhook,verify-mollie-payment} --project-ref ficwbdrzefmblkbkomzw`
+
+**Open follow-up (not blocking):** align the DB capacity occupancy count to the
+`CAPACITY_OCCUPYING_STATUSES` allowlist (the four count sites currently use a denylist that
+counts `rejected`/`completed`) — see the foundation worklog / memory. Pre-existing, fail-closed.
 
 ## ✅ P0 — single-slot online booking double-insert (PR #183) — DEPLOYED 2026-06-28
 
