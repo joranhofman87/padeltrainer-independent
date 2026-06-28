@@ -33,15 +33,7 @@ import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/Agenda
 import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from "@/lib/academy";
-import {
-  GUEST_PLAYER_CALENDAR_SELECT,
-  loadGuestPlayersForAcademy,
-} from "@/lib/guestPlayers";
-import {
-  fetchRemovedPlayerKeysForAcademyContext,
-  filterGuestRowsByRemoval,
-  filterProfileIdsByRemoval,
-} from "@/lib/playerRemovalVisibility";
+import { fetchAllPlayersOverview } from "@/lib/playersOverview";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchTrainerDisplayNamesByProfileIds } from "@/lib/trainerDisplayNames";
 import { logger } from "@/lib/logger";
@@ -405,105 +397,23 @@ export default function AcademyCalendar() {
   const fetchAllKnownPlayers = async () => {
     if (!activeAcademy) return;
     try {
-      const academyTrainers = await getAcademyTrainersWithProfiles(activeAcademy.id);
-      const trainerIds = academyTrainers
-        .filter((at: any) => at.status === 'active' && at.trainer_profile)
-        .map((at: any) => at.trainer_profile.id);
-
-      const playerMap = new Map<string, KnownPlayer>();
-      const removedKeys = await fetchRemovedPlayerKeysForAcademyContext(
-        activeAcademy.id,
-        trainerIds,
-      );
-
-      // 1) Guest players: trainer-owned (for academy trainers) + academy-level
-      const guestRows: any[] = [];
-      if (trainerIds.length > 0) {
-        const { data: trainerGuests } = await supabase
-          .from('guest_players')
-          .select(GUEST_PLAYER_CALENDAR_SELECT)
-          .in('trainer_id', trainerIds);
-        if (trainerGuests) {
-          guestRows.push(...filterGuestRowsByRemoval(trainerGuests, removedKeys));
-        }
-      }
-
-      const { data: academyGuests, error: academyGuestsError } =
-        await loadGuestPlayersForAcademy(activeAcademy.id);
-      if (academyGuestsError) {
-        logger.error(
-          "Failed to load academy guest players for calendar",
-          academyGuestsError,
-          { component: "AcademyCalendar", academyId: activeAcademy.id },
-        );
-      } else if (academyGuests) {
-        guestRows.push(...academyGuests);
-      }
-
-      const linkedProfileIds = new Set<string>();
-      const seenGuestIds = new Set<string>();
-      guestRows.forEach((g) => {
-        if (seenGuestIds.has(g.id)) return;
-        seenGuestIds.add(g.id);
-        if (g.linked_profile_id) linkedProfileIds.add(g.linked_profile_id);
-        playerMap.set(`guest-${g.id}`, {
-          id: g.id,
-          full_name: g.full_name || 'Guest',
-          skill_rating: g.skill_rating,
-          rating_system: g.rating_system || 'knltb',
-          is_guest: true,
-        });
-      });
-
-      // 2) Registered players: distinct profiles tied to academy trainers via bookings.
-      //    Use a two-step query (slot ids first, then bookings) to match the AcademyPlayers
-      //    page and avoid PostgREST nested-filter pitfalls.
-      if (trainerIds.length > 0) {
-        const profileIds = new Set<string>();
-
-        const { data: trainerSlotIds } = await supabase
-          .from('availability_slots')
-          .select('id')
-          .in('trainer_id', trainerIds);
-
-        const slotIdList = (trainerSlotIds || []).map((s: any) => s.id);
-        if (slotIdList.length > 0) {
-          const { data: bookingPlayers } = await supabase
-            .from('bookings')
-            .select('player_id')
-            .in('slot_id', slotIdList)
-            .not('player_id', 'is', null);
-          bookingPlayers?.forEach((b: any) => { if (b.player_id) profileIds.add(b.player_id); });
-        }
-
-        // Drop ids already covered by a linked guest record
-        linkedProfileIds.forEach((id) => profileIds.delete(id));
-
-        const activeProfileIds = filterProfileIdsByRemoval(
-          Array.from(profileIds),
-          removedKeys,
-        );
-        if (activeProfileIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, skill_rating, rating_system')
-            .in('id', activeProfileIds);
-          profiles?.forEach((p: any) => {
-            if (playerMap.has(p.id)) return;
-            playerMap.set(p.id, {
-              id: p.id,
-              full_name: p.full_name || 'Unknown',
-              skill_rating: p.skill_rating,
-              rating_system: p.rating_system || 'knltb',
-              is_guest: false,
-            });
-          });
-        }
-      }
-
-      setAllKnownPlayers(
-        Array.from(playerMap.values()).sort((a, b) => a.full_name.localeCompare(b.full_name)),
-      );
+      // Canonical players-overview RPC — the SAME membership the AcademyPlayers
+      // table renders (academy + active-trainers' guests and confirmed/completed
+      // registered players, removal-filtered, linked-deduped). It is server-side
+      // paginated (fetchAllPlayersOverview pages through it), replacing two
+      // unbounded scans — every academy slot, then every booking on them — that
+      // silently truncated this sidebar at PostgREST's 1000-row cap and dropped
+      // registered players from the picker at scale.
+      const rows = await fetchAllPlayersOverview({ kind: 'academy', id: activeAcademy.id });
+      const players: KnownPlayer[] = rows.map((row) => ({
+        id: (row.guest_player_id ?? row.profile_id) as string,
+        full_name: row.full_name || 'Unknown',
+        skill_rating: row.skill_rating ?? null,
+        rating_system: row.rating_system || 'knltb',
+        is_guest: row.player_type === 'guest',
+      }));
+      players.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setAllKnownPlayers(players);
     } catch (error) {
       logger.error('Error fetching known players', error as Error, { component: 'AcademyCalendar' });
     }
