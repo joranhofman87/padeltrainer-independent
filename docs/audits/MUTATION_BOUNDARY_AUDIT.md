@@ -71,3 +71,18 @@ writes move behind owners, regenerate the baseline so it only shrinks.
 - ✅ New tests/guardrails prevent accidental reintroduction (`mutationBoundary.test.ts`).
 - ✅ No broad behavior rewrite without tests (the invoice facade was characterization-tested
   before wiring — `src/test/invoices.test.ts`).
+
+## Subsequent facade moves (P2 follow-through; boundary continuing to shrink)
+All behaviour-frozen, characterization-tested before wiring, adversarially reviewed:
+- **Invoice status** — `markInvoicesSent` / `revertInvoicesToDraft` / `setInvoicesDueDate`
+  (`src/lib/invoices.ts`); TrainerInvoices + AcademyInvoices + BulkInvoiceEmailDialog → **0**.
+  `revertInvoicesToDraft` owns the never-reset-a-paid-invoice rule.
+- **Slot creation** — `expandWeeklySessions` + `insertAvailabilitySlots` (`src/lib/slots.ts`);
+  AddSlotDialog → 2, ClubAddSlotDialog → 1, OnboardingStep3Schedule → 1 (residual =
+  orphan-cycle `cycles.delete` cleanup). `src/test/slots.test.ts`.
+- **Booking creation** — `insertBookings` (`src/lib/bookings.ts`); QuickBookDialog → **0**,
+  BookForPlayerDialog → 1, InlineBookPlayer → 1 (residual = co-occupant rebalance
+  `bookings.update`), BookLesson → 2. Deferred: BookLesson's two
+  `.insert({obj}).select().single()` single-object inserts (the array-returning facade can't
+  reproduce `.single()` without a read-shape change) + `lessons.ts createBooking` (already in
+  lib). `src/lib/bookings.test.ts`.

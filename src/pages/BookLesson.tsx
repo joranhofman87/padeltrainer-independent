@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
+import { insertBookings } from '@/lib/bookings';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { initiateCyclePayment } from '@/lib/cyclePayment';
@@ -382,7 +383,7 @@ export default function BookLesson() {
           paid_externally: paymentTiming === 'manual' ? true : undefined,
         }));
 
-        const { data: insertedCycleBookings, error } = await supabase.from('bookings').insert(bookings).select('id');
+        const { data: insertedCycleBookings, error } = await insertBookings(bookings, supabase, 'id');
         if (error) throw error;
 
         try {
@@ -432,7 +433,7 @@ export default function BookLesson() {
           // re-query by (player_id, slot_id, status='pending') could fold a
           // stale abandoned-checkout pending row into this payment and
           // mis-spread the split amount across more rows than intended.
-          const bookingIds = (insertedCycleBookings ?? []).map(b => b.id);
+          const bookingIds = ((insertedCycleBookings as { id: string }[] | null) ?? []).map(b => b.id);
           // Calculate payment amount: if split_payment, divide by number of confirmed players + this player
           let paymentAmount = selectedCyclus.totalPrice;
           if (cycleSettings?.split_payment) {

@@ -32,8 +32,9 @@ describe('BookLesson — online booking creation has a single owner (no double-i
       const callBody = source.slice(at, at + 320); // the invoke body follows immediately
       if (callBody.includes('bookingIds')) continue; // REUSE shape — safe
       // EDGE-OWNED shape: the immediately-preceding code must not insert a booking
+      // (raw `from('bookings').insert` OR the booking facade `insertBookings(`).
       const preceding = source.slice(Math.max(0, at - 500), at);
-      expect(preceding).not.toMatch(/from\(\s*['"]bookings['"]\s*\)\s*\.insert/);
+      expect(preceding).not.toMatch(/from\(\s*['"]bookings['"]\s*\)\s*\.insert|insertBookings\(/);
     }
     expect(count).toBeGreaterThan(0);
   });
@@ -45,9 +46,11 @@ describe('BookLesson — online booking creation has a single owner (no double-i
    * abandoned-checkout pending row into the payment.
    */
   it('cycle online payment charges the just-inserted ids, not a status re-query', () => {
-    // captures the insert result and reuses it for the payment
+    // captures the insert result and reuses it for the payment — the booking
+    // facade is called with the `'id'` projection so the just-inserted ids come
+    // straight back (was an inline `.insert(bookings).select('id')`).
     expect(source).toMatch(/insertedCycleBookings/);
-    expect(source).toMatch(/\.insert\(bookings\)\.select\(\s*['"]id['"]\s*\)/);
+    expect(source).toMatch(/insertBookings\(\s*bookings\s*,\s*supabase\s*,\s*['"]id['"]\s*\)/);
     // the removed bug: a re-read of pending bookings ordered by created_at
     expect(source).not.toMatch(/\.eq\(\s*['"]status['"]\s*,\s*['"]pending['"]\s*\)\s*\.order\(\s*['"]created_at['"]/);
   });
