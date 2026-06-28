@@ -15,6 +15,7 @@ import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } 
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { insertAvailabilitySlots, setSlotVisibility } from "@/lib/slots";
 import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
+import { mergeNewBookingIdsIntoCycleInvoices } from "@/lib/cycleEditInvoiceSync";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -613,52 +614,13 @@ export default function TrainerScheduleOverview() {
                   if (createBookingsErr) throw createBookingsErr;
                   const createdBookings = data as { id: string; player_id: string | null; guest_player_id: string | null }[] | null;
 
-                  // Add new booking IDs to unpaid invoices so section 3b recalculates them
-                  if (createdBookings && createdBookings.length > 0) {
-                    // Get all existing booking IDs for this cycle to find invoices
-                    const { data: allCycleBookings } = await supabase
-                      .from("bookings")
-                      .select("id")
-                      .in("slot_id", existingSlotIds)
-                      .in("status", ["confirmed", "attended", "pending"]);
-
-                    const allExistingBookingIds = (allCycleBookings || []).map((b) => b.id);
-
-                    const { data: affectedInvoices } = await supabase
-                      .from("invoices")
-                      .select("id, booking_ids")
-                      .in("status", ["draft", "sent", "pending"])
-                      .overlaps("booking_ids", allExistingBookingIds);
-
-                    if (affectedInvoices) {
-                      for (const inv of affectedInvoices) {
-                        const currentIds = (inv.booking_ids as string[]) || [];
-                        // Find which players this invoice covers
-                        const invExistingBookings = existingBookings.filter((eb) => {
-                          const ebId = allCycleBookings?.find((_ab) =>
-                            existingBookings.some((x) => (x.player_id === eb.player_id && x.guest_player_id === eb.guest_player_id))
-                          )?.id;
-                          return ebId && currentIds.includes(ebId);
-                        });
-                        // Get new bookings for those same players
-                        const playerKeys = new Set(invExistingBookings.map((b) => b.player_id || b.guest_player_id));
-                        const relevantNewIds = createdBookings
-                          .filter((nb) => playerKeys.has(nb.player_id || nb.guest_player_id))
-                          .map((nb) => nb.id);
-
-                        if (relevantNewIds.length > 0) {
-                          const { error: invIdsErr } = await supabase
-                            .from("invoices")
-                            // Dedup the merge: a duplicate booking UUID would
-                            // inflate the line-item quantity → overcharge (e.g. a
-                            // re-run of the cycle edit re-appending the same ids).
-                            .update({ booking_ids: [...new Set([...currentIds, ...relevantNewIds])], pdf_url: null })
-                            .eq("id", inv.id);
-                          if (invIdsErr) throw invIdsErr;
-                        }
-                      }
-                    }
-                  }
+                  // Add new booking IDs to unpaid invoices so section 3b recalculates them.
+                  // Behaviour-frozen extraction — owner: src/lib/cycleEditInvoiceSync.ts
+                  // (carries known bug A1; see docs/audits/TSO_INVOICE_WRITES_AUDIT.md).
+                  await mergeNewBookingIdsIntoCycleInvoices(
+                    { createdBookings: createdBookings ?? [], existingBookings, existingSlotIds },
+                    supabase,
+                  );
                 }
               }
             }
