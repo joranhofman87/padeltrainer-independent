@@ -419,7 +419,7 @@
   },
   "src/components/slots/AddSlotDialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 5
+      "count": 4
     },
     "react-hooks/exhaustive-deps": {
       "count": 3
