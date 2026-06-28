@@ -200,11 +200,22 @@ These are the next reuse targets, intentionally deferred to keep each slice safe
   `Map`-with-payload model that survives server pagination is incompatible, and it is the sole
   consumer. What's left is genuinely role-specific (cell-renderer switch, filter bar) and not worth
   forcing into a shared component.
-- **Shared date-picker field** (due-date popover/calendar is repeated across forms).
-- **Shared scheduling / calendar components** (agenda day/week views).
-- **Consolidate near-duplicate primitives:** `PageHeader` vs `TrainerPageHeader`; `EmptyState` vs
-  `DashboardEmptyState` (a candidate to fold into `EmptyState variant="trainer"`).
-- **Move remaining role-neutral components out of `trainer/` and `admin/` folders** into `ui/` or a
-  `components/features/` area.
-- **Align the Deno-side (edge function) registration pricing** onto the same shared math model
-  (separate runtime boundary — needs its own verification).
+- ✅ **Shared date field — DONE.** `DateInputField` (`components/ui/date-input-field.tsx`) is the
+  canonical native date input; a raw `<Input type="date">` is **blocked by a `no-restricted-syntax`
+  lint rule**. Use `DateInputField` everywhere.
+- ✅ **`EmptyState` vs `DashboardEmptyState` — DONE.** `DashboardEmptyState` was folded into
+  `EmptyState variant="trainer"`; use that.
+- ✅ **List/table pages — `ListPageShell` + `ListPageState` are canonical** (see "How to build a
+  list/table page" above); adopted across the admin + academy list pages.
+- ✅ **Role-neutral components moved out of `trainer/`/`admin/` — DONE.** The role-isolation burndown
+  drove the `no-restricted-imports` baseline to **0**; shared components live in neutral folders
+  (`components/{ui,booking,slots,agenda,players,dashboard,invoices,cycles,email}`). **Cross-role imports
+  from a role folder are forbidden (CI-gated).** See `FRONTEND_ARCHITECTURE.md`.
+- ✅ **Mutation boundary.** Direct writes to high-risk tables (bookings/invoices/cycles/…) from
+  pages/components are frozen by a shrink-only guard (`src/test/mutationBoundary.test.ts`) — new ones
+  fail CI. Route domain writes through `src/lib/*`. See `docs/audits/MUTATION_BOUNDARY_AUDIT.md`.
+- **Still open:** `PageHeader` vs `TrainerPageHeader` (legitimately role-specific brand chrome — leave
+  split unless a clear shared need appears); the trainer/academy `InvoiceSettingsCard` convergence onto
+  the existing `InvoiceSettingsCardBase`; remaining `ListPageShell` adoption on trainer/club/player list
+  pages; the Deno-side (edge function) registration-pricing math dedup (separate runtime boundary —
+  needs its own verification).

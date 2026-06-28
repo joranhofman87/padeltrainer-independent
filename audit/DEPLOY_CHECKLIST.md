@@ -5,22 +5,43 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 
 > ✅ **All items below were deployed by the owner on 2026-06-24.** Kept for the audit trail.
 
-## 🔴 P0 — single-slot online booking double-insert (PR #183, 2026-06-27)
+## ✅ P0 — single-slot online booking double-insert (PR #183) — DEPLOYED 2026-06-28
 
-Codex foundation-verification Finding 1. The **frontend** half (the page no longer
-inserts the booking) auto-deploys via Vercel and stops the double-insert immediately.
-These two restore the player's `notes` on the edge-created booking. The edge function
-falls back to the 3-arg RPC if the migration isn't applied yet, so order is forgiving —
-but **apply the migration first** for cleanliness:
+Codex foundation-verification Finding 1. The frontend half (the page no longer inserts
+the booking) auto-deployed via Vercel; the two backend items restored the player's `notes`.
 
-1. [ ] Migration **`20260701130000_book_slot_for_payment_notes.sql`** — adds an optional
-  `_notes` param to `book_slot_for_payment` (drops the old 3-arg, creates a 4-arg with
-  `DEFAULT NULL`, so legacy 3-arg calls still resolve). Additive, non-destructive.
-2. [ ] Redeploy **create-mollie-payment** — forwards the player's `notes` into the RPC;
-  also deploy-gap-resilient (retries the 3-arg call on `PGRST202`/`42883`).
+1. [x] Migration **`20260701130000_book_slot_for_payment_notes.sql`** — applied (verified:
+  `book_slot_for_payment` now has the 4-arg `_notes text DEFAULT NULL` signature).
+2. [x] Redeployed **create-mollie-payment** — forwards `notes`; deploy-gap-resilient
+  (retries the 3-arg RPC on `PGRST202`/`42883`).
 
-Verify after: a public single-slot online booking creates **exactly one** pending booking
-(not two), and the note appears on it.
+## ✅ Live-vs-pending reconciliation (verified 2026-06-28) — Codex Finding 4
+
+`supabase db push --dry-run --linked` (owner-run, 2026-06-28) reported **only one migration
+pending: `20260701130000…`** — now applied. **Every other migration in this file — including
+Phase 4 · C + E and `academy_invoice_email_message` — is already LIVE.** The migration side is
+fully reconciled: for migrations, "merged in repo" == "live in production". (The `[ ]`
+markers below predate this dry-run; trust this section.)
+
+The dry-run does **not** cover edge functions (no pending-tracker). Confirm edge-fn deploy
+state with `supabase functions list` (below). Owner-deferred: the AI-gateway functions.
+
+### Verification commands (owner; `--linked` after `supabase link --project-ref ficwbdrzefmblkbkomzw`)
+
+    supabase migration list --linked       # Local vs Remote → a Local-only row is unapplied
+    supabase db push --dry-run --linked     # previews pending migrations; applies nothing
+    supabase functions list --linked        # compare each UPDATED_AT to its PR merge date
+
+**Stop and investigate** if `migration list` / `db push --dry-run` ever shows an *unexpected*
+migration (one you did not just merge) — that signals drift between repo and prod.
+
+### Edge functions changed since 2026-06-24 — confirm current via `functions list`
+`create-mollie-payment` (redeployed 2026-06-28 ✅), `verify-mollie-payment`,
+`create-invoice-payment`, `mollie-webhook`, `finalize-proposals`, `generate-proposals`,
+`create-registration-invoice`, `submit-guest-intake`, `send-campaign-emails`,
+`create-group-rebook-invoice`, `send-rebook-group-confirmation`. Redeploy any whose
+`UPDATED_AT` predates its PR. Plus the still-pending `send-invoice-email` (PDF attach) and
+the batch-job + AI-gateway items in the sections below.
 
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
