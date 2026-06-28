@@ -7,16 +7,17 @@
 -- privileged role, so it sees all academies' invoices). Every statement is a
 -- pure SELECT — safe to run, changes nothing.
 --
--- Scope: only UNPAID invoices (draft/sent/overdue) on cyclus-type cycles can be
--- touched by the buggy writes; paid/cancelled invoices are excluded everywhere.
+-- Scope: the bugs ORIGINATE from cyclus edits, but the corruption signatures
+-- below are checked across ALL unpaid invoices (status draft/sent/overdue) —
+-- NOT scoped to a cycle — because `invoices.cycle_id` is unreliable (null in
+-- prod; the buggy writes find invoices by booking_ids overlap, not cycle_id).
+-- Checking unscoped avoids false negatives. Paid/cancelled invoices are
+-- excluded everywhere (the buggy writes never touch them).
 -- ----------------------------------------------------------------------------
 
 -- Q0. HEADLINE — one row sizing the whole exposure.
 WITH unpaid AS (
-  SELECT i.*
-  FROM invoices i
-  JOIN cycles c ON c.id = i.cycle_id AND c.type = 'cyclus'
-  WHERE i.status IN ('draft','sent','overdue')
+  SELECT * FROM invoices WHERE status IN ('draft','sent','overdue')
 ),
 a1 AS ( -- A1: non-split invoice whose booking_ids span >1 distinct player
   SELECT u.id
@@ -41,7 +42,7 @@ b3 AS ( -- B3: total must equal subtotal + vat_amount
   WHERE abs(u.total - (u.subtotal + u.vat_amount)) > 0.005
 )
 SELECT
-  (SELECT count(*) FROM unpaid)                                   AS unpaid_cyclus_invoices,
+  (SELECT count(*) FROM unpaid)                                   AS unpaid_invoices,
   (SELECT count(*) FROM a1)                                       AS a1_multiplayer_single_invoices,
   (SELECT count(*) FROM b2)                                       AS b2_split_missing_marker,
   (SELECT count(*) FROM b3)                                       AS b3_total_not_subtotal_plus_vat,
@@ -49,12 +50,11 @@ SELECT
      SELECT id FROM a1 UNION SELECT id FROM b2 UNION SELECT id FROM b3) z) AS distinct_affected_invoices;
 
 -- Q1. Population by status (the at-risk set).
-SELECT i.status, count(*) AS n, round(sum(i.total)::numeric, 2) AS total_eur
-FROM invoices i
-JOIN cycles c ON c.id = i.cycle_id AND c.type = 'cyclus'
-WHERE i.status IN ('draft','sent','overdue')
-GROUP BY i.status
-ORDER BY i.status;
+SELECT status, count(*) AS n, round(sum(total)::numeric, 2) AS total_eur
+FROM invoices
+WHERE status IN ('draft','sent','overdue')
+GROUP BY status
+ORDER BY status;
 
 -- Q2. BUG A1 (P0) — misrouted booking_ids. A NON-split invoice should bill ONE
 --     player; >1 distinct player means the broken matcher merged another
@@ -65,7 +65,6 @@ SELECT i.id, i.invoice_number, i.status, i.trainer_id, i.academy_profile_id,
        coalesce(array_length(i.booking_ids,1),0) AS n_booking_ids,
        i.total, i.updated_at
 FROM invoices i
-JOIN cycles c ON c.id = i.cycle_id AND c.type = 'cyclus'
 LEFT JOIN LATERAL unnest(i.booking_ids) AS bid(id) ON true
 LEFT JOIN bookings b ON b.id = bid.id AND b.status <> 'cancelled'
 WHERE i.status IN ('draft','sent','overdue')
@@ -81,7 +80,6 @@ LIMIT 200;
 SELECT i.id, i.invoice_number, i.status, i.split_count, i.total,
        i.trainer_id, i.academy_profile_id, i.updated_at
 FROM invoices i
-JOIN cycles c ON c.id = i.cycle_id AND c.type = 'cyclus'
 WHERE i.status IN ('draft','sent','overdue')
   AND COALESCE(i.split_count, 1) > 1
   AND NOT EXISTS (
@@ -98,7 +96,6 @@ SELECT i.id, i.invoice_number, i.status, i.trainer_id, i.academy_profile_id,
        round((i.total - (i.subtotal + i.vat_amount))::numeric, 2) AS drift_eur,
        i.updated_at
 FROM invoices i
-JOIN cycles c ON c.id = i.cycle_id AND c.type = 'cyclus'
 WHERE i.status IN ('draft','sent','overdue')
   AND abs(i.total - (i.subtotal + i.vat_amount)) > 0.005
 ORDER BY abs(i.total - (i.subtotal + i.vat_amount)) DESC
@@ -110,3 +107,5 @@ LIMIT 200;
 -- the canonical total per invoice (buildCycleLineItems + calculateVatTotals) and
 -- comparing — a follow-up Node reconciliation that needs a service-role key
 -- (the local .env only has the publishable/anon key, which is RLS-gated).
+--
+-- 2026-07 prod run: unpaid_invoices=42, a1=0, b2=0, b3=0 → no detectable exposure.
