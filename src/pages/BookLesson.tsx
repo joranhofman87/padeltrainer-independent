@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
-import { insertBookings } from '@/lib/bookings';
+import { insertBookings, insertBookingSingle } from '@/lib/bookings';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { initiateCyclePayment } from '@/lib/cyclePayment';
@@ -477,9 +477,9 @@ export default function BookLesson() {
       const useManualInvoicing = trainer.use_manual_invoicing;
 
       if (requiresApproval) {
-        const { error } = await supabase.from('bookings').insert({
+        const { error } = await insertBookingSingle({
           player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'pending_approval', payment_status: 'pending',
-        }).select().single();
+        });
         if (error) throw error;
         const lessonDate = formatDate(selectedSlot.start_time, 'EEE d MMM yyyy');
         const lessonTime = formatDate(selectedSlot.start_time, 'HH:mm');
@@ -493,10 +493,11 @@ export default function BookLesson() {
         setRequestSent(true);
         toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
       } else if (useManualInvoicing) {
-        const { data: bookingData, error } = await supabase.from('bookings').insert({
+        const { data, error } = await insertBookingSingle({
           player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'confirmed', payment_status: 'pending',
-        }).select().single();
+        });
         if (error) throw error;
+        const bookingData = data as { id: string } | null;
         if (bookingData?.id) {
           try { await supabase.functions.invoke('auto-create-invoice', { body: { bookingIds: [bookingData.id] } }); }
           catch (invoiceErr) { logger.error('Auto-create invoice failed (non-fatal)', invoiceErr as Error, { component: 'BookLesson', action: 'auto-invoice-single' }); }

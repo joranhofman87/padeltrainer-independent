@@ -80,9 +80,12 @@ All behaviour-frozen, characterization-tested before wiring, adversarially revie
 - **Slot creation** — `expandWeeklySessions` + `insertAvailabilitySlots` (`src/lib/slots.ts`);
   AddSlotDialog → 2, ClubAddSlotDialog → 1, OnboardingStep3Schedule → 1 (residual =
   orphan-cycle `cycles.delete` cleanup). `src/test/slots.test.ts`.
-- **Booking creation** — `insertBookings` (`src/lib/bookings.ts`); QuickBookDialog → **0**,
-  BookForPlayerDialog → 1, InlineBookPlayer → 1 (residual = co-occupant rebalance
-  `bookings.update`), BookLesson → 2. Deferred: BookLesson's two
-  `.insert({obj}).select().single()` single-object inserts (the array-returning facade can't
-  reproduce `.single()` without a read-shape change) + `lessons.ts createBooking` (already in
-  lib). `src/lib/bookings.test.ts`.
+- **Booking creation** — `insertBookings` (array) + `insertBookingSingle` (the
+  `.insert(obj).select().single()` shape) in `src/lib/bookings.ts`. **All booking inserts in
+  `pages/`+`components/` are now routed → ZERO remain:** QuickBookDialog, BookForPlayerDialog ×2,
+  InlineBookPlayer ×2, BookLesson ×3 (cycle + the 2 single-row sites), AddSlotDialog's
+  booking-bundling insert, DuplicateCyclusDialog, TrainerScheduleOverview ×2. The residual
+  allowlist counts on those files are NON-insert writes (co-occupant rebalance `bookings.update`,
+  slot/cycle writes, `cycles.delete` cleanup). Still raw by design: `lessons.ts createBooking`
+  (already a lib-level domain helper; its typed `{data,error}` return would ripple to callers if
+  folded). `src/lib/bookings.test.ts`.

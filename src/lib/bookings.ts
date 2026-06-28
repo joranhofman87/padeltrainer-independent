@@ -187,3 +187,20 @@ export async function insertBookings(
   const { error } = await query;
   return { data: null, error: error ?? null };
 }
+
+/**
+ * Insert a SINGLE booking row and return it as one object via
+ * `.select(returning).single()` — for the call sites that read exactly one row
+ * back (e.g. the just-created booking's id). This is the `.single()` shape that
+ * the array-returning {@link insertBookings} deliberately can't reproduce.
+ * `returning` defaults to `'*'` (the bare `.select()`). Same pure-pass-through
+ * row handling as {@link insertBookings}. Returns `{ data: <row>|null, error }`.
+ */
+export async function insertBookingSingle(
+  row: Record<string, unknown>,
+  client: SupabaseClient<Database> = supabase,
+  returning = '*',
+): Promise<{ data: unknown; error: unknown }> {
+  const { data, error } = await client.from('bookings').insert(row as never).select(returning).single();
+  return { data, error: error ?? null };
+}

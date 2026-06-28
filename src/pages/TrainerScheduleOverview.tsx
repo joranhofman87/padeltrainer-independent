@@ -11,7 +11,7 @@ import { getTrainerProfile } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncSplitCountForCycle } from "@/lib/invoiceSync";
-import { cancelBookingsAndSync, setBookingPaymentAndReconcile } from "@/lib/bookings";
+import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } from "@/lib/bookings";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
@@ -606,8 +606,9 @@ export default function TrainerScheduleOverview() {
                 }
 
                 if (newBookings.length > 0) {
-                  const { data: createdBookings, error: createBookingsErr } = await supabase.from("bookings").insert(newBookings).select("id, player_id, guest_player_id");
+                  const { data, error: createBookingsErr } = await insertBookings(newBookings, supabase, "id, player_id, guest_player_id");
                   if (createBookingsErr) throw createBookingsErr;
+                  const createdBookings = data as { id: string; player_id: string | null; guest_player_id: string | null }[] | null;
 
                   // Add new booking IDs to unpaid invoices so section 3b recalculates them
                   if (createdBookings && createdBookings.length > 0) {
@@ -1012,7 +1013,7 @@ export default function TrainerScheduleOverview() {
           status: 'confirmed',
           payment_status: 'pending',
         }));
-        await supabase.from("bookings").insert(newBookings);
+        await insertBookings(newBookings);
 
         // Mark player as has_trained
         await supabase.from("guest_players").update({ has_trained: true }).eq("id", guestPlayerId);

@@ -5,7 +5,7 @@ vi.mock('@/lib/invoiceSync', () => ({
 }));
 
 import { syncInvoicesAfterBookingRemoval } from '@/lib/invoiceSync';
-import { cancelBookingsAndSync, insertBookings } from './bookings';
+import { cancelBookingsAndSync, insertBookings, insertBookingSingle } from './bookings';
 
 const syncMock = syncInvoicesAfterBookingRemoval as unknown as ReturnType<typeof vi.fn>;
 
@@ -129,6 +129,60 @@ describe('insertBookings', () => {
   it('surfaces the insert error (and coerces undefined → null)', async () => {
     const err = { message: 'capacity full', code: 'P0001' };
     const res = await insertBookings([{ slot_id: 's' }], mockInsertClient({ error: err }).client);
+    expect(res.error).toBe(err);
+  });
+});
+
+/** insert(row).select(returning).single() stub for the single-row writer. */
+function mockSingleClient(opts: { error?: unknown; data?: unknown } = {}) {
+  const calls = { table: null as string | null, row: null as unknown, select: null as string | null, single: false };
+  const client = {
+    from(table: string) {
+      calls.table = table;
+      return {
+        insert(row: unknown) {
+          calls.row = row;
+          return {
+            select(cols: string) {
+              calls.select = cols;
+              return {
+                single() {
+                  calls.single = true;
+                  return Promise.resolve({ data: opts.data ?? null, error: opts.error ?? null });
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { client: client as any, calls };
+}
+
+describe('insertBookingSingle', () => {
+  it('inserts one row via .select(returning).single() — defaults returning to "*"', async () => {
+    const inserted = { id: 'b1', slot_id: 's' };
+    const { client, calls } = mockSingleClient({ data: inserted });
+    const row = { slot_id: 's', player_id: 'p', status: 'confirmed' };
+    const res = await insertBookingSingle(row, client);
+    expect(calls.table).toBe('bookings');
+    expect(calls.row).toEqual(row);
+    expect(calls.select).toBe('*'); // bare .select() default
+    expect(calls.single).toBe(true);
+    expect(res).toEqual({ data: inserted, error: null });
+  });
+
+  it('honours an explicit returning projection', async () => {
+    const { client, calls } = mockSingleClient({ data: { id: 'b1' } });
+    await insertBookingSingle({ slot_id: 's' }, client, 'id');
+    expect(calls.select).toBe('id');
+  });
+
+  it('surfaces the insert error (coerced to null otherwise)', async () => {
+    const err = { message: 'denied', code: '42501' };
+    const res = await insertBookingSingle({ slot_id: 's' }, mockSingleClient({ error: err }).client);
     expect(res.error).toBe(err);
   });
 });

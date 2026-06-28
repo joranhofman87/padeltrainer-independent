@@ -32,9 +32,10 @@ describe('BookLesson — online booking creation has a single owner (no double-i
       const callBody = source.slice(at, at + 320); // the invoke body follows immediately
       if (callBody.includes('bookingIds')) continue; // REUSE shape — safe
       // EDGE-OWNED shape: the immediately-preceding code must not insert a booking
-      // (raw `from('bookings').insert` OR the booking facade `insertBookings(`).
+      // (raw `from('bookings').insert` OR the booking facade `insertBookings(` /
+      // `insertBookingSingle(`).
       const preceding = source.slice(Math.max(0, at - 500), at);
-      expect(preceding).not.toMatch(/from\(\s*['"]bookings['"]\s*\)\s*\.insert|insertBookings\(/);
+      expect(preceding).not.toMatch(/from\(\s*['"]bookings['"]\s*\)\s*\.insert|insertBookings\(|insertBookingSingle\(/);
     }
     expect(count).toBeGreaterThan(0);
   });
