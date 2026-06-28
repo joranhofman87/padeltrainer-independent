@@ -7,6 +7,7 @@ import { CalendarIcon, Plus, Repeat, Lock, GraduationCap, User, Euro, Users, Tra
 import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { createCycle, type CycleSettings, type ExtraCost } from "@/lib/cycles";
+import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
 import { formatDate } from "@/lib/format";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 import type { Json } from "@/integrations/supabase/types";
@@ -192,7 +193,7 @@ export function AddSlotDialog({
       const startDateTime = setMinutes(setHours(slotDate, hours), minutes);
       const endDateTime = addMinutes(startDateTime, slotDuration);
 
-      const { error } = await supabase.from("availability_slots").insert({
+      const { error } = await insertAvailabilitySlots({
         trainer_id: trainerId,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
@@ -203,7 +204,7 @@ export function AddSlotDialog({
         min_rating: slotMinRating,
         max_rating: slotMaxRating,
         prices_include_vat: pricesIncludeVat,
-      } as any);
+      });
 
       if (error) throw error;
 
@@ -977,19 +978,20 @@ export function BulkCreateContent({
         // Collect this config's session times first (skipping duplicates), so the
         // cycles row below can use the real first/last generated session dates.
         const configSessions: { start: Date; end: Date }[] = [];
-        for (let week = 0; week < config.recurrenceWeeks; week++) {
-          const currentSlotStart = addWeeks(slotStart, week);
-          const currentSlotEnd = addMinutes(currentSlotStart, config.durationMinutes);
-
+        for (const session of expandWeeklySessions(
+          slotStart,
+          config.durationMinutes,
+          config.recurrenceWeeks,
+        )) {
           // Skip if this exact time already exists for this trainer
-          if (trainerExistingTimes.has(currentSlotStart.toISOString())) {
+          if (trainerExistingTimes.has(session.start.toISOString())) {
             continue;
           }
 
-          configSessions.push({ start: currentSlotStart, end: currentSlotEnd });
+          configSessions.push(session);
 
           // Add to existing times to prevent duplicates within same batch
-          trainerExistingTimes.add(currentSlotStart.toISOString());
+          trainerExistingTimes.add(session.start.toISOString());
         }
 
         if (configSessions.length === 0) continue;
@@ -1060,11 +1062,13 @@ export function BulkCreateContent({
         return;
       }
 
-      const { data: insertedSlots, error } = await supabase
-        .from("availability_slots")
-        .insert(slotsToInsert)
-        .select("id, cyclus_id");
+      const { data, error } = await insertAvailabilitySlots(
+        slotsToInsert,
+        supabase,
+        "id, cyclus_id",
+      );
       if (error) throw error;
+      const insertedSlots = (data as { id: string; cyclus_id: string | null }[]) ?? [];
       slotsInserted = true;
 
       // Create bookings for selected players using the config-to-cyclus mapping
