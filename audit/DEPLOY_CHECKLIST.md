@@ -12,10 +12,10 @@ live project `ficwbdrzefmblkbkomzw` after the matching PR merges.
 > immediately below — A1 capacity migration LIVE; `mollie-webhook` + `verify-mollie-payment`
 > redeployed from `main` (post-merge); #187 is frontend-only.
 
-## ✅ Foundation Tier A — booking correctness (PRs #187 · #188 · #189) — 2026-06-28
+## ✅ Foundation Tier A — booking correctness (PRs #187 · #188 · #189 · #193) — COMPLETE 2026-06-28
 
-The grounded Codex roadmap Tier A (booking-domain hardening). All three merged to `main`
-2026-06-28, each characterization/rehearsal-tested **and** adversarially reviewed before merge.
+The grounded Codex roadmap Tier A (booking-domain hardening) — **fully merged + live in prod**.
+Each slice characterization/rehearsal-tested **and** adversarially reviewed before merge.
 
 1. [x] **#187 — online-cycle payment exact-ids + orphan rollback** (`src/lib/cyclePayment.ts`).
   **Frontend-only — auto-deploys via Vercel.** No migration, no edge-fn redeploy
@@ -37,9 +37,16 @@ The grounded Codex roadmap Tier A (booking-domain hardening). All three merged t
     `_shared/mollie-webhook-payment.ts` (only imported once #188 added `findCancelledPaidBookings`).
   - Commands: `supabase functions deploy {mollie-webhook,verify-mollie-payment} --project-ref ficwbdrzefmblkbkomzw`
 
-**Open follow-up (not blocking):** align the DB capacity occupancy count to the
-`CAPACITY_OCCUPYING_STATUSES` allowlist (the four count sites currently use a denylist that
-counts `rejected`/`completed`) — see the foundation worklog / memory. Pre-existing, fail-closed.
+4. [x] **#193 — capacity-count allowlist alignment.** Migration
+  **`20260702140000_capacity_count_allowlist.sql`** — LIVE (applied via `db push --linked`
+  2026-06-28). Flips all **five** DB capacity counts (enforce_booking_slot_tier,
+  book_slot_for_payment, respond_to_priority_claim ×2, swap_member_booking) from the denylist to
+  the `CAPACITY_OCCUPYING_STATUSES` allowlist so `rejected`/`completed` no longer count toward a
+  slot's occupancy (== app == index predicate). Function-body replace only; no data change. The
+  adversarial review caught swap_member_booking as a fifth, missed site — folded in.
+
+This closes the Tier-A follow-up; every server capacity count now agrees with the app + the
+`idx_bookings_slot_status` predicate.
 
 ## ✅ P0 — single-slot online booking double-insert (PR #183) — DEPLOYED 2026-06-28
 
