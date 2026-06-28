@@ -16,7 +16,7 @@ const chain = {
 vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => chain, rpc: (...a: unknown[]) => rpcFn(...a) } }));
 // listRegistrationCycles delegates the legacy half to getCyclesWithCounts — stub it so the test
 // exercises only the merge/dedupe/count logic.
-vi.mock('@/lib/cycles', () => ({ getCyclesWithCounts: vi.fn() }));
+vi.mock('@/lib/cycles', () => ({ getCyclesWithCounts: vi.fn(), countCyclesIntakesWithFallback: vi.fn() }));
 
 import {
   getRegistration,
@@ -29,7 +29,7 @@ import {
   isMissingRegistrationRpc,
   type Registration,
 } from '@/lib/registrations';
-import { getCyclesWithCounts } from '@/lib/cycles';
+import { getCyclesWithCounts, countCyclesIntakesWithFallback } from '@/lib/cycles';
 import type { CycleInput } from '@/lib/cycles';
 
 const cycleInput = (over: Partial<CycleInput> = {}): CycleInput => ({
@@ -138,8 +138,8 @@ describe('registrations lib', () => {
     ] as never);
     // Registrations half: the migrated form for c1.
     order.mockResolvedValueOnce({ data: [baseReg({ id: 'r1', source_cycle_id: 'c1' })], error: null });
-    // Intake count for the migrated source cycle c1 → two rows.
-    inFn.mockResolvedValueOnce({ data: [{ cycle_id: 'c1' }, { cycle_id: 'c1' }], error: null });
+    // Intake count for the migrated source cycle c1 → two (via the indexed count RPC helper).
+    vi.mocked(countCyclesIntakesWithFallback).mockResolvedValueOnce(new Map([['c1', 2]]));
 
     const rows = await listRegistrationCycles('academy', 'a1');
 
