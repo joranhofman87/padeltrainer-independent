@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
-import { deleteOrCancelInvoices } from "@/lib/invoices";
+import { deleteOrCancelInvoices, markInvoicesSent, revertInvoicesToDraft, setInvoicesDueDate } from "@/lib/invoices";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -216,10 +216,7 @@ export default function TrainerInvoices() {
       // Only stamp sent_at after a confirmed delivery. Preserve the structured
       // failure reason (e.g. "email_not_configured") so onError can surface it.
       if (!data?.success) throw new Error(typeof data?.error === "string" ? data.error : "send_failed");
-      const { error } = await supabase
-        .from("invoices")
-        .update({ sent_at: new Date().toISOString(), status: "sent" })
-        .eq("id", invoice.id);
+      const { error } = await markInvoicesSent([invoice.id]);
       if (error) throw error;
       return { noEmail: false, email: data?.email };
     },
@@ -279,7 +276,7 @@ export default function TrainerInvoices() {
           sent++;
           // Only stamp sent_at after a confirmed delivery — a failed or
           // address-less send must not record the invoice as issued.
-          await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", inv.id);
+          await markInvoicesSent([inv.id]);
         } else {
           failed++;
           undelivered.push(rowLabel);
@@ -321,14 +318,14 @@ export default function TrainerInvoices() {
       });
       return;
     }
-    await supabase.from("invoices").update({ sent_at: new Date().toISOString(), status: "sent" }).eq("id", invoiceId);
+    await markInvoicesSent([invoiceId]);
     invalidateInvoicesAndPlayers();
     toast.success(t("invoices.sentSuccessTo", { email }));
   };
 
   const markAsSentMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { error } = await supabase.from("invoices").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", invoiceId);
+      const { error } = await markInvoicesSent([invoiceId]);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -353,23 +350,15 @@ export default function TrainerInvoices() {
     setBulkRunning(true);
     // Never reset a PAID invoice to draft: it erases paid_at and the record that
     // money was received (which then survives only at Mollie), and re-sending
-    // renumbers + emails a dead pay link. Skip paid rows; back it with a DB guard.
-    const resettable = selectedInvoices.filter((i) => i.status !== "paid");
-    const skipped = selectedInvoices.length - resettable.length;
-    const ids = resettable.map((i) => i.id);
-    if (ids.length === 0) {
-      setBulkRunning(false);
-      setConfirmBulk(null);
+    // renumbers + emails a dead pay link. The facade skips paid rows + applies the
+    // DB-level guard, so resetting a paid invoice is unrepresentable here.
+    const { revertedIds, skippedPaidIds, error } = await revertInvoicesToDraft(selectedInvoices);
+    setBulkRunning(false);
+    setConfirmBulk(null);
+    if (revertedIds.length === 0) {
       toast.error(t("invoices.bulk.resetAllPaid", "Betaalde facturen kunnen niet worden gereset"));
       return;
     }
-    const { error } = await supabase
-      .from("invoices")
-      .update({ status: "draft", sent_at: null, paid_at: null })
-      .in("id", ids)
-      .neq("status", "paid");
-    setBulkRunning(false);
-    setConfirmBulk(null);
     if (error) {
       toast.error(t("invoices.bulk.resetError", "Kon facturen niet resetten"));
       return;
@@ -377,9 +366,9 @@ export default function TrainerInvoices() {
     setSelectedIds(new Set());
     invalidateInvoicesAndPlayers();
     toast.success(
-      skipped > 0
-        ? t("invoices.bulk.resetDonePartial", "{{count}} gereset, {{skipped}} betaalde overgeslagen", { count: ids.length, skipped })
-        : t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: ids.length }),
+      skippedPaidIds.length > 0
+        ? t("invoices.bulk.resetDonePartial", "{{count}} gereset, {{skipped}} betaalde overgeslagen", { count: revertedIds.length, skipped: skippedPaidIds.length })
+        : t("invoices.bulk.resetDone", "{{count}} facturen gereset", { count: revertedIds.length }),
     );
   };
 
@@ -407,7 +396,7 @@ export default function TrainerInvoices() {
     const mm = String(bulkDueDate.getMonth() + 1).padStart(2, "0");
     const dd = String(bulkDueDate.getDate()).padStart(2, "0");
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const { error } = await supabase.from("invoices").update({ due_date: dateStr }).in("id", ids);
+    const { error } = await setInvoicesDueDate(ids, dateStr);
     setBulkRunning(false);
     if (error) {
       toast.error(t("invoices.bulk.dueDateError", "Vervaldatum bijwerken mislukt"));

@@ -62,3 +62,74 @@ export async function deleteOrCancelInvoices(
 
   return { deletedIds, cancelledIds, deleteError, cancelError };
 }
+
+/**
+ * Mark invoice(s) as sent: stamp `sent_at = now` + `status = 'sent'`.
+ *
+ * This is the STATUS write only — it deliberately does NOT send the email. The
+ * caller owns the actual delivery (the `send-invoice-email` invoke) and calls
+ * this ONLY after a confirmed success, because a failed or address-less send
+ * must never record the invoice as issued. The same `{ sent_at, status }` write
+ * was duplicated across seven send/mark-as-sent handlers in the two list pages;
+ * routing them here keeps that one transition in a single place. Accepts one or
+ * many ids (single send passes `[id]`). An empty list is a no-op.
+ */
+export async function markInvoicesSent(
+  ids: string[],
+  client: SupabaseClient<Database> = supabase,
+): Promise<{ error: unknown | null }> {
+  if (!ids.length) return { error: null };
+  const { error } = await client
+    .from('invoices')
+    .update({ sent_at: new Date().toISOString(), status: 'sent' })
+    .in('id', ids);
+  return { error: error ?? null };
+}
+
+export interface RevertInvoicesToDraftResult {
+  /** Non-paid invoices reset to draft (`sent_at` + `paid_at` cleared). */
+  revertedIds: string[];
+  /** PAID invoices skipped — resetting them was refused (see below). */
+  skippedPaidIds: string[];
+  /** Raw error from the reset UPDATE (null = nothing to reset or it succeeded). */
+  error: unknown | null;
+}
+
+/**
+ * Revert invoice(s) to draft (clears `sent_at` + `paid_at`) — but NEVER a PAID
+ * invoice.
+ *
+ * Resetting a paid invoice would erase `paid_at`, the only local record that
+ * money was received (it then survives solely at Mollie), and re-sending it
+ * renumbers + emails a dead pay link. Paid rows are therefore filtered out here
+ * (returned as {@link RevertInvoicesToDraftResult.skippedPaidIds}) AND a
+ * `.neq('status','paid')` guard backs the UPDATE at the DB layer, so "reset a
+ * paid invoice to draft" is UNREPRESENTABLE through this path — mirroring the
+ * draft-vs-cancel invariant in {@link deleteOrCancelInvoices}. An all-paid /
+ * empty list does no write and returns `revertedIds: []`.
+ */
+export async function revertInvoicesToDraft(
+  invoices: DeletableInvoice[],
+  client: SupabaseClient<Database> = supabase,
+): Promise<RevertInvoicesToDraftResult> {
+  const revertedIds = invoices.filter((i) => i.status !== 'paid').map((i) => i.id);
+  const skippedPaidIds = invoices.filter((i) => i.status === 'paid').map((i) => i.id);
+  if (!revertedIds.length) return { revertedIds, skippedPaidIds, error: null };
+  const { error } = await client
+    .from('invoices')
+    .update({ status: 'draft', sent_at: null, paid_at: null })
+    .in('id', revertedIds)
+    .neq('status', 'paid');
+  return { revertedIds, skippedPaidIds, error: error ?? null };
+}
+
+/** Set the due date (`YYYY-MM-DD`) on invoice(s). An empty list is a no-op. */
+export async function setInvoicesDueDate(
+  ids: string[],
+  dueDate: string,
+  client: SupabaseClient<Database> = supabase,
+): Promise<{ error: unknown | null }> {
+  if (!ids.length) return { error: null };
+  const { error } = await client.from('invoices').update({ due_date: dueDate }).in('id', ids);
+  return { error: error ?? null };
+}
