@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Calendar, RotateCcw, UserPlus, ArrowLeft, ChevronDown, ChevronRight, MapPin, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES, getSlotCapacity } from '@/lib/lessons';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -192,10 +193,7 @@ export default function OpenSlots() {
 
   // --- Visibility toggle handlers ---
   const toggleSlotVisibility = useCallback(async (slotId: string, newValue: boolean) => {
-    const { error } = await supabase
-      .from('availability_slots')
-      .update({ is_public: newValue })
-      .eq('id', slotId);
+    const { error } = await setSlotVisibility(slotId, newValue);
 
     if (error) {
       logger.error('Error toggling slot visibility', error, { slotId });
@@ -217,10 +215,7 @@ export default function OpenSlots() {
     if (!group) return;
 
     const slotIds = group.slots.map(s => s.id);
-    const { error } = await supabase
-      .from('availability_slots')
-      .update({ is_public: newValue })
-      .in('id', slotIds);
+    const { error } = await setSlotVisibility(slotIds, newValue);
 
     if (error) {
       logger.error('Error toggling cyclus visibility', error, { cyclusId });
@@ -247,10 +242,7 @@ export default function OpenSlots() {
 
     if (allSlotIds.length === 0) return;
 
-    const { error } = await supabase
-      .from('availability_slots')
-      .update({ is_public: newValue })
-      .in('id', allSlotIds);
+    const { error } = await setSlotVisibility(allSlotIds, newValue);
 
     if (error) {
       logger.error('Error toggling all visibility', error);

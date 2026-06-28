@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { addMinutes, addWeeks } from 'date-fns';
-import { expandWeeklySessions, insertAvailabilitySlots } from '@/lib/slots';
+import { expandWeeklySessions, insertAvailabilitySlots, setSlotVisibility } from '@/lib/slots';
 
 /**
  * Characterization tests for the slot-creation facade. `expandWeeklySessions`
@@ -94,6 +94,60 @@ describe('insertAvailabilitySlots', () => {
   it('surfaces the insert error', async () => {
     const err = { message: 'boom' };
     const res = await insertAvailabilitySlots([{ trainer_id: 't' }], makeClient({ error: err }).client);
+    expect(res.error).toBe(err);
+  });
+});
+
+/** from('availability_slots').update({is_public}).in('id', ids) stub. */
+function makeVisibilityClient(opts: { error?: unknown } = {}) {
+  const calls = { table: null as string | null, update: null as unknown, inCol: null as string | null, inIds: null as string[] | null };
+  const client = {
+    from(table: string) {
+      calls.table = table;
+      return {
+        update(data: unknown) {
+          calls.update = data;
+          return {
+            in(col: string, ids: string[]) {
+              calls.inCol = col;
+              calls.inIds = ids;
+              return Promise.resolve({ error: opts.error ?? null });
+            },
+          };
+        },
+      };
+    },
+  };
+  return { client: client as never, calls };
+}
+
+describe('setSlotVisibility', () => {
+  it('a single id updates is_public filtered by .in(id, [x])', async () => {
+    const { client, calls } = makeVisibilityClient();
+    const res = await setSlotVisibility('s1', true, client);
+    expect(calls.table).toBe('availability_slots');
+    expect(calls.update).toEqual({ is_public: true });
+    expect(calls.inIds).toEqual(['s1']); // 1-element .in === .eq
+    expect(res.error).toBeNull();
+  });
+
+  it('an array updates is_public for all ids with the given value', async () => {
+    const { client, calls } = makeVisibilityClient();
+    await setSlotVisibility(['a', 'b'], false, client);
+    expect(calls.update).toEqual({ is_public: false });
+    expect(calls.inIds).toEqual(['a', 'b']);
+  });
+
+  it('empty array is a no-op (no write)', async () => {
+    const { client, calls } = makeVisibilityClient();
+    const res = await setSlotVisibility([], true, client);
+    expect(res.error).toBeNull();
+    expect(calls.table).toBeNull();
+  });
+
+  it('surfaces the update error', async () => {
+    const err = { message: 'denied' };
+    const res = await setSlotVisibility('s1', true, makeVisibilityClient({ error: err }).client);
     expect(res.error).toBe(err);
   });
 });

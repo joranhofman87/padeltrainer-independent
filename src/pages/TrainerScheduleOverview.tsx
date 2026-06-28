@@ -13,6 +13,8 @@ import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } from "@/lib/bookings";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
+import { insertAvailabilitySlots, setSlotVisibility } from "@/lib/slots";
+import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -570,8 +572,9 @@ export default function TrainerScheduleOverview() {
                 prices_include_vat: cycleEditData.pricesIncludeVat,
               });
             }
-            const { data: insertedSlots, error: insertSlotsErr } = await supabase.from("availability_slots").insert(newSlots).select("id, start_time");
+            const { data: insertedSlotsData, error: insertSlotsErr } = await insertAvailabilitySlots(newSlots, supabase, "id, start_time");
             if (insertSlotsErr) throw insertSlotsErr;
+            const insertedSlots = insertedSlotsData as { id: string; start_time: string }[] | null;
 
             // Auto-book existing players/guests on the new slots
             if (insertedSlots && insertedSlots.length > 0) {
@@ -839,7 +842,7 @@ export default function TrainerScheduleOverview() {
         if (cycleRow) {
           const settings: Record<string, unknown> = ((cycleRow.settings as Record<string, unknown>) || {});
           settings.split_payment = cycleEditData.splitPayment;
-          await supabase.from("cycles").update({ settings: settings as any }).eq("id", editCycleId);
+          await updateCycleSettings(editCycleId, settings as CycleSettings);
         }
       }
 
@@ -966,10 +969,7 @@ export default function TrainerScheduleOverview() {
   // Toggle slot privacy
   const handleToggleSlotPrivacy = async (slotId: string, currentValue: boolean) => {
     setTogglingPrivacy(slotId);
-    const { error } = await supabase
-      .from("availability_slots")
-      .update({ is_public: currentValue })
-      .eq("id", slotId);
+    const { error } = await setSlotVisibility(slotId, currentValue);
     setTogglingPrivacy(null);
     if (error) {
       toast({ title: "Error", description: getFriendlyErrorMessage(error, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });

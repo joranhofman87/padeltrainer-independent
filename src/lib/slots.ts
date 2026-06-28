@@ -65,3 +65,26 @@ export async function insertAvailabilitySlots(
   const { error } = await query;
   return { data: null, error: error ?? null };
 }
+
+/**
+ * Set the public/private visibility of slot(s) — the shared write point for the
+ * `{ is_public }`-only toggle that was duplicated across the open-slots page,
+ * the trainer schedule, and several slot-detail surfaces.
+ *
+ * Accepts one id or an array (a 1-element `.in('id', [x])` is identical to
+ * `.eq('id', x)`). `is_public` is the TARGET value — callers pass the
+ * already-flipped value, exactly as the inline updates did. An empty list is a
+ * no-op. Only `is_public` is written: surfaces that co-write priority-window /
+ * release columns (priorityClaims) deliberately do NOT use this — that write is
+ * domain-atomic and stays in its own owner.
+ */
+export async function setSlotVisibility(
+  slotIds: string | string[],
+  isPublic: boolean,
+  client: SupabaseClient<Database> = supabase,
+): Promise<{ error: unknown }> {
+  const ids = Array.isArray(slotIds) ? slotIds : [slotIds];
+  if (ids.length === 0) return { error: null };
+  const { error } = await client.from('availability_slots').update({ is_public: isPublic }).in('id', ids);
+  return { error: error ?? null };
+}
