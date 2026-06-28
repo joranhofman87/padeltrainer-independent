@@ -672,10 +672,15 @@
   },
   "src/lib/cycles.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 4
+      "count": 3
     }
   },
   "src/lib/email.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "src/lib/intakeCsv.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     }
@@ -1048,7 +1053,7 @@
   },
   "src/pages/academy/AcademyPlayerDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 16
+      "count": 14
     }
   },
   "src/pages/academy/AcademyProfile.tsx": {
