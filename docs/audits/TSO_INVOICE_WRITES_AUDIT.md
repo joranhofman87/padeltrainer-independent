@@ -156,9 +156,19 @@ and fixes in one PR makes the money diff unreviewable. Sequence:
      mutation-boundary allowlist **3→2**. Adversarial review = VERBATIM. **The
      two bespoke writes now both live in the tested lib owner — PR-1 (inert
      freeze) is COMPLETE.** Next: PR-2 (matcher fix) + PR-3 (canonical recalc).
-2. **PR-2 (BEHAVIOUR CHANGE — matcher fix):** replace the broken `.find` with a
-   real per-player join (SELECT `player_id/guest_player_id` on both reads; match
-   `inv.booking_ids` to the right players' new bookings); flip Test A to correct.
+2. **PR-2 (BEHAVIOUR CHANGE — matcher fix): ✅ SHIPPED.** The no-op `.find`
+   matcher is replaced with a real per-player join — the cycle's existing
+   bookings are read WITH `player_id/guest_player_id`, mapped `bookingId →
+   playerKey`, and each invoice's billed players are derived from its own
+   `booking_ids` so a player's new bookings land ONLY on the invoice(s) covering
+   that player. Test A flipped to correct (per-player `INV_A=[bA,nA]`/
+   `INV_B=[bB,nB]`; guest keyed on `guest_player_id`; group gets all; mixed
+   invoice preserves a foreign id + isolates other players). Order-dependence
+   gone (per-id Map, not `allCycleBookings[0]`). 3-lens adversarial review =
+   correct-ship. The now-redundant `existingBookings` param + `ExistingCycleBookingRow`
+   type were dropped from the merge (TSO still uses `existingBookings` for its own
+   auto-booking). **Still open (NOT this PR):** A2 (status set — flagged owner
+   decision) + A3 (cross-rerun idempotency).
 3. **PR-3 (BEHAVIOUR CHANGE — recalc replacement):** delete the bespoke recalc
    and route through the canonical pipeline (`buildCycleLineItems` +
    `calculateVatTotals` + `split_count`-first + guarded `updated_at`/status
