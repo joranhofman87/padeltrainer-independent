@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
 import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -675,10 +676,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
       for (let i = 0; i < slotIds.length; i += 500) {
         const chunk = slotIds.slice(i, i + 500);
-        await supabase
-          .from('availability_slots')
-          .update({ is_public: makePublic })
-          .in('id', chunk);
+        await setSlotVisibility(chunk, makePublic);
       }
       toast({ title: t('cyclesTab.visibilityUpdated', { count: slotIds.length, state: makePublic ? t('cyclesTab.visible') : t('cyclesTab.hidden') }) });
       setSelectedIds(new Set());

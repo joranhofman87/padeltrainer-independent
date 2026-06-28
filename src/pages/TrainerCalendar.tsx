@@ -41,6 +41,7 @@ import { BookForPlayerDialog } from "@/components/booking/BookForPlayerDialog";
 import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 
 import { supabase } from "@/lib/supabaseClient";
+import { setSlotVisibility } from "@/lib/slots";
 import { getSlotCapacity } from "@/lib/lessons";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -321,7 +322,7 @@ export default function TrainerCalendar() {
           toast({ title: value ? t("calendar.cyclusMarkedFull") : t("calendar.cyclusMarkedOpen") });
         }
       } else {
-        const { error } = await supabase.from("availability_slots").update({ is_public: !value }).eq("id", slotId);
+        const { error } = await setSlotVisibility(slotId, !value);
         if (error) throw error;
         toast({ title: value ? t("calendar.slotMarkedFull") : t("calendar.slotMarkedOpen") });
       }

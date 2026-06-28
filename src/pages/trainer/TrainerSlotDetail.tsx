@@ -9,6 +9,7 @@ import {
   FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
@@ -370,7 +371,7 @@ export default function TrainerSlotDetail() {
                     <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{t('calendar.markPrivate', 'Privé')}</span></div>
                     <Switch checked={!detail.is_public} onCheckedChange={async () => {
                       const newVal = !detail.is_public;
-                      await supabase.from('availability_slots').update({ is_public: newVal }).eq('id', detail.id);
+                      await setSlotVisibility(detail.id, newVal);
                       setDetail({ ...detail, is_public: newVal });
                     }} />
                   </div>

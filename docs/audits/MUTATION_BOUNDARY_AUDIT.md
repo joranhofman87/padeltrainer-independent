@@ -92,9 +92,11 @@ All behaviour-frozen, characterization-tested before wiring, adversarially revie
   orphan-cycle `cycles.delete` cleanup). `src/test/slots.test.ts`.
 - **Slot visibility** — `setSlotVisibility(slotIds, isPublic, client?)` in `src/lib/slots.ts`
   (the `{ is_public }`-only toggle, single-id OR array; `.in('id', ids)`, no-op on empty). Routed
-  `OpenSlots` → **0** (all 3 toggles) + `TrainerScheduleOverview` 1. `src/test/slots.test.ts`.
-  ~6 more slot-detail surfaces are a clean follow-on dedup; deliberately NOT in scope for that
-  slice. EXCLUDED by design: the priority-claims `is_public` write (co-writes priority-window /
+  **ALL clean `is_public` toggles** now routed: `OpenSlots` ×3 → 0, `TrainerScheduleOverview` 1,
+  and the slot-detail follow-on (`SlotDetailDialog`, `AcademySlotDetail`, `AcademyCycleDetail`,
+  `AcademyCyclusOverview`'s 500-chunked loop via per-chunk `setSlotVisibility(chunk, …)`,
+  `TrainerCalendar` L324, `TrainerSlotDetail`). `src/test/slots.test.ts`.
+  EXCLUDED by design (the only raw `is_public` writes left): the priority-claims `is_public` write (co-writes priority-window /
   release columns — domain-atomic, stays in its own owner) and the cyclus-id/future-only toggle
   (different selector).
 - **Booking creation** — `insertBookings` (array) + `insertBookingSingle` (the
