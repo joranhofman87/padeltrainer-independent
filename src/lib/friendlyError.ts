@@ -24,6 +24,9 @@ const TECHNICAL_PATTERNS: RegExp[] = [
   /null value|does not exist|invalid input syntax/i,
   /permission denied/i,
   /status code|http \d{3}/i,
+  // Raw booking-enforcement RAISE codes from enforce_booking_slot_tier /
+  // book_slot_for_payment — show the caller's translated fallback, never the token.
+  /\b(slot_full|slot_not_released|priority_restricted|members_only)\b/i,
 ];
 
 export function extractRawMessage(error: unknown): string {
