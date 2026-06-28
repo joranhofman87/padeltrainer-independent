@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
   mintEventRegistrationInvoice,
   resolveEffectivePaymentMethod,
@@ -509,6 +510,8 @@ Deno.serve(async (req) => {
       }
     } catch (payErr) {
       console.error("Registration invoice minting failed (non-blocking):", payErr);
+      // Enrolled-but-uninvoiced: the registrant is in but the invoice mint crashed.
+      await notifySlackEdgeError("submit-guest-intake", `registration invoice mint failed (non-blocking): ${payErr instanceof Error ? payErr.message : String(payErr)}`, { intakeId: intakeData?.id });
     }
 
     // Send registration confirmation email (non-blocking). Every config value
@@ -527,6 +530,7 @@ Deno.serve(async (req) => {
         });
       } catch (confErr) {
         console.error("Confirmation email failed (non-blocking):", confErr);
+        await notifySlackEdgeError("submit-guest-intake", `registration confirmation email failed (non-blocking): ${confErr instanceof Error ? confErr.message : String(confErr)}`, { intakeId: intakeData?.id });
       }
     }
 

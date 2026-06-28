@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { canManageCycle, isAdminUser } from "../_shared/cycle-access.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -214,6 +215,7 @@ serve(async (req: Request) => {
                   }
                 } catch (recErr) {
                   console.error(`Reconcile failed for player ${playerId}:`, recErr);
+                  await notifySlackEdgeError("finalize-proposals", `sign-up invoice reconcile failed for player ${playerId}`, { playerId, error: String(recErr) });
                 }
                 console.log(`Skipped finalize invoice for player ${playerId} — sign-up invoice ${regInvoiceId}`);
                 continue;
@@ -251,6 +253,16 @@ serve(async (req: Request) => {
 
     console.log(`Finalized: ${bookedIntakes} intake requests, ${bookingsCreated} bookings created, ${invoicesCreated} invoices created`);
 
+    // One aggregate alert per run when any player was booked but their invoice
+    // mint failed (booked-but-unbilled) — no per-player flood for large cohorts.
+    if (errors.length > 0) {
+      await notifySlackEdgeError("finalize-proposals", `${errors.length} player invoice failure(s) during finalize (booked but unbilled)`, {
+        errors: errors.slice(0, 10),
+        booked: bookedIntakes,
+        invoices_created: invoicesCreated,
+      });
+    }
+
     return new Response(
       JSON.stringify({
         booked: bookedIntakes,
@@ -263,6 +275,11 @@ serve(async (req: Request) => {
   } catch (error) {
     // Raw DB error text (column/constraint names) stays in logs only.
     console.error("Error in finalize-proposals:", error);
+    // A throw here (e.g. the atomic finalize RPC failing) means the whole
+    // cohort failed to book. The caller may be service-role/automation with no
+    // human watching the 500, so alert it — this is the most consequential
+    // silent money-path failure in this function.
+    await notifySlackEdgeError("finalize-proposals", error instanceof Error ? error.message : String(error));
     return new Response(
       JSON.stringify({ error: "Failed to finalize proposals" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
