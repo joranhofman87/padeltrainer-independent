@@ -8,6 +8,7 @@ import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { createCycle, type CycleSettings, type ExtraCost } from "@/lib/cycles";
 import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
+import { insertBookings } from "@/lib/bookings";
 import { formatDate } from "@/lib/format";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 import type { Json } from "@/integrations/supabase/types";
@@ -1098,9 +1099,7 @@ export function BulkCreateContent({
             });
 
             if (bookingsToInsert.length > 0) {
-              const { error: bookingError } = await supabase
-                .from("bookings")
-                .insert(bookingsToInsert);
+              const { error: bookingError } = await insertBookings(bookingsToInsert);
               if (bookingError) {
                 hadBookingInsertError = true;
                 logSupabaseError("Error creating bookings", bookingError, {

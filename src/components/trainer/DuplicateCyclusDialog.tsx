@@ -27,6 +27,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { insertBookings } from "@/lib/bookings";
 import { createCycle, getCycle, type Cycle } from "@/lib/cycles";
 import { CalendarIcon } from "lucide-react";
 
@@ -293,9 +294,7 @@ export function DuplicateCyclusDialog({
         });
 
         if (bookingsToCreate.length > 0) {
-          const { error: bookingsError } = await supabase
-            .from("bookings")
-            .insert(bookingsToCreate);
+          const { error: bookingsError } = await insertBookings(bookingsToCreate);
 
           if (bookingsError) {
             logger.error("Error copying bookings", bookingsError instanceof Error ? bookingsError : new Error(String(bookingsError)), { component: 'DuplicateCyclusDialog' });
