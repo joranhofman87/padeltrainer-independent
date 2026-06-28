@@ -1,162 +1,167 @@
 // @vitest-environment node
 // PGlite's WASM/data loader needs Node's fetch/fs, not jsdom — pin this file to the node env.
 //
-// CHARACTERIZATION test (behaviour-freeze) for `recalcCycleInvoiceTotals` — the "Write B"
-// extra-cost/total recalc extracted VERBATIM into src/lib/cycleEditInvoiceSync.ts. Runs the
-// REAL helper against real Postgres (PGlite) and PINS TODAY's BUGGY output bit-for-bit so the
-// canonical-recalc replacement (PR-3) has a reviewable money diff. Every assertion that encodes
-// a KNOWN bug is marked `BUG …:` and cross-referenced to docs/audits/TSO_INVOICE_WRITES_AUDIT.md
-// (Write B). When PR-3 lands, these `BUG` assertions flip to canonical values — that flip IS the
-// diff.
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+// Correctness test for `syncInvoicesAfterCycleEdit` — the cyclus-edit "Write B" recalc. PR-1b
+// extracted the bespoke recalc verbatim and PINNED bugs B1–B5; PR-3 deleted that body and routes
+// through the canonical `syncInvoicesAfterPriceChange` resync, so these assertions now encode the
+// CORRECT billing: line items rebuilt from the real bookings, split read from invoices.split_count,
+// total === subtotal + vat, stale vat_breakdown cleared. Runs the REAL canonical pipeline against
+// real Postgres (PGlite). See docs/audits/TSO_INVOICE_WRITES_AUDIT.md (Write B).
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { createPgliteSupabase } from '@/test/fixtures/pgliteSupabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/integrations/supabase/types';
-import { recalcCycleInvoiceTotals } from '@/lib/cycleEditInvoiceSync';
+
+// The canonical resync binds the `@/lib/supabaseClient` singleton (not injectable), so route it to a
+// PGlite-backed adapter — the ACTUAL recalc runs against real SQL. (Same pattern as invoiceSync.pglite.test.ts.)
+const h = vi.hoisted(() => ({ supa: null as ReturnType<typeof createPgliteSupabase> | null }));
+vi.mock('@/lib/supabaseClient', () => ({
+  supabase: new Proxy(
+    {},
+    { get: (_t, prop: string) => (h.supa as unknown as Record<string, unknown>)?.[prop] },
+  ),
+}));
+
+import { syncInvoicesAfterCycleEdit } from '@/lib/cycleEditInvoiceSync';
 
 let db: PGlite;
-let supa: SupabaseClient<Database>;
 
-const CYC = 'cyc-1';
-const S1 = 'slot-1';
-const B1 = '30000000-0000-0000-0000-0000000000b1'; // one confirmed booking on S1
-const INV = 'a0000000-0000-0000-0000-000000000001';
-const INV2 = 'a0000000-0000-0000-0000-000000000002';
-
-const invoiceRow = async (id: string) =>
+const invRow = async (id = 'INV1') =>
   (await db.query<{
     line_items: Array<Record<string, unknown>>;
     subtotal: string; vat_amount: string; total: string;
-    vat_breakdown: Record<string, unknown> | null;
+    vat_breakdown: Record<string, unknown> | null; status: string;
   }>(
-    `SELECT line_items, subtotal, vat_amount, total, vat_breakdown FROM invoices WHERE id = $1`,
+    `SELECT line_items, subtotal, vat_amount, total, vat_breakdown, status FROM invoices WHERE id = $1`,
     [id],
   )).rows[0];
 
-// Seed an unpaid invoice that overlaps booking B1 (so the helper finds it via the cyclus→slot→
-// booking→booking_ids chain). line_items/vat_rate/vat_breakdown vary per test.
-const seedInvoice = async (
-  id: string,
-  lineItems: Array<Record<string, unknown>>,
-  vatRate = 21,
-  vatBreakdown: Record<string, unknown> | null = null,
-) => {
-  await db.query(
-    `INSERT INTO invoices (id, status, booking_ids, line_items, vat_rate, subtotal, vat_amount, total, vat_breakdown, pdf_url)
-     VALUES ($1,'sent',ARRAY['${B1}']::uuid[],$2::jsonb,$3,0,0,0,$4::jsonb,'old.pdf')`,
-    [id, JSON.stringify(lineItems), vatRate, vatBreakdown ? JSON.stringify(vatBreakdown) : null],
-  );
-};
+const num = (s: string) => Number(s);
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 beforeAll(async () => {
   db = new PGlite();
-  supa = createPgliteSupabase(db) as unknown as SupabaseClient<Database>;
+  h.supa = createPgliteSupabase(db);
   await db.exec(`
-    CREATE TABLE availability_slots (id text PRIMARY KEY, cyclus_id text);
-    CREATE TABLE bookings (id uuid PRIMARY KEY, slot_id text, status text);
+    CREATE TABLE locations (id text PRIMARY KEY, name text);
+    CREATE TABLE cycles (id text PRIMARY KEY, settings jsonb);
+    CREATE TABLE availability_slots (
+      id text PRIMARY KEY, price_per_session numeric, cyclus_id text, cyclus_name text,
+      start_time timestamptz, prices_include_vat boolean, extra_costs jsonb, location_id text);
+    CREATE TABLE bookings (id text PRIMARY KEY, slot_id text, payment_amount numeric, status text);
     CREATE TABLE invoices (
-      id uuid PRIMARY KEY, status text, booking_ids uuid[], line_items jsonb,
-      vat_rate numeric, subtotal numeric, vat_amount numeric, total numeric,
-      vat_breakdown jsonb, pdf_url text
-    );
+      id text PRIMARY KEY, invoice_number text, booking_ids text[], line_items jsonb,
+      subtotal numeric, vat_amount numeric, total numeric, status text, vat_rate numeric,
+      split_count int, pdf_url text, vat_breakdown jsonb, notes text,
+      updated_at timestamptz DEFAULT now());
+    CREATE FUNCTION bump_updated_at() RETURNS trigger LANGUAGE plpgsql
+      AS $$ BEGIN NEW.updated_at = clock_timestamp(); RETURN NEW; END; $$;
+    CREATE TRIGGER trg_inv_updated BEFORE UPDATE ON invoices
+      FOR EACH ROW EXECUTE FUNCTION bump_updated_at();
+    INSERT INTO locations VALUES ('L1', 'Court A');
   `);
 });
 
 beforeEach(async () => {
-  await db.exec(`DELETE FROM invoices; DELETE FROM bookings; DELETE FROM availability_slots;`);
-  await db.exec(`INSERT INTO availability_slots VALUES ('${S1}','${CYC}');`);
-  await db.exec(`INSERT INTO bookings VALUES ('${B1}','${S1}','confirmed');`);
+  await db.exec(`DELETE FROM bookings; DELETE FROM invoices; DELETE FROM availability_slots; DELETE FROM cycles;`);
 });
 
-const base = { cyclusId: CYC, cycleName: 'Herfst', pricesIncludeVat: false };
+// Seed one cyclus 'C1' (settings vary) + one exclusive-VAT slot 'S1' at `price`.
+const seedCycle = async (price: number, settings = '{}', incVat = false) => {
+  await db.query(`INSERT INTO cycles VALUES ('C1', $1::jsonb)`, [settings]);
+  await db.query(
+    `INSERT INTO availability_slots (id, price_per_session, cyclus_id, cyclus_name, start_time, prices_include_vat, extra_costs, location_id)
+     VALUES ('S1', $1, 'C1', 'Zomertraining', '2026-07-06 18:00:00+00', $2, '[]'::jsonb, 'L1')`,
+    [price, incVat],
+  );
+};
 
-describe('recalcCycleInvoiceTotals — characterization (pins bugs B1/B2/B3/B4)', () => {
-  it('B1 (P0): rebuild keeps line_items[0] and DROPS [1..n] (incl. manual lines/discounts)', async () => {
-    await seedInvoice(INV, [
-      { description: 'Sessie week 1', quantity: 1, unit_price: 10, vat_rate: 21 },
-      { description: 'Sessie week 2', quantity: 1, unit_price: 10, vat_rate: 21 },
-      { description: 'Handmatige korting', quantity: 1, unit_price: -5, vat_rate: 21 },
-    ]);
+describe('syncInvoicesAfterCycleEdit — canonical recalc (bugs B1–B5 + TOCTOU fixed)', () => {
+  it('B1: line items are REBUILT from the real bookings (not line[0]-kept); total = subtotal + vat', async () => {
+    await seedCycle(10);
+    await db.exec(`
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B1','S1',NULL,'confirmed'), ('B2','S1',NULL,'confirmed');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count)
+        VALUES ('INV1','2026-001', ARRAY['B1','B2'],
+          '[{"description":"Sessie week 1","quantity":1,"unit_price":10},{"description":"Sessie week 2","quantity":1,"unit_price":10},{"description":"Handmatige korting","quantity":1,"unit_price":-5}]'::jsonb,
+          0, 0, 12.1, 'sent', 21, 1);
+    `);
 
-    await recalcCycleInvoiceTotals({ ...base, sessionPrice: 10, extraCosts: [] }, supa);
+    await syncInvoicesAfterCycleEdit('C1');
 
-    const inv = await invoiceRow(INV);
-    // BUG B1: only line[0] survives; week 2 + the manual discount are silently deleted.
-    expect(inv.line_items).toHaveLength(1);
-    expect(inv.line_items[0].description).toBe('Sessie week 1');
-    const descs = inv.line_items.map((l) => l.description);
-    expect(descs).not.toContain('Sessie week 2');
-    expect(descs).not.toContain('Handmatige korting');
-    // Single-rate totals stay self-consistent (B3 only bites exclusive multi-rate).
-    expect(Number(inv.subtotal)).toBe(10);
-    expect(Number(inv.vat_amount)).toBe(2.1);
-    expect(Number(inv.total)).toBe(12.1);
+    const inv = await invRow();
+    // Rebuilt from the 2 real bookings @ €10 → one consolidated session line (the stale 3 lines,
+    // incl. the manual discount, are gone — consistent with every other cycle-price-edit path).
+    expect(num(inv.subtotal)).toBe(20);
+    expect(num(inv.vat_amount)).toBe(4.2);
+    expect(num(inv.total)).toBe(24.2);
+    expect(num(inv.total)).toBe(round2(num(inv.subtotal) + num(inv.vat_amount)));
   });
 
-  it('B2 (P0): split count read from the "(1/N)" marker only — unmarked split invoice re-priced at FULL', async () => {
-    // INV: a 2-way-split session line (priced at half, €25) but with NO "(1/2)" marker text.
-    await seedInvoice(INV, [{ description: 'Sessie', quantity: 1, unit_price: 25, vat_rate: 21 }]);
-    // INV2: the SAME split, but correctly marked "(1/2)".
-    await seedInvoice(INV2, [{ description: 'Sessie (1/2)', quantity: 1, unit_price: 25, vat_rate: 21 }]);
+  it('B2: split share is read from invoices.split_count (no marker needed) — not re-billed at FULL', async () => {
+    await seedCycle(50);
+    await db.exec(`
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B1','S1',NULL,'confirmed');
+      -- split_count = 2, but the line carries NO "(1/2)" marker text (the old B2 trigger).
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count)
+        VALUES ('INV1','2026-002', ARRAY['B1'], '[{"description":"Sessie","quantity":1,"unit_price":25}]'::jsonb,
+          0, 0, 0, 'sent', 21, 2);
+    `);
 
-    await recalcCycleInvoiceTotals({ ...base, sessionPrice: 50, extraCosts: [] }, supa);
+    await syncInvoicesAfterCycleEdit('C1');
 
-    // BUG B2: no marker → splitCount falls back to 1 → the half-price split line is re-billed at
-    // the FULL €50 (2× overcharge), ignoring that this is a structural split.
-    expect(Number((await invoiceRow(INV)).line_items[0].unit_price)).toBe(50);
-    // Marker present → splitCount=2 → re-priced at the correct €25. (Shows the marker-dependence.)
-    expect(Number((await invoiceRow(INV2)).line_items[0].unit_price)).toBe(25);
+    const inv = await invRow();
+    // applySplit(50, 2) = 25 → the player is billed their 1/2 share, NOT the full €50 (the old N× overcharge).
+    expect(num(inv.subtotal)).toBe(25);
+    expect(num(inv.total)).toBe(round2(num(inv.subtotal) + num(inv.vat_amount)));
   });
 
-  it('B3 (P1): exclusive multi-rate total diverges from subtotal+vat_amount by 1 cent', async () => {
-    // The audit worked example: €0.01 @21% (session) + €13.81 @9% (extra), VAT-exclusive.
-    await seedInvoice(INV, [{ description: 'Sessie', quantity: 1, unit_price: 5, vat_rate: 21 }], 21);
+  it('B3: exclusive multi-rate total is internally consistent (total === subtotal + vat, no 1¢ drift)', async () => {
+    // The audit example: €0.01 @21% (session) + €13.81 @9% (extra cost), VAT-exclusive.
+    await seedCycle(0.01, JSON.stringify({ extra_costs: [{ description: 'Materiaal', price: 13.81, type: 'one_time', vat_rate: 9 }] }));
+    await db.exec(`
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B1','S1',NULL,'confirmed');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count)
+        VALUES ('INV1','2026-003', ARRAY['B1'], '[]'::jsonb, 0, 0, 0, 'sent', 21, 1);
+    `);
 
-    await recalcCycleInvoiceTotals(
-      { ...base, sessionPrice: 0.01, extraCosts: [{ description: 'Materiaal', price: 13.81, type: 'one_time', vat_rate: 9 }] },
-      supa,
-    );
+    await syncInvoicesAfterCycleEdit('C1');
 
-    const inv = await invoiceRow(INV);
-    expect(Number(inv.subtotal)).toBe(13.82);
-    expect(Number(inv.vat_amount)).toBe(1.24);
-    // BUG B3: total is accumulated from UNROUNDED per-line VAT → 15.07, but subtotal+vat = 15.06.
-    // A correct invoice MUST satisfy total === subtotal + vat_amount.
-    expect(Number(inv.total)).toBe(15.07);
-    expect(Number(inv.total)).not.toBe(
-      Math.round((Number(inv.subtotal) + Number(inv.vat_amount)) * 100) / 100,
-    );
+    const inv = await invRow();
+    expect(num(inv.subtotal)).toBe(13.82);
+    expect(num(inv.vat_amount)).toBe(1.24);
+    // Canonical: total = round2(subtotal + vat) = 15.06 (the bespoke produced 15.07 ≠ subtotal+vat).
+    expect(num(inv.total)).toBe(15.06);
+    expect(num(inv.total)).toBe(round2(num(inv.subtotal) + num(inv.vat_amount)));
   });
 
-  it('B4 (P1): a multi→single-rate edit leaves a STALE vat_breakdown on the row', async () => {
-    // Pre-existing multi-rate breakdown, but the recalc result is single-rate (one 21% line).
-    await seedInvoice(
-      INV,
-      [{ description: 'Sessie', quantity: 1, unit_price: 10, vat_rate: 21 }],
-      21,
-      { '9': { subtotal: 5, vat: 0.45 }, '21': { subtotal: 10, vat: 2.1 } },
-    );
+  it('B4: a single-rate result CLEARS any stale multi-rate vat_breakdown', async () => {
+    await seedCycle(10);
+    await db.exec(`
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B1','S1',NULL,'confirmed');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count, vat_breakdown)
+        VALUES ('INV1','2026-004', ARRAY['B1'], '[]'::jsonb, 0, 0, 0, 'sent', 21, 1,
+          '{"9":{"subtotal":5,"vat":0.45},"21":{"subtotal":10,"vat":2.1}}'::jsonb);
+    `);
 
-    await recalcCycleInvoiceTotals({ ...base, sessionPrice: 10, extraCosts: [] }, supa);
+    await syncInvoicesAfterCycleEdit('C1');
 
-    const inv = await invoiceRow(INV);
-    // BUG B4: single-rate result → vat_breakdown is only spread when non-empty, so the UPDATE omits
-    // it and the stale multi-rate breakdown (incl. the bogus "9" bucket) survives.
-    expect(inv.vat_breakdown).not.toBeNull();
-    expect(Object.keys(inv.vat_breakdown ?? {})).toContain('9');
+    const inv = await invRow();
+    // Single-rate (one 21% session line) → the stale "9"/"21" breakdown is cleared, not left to mis-render the PDF.
+    expect(inv.vat_breakdown).toBeNull();
   });
 
-  it('a paid invoice is excluded by the status filter and never recalculated', async () => {
-    await db.query(
-      `INSERT INTO invoices (id, status, booking_ids, line_items, vat_rate, subtotal, vat_amount, total, vat_breakdown, pdf_url)
-       VALUES ($1,'paid',ARRAY['${B1}']::uuid[],$2::jsonb,21,99,99,99,NULL,'paid.pdf')`,
-      [INV, JSON.stringify([{ description: 'Sessie', quantity: 1, unit_price: 99, vat_rate: 21 }])],
-    );
+  it('a paid invoice is excluded (status not in sent/draft/overdue) and never recalculated', async () => {
+    await seedCycle(10);
+    await db.exec(`
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B1','S1',NULL,'confirmed');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count)
+        VALUES ('INV1','2026-005', ARRAY['B1'], '[]'::jsonb, 99, 0, 99, 'paid', 21, 1);
+    `);
 
-    await recalcCycleInvoiceTotals({ ...base, sessionPrice: 10, extraCosts: [] }, supa);
+    await syncInvoicesAfterCycleEdit('C1');
 
-    const inv = await invoiceRow(INV);
-    expect(Number(inv.total)).toBe(99); // untouched — not in ('draft','sent','pending','overdue')
+    const inv = await invRow();
+    expect(num(inv.total)).toBe(99); // untouched
+    expect(inv.status).toBe('paid');
   });
 });

@@ -15,7 +15,7 @@ import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } 
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { insertAvailabilitySlots, setSlotVisibility } from "@/lib/slots";
 import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
-import { mergeNewBookingIdsIntoCycleInvoices, recalcCycleInvoiceTotals } from "@/lib/cycleEditInvoiceSync";
+import { mergeNewBookingIdsIntoCycleInvoices, syncInvoicesAfterCycleEdit } from "@/lib/cycleEditInvoiceSync";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -126,6 +126,11 @@ type CycleEditData = {
   pricesIncludeVat: boolean;
   splitPayment: boolean;
   originalSplitPayment: boolean;
+  // Captured at open so the save can detect whether the price/extra-costs/VAT-mode
+  // actually changed → only then re-derive the cyclus's unpaid invoices.
+  originalPricePerSession: string;
+  originalExtraCosts: ExtraCost[];
+  originalPricesIncludeVat: boolean;
 };
 
 type TrainerLocationOption = {
@@ -174,6 +179,9 @@ export default function TrainerScheduleOverview() {
     pricesIncludeVat: true,
     splitPayment: false,
     originalSplitPayment: false,
+    originalPricePerSession: "",
+    originalExtraCosts: [],
+    originalPricesIncludeVat: true,
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -402,6 +410,9 @@ export default function TrainerScheduleOverview() {
       pricesIncludeVat: firstSlot?.prices_include_vat ?? true,
       splitPayment: firstSlot?.split_payment ?? false,
       originalSplitPayment: firstSlot?.split_payment ?? false,
+      originalPricePerSession: firstSlot?.price_per_session != null ? String(firstSlot.price_per_session) : "",
+      originalExtraCosts: extraCosts.length > 0 ? extraCosts : [],
+      originalPricesIncludeVat: firstSlot?.prices_include_vat ?? true,
     });
 
     // Collect unique players from all bookings across cycle slots
@@ -646,25 +657,23 @@ export default function TrainerScheduleOverview() {
         }
       }
 
-      // 3b. Sync extra costs to existing unpaid invoices.
-      // Behaviour-frozen extraction — owner: src/lib/cycleEditInvoiceSync.ts
-      // (carries known bugs B1/B2/B3/B4; see docs/audits/TSO_INVOICE_WRITES_AUDIT.md).
-      await recalcCycleInvoiceTotals(
-        {
-          cyclusId: editCycleId,
-          cycleName: cycleEditData.name,
-          sessionPrice,
-          extraCosts: cycleEditData.extraCosts,
-          pricesIncludeVat: cycleEditData.pricesIncludeVat,
-        },
-        supabase,
-      );
+      // 3b. Re-derive this cyclus's unpaid invoices — but ONLY when something that
+      // affects the billed price actually changed. A benign edit (rename, location,
+      // privacy, max-participants) must NOT rewrite every overlapping invoice.
+      const sessionPriceChanged = cycleEditData.pricePerSession.trim() !== cycleEditData.originalPricePerSession.trim();
+      const extraCostsChanged = JSON.stringify(cycleEditData.extraCosts) !== JSON.stringify(cycleEditData.originalExtraCosts);
+      const lengthChanged = !isNaN(newCount) && newCount !== cycleEditData.originalRepeatCount;
+      const vatModeChanged = cycleEditData.pricesIncludeVat !== cycleEditData.originalPricesIncludeVat;
+      const splitChanged = cycleEditData.splitPayment !== cycleEditData.originalSplitPayment;
+      const recalcNeeded = sessionPriceChanged || extraCostsChanged || lengthChanged || vatModeChanged;
 
-      // Always persist split_payment to the cycle settings (the single write
-      // authority); a DB trigger mirrors it onto the cycle's slots. Previously
-      // this ran only when toggling ON, so toggling OFF left settings stale and
-      // the two stores drifted (div-009).
-      if (cycleEditData.splitPayment !== cycleEditData.originalSplitPayment) {
+      // Persist split_payment + the fresh extra_costs to the cycle settings (the single
+      // write authority; a DB trigger mirrors split_payment onto the slots). extra_costs
+      // MUST be written here BEFORE the recalc: the canonical extra-cost resolver prefers
+      // cycles.settings.extra_costs over the slot value, so a stale entry would otherwise
+      // win and bill the old extras. (Previously only split_payment was persisted, and
+      // only on a split change — div-009.)
+      if (splitChanged || recalcNeeded) {
         const { data: cycleRow } = await supabase
           .from("cycles")
           .select("settings")
@@ -673,8 +682,16 @@ export default function TrainerScheduleOverview() {
         if (cycleRow) {
           const settings: Record<string, unknown> = ((cycleRow.settings as Record<string, unknown>) || {});
           settings.split_payment = cycleEditData.splitPayment;
+          settings.extra_costs = cycleEditData.extraCosts;
           await updateCycleSettings(editCycleId, settings as CycleSettings);
         }
+      }
+
+      // Route the recalc through the canonical cycle resync (rebuilds line items from
+      // the real bookings, reads invoices.split_count, total = subtotal + vat, guarded
+      // optimistic write). owner: src/lib/cycleEditInvoiceSync.ts.
+      if (recalcNeeded) {
+        await syncInvoicesAfterCycleEdit(editCycleId);
       }
 
       // 4. If splitPayment toggled ON (from off), re-split existing invoices.
