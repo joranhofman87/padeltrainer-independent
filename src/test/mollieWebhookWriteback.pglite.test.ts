@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { createPgliteSupabase } from '@/test/fixtures/pgliteSupabase';
-import { applyBookingPaymentWriteback } from '../../supabase/functions/_shared/mollie-webhook-payment.ts';
+import { applyBookingPaymentWriteback, findCancelledPaidBookings } from '../../supabase/functions/_shared/mollie-webhook-payment.ts';
 
 // applyBookingPaymentWriteback takes the supabase client as a param, so we run the REAL helper
 // against real Postgres (no JS mock) by handing it the PGlite-backed adapter directly — no
@@ -117,5 +117,38 @@ describe('applyBookingPaymentWriteback (against real Postgres)', () => {
     const b1 = await booking('B1');
     expect(b1.payment_status).toBe('failed');
     expect(b1.status).toBe('cancelled');
+  });
+
+  it('REGRESSION (no-resurrection): a paid webhook does NOT un-cancel a CANCELLED booking', async () => {
+    // The BookLesson online-cycle rollback soft-cancels its bookings (status='cancelled')
+    // when payment creation fails, leaving payment_status='pending'. A late paid webhook for
+    // a payment created just before that failure must NOT flip it back to paid/confirmed.
+    await db.exec(`INSERT INTO bookings (id, slot_id, payment_status, status) VALUES
+      ('B1','S1','pending','cancelled'), ('B2','S1','pending','pending');`);
+
+    const transitioned = await applyBookingPaymentWriteback(supa, ['B1', 'B2'], { ...PAID });
+
+    // Only the still-active B2 transitions; the cancelled B1 is left untouched.
+    expect(transitioned.map((r) => r.id)).toEqual(['B2']);
+    const b1 = await booking('B1');
+    expect(b1.status).toBe('cancelled'); // NOT resurrected
+    expect(b1.payment_status).toBe('pending'); // NOT marked paid
+    expect(b1.paid_at).toBeNull();
+    expect((await booking('B2')).payment_status).toBe('paid');
+  });
+});
+
+describe('findCancelledPaidBookings (alert detector)', () => {
+  it('flags a cancelled, not-yet-paid booking (paid payment landed on a cancelled seat → refund)', () => {
+    const rows = [
+      { id: 'A', status: 'cancelled', payment_status: 'pending' }, // money received, no seat → flag
+      { id: 'B', status: 'confirmed', payment_status: 'pending' }, // active → not flagged
+      { id: 'C', status: 'cancelled', payment_status: 'paid' }, // already settled → not flagged
+    ];
+    expect(findCancelledPaidBookings(rows)).toEqual(['A']);
+  });
+
+  it('returns empty when nothing is cancelled', () => {
+    expect(findCancelledPaidBookings([{ id: 'A', status: 'confirmed', payment_status: 'pending' }])).toEqual([]);
   });
 });
