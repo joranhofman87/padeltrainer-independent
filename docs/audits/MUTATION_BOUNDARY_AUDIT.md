@@ -49,9 +49,19 @@ their own toasts / counts / cancel-reason annotation. A characterization + invar
 proves a paid invoice is never deleted. The allowlist shrank accordingly (the 5 files dropped
 12 direct invoice writes; the guard now fails if anyone re-adds a raw invoice delete/cancel).
 
-**P2 — opportunistic (when touching those files):** fold invoice send/create/due-date
-into `invoices.ts`; prefer `bookings.ts` helpers for new booking writes; consider a
-`book_cycle_slots` RPC if the player-side cycle inserts ever need service-role paths.
+**P2 — opportunistic (when touching those files):** prefer `bookings.ts`/`slots.ts`/`invoices.ts`
+helpers for new writes; consider a `book_cycle_slots` RPC if the player-side cycle inserts ever
+need service-role paths. **`TrainerScheduleOverview` residuals (3, kept with reason):** the
+per-slot *absolute* reschedule (`dayDelta` + absolute `setHours` + midnight-cross, bundled with the
+same-statement bulk `updates`) is not expressible via `applySlotEditToCycle`'s *relative*
+`start_shift_minutes`; the combined no-reschedule bulk-settings write is one atomic statement whose
+split across `applySlotEditToCycle` + `updateCyclePricing` would change atomicity/ordering vs the
+downstream invoice resync. Two **invoice** writes need NEW tested owners before moving (genuine
+P2, each needs a PGlite characterization test first): the additive `booking_ids` merge into unpaid
+invoices (currently *uncounted* — a comment interrupts the `from('invoices')`→`.update` chain — so
+un-hide + route together, never transiently regress the guard) → a `mergeBookingIdsIntoCycleInvoices`
+owner reusing `invoiceSync`'s optimistic-retry; and the extra-cost + totals recalc (sets the invoice
+total) → a `syncExtraCostsForCycle` owner, reproduced bit-for-bit.
 
 **Allowed / frozen:** everything else — trigger-guarded booking inserts, RLS-guarded
 slot creates/toggles, rollback-cleanup deletes, campaign-recipient housekeeping, and all
@@ -80,6 +90,13 @@ All behaviour-frozen, characterization-tested before wiring, adversarially revie
 - **Slot creation** — `expandWeeklySessions` + `insertAvailabilitySlots` (`src/lib/slots.ts`);
   AddSlotDialog → 2, ClubAddSlotDialog → 1, OnboardingStep3Schedule → 1 (residual =
   orphan-cycle `cycles.delete` cleanup). `src/test/slots.test.ts`.
+- **Slot visibility** — `setSlotVisibility(slotIds, isPublic, client?)` in `src/lib/slots.ts`
+  (the `{ is_public }`-only toggle, single-id OR array; `.in('id', ids)`, no-op on empty). Routed
+  `OpenSlots` → **0** (all 3 toggles) + `TrainerScheduleOverview` 1. `src/test/slots.test.ts`.
+  ~6 more slot-detail surfaces are a clean follow-on dedup; deliberately NOT in scope for that
+  slice. EXCLUDED by design: the priority-claims `is_public` write (co-writes priority-window /
+  release columns — domain-atomic, stays in its own owner) and the cyclus-id/future-only toggle
+  (different selector).
 - **Booking creation** — `insertBookings` (array) + `insertBookingSingle` (the
   `.insert(obj).select().single()` shape) in `src/lib/bookings.ts`. **All booking inserts in
   `pages/`+`components/` are now routed → ZERO remain:** QuickBookDialog, BookForPlayerDialog ×2,
