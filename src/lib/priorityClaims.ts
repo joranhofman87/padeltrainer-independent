@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
+import { reportDeployDriftFallback } from '@/lib/deployDrift';
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
 
@@ -715,8 +716,13 @@ async function mintRebookInvoiceFallback(
       if (!error && result?.ok && result.publicToken) {
         return { ...accept, mode: 'upfront_invoiced', publicToken: result.publicToken };
       }
+      if (error) {
+        // The edge fn was unreachable/errored — most often because it isn't deployed yet. Signal it:
+        // otherwise the player silently lands on 'upfront_unavailable' (a reserved-but-unpayable spot).
+        reportDeployDriftFallback('create_rebook_invoice', { reason: 'edge_fn_error', bookingCount: bookingIds.length });
+      }
     } catch {
-      // Fall through to 'upfront_unavailable'.
+      reportDeployDriftFallback('create_rebook_invoice', { reason: 'edge_fn_throw', bookingCount: bookingIds.length });
     }
   }
   return { ...accept, mode: 'upfront_unavailable' };
