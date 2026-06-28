@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
+import { deleteOrCancelInvoices } from "@/lib/invoices";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -384,17 +385,12 @@ export default function TrainerInvoices() {
 
   const handleBulkDelete = async () => {
     setBulkRunning(true);
-    const drafts = selectedInvoices.filter((i) => i.status === "draft").map((i) => i.id);
-    const others = selectedInvoices.filter((i) => i.status !== "draft").map((i) => i.id);
+    // Drafts hard-deleted, everything else soft-cancelled — owned by the facade
+    // so a paid invoice can never be hard-deleted in a bulk action.
+    const { deletedIds, cancelledIds, deleteError, cancelError } = await deleteOrCancelInvoices(selectedInvoices);
     let ok = 0, fail = 0;
-    if (drafts.length) {
-      const { error } = await supabase.from("invoices").delete().in("id", drafts);
-      if (error) fail += drafts.length; else ok += drafts.length;
-    }
-    if (others.length) {
-      const { error } = await supabase.from("invoices").update({ status: "cancelled" }).in("id", others);
-      if (error) fail += others.length; else ok += others.length;
-    }
+    if (deletedIds.length) { if (deleteError) fail += deletedIds.length; else ok += deletedIds.length; }
+    if (cancelledIds.length) { if (cancelError) fail += cancelledIds.length; else ok += cancelledIds.length; }
     setBulkRunning(false);
     setConfirmBulk(null);
     setSelectedIds(new Set());

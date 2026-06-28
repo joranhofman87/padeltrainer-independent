@@ -13,6 +13,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
+import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
 import { Loader2, CalendarIcon, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -226,16 +227,13 @@ export default function AcademyEditInvoice() {
 
   const handleDelete = async (reason?: string) => {
     if (!invoice) return;
-    if (isDraft) {
-      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
-      if (error) { toast.error(t('invoiceEdit.deleteFailed')); return; }
-      toast.success(tAcademy('invoices.deleted', 'Invoice deleted'));
-    } else {
-      const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', invoice.id);
-      if (error) { toast.error(t('invoiceEdit.cancelFailed')); return; }
-      if (reason?.trim()) await annotateInvoiceStatusReason(invoice.id, reason).catch(() => {});
-      toast.success(tAcademy('invoices.cancelled', 'Invoice cancelled'));
-    }
+    // Draft → hard-delete; anything else → soft-cancel (audit trail), owned by
+    // the facade so a paid invoice can never be hard-deleted here.
+    const { cancelledIds, deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    if (deleteError) { toast.error(t('invoiceEdit.deleteFailed')); return; }
+    if (cancelError) { toast.error(t('invoiceEdit.cancelFailed')); return; }
+    if (cancelledIds.length && reason?.trim()) await annotateInvoiceStatusReason(invoice.id, reason).catch(() => {});
+    toast.success(isDraft ? tAcademy('invoices.deleted', 'Invoice deleted') : tAcademy('invoices.cancelled', 'Invoice cancelled'));
     queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
     navigate('/app/academy/invoices');
   };

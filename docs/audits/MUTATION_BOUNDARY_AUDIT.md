@@ -24,7 +24,7 @@ these writes belong (e.g. `bookings.ts`, `cycles.ts`, `registrations.ts`,
 
 | Table | Ops | Representative sites | Guard today | Risk | Keep/Move | Target owner |
 |---|---|---|---|---|---|---|
-| **invoices** | delete + update(status=cancelled) | TrainerInvoices, AcademyInvoices, InvoiceList, Trainer/AcademyEditInvoice | UI status-gate (`delete` only `status==='draft'`, else `cancel`) — **duplicated in 5 files** | **P1** | **move** | `src/lib/invoices.ts` (new) — one `deleteOrCancelInvoices()` enforcing "never DELETE a non-draft" |
+| **invoices** | delete + update(status=cancelled) | TrainerInvoices, AcademyInvoices, InvoiceList, Trainer/AcademyEditInvoice | ✅ **moved (#195)** — all 6 handlers route through `src/lib/invoices.ts` `deleteOrCancelInvoices()`, which makes "DELETE a non-draft" unrepresentable | ~~P1~~ done | ✅ moved | `src/lib/invoices.ts` `deleteOrCancelInvoices()` |
 | **invoices** | update(sent_at/status=sent), update(due_date) | TrainerInvoices, AcademyInvoices | UI + edge fn does the real send | P2 | allowlist | (later) fold into `invoices.ts` |
 | **invoices** | insert | Trainer/AcademyCreateInvoice, CreateCustomInvoiceDialog | server-trusted pricing helper + RLS | P2 | allowlist | create path is lower-risk; document |
 | **bookings** | insert (cycle / approval / manual branches) | BookLesson, TrainerScheduleOverview, BookForPlayerDialog, InlineBookPlayer | **player-authed → `enforce_booking_slot_tier` trigger checks capacity**; service-role paths already use `book_slot_for_payment` RPC | P2 | allowlist | trigger-guarded; the unsafe service-role single-slot path was the P0, fixed in #183 |
@@ -38,15 +38,16 @@ these writes belong (e.g. `bookings.ts`, `cycles.ts`, `registrations.ts`,
 
 ## Prioritized move plan
 
-**P1 — the one real move (do next, its own PR, characterization-tested):**
-`src/lib/invoices.ts` with `deleteOrCancelInvoices(invoices)` (and `cancelInvoice`,
-`deleteDraftInvoice`). It encapsulates the draft-vs-non-draft rule **once** and makes
-"hard-delete a non-draft/paid invoice" *unrepresentable* (the function refuses). Then
-route the 5 duplicated sites (TrainerInvoices, AcademyInvoices, InvoiceList,
-TrainerEditInvoice, AcademyEditInvoice) through it and shrink the allowlist. This is a
-money-path refactor, so it needs a characterization test asserting the emitted
-delete/cancel partition is unchanged **before** wiring the sites. Not done here to avoid
-an untested money-path rewrite under the "smallest safe fix" rule.
+**P1 — the one real move — ✅ DONE (PR #195):**
+`src/lib/invoices.ts` `deleteOrCancelInvoices(invoices)` encapsulates the draft-vs-non-draft
+rule **once** and makes "hard-delete a non-draft/paid invoice" *unrepresentable* (a non-draft
+is always routed to the cancel UPDATE, never the DELETE). The **6** duplicated handlers across
+**5** files — TrainerInvoices + AcademyInvoices bulk, InvoiceList (handleDelete +
+handleVoidInvoice), TrainerEditInvoice, AcademyEditInvoice — now route through it; callers keep
+their own toasts / counts / cancel-reason annotation. A characterization + invariant test
+(`src/test/invoices.test.ts`, written **before** wiring) pins the delete/cancel partition and
+proves a paid invoice is never deleted. The allowlist shrank accordingly (the 5 files dropped
+12 direct invoice writes; the guard now fails if anyone re-adds a raw invoice delete/cancel).
 
 **P2 — opportunistic (when touching those files):** fold invoice send/create/due-date
 into `invoices.ts`; prefer `bookings.ts` helpers for new booking writes; consider a
@@ -65,8 +66,8 @@ writes move behind owners, regenerate the baseline so it only shrinks.
 
 ## Acceptance criteria (Codex Finding 3)
 - ✅ Documented mutation boundary (this file).
-- ✅ Direct writes are explicitly **allowlisted** (the baseline) or flagged to **move**
-  (the invoice P1).
+- ✅ Direct writes are explicitly **allowlisted** (the baseline); the one P1 move (the invoice
+  delete/cancel facade) is **DONE** (#195) and the allowlist shrank.
 - ✅ New tests/guardrails prevent accidental reintroduction (`mutationBoundary.test.ts`).
-- ✅ No broad behavior rewrite without tests (the invoice facade is specified, not
-  rushed).
+- ✅ No broad behavior rewrite without tests (the invoice facade was characterization-tested
+  before wiring — `src/test/invoices.test.ts`).
