@@ -83,6 +83,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [memberWindowDays, setMemberWindowDays] = useState(7);
   const [enableMemberWindow, setEnableMemberWindow] = useState(true);
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
+  const [strictMollie, setStrictMollie] = useState(false);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -125,6 +126,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       priorityWindowDays,
       memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
       paymentMode,
+      strictMollie: paymentMode === 'upfront' && strictMollie,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
       weeks: weeks ? Number(weeks) : 0,
@@ -132,7 +134,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -352,6 +354,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 academyProfileId={academyProfileId}
                 paymentMode={paymentMode}
                 setPaymentMode={setPaymentMode}
+                strictMollie={strictMollie}
+                setStrictMollie={setStrictMollie}
               />
 
               <Card>

@@ -727,10 +727,30 @@ export interface AcceptAndPayResult {
    * - 'upfront_unavailable': commitment captured, but neither checkout nor an
    *   invoice could be produced (e.g. guest claim, or the academy has no complete
    *   payment setup). The spot is reserved; the academy follows up manually.
+   * - 'strict_mollie_unavailable': STRICT pay-first cycle where the Mollie checkout
+   *   could not be started — strict has NO bank fallback, so the just-created HOLD
+   *   was RELEASED (no seat is kept). The player should retry; nothing is reserved.
    */
-  mode?: 'deferred' | 'upfront' | 'upfront_invoiced' | 'upfront_unavailable';
+  mode?: 'deferred' | 'upfront' | 'upfront_invoiced' | 'upfront_unavailable' | 'strict_mollie_unavailable';
   checkoutUrl?: string;
   publicToken?: string;
+}
+
+/**
+ * Release strict-rebook HOLDS the player can no longer pay for (Mollie checkout
+ * couldn't start). Best-effort, idempotent server-side; the expiry cron is the
+ * backstop. Used only in strict mode — strict keeps NO seat without payment.
+ */
+async function releaseRebookHolds(bookingIds: string[]): Promise<void> {
+  await Promise.all(
+    bookingIds.map(async (id) => {
+      try {
+        await supabase.rpc('release_rebook_hold', { _booking_id: id });
+      } catch {
+        // Best-effort — the release-expired-rebook-holds cron reclaims it within minutes.
+      }
+    }),
+  );
 }
 
 interface ClaimSlotInfo {
@@ -801,15 +821,26 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
   }
   if (mode !== 'upfront' || !slot?.cyclus_id) return { ...accept, mode: 'deferred' };
 
+  // STRICT pay-first (opt-in per cycle: settings.rebook_strict_mollie): the accept already created
+  // a HOLD instead of a confirmed booking (server-side, A2). Strict keeps NO seat without payment,
+  // so on ANY non-checkout outcome we RELEASE the holds (no bank fallback). Track every hold the
+  // accept created (this claim + any siblings picked up below) so the catch can release them too.
+  const settings = await fetchCycleSettings(slot.cyclus_id);
+  const strict = settings?.rebook_strict_mollie === true;
+  const strictHoldIds: string[] = strict && accept.booking_id ? [accept.booking_id] : [];
+  const failStrict = async (ids: string[]): Promise<AcceptAndPayResult> => {
+    await releaseRebookHolds(ids);
+    return { ...accept, mode: 'strict_mollie_unavailable' };
+  };
+
   try {
     // Online checkout needs an authenticated player: create-mollie-payment
     // verifies every booking belongs to the caller's profile. Guest/email-only
-    // accepts keep the spot and fall back to manual invoicing.
+    // accepts keep the spot and fall back to manual invoicing (strict releases).
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { ...accept, mode: 'upfront_unavailable' };
+    if (!user) return strict ? await failStrict(strictHoldIds) : { ...accept, mode: 'upfront_unavailable' };
 
     const cyclusId = slot.cyclus_id;
-    const settings = await fetchCycleSettings(cyclusId);
     const splitPayment = settings?.split_payment === true;
 
     // All slots of the target cycle (price + trainer for the checkout call).
@@ -861,15 +892,19 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
 
     // Keep only this player's still-payable bookings — a paid or cancelled
     // sibling booking would make create-mollie-payment reject the batch.
+    // 'payment_pending' = a STRICT hold (A1/A2): it is payable (the player is paying for it now),
+    // so it MUST be included — else the strict accept would drop its own hold and release the seat.
     const { data: payable } = await supabase
       .from('bookings')
       .select('id, slot_id')
       .in('id', [...new Set(bookingIds)])
       .eq('payment_status', 'pending')
-      .in('status', ['pending', 'confirmed']);
+      .in('status', ['pending', 'confirmed', 'payment_pending']);
     const payableBookingIds = (payable || []).map((b) => b.id);
     const payableSlotIds = [...new Set((payable || []).map((b) => b.slot_id))];
-    if (payableBookingIds.length === 0) return { ...accept, mode: 'upfront_unavailable' };
+    if (payableBookingIds.length === 0) return strict ? await failStrict(strictHoldIds) : { ...accept, mode: 'upfront_unavailable' };
+    // Strict: the payable bookings ARE the holds to release if checkout can't start.
+    if (strict) for (const id of payableBookingIds) if (!strictHoldIds.includes(id)) strictHoldIds.push(id);
 
     // Amount, mirroring BookLesson's cycle branch: sum of price_per_session
     // over the player's booked slots; with split_payment, divided by the
@@ -882,7 +917,7 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
         .from('bookings')
         .select('player_id, guest_player_id')
         .in('slot_id', payableSlotIds)
-        .in('status', ['pending', 'confirmed']);
+        .in('status', ['pending', 'confirmed', 'payment_pending']);
       const distinctPlayers = new Set(
         (participantRows || [])
           .map((b) => b.player_id ?? b.guest_player_id)
@@ -892,9 +927,12 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     }
 
     const paymentSetup = await hasValidPaymentSetup(slot.trainer_id, slot.trainer_id, false);
-    // No online checkout available — mint an invoice (bank transfer / manual)
-    // instead of leaving the player with a reserved-but-unpayable spot.
-    if (!paymentSetup.valid) return await mintRebookInvoiceFallback(accept, payableBookingIds);
+    // No online checkout available. Non-strict: mint an invoice (bank transfer / manual) so the
+    // player isn't left with a reserved-but-unpayable spot. STRICT: no bank fallback — release the
+    // holds (no seat without payment).
+    if (!paymentSetup.valid) {
+      return strict ? await failStrict(strictHoldIds) : await mintRebookInvoiceFallback(accept, payableBookingIds);
+    }
 
     const { data: paymentData, error: paymentError } = await supabase.functions.invoke('create-mollie-payment', {
       body: {
@@ -906,11 +944,12 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
       },
     });
     if (paymentError || !paymentData?.checkoutUrl) {
-      return await mintRebookInvoiceFallback(accept, payableBookingIds);
+      return strict ? await failStrict(strictHoldIds) : await mintRebookInvoiceFallback(accept, payableBookingIds);
     }
     return { ...accept, mode: 'upfront', checkoutUrl: paymentData.checkoutUrl as string };
   } catch {
-    // The spot is reserved; only the checkout failed.
+    // Strict: release the holds (no seat without payment). Non-strict: the spot stays reserved.
+    if (strict) return await failStrict(strictHoldIds);
     return { ...accept, mode: 'upfront_unavailable' };
   }
 }

@@ -237,7 +237,9 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
-        if (!["pending", "confirmed"].includes(b.status)) {
+        // 'payment_pending' = a STRICT rebook HOLD (A1/A2) — it IS payable (the player is paying for
+        // it right now); the webhook commits it to confirmed/paid. Excluding it broke strict accept.
+        if (!["pending", "confirmed", "payment_pending"].includes(b.status)) {
           return new Response(
             JSON.stringify({ error: "Booking is not eligible for payment" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -287,7 +289,9 @@ serve(async (req) => {
           .from("bookings")
           .select("player_id, guest_player_id")
           .in("slot_id", slotIds)
-          .in("status", ["pending", "confirmed"]);
+          // Include strict HOLDS ('payment_pending') as committed participants — else the FIRST
+          // payer of a split+strict cycle is divided by too few players and overcharged.
+          .in("status", ["pending", "confirmed", "payment_pending"]);
         const distinctPlayers = new Set(
           (participantRows || [])
             .map((b) => b.player_id ?? b.guest_player_id)

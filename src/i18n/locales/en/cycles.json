@@ -795,6 +795,7 @@
     "payNow": "You pay for the new cycle right away when you confirm your spot.",
     "redirectingToPayment": "Taking you to the payment page…",
     "upfrontUnavailable": "Your spot is reserved. Online payment is not available yet — you will receive an invoice.",
+    "strictMollieUnavailable": "We couldn’t start the online payment, so no spot was reserved. Please try again.",
     "invoiceReady": "Your spot is reserved. Here is your invoice — pay online or by bank transfer.",
     "seriesHeading": "Every {{weekday}} at {{time}}",
     "seriesDetail": "{{count}} sessions · {{from}} to {{to}}",

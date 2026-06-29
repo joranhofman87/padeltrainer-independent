@@ -135,6 +135,9 @@ serve(async (req) => {
     const priorityWindowDays: number = Number(body?.priorityWindowDays ?? 7);
     const memberWindowDays: number = Number(body?.memberWindowDays ?? 0);
     const paymentMode: string = body?.paymentMode === "upfront" ? "upfront" : "deferred_split";
+    // STRICT pay-first (A3): only meaningful with upfront — server enforces the coupling so a
+    // client can't request strict on a deferred cycle. The strict accept RPC + webhook read it.
+    const strictMollie: boolean = paymentMode === "upfront" && body?.strictMollie === true;
     const requireAdminReview: boolean = body?.requireAdminReview === true;
     const targetCycleName: string | null = body?.targetCycleName ?? null;
     dryRun = body?.dryRun === true;
@@ -450,7 +453,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null },
+        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null },
       })
       .select("id, name")
       .single();
