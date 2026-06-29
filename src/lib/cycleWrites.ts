@@ -8,6 +8,7 @@ import type { Json, Database } from '@/integrations/supabase/types';
 import type { Cycle, CycleInput, CycleSettings, SlotEditPatch, SlotEditResult } from './cycleTypes';
 import { toCycle } from './cycleMappers';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { setSlotVisibility } from '@/lib/slots';
 
 /**
  * Atomic, set-based slot edit / apply-to-cycle via the `apply_slot_edit_to_cycle` RPC (Phase 4 F2).
@@ -143,6 +144,42 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
 
   if (error) throw error;
   return toCycle(data);
+}
+
+/**
+ * Publish a DRAFT cycle created by the slot generator: open it for booking and
+ * apply the stored public/private intent to its slots.
+ *
+ * The generator inserts slots `is_public:false` (draft = not bookable) and the
+ * cycle `status:'draft'`. Publishing flips the cycle to `open` and sets every
+ * slot's visibility to `makePublic` (the owner's `settings.publish_visibility`
+ * choice; `false` keeps a private cycle that staff can still book).
+ *
+ * Two non-atomic writes: if the visibility write fails the cycle is already
+ * `open` but its slots stay private — safe (nothing is publicly visible until
+ * `is_public` flips) and the owner can simply retry. (A future atomic RPC could
+ * fuse the two if needed.)
+ */
+export async function publishCycle(
+  cycleId: string,
+  makePublic: boolean,
+  client: SupabaseClient<Database> = supabase,
+): Promise<void> {
+  const { error: openErr } = await client
+    .from('cycles')
+    .update({ status: 'open', updated_at: new Date().toISOString() })
+    .eq('id', cycleId);
+  if (openErr) throw openErr;
+
+  const { data, error: readErr } = await client
+    .from('availability_slots')
+    .select('id')
+    .eq('cyclus_id', cycleId);
+  if (readErr) throw readErr;
+
+  const ids = ((data as { id: string }[] | null) ?? []).map((s) => s.id);
+  const { error: visErr } = await setSlotVisibility(ids, makePublic, client);
+  if (visErr) throw visErr;
 }
 
 /** Delete the given sessions, re-verifying right before deletion that none gained an
