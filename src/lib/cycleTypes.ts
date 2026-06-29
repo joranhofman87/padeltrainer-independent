@@ -241,3 +241,28 @@ export interface CycleInput {
   terms?: string | null;
   price_table?: PriceTableRow[] | null;
 }
+
+/** A partial slot edit. Only the fields you set are written; an explicit `null` clears the column.
+ *  `startShiftMinutes` + `durationMinutes` go together (relative time shift; omit one and neither
+ *  applies). Price fields are intentionally absent — edit those via {@link updateCyclePricing}. */
+export interface SlotEditPatch {
+  startShiftMinutes?: number;
+  durationMinutes?: number;
+  trainerId?: string | null;
+  locationId?: string | null;
+  maxParticipants?: number | null;
+  ratingSystem?: string | null;
+  minRating?: number | null;
+  maxRating?: number | null;
+  cyclusName?: string | null;
+  isPublic?: boolean;
+}
+
+export interface SlotEditResult {
+  /** Slots actually updated. */
+  updatedCount: number;
+  /** Slots that blocked the edit because their occupancy exceeds the requested max_participants. */
+  blockedCount: number;
+  /** The blocking slot ids — surface them ("can't shrink: N players booked"); the edit was a no-op. */
+  blockedSlotIds: string[];
+}
