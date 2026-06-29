@@ -1,0 +1,250 @@
+import { localWallTimeToUtc, MAX_PLANNED_SLOTS, SlotPlanError } from '@/lib/slotPlan';
+import { supabase } from '@/lib/supabaseClient';
+import { insertAvailabilitySlots } from '@/lib/slots';
+import { updateCycle } from '@/lib/cycles';
+
+/**
+ * Pure planner for EXTENDING an existing cycle to a later end date by replicating its weekly
+ * pattern. The rebooking cohort picker keys off a cycle's LAST session date, so an academy needs to
+ * lengthen a cycle that "ends a week too early" by generating real sessions — not just editing a
+ * date field. This takes the cycle's existing slots + a target end date and returns the new slots to
+ * create: every slot in the cycle's final week projected forward week-by-week, on the same weekday +
+ * local wall-clock time, copying the template slot's attributes (the caller fills those in). DST is
+ * handled via slotPlan's localWallTimeToUtc so a session keeps its local time across the Oct/Mar
+ * switch. Dates that already have a slot at that exact instant are skipped (safe to re-run).
+ *
+ * Scope: weekly cadence only (cycles are weekly); no holiday-skipping on the generated weeks (the
+ * owner can trim a holiday week afterwards). Shortening a cycle is the existing trim path, not here.
+ */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The minimal slot shape the date math needs; the caller carries the full row by `id`. */
+export interface ExtensionSlotInput {
+  id: string;
+  /** UTC ISO start. */
+  start_time: string;
+  /** UTC ISO end. */
+  end_time: string;
+}
+
+export interface PlannedExtensionSlot {
+  start_time: string;
+  end_time: string;
+  /** The existing slot whose attributes the new slot should copy. */
+  templateId: string;
+}
+
+interface LocalParts {
+  y: number;
+  mo: number; // 0-based
+  d: number;
+  h: number;
+  mi: number;
+}
+
+/** UTC instant → its local calendar/clock parts in `tz` (inverse of localWallTimeToUtc). */
+function utcToLocalParts(iso: string, tz: string): LocalParts {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const p: Record<string, string> = {};
+  for (const part of fmt.formatToParts(new Date(iso))) p[part.type] = part.value;
+  return {
+    y: Number(p.year),
+    mo: Number(p.month) - 1,
+    d: Number(p.day),
+    h: Number(p.hour === '24' ? '0' : p.hour), // Intl can emit '24' for midnight
+    mi: Number(p.minute),
+  };
+}
+
+/** Local calendar date → an integer day number (UTC-midnight based, tz-independent). */
+function dayNumber(y: number, mo: number, d: number): number {
+  return Math.round(Date.UTC(y, mo, d) / DAY_MS);
+}
+
+/** Integer day number → local calendar date (y, 0-based month, d). */
+function fromDayNumber(n: number): { y: number; mo: number; d: number } {
+  const dt = new Date(n * DAY_MS);
+  return { y: dt.getUTCFullYear(), mo: dt.getUTCMonth(), d: dt.getUTCDate() };
+}
+
+/**
+ * Plan the slots to ADD so the cycle runs through `newEndDate` (yyyy-mm-dd, inclusive, local `tz`).
+ * Returns [] when there's nothing to extend (no slots, or the target isn't after the current last
+ * session). Throws SlotPlanError on a malformed end date or if the result would exceed the cap.
+ */
+export function planCycleExtension(
+  existing: ExtensionSlotInput[],
+  newEndDate: string,
+  timezone: string,
+): PlannedExtensionSlot[] {
+  if (!timezone) throw new SlotPlanError('timezone is required');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newEndDate ?? '')) {
+    throw new SlotPlanError(`newEndDate must be yyyy-mm-dd (got ${JSON.stringify(newEndDate)})`);
+  }
+  if (existing.length === 0) return [];
+
+  const [ey, emo, ed] = newEndDate.split('-').map(Number);
+  const endDayNum = dayNumber(ey, emo - 1, ed);
+
+  // Local parts + day number + duration for every existing slot, and the cycle's last session day.
+  const meta = existing.map((s) => {
+    const lp = utcToLocalParts(s.start_time, timezone);
+    return {
+      slot: s,
+      lp,
+      dayNum: dayNumber(lp.y, lp.mo, lp.d),
+      durationMs: new Date(s.end_time).getTime() - new Date(s.start_time).getTime(),
+      startMs: new Date(s.start_time).getTime(),
+    };
+  });
+  const lastDayNum = Math.max(...meta.map((m) => m.dayNum));
+
+  // Nothing to add if the target isn't strictly after the current last session (shorten ≠ extend).
+  if (endDayNum <= lastDayNum) return [];
+
+  // Template = the cycle's FINAL week (its last 7 days). Replicating this multiset forward
+  // reproduces every weekday + parallel court the cycle ends with.
+  const template = meta.filter((m) => m.dayNum >= lastDayNum - 6);
+
+  // Dedup: never create a second slot at an instant that already exists.
+  const existingStartMs = new Set(meta.map((m) => m.startMs));
+
+  const out: PlannedExtensionSlot[] = [];
+  for (const m of template) {
+    for (let k = 1; ; k++) {
+      const targetDayNum = m.dayNum + 7 * k;
+      if (targetDayNum > endDayNum) break;
+      const { y, mo, d } = fromDayNumber(targetDayNum);
+      const start = localWallTimeToUtc(y, mo, d, m.lp.h, m.lp.mi, timezone);
+      if (existingStartMs.has(start.getTime())) continue; // already there
+      const end = new Date(start.getTime() + m.durationMs);
+      out.push({ start_time: start.toISOString(), end_time: end.toISOString(), templateId: m.slot.id });
+      if (out.length > MAX_PLANNED_SLOTS) {
+        throw new SlotPlanError(`Extension would create more than ${MAX_PLANNED_SLOTS} sessions — shorten the end date.`);
+      }
+    }
+  }
+
+  out.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  return out;
+}
+
+/**
+ * Columns never copied onto a generated slot. Identity/audit (id/created_at/updated_at) PLUS the
+ * rebooking PRIORITY/MEMBER/RELEASE markers: when the cycle being extended was itself born from a
+ * rebook cohort copy (`bulkCopySlotsToCycle`), every slot carries priority/member windows, a
+ * `source_cycle_id`, and a `public_release_status` of `'held'`/`'pending_admin_review'`. Replicating
+ * those onto the new weeks would silently HIDE them (member-window + source_cycle visibility gating)
+ * or make them UNBOOKABLE (the slot-tier trigger raises `slot_not_released` for self-service bookings
+ * on a non-released slot). Omitting them resets each to its column default — NULL for the
+ * windows/source, `'auto_release_scheduled'` for `public_release_status` — i.e. a plain,
+ * immediately-bookable public session, identical to a freshly generated slot. For a normal
+ * (non-rebook) cycle these are already NULL/default, so omitting is a no-op there. `lesson_id` is a
+ * dead/legacy column no current write path sets; reset it too for safety. (Note: `is_public` IS still
+ * copied — a private cycle's new weeks stay private — visibility-tier gating is a separate layer.)
+ */
+const COPY_OMIT = new Set([
+  'id', 'created_at', 'updated_at',
+  'priority_source_slot_id', 'priority_window_starts_at', 'priority_window_ends_at',
+  'member_window_starts_at', 'member_window_ends_at',
+  'source_cycle_id', 'public_release_status',
+  'lesson_id',
+]);
+
+type SlotRow = Record<string, unknown> & { id: string; start_time: string; end_time: string };
+
+/** The academy/trainer timezone for a cycle's owner (defaults Europe/Amsterdam — NEVER browser tz). */
+async function getCycleTimezone(ownerType: string, ownerId: string): Promise<string> {
+  const table = ownerType === 'academy' ? 'academy_profiles' : 'trainer_profiles';
+  const { data } = await supabase.from(table).select('timezone').eq('id', ownerId).maybeSingle();
+  return (data as { timezone?: string } | null)?.timezone || 'Europe/Amsterdam';
+}
+
+/** Load the cycle's slots + its owner timezone — the context the planner needs. Null = no cycle. */
+async function loadExtensionContext(cycleId: string): Promise<{ slots: SlotRow[]; tz: string } | null> {
+  const { data: cyc } = await supabase
+    .from('cycles')
+    .select('owner_type, owner_id')
+    .eq('id', cycleId)
+    .maybeSingle();
+  if (!cyc) return null;
+  const tz = await getCycleTimezone((cyc as { owner_type: string }).owner_type, (cyc as { owner_id: string }).owner_id);
+  const { data, error } = await supabase.from('availability_slots').select('*').eq('cyclus_id', cycleId);
+  if (error) throw error;
+  return { slots: (data ?? []) as SlotRow[], tz };
+}
+
+export interface CycleExtensionPreview {
+  /** How many new sessions extending to the target end date would create. */
+  count: number;
+  /** UTC ISO of the first/last new session (null when count === 0). */
+  firstStart: string | null;
+  lastStart: string | null;
+}
+
+/** Preview (client-side, pure planner) how many sessions an extension to `newEndDate` would add. */
+export async function previewCycleExtension(cycleId: string, newEndDate: string): Promise<CycleExtensionPreview> {
+  const ctx = await loadExtensionContext(cycleId);
+  if (!ctx || ctx.slots.length === 0) return { count: 0, firstStart: null, lastStart: null };
+  const planned = planCycleExtension(
+    ctx.slots.map((s) => ({ id: s.id, start_time: s.start_time, end_time: s.end_time })),
+    newEndDate,
+    ctx.tz,
+  );
+  return {
+    count: planned.length,
+    firstStart: planned[0]?.start_time ?? null,
+    lastStart: planned[planned.length - 1]?.start_time ?? null,
+  };
+}
+
+export interface ExtendCycleResult {
+  /** Number of new sessions generated. */
+  added: number;
+}
+
+/**
+ * Lengthen a cycle so it runs through `newEndDate`: generate the missing weekly sessions (every
+ * series in the cycle's final week, projected forward) and bump the cycle's end_date. Each new slot
+ * copies its template slot's attributes (price, capacity, court, public/private, rating, extra_costs,
+ * split_payment, …) so the new weeks match the existing ones — but the rebooking priority/member/
+ * release markers are RESET (see COPY_OMIT), so generated sessions are plainly bookable rather than
+ * inheriting a stale cohort hold from a rebook-born cycle. Invoice-safe:
+ * it only inserts new (booking-free) slots and updates one date field; it never touches existing
+ * bookings, invoices, or the cycle's total_price (per-session price is carried on each slot). When
+ * the target isn't after the current last session it just records the end_date (use the trim path to
+ * shorten). The timezone is resolved from the cycle's owner (academy/trainer), never the browser.
+ */
+export async function extendCycleToEndDate(cycleId: string, newEndDate: string): Promise<ExtendCycleResult> {
+  const ctx = await loadExtensionContext(cycleId);
+  if (!ctx || ctx.slots.length === 0) return { added: 0 };
+
+  const planned = planCycleExtension(
+    ctx.slots.map((s) => ({ id: s.id, start_time: s.start_time, end_time: s.end_time })),
+    newEndDate,
+    ctx.tz,
+  );
+
+  // Always record the new end date (even when no sessions are added — e.g. it already reaches it).
+  await updateCycle(cycleId, { end_date: newEndDate });
+  if (planned.length === 0) return { added: 0 };
+
+  const byId = new Map(ctx.slots.map((s) => [s.id, s]));
+  const rows = planned.map((p) => {
+    const tmpl = byId.get(p.templateId)!;
+    const row: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(tmpl)) if (!COPY_OMIT.has(k)) row[k] = v;
+    row.start_time = p.start_time;
+    row.end_time = p.end_time;
+    return row;
+  });
+
+  const { error: insErr } = await insertAvailabilitySlots(rows, supabase);
+  if (insErr) throw insErr;
+  return { added: rows.length };
+}

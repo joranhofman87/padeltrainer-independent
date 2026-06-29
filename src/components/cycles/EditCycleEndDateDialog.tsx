@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, CalendarPlus } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -10,8 +10,9 @@ import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  getCycleDates, findSlotsAfterDate, deleteUnbookedSlots, updateCycle, type OutOfRangeSlots,
+  getCycleDates, findSlotsAfterDate, deleteUnbookedSlots, type OutOfRangeSlots,
 } from '@/lib/cycles';
+import { previewCycleExtension, extendCycleToEndDate, type CycleExtensionPreview } from '@/lib/cycleExtension';
 
 interface Props {
   open: boolean;
@@ -39,6 +40,8 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
   const [outOfRange, setOutOfRange] = useState<OutOfRangeSlots | null>(null);
   const [checking, setChecking] = useState(false);
   const [removeUnbooked, setRemoveUnbooked] = useState(false);
+  const [extendPreview, setExtendPreview] = useState<CycleExtensionPreview | null>(null);
+  const [previewingExtend, setPreviewingExtend] = useState(false);
 
   // Load the cyclus's current dates when the dialog opens.
   useEffect(() => {
@@ -76,6 +79,19 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
     return () => { cancelled = true; };
   }, [open, cyclusId, endDate, invalid, shortened]);
 
+  // Preview how many NEW sessions extending to this date would generate (0 when not extending).
+  useEffect(() => {
+    if (!open || !cyclusId || !endDate || invalid) { setExtendPreview(null); return; }
+    let cancelled = false;
+    setPreviewingExtend(true);
+    previewCycleExtension(cyclusId, endDate)
+      .then((p) => { if (!cancelled) setExtendPreview(p); })
+      .catch(() => { if (!cancelled) setExtendPreview(null); })
+      .finally(() => { if (!cancelled) setPreviewingExtend(false); });
+    return () => { cancelled = true; };
+  }, [open, cyclusId, endDate, invalid]);
+
+  const willAdd = extendPreview?.count ?? 0;
   const removableCount = outOfRange?.removableIds.length ?? 0;
   const protectedCount = outOfRange?.protectedCount ?? 0;
   const totalOutOfRange = removableCount + protectedCount;
@@ -84,15 +100,20 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
     if (!cyclusId || !endDate || invalid) return;
     setSaving(true);
     try {
-      await updateCycle(cyclusId, { end_date: endDate });
+      // extendCycleToEndDate always records the end date, and GENERATES the missing weekly sessions
+      // when the date is later than the current last session (re-planned server-side, not from the
+      // possibly-stale preview). Shortening adds nothing; the optional trim removes empty sessions.
+      const { added } = await extendCycleToEndDate(cyclusId, endDate);
       let removed = 0;
       if (removeUnbooked && removableCount > 0 && outOfRange) {
         removed = await deleteUnbookedSlots(outOfRange.removableIds);
       }
       toast.success(
-        removed > 0
-          ? t('editEndDate.savedWithTrim', 'Einddatum bijgewerkt · {{count}} sessies verwijderd', { count: removed })
-          : t('editEndDate.saved', 'Einddatum bijgewerkt'),
+        added > 0
+          ? t('editEndDate.savedWithAdd', 'Einddatum bijgewerkt · {{count}} sessies toegevoegd', { count: added })
+          : removed > 0
+            ? t('editEndDate.savedWithTrim', 'Einddatum bijgewerkt · {{count}} sessies verwijderd', { count: removed })
+            : t('editEndDate.saved', 'Einddatum bijgewerkt'),
       );
       onSaved();
       onOpenChange(false);
@@ -125,7 +146,7 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
                 disabled={saving}
               />
               <p className="text-xs text-muted-foreground">
-                {t('editEndDate.hint', 'Dit verandert alleen de einddatum van de cyclus. Facturen blijven ongewijzigd.')}
+                {t('editEndDate.hintV2', 'Een latere datum maakt extra wekelijkse sessies aan; een eerdere datum kan lege sessies verwijderen. Facturen blijven ongewijzigd.')}
               </p>
               {invalid && (
                 <p className="text-xs text-rose-600">{t('editEndDate.invalid', 'De einddatum moet op of na de startdatum liggen.')}</p>
@@ -156,6 +177,22 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
                       </label>
                     )}
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Extending: preview how many new weekly sessions will be generated. */}
+            {!invalid && endDate && (previewingExtend || willAdd > 0) && (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                {previewingExtend ? (
+                  <span className="text-muted-foreground inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> {t('editEndDate.checking', 'Sessies controleren…')}
+                  </span>
+                ) : (
+                  <p className="flex items-start gap-2">
+                    <CalendarPlus className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
+                    <span>{t('editEndDate.willAdd', 'Er worden {{count}} nieuwe wekelijkse sessies aangemaakt (zelfde dag, tijd, trainer en prijs).', { count: willAdd })}</span>
+                  </p>
                 )}
               </div>
             )}
