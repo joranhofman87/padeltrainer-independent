@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, CalendarDays, PartyPopper, Copy } from 'lucide-react';
+import { Plus, CalendarDays, PartyPopper, Copy, CalendarPlus } from 'lucide-react';
 import { type Cycle } from '@/lib/cycles';
 import { listRegistrationCycles } from '@/lib/registrations';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -94,6 +94,11 @@ export default function TrainerCycles() {
             label: t('bulkCopy.cta', 'Set up next round'),
             onClick: () => navigate('/app/trainer/cycles/bulk-copy'),
             icon: Copy,
+          },
+          {
+            label: t('slotGenerator.cta', 'Snel sessies genereren'),
+            onClick: () => navigate('/app/trainer/slot/generate'),
+            icon: CalendarPlus,
           },
         ]}
       />

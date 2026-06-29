@@ -127,6 +127,7 @@ const TrainerEditInvoice = lazy(() => import('@/pages/trainer/TrainerEditInvoice
 const TrainerSlotDetail = lazy(() => import('@/pages/trainer/TrainerSlotDetail'));
 const TrainerAgenda = lazy(() => import('@/pages/trainer/TrainerAgenda'));
 const TrainerCreateSlot = lazy(() => import('@/pages/trainer/TrainerCreateSlot'));
+const TrainerGenerateSlots = lazy(() => import('@/pages/trainer/TrainerGenerateSlots'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'));
@@ -181,6 +182,7 @@ const AcademyCalendar = lazy(() => import('@/pages/academy/AcademyCalendar'));
 const AcademyAgenda = lazy(() => import('@/pages/academy/AcademyAgenda'));
 const AcademySlotDetail = lazy(() => import('@/pages/academy/AcademySlotDetail'));
 const AcademyCreateSlot = lazy(() => import('@/pages/academy/AcademyCreateSlot'));
+const AcademyGenerateSlots = lazy(() => import('@/pages/academy/AcademyGenerateSlots'));
 const AcademyIntakeRequests = lazy(() => import('@/pages/academy/AcademyIntakeRequests'));
 const AcademySubscription = lazy(() => import('@/pages/academy/AcademySubscription'));
 const AcademyTrainerInvitation = lazy(() => import('@/pages/academy/AcademyTrainerInvitation'));
@@ -284,6 +286,7 @@ export function DomainRouter() {
           <Route path="invoices/new" element={<TrainerCreateInvoice />} />
           <Route path="invoices/:invoiceId/edit" element={<TrainerEditInvoice />} />
           <Route path="slot/new" element={<TrainerCreateSlot />} />
+          <Route path="slot/generate" element={<TrainerGenerateSlots />} />
           <Route path="slot/:slotId" element={<TrainerSlotDetail />} />
           
           <Route path="get-started" element={<Navigate to="/app/trainer" replace />} />
@@ -363,6 +366,7 @@ export function DomainRouter() {
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="agenda" element={<AcademyAgenda />} />
           <Route path="slot/new" element={<AcademyCreateSlot />} />
+          <Route path="slot/generate" element={<AcademyGenerateSlots />} />
           <Route path="slot/:slotId" element={<AcademySlotDetail />} />
           <Route path="intake-requests" element={<AcademyIntakeRequests />} />
           <Route path="intake-requests/overview" element={<ProposalOverviewPage />} />
