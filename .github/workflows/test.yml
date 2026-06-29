@@ -33,6 +33,33 @@ jobs:
       - name: Edge-function config drift guard
         run: npm run check:edge-config
 
+  # The REAL type-check. Root `tsc` has files:[] and checks nothing; this runs
+  # `tsc -p tsconfig.app.json` and — since that project is perma-red with known
+  # pre-existing errors — ratchets on NEW errors only vs scripts/tsc-app.baseline.json
+  # (shrink-only, like the eslint-suppressions gate). Plus a real `vite build`.
+  # Catches the class of bug that slipped past lint+vitest+build (a value call to an
+  # un-imported name → runtime ReferenceError); see scripts/check-tsc-baseline.mjs.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (ratcheted vs baseline)
+        run: npm run typecheck:baseline
+
+      - name: Production build
+        run: npm run build
+
   test:
     runs-on: ubuntu-latest
 
