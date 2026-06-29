@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 const h = vi.hoisted(() => {
   const state: { slots: Record<string, unknown>[] } = { slots: [] };
-  const insertSpy = vi.fn(() => Promise.resolve({ error: null }));
-  const updateCycleSpy = vi.fn(() => Promise.resolve(undefined));
+  const insertSpy = vi.fn((_rows?: unknown) => Promise.resolve({ error: null }));
+  const updateCycleSpy = vi.fn((_id?: string, _patch?: unknown) => Promise.resolve(undefined));
 
   function builder(getRows: () => Record<string, unknown>[]) {
     const filters: Array<(r: Record<string, unknown>) => boolean> = [];
@@ -69,6 +69,40 @@ describe('extendCycleToEndDate (create-lib)', () => {
     }
     expect(rows.map((r) => r.start_time)).toEqual(['2026-01-12T17:00:00.000Z', '2026-01-19T17:00:00.000Z']);
     expect(rows.every((r) => r.end_time === (r.start_time as string).replace('17:00', '18:00'))).toBe(true);
+  });
+
+  it('RESETS rebook priority/member/release markers — extending a cohort cycle yields plain bookable sessions', async () => {
+    // A cycle BORN from a rebook cohort copy: every slot carries priority/member windows, a
+    // source_cycle_id, and a non-released public_release_status. Replicating those onto the new weeks
+    // would silently hide them (member-window/source_cycle gating) or make them unbookable (the
+    // slot-tier trigger blocks self-service bookings on a 'held' slot). They MUST be reset to defaults.
+    h.state.slots = [{
+      id: 's1', cyclus_id: 'cy1', start_time: '2026-01-05T17:00:00.000Z', end_time: '2026-01-05T18:00:00.000Z',
+      trainer_id: 'tr1', location_id: 'loc1', is_public: true, price_per_session: 12,
+      // The cohort markers that must NOT carry over:
+      priority_source_slot_id: 'src-slot-9', priority_window_starts_at: '2026-01-01T00:00:00.000Z',
+      priority_window_ends_at: '2026-01-08T00:00:00.000Z', member_window_starts_at: '2026-01-08T00:00:00.000Z',
+      member_window_ends_at: '2026-02-01T00:00:00.000Z', source_cycle_id: 'old-cycle-7',
+      public_release_status: 'held', lesson_id: 'lesson-3',
+    }];
+
+    const res = await extendCycleToEndDate('cy1', '2026-01-19');
+    expect(res.added).toBe(2);
+
+    const rows = h.insertSpy.mock.calls[0][0] as Record<string, unknown>[];
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      // Session-shape attributes still carry over…
+      expect(r).toMatchObject({ cyclus_id: 'cy1', trainer_id: 'tr1', location_id: 'loc1', is_public: true, price_per_session: 12 });
+      // …but every cohort/release marker is ABSENT from the insert payload (→ the DB applies its
+      // default: NULL for the windows/source/lesson, 'auto_release_scheduled' for the release status).
+      for (const omitted of [
+        'priority_source_slot_id', 'priority_window_starts_at', 'priority_window_ends_at',
+        'member_window_starts_at', 'member_window_ends_at', 'source_cycle_id', 'public_release_status', 'lesson_id',
+      ]) {
+        expect(r[omitted]).toBeUndefined();
+      }
+    }
   });
 
   it('records the end_date but inserts nothing when not extending (shorten/same)', async () => {

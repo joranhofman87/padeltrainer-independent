@@ -134,8 +134,27 @@ export function planCycleExtension(
   return out;
 }
 
-/** Columns never copied onto a generated slot (identity / audit). */
-const COPY_OMIT = new Set(['id', 'created_at', 'updated_at']);
+/**
+ * Columns never copied onto a generated slot. Identity/audit (id/created_at/updated_at) PLUS the
+ * rebooking PRIORITY/MEMBER/RELEASE markers: when the cycle being extended was itself born from a
+ * rebook cohort copy (`bulkCopySlotsToCycle`), every slot carries priority/member windows, a
+ * `source_cycle_id`, and a `public_release_status` of `'held'`/`'pending_admin_review'`. Replicating
+ * those onto the new weeks would silently HIDE them (member-window + source_cycle visibility gating)
+ * or make them UNBOOKABLE (the slot-tier trigger raises `slot_not_released` for self-service bookings
+ * on a non-released slot). Omitting them resets each to its column default — NULL for the
+ * windows/source, `'auto_release_scheduled'` for `public_release_status` — i.e. a plain,
+ * immediately-bookable public session, identical to a freshly generated slot. For a normal
+ * (non-rebook) cycle these are already NULL/default, so omitting is a no-op there. `lesson_id` is a
+ * dead/legacy column no current write path sets; reset it too for safety. (Note: `is_public` IS still
+ * copied — a private cycle's new weeks stay private — visibility-tier gating is a separate layer.)
+ */
+const COPY_OMIT = new Set([
+  'id', 'created_at', 'updated_at',
+  'priority_source_slot_id', 'priority_window_starts_at', 'priority_window_ends_at',
+  'member_window_starts_at', 'member_window_ends_at',
+  'source_cycle_id', 'public_release_status',
+  'lesson_id',
+]);
 
 type SlotRow = Record<string, unknown> & { id: string; start_time: string; end_time: string };
 
@@ -192,8 +211,10 @@ export interface ExtendCycleResult {
 /**
  * Lengthen a cycle so it runs through `newEndDate`: generate the missing weekly sessions (every
  * series in the cycle's final week, projected forward) and bump the cycle's end_date. Each new slot
- * copies its template slot's attributes verbatim (price, capacity, court, visibility, rating,
- * extra_costs, split_payment, …) — so the new weeks are identical to the existing ones. Invoice-safe:
+ * copies its template slot's attributes (price, capacity, court, public/private, rating, extra_costs,
+ * split_payment, …) so the new weeks match the existing ones — but the rebooking priority/member/
+ * release markers are RESET (see COPY_OMIT), so generated sessions are plainly bookable rather than
+ * inheriting a stale cohort hold from a rebook-born cycle. Invoice-safe:
  * it only inserts new (booking-free) slots and updates one date field; it never touches existing
  * bookings, invoices, or the cycle's total_price (per-session price is carried on each slot). When
  * the target isn't after the current last session it just records the end_date (use the trim path to
