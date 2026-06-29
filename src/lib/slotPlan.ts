@@ -108,7 +108,7 @@ function assertYmd(value: string, field: string): void {
  * Ported verbatim from `supabase/functions/bulk-rebook-cycle/index.ts` so the
  * client generator and the rebook edge function anchor wall-clock identically.
  */
-function localWallTimeToUtc(
+export function localWallTimeToUtc(
   y: number,
   mo: number,
   d: number,

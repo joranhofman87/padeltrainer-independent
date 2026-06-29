@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Euro, Pencil, CalendarDays, AlertCircle, Loader2, Rocket, X } from 'lucide-react';
+import { Users, Trash2, Euro, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, X } from 'lucide-react';
+import { EditCycleEndDateDialog } from './EditCycleEndDateDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -98,6 +99,7 @@ export function CycleDetailView({
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [endDateOpen, setEndDateOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   // Cycle-pricing modal state (seeded from the cycle on open).
   const [priceOpen, setPriceOpen] = useState(false);
@@ -419,6 +421,12 @@ export function CycleDetailView({
                   </Button>
                 )}
                 {canEdit && (
+                  <Button variant="outline" size="sm" onClick={() => setEndDateOpen(true)}>
+                    <CalendarRange className="h-4 w-4 mr-1.5" />
+                    {t('detail.editEndDate', 'Looptijd')}
+                  </Button>
+                )}
+                {canEdit && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -579,6 +587,17 @@ export function CycleDetailView({
       </AlertDialog>
 
       {/* Delete-cycle confirmation */}
+      <EditCycleEndDateDialog
+        open={endDateOpen}
+        onOpenChange={setEndDateOpen}
+        cyclusId={cycleId}
+        cyclusName={title}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+          onMutated?.();
+        }}
+      />
+
       <AlertDialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>
         <AlertDialogContent>
           <AlertDialogHeader>
