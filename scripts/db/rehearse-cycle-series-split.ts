@@ -131,10 +131,11 @@ INSERT INTO public.availability_slots (cyclus_id, cyclus_name, trainer_id, locat
   ('${P2}', NULL, '${TR2}', '${L1}', '2026-04-08 15:00:00+00', '2026-04-08 16:00:00+00', true),
   ('${P2}', NULL, '${TR2}', '${L1}', '2026-04-15 15:00:00+00', '2026-04-15 16:00:00+00', true);
 
--- P3 series: S5 Fri 18:00-19:00 TR2 @L1 DST-spanning -> 2 slots (CEST 16:00Z + CET 17:00Z) -> 1 cycle
+-- P3 series: S5 Fri 18:00-19:00 TR2 @L1 DST-spanning -> 2 slots (CEST 16:00Z + CET 17:00Z) -> 1 cycle.
+-- NON-NULL cyclus_name on purpose (matches prod "Volgende ronde 2026") to prove the rollback restores it.
 INSERT INTO public.availability_slots (cyclus_id, cyclus_name, trainer_id, location_id, start_time, end_time, split_payment) VALUES
-  ('${P3}', NULL, '${TR2}', '${L1}', '2026-08-28 16:00:00+00', '2026-08-28 17:00:00+00', true),
-  ('${P3}', NULL, '${TR2}', '${L1}', '2026-11-06 17:00:00+00', '2026-11-06 18:00:00+00', true);
+  ('${P3}', 'Volgende ronde 2026', '${TR2}', '${L1}', '2026-08-28 16:00:00+00', '2026-08-28 17:00:00+00', true),
+  ('${P3}', 'Volgende ronde 2026', '${TR2}', '${L1}', '2026-11-06 17:00:00+00', '2026-11-06 18:00:00+00', true);
 
 -- untouched cycle CX slots
 INSERT INTO public.availability_slots (id, cyclus_id, cyclus_name, trainer_id, location_id, start_time, end_time, split_payment) VALUES
@@ -254,7 +255,7 @@ const ROLLBACK = `
 BEGIN;
 UPDATE public.availability_slots s
    SET cyclus_id = (nc.settings->>'split_from_cycle_id')::uuid,
-       cyclus_name = NULL
+       cyclus_name = (nc.settings->>'orig_cyclus_name')
   FROM public.cycles nc
  WHERE nc.id = s.cyclus_id
    AND nc.settings->>'split_migration' = 'CYCLE_SERIES_SPLIT_v1';
@@ -268,8 +269,10 @@ await db.exec(ROLLBACK);
   check('13. rollback removed all split cycles', m === 0, { m });
   const onParents = (await scalar(`SELECT count(*)::int AS n FROM public.availability_slots WHERE cyclus_id IN ('${P1}','${P2}','${P3}')`)).n;
   check('14. rollback re-pointed all 12 slots back to parents', onParents === 12, { onParents });
-  const named = (await scalar(`SELECT count(*)::int AS n FROM public.availability_slots WHERE cyclus_id IN ('${P1}','${P2}','${P3}') AND cyclus_name IS NOT NULL`)).n;
-  check('15. rollback restored cyclus_name = NULL on parent slots', named === 0, { named });
+  const p12named = (await scalar(`SELECT count(*)::int AS n FROM public.availability_slots WHERE cyclus_id IN ('${P1}','${P2}') AND cyclus_name IS NOT NULL`)).n;
+  check('15. rollback restored cyclus_name = NULL on P1/P2 parent slots', p12named === 0, { p12named });
+  const p3restored = (await scalar(`SELECT count(*)::int AS n FROM public.availability_slots WHERE cyclus_id='${P3}' AND cyclus_name='Volgende ronde 2026'`)).n;
+  check('15b. rollback restored original cyclus_name ("Volgende ronde 2026") on P3 slots', p3restored === 2, { p3restored });
   const b = (await scalar(BOOK_CK)).ck;
   const i = (await scalar(INV_CK)).ck;
   check('16. bookings + invoices still byte-identical after rollback', b === bookBefore && i === invBefore, { b, i });

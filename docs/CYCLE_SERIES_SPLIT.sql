@@ -29,9 +29,10 @@
 -- ON CONFLICT (id) DO NOTHING and the slot UPDATE (driven off slots still on a
 -- parent) both become no-ops on run 2.
 --
--- REVERSIBLE: every new cycle carries settings.split_migration =
--- 'CYCLE_SERIES_SPLIT_v1' + split_from_cycle_id. See the rollback block at the
--- bottom of docs/CYCLE_SERIES_SPLIT_RUNBOOK.md.
+-- REVERSIBLE (exact): every new cycle carries settings.split_migration =
+-- 'CYCLE_SERIES_SPLIT_v1' + split_from_cycle_id + orig_cyclus_name (the slots'
+-- pre-split cyclus_name, so rollback restores it precisely instead of nulling
+-- it). See the rollback block at the bottom of docs/CYCLE_SERIES_SPLIT_RUNBOOK.md.
 --
 -- SELF-ROLLING-BACK: one explicit transaction. The verification DO block RAISEs
 -- EXCEPTION on ANY anomaly → the txn aborts → the trailing COMMIT is reported as
@@ -85,7 +86,7 @@ SELECT
 CREATE TEMP TABLE _slot_series ON COMMIT DROP AS
 WITH base AS (
   SELECT s.id AS slot_id, s.cyclus_id AS parent_id, s.trainer_id, s.location_id,
-         s.start_time, s.end_time,
+         s.start_time, s.end_time, s.cyclus_name AS orig_cyclus_name,
          COALESCE(ap.timezone, 'Europe/Amsterdam') AS tz
   FROM public.availability_slots s
   JOIN public.cycles p ON p.id = s.cyclus_id
@@ -95,7 +96,7 @@ WITH base AS (
     '2aa741a2-f0e6-435b-a3cb-998df8b6c005',
     '69f60dbe-9a7c-4c19-a794-e68e13915fc2')
 ), k AS (
-  SELECT slot_id, parent_id, trainer_id, location_id, start_time, end_time, tz,
+  SELECT slot_id, parent_id, trainer_id, location_id, start_time, end_time, tz, orig_cyclus_name,
          EXTRACT(ISODOW FROM start_time AT TIME ZONE tz)::int AS dow,
          to_char(start_time AT TIME ZONE tz, 'HH24:MI')       AS start_hhmm,
          (start_time AT TIME ZONE tz)::date                   AS local_date,
@@ -125,7 +126,8 @@ SELECT
   min(ss.dow)                     AS dow,
   min(ss.start_hhmm)              AS start_hhmm,
   min(ss.local_date)              AS start_date,
-  max(ss.local_date)              AS end_date
+  max(ss.local_date)              AS end_date,
+  min(ss.orig_cyclus_name)        AS orig_cyclus_name  -- to restore on rollback (uniform per parent)
 FROM _slot_series ss
 GROUP BY ss.new_id, ss.parent_id, ss.series_key;
 
@@ -156,7 +158,8 @@ SELECT
   COALESCE(p.settings, '{}'::jsonb)
     || jsonb_build_object('split_from_cycle_id', p.id::text,
                           'series_key', se.series_key,
-                          'split_migration', 'CYCLE_SERIES_SPLIT_v1'),
+                          'split_migration', 'CYCLE_SERIES_SPLIT_v1',
+                          'orig_cyclus_name', se.orig_cyclus_name),
   p.price_per_session,
   NULL,                                      -- total_price: do not fake a per-series total
   COALESCE(se.location_id, p.location_id),

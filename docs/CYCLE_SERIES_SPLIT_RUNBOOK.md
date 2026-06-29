@@ -27,6 +27,23 @@ parents left as empty (0-slot) shells that still back their registration form.
   hide the now-empty parent shells from the cycles overview — see §5.)
 - Take a fresh DB snapshot / confirm PITR is available before applying (standard
   backstop; the migration also self-rolls-back on any anomaly).
+- **Precondition (confirmed 2026-06-29):** the pending intakes on the
+  registration-backed parents (Padel 77, Tennis 15) are stale and will NOT be
+  processed via proposals. After the split a parent owns 0 slots, so the proposal
+  generator/review would find none — fine only under this precondition. **Close
+  the two `open` registration forms** (Padel + Tennis) before/after applying so no
+  new public intake arrives that would then be unproposable.
+
+### Known effects (from the adversarial review — all acceptable)
+- **More rows than the old overview implied.** The split keys series by
+  `(trainer, weekday, start, end, location)`; the live overview RPC groups
+  trainer-only (no location). A single timeslot run at two locations becomes two
+  cycles. Intended — a series at a different venue is a distinct cycle; sizing
+  query (A) is the source of truth (31).
+- **Future invoice line-item descriptions.** Existing invoices are untouched.
+  The *next* recalc for one of these bookings will render the new per-series
+  `cyclus_name` (e.g. "Maandag 18:00 - <trainer>") in its description text. Money
+  fields are unaffected.
 
 ---
 
@@ -137,7 +154,7 @@ the 3 forms still live under Registrations.
 BEGIN;
 UPDATE public.availability_slots s
    SET cyclus_id   = (nc.settings->>'split_from_cycle_id')::uuid,
-       cyclus_name = NULL
+       cyclus_name = (nc.settings->>'orig_cyclus_name')   -- restores the exact pre-split name (NULL if it was NULL)
   FROM public.cycles nc
  WHERE nc.id = s.cyclus_id
    AND nc.settings->>'split_migration' = 'CYCLE_SERIES_SPLIT_v1';
@@ -147,9 +164,11 @@ DELETE FROM public.cycles nc
    AND NOT EXISTS (SELECT 1 FROM public.availability_slots s WHERE s.cyclus_id = nc.id);
 COMMIT;
 ```
-After rollback: all 384 slots are back on their parents with `cyclus_name = NULL`,
-the 31 split cycles are gone, bookings + invoices are byte-identical. (Re-running
-the rollback is a no-op.) PITR/snapshot stays the catastrophic backstop.
+After rollback: all 384 slots are back on their parents with their **original
+`cyclus_name` restored** (the forward migration stashes it in
+`settings.orig_cyclus_name` — e.g. "Volgende ronde 2026" comes back, NULLs stay
+NULL), the 31 split cycles are gone, bookings + invoices are byte-identical.
+(Re-running the rollback is a no-op.) PITR/snapshot stays the catastrophic backstop.
 
 ---
 
