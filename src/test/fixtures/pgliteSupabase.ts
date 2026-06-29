@@ -32,6 +32,7 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
   private updateData: Record<string, unknown> | null = null;
   private filters: Filter[] = [];
   private singleRow = false;
+  private orderBy: { col: string; ascending: boolean } | null = null;
 
   constructor(private db: PGlite, private table: string) {}
 
@@ -41,6 +42,7 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
   neq(col: string, val: unknown) { this.filters.push({ kind: 'neq', col, val }); return this; }
   in(col: string, val: unknown[]) { this.filters.push({ kind: 'in', col, val }); return this; }
   overlaps(col: string, val: unknown[]) { this.filters.push({ kind: 'overlaps', col, val }); return this; }
+  order(col: string, opts?: { ascending?: boolean }) { this.orderBy = { col, ascending: opts?.ascending !== false }; return this; }
   maybeSingle() { this.singleRow = true; return this.run(); }
 
   // Thenable: `await builder` runs the query.
@@ -89,7 +91,10 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
           `LEFT JOIN locations l ON l.id = s.location_id` +
           this.whereClause(params).replace(/ (\w+) = ANY/g, ' b.$1 = ANY').replace(/ (\w+) = \$/g, ' b.$1 = $');
       } else {
-        sql = `SELECT ${this.columns} FROM ${this.table}${this.whereClause(params)}`;
+        const orderClause = this.orderBy
+          ? ` ORDER BY ${this.orderBy.col} ${this.orderBy.ascending ? 'ASC' : 'DESC'}`
+          : '';
+        sql = `SELECT ${this.columns} FROM ${this.table}${this.whereClause(params)}${orderClause}`;
       }
       const res = await this.db.query(sql, params);
       const rows = res.rows as unknown[];

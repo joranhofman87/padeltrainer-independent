@@ -29,6 +29,7 @@ import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDeta
 import { PlayerLocationsControl } from '@/components/academy/PlayerLocationsControl';
 import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
+import { fetchPlayerInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
 import { coalesceLinkedGuestIdentity, fetchLinkedProfileIdentity, type AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
 import { buildInvoiceEmailEvents, filterInvoicesForAcademy, mapCampaignEmailEvents, mergePlayerEmailHistory, type AcademyPlayerEmailHistoryItem } from '@/lib/academyPlayerEmailHistory';
 import { academyPlayersQueryKey } from '@/lib/academyPlayersQuery';
@@ -252,24 +253,10 @@ export default function AcademyPlayerDetail() {
         const slotsArr = (slots || []) as any[];
 
         // Cycluses
-        const byCyc = new Map<string, { id: string; name: string; dates: Date[] }>();
-        for (const s of slotsArr) {
-          const cid = s.cyclus_id || s.id;
-          const cname = s.cyclus_name || t('players.detail.singleSessions', 'Single sessions');
-          const cur = byCyc.get(cid) || { id: cid, name: cname, dates: [] };
-          if (s.start_time) cur.dates.push(new Date(s.start_time));
-          byCyc.set(cid, cur);
-        }
-        const rawCycluses = Array.from(byCyc.values()).map(c => {
-          const sorted = c.dates.sort((a, b) => a.getTime() - b.getTime());
-          return {
-            cyclus_id: c.id,
-            cyclus_name: c.name,
-            session_count: sorted.length,
-            first_session: sorted[0]?.toISOString() || '',
-            last_session: sorted[sorted.length - 1]?.toISOString() || '',
-          };
-        }).sort((a, b) => (b.last_session || '').localeCompare(a.last_session || ''));
+        const rawCycluses = groupSlotsIntoCycluses(
+          slotsArr,
+          t('players.detail.singleSessions', 'Single sessions'),
+        );
 
         cycluses = await Promise.all(
           rawCycluses.map(async (c) => ({
@@ -281,20 +268,10 @@ export default function AcademyPlayerDetail() {
       setCycluses(cycluses);
 
       // Invoices (scoped to current academy)
-      const invPlayerFilter =
-        parsed.kind === 'guest'
-          ? supabase
-              .from('invoices')
-              .select('id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, academy_profile_id')
-              .eq('academy_profile_id', activeAcademy!.id)
-              .eq('guest_player_id', parsed.id)
-          : supabase
-              .from('invoices')
-              .select('id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, academy_profile_id')
-              .eq('academy_profile_id', activeAcademy!.id)
-              .eq('player_id', parsed.id);
-      const { data: invs } = await invPlayerFilter.order('invoice_date', { ascending: false });
-      const invoiceRows = (invs || []) as InvoiceItem[];
+      const invoiceRows = (await fetchPlayerInvoices(
+        { kind: 'academy', id: activeAcademy!.id },
+        { kind: parsed.kind, id: parsed.id },
+      )) as unknown as InvoiceItem[];
       setInvoices(invoiceRows);
 
       // Rating history (only for registered profiles)
