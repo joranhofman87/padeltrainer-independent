@@ -12,13 +12,14 @@ let db: PGlite;
 let supa: ReturnType<typeof createPgliteSupabase>;
 
 // The three updateData shapes the mollie-webhook handler builds, per its status mapping.
-const PAID = { payment_status: 'paid', status: 'confirmed', mollie_transaction_id: 'tr_paid', paid_at: '2026-07-01T10:00:00.000Z' };
+// PAID clears hold_expires_at — a committed strict-rebook hold is no longer a hold (A4).
+const PAID = { payment_status: 'paid', status: 'confirmed', mollie_transaction_id: 'tr_paid', paid_at: '2026-07-01T10:00:00.000Z', hold_expires_at: null };
 const PENDING = { payment_status: 'pending', status: 'pending', mollie_transaction_id: 'tr_pending' };
 const FAILED = { payment_status: 'failed', status: 'cancelled', mollie_transaction_id: 'tr_failed' };
 
 const booking = async (id: string) =>
-  (await db.query<{ payment_status: string; status: string; paid_at: string | null; mollie_transaction_id: string | null }>(
-    `SELECT payment_status, status, paid_at, mollie_transaction_id FROM bookings WHERE id = $1`,
+  (await db.query<{ payment_status: string; status: string; paid_at: string | null; mollie_transaction_id: string | null; hold_expires_at: string | null }>(
+    `SELECT payment_status, status, paid_at, mollie_transaction_id, hold_expires_at FROM bookings WHERE id = $1`,
     [id],
   )).rows[0];
 
@@ -29,7 +30,7 @@ beforeAll(async () => {
     CREATE TABLE bookings (
       id text PRIMARY KEY, slot_id text, payment_amount numeric,
       payment_status text NOT NULL DEFAULT 'pending', status text NOT NULL DEFAULT 'pending',
-      paid_at timestamptz, mollie_transaction_id text);
+      paid_at timestamptz, mollie_transaction_id text, hold_expires_at timestamptz);
   `);
 });
 
@@ -117,6 +118,36 @@ describe('applyBookingPaymentWriteback (against real Postgres)', () => {
     const b1 = await booking('B1');
     expect(b1.payment_status).toBe('failed');
     expect(b1.status).toBe('cancelled');
+  });
+
+  it('A4 strict hold: a paid webhook COMMITS a payment_pending HOLD → confirmed/paid + clears the TTL', async () => {
+    // The strict accept inserts a payment_pending hold with a TTL. The webhook's paid write-back
+    // (guards allow it: not paid, not cancelled) commits it to confirmed/paid and clears the TTL.
+    await db.exec(`INSERT INTO bookings (id, slot_id, payment_status, status, hold_expires_at) VALUES
+      ('H1','S1','pending','payment_pending','2099-01-01T00:00:00Z');`);
+
+    const transitioned = await applyBookingPaymentWriteback(supa, ['H1'], { ...PAID });
+
+    expect(transitioned.map((r) => r.id)).toEqual(['H1']);
+    const h1 = await booking('H1');
+    expect(h1.status).toBe('confirmed');
+    expect(h1.payment_status).toBe('paid');
+    expect(h1.paid_at).not.toBeNull();
+    expect(h1.hold_expires_at).toBeNull(); // committed hold is no longer a hold
+  });
+
+  it('A4 strict hold: a paid webhook does NOT resurrect an already-RELEASED (cancelled) hold', async () => {
+    // The hold expired and the release cron cancelled it; a late paid webhook must NOT bring it back
+    // (the caller flags it via findCancelledPaidBookings for a manual refund).
+    await db.exec(`INSERT INTO bookings (id, slot_id, payment_status, status, hold_expires_at) VALUES
+      ('H1','S1','pending','cancelled','2020-01-01T00:00:00Z');`);
+
+    const transitioned = await applyBookingPaymentWriteback(supa, ['H1'], { ...PAID });
+
+    expect(transitioned).toEqual([]);
+    const h1 = await booking('H1');
+    expect(h1.status).toBe('cancelled'); // not resurrected
+    expect(h1.payment_status).toBe('pending');
   });
 
   it('REGRESSION (no-resurrection): a paid webhook does NOT un-cancel a CANCELLED booking', async () => {

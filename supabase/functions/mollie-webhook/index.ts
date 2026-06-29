@@ -665,6 +665,19 @@ serve(async (req) => {
       }
     }
 
+    // (A4 strict rebook) For a failed/canceled/expired payment, a payment_pending HOLD must
+    // release its seat AND re-offer its claim. Capture the holds BEFORE the write-back cancels
+    // them; scoped to status='payment_pending' so the non-strict upfront flow is unchanged.
+    let strictHoldIds: string[] = [];
+    if (paymentStatus === "failed") {
+      const { data: holdRows } = await supabase
+        .from("bookings")
+        .select("id")
+        .in("id", bookingIds)
+        .eq("status", "payment_pending");
+      strictHoldIds = (holdRows ?? []).map((b: { id: string }) => b.id);
+    }
+
     const updateData: Record<string, unknown> = {
       payment_status: paymentStatus,
       status: bookingStatus,
@@ -673,6 +686,7 @@ serve(async (req) => {
 
     if (payment.status === "paid") {
       updateData.paid_at = new Date().toISOString();
+      updateData.hold_expires_at = null; // (A4) a committed strict hold is no longer a hold
     }
 
     // Never un-confirm or downgrade a booking that's already PAID — for ANY
@@ -695,6 +709,22 @@ serve(async (req) => {
       count: bookingIds.length,
       transitioned: transitionedRows.length,
     });
+
+    // (A4 strict rebook) A failed/canceled/expired payment just cancelled these strict holds —
+    // reset their priority claims to 'pending' so the seat is re-offerable (mirror
+    // release_rebook_hold + the expiry cron). Non-fatal: the cron is the backstop.
+    if (strictHoldIds.length > 0) {
+      try {
+        await supabase
+          .from("slot_priority_claims")
+          .update({ status: "pending", booking_id: null, responded_at: null })
+          .in("booking_id", strictHoldIds)
+          .eq("status", "claimed");
+        logStep("Re-offered strict-hold claim(s) after failed payment", { count: strictHoldIds.length });
+      } catch (e) {
+        logStep("Failed to re-offer strict-hold claim (non-fatal)", { error: String(e) });
+      }
+    }
 
     // If payment is paid, mark any matching priority claim as 'claimed'
     if (payment.status === "paid") {
