@@ -98,11 +98,37 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     setLoading(true);
     try {
       const viaRpc = await fetchGroupsViaRpc(activeAcademy.id);
-      setGroups(viaRpc ?? (await buildGroupsClientSide()));
+      const built = viaRpc ?? (await buildGroupsClientSide());
+      setGroups(await hideSplitParentShells(built, activeAcademy.id));
     } catch (error) {
       logger.error('Error fetching cyclus overview', error as Error, { component: 'AcademyCyclusOverview' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Hide the empty parent shells left behind by the one-time cycle-series split
+  // (docs/CYCLE_SERIES_SPLIT.sql): their slots now live on the per-series child cycles, so the
+  // 0-session parent row is just noise in the cycles list (the parents are retained in the DB
+  // because they still back their registration form + intake_requests). FE-only, no DB change:
+  // a split parent is any cycle referenced by a child's settings.split_from_cycle_id.
+  const hideSplitParentShells = async (built: CyclusGroup[], academyId: string): Promise<CyclusGroup[]> => {
+    try {
+      const { data } = await supabase
+        .from('cycles')
+        .select('settings')
+        .eq('owner_type', 'academy')
+        .eq('owner_id', academyId)
+        .eq('settings->>split_migration', 'CYCLE_SERIES_SPLIT_v1');
+      const parentIds = new Set<string>();
+      for (const r of (data ?? []) as unknown as Array<{ settings: Record<string, unknown> | null }>) {
+        const pid = r.settings?.split_from_cycle_id;
+        if (typeof pid === 'string') parentIds.add(pid);
+      }
+      if (parentIds.size === 0) return built;
+      return built.filter((g) => !(g.cyclus_id && parentIds.has(g.cyclus_id)));
+    } catch {
+      return built; // best-effort cleanup — never block the overview on it
     }
   };
 
