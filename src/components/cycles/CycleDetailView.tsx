@@ -1,16 +1,16 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Euro, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, X } from 'lucide-react';
-import { EditCycleEndDateDialog } from './EditCycleEndDateDialog';
+import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, X, Save, Euro } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -19,15 +19,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import CyclePricingCard from '@/components/cycles/CyclePricingCard';
+import { CycleEndDateFields, type CycleEndDatePlan } from '@/components/cycles/CycleEndDateFields';
 import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
 import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
@@ -36,6 +29,7 @@ import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpda
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
+import { applyCycleEndDate } from '@/lib/cycleExtension';
 import { updateCyclePricing, applySlotEditToCycle, publishCycle, type ExtraCost } from '@/lib/cycles';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -47,18 +41,19 @@ export interface CycleDetailViewProps {
   onOpenSlot: (slotId: string) => void;
   /**
    * Edit/delete capability. Academy + trainer pass true; club passes false → view-only. Gates the
-   * Edit-whole-cycle + Delete-cycle CTAs.
+   * inline session-defaults editor, the looptijd editor, the per-session edit/delete actions and the
+   * delete-cycle action.
    */
   canEdit?: boolean;
-  /** Cycle-pricing capability — gates the Edit-price CTA + modal. */
+  /** Cycle-pricing capability — gates the inline pricing card. */
   canEditPrice?: boolean;
   /** Publish capability — gates the draft "Publish" banner for slot-generator cycles. */
   canPublish?: boolean;
-  /** Academy profile id for the pricing modal's extra-cost preset picker (null/omit for trainer). */
+  /** Academy profile id for the pricing card's extra-cost preset picker (null/omit for trainer). */
   academyProfileId?: string | null;
-  /** Trainer options for the edit-whole-cycle form (academy passes; trainer omits → self only). */
+  /** Trainer options for the session-defaults form (academy passes; trainer omits → self only). */
   trainers?: { id: string; name: string }[];
-  /** Location options for the edit-whole-cycle form. */
+  /** Location options for the session-defaults form. */
   locations?: { id: string; name: string }[];
   /** Locks the rating picker to the owner's rating system (passed through to SlotEditForm). */
   fixedRatingSystem?: string | null;
@@ -75,9 +70,16 @@ export interface CycleDetailViewProps {
 
 /**
  * The cycle-detail centerpiece view (Slice 9): open a cycle → see all its sessions + the players in
- * each → drill into one session or (9c) edit the whole cycle. Neutral/shared across academy + trainer
- * (all role differences arrive as props; no cross-role imports). Read-only by itself — the cycle-scope
- * action handlers are injected by the role wrapper.
+ * each → drill into one session, OR edit the whole cycle INLINE on the page (no modals). Neutral/shared
+ * across academy + trainer (all role differences arrive as props; no cross-role imports). Read-only by
+ * itself — the cycle-scope action handlers are injected by the role wrapper.
+ *
+ * Editing is INLINE (mobile-first stacked cards), each card owning one concern + its own Save button:
+ *   - Sessie-instellingen (session defaults) — SlotEditForm with `hidePricing` over the future slots.
+ *   - Prijs (price) — CyclePricingCard; price changes ALWAYS resync unpaid invoices.
+ *   - Looptijd (end date) — CycleEndDateFields; extend/trim the weekly series.
+ *   - Sessions table — per-row Edit (drill in) + Delete (one session) actions.
+ *   - A page-level "Don't update invoices" toggle governing the destructive/structural actions.
  */
 export function CycleDetailView({
   cycleId,
@@ -99,27 +101,48 @@ export function CycleDetailView({
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [endDateOpen, setEndDateOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  // Cycle-pricing modal state (seeded from the cycle on open).
-  const [priceOpen, setPriceOpen] = useState(false);
+  // Page-level "Don't update invoices" toggle (checked = SKIP invoice resync). Sticky across the
+  // page session; threaded into the roster remove + the cycle delete + the per-session delete.
+  const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
+
+  // Inline cycle-pricing state (seeded once per cycle from the cycle row; see the seed effect below).
   const [savingPrice, setSavingPrice] = useState(false);
   const [pricePerSession, setPricePerSession] = useState<number | null>(null);
   const [extraCosts, setExtraCosts] = useState<ExtraCost[]>([]);
   const [splitPayment, setSplitPayment] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
-  // Edit-whole-cycle modal state. editRepSlot is the representative session (a full row fetched on
-  // open) that seeds the form + the change-detection baseline.
-  const [editOpen, setEditOpen] = useState(false);
-  const [editLoading, setEditLoading] = useState(false);
+  const [pricingSeededFor, setPricingSeededFor] = useState<string | null>(null);
+
+  // Inline looptijd (end-date) state.
+  const [savingEndDate, setSavingEndDate] = useState(false);
+  const [endDateValue, setEndDateValue] = useState('');
+  const [endDatePlan, setEndDatePlan] = useState<CycleEndDatePlan | null>(null);
+  const [endDateSeededFor, setEndDateSeededFor] = useState<string | null>(null);
+
+  // Inline session-defaults editor. editRepSlot is the representative future session (a full row
+  // fetched when data loads) that seeds the form + the change-detection baseline.
   const [savingEdit, setSavingEdit] = useState(false);
   const [editRepSlot, setEditRepSlot] = useState<SlotEditFormSlot | null>(null);
-  // Bumped on every open so the form always remounts + re-inits, even if two reps share a start_time.
+  // Bumped whenever the rep reloads so the form remounts + re-inits (its init runs once via key).
   const [editEpoch, setEditEpoch] = useState(0);
-  // Whole-cycle remove-player (academy roster action) + its sticky "Don't update invoices" toggle.
+  // Which (cycle:rep) key we've already loaded — a REF (not state) so updating it doesn't re-run the
+  // effect and cancel its own in-flight fetch.
+  const editRepLoadedFor = useRef<string | null>(null);
+  // Bumped after a successful session-settings save to FORCE the rep baseline to reload from the
+  // now-shifted slots — the first-future-slot id is unchanged, so the load effect's deps wouldn't
+  // otherwise change, and a second time/duration edit would measure its relative shift off the stale
+  // pre-save baseline (landing sessions at the wrong time).
+  const [repReloadToken, setRepReloadToken] = useState(0);
+
+  // Per-session delete confirm target + in-flight flag.
+  const [deleteSlotTarget, setDeleteSlotTarget] = useState<CycleDetailSlot | null>(null);
+  const [deletingSlot, setDeletingSlot] = useState(false);
+
+  // Whole-cycle remove-player (academy roster action).
   const [removeTarget, setRemoveTarget] = useState<CycleRosterEntry | null>(null);
   const [removingFromCycle, setRemovingFromCycle] = useState(false);
-  const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
+
   // Future (not-yet-started) sessions are the whole-cycle edit/delete scope (matches the slot-detail
   // "future only" rule). The delete RPC keeps any still-booked session; the edit RPC keeps any slot
   // it would have to shrink below its occupancy.
@@ -128,12 +151,96 @@ export function CycleDetailView({
     [data],
   );
 
+  const cycle = data?.cycle ?? null;
+  const slots = useMemo(() => data?.slots ?? [], [data]);
+
+  // Seed the inline pricing card from the cycle ONCE per cycle id (slot price is the source of truth;
+  // the cycle row carries the template the bulk editor pushes down). Guarded so re-renders / parent
+  // refetches never clobber the owner's in-progress edits.
+  useEffect(() => {
+    if (!cycle || pricingSeededFor === cycle.id) return;
+    setPricePerSession(cycle.price_per_session ?? null);
+    setExtraCosts((cycle.settings?.extra_costs as ExtraCost[] | undefined) ?? []);
+    setSplitPayment(cycle.settings?.split_payment ?? false);
+    setPricesIncludeVat(cycle.settings?.prices_include_vat ?? true);
+    setPricingSeededFor(cycle.id);
+  }, [cycle, pricingSeededFor]);
+
+  // Seed the inline looptijd value once per cycle (start = cycle start_date or first session date;
+  // originalEnd = cycle end_date).
+  const cycleStartDate = useMemo(
+    () => (cycle?.start_date ?? slots[0]?.start_time?.slice(0, 10) ?? null),
+    [cycle, slots],
+  );
+  useEffect(() => {
+    if (!cycle || endDateSeededFor === cycle.id) return;
+    setEndDateValue(cycle.end_date ?? '');
+    setEndDateSeededFor(cycle.id);
+  }, [cycle, endDateSeededFor]);
+
+  // Load the representative future session for the inline session-defaults form when data loads / the
+  // future scope changes. Fetches the same full row the old modal did. No future slots → no rep (the
+  // card shows a "no future sessions" note instead).
+  const firstFutureSlotId = futureSlotIds[0] ?? null;
+  useEffect(() => {
+    if (!canEdit) return;
+    const key = `${cycleId}:${firstFutureSlotId ?? 'none'}`;
+    if (editRepLoadedFor.current === key) return;
+    editRepLoadedFor.current = key;
+    if (!firstFutureSlotId) {
+      setEditRepSlot(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: row, error } = await supabase
+          .from('availability_slots')
+          .select(
+            'start_time, end_time, trainer_id, location_id, max_participants, rating_system, min_rating, max_rating, cyclus_id, cyclus_name, is_public, price_per_session, total_price, split_payment, prices_include_vat, extra_costs',
+          )
+          .eq('id', firstFutureSlotId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !row) throw error ?? new Error('representative slot not found');
+        setEditRepSlot({
+          start_time: row.start_time,
+          end_time: row.end_time,
+          trainer_id: row.trainer_id ?? '',
+          location_id: row.location_id ?? null,
+          max_participants: row.max_participants ?? 4,
+          rating_system: row.rating_system ?? null,
+          min_rating: row.min_rating ?? null,
+          max_rating: row.max_rating ?? null,
+          cyclus_id: row.cyclus_id ?? null,
+          cyclus_name: row.cyclus_name ?? null,
+          is_public: row.is_public ?? true,
+          price_per_session: row.price_per_session ?? null,
+          total_price: row.total_price ?? null,
+          split_payment: row.split_payment ?? false,
+          prices_include_vat: row.prices_include_vat ?? true,
+          extra_costs: (row.extra_costs as ExtraCost[] | null) ?? null,
+        });
+        setEditEpoch((e) => e + 1);
+      } catch (err) {
+        if (!cancelled) {
+          setEditRepSlot(null);
+          toast.error(getFriendlyErrorMessage(err, t('detail.edit.loadError')));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, cycleId, firstFutureSlotId, repReloadToken]);
+
   if (isLoading) return <CycleDetailSkeleton />;
   if (isError || !data) {
     return <StateCard icon={<AlertCircle className="h-5 w-5 text-destructive" />} message={t('detail.loadError')} />;
   }
 
-  const { cycle, slots, roster, totalSlots, totalPlayers } = data;
+  const { roster, totalSlots, totalPlayers } = data;
   if (!cycle && totalSlots === 0) {
     return (
       <StateCard
@@ -159,10 +266,11 @@ export function CycleDetailView({
       // stamp; the RPC keeps any session that still holds an active booking (reported as
       // protectedCount) so only empty sessions are ever removed.
       const res = await applySlotDeleteToCycle(cycleId, futureSlotIds);
-      if (res.deletedCount > 0) {
-        // The RPC only stamps invoices.split_count — it does NOT rebuild line-item amounts. Rebuild
-        // them now (matches the slot-detail delete path + the RPC's documented contract). Non-fatal:
-        // the delete already committed, so a resync hiccup must not surface as a delete failure.
+      // The RPC only stamps invoices.split_count — it does NOT rebuild line-item amounts. Rebuild them
+      // now (matches the slot-detail delete path + the RPC's documented contract) UNLESS the page-level
+      // toggle says to leave invoices alone. Non-fatal: the delete already committed, so a resync
+      // hiccup must not surface as a delete failure.
+      if (res.deletedCount > 0 && !skipInvoiceUpdates) {
         try {
           await syncSplitCountForCycle(cycleId);
         } catch (e) {
@@ -185,6 +293,37 @@ export function CycleDetailView({
       toast.error(getFriendlyErrorMessage(err, t('detail.delete.error')));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // Delete ONE session. The RPC refuses to delete a still-booked slot (deletedCount 0) → surface that
+  // as an error so the owner cancels its bookings first. On a real delete, resync the cycle's split
+  // amounts UNLESS the page-level toggle says to leave invoices alone.
+  const handleDeleteSlot = async () => {
+    if (!deleteSlotTarget) return;
+    setDeletingSlot(true);
+    try {
+      const res = await applySlotDeleteToCycle(cycleId, [deleteSlotTarget.id]);
+      if (res.deletedCount === 0) {
+        toast.error(t('detail.deleteSlot.hasBooking', 'This session still has a booking — cancel it first.'));
+        setDeleteSlotTarget(null);
+        return;
+      }
+      if (!skipInvoiceUpdates) {
+        try {
+          await syncSplitCountForCycle(cycleId);
+        } catch (e) {
+          logger.error('Failed to sync split count after session delete', e as Error);
+        }
+      }
+      setDeleteSlotTarget(null);
+      toast.success(t('detail.deleteSlot.deleted', 'Session deleted'));
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.deleteSlot.error', 'Could not delete the session. Please try again.')));
+    } finally {
+      setDeletingSlot(false);
     }
   };
 
@@ -219,16 +358,6 @@ export function CycleDetailView({
     }
   };
 
-  const openPriceModal = () => {
-    // Seed from the cycle's stored pricing (slot price is the source of truth; the cycle row carries
-    // the template the bulk editor pushes down).
-    setPricePerSession(cycle?.price_per_session ?? null);
-    setExtraCosts((cycle?.settings?.extra_costs as ExtraCost[] | undefined) ?? []);
-    setSplitPayment(cycle?.settings?.split_payment ?? false);
-    setPricesIncludeVat(cycle?.settings?.prices_include_vat ?? true);
-    setPriceOpen(true);
-  };
-
   const handleSavePrice = async () => {
     setSavingPrice(true);
     try {
@@ -239,13 +368,13 @@ export function CycleDetailView({
         prices_include_vat: pricesIncludeVat,
       });
       // updateCyclePricing pushes the price onto every slot but does NOT rebuild invoices — resync the
-      // affected (unpaid) invoice line items. Non-fatal: the price already saved.
+      // affected (unpaid) invoice line items. Price ALWAYS updates invoices (NOT gated on the toggle —
+      // a stale invoice amount is a billing error, not a roster convenience). Non-fatal: price saved.
       try {
         await syncInvoicesAfterPriceChange(slots.map((s) => s.id));
       } catch (e) {
         logger.error('Failed to sync invoices after cycle price change', e as Error);
       }
-      setPriceOpen(false);
       toast.success(t('detail.price.saved'));
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
       onMutated?.();
@@ -256,50 +385,23 @@ export function CycleDetailView({
     }
   };
 
-  const openEditModal = async () => {
-    // Nothing to edit if every session is in the past (the scope is future-only).
-    if (futureSlotIds.length === 0) {
-      toast(t('detail.edit.noFuture'));
-      return;
-    }
-    // Representative session = the first FUTURE slot (the edit scope). Its current time-of-day is the
-    // reference the relative shift is computed against.
-    const rep = slots.find((s) => new Date(s.start_time).getTime() >= Date.now()) ?? slots[0];
-    if (!rep) return;
-    setEditLoading(true);
+  const handleSaveEndDate = async () => {
+    if (!endDateValue || endDatePlan?.invalid) return;
+    setSavingEndDate(true);
     try {
-      const { data: row, error } = await supabase
-        .from('availability_slots')
-        .select(
-          'start_time, end_time, trainer_id, location_id, max_participants, rating_system, min_rating, max_rating, cyclus_id, cyclus_name, is_public, price_per_session, total_price, split_payment, prices_include_vat, extra_costs',
-        )
-        .eq('id', rep.id)
-        .maybeSingle();
-      if (error || !row) throw error ?? new Error('representative slot not found');
-      setEditRepSlot({
-        start_time: row.start_time,
-        end_time: row.end_time,
-        trainer_id: row.trainer_id ?? '',
-        location_id: row.location_id ?? null,
-        max_participants: row.max_participants ?? 4,
-        rating_system: row.rating_system ?? null,
-        min_rating: row.min_rating ?? null,
-        max_rating: row.max_rating ?? null,
-        cyclus_id: row.cyclus_id ?? null,
-        cyclus_name: row.cyclus_name ?? null,
-        is_public: row.is_public ?? true,
-        price_per_session: row.price_per_session ?? null,
-        total_price: row.total_price ?? null,
-        split_payment: row.split_payment ?? false,
-        prices_include_vat: row.prices_include_vat ?? true,
-        extra_costs: (row.extra_costs as ExtraCost[] | null) ?? null,
+      const { added, removed } = await applyCycleEndDate(cycleId, endDatePlan?.endDate ?? endDateValue, {
+        removableIds: endDatePlan?.removableIds,
+        removeUnbooked: endDatePlan?.removeUnbooked,
       });
-      setEditEpoch((e) => e + 1);
-      setEditOpen(true);
+      if (added > 0) toast.success(t('detail.edit.sessionsAdded', { count: added }));
+      else if (removed > 0) toast.success(t('detail.edit.sessionsRemoved', { count: removed }));
+      else toast.success(t('detail.edit.endDateUpdated'));
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
     } catch (err) {
-      toast.error(getFriendlyErrorMessage(err, t('detail.edit.loadError')));
+      toast.error(getFriendlyErrorMessage(err, t('detail.edit.error')));
     } finally {
-      setEditLoading(false);
+      setSavingEndDate(false);
     }
   };
 
@@ -309,7 +411,6 @@ export function CycleDetailView({
     // kept per-slot, so a time-only edit can't reshape another session). See cycleEditPatch.ts.
     const patch = buildCycleEditPatch(values, slotEditBaselineFromSlot(editRepSlot));
     if (Object.keys(patch).length === 0) {
-      setEditOpen(false);
       toast(t('detail.edit.nothing'));
       return;
     }
@@ -324,12 +425,17 @@ export function CycleDetailView({
       if (res.blockedCount > 0) parts.push(t('detail.edit.blocked', { count: res.blockedCount }));
       if (parts.length === 0) parts.push(t('detail.edit.nothing'));
       const message = parts.join(' · ');
-      setEditOpen(false);
       // The capacity guard is all-or-nothing, so updatedCount XOR blockedCount. A blocked result means
       // NOTHING changed → surface it as an error, not a benign toast.
       if (res.updatedCount > 0) toast.success(message);
       else if (res.blockedCount > 0) toast.error(message);
       else toast(message);
+      // The sessions just shifted but the first-future-slot id didn't change — force the rep baseline
+      // to reload so a SECOND time/duration edit measures its shift off the NEW times, not the stale ones.
+      if (res.updatedCount > 0) {
+        editRepLoadedFor.current = '';
+        setRepReloadToken((n) => n + 1);
+      }
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
       onMutated?.();
     } catch (err) {
@@ -344,7 +450,7 @@ export function CycleDetailView({
   const handlePublish = async () => {
     setPublishing(true);
     try {
-      const makePublic = data?.cycle?.settings?.publish_visibility === 'public';
+      const makePublic = cycle?.settings?.publish_visibility === 'public';
       await publishCycle(cycleId, makePublic);
       toast.success(t('detail.publish.done', 'Cyclus gepubliceerd.'));
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
@@ -387,58 +493,25 @@ export function CycleDetailView({
       <span className={`${size === 'sm' ? 'text-sm' : 'text-xs'} text-muted-foreground`}>{t('detail.sessions.noPlayers')}</span>
     );
 
+  const endDateInvalid = endDatePlan?.invalid ?? false;
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <Card>
         <CardContent className="p-4 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-semibold truncate">{title}</h1>
-                {statusKey && <Badge variant="secondary">{t(`status.${statusKey}`)}</Badge>}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {fmtPeriod(periodStart)} → {fmtPeriod(periodEnd, true)}
-                {locationName && <> · {locationName}</>}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {t('detail.summary', { players: totalPlayers, sessions: totalSlots })}
-              </p>
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-semibold truncate">{title}</h1>
+              {statusKey && <Badge variant="secondary">{t(`status.${statusKey}`)}</Badge>}
             </div>
-            {(canEdit || canEditPrice) && (
-              <div className="flex items-center gap-2 flex-wrap shrink-0">
-                {canEdit && (
-                  <Button variant="default" size="sm" onClick={() => void openEditModal()} disabled={editLoading}>
-                    {editLoading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Pencil className="h-4 w-4 mr-1.5" />}
-                    {t('detail.editWholeCycle')}
-                  </Button>
-                )}
-                {canEditPrice && (
-                  <Button variant="outline" size="sm" onClick={openPriceModal}>
-                    <Euro className="h-4 w-4 mr-1.5" />
-                    {t('detail.editPrice')}
-                  </Button>
-                )}
-                {canEdit && (
-                  <Button variant="outline" size="sm" onClick={() => setEndDateOpen(true)}>
-                    <CalendarRange className="h-4 w-4 mr-1.5" />
-                    {t('detail.editEndDate', 'Looptijd')}
-                  </Button>
-                )}
-                {canEdit && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDeleteOpen(true)}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1.5" />
-                    {t('detail.deleteCycle')}
-                  </Button>
-                )}
-              </div>
-            )}
+            <p className="text-sm text-muted-foreground">
+              {fmtPeriod(periodStart)} → {fmtPeriod(periodEnd, true)}
+              {locationName && <> · {locationName}</>}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {t('detail.summary', { players: totalPlayers, sessions: totalSlots })}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -458,6 +531,16 @@ export function CycleDetailView({
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Page-level "Don't update invoices" toggle — governs the structural/destructive actions
+          (cycle delete + per-session delete + roster remove). Price changes always update invoices. */}
+      {(canEdit || canRemoveFromCycle) && (
+        <SkipInvoiceUpdatesCheckbox
+          checked={skipInvoiceUpdates}
+          onCheckedChange={setSkipInvoiceUpdates}
+          id="cycle-skip-invoice-updates"
+        />
       )}
 
       {/* Sessions */}
@@ -482,6 +565,7 @@ export function CycleDetailView({
                       <TableHead className="text-center">{t('detail.sessions.occupancy')}</TableHead>
                       <TableHead>{t('detail.sessions.players')}</TableHead>
                       <TableHead>{t('detail.sessions.payment')}</TableHead>
+                      {canEdit && <TableHead className="text-right">{t('detail.sessions.actions', 'Actions')}</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -493,6 +577,35 @@ export function CycleDetailView({
                         </TableCell>
                         <TableCell className="max-w-[280px]">{playerChips(slot, 'sm')}</TableCell>
                         <TableCell className="whitespace-nowrap">{renderPayment(slot.paymentStatus)}</TableCell>
+                        {canEdit && (
+                          <TableCell className="text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t('detail.sessions.editSession', 'Edit session')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenSlot(slot.id);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t('detail.sessions.deleteSession', 'Delete session')}
+                                className="text-destructive hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteSlotTarget(slot);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -501,22 +614,44 @@ export function CycleDetailView({
               {/* Mobile list */}
               <div className="md:hidden divide-y">
                 {slots.map((slot) => (
-                  <button
-                    key={slot.id}
-                    type="button"
-                    aria-label={fmtDayTime(slot)}
-                    onClick={() => onOpenSlot(slot.id)}
-                    className="w-full text-left p-3 space-y-1.5 hover:bg-muted/50"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium capitalize">{fmtDayTime(slot)}</span>
-                      <Badge variant="secondary">{occupancy(slot)}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      {playerChips(slot, 'xs')}
-                      {renderPayment(slot.paymentStatus)}
-                    </div>
-                  </button>
+                  <div key={slot.id} className="flex items-stretch">
+                    <button
+                      type="button"
+                      aria-label={fmtDayTime(slot)}
+                      onClick={() => onOpenSlot(slot.id)}
+                      className="flex-1 min-w-0 text-left p-3 space-y-1.5 hover:bg-muted/50"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium capitalize">{fmtDayTime(slot)}</span>
+                        <Badge variant="secondary">{occupancy(slot)}</Badge>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        {playerChips(slot, 'xs')}
+                        {renderPayment(slot.paymentStatus)}
+                      </div>
+                    </button>
+                    {canEdit && (
+                      <div className="flex flex-col items-center justify-center gap-1 pr-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={t('detail.sessions.editSession', 'Edit session')}
+                          onClick={() => onOpenSlot(slot.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={t('detail.sessions.deleteSession', 'Delete session')}
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteSlotTarget(slot)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </>
@@ -561,6 +696,126 @@ export function CycleDetailView({
         </CardContent>
       </Card>
 
+      {/* Inline cycle settings (session defaults + price + looptijd), gated like the old toolbar. */}
+      {canEditPrice && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Euro className="h-4 w-4" />
+              {t('detail.price.title')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t('detail.price.description')}</p>
+            <CyclePricingCard
+              pricePerSession={pricePerSession}
+              extraCosts={extraCosts}
+              splitPayment={splitPayment}
+              pricesIncludeVat={pricesIncludeVat}
+              onPricePerSessionChange={setPricePerSession}
+              onExtraCostsChange={setExtraCosts}
+              onSplitPaymentChange={setSplitPayment}
+              onPricesIncludeVatChange={setPricesIncludeVat}
+              academyProfileId={academyProfileId}
+            />
+            <div className="flex">
+              <Button size="sm" onClick={() => void handleSavePrice()} disabled={savingPrice} className="gap-1.5">
+                {savingPrice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {t('detail.price.save')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {canEdit && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarRange className="h-4 w-4" />
+              {t('detail.editEndDate', 'Looptijd')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <CycleEndDateFields
+              cyclusId={cycleId}
+              open
+              startDate={cycleStartDate}
+              originalEnd={cycle?.end_date ?? null}
+              value={endDateValue}
+              onChange={setEndDateValue}
+              onPlanChange={setEndDatePlan}
+              disabled={savingEndDate}
+              namespace={namespace}
+            />
+            <div className="flex">
+              <Button
+                size="sm"
+                onClick={() => void handleSaveEndDate()}
+                disabled={savingEndDate || !endDateValue || endDateInvalid}
+                className="gap-1.5"
+              >
+                {savingEndDate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {t('editEndDate.save', 'Opslaan')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {canEdit && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Pencil className="h-4 w-4" />
+              {t('detail.settings.title', 'Session settings')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">{t('detail.edit.description')}</p>
+            {editRepSlot ? (
+              <SlotEditForm
+                key={editEpoch}
+                slot={editRepSlot}
+                hidePricing
+                // The form's calendar.* labels live in trainer.json/academy.json (NOT cycles.json) — use
+                // 'trainer' (a complete, translated set) so the form isn't dropped to English defaults.
+                namespace="trainer"
+                trainers={trainers}
+                locations={locations}
+                fixedRatingSystem={fixedRatingSystem}
+                isSaving={savingEdit}
+                onSubmit={(values) => void handleSaveEdit(values)}
+                onCancel={() => setEditEpoch((e) => e + 1)}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('detail.edit.noFuture')}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Danger zone: whole-cycle delete (empty future sessions). */}
+      {canEdit && (
+        <Card className="border-destructive/30">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="text-sm">
+              <p className="font-medium">{t('detail.deleteCycle')}</p>
+              <p className="text-muted-foreground">{t('detail.delete.confirmBody')}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteOpen(true)}
+              className="text-destructive hover:text-destructive shrink-0"
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              {t('detail.deleteCycle')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Whole-cycle remove-player confirmation (academy roster action) */}
       <AlertDialog open={!!removeTarget} onOpenChange={(o) => !removingFromCycle && !o && setRemoveTarget(null)}>
         <AlertDialogContent>
@@ -568,12 +823,8 @@ export function CycleDetailView({
             <AlertDialogTitle>{t('detail.roster.removeFromCycleConfirm', { name: removeTarget?.name ?? '' })}</AlertDialogTitle>
             <AlertDialogDescription>{t('detail.roster.removeFromCycleDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
-          <SkipInvoiceUpdatesCheckbox
-            checked={skipInvoiceUpdates}
-            onCheckedChange={setSkipInvoiceUpdates}
-            disabled={removingFromCycle}
-            id="cycle-remove-skip-invoice"
-          />
+          {/* The "Don't update invoices" choice is the single page-level toggle above (sticky for the
+              whole page) — no per-dialog duplicate. */}
           <AlertDialogFooter>
             <Button variant="outline" onClick={() => setRemoveTarget(null)} disabled={removingFromCycle}>
               {t('detail.delete.cancel')}
@@ -586,94 +837,46 @@ export function CycleDetailView({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete-cycle confirmation */}
-      <EditCycleEndDateDialog
-        open={endDateOpen}
-        onOpenChange={setEndDateOpen}
-        cyclusId={cycleId}
-        cyclusName={title}
-        onSaved={() => {
-          void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
-          onMutated?.();
-        }}
-      />
-
-      <AlertDialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>
+      {/* Per-session delete confirmation */}
+      <AlertDialog open={!!deleteSlotTarget} onOpenChange={(o) => !deletingSlot && !o && setDeleteSlotTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('detail.delete.confirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('detail.delete.confirmBody')}</AlertDialogDescription>
+            <AlertDialogTitle>{t('detail.deleteSlot.confirmTitle', 'Delete this session?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('detail.deleteSlot.confirmBody', 'This removes the session. A session with a booking is kept — cancel its booking first.')}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+            <Button variant="outline" onClick={() => setDeleteSlotTarget(null)} disabled={deletingSlot}>
               {t('detail.delete.cancel')}
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void handleDeleteCycle()}
-              disabled={deleting}
-            >
-              {deleting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+            <Button variant="destructive" onClick={() => void handleDeleteSlot()} disabled={deletingSlot}>
+              {deletingSlot && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
               {t('detail.delete.confirm')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit-cycle-pricing modal */}
-      <Dialog open={priceOpen} onOpenChange={(o) => !savingPrice && setPriceOpen(o)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('detail.price.title')}</DialogTitle>
-            <DialogDescription>{t('detail.price.description')}</DialogDescription>
-          </DialogHeader>
-          <CyclePricingCard
-            pricePerSession={pricePerSession}
-            extraCosts={extraCosts}
-            splitPayment={splitPayment}
-            pricesIncludeVat={pricesIncludeVat}
-            onPricePerSessionChange={setPricePerSession}
-            onExtraCostsChange={setExtraCosts}
-            onSplitPaymentChange={setSplitPayment}
-            onPricesIncludeVatChange={setPricesIncludeVat}
-            academyProfileId={academyProfileId}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPriceOpen(false)} disabled={savingPrice}>
-              {t('detail.price.cancel')}
+      {/* Whole-cycle delete confirmation */}
+      <AlertDialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('detail.delete.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.delete.confirmBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Separator />
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+              {t('detail.delete.cancel')}
             </Button>
-            <Button onClick={() => void handleSavePrice()} disabled={savingPrice}>
-              {savingPrice && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              {t('detail.price.save')}
+            <Button variant="destructive" onClick={() => void handleDeleteCycle()} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              {t('detail.delete.confirm')}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit-whole-cycle modal */}
-      <Dialog open={editOpen} onOpenChange={(o) => !savingEdit && setEditOpen(o)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('detail.edit.title')}</DialogTitle>
-            <DialogDescription>{t('detail.edit.description')}</DialogDescription>
-          </DialogHeader>
-          {editRepSlot && (
-            <SlotEditForm
-              key={editEpoch}
-              slot={editRepSlot}
-              // The form's calendar.* labels live in trainer.json/academy.json (NOT cycles.json) — use
-              // 'trainer' (a complete, translated set) so the modal isn't dropped to English defaults.
-              namespace="trainer"
-              trainers={trainers}
-              locations={locations}
-              fixedRatingSystem={fixedRatingSystem}
-              isSaving={savingEdit}
-              onSubmit={(values) => void handleSaveEdit(values)}
-              onCancel={() => setEditOpen(false)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

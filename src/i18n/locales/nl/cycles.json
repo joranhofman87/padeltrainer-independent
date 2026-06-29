@@ -1302,6 +1302,7 @@
     "notFoundTitle": "Cyclus niet gevonden",
     "notFoundDescription": "Deze cyclus bestaat niet (meer) of je hebt er geen toegang toe.",
     "editWholeCycle": "Hele cyclus bewerken",
+    "editCycle": "Cyclus bewerken",
     "editPrice": "Prijs bewerken",
     "editEndDate": "Looptijd",
     "deleteCycle": "Toekomstige sessies verwijderen",
@@ -1312,7 +1313,20 @@
       "players": "Spelers",
       "payment": "Betaling",
       "when": "Wanneer",
-      "noPlayers": "Geen spelers"
+      "noPlayers": "Geen spelers",
+      "actions": "Acties",
+      "editSession": "Sessie bewerken",
+      "deleteSession": "Sessie verwijderen"
+    },
+    "settings": {
+      "title": "Sessie-instellingen"
+    },
+    "deleteSlot": {
+      "confirmTitle": "Deze sessie verwijderen?",
+      "confirmBody": "Dit verwijdert de sessie. Een sessie met een boeking blijft behouden — annuleer eerst de boeking.",
+      "deleted": "Sessie verwijderd",
+      "hasBooking": "Deze sessie heeft nog een boeking — annuleer die eerst.",
+      "error": "Kon de sessie niet verwijderen. Probeer het opnieuw."
     },
     "roster": {
       "title": "Spelers in deze cyclus",
@@ -1351,8 +1365,12 @@
     "edit": {
       "title": "Hele cyclus bewerken",
       "description": "Wijzigingen gelden voor alle toekomstige sessies in deze cyclus.",
+      "descriptionFull": "Pas de sessies, prijs en looptijd van de hele cyclus aan. Eén keer opslaan.",
       "updated": "{{count}} sessies bijgewerkt",
       "blocked": "{{count}} sessies niet aangepast — er zijn meer spelers geboekt dan de nieuwe capaciteit",
+      "sessionsAdded": "{{count}} sessies toegevoegd",
+      "sessionsRemoved": "{{count}} sessies verwijderd",
+      "endDateUpdated": "Einddatum bijgewerkt",
       "nothing": "Geen wijzigingen om door te voeren",
       "noFuture": "Geen toekomstige sessies om te bewerken",
       "loadError": "Kon de sessie niet laden. Probeer het opnieuw.",

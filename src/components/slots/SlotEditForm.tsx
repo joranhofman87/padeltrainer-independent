@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Loader2, Save, X, DollarSign, Lock } from 'lucide-react';
@@ -79,6 +79,15 @@ interface SlotEditFormProps {
   onEditCyclePricing?: () => void;
   cyclePricingLoading?: boolean;
   isSaving?: boolean;
+  /**
+   * Hide the price-related fields (per-session + total price, the cycle-pricing callout, VAT / split
+   * toggles, extra-costs editor). Used by the consolidated cycle editor, which renders EDITABLE cycle
+   * pricing in `extraSections` instead (price for a cycle is a cycle-level concern). Default false →
+   * the slot-detail pages are unchanged.
+   */
+  hidePricing?: boolean;
+  /** Extra content rendered just before the Save/Cancel footer (e.g. the cycle price + looptijd sections). */
+  extraSections?: ReactNode;
   onSubmit: (values: SlotEditFormValues, applyToCyclus: boolean) => void;
   onCancel: () => void;
 }
@@ -102,6 +111,8 @@ export function SlotEditForm({
   onEditCyclePricing,
   cyclePricingLoading = false,
   isSaving = false,
+  hidePricing = false,
+  extraSections,
   onSubmit,
   onCancel,
 }: SlotEditFormProps) {
@@ -243,7 +254,7 @@ export function SlotEditForm({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className={hidePricing ? 'space-y-1.5' : 'grid grid-cols-1 sm:grid-cols-2 gap-3'}>
         <div className="space-y-1.5">
           <Label className="text-xs">{tCal('calendar.maxParticipants', 'Max participants')}</Label>
           <Input
@@ -254,36 +265,40 @@ export function SlotEditForm({
             onChange={(e) => setMaxParticipants(Number(e.target.value))}
           />
         </div>
+        {!hidePricing && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">{tCal('calendar.price', 'Price')}</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min={0}
+              value={pricePerSession}
+              onChange={(e) => setPricePerSession(e.target.value)}
+              placeholder="€"
+              disabled={isCycleSlot}
+              className={isCycleSlot ? 'opacity-60' : ''}
+            />
+          </div>
+        )}
+      </div>
+
+      {!hidePricing && (
         <div className="space-y-1.5">
-          <Label className="text-xs">{tCal('calendar.price', 'Price')}</Label>
+          <Label className="text-xs">{tRole('calendar.totalPrice', 'Total price (full cyclus)')}</Label>
           <Input
             type="number"
             step="0.01"
             min={0}
-            value={pricePerSession}
-            onChange={(e) => setPricePerSession(e.target.value)}
+            value={totalPrice}
+            onChange={(e) => setTotalPrice(e.target.value)}
             placeholder="€"
             disabled={isCycleSlot}
             className={isCycleSlot ? 'opacity-60' : ''}
           />
         </div>
-      </div>
+      )}
 
-      <div className="space-y-1.5">
-        <Label className="text-xs">{tRole('calendar.totalPrice', 'Total price (full cyclus)')}</Label>
-        <Input
-          type="number"
-          step="0.01"
-          min={0}
-          value={totalPrice}
-          onChange={(e) => setTotalPrice(e.target.value)}
-          placeholder="€"
-          disabled={isCycleSlot}
-          className={isCycleSlot ? 'opacity-60' : ''}
-        />
-      </div>
-
-      {isCycleSlot && (
+      {!hidePricing && isCycleSlot && (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           <DollarSign className="h-3.5 w-3.5 shrink-0" />
           <span>{tRole('calendar.pricingManagedByCycle', 'Pricing is managed at the cycle level.')}</span>
@@ -306,22 +321,26 @@ export function SlotEditForm({
         </div>
       )}
 
-      <Separator />
+      {!hidePricing && (
+        <>
+          <Separator />
 
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">{tRole('calendar.pricesIncludeVat', 'Prices include VAT')}</Label>
-        <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} disabled={isCycleSlot} />
-      </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">{tRole('calendar.pricesIncludeVat', 'Prices include VAT')}</Label>
+            <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} disabled={isCycleSlot} />
+          </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <Label className="text-xs">{tRole('calendar.splitPayment', 'Split payment')}</Label>
-          <p className="text-[10px] text-muted-foreground">
-            {tRole('calendar.splitPaymentDesc', 'Each player pays individually')}
-          </p>
-        </div>
-        <Switch checked={splitPayment} onCheckedChange={setSplitPayment} disabled={isCycleSlot} />
-      </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-xs">{tRole('calendar.splitPayment', 'Split payment')}</Label>
+              <p className="text-[10px] text-muted-foreground">
+                {tRole('calendar.splitPaymentDesc', 'Each player pays individually')}
+              </p>
+            </div>
+            <Switch checked={splitPayment} onCheckedChange={setSplitPayment} disabled={isCycleSlot} />
+          </div>
+        </>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -331,9 +350,12 @@ export function SlotEditForm({
         <Switch checked={isMarkedFull} onCheckedChange={setIsMarkedFull} />
       </div>
 
-      <Separator />
-
-      <ExtraCostsEditor value={extraCosts} onChange={setExtraCosts} disabled={isCycleSlot} namespace={namespace} />
+      {!hidePricing && (
+        <>
+          <Separator />
+          <ExtraCostsEditor value={extraCosts} onChange={setExtraCosts} disabled={isCycleSlot} namespace={namespace} />
+        </>
+      )}
 
       <Separator />
 
@@ -363,6 +385,8 @@ export function SlotEditForm({
           </div>
         </>
       )}
+
+      {extraSections}
 
       <div className="flex gap-2 pt-2">
         <Button size="sm" onClick={handleSave} disabled={isSaving} className="gap-1.5">

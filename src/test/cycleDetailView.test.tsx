@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import type { ReactElement } from 'react';
@@ -15,6 +15,7 @@ const {
   mockSyncPrice,
   mockUpdatePricing,
   mockApplyEdit,
+  mockApplyEndDate,
   mockPublish,
   editOverride,
   mockToast,
@@ -25,6 +26,7 @@ const {
   mockSyncPrice: vi.fn(() => Promise.resolve()),
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
   mockApplyEdit: vi.fn(),
+  mockApplyEndDate: vi.fn((..._a: unknown[]) => Promise.resolve({ added: 0, removed: 0 })),
   mockPublish: vi.fn(),
   editOverride: { current: {} as Partial<SlotEditFormValues> },
   mockToast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
@@ -36,6 +38,7 @@ vi.mock('@/lib/invoiceSync', () => ({
   syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
   syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
 }));
+vi.mock('@/lib/cycleExtension', () => ({ applyCycleEndDate: (...a: unknown[]) => mockApplyEndDate(...a) }));
 vi.mock('@/lib/cycles', () => ({
   updateCyclePricing: (...a: unknown[]) => mockUpdatePricing(...a),
   applySlotEditToCycle: (...a: unknown[]) => mockApplyEdit(...a),
@@ -83,12 +86,34 @@ vi.mock('@/components/slots/SlotEditForm', () => ({
     </div>
   ),
 }));
-// The pricing card's preset picker fetches presets on mount — stub it so the modal renders cheaply.
+// CycleEndDateFields runs preview effects (findSlotsAfterDate / previewCycleExtension) that hit the
+// network — stub it to a controlled date input that reports a fixed plan up.
+vi.mock('@/components/cycles/CycleEndDateFields', () => ({
+  CycleEndDateFields: ({
+    value,
+    onChange,
+    onPlanChange,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    onPlanChange: (p: { endDate: string; invalid: boolean; willAdd: number; removableIds: string[]; protectedCount: number; removeUnbooked: boolean }) => void;
+  }) => (
+    <input
+      data-testid="end-date-input"
+      value={value}
+      onChange={(e) => {
+        onChange(e.target.value);
+        onPlanChange({ endDate: e.target.value, invalid: false, willAdd: 0, removableIds: [], protectedCount: 0, removeUnbooked: false });
+      }}
+    />
+  ),
+}));
+// The pricing card's preset picker fetches presets on mount — stub it so the card renders cheaply.
 vi.mock('@/components/settings/ExtraCostPresetPicker', () => ({ ExtraCostPresetPicker: () => null }));
 vi.mock('sonner', () => ({ toast: mockToast }));
 const { CycleDetailView } = await import('@/components/cycles/CycleDetailView');
 
-// The representative slot openEditModal fetches (a full availability_slots row).
+// The representative slot the session-settings effect fetches (a full availability_slots row).
 const repSlotRow = {
   id: 's1',
   start_time: '2099-07-06T18:00:00Z',
@@ -151,6 +176,8 @@ beforeEach(() => {
   mockUpdatePricing.mockReset();
   mockUpdatePricing.mockResolvedValue(undefined);
   mockApplyEdit.mockReset();
+  mockApplyEndDate.mockReset();
+  mockApplyEndDate.mockResolvedValue({ added: 0, removed: 0 });
   mockPublish.mockReset();
   mockPublish.mockResolvedValue(undefined);
   editOverride.current = {};
@@ -160,7 +187,7 @@ beforeEach(() => {
   setMockData({ availability_slots: [repSlotRow] });
 });
 
-describe('CycleDetailView (Slice 9b/9c)', () => {
+describe('CycleDetailView (inline edit)', () => {
   it('renders header + sessions + roster (TZ-safe fields)', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
@@ -177,65 +204,17 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     expect(screen.getByText('1×')).toBeInTheDocument();
   });
 
-  it('is read-only by default — no edit/delete CTAs without canEdit', () => {
+  it('is read-only by default — no inline edit cards / actions without canEdit or canEditPrice', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
-    expect(screen.queryByRole('button', { name: /Remove future sessions/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Edit whole cycle/ })).not.toBeInTheDocument();
-  });
-
-  it('edit whole cycle: open → no change → toast nothing, RPC not called', async () => {
-    mockUseCycleDetail.mockReturnValue(loaded);
-    editOverride.current = {};
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
-    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
-    await screen.findByTestId('slot-edit-form'); // modal opened after the rep-slot fetch
-    fireEvent.click(screen.getByText('stub-save'));
-    await waitFor(() => expect(screen.queryByTestId('slot-edit-form')).not.toBeInTheDocument());
-    expect(mockApplyEdit).not.toHaveBeenCalled(); // empty patch short-circuits
-  });
-
-  it('edit whole cycle: change capacity → applySlotEditToCycle(cycleId, future ids, diff) + onMutated', async () => {
-    mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyEdit.mockResolvedValue({ updatedCount: 2, blockedCount: 0, blockedSlotIds: [] });
-    editOverride.current = { maxParticipants: 6 };
-    const onMutated = vi.fn();
-    renderView(
-      <CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} onMutated={onMutated} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
-    await screen.findByTestId('slot-edit-form');
-    fireEvent.click(screen.getByText('stub-save'));
-    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalledWith('cy1', ['s1', 's2'], { maxParticipants: 6 }));
-    await waitFor(() => expect(onMutated).toHaveBeenCalled());
-  });
-
-  it('edit whole cycle: a fully-blocked capacity shrink surfaces as an error toast (nothing changed)', async () => {
-    mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyEdit.mockResolvedValue({ updatedCount: 0, blockedCount: 2, blockedSlotIds: ['s1', 's2'] });
-    editOverride.current = { maxParticipants: 1 };
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
-    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
-    await screen.findByTestId('slot-edit-form');
-    fireEvent.click(screen.getByText('stub-save'));
-    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalled());
-    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
-    expect(mockToast.success).not.toHaveBeenCalled();
-  });
-
-  it('edit whole cycle: all-past cycle → guarded (no modal, no RPC)', () => {
-    mockUseCycleDetail.mockReturnValue({
-      data: {
-        ...sampleDetail,
-        slots: sampleDetail.slots.map((s) => ({ ...s, start_time: '2020-01-01T18:00:00Z', end_time: '2020-01-01T19:00:00Z' })),
-      },
-      isLoading: false,
-      isError: false,
-    });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
-    fireEvent.click(screen.getByRole('button', { name: /Edit whole cycle/ }));
+    // No session-settings, price, looptijd cards.
     expect(screen.queryByTestId('slot-edit-form')).not.toBeInTheDocument();
-    expect(mockApplyEdit).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('end-date-input')).not.toBeInTheDocument();
+    expect(screen.queryByText('Edit cycle pricing')).not.toBeInTheDocument();
+    // No per-row edit/delete actions, no danger-zone delete.
+    expect(screen.queryByRole('button', { name: 'Edit session' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete session' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Remove future sessions/ })).not.toBeInTheDocument();
   });
 
   it('opens a single session on row click', () => {
@@ -246,52 +225,71 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     expect(onOpenSlot).toHaveBeenCalledWith('s1');
   });
 
-  it('delete cycle: confirm → applySlotDeleteToCycle(cycleId, future slot ids) + onMutated', async () => {
+  // --- Inline session-settings editor ---
+  it('session settings: no change → toast nothing, RPC not called', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 1, protectedSlotIds: ['s1'] });
+    editOverride.current = {};
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    await screen.findByTestId('slot-edit-form'); // rep slot fetched on mount
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(mockToast).toHaveBeenCalled());
+    expect(mockApplyEdit).not.toHaveBeenCalled(); // empty patch short-circuits
+  });
+
+  it('session settings: change capacity → applySlotEditToCycle(cycleId, future ids, diff) + onMutated', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyEdit.mockResolvedValue({ updatedCount: 2, blockedCount: 0, blockedSlotIds: [] });
+    editOverride.current = { maxParticipants: 6 };
     const onMutated = vi.fn();
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
-    // CTA opens the confirm dialog
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
-    // confirm (the AlertDialog "Delete" action)
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1', 's2']));
-    // RPC stamps split_count but not line items → caller must resync (RPC contract).
-    await waitFor(() => expect(mockSyncSplit).toHaveBeenCalledWith('cy1'));
+    renderView(
+      <CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} onMutated={onMutated} />,
+    );
+    await screen.findByTestId('slot-edit-form');
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalledWith('cy1', ['s1', 's2'], { maxParticipants: 6 }));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
-  it('delete cycle: skips the invoice resync when nothing was deleted', async () => {
+  it('session settings: a fully-blocked capacity shrink surfaces as an error toast', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 2, protectedSlotIds: ['s1', 's2'] });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
-    expect(mockSyncSplit).not.toHaveBeenCalled();
+    mockApplyEdit.mockResolvedValue({ updatedCount: 0, blockedCount: 2, blockedSlotIds: ['s1', 's2'] });
+    editOverride.current = { maxParticipants: 1 };
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    await screen.findByTestId('slot-edit-form');
+    fireEvent.click(screen.getByText('stub-save'));
+    await waitFor(() => expect(mockApplyEdit).toHaveBeenCalled());
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+    expect(mockToast.success).not.toHaveBeenCalled();
   });
 
-  it('delete cycle: cancel does NOT call the RPC', () => {
-    mockUseCycleDetail.mockReturnValue(loaded);
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Cancel/ }));
-    expect(mockApplyDelete).not.toHaveBeenCalled();
+  it('session settings: all-past cycle → shows the "no future" note, no form', () => {
+    mockUseCycleDetail.mockReturnValue({
+      data: {
+        ...sampleDetail,
+        slots: sampleDetail.slots.map((s) => ({ ...s, start_time: '2020-01-01T18:00:00Z', end_time: '2020-01-01T19:00:00Z' })),
+      },
+      isLoading: false,
+      isError: false,
+    });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit locations={[{ id: 'loc1', name: 'Court A' }]} />);
+    expect(screen.queryByTestId('slot-edit-form')).not.toBeInTheDocument();
+    expect(screen.getByText('No future sessions to edit')).toBeInTheDocument();
+    expect(mockApplyEdit).not.toHaveBeenCalled();
   });
 
-  it('edit price: CTA hidden unless canEditPrice', () => {
+  // --- Inline price card ---
+  it('price card: hidden unless canEditPrice', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    expect(screen.queryByRole('button', { name: /Edit price/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Edit cycle pricing')).not.toBeInTheDocument();
   });
 
-  it('edit price: opens modal → Save calls updateCyclePricing + resync + onMutated', async () => {
+  it('price card: Save calls updateCyclePricing + resync + onMutated (always, ignoring toggle)', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     const onMutated = vi.fn();
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEditPrice onMutated={onMutated} />);
-    fireEvent.click(screen.getByRole('button', { name: /Edit price/ }));
-    expect(screen.getByText('Edit cycle pricing')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('25')).toBeInTheDocument(); // seeded price_per_session
+    // Seeded from the cycle's price_per_session.
+    expect(screen.getByDisplayValue('25')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
     await waitFor(() =>
       expect(mockUpdatePricing).toHaveBeenCalledWith('cy1', {
@@ -305,6 +303,102 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
+  // --- Inline looptijd card ---
+  it('looptijd card: Save calls applyCycleEndDate(cycleId, endDate, opts) + onMutated', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyEndDate.mockResolvedValue({ added: 3, removed: 0 });
+    const onMutated = vi.fn();
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
+    const input = screen.getByTestId('end-date-input');
+    fireEvent.change(input, { target: { value: '2099-08-31' } });
+    // The looptijd Save lives in the same card as the date input.
+    const card = input.closest('.space-y-4') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: /^Save$/ }));
+    await waitFor(() =>
+      expect(mockApplyEndDate).toHaveBeenCalledWith('cy1', '2099-08-31', { removableIds: [], removeUnbooked: false }),
+    );
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  // --- Per-session delete ---
+  it('per-session delete: confirm → applySlotDeleteToCycle(cycleId, [slotId]) + resync + onMutated', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [] });
+    const onMutated = vi.fn();
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
+    // First session row's Delete action.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete session' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1']));
+    await waitFor(() => expect(mockSyncSplit).toHaveBeenCalledWith('cy1'));
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it('per-session delete: deletedCount 0 (still booked) → error toast, no resync', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 1, protectedSlotIds: ['s1'] });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete session' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+    expect(mockSyncSplit).not.toHaveBeenCalled();
+  });
+
+  it('per-session delete: toggle "don\'t update invoices" → no resync after delete', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [] });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    fireEvent.click(screen.getByRole('checkbox')); // page-level "Don't update invoices" toggle
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete session' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1']));
+    expect(mockSyncSplit).not.toHaveBeenCalled();
+  });
+
+  // --- Whole-cycle delete ---
+  it('delete cycle: confirm → applySlotDeleteToCycle(cycleId, future slot ids) + resync + onMutated', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 1, protectedSlotIds: ['s1'] });
+    const onMutated = vi.fn();
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1', 's2']));
+    await waitFor(() => expect(mockSyncSplit).toHaveBeenCalledWith('cy1'));
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it('delete cycle: skips resync when nothing was deleted', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 2, protectedSlotIds: ['s1', 's2'] });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
+    expect(mockSyncSplit).not.toHaveBeenCalled();
+  });
+
+  it('delete cycle: toggle "don\'t update invoices" → no resync even when sessions were deleted', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockApplyDelete.mockResolvedValue({ deletedCount: 2, protectedCount: 0, protectedSlotIds: [] });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    fireEvent.click(screen.getByRole('checkbox')); // page-level "Don't update invoices" toggle
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
+    expect(mockSyncSplit).not.toHaveBeenCalled();
+  });
+
+  it('delete cycle: cancel does NOT call the RPC', () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
+    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    expect(mockApplyDelete).not.toHaveBeenCalled();
+  });
+
+  // --- States ---
   it('loading → no cycle content yet', () => {
     mockUseCycleDetail.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
@@ -327,7 +421,7 @@ describe('CycleDetailView (Slice 9b/9c)', () => {
     expect(screen.getByText(/could not be loaded/)).toBeInTheDocument();
   });
 
-  // --- Slot-generator publish lifecycle (slice 6) ---
+  // --- Slot-generator publish lifecycle ---
   const draftDetail = (visibility: 'public' | 'private'): CycleDetail => ({
     ...sampleDetail,
     cycle: {
