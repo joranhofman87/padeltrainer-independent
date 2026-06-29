@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Euro, Pencil, CalendarDays, AlertCircle, Loader2, Rocket } from 'lucide-react';
+import { Users, Trash2, Euro, Pencil, CalendarDays, AlertCircle, Loader2, Rocket, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +29,9 @@ import {
 import CyclePricingCard from '@/components/cycles/CyclePricingCard';
 import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
 import { supabase } from '@/lib/supabaseClient';
-import { useCycleDetail, type CycleDetailSlot } from '@/lib/cycleDetail';
+import { useCycleDetail, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
+import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
+import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
@@ -61,6 +63,11 @@ export interface CycleDetailViewProps {
   fixedRatingSystem?: string | null;
   /** Called after a successful cycle-scope mutation, so the wrapper can refetch its own surfaces. */
   onMutated?: () => void;
+  /**
+   * Academy roster surface: enables a per-player "remove from whole cycle" action (with the sticky
+   * "Don't update invoices" option) on the roster. Trainer/club omit → roster stays view-only.
+   */
+  canRemoveFromCycle?: boolean;
   /** i18n namespace (default 'cycles' — the neutral home for cycle UI strings). */
   namespace?: string;
 }
@@ -82,6 +89,7 @@ export function CycleDetailView({
   locations = [],
   fixedRatingSystem,
   onMutated,
+  canRemoveFromCycle = false,
   namespace = 'cycles',
 }: CycleDetailViewProps) {
   const { t, i18n } = useTranslation(namespace);
@@ -106,6 +114,10 @@ export function CycleDetailView({
   const [editRepSlot, setEditRepSlot] = useState<SlotEditFormSlot | null>(null);
   // Bumped on every open so the form always remounts + re-inits, even if two reps share a start_time.
   const [editEpoch, setEditEpoch] = useState(0);
+  // Whole-cycle remove-player (academy roster action) + its sticky "Don't update invoices" toggle.
+  const [removeTarget, setRemoveTarget] = useState<CycleRosterEntry | null>(null);
+  const [removingFromCycle, setRemovingFromCycle] = useState(false);
+  const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
   // Future (not-yet-started) sessions are the whole-cycle edit/delete scope (matches the slot-detail
   // "future only" rule). The delete RPC keeps any still-booked session; the edit RPC keeps any slot
   // it would have to shrink below its occupancy.
@@ -171,6 +183,37 @@ export function CycleDetailView({
       toast.error(getFriendlyErrorMessage(err, t('detail.delete.error')));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // Remove one player from the whole series (all UPCOMING sessions), honouring the sticky
+  // "Don't update invoices" toggle. Bookings are soft-cancelled via the canonical facade; paid
+  // invoices are protected regardless (the lib skips them).
+  const handleRemoveFromCycle = async () => {
+    if (!removeTarget) return;
+    setRemovingFromCycle(true);
+    try {
+      if (futureSlotIds.length === 0) {
+        toast(t('detail.roster.removeFromCycleNone'));
+        setRemoveTarget(null);
+        return;
+      }
+      const res = await cancelPlayerBookingsInCycle(
+        futureSlotIds,
+        { playerId: removeTarget.playerId, guestPlayerId: removeTarget.guestPlayerId },
+        supabase,
+        { skipInvoiceSync: skipInvoiceUpdates },
+      );
+      if (res.cancelError) throw res.cancelError;
+      if (res.syncError) logger.error('Invoice sync after whole-cycle remove failed', res.syncError);
+      setRemoveTarget(null);
+      toast.success(t('detail.roster.removedFromCycle', { count: res.cancelledCount }));
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.roster.removeFromCycleError')));
+    } finally {
+      setRemovingFromCycle(false);
     }
   };
 
@@ -487,10 +530,21 @@ export function CycleDetailView({
           ) : (
             <ul className="flex flex-wrap gap-2">
               {roster.map((p, i) => (
-                <li key={`${p.name}-${i}`}>
+                <li key={`${p.playerId ?? p.guestPlayerId ?? p.name}-${i}`}>
                   <Badge variant="outline" className="gap-1.5 font-normal">
                     {p.name}
                     <span className="text-muted-foreground">{t('detail.roster.sessionCount', { count: p.sessionCount })}</span>
+                    {canRemoveFromCycle && (
+                      <button
+                        type="button"
+                        aria-label={t('detail.roster.removeFromCycle')}
+                        title={t('detail.roster.removeFromCycle')}
+                        className="-mr-1 ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setRemoveTarget(p)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
                   </Badge>
                 </li>
               ))}
@@ -498,6 +552,31 @@ export function CycleDetailView({
           )}
         </CardContent>
       </Card>
+
+      {/* Whole-cycle remove-player confirmation (academy roster action) */}
+      <AlertDialog open={!!removeTarget} onOpenChange={(o) => !removingFromCycle && !o && setRemoveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('detail.roster.removeFromCycleConfirm', { name: removeTarget?.name ?? '' })}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.roster.removeFromCycleDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <SkipInvoiceUpdatesCheckbox
+            checked={skipInvoiceUpdates}
+            onCheckedChange={setSkipInvoiceUpdates}
+            disabled={removingFromCycle}
+            id="cycle-remove-skip-invoice"
+          />
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setRemoveTarget(null)} disabled={removingFromCycle}>
+              {t('detail.delete.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={() => void handleRemoveFromCycle()} disabled={removingFromCycle}>
+              {removingFromCycle && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              {t('detail.roster.removeFromCycle')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete-cycle confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>

@@ -133,6 +133,9 @@ export default function AcademySlotDetail() {
 
   // Invoice state
   const [slotInvoices, setSlotInvoices] = useState<SlotInvoice[]>([]);
+  // Sticky "Don't update invoices" toggle for roster edits — defaults OFF and
+  // persists across add/remove dialogs while the owner works on this slot/cycle.
+  const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
 
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
 
@@ -880,6 +883,8 @@ export default function AcademySlotDetail() {
                           academyProfileId={activeAcademy?.id}
                           onBookingUpdated={() => { setEditingBookingId(null); setEditingBookingData(null); fetchSlotDetail(); }}
                           onClose={() => { setEditingBookingId(null); setEditingBookingData(null); }}
+                          skipInvoiceUpdates={skipInvoiceUpdates}
+                          onSkipInvoiceUpdatesChange={setSkipInvoiceUpdates}
                         />
                       )}
                       {editingBookingId === player.bookingId && user?.id && (
@@ -917,6 +922,8 @@ export default function AcademySlotDetail() {
                   }}
                   onBookingCreated={() => { setShowBookPlayer(false); fetchSlotDetail(); }}
                   onClose={() => setShowBookPlayer(false)}
+                  skipInvoiceUpdates={skipInvoiceUpdates}
+                  onSkipInvoiceUpdatesChange={setSkipInvoiceUpdates}
                 />
               )}
             </CardContent>

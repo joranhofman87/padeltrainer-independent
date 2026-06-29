@@ -28,6 +28,9 @@ export interface CycleDetailSlot {
 export interface CycleRosterEntry {
   name: string;
   sessionCount: number;
+  /** Stable identity for whole-cycle roster actions (XOR — exactly one is set). */
+  playerId: string | null;
+  guestPlayerId: string | null;
 }
 
 export interface CycleDetail {
@@ -74,7 +77,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
   const bookingsBySlot: Record<string, BookingPaymentFields[]> = {};
   // Roster keyed by the player's stable id (profile or guest) so two players with the same name stay
   // distinct; the name is just for display.
-  const rosterByKey = new Map<string, { name: string; sessionCount: number }>();
+  const rosterByKey = new Map<string, { name: string; sessionCount: number; playerId: string | null; guestPlayerId: string | null }>();
 
   if (slotIds.length > 0) {
     const { data: bookings, error: bErr } = await supabase
@@ -121,7 +124,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
         (playerNamesMap[b.slot_id] ??= []).push(name);
         const existing = rosterByKey.get(key);
         if (existing) existing.sessionCount += 1;
-        else rosterByKey.set(key, { name, sessionCount: 1 });
+        else rosterByKey.set(key, { name, sessionCount: 1, playerId: b.player_id ?? null, guestPlayerId: b.guest_player_id ?? null });
       }
     }
   }

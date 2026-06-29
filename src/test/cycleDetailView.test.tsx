@@ -127,8 +127,8 @@ const sampleDetail: CycleDetail = {
     { id: 's2', start_time: '2099-07-13T18:00:00Z', end_time: '2099-07-13T19:00:00Z', trainer_id: 't1', max_participants: 4, is_public: true, cyclus_name: 'Zomercyclus', playerNames: [], bookedCount: 0, paymentStatus: 'no_players' },
   ],
   roster: [
-    { name: 'Alice', sessionCount: 2 },
-    { name: 'Bob', sessionCount: 1 },
+    { name: 'Alice', sessionCount: 2, playerId: 'p-alice', guestPlayerId: null },
+    { name: 'Bob', sessionCount: 1, playerId: null, guestPlayerId: 'g-bob' },
   ],
   totalSlots: 2,
   totalPlayers: 2,

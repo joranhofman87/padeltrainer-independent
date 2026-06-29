@@ -385,6 +385,8 @@
     "deleteBookingConfirm": "Speler verwijderen van boeking?",
     "deleteBookingWarning": "Deze actie kan niet ongedaan worden gemaakt. de slot wordt weer beschikbaar.",
     "removePlayer": "Speler verwijderen",
+    "skipInvoiceUpdates": "Facturen niet bijwerken",
+    "skipInvoiceUpdatesHelp": "De speler wordt toegevoegd of verwijderd, maar facturen blijven ongewijzigd — pas de facturatie zelf aan.",
     "paymentStatus": "Betaalstatus",
     "paymentPending": "In afwachting",
     "paymentPaid": "Betaald",

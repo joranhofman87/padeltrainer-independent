@@ -5,6 +5,7 @@ import { differenceInMinutes } from "date-fns";
 import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { insertBookings } from "@/lib/bookings";
+import { SkipInvoiceUpdatesCheckbox } from "@/components/booking/SkipInvoiceUpdatesCheckbox";
 import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
@@ -59,6 +60,14 @@ interface InlineBookPlayerProps {
   slot: Slot;
   onBookingCreated: () => void;
   onClose: () => void;
+  /**
+   * When `onSkipInvoiceUpdatesChange` is provided, a "Don't update invoices"
+   * checkbox is shown (controlled by `skipInvoiceUpdates`). While checked, adding
+   * the player(s) skips ALL invoice work (no new draft, no recalc) AND the
+   * co-occupant split rebalance. Omit both to keep the current behaviour.
+   */
+  skipInvoiceUpdates?: boolean;
+  onSkipInvoiceUpdatesChange?: (value: boolean) => void;
 }
 
 const EMPTY_PLAYER_SLOTS = ["", "", "", ""];
@@ -79,6 +88,8 @@ export function InlineBookPlayer({
   slot,
   onBookingCreated,
   onClose,
+  skipInvoiceUpdates = false,
+  onSkipInvoiceUpdatesChange,
 }: InlineBookPlayerProps) {
   const { t } = useTranslation("trainer");
   const { t: tCommon } = useTranslation("common");
@@ -320,6 +331,7 @@ export function InlineBookPlayer({
       splitPayment,
       slotIds: affectedSlotIds,
       cyclusId: slot.cyclus_id,
+      skipInvoices: skipInvoiceUpdates,
     });
 
     if (shouldWarnInvoiceCreateFailure(invoiceResult)) {
@@ -448,7 +460,8 @@ export function InlineBookPlayer({
             newPlayerCount: selectedPlayers.length,
           });
 
-          if (!pricing.shouldRebalanceExisting || pricing.existingBookingsNewAmount == null) {
+          // skipInvoiceUpdates ⇒ leave co-occupants' split amounts untouched too.
+          if (skipInvoiceUpdates || !pricing.shouldRebalanceExisting || pricing.existingBookingsNewAmount == null) {
             continue;
           }
 
@@ -528,7 +541,7 @@ export function InlineBookPlayer({
         if (error) throw error;
         insertSucceeded = true;
 
-        if (pricing.shouldRebalanceExisting && pricing.existingBookingsNewAmount != null) {
+        if (!skipInvoiceUpdates && pricing.shouldRebalanceExisting && pricing.existingBookingsNewAmount != null) {
           const rebalanceIds = getRebalanceBookingIds(
             (slot.booked_players || []).map((p) => ({
               bookingId: p.bookingId,
@@ -736,6 +749,15 @@ export function InlineBookPlayer({
           <Label className="text-xs">{t("bookings.notes")}</Label>
           <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t("bookings.notesPlaceholder")} rows={2} />
         </div>
+
+        {onSkipInvoiceUpdatesChange && (
+          <SkipInvoiceUpdatesCheckbox
+            checked={skipInvoiceUpdates}
+            onCheckedChange={onSkipInvoiceUpdatesChange}
+            disabled={isLoading}
+            id="inline-book-skip-invoice"
+          />
+        )}
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isLoading}>{tCommon("cancel")}</Button>

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
 import { cancelBookingsAndSync, reconcileBookingInvoices } from "@/lib/bookings";
+import { SkipInvoiceUpdatesCheckbox } from "@/components/booking/SkipInvoiceUpdatesCheckbox";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,9 +55,17 @@ interface InlineEditBookingProps {
   academyProfileId?: string;
   onBookingUpdated: () => void;
   onClose: () => void;
+  /**
+   * When `onSkipInvoiceUpdatesChange` is provided, the remove confirm shows a
+   * "Don't update invoices" checkbox (controlled by `skipInvoiceUpdates`). While
+   * checked, removing the player skips ALL invoice writes. Omit both to keep the
+   * current behaviour (no checkbox; invoices always reconciled).
+   */
+  skipInvoiceUpdates?: boolean;
+  onSkipInvoiceUpdatesChange?: (value: boolean) => void;
 }
 
-export function InlineEditBooking({ booking, trainerId, academyProfileId, onBookingUpdated, onClose }: InlineEditBookingProps) {
+export function InlineEditBooking({ booking, trainerId, academyProfileId, onBookingUpdated, onClose, skipInvoiceUpdates = false, onSkipInvoiceUpdatesChange }: InlineEditBookingProps) {
   const { t } = useTranslation("trainer");
   const { t: tCommon } = useTranslation("common");
   const { toast } = useToast();
@@ -129,11 +138,16 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       if (error) throw error;
       // Reconcile any invoice that bills this booking to its bookings' real paid state
       // (flips to paid only when fully covered) — the booking write alone left it stale.
-      try {
-        await reconcileBookingInvoices([booking.id]);
-      } catch (syncErr) {
-        logger.error("Invoice reconcile after booking edit failed", syncErr as Error, { component: "InlineEditBooking" });
-        toast({ title: tCommon("error"), description: t("bookings.invoiceSyncFailed", "The booking was saved, but a linked invoice could not be updated. Please check the invoice."), variant: "destructive" });
+      // Honour the page-level "Don't update invoices" toggle: when on, the owner is
+      // deliberately freezing billing for this cycle, so a payment/player edit here must
+      // NOT touch the linked invoice either (consistent with the remove path).
+      if (!skipInvoiceUpdates) {
+        try {
+          await reconcileBookingInvoices([booking.id]);
+        } catch (syncErr) {
+          logger.error("Invoice reconcile after booking edit failed", syncErr as Error, { component: "InlineEditBooking" });
+          toast({ title: tCommon("error"), description: t("bookings.invoiceSyncFailed", "The booking was saved, but a linked invoice could not be updated. Please check the invoice."), variant: "destructive" });
+        }
       }
       toast({ title: t("bookings.bookingUpdated", "Booking updated") });
       onBookingUpdated();
@@ -155,7 +169,9 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       // deleting, so a sync failure orphaned the booking_id on the invoice with no
       // row left to recover. The facade cancels FIRST (the row survives as
       // 'cancelled') then syncs, surfacing the two failure modes separately.
-      const { cancelError, syncError } = await cancelBookingsAndSync([booking.id]);
+      const { cancelError, syncError } = await cancelBookingsAndSync([booking.id], supabase, {
+        skipInvoiceSync: skipInvoiceUpdates,
+      });
       if (cancelError) throw cancelError;
       if (syncError) {
         logger.error("Error recalculating invoices after booking removal", syncError, { component: "InlineEditBooking" });
@@ -269,7 +285,7 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
                 </p>
               </div>
             )}
-            {unpaidInvoices.length > 0 && (
+            {unpaidInvoices.length > 0 && !skipInvoiceUpdates && (
               <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <Receipt className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
                 <p className="text-sm text-blue-800 dark:text-blue-200">
@@ -278,6 +294,13 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
                   })}
                 </p>
               </div>
+            )}
+            {onSkipInvoiceUpdatesChange && (
+              <SkipInvoiceUpdatesCheckbox
+                checked={skipInvoiceUpdates}
+                onCheckedChange={onSkipInvoiceUpdatesChange}
+                disabled={isDeleting}
+              />
             )}
             <AlertDialogFooter>
               <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
