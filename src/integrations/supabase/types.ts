@@ -8120,6 +8120,8 @@ export type Database = {
         }
         Returns: undefined
       }
+      release_expired_rebook_holds: { Args: Record<PropertyKey, never>; Returns: number }
+      release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }
