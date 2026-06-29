@@ -1166,6 +1166,7 @@
     "notFoundTitle": "Cycle not found",
     "notFoundDescription": "This cycle no longer exists or you don't have access to it.",
     "editWholeCycle": "Edit whole cycle",
+    "editCycle": "Edit cycle",
     "editPrice": "Edit price",
     "editEndDate": "Length",
     "deleteCycle": "Remove future sessions",
@@ -1176,7 +1177,20 @@
       "players": "Players",
       "payment": "Payment",
       "when": "When",
-      "noPlayers": "No players"
+      "noPlayers": "No players",
+      "actions": "Actions",
+      "editSession": "Edit session",
+      "deleteSession": "Delete session"
+    },
+    "settings": {
+      "title": "Session settings"
+    },
+    "deleteSlot": {
+      "confirmTitle": "Delete this session?",
+      "confirmBody": "This removes the session. A session with a booking is kept — cancel its booking first.",
+      "deleted": "Session deleted",
+      "hasBooking": "This session still has a booking — cancel it first.",
+      "error": "Could not delete the session. Please try again."
     },
     "roster": {
       "title": "Players in this cycle",
@@ -1215,8 +1229,12 @@
     "edit": {
       "title": "Edit whole cycle",
       "description": "Changes apply to all future sessions in this cycle.",
+      "descriptionFull": "Adjust the whole cycle's sessions, price and length. Save once.",
       "updated": "{{count}} sessions updated",
       "blocked": "{{count}} sessions left unchanged — more players are booked than the new capacity",
+      "sessionsAdded": "{{count}} sessions added",
+      "sessionsRemoved": "{{count}} sessions removed",
+      "endDateUpdated": "End date updated",
       "nothing": "No changes to apply",
       "noFuture": "No future sessions to edit",
       "loadError": "Could not load the session. Please try again.",

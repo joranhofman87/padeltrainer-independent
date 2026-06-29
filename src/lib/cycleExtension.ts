@@ -2,6 +2,7 @@ import { localWallTimeToUtc, MAX_PLANNED_SLOTS, SlotPlanError } from '@/lib/slot
 import { supabase } from '@/lib/supabaseClient';
 import { insertAvailabilitySlots } from '@/lib/slots';
 import { updateCycle } from '@/lib/cycles';
+import { deleteUnbookedSlots } from '@/lib/cycleWrites';
 
 /**
  * Pure planner for EXTENDING an existing cycle to a later end date by replicating its weekly
@@ -247,4 +248,32 @@ export async function extendCycleToEndDate(cycleId: string, newEndDate: string):
   const { error: insErr } = await insertAvailabilitySlots(rows, supabase);
   if (insErr) throw insErr;
   return { added: rows.length };
+}
+
+export interface ApplyCycleEndDateResult {
+  /** New sessions generated (extend). */
+  added: number;
+  /** Out-of-range empty sessions removed (trim). */
+  removed: number;
+}
+
+/**
+ * Apply a new cycle end date in ONE call: extend (generate the missing weekly sessions) when the date
+ * is later, and optionally trim the now-out-of-range EMPTY sessions when it's earlier. The caller
+ * supplies the removable (booking-free) ids it already previewed via `findSlotsAfterDate` — booked
+ * sessions are never in that list, so they're always kept. Both the standalone end-date dialog and the
+ * consolidated cycle editor route through here so the extend/trim behaviour can't diverge. Invoice-safe
+ * (extend adds booking-free slots; trim only deletes empty ones).
+ */
+export async function applyCycleEndDate(
+  cycleId: string,
+  newEndDate: string,
+  opts: { removableIds?: string[]; removeUnbooked?: boolean } = {},
+): Promise<ApplyCycleEndDateResult> {
+  const { added } = await extendCycleToEndDate(cycleId, newEndDate);
+  let removed = 0;
+  if (opts.removeUnbooked && opts.removableIds && opts.removableIds.length > 0) {
+    removed = await deleteUnbookedSlots(opts.removableIds);
+  }
+  return { added, removed };
 }
