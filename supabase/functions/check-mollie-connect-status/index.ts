@@ -5,6 +5,7 @@ import {
   MOLLIE_CONNECT_STATUS_DISCONNECTED,
 } from "../_shared/mollie-payment-ready.ts";
 import { corsHeaders, jsonForbidden, requireUser } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -63,6 +64,12 @@ async function refreshTokenIfNeeded(
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json();
       logStep("Token refresh failed", errorData);
+      // Silent money-path failure: refresh token rejected → payouts break. Alert (IDs/type only, no tokens).
+      await notifySlackEdgeError(
+        "check-mollie-connect-status",
+        `Mollie token refresh rejected (HTTP ${tokenResponse.status})`,
+        { entityType, entityId, mollieError: String(errorData?.error ?? "").slice(0, 200) },
+      );
       return null;
     }
 
@@ -87,6 +94,12 @@ async function refreshTokenIfNeeded(
     return tokens.access_token;
   } catch (error) {
     logStep("Error refreshing token", { error });
+    // Silent money-path failure: token refresh threw → payouts break. Alert (IDs/type only, no tokens).
+    await notifySlackEdgeError(
+      "check-mollie-connect-status",
+      `Mollie token refresh threw: ${error instanceof Error ? error.message : String(error)}`,
+      { entityType, entityId },
+    );
     return null;
   }
 }

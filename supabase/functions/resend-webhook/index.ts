@@ -9,6 +9,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { verifySvix } from "../_shared/svix-verify.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) =>
   console.log(`[RESEND-WEBHOOK] ${step}`, details ? JSON.stringify(details) : "");
@@ -30,6 +31,8 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("method not allowed", { status: 405 });
   }
+
+  try {
 
   const secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -56,7 +59,10 @@ serve(async (req) => {
   let evt: ResendWebhookEvent;
   try {
     evt = JSON.parse(body);
-  } catch {
+  } catch (err) {
+    // Was fully silent: at minimum surface the parse failure (svix already verified
+    // this body, so malformed JSON here is unexpected). 400 -> Resend won't retry.
+    logStep("bad_json", { error: err instanceof Error ? err.message : String(err) });
     return new Response("bad json", { status: 400 });
   }
 
@@ -122,6 +128,9 @@ serve(async (req) => {
 
   if (error) {
     logStep("record_failed", { error: error.message });
+    // Alert: record_email_event failing means bounce/delivery events stop landing
+    // in the email-health tables (silent deliverability blackout). IDs only, no PII.
+    await notifySlackEdgeError("resend-webhook", `record_email_event failed: ${error.message}`, { eventType, resendEmailId });
     return new Response("record failed", { status: 500 }); // 5xx → Resend retries
   }
 
@@ -130,4 +139,12 @@ serve(async (req) => {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
+  } catch (error) {
+    // Silent-blackout guard: any unexpected throw in the ingestion path (verify,
+    // origin lookup, record_email_event) would otherwise vanish into a bare 500.
+    const msg = error instanceof Error ? error.message : String(error);
+    logStep("unhandled_error", { error: msg });
+    await notifySlackEdgeError("resend-webhook", msg);
+    return new Response("internal error", { status: 500 }); // 5xx -> Resend retries
+  }
 });

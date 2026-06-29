@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,6 +94,8 @@ serve(async (req) => {
 
       if (slotsError) {
         console.error("Error updating slots:", slotsError);
+        // Alert: VAT flag write on future slots failed silently (money-affecting)
+        await notifySlackEdgeError("bulk-update-vat", `slot VAT update failed: ${slotsError.message ?? String(slotsError)}`, { trainerId, scope: "availability_slots" });
       }
       slotsUpdated = updatedSlots?.length || 0;
     }
@@ -106,10 +109,14 @@ serve(async (req) => {
 
     if (invoicesError) {
       console.error("Error fetching invoices:", invoicesError);
+      // Alert: invoice fetch failed → recalc silently skipped, returns invoicesUpdated:0 as if OK
+      await notifySlackEdgeError("bulk-update-vat", `invoice fetch failed: ${invoicesError.message ?? String(invoicesError)}`, { entityId, isAcademyMode });
     }
 
     let invoicesUpdated = 0;
+    let invoicesFailed = 0;
     const invoiceIds: string[] = [];
+    const failedInvoiceIds: string[] = [];
 
     if (invoices && invoices.length > 0) {
       for (const invoice of invoices) {
@@ -148,7 +155,15 @@ serve(async (req) => {
           invoiceIds.push(invoice.id);
         } else {
           console.error(`Error updating invoice ${invoice.id}:`, updateError);
+          // Record per-invoice failure for the aggregate alert after the loop (no per-item alert)
+          invoicesFailed++;
+          failedInvoiceIds.push(invoice.id);
         }
+      }
+
+      // Aggregate alert: some unpaid invoices failed VAT recalc (money-affecting partial failure)
+      if (invoicesFailed > 0) {
+        await notifySlackEdgeError("bulk-update-vat", `${invoicesFailed} of ${invoices.length} invoices failed VAT recalc`, { entityId, isAcademyMode, invoicesUpdated, failedInvoiceIds });
       }
 
       // 3. Regenerate PDFs for updated invoices
@@ -174,6 +189,8 @@ serve(async (req) => {
     );
   } catch (err) {
     console.error("Unexpected error:", err);
+    // Alert: unexpected failure in bulk VAT admin fn (500 returned to caller)
+    await notifySlackEdgeError("bulk-update-vat", (err as Error)?.message ?? String(err));
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

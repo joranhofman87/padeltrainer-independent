@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = sharedCors;
 
@@ -483,6 +484,10 @@ serve(async (req) => {
           createdInvoiceId,
           error: reconcileErr.message,
         });
+        // Money-correctness: the split invoice was created but kept the WRONG
+        // share amount. Count it so the post-loop aggregate alert covers
+        // reconcile drift too (the comment at the splitFailures decl promises it).
+        splitFailures.push({ playerKey, stage: "reconcile", error: reconcileErr.message });
       } else {
         logStep("Reconciled created invoice to exact share", {
           createdInvoiceId,
@@ -498,6 +503,9 @@ serve(async (req) => {
     const originalPlayerKey =
       invoice.player_id || `guest:${invoice.guest_player_id}`;
     const createdInvoices: string[] = [];
+    // Collect per-player failures (create + cent-reconcile) for ONE aggregate
+    // Slack alert after the loop — never alert per-item.
+    const splitFailures: { playerKey: string; stage: string; error: string }[] = [];
 
     for (const [playerKey, data] of Object.entries(playerBookings)) {
       if (playerKey === originalPlayerKey) continue;
@@ -543,6 +551,7 @@ serve(async (req) => {
           playerKey,
           error: String(createErr),
         });
+        splitFailures.push({ playerKey, stage: "create", error: String(createErr) });
       } else {
         logStep("Created invoice for player", {
           playerKey,
@@ -557,6 +566,16 @@ serve(async (req) => {
           }
         }
       }
+    }
+
+    // Partial-failure aggregate alert: some split invoices failed to create.
+    // IDs/counts/error strings only (no PII). Fired before the 200 response.
+    if (splitFailures.length > 0) {
+      await notifySlackEdgeError(
+        "split-invoice",
+        `${splitFailures.length} of ${totalPlayers - 1} split invoices failed`,
+        { invoiceId, totalPlayers, created: createdInvoices.length, failures: splitFailures },
+      );
     }
 
     // 7. Try to update cycle split_payment setting if applicable
@@ -602,6 +621,8 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    // Alert on any unhandled failure (incl. the invoice-update throw above).
+    await notifySlackEdgeError("split-invoice", message);
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

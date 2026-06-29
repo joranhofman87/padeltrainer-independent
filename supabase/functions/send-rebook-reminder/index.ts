@@ -10,6 +10,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { buildClaimUrl, resolveAppBase, resolveRecipient } from "../_shared/priority-claim-invite.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,11 +156,22 @@ serve(async (req: Request) => {
         p_player_ids: sentPlayerIds,
         p_guest_ids: sentGuestIds,
       });
-      if (stampErr) console.error("reminded_at stamp failed", stampErr);
+      if (stampErr) {
+        console.error("reminded_at stamp failed", stampErr);
+        // Non-blocking: emails already sent, but a failed stamp means these players can be re-reminded.
+        await notifySlackEdgeError("send-rebook-reminder", "reminded_at stamp failed (players may be re-reminded)", { cycleId, sentPlayers: sentPlayerIds.length, sentGuests: sentGuestIds.length, error: String(stampErr?.message ?? stampErr) });
+      }
+    }
+
+    // Aggregate alert for per-recipient send failures (never per-item) before the 200 response.
+    if (failed > 0) {
+      await notifySlackEdgeError("send-rebook-reminder", `${failed} of ${recipients.length} reminder emails failed`, { cycleId, sent, skipped, failed, recipients: recipients.length });
     }
 
     return json({ ok: true, sent, skipped, failed });
   } catch (e) {
+    // Unexpected failure (auth/DB/parse) — surface to Slack before the 500.
+    await notifySlackEdgeError("send-rebook-reminder", String((e as Error)?.message ?? e));
     return json({ ok: false, error: "internal_error", message: String((e as Error)?.message ?? e) }, 500);
   }
 });

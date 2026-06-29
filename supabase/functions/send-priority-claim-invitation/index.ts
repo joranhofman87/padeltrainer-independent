@@ -6,6 +6,7 @@ import {
   resolveAppBase,
   resolveRecipient,
 } from "../_shared/priority-claim-invite.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -424,6 +425,16 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // Partial-failure alert: a high-volume rebook blast can silently drop invites
+    // (per-send Resend errors or the time-budget early-stop). Alert ONCE with
+    // counts + claim IDs (no PII) instead of per recipient, before the 200.
+    if (failed > 0) {
+      await notifySlackEdgeError(
+        "send-priority-claim-invitation",
+        `${failed} of ${eligible.length} priority-claim invites failed`,
+        { sent, skipped, failed, failedClaimIds, isTest, resend: resend === true },
+      );
+    }
     return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -431,6 +442,9 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (e) {
     console.error(e);
     const message = e instanceof Error ? e.message : String(e);
+    // Total-failure alert: auth/RLS query errors, body-parse failures, or any
+    // unexpected throw abort the whole batch and otherwise reach only console.
+    await notifySlackEdgeError("send-priority-claim-invitation", message);
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...corsHeaders },

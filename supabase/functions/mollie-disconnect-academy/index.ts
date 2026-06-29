@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders, jsonForbidden, requireUser } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[MOLLIE-DISCONNECT-ACADEMY] ${step}`, details ? JSON.stringify(details) : "");
@@ -39,10 +40,15 @@ serve(async (req) => {
       throw new Error("Failed to disconnect payment account");
     }
 
-    await supabaseClient
+    const { error: profileUpdateError } = await supabaseClient
       .from("academy_profiles")
       .update({ mollie_customer_id: null })
       .eq("id", academyProfileId);
+    if (profileUpdateError) {
+      // Non-blocking: mollie account already deleted, but stale customer id left behind — alert, don't fail the request.
+      logStep("Profile update failed", { error: profileUpdateError.message });
+      await notifySlackEdgeError("mollie-disconnect-academy", `academy_profiles mollie_customer_id clear failed: ${profileUpdateError.message}`, { academyProfileId });
+    }
 
     logStep("Academy Mollie disconnected", { academyProfileId });
 
@@ -53,6 +59,8 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
+    // Promote silent failure to Slack: Mollie payment-account disconnect failed.
+    await notifySlackEdgeError("mollie-disconnect-academy", errorMessage);
     return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

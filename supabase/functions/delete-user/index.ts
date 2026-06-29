@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { deleteUserData } from "../_shared/delete-user-data.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,7 +99,7 @@ Deno.serve(async (req) => {
     await deleteUserData(supabaseAdmin, target_user_id);
 
     // Log the admin action
-    await supabaseAdmin.from("admin_impersonation_logs").insert({
+    const { error: auditLogError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: adminUser.id,
       target_user_id: target_user_id,
       action: 'delete_user',
@@ -110,6 +111,11 @@ Deno.serve(async (req) => {
       user_agent: req.headers.get("user-agent"),
       expires_at: new Date().toISOString(),
     });
+    if (auditLogError) {
+      // Alert: user was deleted but the audit-trail write failed — IDs/error only, no PII
+      console.error("Failed to write admin_impersonation_logs for delete_user:", auditLogError);
+      await notifySlackEdgeError("delete-user", `audit log insert failed: ${auditLogError.message}`, { admin_user_id: adminUser.id, target_user_id });
+    }
 
     console.log(`User deleted: ${target_user_id} by admin ${adminUser.id}`);
 
@@ -128,6 +134,8 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
     console.error("Error in delete-user function:", error);
+    // Alert: security-sensitive account deletion failed — IDs/error only, no PII
+    await notifySlackEdgeError("delete-user", errorMessage);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

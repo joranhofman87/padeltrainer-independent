@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { restrictedCors } from "../_shared/cors.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 Deno.serve(async (req) => {
   const corsHeaders = restrictedCors(req);
@@ -97,6 +98,8 @@ Deno.serve(async (req) => {
 
     if (linkError || !linkData?.properties?.action_link) {
       console.error("Failed to generate magic link:", linkError);
+      // Alert: core impersonation operation (magic-link mint) failed; early-returns so top-level catch never sees it. IDs only, no email.
+      await notifySlackEdgeError("impersonate-user", linkError?.message ?? "generateLink returned no action_link", { admin_user_id: adminUser.id, target_user_id });
       return new Response(
         JSON.stringify({ error: "Failed to generate impersonation link" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -105,13 +108,17 @@ Deno.serve(async (req) => {
 
     // Log the impersonation for audit trail
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-    await supabaseAdmin.from("admin_impersonation_logs").insert({
+    const { error: auditLogError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: adminUser.id,
       target_user_id: target_user_id,
       expires_at: expiresAt.toISOString(),
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
       user_agent: req.headers.get("user-agent"),
     });
+    if (auditLogError) {
+      // Alert: impersonation SUCCEEDED but the security audit record was lost. Not a success-path alert — fires only on insert failure. IDs only.
+      await notifySlackEdgeError("impersonate-user", `audit log insert failed: ${auditLogError.message}`, { admin_user_id: adminUser.id, target_user_id });
+    }
 
     return new Response(
       JSON.stringify({
@@ -122,6 +129,8 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("Impersonation error:", error);
+    // Alert: unexpected failure in security-sensitive impersonation flow (no PII; error string only)
+    await notifySlackEdgeError("impersonate-user", error instanceof Error ? error.message : String(error));
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
