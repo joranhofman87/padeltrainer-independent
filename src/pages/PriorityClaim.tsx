@@ -113,6 +113,11 @@ export default function PriorityClaimPage() {
           window.location.href = `/pay/${res.publicToken}`;
           return;
         }
+        if (res.mode === 'strict_mollie_unavailable') {
+          // Strict: no seat is held without payment — the hold was released. Do NOT mark accepted.
+          toast.error(t('rebooking.strictMollieUnavailable', 'We couldn’t start the online payment, so no spot was reserved. Please try again.'));
+          return;
+        }
         setAccepted(true);
         if (res.mode === 'upfront_unavailable') {
           toast.success(t('rebooking.upfrontUnavailable', 'Your spot is reserved. Online payment is not available yet — you will receive an invoice.'));

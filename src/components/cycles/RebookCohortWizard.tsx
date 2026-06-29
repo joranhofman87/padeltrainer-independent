@@ -93,6 +93,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [memberWindowDays, setMemberWindowDays] = useState(7);
   const [enableMemberWindow, setEnableMemberWindow] = useState(true);
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
+  const [strictMollie, setStrictMollie] = useState(false);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -143,6 +144,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       priorityWindowDays,
       memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
       paymentMode,
+      strictMollie: paymentMode === 'upfront' && strictMollie,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
       weeks: weeks ? Number(weeks) : 0,
@@ -159,6 +161,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       enableMemberWindow,
       memberWindowDays,
       paymentMode,
+      strictMollie,
       requireAdminReview,
       targetCycleName,
       weeks,
@@ -499,6 +502,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
             academyProfileId={academyProfileId}
             paymentMode={paymentMode}
             setPaymentMode={setPaymentMode}
+            strictMollie={strictMollie}
+            setStrictMollie={setStrictMollie}
           />
 
           <Card>

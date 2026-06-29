@@ -51,6 +51,12 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
           window.location.href = `/pay/${res.publicToken}`;
           return;
         }
+        if (res.mode === 'strict_mollie_unavailable') {
+          // Strict: no seat without payment — the hold was released. Refresh so the card stays.
+          toast.error(t('rebooking.strictMollieUnavailable', 'We couldn’t start the online payment, so no spot was reserved. Please try again.'));
+          refresh();
+          return;
+        }
         if (res.mode === 'upfront_unavailable') {
           toast.success(t('rebooking.upfrontUnavailable', 'Your spot is reserved. Online payment is not available yet — you will receive an invoice.'));
         } else {

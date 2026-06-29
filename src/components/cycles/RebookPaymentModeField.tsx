@@ -10,6 +10,13 @@ interface Props {
   academyProfileId: string;
   paymentMode: RebookPaymentMode;
   setPaymentMode: (m: RebookPaymentMode) => void;
+  /**
+   * Optional STRICT pay-first toggle ("no seat until Mollie paid"). Only offered when the academy
+   * has Mollie online checkout (strict has no bank-invoice fallback) AND upfront is selected. When
+   * these handlers are omitted the checkbox is not rendered (back-compat for callers without it).
+   */
+  strictMollie?: boolean;
+  setStrictMollie?: (b: boolean) => void;
 }
 
 /**
@@ -19,7 +26,7 @@ interface Props {
  * bank transfer). Otherwise it is disabled and prompts the academy to set payment
  * details up first. Shared by both rebook wizards.
  */
-export function RebookPaymentModeField({ academyProfileId, paymentMode, setPaymentMode }: Props) {
+export function RebookPaymentModeField({ academyProfileId, paymentMode, setPaymentMode, strictMollie, setStrictMollie }: Props) {
   const { t } = useTranslation('cycles');
   const [elig, setElig] = useState<UpfrontEligibility | null>(null);
 
@@ -35,6 +42,13 @@ export function RebookPaymentModeField({ academyProfileId, paymentMode, setPayme
   useEffect(() => {
     if (elig && !elig.canCharge && paymentMode === 'upfront') setPaymentMode('deferred_split');
   }, [elig, paymentMode, setPaymentMode]);
+
+  // Strict requires online Mollie + upfront; force it off if either no longer holds.
+  useEffect(() => {
+    if (setStrictMollie && strictMollie && (paymentMode !== 'upfront' || (elig != null && !elig.mollieReady))) {
+      setStrictMollie(false);
+    }
+  }, [elig, paymentMode, strictMollie, setStrictMollie]);
 
   const upfrontDisabled = elig != null && !elig.canCharge;
 
@@ -77,6 +91,21 @@ export function RebookPaymentModeField({ academyProfileId, paymentMode, setPayme
           <p className="pl-6 text-xs text-muted-foreground">
             {t('bulkCopy.paymentModeUpfrontHint', 'Requires online payments (Mollie) for the trainer or academy.')}
           </p>
+        ) : null}
+
+        {/* STRICT pay-first — only with online Mollie (no bank fallback) + upfront selected. */}
+        {setStrictMollie && paymentMode === 'upfront' && elig?.mollieReady ? (
+          <label className="ml-6 flex items-start gap-2 pt-1 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={!!strictMollie}
+              onChange={(e) => setStrictMollie(e.target.checked)}
+            />
+            <span>
+              {t('rebookShared.strictMollie', 'Strikt: leg de plek pas vast nadat er online (Mollie) is betaald — geen factuur-terugval.')}
+            </span>
+          </label>
         ) : null}
       </CardContent>
     </Card>
