@@ -3,7 +3,8 @@
 // only on the shared toCycle mapper + applySlotDeleteToCycle guard + supabase — so cycles.ts re-exports
 // via `export *` (and imports updateCycle back for its 2 callers).
 import { supabase } from '@/lib/supabaseClient';
-import type { Json } from '@/integrations/supabase/types';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Json, Database } from '@/integrations/supabase/types';
 import type { Cycle, CycleInput, CycleSettings, SlotEditPatch, SlotEditResult } from './cycleTypes';
 import { toCycle } from './cycleMappers';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
@@ -80,7 +81,10 @@ export async function updateCycleSettings(cycleId: string, settings: CycleSettin
   if (error) throw error;
 }
 
-export async function createCycle(input: CycleInput): Promise<Cycle> {
+export async function createCycle(
+  input: CycleInput,
+  client: SupabaseClient<Database> = supabase,
+): Promise<Cycle> {
   const insertData = {
     owner_type: input.owner_type,
     owner_id: input.owner_id,
@@ -101,7 +105,7 @@ export async function createCycle(input: CycleInput): Promise<Cycle> {
     price_table: (input.price_table ?? null) as unknown as Json,
   };
   
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('cycles')
     .insert(insertData)
     .select()

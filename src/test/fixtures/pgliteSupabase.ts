@@ -11,7 +11,7 @@
  */
 import type { PGlite } from '@electric-sql/pglite';
 
-type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps';
+type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps' | 'gte';
 interface Filter { kind: FilterKind; col: string; val: unknown; }
 interface SupaResult<T> { data: T; error: { message: string } | null; }
 
@@ -27,9 +27,10 @@ const isJsonb = (v: unknown) =>
 const EMBED_MARK = 'availability_slots!inner';
 
 class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
-  private op: 'select' | 'update' = 'select';
+  private op: 'select' | 'update' | 'insert' | 'delete' = 'select';
   private columns = '*';
   private updateData: Record<string, unknown> | null = null;
+  private insertRows: Record<string, unknown>[] | null = null;
   private filters: Filter[] = [];
   private singleRow = false;
   private orderBy: { col: string; ascending: boolean } | null = null;
@@ -38,12 +39,20 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
 
   select(columns = '*') { this.columns = columns; return this; }
   update(data: Record<string, unknown>) { this.op = 'update'; this.updateData = data; return this; }
+  insert(rows: Record<string, unknown> | Record<string, unknown>[]) {
+    this.op = 'insert';
+    this.insertRows = Array.isArray(rows) ? rows : [rows];
+    return this;
+  }
+  delete() { this.op = 'delete'; return this; }
   eq(col: string, val: unknown) { this.filters.push({ kind: 'eq', col, val }); return this; }
   neq(col: string, val: unknown) { this.filters.push({ kind: 'neq', col, val }); return this; }
+  gte(col: string, val: unknown) { this.filters.push({ kind: 'gte', col, val }); return this; }
   in(col: string, val: unknown[]) { this.filters.push({ kind: 'in', col, val }); return this; }
   overlaps(col: string, val: unknown[]) { this.filters.push({ kind: 'overlaps', col, val }); return this; }
   order(col: string, opts?: { ascending?: boolean }) { this.orderBy = { col, ascending: opts?.ascending !== false }; return this; }
   maybeSingle() { this.singleRow = true; return this.run(); }
+  single() { this.singleRow = true; return this.run(); }
 
   // Thenable: `await builder` runs the query.
   then<R1 = SupaResult<unknown>, R2 = never>(
@@ -61,6 +70,7 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
       if (f.kind === 'eq') return `${f.col} = ${p}`;
       // `<>` matches PostgREST .neq(): NULL-unsafe, so a NULL column does NOT pass the filter.
       if (f.kind === 'neq') return `${f.col} <> ${p}`;
+      if (f.kind === 'gte') return `${f.col} >= ${p}`;
       if (f.kind === 'in') return `${f.col} = ANY(${p})`;
       return `${f.col} && ${p}`; // overlaps
     });
@@ -78,6 +88,23 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
         });
         const returning = this.columns && this.columns !== '*' ? this.columns : '*';
         sql = `UPDATE ${this.table} SET ${sets.join(', ')}${this.whereClause(params)} RETURNING ${returning}`;
+      } else if (this.op === 'insert') {
+        const rows = this.insertRows ?? [];
+        if (rows.length === 0) return { data: this.singleRow ? null : [], error: null };
+        // Homogeneous rows (the generator builds identical column sets) → columns from row[0].
+        const cols = Object.keys(rows[0]);
+        const tuples = rows.map((row) => {
+          const placeholders = cols.map((col) => {
+            const val = row[col];
+            if (isJsonb(val)) { params.push(JSON.stringify(val)); return `$${params.length}::jsonb`; }
+            params.push(val); return `$${params.length}`;
+          });
+          return `(${placeholders.join(', ')})`;
+        });
+        const returning = this.columns && this.columns !== '*' ? this.columns : '*';
+        sql = `INSERT INTO ${this.table} (${cols.join(', ')}) VALUES ${tuples.join(', ')} RETURNING ${returning}`;
+      } else if (this.op === 'delete') {
+        sql = `DELETE FROM ${this.table}${this.whereClause(params)}`;
       } else if (this.columns.includes(EMBED_MARK)) {
         // bookings + the embedded slot (+ its location) the recalc reads.
         sql =

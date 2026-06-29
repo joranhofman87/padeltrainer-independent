@@ -81,6 +81,13 @@ export interface CycleSettings {
   payment_timing?: 'upfront' | 'invoice_after_weeks' | 'manual';
   invoice_delay_weeks?: number;
   split_payment?: boolean;
+  // Quick slot/cycle generator (additive — see src/lib/slotGenerator.ts).
+  /** Provenance marker: set on cycles created by the slot generator. */
+  generated_by?: 'slot_generator';
+  /** Owner's public/private intent; applied to slots on publish (draft slots stay is_public=false). */
+  publish_visibility?: 'public' | 'private';
+  /** Phase-B-inert: a public cycle that requires upfront payment before a slot is reserved. */
+  requires_upfront_payment?: boolean;
   // Event-specific settings
   payment_methods?: EventPaymentMethod;
   event_dates?: string[];
