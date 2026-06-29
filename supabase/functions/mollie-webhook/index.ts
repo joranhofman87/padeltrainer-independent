@@ -484,17 +484,47 @@ serve(async (req) => {
         }
 
         if (invoiceData?.booking_ids && invoiceData.booking_ids.length > 0) {
-          const { error: bookingUpdateError } = await supabase
-            .from("bookings")
-            .update({
+          try {
+            // Detect a paid invoice landing on a CANCELLED booking before the
+            // guarded write-back skips it: the money was received but the seat
+            // is gone → alert for a manual refund (mirrors the booking-pay branch).
+            const { data: linkedRows } = await supabase
+              .from("bookings")
+              .select("id, status, payment_status")
+              .in("id", invoiceData.booking_ids);
+            const cancelledPaid = findCancelledPaidBookings(linkedRows || []);
+            if (cancelledPaid.length > 0) {
+              logStep("Invoice paid on CANCELLED booking(s) — manual refund needed", {
+                cancelledPaid,
+                invoiceId: invoiceIdFromMetadata,
+              });
+              await notifySlackError(
+                "mollie-webhook",
+                "Invoice paid webhook: payment landed on cancelled booking(s) — manual refund/review",
+                { paymentId, invoiceId: invoiceIdFromMetadata, bookingIds: cancelledPaid },
+              );
+            }
+
+            // Guarded write-back: NEVER resurrect a cancelled booking, never
+            // downgrade an already-paid one. Routes through the same helper the
+            // booking-pay branch uses — previously this branch did a RAW
+            // unguarded .update(), which could flip a cancelled booking back to
+            // paid/confirmed (the no-resurrection invariant held for the booking
+            // branch but not here).
+            const updated = await applyBookingPaymentWriteback(supabase, invoiceData.booking_ids, {
               payment_status: "paid",
               status: "confirmed",
               paid_at: new Date().toISOString(),
-            })
-            .in("id", invoiceData.booking_ids);
-
-          if (bookingUpdateError) {
-            logStep("Failed to update linked bookings", { error: bookingUpdateError.message });
+            });
+            logStep("Linked bookings updated to paid (guarded)", {
+              requested: invoiceData.booking_ids.length,
+              transitioned: updated.length,
+            });
+          } catch (bookingUpdateError) {
+            const msg = bookingUpdateError instanceof Error
+              ? bookingUpdateError.message
+              : String(bookingUpdateError);
+            logStep("Failed to update linked bookings", { error: msg });
             await notifySlackError(
               "mollie-webhook",
               "Invoice paid webhook: linked bookings sync failed",
@@ -502,12 +532,10 @@ serve(async (req) => {
                 paymentId,
                 invoiceId: invoiceIdFromMetadata,
                 bookingCount: invoiceData.booking_ids.length,
-                error: bookingUpdateError.message,
+                error: msg,
               },
             );
             linkedBookingsSyncFailed = true;
-          } else {
-            logStep("Linked bookings updated to paid", { count: invoiceData.booking_ids.length });
           }
         }
 

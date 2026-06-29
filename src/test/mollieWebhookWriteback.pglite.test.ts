@@ -152,3 +152,33 @@ describe('findCancelledPaidBookings (alert detector)', () => {
     expect(findCancelledPaidBookings([{ id: 'A', status: 'confirmed', payment_status: 'pending' }])).toEqual([]);
   });
 });
+
+// The mollie-webhook INVOICE-paid branch syncs invoice.booking_ids: pre-read the linked bookings to
+// flag a cancelled-but-unpaid seat for a refund, THEN route the write-back through the same guarded
+// applyBookingPaymentWriteback the booking-pay branch uses. This composite is what makes the
+// no-resurrection invariant hold for the invoice branch too — it previously did a RAW unguarded
+// .update() over booking_ids, which could flip a since-cancelled booking back to paid/confirmed.
+describe('invoice-paid branch: guarded linked-booking sync (composite contract)', () => {
+  it('confirms active bookings, leaves a cancelled one untouched, flags it for refund', async () => {
+    await db.exec(`INSERT INTO bookings (id, slot_id, payment_status, status) VALUES
+      ('B1','S1','pending','cancelled'), ('B2','S1','pending','pending');`);
+    const bookingIds = ['B1', 'B2']; // an invoice.booking_ids that includes a since-cancelled seat
+
+    // 1. pre-read → refund detector flags the cancelled, not-yet-paid booking
+    const { data: pre } = await supa.from('bookings').select('id, status, payment_status').in('id', bookingIds);
+    expect(findCancelledPaidBookings(pre || [])).toEqual(['B1']);
+
+    // 2. guarded write-back flips ONLY the still-active booking
+    const transitioned = await applyBookingPaymentWriteback(supa, bookingIds, { ...PAID });
+    expect(transitioned.map((r) => r.id)).toEqual(['B2']);
+
+    // 3. the cancelled booking is NOT resurrected; the active one is paid+confirmed
+    const b1 = await booking('B1');
+    expect(b1.status).toBe('cancelled');
+    expect(b1.payment_status).toBe('pending');
+    expect(b1.paid_at).toBeNull();
+    const b2 = await booking('B2');
+    expect(b2.status).toBe('confirmed');
+    expect(b2.payment_status).toBe('paid');
+  });
+});
