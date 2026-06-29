@@ -389,12 +389,56 @@ export interface MyPendingClaim {
  * RLS ("Players read own priority claims") scopes the rows to this player.
  */
 export async function getMyPendingPriorityClaims(profileId: string): Promise<MyPendingClaim[]> {
-  const { data, error } = await supabase
-    .from('slot_priority_claims')
-    .select('id, claim_token, slot_id, rebook_group_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
-    .eq('player_id', profileId)
-    .eq('status', 'pending');
-  if (error) throw error;
+  // Linked-guest aware (rebook go-live B1): the SECURITY DEFINER RPC returns this player's
+  // pending claims keyed on player_id = me OR guest_player_id ∈ my linked guests, so an
+  // academy/captain rebooking on behalf of a linked account-holder surfaces on their OWN
+  // dashboard (a guest-keyed claim is invisible to a plain player_id read). Normalised into
+  // the nested shape the group-collapse loop below already expects. Falls back to the legacy
+  // player_id-only direct read when the RPC isn't deployed yet (PGRST202) so the card keeps
+  // working in the FE-deployed-migration-pending window.
+  type NestedClaim = {
+    id: string;
+    claim_token: string;
+    slot_id: string;
+    rebook_group_id: string | null;
+    availability_slots: {
+      start_time: string;
+      end_time: string;
+      cyclus_id: string | null;
+      cyclus_name: string | null;
+      price_per_session: number | null;
+      priority_window_ends_at: string | null;
+    } | null;
+  };
+  let data: NestedClaim[];
+  const rpc = await supabase.rpc('get_my_pending_priority_claims');
+  if (rpc.error) {
+    if (rpc.error.code !== 'PGRST202') throw rpc.error;
+    const fb = await supabase
+      .from('slot_priority_claims')
+      .select('id, claim_token, slot_id, rebook_group_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
+      .eq('player_id', profileId)
+      .eq('status', 'pending');
+    if (fb.error) throw fb.error;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data = (fb.data || []) as any[];
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data = ((rpc.data || []) as any[]).map((r) => ({
+      id: r.id,
+      claim_token: r.claim_token,
+      slot_id: r.slot_id,
+      rebook_group_id: r.rebook_group_id ?? null,
+      availability_slots: {
+        start_time: r.start_time,
+        end_time: r.end_time,
+        cyclus_id: r.cyclus_id ?? null,
+        cyclus_name: r.cyclus_name ?? null,
+        price_per_session: r.price_per_session ?? null,
+        priority_window_ends_at: r.priority_window_ends_at ?? null,
+      },
+    }));
+  }
   const now = Date.now();
   // Collapse weekly claims into one MyPendingClaim per group (fallback: slot).
   const byGroup = new Map<string, MyPendingClaim>();

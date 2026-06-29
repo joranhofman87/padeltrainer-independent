@@ -7819,6 +7819,29 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_my_linked_guest_bookings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      get_my_paid_booking_ids: {
+        Args: Record<PropertyKey, never>
+        Returns: { booking_id: string }[]
+      }
+      get_my_pending_priority_claims: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          claim_token: string
+          cyclus_id: string
+          cyclus_name: string
+          end_time: string
+          id: string
+          price_per_session: number
+          priority_window_ends_at: string
+          rebook_group_id: string
+          slot_id: string
+          start_time: string
+        }[]
+      }
       get_player_email_edit_capability: {
         Args: { _academy_profile_id: string; _profile_id: string }
         Returns: string

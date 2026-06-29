@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
+import { fetchLinkedGuestBookingRows } from '@/lib/playerBookings';
 import { logger } from '@/lib/logger';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
@@ -42,21 +43,28 @@ export default function PlayerAgenda() {
 
   const fetchSlots = useCallback(async (playerId: string) => {
     setLoadingSlots(true);
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
-        status,
-        availability_slots(
-          start_time,
-          end_time,
-          trainer_id,
-          max_participants,
-          location_id,
-          locations(name)
-        )
-      `)
-      .eq('player_id', playerId)
-      .neq('status', 'cancelled');
+    // Linked-guest visibility (rebook go-live B2): also surface sessions booked on behalf of this
+    // player under a guest record linked to their profile (academy add / captain rebook). The
+    // player_id query is untouched; the supplementary linked-guest rows are best-effort (never
+    // block the player's own agenda) and arrive as a superset of BookingSlotRow's fields.
+    const [{ data, error }, guestRows] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select(`
+          status,
+          availability_slots(
+            start_time,
+            end_time,
+            trainer_id,
+            max_participants,
+            location_id,
+            locations(name)
+          )
+        `)
+        .eq('player_id', playerId)
+        .neq('status', 'cancelled'),
+      fetchLinkedGuestBookingRows(),
+    ]);
 
     if (error) {
       logger.error('Failed to load player agenda bookings', new Error(error.message), {
@@ -69,7 +77,8 @@ export default function PlayerAgenda() {
       return;
     }
 
-    const rows = (data as unknown as BookingSlotRow[] | null) || [];
+    const guestActive = (guestRows as unknown as BookingSlotRow[]).filter((r) => r.status !== 'cancelled');
+    const rows = [...((data as unknown as BookingSlotRow[] | null) || []), ...guestActive];
     const validRows = rows.filter((r) => r.availability_slots?.start_time);
 
     const trainerIds = [
