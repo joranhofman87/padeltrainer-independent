@@ -23,6 +23,15 @@ import { dirname, join } from 'node:path';
 const BASELINE = join(dirname(fileURLToPath(import.meta.url)), 'tsc-app.baseline.json');
 const ERR_RE = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/;
 
+// tsc embeds ABSOLUTE module paths inside some messages (e.g. a TS2322 "Type
+// import("/abs/path/foo").X is not assignable to import("/abs/path/bar").X").
+// Those paths differ per machine (/Users/tom/... locally vs /home/runner/...
+// on CI), so a signature that keeps them is non-portable: a baseline captured
+// locally then reads as a NEW error on CI (and the local one as "resolved").
+// Strip the repo-root prefix so signatures are stable across checkouts.
+const CWD = process.cwd();
+const stripAbs = (s) => s.split(`${CWD}/`).join('').split(CWD).join('');
+
 function collectErrorCounts() {
   let out = '';
   try {
@@ -35,7 +44,7 @@ function collectErrorCounts() {
   for (const line of out.split('\n')) {
     const m = ERR_RE.exec(line.trim());
     if (!m) continue; // skip indented continuation lines + noise
-    const sig = `${m[1]}|${m[4]}|${m[5]}`;
+    const sig = `${stripAbs(m[1])}|${m[4]}|${stripAbs(m[5])}`;
     counts[sig] = (counts[sig] || 0) + 1;
   }
   return counts;
