@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireAdmin } from "../_shared/auth.ts";
 import { restrictedCors } from "../_shared/cors.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BACKFILL-INVOICES] ${step}`, details ? JSON.stringify(details) : "");
@@ -144,11 +145,22 @@ serve(async (req) => {
 
     logStep("Backfill complete", { created, errors });
 
+    // Alert once on partial failure (some invoice groups never got created). IDs/counts only — no PII.
+    if (errors > 0) {
+      await notifySlackEdgeError(
+        "backfill-invoices",
+        `${errors} of ${Object.keys(groups).length} invoice groups failed to create`,
+        { academyProfileId, created, errors, totalGroups: Object.keys(groups).length },
+      );
+    }
+
     return new Response(JSON.stringify({ created, errors, totalGroups: Object.keys(groups).length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     logStep("Fatal error", { error: String(err) });
+    // Alert on fatal failure of this bulk admin money fn (DB errors, parse, etc.).
+    await notifySlackEdgeError("backfill-invoices", err instanceof Error ? err.message : String(err));
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -257,6 +258,15 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // Alert once if any welcome emails failed to send (aggregate, never per-item; IDs/counts only, no PII)
+    if (failCount > 0) {
+      await notifySlackEdgeError(
+        "trigger-welcome-emails",
+        `${failCount} of ${pendingEmails.length} welcome emails failed`,
+        { userId: user.id, processed: pendingEmails.length, success: successCount, failed: failCount },
+      );
+    }
+
     return new Response(
       JSON.stringify({
         processed: pendingEmails.length,
@@ -268,6 +278,8 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: unknown) {
     console.error("Error in trigger-welcome-emails:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    // Top-level failure (RESEND_API_KEY missing, queue fetch error, unexpected throw) — alert before the 500
+    await notifySlackEdgeError("trigger-welcome-emails", errorMessage);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

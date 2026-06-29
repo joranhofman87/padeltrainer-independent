@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders, requireUser, jsonForbidden } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -118,6 +119,8 @@ serve(async (req) => {
   if (auth instanceof Response) return auth;
   const supabase = auth.supabase;
 
+  // Hoisted so the top-level catch can suppress Slack alerts on dryRun/preview runs.
+  let dryRun = false;
   try {
     const body = await req.json().catch(() => ({}));
     // Two source modes (exactly one required): a single source CYCLUS — rebook
@@ -134,7 +137,7 @@ serve(async (req) => {
     const paymentMode: string = body?.paymentMode === "upfront" ? "upfront" : "deferred_split";
     const requireAdminReview: boolean = body?.requireAdminReview === true;
     const targetCycleName: string | null = body?.targetCycleName ?? null;
-    const dryRun: boolean = body?.dryRun === true;
+    dryRun = body?.dryRun === true;
     // New term shape (see generateWeeklyStarts): number of weeks, named holiday
     // ranges to skip, and the session price to apply to every new session.
     const weeks: number = Math.min(52, Math.max(0, Math.floor(Number(body?.weeks ?? 0)))); // hard cap at the source-form max
@@ -607,6 +610,10 @@ serve(async (req) => {
       }
 
       logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length });
+      // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
+      if (failedClaimIds.length > 0) {
+        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targetCycle.id, invitesSent, failedClaimIds });
+      }
       return new Response(JSON.stringify({
         ok: true,
         targetCycleId: targetCycle.id,
@@ -627,6 +634,8 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    // Alert on a genuine run failure (never in dryRun/preview — that path does no writes).
+    if (!dryRun) await notifySlackEdgeError("bulk-rebook-cycle", message);
     return new Response(JSON.stringify({ error: message }), {
       status: 500, headers: { "Content-Type": "application/json", ...corsHeaders },
     });

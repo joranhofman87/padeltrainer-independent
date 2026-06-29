@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { restrictedCors } from "../_shared/cors.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const MIN_LEN = 12;
 const MAX_LEN = 128;
@@ -123,6 +124,8 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error("Password update error:", updateError);
+      // Security/account-critical: an admin reset failed. Alert (IDs only, never email/password).
+      await notifySlackEdgeError("admin-reset-password", `password update failed: ${updateError.message ?? String(updateError)}`, { targetUserId: target_user_id });
       return new Response(
         JSON.stringify({ error: "Failed to update password" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -130,7 +133,7 @@ Deno.serve(async (req) => {
     }
 
     // Log the admin action
-    await supabaseAdmin.from("admin_impersonation_logs").insert({
+    const { error: auditError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: adminUser.id,
       target_user_id: target_user_id,
       action: 'password_reset',
@@ -138,6 +141,11 @@ Deno.serve(async (req) => {
       user_agent: req.headers.get("user-agent"),
       expires_at: new Date().toISOString(), // Not applicable for reset, just set to now
     });
+    if (auditError) {
+      // The password WAS reset; only the security audit-trail write failed — alert so the gap is visible.
+      console.error("Audit log write failed:", auditError);
+      await notifySlackEdgeError("admin-reset-password", `audit log write failed after password reset: ${auditError.message ?? String(auditError)}`, { adminUserId: adminUser.id, targetUserId: target_user_id });
+    }
 
     return new Response(
       JSON.stringify({ 
@@ -149,6 +157,7 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("Unexpected error:", error);
+    await notifySlackEdgeError("admin-reset-password", error instanceof Error ? error.message : String(error));
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
