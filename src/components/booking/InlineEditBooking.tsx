@@ -138,11 +138,16 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       if (error) throw error;
       // Reconcile any invoice that bills this booking to its bookings' real paid state
       // (flips to paid only when fully covered) — the booking write alone left it stale.
-      try {
-        await reconcileBookingInvoices([booking.id]);
-      } catch (syncErr) {
-        logger.error("Invoice reconcile after booking edit failed", syncErr as Error, { component: "InlineEditBooking" });
-        toast({ title: tCommon("error"), description: t("bookings.invoiceSyncFailed", "The booking was saved, but a linked invoice could not be updated. Please check the invoice."), variant: "destructive" });
+      // Honour the page-level "Don't update invoices" toggle: when on, the owner is
+      // deliberately freezing billing for this cycle, so a payment/player edit here must
+      // NOT touch the linked invoice either (consistent with the remove path).
+      if (!skipInvoiceUpdates) {
+        try {
+          await reconcileBookingInvoices([booking.id]);
+        } catch (syncErr) {
+          logger.error("Invoice reconcile after booking edit failed", syncErr as Error, { component: "InlineEditBooking" });
+          toast({ title: tCommon("error"), description: t("bookings.invoiceSyncFailed", "The booking was saved, but a linked invoice could not be updated. Please check the invoice."), variant: "destructive" });
+        }
       }
       toast({ title: t("bookings.bookingUpdated", "Booking updated") });
       onBookingUpdated();
