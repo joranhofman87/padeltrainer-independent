@@ -1311,7 +1311,13 @@
     "roster": {
       "title": "Spelers in deze cyclus",
       "empty": "Nog geen spelers ingedeeld.",
-      "sessionCount": "{{count}}×"
+      "sessionCount": "{{count}}×",
+      "removeFromCycle": "Uit cyclus verwijderen",
+      "removeFromCycleConfirm": "{{name}} uit deze cyclus verwijderen?",
+      "removeFromCycleDescription": "Verwijdert de speler uit alle komende sessies van deze reeks.",
+      "removedFromCycle": "Uit {{count}} sessie(s) verwijderd",
+      "removeFromCycleNone": "Geen komende sessies om de speler uit te verwijderen.",
+      "removeFromCycleError": "Kon de speler niet uit de cyclus verwijderen. Probeer het opnieuw."
     },
     "payment": {
       "allPaid": "Betaald",

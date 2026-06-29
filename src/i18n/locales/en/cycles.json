@@ -1176,7 +1176,13 @@
     "roster": {
       "title": "Players in this cycle",
       "empty": "No players assigned yet.",
-      "sessionCount": "{{count}}×"
+      "sessionCount": "{{count}}×",
+      "removeFromCycle": "Remove from cycle",
+      "removeFromCycleConfirm": "Remove {{name}} from this cycle?",
+      "removeFromCycleDescription": "Removes the player from all upcoming sessions of this series.",
+      "removedFromCycle": "Removed from {{count}} session(s)",
+      "removeFromCycleNone": "No upcoming sessions to remove the player from.",
+      "removeFromCycleError": "Could not remove the player from the cycle. Please try again."
     },
     "payment": {
       "allPaid": "Paid",

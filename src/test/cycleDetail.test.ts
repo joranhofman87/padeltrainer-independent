@@ -54,10 +54,10 @@ describe('getCycleDetail (Slice 9 data layer)', () => {
     const d = await getCycleDetail('cy1');
     expect(d.totalPlayers).toBe(4);
     expect(d.roster).toEqual([
-      { name: 'Alice', sessionCount: 2 }, // s1 + s2
-      { name: 'Bob', sessionCount: 1 },
-      { name: 'Charlie', sessionCount: 1 },
-      { name: 'Dave', sessionCount: 1 },
+      { name: 'Alice', sessionCount: 2, playerId: 'PA', guestPlayerId: null }, // s1 + s2
+      { name: 'Bob', sessionCount: 1, playerId: 'PB', guestPlayerId: null },
+      { name: 'Charlie', sessionCount: 1, playerId: null, guestPlayerId: 'G1' },
+      { name: 'Dave', sessionCount: 1, playerId: 'PD', guestPlayerId: null },
     ]);
   });
 
