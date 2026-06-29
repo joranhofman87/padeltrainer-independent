@@ -892,12 +892,14 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
 
     // Keep only this player's still-payable bookings — a paid or cancelled
     // sibling booking would make create-mollie-payment reject the batch.
+    // 'payment_pending' = a STRICT hold (A1/A2): it is payable (the player is paying for it now),
+    // so it MUST be included — else the strict accept would drop its own hold and release the seat.
     const { data: payable } = await supabase
       .from('bookings')
       .select('id, slot_id')
       .in('id', [...new Set(bookingIds)])
       .eq('payment_status', 'pending')
-      .in('status', ['pending', 'confirmed']);
+      .in('status', ['pending', 'confirmed', 'payment_pending']);
     const payableBookingIds = (payable || []).map((b) => b.id);
     const payableSlotIds = [...new Set((payable || []).map((b) => b.slot_id))];
     if (payableBookingIds.length === 0) return strict ? await failStrict(strictHoldIds) : { ...accept, mode: 'upfront_unavailable' };
@@ -915,7 +917,7 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
         .from('bookings')
         .select('player_id, guest_player_id')
         .in('slot_id', payableSlotIds)
-        .in('status', ['pending', 'confirmed']);
+        .in('status', ['pending', 'confirmed', 'payment_pending']);
       const distinctPlayers = new Set(
         (participantRows || [])
           .map((b) => b.player_id ?? b.guest_player_id)
