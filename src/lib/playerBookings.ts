@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
+import { logger } from '@/lib/logger';
 
 /**
  * Single source of truth for a player's bookings.
@@ -27,6 +28,12 @@ export interface PlayerBooking {
   location_name: string | null;
   cyclus_name: string | null;
   price_per_session: number | null;
+  /**
+   * True for sessions surfaced via a LINKED GUEST record (booked on the player's behalf, keyed by
+   * guest_player_id, player_id NULL). The player can SEE these but cannot UPDATE them — the player
+   * bookings UPDATE policy is player_id-scoped — so the UI must not offer a (RLS-doomed) Cancel.
+   */
+  is_linked_guest: boolean;
 }
 
 interface RawSlot {
@@ -35,10 +42,13 @@ interface RawSlot {
   trainer_id: string | null;
   price_per_session: number | null;
   cyclus_name: string | null;
+  /** Present on linked-guest RPC rows (unused by enrich; consumed by PlayerAgenda). */
+  location_id?: string | null;
+  max_participants?: number | null;
   locations: { name: string } | null;
 }
 
-interface RawBookingRow {
+export interface RawBookingRow {
   id: string;
   slot_id: string;
   status: string;
@@ -47,7 +57,74 @@ interface RawBookingRow {
   notes: string | null;
   created_at: string;
   availability_slots: RawSlot | null;
+  /** Set on rows from the linked-guest RPC (player_id IS NULL); absent on player_id rows. */
+  is_linked_guest?: boolean;
 }
+
+/**
+ * Linked-guest VISIBILITY (rebook go-live B2). A session booked on behalf of the player under a
+ * guest record LINKED to their profile (academy add / group-captain rebook) is keyed by
+ * guest_player_id, so the player_id reads below can't return it and RLS hides it. This best-effort
+ * helper pulls those rows via the SECURITY DEFINER RPC (scoped to the caller's linked guests) so
+ * callers can MERGE them into the player_id results. Returns [] on any error — these rows are
+ * supplementary, so a missing/failed RPC (e.g. migration not yet applied → PGRST202) must never
+ * blank the player's own bookings.
+ */
+export async function fetchLinkedGuestBookingRows(): Promise<RawBookingRow[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_my_linked_guest_bookings');
+    if (error) {
+      if (error.code !== 'PGRST202') {
+        logger.warn('get_my_linked_guest_bookings failed; showing player_id bookings only', {
+          component: 'playerBookings',
+          code: error.code,
+        });
+      }
+      return [];
+    }
+    // Tag every row so downstream UI can tell a linked-guest session (read-only for the player)
+    // from a player_id session (cancellable).
+    return ((data ?? []) as unknown as RawBookingRow[]).map((r) => ({ ...r, is_linked_guest: true }));
+  } catch (e) {
+    logger.warn('get_my_linked_guest_bookings threw; showing player_id bookings only', {
+      component: 'playerBookings',
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return [];
+  }
+}
+
+/** Is this linked-guest row upcoming: not cancelled, with a slot starting at/after `nowISO`? */
+function isUpcomingGuestRow(r: RawBookingRow, nowMs: number): boolean {
+  const start = r.availability_slots?.start_time;
+  // Compare as epochs, not strings — the RPC's jsonb timestamp (+00:00) and Date.toISOString()
+  // (.000Z) use different textual forms for the same instant.
+  return r.status !== 'cancelled' && !!start && new Date(start).getTime() >= nowMs;
+}
+
+/** Linked-guest rows that belong in the UPCOMING set: not cancelled, with a future slot. */
+export function selectFutureActiveGuestRows(rows: RawBookingRow[], nowISO: string): RawBookingRow[] {
+  const nowMs = new Date(nowISO).getTime();
+  return rows.filter((r) => isUpcomingGuestRow(r, nowMs));
+}
+
+/**
+ * Linked-guest rows that belong in the PAST set: everything NOT upcoming (cancelled, no visible
+ * slot, or a past slot), minus any already shown via the upcoming set (excludeIds).
+ */
+export function selectPastGuestRows(
+  rows: RawBookingRow[],
+  nowISO: string,
+  excludeIds: string[],
+): RawBookingRow[] {
+  const exclude = new Set(excludeIds);
+  const nowMs = new Date(nowISO).getTime();
+  return rows.filter((r) => !exclude.has(r.id) && !isUpcomingGuestRow(r, nowMs));
+}
+
+const byCreatedAtDesc = (a: PlayerBooking, b: PlayerBooking) => b.created_at.localeCompare(a.created_at);
+const byStartTimeAsc = (a: PlayerBooking, b: PlayerBooking) =>
+  (a.start_time ?? '').localeCompare(b.start_time ?? '');
 
 /** A page of past bookings plus whether more remain (for "load older" pagination). */
 export interface PlayerBookingsPage {
@@ -87,17 +164,27 @@ async function enrichBookings(rawBookings: RawBookingRow[], playerId: string): P
     .filter((id): id is string => !!id);
   const trainerNameMap = await fetchTrainerDisplayNamesByProfileIds(trainerIds, supabase, 'playerBookings');
 
-  // Cross-reference paid invoices to get accurate payment status for bookings.
-  const { data: paidInvoices } = await supabase
-    .from('invoices')
-    .select('booking_ids, status, paid_at')
-    .eq('player_id', playerId)
-    .eq('status', 'paid');
-
+  // Cross-reference PAID invoices to get accurate payment status. Guest-aware (rebook go-live B2):
+  // the RPC covers invoices keyed by player_id OR a guest linked to this profile, so a linked-guest
+  // booking covered by a paid invoice reads "paid" too. Falls back to the legacy player_id-only
+  // read when the RPC isn't deployed yet (PGRST202).
   const paidBookingIds = new Set<string>();
-  paidInvoices?.forEach((inv) => {
-    (inv.booking_ids as string[] | null)?.forEach((id) => paidBookingIds.add(id));
-  });
+  const paidRpc = await supabase.rpc('get_my_paid_booking_ids');
+  if (paidRpc.error) {
+    // Any RPC error (not-deployed PGRST202 or transient) degrades to the legacy player_id-only
+    // invoices read — same best-effort behaviour as before (a failed paid lookup never errors the
+    // page; the booking's own payment_status simply stands, and linked-guest paid status is lost).
+    const { data: paidInvoices } = await supabase
+      .from('invoices')
+      .select('booking_ids, status, paid_at')
+      .eq('player_id', playerId)
+      .eq('status', 'paid');
+    paidInvoices?.forEach((inv) => {
+      (inv.booking_ids as string[] | null)?.forEach((id) => paidBookingIds.add(id));
+    });
+  } else {
+    ((paidRpc.data ?? []) as { booking_id: string }[]).forEach((r) => paidBookingIds.add(r.booking_id));
+  }
 
   return rawBookings.map((booking) => {
     const slot = booking.availability_slots;
@@ -125,6 +212,7 @@ async function enrichBookings(rawBookings: RawBookingRow[], playerId: string): P
       location_name: slot?.locations?.name ?? null,
       cyclus_name: slot?.cyclus_name ?? null,
       price_per_session: slot?.price_per_session ?? null,
+      is_linked_guest: booking.is_linked_guest ?? false,
     };
   });
 }
@@ -135,14 +223,18 @@ async function enrichBookings(rawBookings: RawBookingRow[], playerId: string): P
  * long-tenured player's entire history at once.
  */
 export async function fetchPlayerBookings(playerId: string): Promise<PlayerBooking[]> {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(slotSelect(''))
-    .eq('player_id', playerId)
-    .order('created_at', { ascending: false });
+  const [{ data, error }, guestRows] = await Promise.all([
+    supabase
+      .from('bookings')
+      .select(slotSelect(''))
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false }),
+    fetchLinkedGuestBookingRows(),
+  ]);
 
   if (error) throw error;
-  return enrichBookings((data ?? []) as unknown as RawBookingRow[], playerId);
+  const raw = [...((data ?? []) as unknown as RawBookingRow[]), ...guestRows];
+  return (await enrichBookings(raw, playerId)).sort(byCreatedAtDesc);
 }
 
 /**
@@ -153,16 +245,23 @@ export async function fetchPlayerBookings(playerId: string): Promise<PlayerBooki
  */
 export async function fetchUpcomingPlayerBookings(playerId: string): Promise<PlayerBooking[]> {
   const nowISO = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(slotSelect('!inner'))
-    .eq('player_id', playerId)
-    .neq('status', 'cancelled')
-    .gte('availability_slots.start_time', nowISO)
-    .order('start_time', { ascending: true, referencedTable: 'availability_slots' });
+  const [{ data, error }, guestRows] = await Promise.all([
+    supabase
+      .from('bookings')
+      .select(slotSelect('!inner'))
+      .eq('player_id', playerId)
+      .neq('status', 'cancelled')
+      .gte('availability_slots.start_time', nowISO)
+      .order('start_time', { ascending: true, referencedTable: 'availability_slots' }),
+    fetchLinkedGuestBookingRows(),
+  ]);
 
   if (error) throw error;
-  return enrichBookings((data ?? []) as unknown as RawBookingRow[], playerId);
+  const raw = [
+    ...((data ?? []) as unknown as RawBookingRow[]),
+    ...selectFutureActiveGuestRows(guestRows, nowISO),
+  ];
+  return (await enrichBookings(raw, playerId)).sort(byStartTimeAsc);
 }
 
 /**
@@ -194,6 +293,18 @@ export async function fetchPlayerBookingsPage(
     .range(offset, offset + limit - 1);
 
   if (error) throw error;
-  const raw = (data ?? []) as unknown as RawBookingRow[];
-  return { bookings: await enrichBookings(raw, playerId), hasMore: raw.length === limit };
+  const playerRaw = (data ?? []) as unknown as RawBookingRow[];
+  // "More remain" is governed by the player_id page (the linked-guest tail is a one-shot add to
+  // page 1), so the existing pagination contract is unchanged.
+  const hasMore = playerRaw.length === limit;
+
+  let raw = playerRaw;
+  if (offset === 0) {
+    // The first past page also carries the player's PAST linked-guest bookings (few; the upcoming
+    // ones are surfaced by fetchUpcomingPlayerBookings and passed here as excludeIds).
+    const nowISO = new Date().toISOString();
+    const pastGuest = selectPastGuestRows(await fetchLinkedGuestBookingRows(), nowISO, excludeIds);
+    raw = [...playerRaw, ...pastGuest];
+  }
+  return { bookings: (await enrichBookings(raw, playerId)).sort(byCreatedAtDesc), hasMore };
 }

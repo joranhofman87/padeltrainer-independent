@@ -7819,6 +7819,14 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_my_linked_guest_bookings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      get_my_paid_booking_ids: {
+        Args: Record<PropertyKey, never>
+        Returns: { booking_id: string }[]
+      }
       get_my_pending_priority_claims: {
         Args: Record<PropertyKey, never>
         Returns: {

@@ -267,7 +267,7 @@ export default function PlayerBookings() {
                           {booking.price_per_session != null && (
                             <span className="text-xl font-bold">€{booking.price_per_session}</span>
                           )}
-                          {booking.status !== 'cancelled' && (
+                          {booking.status !== 'cancelled' && !booking.is_linked_guest && (
                             <Button
                               variant="outline"
                               className="text-destructive"

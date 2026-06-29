@@ -24,6 +24,12 @@ vi.mock('@/lib/supabaseClient', () => ({
       calls.push({ method: 'from', args: [table] });
       return makeChain(() => (table === 'bookings' ? bookingsData : []));
     },
+    // B2 linked-guest readers: get_my_linked_guest_bookings + get_my_paid_booking_ids.
+    // This test asserts the player_id query shape, so the supplementary RPCs return empty.
+    rpc: (name: string) => {
+      calls.push({ method: 'rpc', args: [name] });
+      return Promise.resolve({ data: [], error: null });
+    },
   },
 }));
 vi.mock('@/lib/trainerDisplayNames', () => ({
