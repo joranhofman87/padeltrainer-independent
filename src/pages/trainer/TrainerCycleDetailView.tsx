@@ -47,6 +47,7 @@ export default function TrainerCycleDetailView() {
         cycleId={cycleId}
         canEdit
         canEditPrice
+        canPublish
         locations={locations}
         onOpenSlot={(slotId) => navigate(`/app/trainer/slot/${slotId}`)}
       />

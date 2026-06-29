@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Euro, Pencil, CalendarDays, AlertCircle, Loader2 } from 'lucide-react';
+import { Users, Trash2, Euro, Pencil, CalendarDays, AlertCircle, Loader2, Rocket } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +33,7 @@ import { useCycleDetail, type CycleDetailSlot } from '@/lib/cycleDetail';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
-import { updateCyclePricing, applySlotEditToCycle, type ExtraCost } from '@/lib/cycles';
+import { updateCyclePricing, applySlotEditToCycle, publishCycle, type ExtraCost } from '@/lib/cycles';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
@@ -49,6 +49,8 @@ export interface CycleDetailViewProps {
   canEdit?: boolean;
   /** Cycle-pricing capability — gates the Edit-price CTA + modal. */
   canEditPrice?: boolean;
+  /** Publish capability — gates the draft "Publish" banner for slot-generator cycles. */
+  canPublish?: boolean;
   /** Academy profile id for the pricing modal's extra-cost preset picker (null/omit for trainer). */
   academyProfileId?: string | null;
   /** Trainer options for the edit-whole-cycle form (academy passes; trainer omits → self only). */
@@ -74,6 +76,7 @@ export function CycleDetailView({
   onOpenSlot,
   canEdit = false,
   canEditPrice = false,
+  canPublish = false,
   academyProfileId,
   trainers,
   locations = [],
@@ -87,6 +90,7 @@ export function CycleDetailView({
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   // Cycle-pricing modal state (seeded from the cycle on open).
   const [priceOpen, setPriceOpen] = useState(false);
   const [savingPrice, setSavingPrice] = useState(false);
@@ -290,6 +294,23 @@ export function CycleDetailView({
     }
   };
 
+  // Publish a draft (slot-generator) cycle: open it + apply the stored public/private intent to its
+  // slots. makePublic comes from the generator's settings.publish_visibility (false = stays private).
+  const handlePublish = async () => {
+    setPublishing(true);
+    try {
+      const makePublic = data?.cycle?.settings?.publish_visibility === 'public';
+      await publishCycle(cycleId, makePublic);
+      toast.success(t('detail.publish.done', 'Cyclus gepubliceerd.'));
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.publish.error', 'Publiceren mislukt.')));
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const fmtDayTime = (slot: CycleDetailSlot) => {
     const start = parseISO(slot.start_time);
     const end = parseISO(slot.end_time);
@@ -370,6 +391,23 @@ export function CycleDetailView({
           </div>
         </CardContent>
       </Card>
+
+      {canPublish && statusKey === 'draft' && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="text-sm">
+              <p className="font-medium">{t('detail.publish.title', 'Dit is een concept')}</p>
+              <p className="text-muted-foreground">
+                {t('detail.publish.body', 'De sessies zijn nog niet boekbaar. Publiceer ze om ze open te zetten.')}
+              </p>
+            </div>
+            <Button size="sm" onClick={() => void handlePublish()} disabled={publishing}>
+              {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Rocket className="h-4 w-4 mr-1.5" />}
+              {t('detail.publish.cta', 'Publiceren')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sessions */}
       <Card>
