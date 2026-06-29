@@ -53,7 +53,7 @@ export async function fetchPlayerInvoices(
     .eq(scopeCol, scope.id)
     .eq(playerCol, player.id)
     .order('invoice_date', { ascending: false });
-  return (data || []) as PlayerInvoiceRow[];
+  return (data || []) as unknown as PlayerInvoiceRow[];
 }
 
 export interface PlayerSlotRow {
