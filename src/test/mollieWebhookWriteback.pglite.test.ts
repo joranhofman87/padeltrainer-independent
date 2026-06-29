@@ -165,8 +165,10 @@ describe('invoice-paid branch: guarded linked-booking sync (composite contract)'
     const bookingIds = ['B1', 'B2']; // an invoice.booking_ids that includes a since-cancelled seat
 
     // 1. pre-read → refund detector flags the cancelled, not-yet-paid booking
+    //    (the PGlite adapter returns `data: unknown`, so narrow it to the row shape)
     const { data: pre } = await supa.from('bookings').select('id, status, payment_status').in('id', bookingIds);
-    expect(findCancelledPaidBookings(pre || [])).toEqual(['B1']);
+    const preRows = (pre ?? []) as { id: string; status: string; payment_status: string }[];
+    expect(findCancelledPaidBookings(preRows)).toEqual(['B1']);
 
     // 2. guarded write-back flips ONLY the still-active booking
     const transitioned = await applyBookingPaymentWriteback(supa, bookingIds, { ...PAID });
