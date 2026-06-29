@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -314,6 +315,11 @@ Deno.serve(async (req) => {
   } catch (err) {
     // Raw DB error text (column/constraint names) stays in logs only.
     console.error("Error in recalculate-invoices:", err);
+    // Money path: a failed recalc leaves invoice totals stale. Alert ops.
+    await notifySlackEdgeError(
+      "recalculate-invoices",
+      err instanceof Error ? err.message : String(err),
+    );
     return new Response(
       JSON.stringify({ error: "Failed to recalculate invoices" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },

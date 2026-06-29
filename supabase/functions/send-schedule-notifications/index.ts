@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -243,12 +244,27 @@ serve(async (req: Request) => {
 
     console.log(`Sent ${sent} schedule notifications, ${errors.length} errors`);
 
+    // Partial failure: per-recipient sends that failed otherwise only hit the log
+    // above (HTTP is still 200). Surface them so a systemic outage is visible.
+    if (errors.length > 0) {
+      await notifySlackEdgeError(
+        "send-schedule-notifications",
+        `${errors.length} schedule notification(s) failed (sent ${sent})`,
+        { sent, errors },
+      );
+    }
+
     return new Response(
       JSON.stringify({ sent, errors }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
     console.error("Error in send-schedule-notifications:", error);
+    // A thrown failure here means NO notifications went out. Alert ops.
+    await notifySlackEdgeError(
+      "send-schedule-notifications",
+      error?.message ?? String(error),
+    );
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }

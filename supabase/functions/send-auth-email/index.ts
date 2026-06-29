@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -275,6 +276,8 @@ const handler = async (req: Request): Promise<Response> => {
     });
   } catch (error: any) {
     console.error("Error in send-auth-email function:", error);
+    // Auth-critical: a send failure means users can't sign up / reset passwords. Alert ops.
+    await notifySlackEdgeError("send-auth-email", error?.message ?? String(error));
     return new Response(
       JSON.stringify({ error: error.message }),
       {
