@@ -26,6 +26,15 @@ export type InvoiceAfterAddPlayerInput = {
   cyclusId?: string | null;
   /** How to recalc existing invoices on affected slots (default: drafts only). */
   invoiceUpdateChoice?: InvoiceUpdateChoice;
+  /**
+   * When true, perform NO invoice work at all — no new draft creation AND no
+   * recalc of existing invoices. The booking insert already happened at the call
+   * site, so the player is added but every invoice is left untouched. For the
+   * deliberate "Don't update invoices" roster edit. (Note: `invoiceUpdateChoice:
+   * "skip"` only skips the EXISTING-invoice recalc, NOT new-draft creation — this
+   * flag skips both.)
+   */
+  skipInvoices?: boolean;
 };
 
 export type InvoiceAfterAddPlayerResult = {
@@ -226,6 +235,10 @@ export async function syncInvoicesAfterAddPlayer(
     draftsRecalculated: false,
     sentRecalculated: false,
   };
+
+  // Deliberate "Don't update invoices" roster edit: the booking(s) were already
+  // inserted by the caller; create no draft and recalc nothing — invoices untouched.
+  if (input.skipInvoices) return result;
 
   const chargeable = input.newBookings.filter(isChargeableAddPlayerBooking);
   const nonChargeableCount = input.newBookings.length - chargeable.length;

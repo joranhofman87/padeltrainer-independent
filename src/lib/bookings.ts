@@ -41,6 +41,7 @@ export interface CancelBookingResult {
 export async function cancelBookingsAndSync(
   bookingIds: string[],
   client: SupabaseClient<Database> = supabase,
+  options?: { skipInvoiceSync?: boolean },
 ): Promise<CancelBookingResult> {
   if (bookingIds.length === 0) return { cancelError: null, syncError: null };
 
@@ -50,12 +51,60 @@ export async function cancelBookingsAndSync(
     .in('id', bookingIds);
   if (cancelError) return { cancelError, syncError: null };
 
+  // Deliberate "Don't update invoices" roster edit: soft-cancel the booking but
+  // leave every linked invoice exactly as it is (the owner reconciles billing
+  // manually). Paid invoices are never touched either way.
+  if (options?.skipInvoiceSync) return { cancelError: null, syncError: null };
+
   try {
     await syncInvoicesAfterBookingRemoval(bookingIds);
   } catch (err) {
     return { cancelError: null, syncError: err instanceof Error ? err : new Error(String(err)) };
   }
   return { cancelError: null, syncError: null };
+}
+
+export interface CancelPlayerInCycleResult extends CancelBookingResult {
+  /** How many of the player's active bookings were soft-cancelled. */
+  cancelledCount: number;
+}
+
+/**
+ * Remove ONE player from a whole cycle/series in one action: find that player's
+ * active (non-cancelled) bookings among `slotIds` and soft-cancel them via
+ * {@link cancelBookingsAndSync}. The caller decides which slots to act on (e.g.
+ * the cycle's FUTURE sessions, mirroring the whole-cycle ADD scope). A player is
+ * matched by `playerId` (profile) OR `guestPlayerId` (guest) — whichever the
+ * roster row carries. `options.skipInvoiceSync` threads straight through, so a
+ * whole-cycle remove can leave invoices untouched. No bookings found ⇒ no-op.
+ */
+export async function cancelPlayerBookingsInCycle(
+  slotIds: string[],
+  player: { playerId?: string | null; guestPlayerId?: string | null },
+  client: SupabaseClient<Database> = supabase,
+  options?: { skipInvoiceSync?: boolean },
+): Promise<CancelPlayerInCycleResult> {
+  if (slotIds.length === 0 || (!player.playerId && !player.guestPlayerId)) {
+    return { cancelError: null, syncError: null, cancelledCount: 0 };
+  }
+
+  let query = client
+    .from('bookings')
+    .select('id')
+    .in('slot_id', slotIds)
+    .neq('status', 'cancelled');
+  query = player.playerId
+    ? query.eq('player_id', player.playerId)
+    : query.eq('guest_player_id', player.guestPlayerId as string);
+
+  const { data, error } = await query;
+  if (error) return { cancelError: error, syncError: null, cancelledCount: 0 };
+
+  const ids = (data ?? []).map((b) => b.id as string);
+  if (ids.length === 0) return { cancelError: null, syncError: null, cancelledCount: 0 };
+
+  const res = await cancelBookingsAndSync(ids, client, options);
+  return { ...res, cancelledCount: ids.length };
 }
 
 export interface SetBookingPaymentResult {
