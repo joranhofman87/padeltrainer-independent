@@ -15,6 +15,7 @@ import { resolveTrainerCyclusPricingRoute } from '@/lib/trainerCyclusPricingRout
 import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
 import { coalesceLinkedGuestIdentity, fetchLinkedProfileIdentity } from '@/lib/academyPlayerDetails';
 import { fetchTrainerLocationOptions, type TrainerPlayerDetailsValues } from '@/lib/trainerPlayerDetails';
+import { fetchPlayerInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
 import { fetchTrainerPlayerTrainingLocations } from '@/lib/trainerPlayerTrainingLocations';
 import { trainerPlayersQueryKey } from '@/lib/trainerPlayersQuery';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
@@ -267,26 +268,10 @@ export default function TrainerPlayerDetail() {
           start_time: string | null;
         }>;
 
-        const byCyc = new Map<string, { id: string; name: string; dates: Date[] }>();
-        for (const s of slotsArr) {
-          const cid = s.cyclus_id || s.id;
-          const cname = s.cyclus_name || t('players.detail.singleSessions', 'Single sessions');
-          const cur = byCyc.get(cid) || { id: cid, name: cname, dates: [] };
-          if (s.start_time) cur.dates.push(new Date(s.start_time));
-          byCyc.set(cid, cur);
-        }
-        const rawCycluses = Array.from(byCyc.values())
-          .map((c) => {
-            const sorted = c.dates.sort((a, b) => a.getTime() - b.getTime());
-            return {
-              cyclus_id: c.id,
-              cyclus_name: c.name,
-              session_count: sorted.length,
-              first_session: sorted[0]?.toISOString() || '',
-              last_session: sorted[sorted.length - 1]?.toISOString() || '',
-            };
-          })
-          .sort((a, b) => (b.last_session || '').localeCompare(a.last_session || ''));
+        const rawCycluses = groupSlotsIntoCycluses(
+          slotsArr,
+          t('players.detail.singleSessions', 'Single sessions'),
+        );
 
         cyclusItems = await Promise.all(
           rawCycluses.map(async (c) => ({
@@ -297,24 +282,10 @@ export default function TrainerPlayerDetail() {
       }
       setCycluses(cyclusItems);
 
-      const invPlayerFilter =
-        parsed.kind === 'guest'
-          ? supabase
-              .from('invoices')
-              .select(
-                'id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, trainer_id',
-              )
-              .eq('trainer_id', trainerId!)
-              .eq('guest_player_id', parsed.id)
-          : supabase
-              .from('invoices')
-              .select(
-                'id, invoice_number, invoice_date, due_date, total, status, pdf_url, sent_at, trainer_id',
-              )
-              .eq('trainer_id', trainerId!)
-              .eq('player_id', parsed.id);
-      const { data: invs } = await invPlayerFilter.order('invoice_date', { ascending: false });
-      const invoiceRows = (invs || []) as InvoiceItem[];
+      const invoiceRows = (await fetchPlayerInvoices(
+        { kind: 'trainer', id: trainerId! },
+        { kind: parsed.kind, id: parsed.id },
+      )) as unknown as InvoiceItem[];
       setInvoices(invoiceRows);
 
       if (parsed.kind === 'profile') {
