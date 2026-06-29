@@ -119,5 +119,20 @@ ok((await db.query(`SELECT status FROM public.slot_priority_claims WHERE id=$1`,
 ok((await db.query(`SELECT count(*)::int n FROM public.bookings WHERE slot_id=$1 AND status='payment_pending'`, [liveSlot])).rows[0].n === 1, 'cron: a non-expired hold is left untouched', null);
 ok((await db.query(`SELECT count(*)::int n FROM public.bookings WHERE slot_id=$1 AND status='confirmed'`, [confSlot])).rows[0].n === 1, 'cron: a confirmed booking is left untouched', null);
 
+// ---- GROUP strict accept → holds for the WHOLE series (A5 captain path uses this) ----
+const gCyc = 'c0000000-0000-0000-0000-0000000000f1';
+const gSlot1 = '50000000-0000-0000-0000-0000000000f1';
+const gSlot2 = '50000000-0000-0000-0000-0000000000f2';
+const grp = 'a0000000-0000-0000-0000-0000000000f1';
+await db.query(`INSERT INTO public.cycles (id, settings) VALUES ($1, $2)`, [gCyc, JSON.stringify({ rebook_strict_mollie: true })]);
+await db.query(`INSERT INTO public.availability_slots (id, max_participants, start_time, cyclus_id, public_release_status) VALUES ($1,4,now(),$2,'public'),($3,4,now() + interval '7 days',$2,'public')`, [gSlot1, gCyc, gSlot2]);
+await db.query(`INSERT INTO public.slot_priority_claims (claim_token, slot_id, player_id, status, rebook_group_id) VALUES ('g_w1',$1,$2,'pending',$3),('g_w2',$4,$2,'pending',$3)`, [gSlot1, PLAYER, grp, gSlot2]);
+await asAnon();
+const gres = (await db.query(`SELECT public.respond_to_priority_claim('g_w1','accept') AS r`)).rows[0].r;
+ok(gres.ok === true && gres.group === true && gres.strict === true && Number(gres.booked) === 2,
+  'GROUP strict accept: books both weeks of the series, strict=true', gres);
+const gholds = (await db.query(`SELECT count(*)::int n FROM public.bookings WHERE slot_id IN ($1,$2) AND status='payment_pending' AND hold_expires_at IS NOT NULL`, [gSlot1, gSlot2])).rows[0].n;
+ok(gholds === 2, 'GROUP strict accept: both bookings are payment_pending HOLDS', gholds);
+
 console.log(fail === 0 ? '\nALL strict-accept-release checks passed' : `\n${fail} FAILED`);
 process.exit(fail === 0 ? 0 : 1);

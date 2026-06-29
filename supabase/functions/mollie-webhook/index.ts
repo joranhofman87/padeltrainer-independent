@@ -515,6 +515,7 @@ serve(async (req) => {
               payment_status: "paid",
               status: "confirmed",
               paid_at: new Date().toISOString(),
+              hold_expires_at: null, // (A5) a committed strict GROUP hold is no longer a hold
             });
             logStep("Linked bookings updated to paid (guarded)", {
               requested: invoiceData.booking_ids.length,

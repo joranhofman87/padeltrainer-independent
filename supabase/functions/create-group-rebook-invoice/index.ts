@@ -85,8 +85,11 @@ serve(async (req: Request) => {
       _token: token, _action: "accept",
     });
     if (acceptErr) return json({ ok: false, reason: "accept_failed", message: String(acceptErr) });
-    const acc = accepted as { ok?: boolean; reason?: string } | null;
+    const acc = accepted as { ok?: boolean; reason?: string; strict?: boolean } | null;
     if (!acc?.ok) return json({ ok: false, reason: acc?.reason ?? "accept_failed" });
+    // STRICT pay-first (A5): respond_to_priority_claim created the captain's seats as HOLDS (A2).
+    // Strict has NO bank fallback, so a Mollie checkout MUST start below — else we abort + release.
+    const strict = acc.strict === true;
 
     // 2) Collect the captain's just-created booking ids (one per week).
     let q = admin.from("slot_priority_claims")
@@ -151,9 +154,19 @@ serve(async (req: Request) => {
       return json({ ok: false, reason: "retry" });
     }
 
-    // 6) Create the Mollie checkout (best-effort). If unavailable, the client falls back to the
-    //    /pay/:token bank-transfer page with the same publicToken.
+    // 6) Create the Mollie checkout. Non-strict: best-effort — if unavailable, the client falls back
+    //    to the /pay/:token bank-transfer page with the same publicToken. STRICT: mandatory — if no
+    //    Mollie checkout could start, ABORT: cancel the invoice, cancel the captain's HOLDS, and reset
+    //    their claims to pending (no seat without an online payment; no bank fallback).
     const checkoutUrl = await startCheckout(invoice as GroupInvoice);
+    if (strict && !checkoutUrl) {
+      await admin.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
+      await admin.from("bookings").update({ status: "cancelled" }).in("id", bookingIds);
+      await admin.from("slot_priority_claims")
+        .update({ status: "pending", booking_id: null, responded_at: null })
+        .eq("rebook_group_id", claim.rebook_group_id).in("booking_id", bookingIds);
+      return json({ ok: false, reason: "strict_mollie_unavailable" });
+    }
     return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status, checkoutUrl });
   } catch (e) {
     const message = String((e as Error)?.message ?? e);

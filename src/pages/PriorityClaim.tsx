@@ -181,6 +181,11 @@ export default function PriorityClaimPage() {
         toast.error(t('rebooking.errorExpired', 'The reservation period has expired.'));
         return;
       }
+      if (res.reason === 'strict_mollie_unavailable') {
+        // Strict group: no seats held without an online payment — the holds were released.
+        toast.error(t('rebooking.strictMollieUnavailable', 'We couldn’t start the online payment, so no spot was reserved. Please try again.'));
+        return;
+      }
       toast.error(t('rebooking.errorGeneric', 'Something went wrong. Please try again.'));
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebooking.errorGeneric', 'Something went wrong. Please try again.')));
