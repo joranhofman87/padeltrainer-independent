@@ -1,9 +1,12 @@
 // Cycle write operations (create / update / settings / delete + the atomic apply_slot_edit_to_cycle
-// RPC), extracted from lib/cycles.ts (god-file split). Fully self-contained: these call no cycles.ts
-// internals, so cycles.ts re-exports via `export *` (and imports updateCycle back for its 2 callers).
+// RPC), extracted from lib/cycles.ts (god-file split). These call no cycles.ts internals — they depend
+// only on the shared toCycle mapper + applySlotDeleteToCycle guard + supabase — so cycles.ts re-exports
+// via `export *` (and imports updateCycle back for its 2 callers).
 import { supabase } from '@/lib/supabaseClient';
 import type { Json } from '@/integrations/supabase/types';
 import type { Cycle, CycleInput, CycleSettings, SlotEditPatch, SlotEditResult } from './cycleTypes';
+import { toCycle } from './cycleMappers';
+import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 
 /**
  * Atomic, set-based slot edit / apply-to-cycle via the `apply_slot_edit_to_cycle` RPC (Phase 4 F2).

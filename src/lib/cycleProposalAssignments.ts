@@ -2,6 +2,7 @@
 // split). One-way: uses only the shared toProposedAssignment mapper + supabase, no other cycles.ts
 // internals, and nothing in cycles.ts calls it — so cycles.ts re-exports via `export *`.
 import { supabase } from '@/lib/supabaseClient';
+import type { Json } from '@/integrations/supabase/types';
 import { toProposedAssignment } from './cycleMappers';
 import type { ProposedAssignment, EnrichedProposedAssignment, RationaleItem } from './cycleTypes';
 
