@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { aiTextModel, fetchChatCompletion, isAiGatewayConfigured } from "../_shared/ai-gateway.ts";
+import { canManageCycle, isAdminUser } from "../_shared/cycle-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -333,6 +334,32 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // --- AuthZ ---
+    // This function holds the service-role key and performs cross-tenant writes
+    // (resetting intake_requests, deleting/inserting proposed assignments) plus
+    // billable AI-gateway calls. verify_jwt is false (repo convention), so the
+    // caller MUST be authenticated in code. Mirrors finalize-proposals/index.ts.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === supabaseKey;
+    let callerId: string | null = null;
+    if (!isServiceRole) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      callerId = user.id;
+    }
+
     let body: RequestBody;
     try {
       body = await req.json();
@@ -384,6 +411,22 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Cycle not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // The caller must own/manage this specific cycle (or be admin). Service-role
+    // automation bypasses this check. Done after the cycle fetch so we can scope
+    // to the cycle's actual owner_type/owner_id.
+    if (!isServiceRole && callerId) {
+      const cycleOwner = { owner_type: cycle.owner_type, owner_id: cycle.owner_id };
+      const canManage =
+        (await isAdminUser(supabase, callerId)) ||
+        (await canManageCycle(supabase, callerId, cycleOwner));
+      if (!canManage) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Parse additional criteria using AI if provided
