@@ -16,14 +16,17 @@ import {
   sendRebookGroupConfirmations,
   getCycleRebookPaymentMode,
   getCycleStartDate,
+  recordRebookRulesConsent,
   type RebookPaymentMode,
   type RebookGroup,
   type RebookGroupApplyResult,
 } from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { isBlankRichTextHtml } from '@/lib/richText';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { RebookGroupEditor } from '@/components/cycles/RebookGroupEditor';
+import { RichTextConsent } from '@/components/ui/rich-text-consent';
 
 interface ClaimData {
   claim: {
@@ -48,6 +51,8 @@ interface ClaimData {
   player_name: string | null;
   // First name of the group member who re-booked this spot on the viewer's behalf, else null.
   booked_by_captain_name: string | null;
+  // The cycle's rebooking-rules HTML (from the SECURITY DEFINER claim RPC), else null.
+  rebook_rules: string | null;
 }
 
 export default function PriorityClaimPage() {
@@ -63,6 +68,10 @@ export default function PriorityClaimPage() {
   const [accepted, setAccepted] = useState(false);
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
+  // Per-round rebooking rules + the player's opt-in. When rules exist, the proceed buttons are
+  // gated until the player ticks the consent box (declining is never gated).
+  const [rebookRules, setRebookRules] = useState<string | null>(null);
+  const [rulesAccepted, setRulesAccepted] = useState(false);
   const [group, setGroup] = useState<RebookGroup | null>(null);
   // null = claim card; 'apply' = deferred group editor; 'manage' = post-payment roster editor.
   const [groupMode, setGroupMode] = useState<'apply' | 'manage' | null>(null);
@@ -78,6 +87,11 @@ export default function PriorityClaimPage() {
       .then(async (res) => {
         const claim = res as unknown as ClaimData | null;
         setData(claim);
+        // The rules ride along in the SECURITY DEFINER claim payload (RLS-bypassed), so the consent
+        // gate can't silently fail open the way a separate, status-gated cycles read could. Blank
+        // editor HTML normalizes to null → no rules, no gate.
+        const rawRules = claim?.rebook_rules ?? null;
+        setRebookRules(isBlankRichTextHtml(rawRules) ? null : rawRules);
         // Mode-aware copy + "starts on" date + the group roster (for the "re-book the
         // whole group" option): read in parallel; each falls back gracefully.
         const [mode, startDate, grp] = await Promise.all([
@@ -101,6 +115,9 @@ export default function PriorityClaimPage() {
     if (!token) return;
     setActing(true);
     try {
+      // Record consent BEFORE accepting — a successful accept redirects to Mollie, so nothing after
+      // it runs. Best-effort: never blocks the flow (the checkbox already enforced the agreement).
+      if (rebookRules) await recordRebookRulesConsent(token);
       const res = await acceptClaimAndStartPayment(token);
       if (res?.ok) {
         if (res.mode === 'upfront' && res.checkoutUrl) {
@@ -161,6 +178,8 @@ export default function PriorityClaimPage() {
     if (!token) return;
     setActing(true);
     try {
+      // Record the captain's consent before the group checkout redirect (best-effort).
+      if (rebookRules) await recordRebookRulesConsent(token);
       const res = await createGroupRebookInvoice(token);
       if (res.ok && res.checkoutUrl) {
         toast.success(t('rebooking.redirectingToPayment', 'Taking you to the payment page…'));
@@ -252,6 +271,8 @@ export default function PriorityClaimPage() {
   const end = new Date(data.slot.end_time);
   // The player can still keep/release → show the "how it works" explainer.
   const actionable = !accepted && !declined && status !== 'claimed' && status !== 'declined' && !windowEnded;
+  // When the round has rules, proceeding (keep / group re-book) requires the opt-in tick. Declining never does.
+  const rulesBlocked = !!rebookRules && !rulesAccepted;
 
   // Captain editor takes over the card body when re-booking the whole group.
   if (groupMode && group && token) {
@@ -388,10 +409,20 @@ export default function PriorityClaimPage() {
             </div>
           ) : (
             <div className="space-y-3 pt-2">
+              {rebookRules && (
+                <RichTextConsent
+                  variant="accordion"
+                  content={rebookRules}
+                  accepted={rulesAccepted}
+                  onAcceptChange={setRulesAccepted}
+                  title={t('rebooking.rulesConsentTitle', 'Rebooking rules')}
+                  checkboxLabel={t('rebooking.rulesConsentLabel', 'I agree to the rebooking rules')}
+                />
+              )}
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button
                   onClick={onClaim}
-                  disabled={acting}
+                  disabled={acting || rulesBlocked}
                   variant={intent === 'decline' ? 'outline' : 'default'}
                   className="flex-1"
                 >
@@ -406,6 +437,11 @@ export default function PriorityClaimPage() {
                   {acting ? '…' : t('rebooking.release', 'No, release my spot')}
                 </Button>
               </div>
+              {rulesBlocked && (
+                <p className="text-xs text-muted-foreground">
+                  {t('rebooking.consentRequiredHint', 'Agree to the rebooking rules above to continue.')}
+                </p>
+              )}
               {/* Re-book the whole group. DEFERRED → open the roster editor now (each player is
                   billed their own share at cycle start). UPFRONT → pay-first: book only the
                   captain's seat + one group invoice + checkout, then assign the roster after
@@ -413,8 +449,10 @@ export default function PriorityClaimPage() {
               {group?.can_rebook_group && group.members.length > 1 && (
                 <button
                   type="button"
-                  onClick={paymentMode === 'upfront' ? onUpfrontGroupPay : () => setGroupMode('apply')}
-                  disabled={acting}
+                  onClick={paymentMode === 'upfront'
+                    ? onUpfrontGroupPay
+                    : () => { if (token && rebookRules) void recordRebookRulesConsent(token); setGroupMode('apply'); }}
+                  disabled={acting || rulesBlocked}
                   className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2"
                 >
                   {paymentMode === 'upfront'

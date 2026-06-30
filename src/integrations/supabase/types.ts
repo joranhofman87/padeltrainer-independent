@@ -7561,6 +7561,10 @@ export type Database = {
         Args: { _academy_profile_id: string }
         Returns: boolean
       }
+      accept_rebook_rules: {
+        Args: { _token: string }
+        Returns: undefined
+      }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
         Returns: undefined
