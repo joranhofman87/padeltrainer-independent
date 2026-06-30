@@ -281,15 +281,28 @@ export async function swapPlayerInCycle(params: {
   const reassignIds = outgoing.filter((b) => !incomingSlots.has(b.slot_id)).map((b) => b.id);
   const collisionIds = outgoing.filter((b) => incomingSlots.has(b.slot_id)).map((b) => b.id);
 
+  let reassignedCount = 0;
   if (reassignIds.length > 0) {
-    const { error: upErr } = await client
+    const { data: updatedRows, error: upErr } = await client
       .from("bookings")
       // Clear any stale profile link so the seat belongs to the incoming guest ONLY. A linked
       // (account-claimed) outgoing guest has player_id backfilled; leaving it set would keep the
       // old person attributed to the booking and make the swap look like a no-op in the UI.
       .update({ guest_player_id: toGuestPlayerId, player_id: null })
-      .in("id", reassignIds);
+      .in("id", reassignIds)
+      .select("id");
     if (upErr) return { error: upErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
+    reassignedCount = updatedRows?.length ?? 0;
+    // An RLS-blocked UPDATE returns no error but changes 0 rows. Don't report a phantom swap — the
+    // academy-manager bookings UPDATE policy (20260704120000) must be live for the reassign to persist.
+    if (reassignedCount === 0) {
+      return {
+        error: new Error('No bookings were updated — you may not have permission to change these bookings.'),
+        reassignedCount: 0,
+        cancelledCollisionCount: 0,
+        syncFailed: false,
+      };
+    }
   }
 
   let syncFailed = false;
@@ -328,7 +341,7 @@ export async function swapPlayerInCycle(params: {
 
   return {
     error: null,
-    reassignedCount: reassignIds.length,
+    reassignedCount,
     cancelledCollisionCount: collisionIds.length,
     syncFailed,
   };

@@ -41,14 +41,14 @@ beforeEach(() => {
 
 describe('cancelBookingsAndSync — skipInvoiceSync', () => {
   it('with skipInvoiceSync: cancels the booking but does NOT sync invoices', async () => {
-    const client = makeClient({ error: null });
+    const client = makeClient({ data: [{ id: 'b1' }], error: null });
     const res = await cancelBookingsAndSync(['b1'], client as never, { skipInvoiceSync: true });
     expect(res).toEqual({ cancelError: null, syncError: null });
     expect(syncInvoicesAfterBookingRemoval).not.toHaveBeenCalled();
   });
 
   it('without options: syncs invoices (unchanged behaviour)', async () => {
-    const client = makeClient({ error: null });
+    const client = makeClient({ data: [{ id: 'b1' }], error: null });
     await cancelBookingsAndSync(['b1'], client as never);
     expect(syncInvoicesAfterBookingRemoval).toHaveBeenCalledTimes(1);
     expect(syncInvoicesAfterBookingRemoval).toHaveBeenCalledWith(['b1']);

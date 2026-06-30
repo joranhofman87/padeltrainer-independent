@@ -45,11 +45,21 @@ export async function cancelBookingsAndSync(
 ): Promise<CancelBookingResult> {
   if (bookingIds.length === 0) return { cancelError: null, syncError: null };
 
-  const { error: cancelError } = await client
+  const { data: cancelledRows, error: cancelError } = await client
     .from('bookings')
     .update({ status: 'cancelled' })
-    .in('id', bookingIds);
+    .in('id', bookingIds)
+    .select('id');
   if (cancelError) return { cancelError, syncError: null };
+  // An RLS-blocked UPDATE returns NO error but changes 0 rows. Surface that as a real failure so the
+  // caller never reports a phantom success (e.g. "removed from 14 sessions" while nothing changed —
+  // the academy-manager bookings UPDATE policy, 20260704120000, must be live for this to persist).
+  if ((cancelledRows?.length ?? 0) === 0) {
+    return {
+      cancelError: new Error('No bookings were cancelled — you may not have permission to change these bookings.'),
+      syncError: null,
+    };
+  }
 
   // Deliberate "Don't update invoices" roster edit: soft-cancel the booking but
   // leave every linked invoice exactly as it is (the owner reconciles billing
