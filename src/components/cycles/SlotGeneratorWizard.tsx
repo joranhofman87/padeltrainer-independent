@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,12 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DateInputField } from '@/components/ui/date-input-field';
-import { formatDate } from '@/lib/format';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { WeekdayToggle } from './WeekdayToggle';
 import { HolidayRangeEditor, type HolidayRange } from './HolidayRangeEditor';
 import { SlotLocationPicker, type SlotLocation } from '@/components/slots/SlotLocationPicker';
-import { planSlots, type SlotDraft, type SlotPlanConfig, type Weekday } from '@/lib/slotPlan';
+import { planSlots, groupSlotsBySeries, type SlotDraft, type SlotPlanConfig, type Weekday } from '@/lib/slotPlan';
 import { generateCycleWithSlots, type GenerateCycleInput } from '@/lib/slotGenerator';
 
 export interface SlotGeneratorTrainer {
@@ -51,7 +50,7 @@ export function SlotGeneratorWizard({
   timezone = 'Europe/Amsterdam',
   generate = generateCycleWithSlots,
 }: SlotGeneratorWizardProps) {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
 
   const [step, setStep] = useState<'configure' | 'preview'>('configure');
@@ -81,6 +80,23 @@ export function SlotGeneratorWizard({
   const [submitting, setSubmitting] = useState(false);
 
   const trainerId = trainerSelection.mode === 'self' ? trainerSelection.trainerId : pickedTrainerId;
+
+  // The preview is grouped into the same per-(weekday+time) series the generator will create one
+  // cyclus from each — so the review step shows exactly the cycli that will be made.
+  const previewSeries = useMemo(
+    () => groupSlotsBySeries(preview, timezone, i18n.language),
+    [preview, timezone, i18n.language],
+  );
+  // Render preview rows in the OWNER's timezone (not the browser's) so they always match the
+  // timezone-anchored series label above them.
+  const tzDate = useMemo(
+    () => new Intl.DateTimeFormat(i18n.language, { timeZone: timezone, weekday: 'short', day: 'numeric', month: 'short' }),
+    [i18n.language, timezone],
+  );
+  const tzTime = useMemo(
+    () => new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false }),
+    [timezone],
+  );
 
   const buildPlan = (): SlotPlanConfig => ({
     weekdays,
@@ -128,10 +144,14 @@ export function SlotGeneratorWizard({
         publishVisibility: visibility,
         requiresUpfrontPayment: visibility === 'public' && requiresUpfront,
         plan: buildPlan(),
+        locale: i18n.language,
       };
       const res = await generate(input);
       toast.success(
-        t('slotGenerator.created', '{{count}} sessies aangemaakt als concept.', { count: res.slotsCreated }),
+        t('slotGenerator.createdCycles', '{{cycles}} cycli met {{count}} sessies aangemaakt als concept.', {
+          cycles: res.cyclesCreated,
+          count: res.slotsCreated,
+        }),
       );
       navigate(backHref);
     } catch (e) {
@@ -313,20 +333,33 @@ export function SlotGeneratorWizard({
         <Card>
           <CardHeader>
             <CardTitle>
-              {t('slotGenerator.reviewTitle', '{{count}} sessies worden aangemaakt', { count: preview.length })}
+              {t('slotGenerator.reviewTitleCycles', '{{cycles}} cycli ({{count}} sessies)', {
+                cycles: previewSeries.length,
+                count: preview.length,
+              })}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {t('slotGenerator.reviewHint', 'Deze worden als CONCEPT aangemaakt (nog niet boekbaar). Je publiceert ze daarna vanuit de cyclus.')}
+              {t('slotGenerator.reviewHintCycles', 'Elke dag + tijd wordt een aparte cyclus. Deze worden als CONCEPT aangemaakt (nog niet boekbaar); je publiceert ze daarna per cyclus.')}
             </p>
             <div className="max-h-80 overflow-y-auto rounded-md border divide-y">
-              {preview.map((s) => (
-                <div key={s.startISO} className="flex justify-between px-3 py-2 text-sm">
-                  <span>{formatDate(s.startISO, 'EEE d MMM')}</span>
-                  <span className="text-muted-foreground">
-                    {formatDate(s.startISO, 'HH:mm')} – {formatDate(s.endISO, 'HH:mm')}
-                  </span>
+              {previewSeries.map((series) => (
+                <div key={series.key} className="px-3 py-2">
+                  <div className="flex items-center justify-between text-sm font-medium">
+                    <span>{cycleName.trim() ? `${cycleName.trim()} – ${series.label}` : series.label}</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {t('slotGenerator.seriesSessions', '{{count}} sessies', { count: series.slots.length })}
+                    </span>
+                  </div>
+                  <div className="mt-1 space-y-0.5 pl-2">
+                    {series.slots.map((s) => (
+                      <div key={s.startISO} className="flex justify-between text-xs text-muted-foreground">
+                        <span>{tzDate.format(new Date(s.startISO))}</span>
+                        <span>{tzTime.format(new Date(s.startISO))} – {tzTime.format(new Date(s.endISO))}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

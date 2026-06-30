@@ -62,6 +62,74 @@ export interface SlotDraft {
   endISO: string;
 }
 
+/** One recurring weekday+time series — the weekly instances that form a single cyclus. */
+export interface SlotSeries {
+  /** Stable, locale-independent grouping key: `"Monday|18:00"` (weekday + 24h start, in `timezone`). */
+  key: string;
+  /** Localized short label for naming/UI, e.g. `"ma 18:00"`. */
+  label: string;
+  /** The drafts in this series, in the input order (already chronological). */
+  slots: SlotDraft[];
+}
+
+/**
+ * Group planned drafts into per-(weekday + start-time) series — "every Monday 18:00" is one series,
+ * "every Wednesday 19:00" another — so the generator can create ONE cyclus per recurring series
+ * instead of lumping a whole batch (mixed days/times) into a single mega-cyclus. Pure + deterministic
+ * (timezone-aware via Intl; no I/O). Series are returned ordered by their first slot's start.
+ */
+export function groupSlotsBySeries(
+  drafts: SlotDraft[],
+  timezone: string,
+  locale = 'nl-NL',
+): SlotSeries[] {
+  const keyFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const labelOpts: Intl.DateTimeFormatOptions = {
+    timeZone: timezone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
+  // A malformed locale tag (e.g. "" or a single char) makes Intl throw RangeError; fall back to the
+  // default rather than crashing the whole generation on a bad caller-supplied locale.
+  let labelFmt: Intl.DateTimeFormat;
+  try {
+    labelFmt = new Intl.DateTimeFormat(locale, labelOpts);
+  } catch {
+    labelFmt = new Intl.DateTimeFormat('nl-NL', labelOpts);
+  }
+  const part = (parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+
+  const map = new Map<string, SlotSeries>();
+  for (const d of drafts) {
+    const date = new Date(d.startISO);
+    const kp = keyFmt.formatToParts(date);
+    // hour can be "24" at midnight in some engines with hour12:false — normalize to "00".
+    const hour = part(kp, 'hour') === '24' ? '00' : part(kp, 'hour');
+    const key = `${part(kp, 'weekday')}|${hour}:${part(kp, 'minute')}`;
+    let series = map.get(key);
+    if (!series) {
+      const lp = labelFmt.formatToParts(date);
+      const lHour = part(lp, 'hour') === '24' ? '00' : part(lp, 'hour');
+      const label = `${part(lp, 'weekday')} ${lHour}:${part(lp, 'minute')}`;
+      series = { key, label, slots: [] };
+      map.set(key, series);
+    }
+    series.slots.push(d);
+  }
+  return [...map.values()].sort((a, b) =>
+    a.slots[0].startISO < b.slots[0].startISO ? -1 : a.slots[0].startISO > b.slots[0].startISO ? 1 : 0,
+  );
+}
+
 /** Safety cap — a single generate must never fan out beyond this many slots. */
 export const MAX_PLANNED_SLOTS = 500;
 
