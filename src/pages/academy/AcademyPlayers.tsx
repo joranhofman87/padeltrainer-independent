@@ -8,14 +8,7 @@ import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
@@ -32,13 +25,11 @@ import { playerKeys, invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { supabase } from '@/lib/supabaseClient';
 import { format } from 'date-fns';
-import { SortableHeader } from '@/components/players/usePlayerSort';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { useVisibleColumns } from '@/components/players/useVisibleColumns';
 import { PlayerColumnsMenu } from '@/components/players/PlayerColumnsMenu';
 import { ListPageShell } from '@/components/ui/list-page-shell';
 import { TableToolbar } from '@/components/ui/table-toolbar';
-import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
 import { AddPlayerDialog } from '@/components/players/AddPlayerDialog';
@@ -50,7 +41,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PlayerTagsCell } from '@/components/players/PlayerTagsCell';
 import { PlayerNotesCell } from '@/components/players/PlayerNotesCell';
 import { ManagePlayerTagsDialog } from '@/components/players/ManagePlayerTagsDialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast as sonnerToast } from 'sonner';
@@ -338,6 +328,194 @@ export default function AcademyPlayers() {
     handlePlayerDataChanged();
   };
 
+  // Player table columns. The `name` column is always shown (first, after the selection checkbox); the
+  // rest are toggled via `visibleColumns` (passed as the engine's `visibleKeys`, which also drives their
+  // order). The name cell keeps its own <Link> (right/middle/Cmd-click already opens a new tab) — hence
+  // no engine `linkTo`, which would nest anchors.
+  const columns: ColumnDef<UnifiedPlayer>[] = [
+    {
+      key: 'name',
+      header: tTrainer('players.name'),
+      sortKey: 'name',
+      headClassName: 'whitespace-nowrap',
+      className: 'font-medium whitespace-nowrap max-w-[260px] min-w-0 overflow-hidden',
+      cellTitle: (player) => player.full_name,
+      renderCell: (player) => (
+        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+          <Link
+            to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
+            className="hover:underline text-foreground truncate"
+          >
+            {player.full_name}
+          </Link>
+          {player.has_overdue_payment && (
+            <Badge
+              variant="destructive"
+              className="h-5 px-1.5 text-[11px] shrink-0"
+              title={tTrainer('players.payment.overdueTooltip', 'Has overdue invoice')}
+            >
+              {tTrainer('players.payment.overdue', 'Overdue')}
+            </Badge>
+          )}
+          {player.email_undeliverable && <EmailBounceBadge compact />}
+        </div>
+      ),
+    },
+    {
+      key: 'email',
+      header: tTrainer('players.columns.email', 'Email'),
+      sortKey: 'email',
+      headClassName: 'whitespace-nowrap',
+      className: 'whitespace-nowrap max-w-[220px] min-w-0 overflow-hidden truncate',
+      cellTitle: (player) => player.email || '',
+      renderCell: (player) => player.email || <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: 'phone',
+      header: tTrainer('players.columns.phone', 'Phone'),
+      headClassName: 'whitespace-nowrap',
+      className: 'whitespace-nowrap overflow-hidden',
+      renderCell: (player) => player.phone || <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: 'location',
+      header: tTrainer('players.columns.location', 'Location'),
+      headClassName: 'whitespace-nowrap',
+      className: 'text-muted-foreground whitespace-nowrap max-w-[180px] min-w-0 overflow-hidden truncate',
+      cellTitle: (player) => player.location_names?.join(', ') || '',
+      renderCell: (player) =>
+        player.location_names && player.location_names.length > 0 ? player.location_names.join(', ') : '—',
+    },
+    {
+      key: 'addedOn',
+      header: tTrainer('players.columns.addedOn', 'Date added'),
+      sortKey: 'addedOn',
+      headClassName: 'whitespace-nowrap',
+      className: 'text-muted-foreground whitespace-nowrap',
+      renderCell: (player) => format(new Date(player.created_at), 'dd-MM-yyyy'),
+    },
+    {
+      key: 'trainer',
+      header: tTrainer('players.columns.trainer', 'Trainer'),
+      headClassName: 'whitespace-nowrap',
+      className: 'text-muted-foreground whitespace-nowrap max-w-[160px] truncate',
+      cellTitle: (player) => player.trainer_name || '',
+      renderCell: (player) => player.trainer_name || '—',
+    },
+    {
+      key: 'skill',
+      header: tTrainer('players.columns.skill', 'Skill rating'),
+      sortKey: 'skill',
+      headClassName: 'whitespace-nowrap',
+      className: 'whitespace-nowrap',
+      renderCell: (player) =>
+        player.skill_rating ? (
+          <span className="inline-flex items-center gap-1">
+            <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{player.skill_rating.toFixed(1)}</Badge>
+            <span className="text-[11px] text-muted-foreground uppercase">{player.rating_system || 'knltb'}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: tTrainer('players.columns.status', 'Status'),
+      headClassName: 'whitespace-nowrap',
+      className: 'whitespace-nowrap',
+      renderCell: (player) =>
+        player.type === 'registered' ? (
+          <Badge variant="default" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.registered')}</Badge>
+        ) : player.has_trained ? (
+          <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.active')}</Badge>
+        ) : (
+          <Badge variant="outline" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.prospect')}</Badge>
+        ),
+    },
+    {
+      key: 'cyclus',
+      header: tTrainer('players.columns.cyclus', 'In active cyclus'),
+      headClassName: 'whitespace-nowrap',
+      className: 'whitespace-nowrap',
+      renderCell: (player) =>
+        player.has_active_cyclus ? (
+          <Badge variant="outline" className="h-5 px-1.5 text-[11px] border-primary/30 text-primary">
+            <RefreshCw className="h-2.5 w-2.5 mr-1" />
+            {tTrainer('players.columns.cyclusYes', 'Yes')}
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: 'type',
+      header: tTrainer('players.columns.type', 'Type'),
+      headClassName: 'whitespace-nowrap',
+      className: 'whitespace-nowrap',
+      renderCell: (player) => (
+        <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+          {player.type === 'guest'
+            ? tTrainer('players.columns.typeGuest', 'Guest')
+            : tTrainer('players.columns.typeRegistered', 'Registered')}
+        </Badge>
+      ),
+    },
+    {
+      key: 'notes',
+      header: tTrainer('players.columns.notes', 'Notes (intake)'),
+      headClassName: 'whitespace-nowrap',
+      className: 'text-muted-foreground max-w-[220px] min-w-0 overflow-hidden whitespace-nowrap',
+      renderCell: (player) => <div className="truncate" title={player.notes || ''}>{player.notes || '—'}</div>,
+    },
+    {
+      key: 'source',
+      header: tTrainer('players.columns.source', 'Source'),
+      headClassName: 'whitespace-nowrap',
+      className: 'text-muted-foreground whitespace-nowrap max-w-[140px] truncate',
+      cellTitle: (player) => player.source || '',
+      renderCell: (player) => player.source || '—',
+    },
+    {
+      key: 'birthDate',
+      header: tTrainer('players.columns.birthDate', 'Birth date'),
+      headClassName: 'whitespace-nowrap',
+      className: 'text-muted-foreground whitespace-nowrap',
+      renderCell: (player) => (player.birth_date ? format(new Date(player.birth_date), 'dd-MM-yyyy') : '—'),
+    },
+    {
+      key: 'tags',
+      header: tTrainer('players.columns.tags', 'Tags'),
+      headClassName: 'whitespace-nowrap',
+      className: 'max-w-[240px] min-w-[140px] overflow-hidden',
+      renderCell: (player) =>
+        activeAcademy ? (
+          <PlayerTagsCell
+            academyId={activeAcademy.id}
+            playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
+            tags={tags}
+            selectedTagIds={player.tag_ids || []}
+            onTagsChange={setTags}
+            onSelectedTagIdsChange={() => handlePlayerDataChanged()}
+          />
+        ) : null,
+    },
+    {
+      key: 'internalNotes',
+      header: tTrainer('players.columns.internalNotes', 'Internal notes'),
+      headClassName: 'whitespace-nowrap',
+      className: 'max-w-[260px] min-w-[140px] overflow-hidden',
+      renderCell: (player) =>
+        activeAcademy ? (
+          <PlayerNotesCell
+            academyId={activeAcademy.id}
+            playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
+            notes={player.internal_notes || ''}
+            onChanged={handlePlayerDataChanged}
+          />
+        ) : null,
+    },
+  ];
+
   return (
     <ListPageShell
       isLoading={loading}
@@ -532,9 +710,41 @@ export default function AcademyPlayers() {
               />
             </Card>
           ) : (
-            <DataTableCard
-              testId="academy-players-table-scroll"
-              className={flushOnMobileCardClass()}
+            <DataTable<UnifiedPlayer>
+              columns={columns}
+              rows={sortedPlayers}
+              visibleKeys={['name', ...visibleColumns]}
+              sortKey={sortKey}
+              sortDirection={sortDir}
+              onSort={toggleSort}
+              compact
+              stickyHeader
+              cardTestId="academy-players-table-scroll"
+              cardClassName={flushOnMobileCardClass()}
+              selection={{
+                selectedIds: new Set(selected.keys()),
+                onToggle: (id) => {
+                  const p = sortedPlayers.find((x) => x.id === id);
+                  if (p) togglePlayerSelected(p);
+                },
+                onToggleAll: (pageRows) =>
+                  setSelected((prev) => {
+                    const next = new Map(prev);
+                    const allSelected = pageRows.length > 0 && pageRows.every((p) => next.has(p.id));
+                    if (allSelected) pageRows.forEach((p) => next.delete(p.id));
+                    else
+                      pageRows.forEach((p) =>
+                        next.set(p.id, {
+                          guest_player_id: p.guest_player_id || null,
+                          profile_id: p.profile_id || null,
+                          name: p.full_name || '',
+                        }),
+                      );
+                    return next;
+                  }),
+                rowAriaLabel: () => tTrainer('players.bulk.selectRow', 'Select player'),
+                selectAllAriaLabel: tTrainer('players.bulk.selectAll', 'Select all on page'),
+              }}
               mobile={
                 <div className="md:hidden divide-y divide-border/60">
                   {sortedPlayers.map((player) => (
@@ -586,216 +796,7 @@ export default function AcademyPlayers() {
                   ))}
                 </div>
               }
-            >
-                <Table className={compactDataTableClass}>
-                  <TableHeader className="sticky top-0 bg-background z-10">
-                    <TableRow>
-                      <TableHead className="w-8">
-                        <Checkbox
-                          checked={sortedPlayers.length > 0 && sortedPlayers.every((p) => selected.has(p.id))}
-                          onCheckedChange={(c) => setSelected((prev) => {
-                            const next = new Map(prev);
-                            if (c) sortedPlayers.forEach((p) => next.set(p.id, { guest_player_id: p.guest_player_id || null, profile_id: p.profile_id || null, name: p.full_name || '' }));
-                            else sortedPlayers.forEach((p) => next.delete(p.id));
-                            return next;
-                          })}
-                          aria-label={tTrainer('players.bulk.selectAll', 'Select all on page')}
-                        />
-                      </TableHead>
-                      <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
-                        {tTrainer('players.name')}
-                      </SortableHeader>
-                      {visibleColumns.map((key) => {
-                        const col = ALL_COLUMNS.find((c) => c.key === key);
-                        if (!col) return null;
-                        if (key === 'email') {
-                          return (
-                            <SortableHeader key={key} sortKey="email" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
-                              {col.label}
-                            </SortableHeader>
-                          );
-                        }
-                        if (key === 'skill') {
-                          return (
-                            <SortableHeader key={key} sortKey="skill" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
-                              {col.label}
-                            </SortableHeader>
-                          );
-                        }
-                        if (key === 'addedOn') {
-                          return (
-                            <SortableHeader key={key} sortKey="addedOn" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
-                              {col.label}
-                            </SortableHeader>
-                          );
-                        }
-                        return <TableHead key={key} className="whitespace-nowrap">{col.label}</TableHead>;
-                      })}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedPlayers.map((player) => (
-                      <TableRow key={player.id} className="h-10 max-h-10" data-state={selected.has(player.id) ? 'selected' : undefined}>
-                        <TableCell className="w-8">
-                          <Checkbox
-                            checked={selected.has(player.id)}
-                            onCheckedChange={() => togglePlayerSelected(player)}
-                            aria-label={tTrainer('players.bulk.selectRow', 'Select player')}
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium whitespace-nowrap max-w-[260px] min-w-0 overflow-hidden" title={player.full_name}>
-                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                            <Link
-                              to={`/app/academy/players/${player.guest_player_id ? `g_${player.guest_player_id}` : `p_${player.profile_id}`}`}
-                              className="hover:underline text-foreground truncate"
-                            >
-                              {player.full_name}
-                            </Link>
-                            {player.has_overdue_payment && (
-                              <Badge variant="destructive" className="h-5 px-1.5 text-[11px] shrink-0" title={tTrainer('players.payment.overdueTooltip', 'Has overdue invoice')}>
-                                {tTrainer('players.payment.overdue', 'Overdue')}
-                              </Badge>
-                            )}
-                            {player.email_undeliverable && <EmailBounceBadge compact />}
-                          </div>
-                        </TableCell>
-                        {visibleColumns.map((key) => {
-                          switch (key) {
-                            case 'email':
-                              return (
-                                <TableCell key={key} className="whitespace-nowrap max-w-[220px] min-w-0 overflow-hidden truncate" title={player.email || ''}>
-                                  {player.email || <span className="text-muted-foreground">—</span>}
-                                </TableCell>
-                              );
-                            case 'phone':
-                              return (
-                                <TableCell key={key} className="whitespace-nowrap overflow-hidden">
-                                  {player.phone || <span className="text-muted-foreground">—</span>}
-                                </TableCell>
-                              );
-                            case 'location':
-                              return (
-                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[180px] min-w-0 overflow-hidden truncate" title={player.location_names?.join(', ') || ''}>
-                                  {player.location_names && player.location_names.length > 0
-                                    ? player.location_names.join(', ')
-                                    : '—'}
-                                </TableCell>
-                              );
-                            case 'addedOn':
-                              return (
-                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap">
-                                  {format(new Date(player.created_at), 'dd-MM-yyyy')}
-                                </TableCell>
-                              );
-                            case 'trainer':
-                              return (
-                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[160px] truncate" title={player.trainer_name || ''}>
-                                  {player.trainer_name || '—'}
-                                </TableCell>
-                              );
-                            case 'skill':
-                              return (
-                                <TableCell key={key} className="whitespace-nowrap">
-                                  {player.skill_rating ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{player.skill_rating.toFixed(1)}</Badge>
-                                      <span className="text-[11px] text-muted-foreground uppercase">
-                                        {player.rating_system || 'knltb'}
-                                      </span>
-                                    </span>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </TableCell>
-                              );
-                            case 'status':
-                              return (
-                                <TableCell key={key} className="whitespace-nowrap">
-                                  {player.type === 'registered' ? (
-                                    <Badge variant="default" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.registered')}</Badge>
-                                  ) : player.has_trained ? (
-                                    <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.active')}</Badge>
-                                  ) : (
-                                    <Badge variant="outline" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.prospect')}</Badge>
-                                  )}
-                                </TableCell>
-                              );
-                            case 'cyclus':
-                              return (
-                                <TableCell key={key} className="whitespace-nowrap">
-                                  {player.has_active_cyclus ? (
-                                    <Badge variant="outline" className="h-5 px-1.5 text-[11px] border-primary/30 text-primary">
-                                      <RefreshCw className="h-2.5 w-2.5 mr-1" />
-                                      {tTrainer('players.columns.cyclusYes', 'Yes')}
-                                    </Badge>
-                                  ) : <span className="text-muted-foreground">—</span>}
-                                </TableCell>
-                              );
-                            case 'type':
-                              return (
-                                <TableCell key={key} className="whitespace-nowrap">
-                                  <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-                                    {player.type === 'guest'
-                                      ? tTrainer('players.columns.typeGuest', 'Guest')
-                                      : tTrainer('players.columns.typeRegistered', 'Registered')}
-                                  </Badge>
-                                </TableCell>
-                              );
-                            case 'notes':
-                              return (
-                                <TableCell key={key} className="text-muted-foreground max-w-[220px] min-w-0 overflow-hidden whitespace-nowrap">
-                                  <div className="truncate" title={player.notes || ''}>
-                                    {player.notes || '—'}
-                                  </div>
-                                </TableCell>
-                              );
-                            case 'source':
-                              return (
-                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap max-w-[140px] truncate" title={player.source || ''}>
-                                  {player.source || '—'}
-                                </TableCell>
-                              );
-                            case 'birthDate':
-                              return (
-                                <TableCell key={key} className="text-muted-foreground whitespace-nowrap">
-                                  {player.birth_date ? format(new Date(player.birth_date), 'dd-MM-yyyy') : '—'}
-                                </TableCell>
-                              );
-                            case 'tags':
-                              return (
-                                <TableCell key={key} className="max-w-[240px] min-w-[140px] overflow-hidden">
-                                  {activeAcademy && (
-                                    <PlayerTagsCell
-                                      academyId={activeAcademy.id}
-                                      playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
-                                      tags={tags}
-                                      selectedTagIds={player.tag_ids || []}
-                                      onTagsChange={setTags}
-                                      onSelectedTagIdsChange={() => handlePlayerDataChanged()}
-                                    />
-                                  )}
-                                </TableCell>
-                              );
-                            case 'internalNotes':
-                              return (
-                                <TableCell key={key} className="max-w-[260px] min-w-[140px] overflow-hidden">
-                                  {activeAcademy && (
-                                    <PlayerNotesCell
-                                      academyId={activeAcademy.id}
-                                      playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
-                                      notes={player.internal_notes || ''}
-                                      onChanged={handlePlayerDataChanged}
-                                    />
-                                  )}
-                                </TableCell>
-                              );
-                            default:
-                              return null;
-                          }
-                        })}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-            </DataTableCard>
+            />
           )}
 
           <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />

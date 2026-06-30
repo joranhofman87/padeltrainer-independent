@@ -27,10 +27,10 @@ describe('AcademyPlayers visibility', () => {
     expect(source).toContain('campaignAll');
   });
 
-  it('uses shared table primitives', () => {
+  it('renders through the shared DataTable engine', () => {
     expect(source).toContain('TableToolbar');
-    expect(source).toContain('DataTableCard');
-    expect(source).toContain('compactDataTableClass');
+    expect(source).toContain('<DataTable');
+    expect(source).toContain("from '@/components/ui/data-table-generic'");
     expect(source).toContain('EmptyState');
   });
 

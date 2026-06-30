@@ -6,11 +6,12 @@ import { compactDataTableClass } from '@/components/ui/data-table';
 const source = readFileSync(resolve(__dirname, '../pages/academy/AcademyPlayers.tsx'), 'utf8');
 
 describe('AcademyPlayers table row layout', () => {
-  it('uses shared compact table class and DataTableCard wrapper', () => {
-    expect(source).toContain('compactDataTableClass');
-    expect(source).toContain('DataTableCard');
-    expect(source).toContain('testId="academy-players-table-scroll"');
-    expect(source).toMatch(/className=\{compactDataTableClass\}/);
+  it('renders through the shared DataTable engine with compact density + sticky header', () => {
+    expect(source).toContain("from '@/components/ui/data-table-generic'");
+    expect(source).toContain('<DataTable');
+    expect(source).toContain('stickyHeader');
+    expect(source).toContain('cardTestId="academy-players-table-scroll"');
+    expect(source).toContain("visibleKeys={['name', ...visibleColumns]}");
   });
 
   it('uses fixed row height via shared compact table class', () => {
@@ -20,14 +21,13 @@ describe('AcademyPlayers table row layout', () => {
   });
 
   it('prevents tag and note columns from expanding rows', () => {
-    expect(source).toContain("case 'tags'");
-    expect(source).toMatch(/case 'tags'[\s\S]*?overflow-hidden/);
-    expect(source).toMatch(/case 'internalNotes'[\s\S]*?overflow-hidden/);
+    expect(source).toMatch(/key: 'tags'[\s\S]*?overflow-hidden/);
+    expect(source).toMatch(/key: 'internalNotes'[\s\S]*?overflow-hidden/);
   });
 
   it('truncates email and location cells', () => {
-    expect(source).toMatch(/case 'email'[\s\S]*?truncate/);
-    expect(source).toMatch(/case 'location'[\s\S]*?truncate/);
+    expect(source).toMatch(/key: 'email'[\s\S]*?truncate/);
+    expect(source).toMatch(/key: 'location'[\s\S]*?truncate/);
   });
 
   it('uses TableToolbar for search and filters', () => {
