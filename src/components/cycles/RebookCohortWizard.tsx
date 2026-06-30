@@ -21,6 +21,8 @@ import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
+import { RebookRulesField } from '@/components/cycles/RebookRulesField';
+import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 
 interface Props {
@@ -108,6 +110,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [preparing, setPreparing] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
   const [invitationMessage, setInvitationMessage] = useState('');
+  const [rebookRules, setRebookRules] = useState('');
 
   useEffect(() => {
     getAcademyLocationsWithDetails(academyProfileId)
@@ -151,6 +154,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
+      rebookRules: normalizeRichTextHtml(rebookRules),
     }),
     [
       academyProfileId,
@@ -168,6 +172,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       sessionPrice,
       holidays,
       invitationMessage,
+      rebookRules,
     ],
   );
 
@@ -320,6 +325,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
             label={t('rebookCohort.inviteMessageLabel', 'Persoonlijk bericht in de uitnodiging (optioneel)')}
             placeholder={t('rebookCohort.inviteMessagePlaceholder', 'Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.')}
             variablesHelp={t('rebookCohort.inviteVariablesHelp', 'Voeg variabele toe:')}
+          />
+        </div>
+        <div className="rounded-md border p-3">
+          <RebookRulesField
+            academyProfileId={academyProfileId}
+            value={rebookRules}
+            onChange={setRebookRules}
+            disabled={submitting}
           />
         </div>
         <div className="flex flex-wrap justify-end gap-2 sticky bottom-2 rounded-md border bg-background p-2 shadow-sm">

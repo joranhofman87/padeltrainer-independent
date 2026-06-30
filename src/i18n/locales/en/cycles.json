@@ -858,6 +858,14 @@
     "event": "A one-off activity, such as a tournament or clinic.",
     "registration": "An open form to collect player sign-ups for a training cycle."
   },
+  "rebookRules": {
+    "label": "Rebooking rules (players must agree before paying)",
+    "help": "Shown on the payment page with a required \"I agree\" checkbox. This is separate from the message in the email above.",
+    "placeholder": "e.g. Payment within 7 days. No refunds after the cycle start date.",
+    "saveDefault": "Save as default",
+    "savedDefault": "Saved as default",
+    "saveDefaultError": "Could not save as default"
+  },
   "rebookCohort": {
     "pickDate": "Pick a date",
     "counting": "Counting players…",

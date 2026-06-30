@@ -155,6 +155,11 @@ serve(async (req) => {
     const invitationMessage: string = typeof body?.invitationMessage === "string"
       ? body.invitationMessage.trim().slice(0, 2000)
       : "";
+    // Rebooking rules (rich HTML). Stored on the new cycle for the claim/pay page to show + gate
+    // consent against — NOT sent in the invitation email (that uses invitationMessage above).
+    const rebookRules: string = typeof body?.rebookRules === "string"
+      ? body.rebookRules.trim().slice(0, 8000)
+      : "";
 
     if (!newStartDate || (!sourceCyclusId && (!academyProfileId || locationIds.length === 0 || !termEndDate))) {
       return new Response(JSON.stringify({ error: "newStartDate plus either sourceCyclusId, or academyProfileId + locationIds + termEndDate, are required" }), {
@@ -453,7 +458,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null },
+        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_rules: rebookRules || null },
       })
       .select("id, name")
       .single();

@@ -24,6 +24,8 @@ import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
+import { RebookRulesField } from '@/components/cycles/RebookRulesField';
+import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 
 interface Props {
@@ -92,6 +94,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [submitting, setSubmitting] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
   const [invitationMessage, setInvitationMessage] = useState('');
+  const [rebookRules, setRebookRules] = useState('');
 
   useEffect(() => {
     getCycles('academy', academyProfileId)
@@ -133,8 +136,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
+      rebookRules: normalizeRichTextHtml(rebookRules),
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, rebookRules],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -424,6 +428,14 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   label={t('newRound.inviteMessageLabel', 'Persoonlijk bericht in de uitnodiging (optioneel)')}
                   placeholder={t('newRound.inviteMessagePlaceholder', 'Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.')}
                   variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                />
+              </div>
+              <div className="rounded-md border p-3">
+                <RebookRulesField
+                  academyProfileId={academyProfileId}
+                  value={rebookRules}
+                  onChange={setRebookRules}
+                  disabled={submitting}
                 />
               </div>
             </CardContent>
