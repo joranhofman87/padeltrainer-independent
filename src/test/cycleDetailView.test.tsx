@@ -23,7 +23,7 @@ const {
 } = vi.hoisted(() => ({
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
-  mockCancelDelete: vi.fn(() => Promise.resolve({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null })),
+  mockCancelDelete: vi.fn((..._a: unknown[]) => Promise.resolve({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null })),
   mockSyncSplit: vi.fn(() => Promise.resolve()),
   mockSyncPrice: vi.fn(() => Promise.resolve()),
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
