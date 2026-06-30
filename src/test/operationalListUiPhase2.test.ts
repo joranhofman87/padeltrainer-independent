@@ -5,12 +5,13 @@ import { resolve } from 'node:path';
 const read = (rel: string) => readFileSync(resolve(__dirname, '..', rel), 'utf8');
 
 describe('Phase 2 operational list UI', () => {
-  it('AcademyTrainers uses shared table primitives', () => {
+  it('AcademyTrainers renders the active table through the shared DataTable engine', () => {
     const source = read('pages/academy/AcademyTrainers.tsx');
-    expect(source).toContain('DataTableCard');
-    expect(source).toContain('compactDataTableClass');
+    expect(source).toContain("from '@/components/ui/data-table-generic'");
+    expect(source).toContain('<DataTable');
+    expect(source).toContain('cardTestId="academy-trainers-table-scroll"');
     expect(source).toContain('EmptyState');
-    // Page chrome + loading skeleton + empty/content switching now come via the
+    // Page chrome + loading skeleton + empty/content switching still come via the
     // shared list-page shell (which renders ListPageSkeleton internally).
     expect(source).toContain('ListPageShell');
     expect(source).toContain('ListPageState');
