@@ -1124,6 +1124,7 @@
     "afterCount": "{{count}} sessies vallen na de nieuwe einddatum.",
     "protected": "{{count}} hiervan hebben boekingen en blijven behouden.",
     "removeUnbooked": "Verwijder de {{count}} lege sessies (zonder boekingen)",
+    "removeBooked": "Verwijder ook de {{count}} sessie(s) mét boekingen — dit annuleert die boekingen",
     "willAdd": "Er worden {{count}} nieuwe wekelijkse sessies aangemaakt (zelfde dag, tijd, trainer en prijs).",
     "saved": "Einddatum bijgewerkt",
     "savedWithAdd": "Einddatum bijgewerkt · {{count}} sessies toegevoegd",
@@ -1310,6 +1311,8 @@
     "deleteSlot": {
       "confirmTitle": "Deze sessie verwijderen?",
       "confirmBody": "Dit verwijdert de sessie. Een sessie met een boeking blijft behouden — annuleer eerst de boeking.",
+      "confirmBodyEmpty": "Hiermee wordt de sessie verwijderd.",
+      "confirmBodyBooked": "Deze sessie heeft {{count}} boeking(en). Deze worden geannuleerd en de sessie wordt verwijderd.",
       "deleted": "Sessie verwijderd",
       "hasBooking": "Deze sessie heeft nog een boeking — annuleer die eerst.",
       "error": "Kon de sessie niet verwijderen. Probeer het opnieuw."

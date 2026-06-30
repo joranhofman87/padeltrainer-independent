@@ -34,7 +34,7 @@ import { buildAffectedInvoicesSummary, type AffectedInvoicesSummary } from '@/li
 import { applyAddPlayerInvoiceChoice } from '@/lib/invoiceAfterAddPlayer';
 import type { InvoiceUpdateChoice } from '@/lib/invoiceUpdateChoice';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
-import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { applySlotDeleteToCycle, cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
 import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import { applyCycleEndDate } from '@/lib/cycleExtension';
 import { updateCyclePricing, applySlotEditToCycle, publishCycle, type ExtraCost } from '@/lib/cycles';
@@ -326,26 +326,20 @@ export function CycleDetailView({
     }
   };
 
-  // Delete ONE session. The RPC refuses to delete a still-booked slot (deletedCount 0) → surface that
-  // as an error so the owner cancels its bookings first. On a real delete, resync the cycle's split
-  // amounts UNLESS the page-level toggle says to leave invoices alone.
+  // Delete ONE session. Cancels any bookings on it first (honouring the page toggle), then deletes
+  // it: an empty session is just removed; a booked one has its bookings cancelled + the session
+  // removed. The cancel→delete→split-resync runs inside cancelBookingsAndDeleteSlots.
   const handleDeleteSlot = async () => {
     if (!deleteSlotTarget) return;
     setDeletingSlot(true);
     try {
-      const res = await applySlotDeleteToCycle(cycleId, [deleteSlotTarget.id]);
+      const res = await cancelBookingsAndDeleteSlots(cycleId, [deleteSlotTarget.id], { skipInvoices: skipInvoiceUpdates });
       if (res.deletedCount === 0) {
-        toast.error(t('detail.deleteSlot.hasBooking', 'This session still has a booking — cancel it first.'));
+        toast.error(t('detail.deleteSlot.error', 'Could not delete the session. Please try again.'));
         setDeleteSlotTarget(null);
         return;
       }
-      if (!skipInvoiceUpdates) {
-        try {
-          await syncSplitCountForCycle(cycleId);
-        } catch (e) {
-          logger.error('Failed to sync split count after session delete', e as Error);
-        }
-      }
+      if (res.syncError) logger.error('Invoice resync failed after session delete', res.syncError);
       setDeleteSlotTarget(null);
       toast.success(t('detail.deleteSlot.deleted', 'Session deleted'));
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
@@ -516,6 +510,9 @@ export function CycleDetailView({
       const { added, removed } = await applyCycleEndDate(cycleId, endDatePlan?.endDate ?? endDateValue, {
         removableIds: endDatePlan?.removableIds,
         removeUnbooked: endDatePlan?.removeUnbooked,
+        // Only when the owner explicitly opted in to dropping the booked out-of-range sessions.
+        bookedIdsToRemove: endDatePlan?.removeBooked ? endDatePlan?.protectedIds : undefined,
+        skipInvoices: skipInvoiceUpdates,
       });
       if (added > 0) toast.success(t('detail.edit.sessionsAdded', { count: added }));
       else if (removed > 0) toast.success(t('detail.edit.sessionsRemoved', { count: removed }));
@@ -967,6 +964,7 @@ export function CycleDetailView({
               onChange={setEndDateValue}
               onPlanChange={setEndDatePlan}
               disabled={savingEndDate}
+              allowRemoveBooked={canEdit}
               namespace={namespace}
             />
             <div className="flex">
@@ -1078,9 +1076,18 @@ export function CycleDetailView({
           <AlertDialogHeader>
             <AlertDialogTitle>{t('detail.deleteSlot.confirmTitle', 'Delete this session?')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('detail.deleteSlot.confirmBody', 'This removes the session. A session with a booking is kept — cancel its booking first.')}
+              {deleteSlotTarget && deleteSlotTarget.bookedCount > 0
+                ? t('detail.deleteSlot.confirmBodyBooked', 'This session has {{count}} booking(s). They will be cancelled and the session removed.', { count: deleteSlotTarget.bookedCount })
+                : t('detail.deleteSlot.confirmBodyEmpty', 'This removes the session.')}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteSlotTarget && deleteSlotTarget.bookedCount > 0 && (
+            <SkipInvoiceUpdatesCheckbox
+              checked={skipInvoiceUpdates}
+              onCheckedChange={setSkipInvoiceUpdates}
+              disabled={deletingSlot}
+            />
+          )}
           <AlertDialogFooter>
             <Button variant="outline" onClick={() => setDeleteSlotTarget(null)} disabled={deletingSlot}>
               {t('detail.delete.cancel')}

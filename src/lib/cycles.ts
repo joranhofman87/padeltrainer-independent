@@ -228,8 +228,10 @@ export async function getCycleDates(cycleId: string): Promise<{ start_date: stri
 export interface OutOfRangeSlots {
   /** Unbooked sessions after the proposed end date — safe to delete. */
   removableIds: string[];
-  /** Sessions after the proposed end date that have an active booking — must be kept. */
+  /** Count of sessions after the proposed end date that have an active booking. */
   protectedCount: number;
+  /** Ids of those booked out-of-range sessions — the owner can opt to cancel + remove them. */
+  protectedIds: string[];
 }
 
 /** Find the sessions of a cyclus that fall AFTER a proposed end date, split into
@@ -245,7 +247,7 @@ export async function findSlotsAfterDate(cyclusId: string, endDate: string): Pro
     .gt('start_time', `${endDate}T23:59:59`);
   if (error) throw error;
   const ids = (slots ?? []).map((s: { id: string }) => s.id);
-  if (ids.length === 0) return { removableIds: [], protectedCount: 0 };
+  if (ids.length === 0) return { removableIds: [], protectedCount: 0, protectedIds: [] };
   const { data: booked } = await supabase
     .from('bookings')
     .select('slot_id')
@@ -253,7 +255,8 @@ export async function findSlotsAfterDate(cyclusId: string, endDate: string): Pro
     .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
   const bookedSet = new Set((booked ?? []).map((b: { slot_id: string }) => b.slot_id));
   const removableIds = ids.filter((id) => !bookedSet.has(id));
-  return { removableIds, protectedCount: ids.length - removableIds.length };
+  const protectedIds = ids.filter((id) => bookedSet.has(id));
+  return { removableIds, protectedCount: protectedIds.length, protectedIds };
 }
 
 // Intake Requests CRUD

@@ -11,6 +11,7 @@ import type { SlotEditFormSlot, SlotEditFormValues } from '@/components/slots/Sl
 const {
   mockUseCycleDetail,
   mockApplyDelete,
+  mockCancelDelete,
   mockSyncSplit,
   mockSyncPrice,
   mockUpdatePricing,
@@ -22,6 +23,7 @@ const {
 } = vi.hoisted(() => ({
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
+  mockCancelDelete: vi.fn(() => Promise.resolve({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null })),
   mockSyncSplit: vi.fn(() => Promise.resolve()),
   mockSyncPrice: vi.fn(() => Promise.resolve()),
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
@@ -33,7 +35,10 @@ const {
 }));
 vi.mock('@/lib/supabaseClient', () => ({ supabase: supabaseMock }));
 vi.mock('@/lib/cycleDetail', () => ({ useCycleDetail: () => mockUseCycleDetail() }));
-vi.mock('@/lib/slotDeleteGuard', () => ({ applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a) }));
+vi.mock('@/lib/slotDeleteGuard', () => ({
+  applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a),
+  cancelBookingsAndDeleteSlots: (...a: unknown[]) => mockCancelDelete(...a),
+}));
 vi.mock('@/lib/invoiceSync', () => ({
   syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
   syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
@@ -96,14 +101,14 @@ vi.mock('@/components/cycles/CycleEndDateFields', () => ({
   }: {
     value: string;
     onChange: (v: string) => void;
-    onPlanChange: (p: { endDate: string; invalid: boolean; willAdd: number; removableIds: string[]; protectedCount: number; removeUnbooked: boolean }) => void;
+    onPlanChange: (p: { endDate: string; invalid: boolean; willAdd: number; removableIds: string[]; protectedCount: number; protectedIds: string[]; removeUnbooked: boolean; removeBooked: boolean }) => void;
   }) => (
     <input
       data-testid="end-date-input"
       value={value}
       onChange={(e) => {
         onChange(e.target.value);
-        onPlanChange({ endDate: e.target.value, invalid: false, willAdd: 0, removableIds: [], protectedCount: 0, removeUnbooked: false });
+        onPlanChange({ endDate: e.target.value, invalid: false, willAdd: 0, removableIds: [], protectedCount: 0, protectedIds: [], removeUnbooked: false, removeBooked: false });
       }}
     />
   ),
@@ -169,6 +174,8 @@ function renderView(ui: ReactElement) {
 beforeEach(() => {
   mockUseCycleDetail.mockReset();
   mockApplyDelete.mockReset();
+  mockCancelDelete.mockReset();
+  mockCancelDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null });
   mockSyncSplit.mockReset();
   mockSyncSplit.mockResolvedValue(undefined);
   mockSyncPrice.mockReset();
@@ -315,45 +322,42 @@ describe('CycleDetailView (inline edit)', () => {
     const card = input.closest('.space-y-4') as HTMLElement;
     fireEvent.click(within(card).getByRole('button', { name: /^Save$/ }));
     await waitFor(() =>
-      expect(mockApplyEndDate).toHaveBeenCalledWith('cy1', '2099-08-31', { removableIds: [], removeUnbooked: false }),
+      expect(mockApplyEndDate).toHaveBeenCalledWith('cy1', '2099-08-31', { removableIds: [], removeUnbooked: false, bookedIdsToRemove: undefined, skipInvoices: false }),
     );
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
-  // --- Per-session delete ---
-  it('per-session delete: confirm → applySlotDeleteToCycle(cycleId, [slotId]) + resync + onMutated', async () => {
+  // --- Per-session delete (cancel-then-delete via cancelBookingsAndDeleteSlots) ---
+  it('per-session delete: confirm → cancelBookingsAndDeleteSlots(cycleId, [slotId], {skipInvoices:false}) + onMutated', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [] });
+    mockCancelDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null });
     const onMutated = vi.fn();
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
     // First session row's Delete action.
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete session' })[0]);
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1']));
-    await waitFor(() => expect(mockSyncSplit).toHaveBeenCalledWith('cy1'));
+    await waitFor(() => expect(mockCancelDelete).toHaveBeenCalledWith('cy1', ['s1'], { skipInvoices: false }));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
-  it('per-session delete: deletedCount 0 (still booked) → error toast, no resync', async () => {
+  it('per-session delete: deletedCount 0 (nothing removed) → error toast', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 1, protectedSlotIds: ['s1'] });
+    mockCancelDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 1, protectedSlotIds: ['s1'], cancelledBookings: 0, syncError: null });
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete session' })[0]);
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
+    await waitFor(() => expect(mockCancelDelete).toHaveBeenCalled());
     await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
-    expect(mockSyncSplit).not.toHaveBeenCalled();
   });
 
-  it('per-session delete: toggle "don\'t update invoices" → no resync after delete', async () => {
+  it('per-session delete: toggle "don\'t update invoices" → cancelBookingsAndDeleteSlots called with skipInvoices:true', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [] });
+    mockCancelDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null });
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
     fireEvent.click(screen.getByRole('checkbox')); // page-level "Don't update invoices" toggle
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete session' })[0]);
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1']));
-    expect(mockSyncSplit).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockCancelDelete).toHaveBeenCalledWith('cy1', ['s1'], { skipInvoices: true }));
   });
 
   // --- Whole-cycle delete ---

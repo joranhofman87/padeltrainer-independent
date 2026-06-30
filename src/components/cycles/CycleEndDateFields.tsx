@@ -18,8 +18,12 @@ export interface CycleEndDatePlan {
   removableIds: string[];
   /** Out-of-range sessions kept because they have bookings. */
   protectedCount: number;
+  /** Ids of those booked out-of-range sessions (acted on only when `removeBooked` is set). */
+  protectedIds: string[];
   /** Whether the user opted to remove the empty out-of-range sessions. */
   removeUnbooked: boolean;
+  /** Whether the user opted to ALSO remove the booked out-of-range sessions (cancels their bookings). */
+  removeBooked: boolean;
 }
 
 interface Props {
@@ -36,6 +40,12 @@ interface Props {
   /** Reports the current plan up so the parent can validate + apply it on save. */
   onPlanChange: (plan: CycleEndDatePlan) => void;
   disabled?: boolean;
+  /**
+   * Enables the "also remove the booked out-of-range sessions (cancels their bookings)" opt-in.
+   * Only the cycle page passes this (it has the "Don't update invoices" toggle that governs it);
+   * the standalone end-date dialog omits it → booked sessions stay kept there.
+   */
+  allowRemoveBooked?: boolean;
   /** i18n namespace (default 'cycles'). */
   namespace?: string;
 }
@@ -56,12 +66,14 @@ export function CycleEndDateFields({
   onChange,
   onPlanChange,
   disabled = false,
+  allowRemoveBooked = false,
   namespace = 'cycles',
 }: Props) {
   const { t } = useTranslation(namespace);
   const [outOfRange, setOutOfRange] = useState<OutOfRangeSlots | null>(null);
   const [checking, setChecking] = useState(false);
   const [removeUnbooked, setRemoveUnbooked] = useState(false);
+  const [removeBooked, setRemoveBooked] = useState(false);
   const [extendPreview, setExtendPreview] = useState<CycleExtensionPreview | null>(null);
   const [previewingExtend, setPreviewingExtend] = useState(false);
 
@@ -104,14 +116,16 @@ export function CycleEndDateFields({
   const removableIds = outOfRange?.removableIds ?? [];
   const removableCount = removableIds.length;
   const protectedCount = outOfRange?.protectedCount ?? 0;
+  const protectedIds = outOfRange?.protectedIds ?? [];
   const totalOutOfRange = removableCount + protectedCount;
   const removableKey = removableIds.join(',');
+  const protectedKey = protectedIds.join(',');
 
   // Report the plan up whenever any input to it changes (primitive deps → no render loop).
   useEffect(() => {
-    onPlanChange({ endDate: value, invalid, willAdd, removableIds, protectedCount, removeUnbooked });
+    onPlanChange({ endDate: value, invalid, willAdd, removableIds, protectedCount, protectedIds, removeUnbooked, removeBooked });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, invalid, willAdd, removableKey, protectedCount, removeUnbooked]);
+  }, [value, invalid, willAdd, removableKey, protectedCount, protectedKey, removeUnbooked, removeBooked]);
 
   return (
     <div className="space-y-3">
@@ -153,6 +167,12 @@ export function CycleEndDateFields({
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox checked={removeUnbooked} onCheckedChange={(v) => setRemoveUnbooked(!!v)} disabled={disabled} />
                   <span>{t('editEndDate.removeUnbooked', 'Verwijder de {{count}} lege sessies (zonder boekingen)', { count: removableCount })}</span>
+                </label>
+              )}
+              {allowRemoveBooked && protectedCount > 0 && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <Checkbox checked={removeBooked} onCheckedChange={(v) => setRemoveBooked(!!v)} disabled={disabled} className="mt-0.5" />
+                  <span className="text-amber-700">{t('editEndDate.removeBooked', 'Verwijder ook de {{count}} sessie(s) mét boekingen — dit annuleert die boekingen', { count: protectedCount })}</span>
                 </label>
               )}
             </div>

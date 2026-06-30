@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { insertAvailabilitySlots } from '@/lib/slots';
 import { updateCycle } from '@/lib/cycles';
 import { deleteUnbookedSlots } from '@/lib/cycleWrites';
+import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
 
 /**
  * Pure planner for EXTENDING an existing cycle to a later end date by replicating its weekly
@@ -268,12 +269,25 @@ export interface ApplyCycleEndDateResult {
 export async function applyCycleEndDate(
   cycleId: string,
   newEndDate: string,
-  opts: { removableIds?: string[]; removeUnbooked?: boolean } = {},
+  opts: {
+    removableIds?: string[];
+    removeUnbooked?: boolean;
+    /** Booked out-of-range sessions to ALSO remove — cancels their bookings first (explicit opt-in). */
+    bookedIdsToRemove?: string[];
+    /** Threads the "Don't update invoices" toggle through the booked-session removal. */
+    skipInvoices?: boolean;
+  } = {},
 ): Promise<ApplyCycleEndDateResult> {
   const { added } = await extendCycleToEndDate(cycleId, newEndDate);
   let removed = 0;
   if (opts.removeUnbooked && opts.removableIds && opts.removableIds.length > 0) {
-    removed = await deleteUnbookedSlots(opts.removableIds);
+    removed += await deleteUnbookedSlots(opts.removableIds);
+  }
+  if (opts.bookedIdsToRemove && opts.bookedIdsToRemove.length > 0) {
+    const res = await cancelBookingsAndDeleteSlots(cycleId, opts.bookedIdsToRemove, {
+      skipInvoices: opts.skipInvoices,
+    });
+    removed += res.deletedCount;
   }
   return { added, removed };
 }
