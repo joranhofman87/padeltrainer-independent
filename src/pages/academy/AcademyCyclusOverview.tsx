@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
@@ -885,17 +885,23 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     }
   };
 
-  const handleRowClick = (group: CyclusGroup) => {
-    if (group.has_cycle_row) {
-      // Real cycle → the cycle-detail centerpiece (the wrapper redirects a registration/event type
-      // to its workflow at /registrations/:id).
-      navigate(`/app/academy/cycles/${group.cyclus_id}`);
-    } else if (group.first_slot_id) {
-      // Orphan cyclus_id group (slots only, no cycles row) → its first session.
-      navigate(`/app/academy/slot/${group.first_slot_id}`);
-    } else {
-      navigate(`/app/academy/registrations?cycle=${group.cyclus_id}`);
-    }
+  // The per-row destination: a real cycle → the cycle-detail centerpiece (the wrapper redirects a
+  // registration/event type to /registrations/:id); an orphan cyclus_id group (slots only, no cycles
+  // row) → its first session; otherwise the registrations list. Exposed as a URL so the name cell can
+  // be a real <Link> (right/middle/Cmd-click → open in a new tab).
+  const rowHref = (group: CyclusGroup) =>
+    group.has_cycle_row
+      ? `/app/academy/cycles/${group.cyclus_id}`
+      : group.first_slot_id
+        ? `/app/academy/slot/${group.first_slot_id}`
+        : `/app/academy/registrations?cycle=${group.cyclus_id}`;
+
+  // Whole-row click convenience for the dead area — gated so a modifier/middle click or a text-drag
+  // falls through to the name <Link> (open-in-new-tab) instead of being hijacked by navigate().
+  const handleRowClick = (group: CyclusGroup, e: React.MouseEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (typeof window !== 'undefined' && window.getSelection()?.toString()) return;
+    navigate(rowHref(group));
   };
 
   const getStatusBadge = (group: CyclusGroup) => {
@@ -1105,14 +1111,20 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                       "h-8 cursor-pointer hover:bg-muted/50",
                       highlightCyclusId === group.cyclus_id && "bg-primary/10 ring-1 ring-primary/30",
                     )}
-                    onClick={() => handleRowClick(group)}
+                    onClick={(e) => handleRowClick(group, e)}
                   >
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedIds.has(group.group_key)} onCheckedChange={() => toggleSelect(group.group_key)} />
                     </TableCell>
                     <TableCell className="font-medium max-w-[200px]" title={group.cyclus_name}>
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="truncate">{group.cyclus_name}</span>
+                        <Link
+                          to={rowHref(group)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="truncate hover:underline rounded outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {group.cyclus_name}
+                        </Link>
                         {getTypeBadge(group.type)}
                       </div>
                     </TableCell>
@@ -1178,7 +1190,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 "cursor-pointer hover:bg-muted/50",
                 highlightCyclusId === group.cyclus_id && "ring-2 ring-primary/40 bg-primary/5",
               )}
-              onClick={() => handleRowClick(group)}
+              onClick={(e) => handleRowClick(group, e)}
             >
               <CardContent className="p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
