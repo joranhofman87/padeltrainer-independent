@@ -22,6 +22,7 @@ import {
   Calendar as CalendarIcon,
   CalendarDays,
   CalendarRange,
+  CalendarPlus,
   Plus,
   MapPin,
   Clock,
@@ -349,6 +350,16 @@ export default function TrainerCalendar() {
             onClick: () => navigate("/app/trainer/slot/new"),
             icon: Plus,
           }}
+          trailing={
+            <Button
+              variant="outline"
+              className="w-full shrink-0 gap-1.5 sm:w-auto"
+              onClick={() => navigate("/app/trainer/slot/generate")}
+            >
+              <CalendarPlus className="h-4 w-4" />
+              {t("slotGenerator.cta", "Snel sessies genereren")}
+            </Button>
+          }
         />
 
         <Tabs value={view} onValueChange={(v) => setView(v as View)}>

@@ -70,7 +70,10 @@ export function SlotGeneratorWizard({
   const [breakStart, setBreakStart] = useState('17:00');
   const [breakEnd, setBreakEnd] = useState('18:00');
   const [holidays, setHolidays] = useState<HolidayRange[]>([]);
-  const [bookingMode, setBookingMode] = useState<'single' | 'cycle'>('cycle');
+  // 'cycle' = whole cycle only (allow_single_booking=false). 'both' = whole cycle OR single sessions
+  // (allow_single_booking=true → BookLesson always shows the cycle bundle AND offers each session
+  // individually). There is no single-only mode — the cycle bundle is always shown for a full cycle.
+  const [bookingMode, setBookingMode] = useState<'both' | 'cycle'>('cycle');
   const [visibility, setVisibility] = useState<'public' | 'private'>('private');
   const [requiresUpfront, setRequiresUpfront] = useState(false);
 
@@ -121,7 +124,7 @@ export function SlotGeneratorWizard({
         locationId,
         pricePerSession: Number(price),
         maxParticipants: maxParticipants ? Number(maxParticipants) : null,
-        allowSingleBooking: bookingMode === 'single',
+        allowSingleBooking: bookingMode === 'both',
         publishVisibility: visibility,
         requiresUpfrontPayment: visibility === 'public' && requiresUpfront,
         plan: buildPlan(),
@@ -266,13 +269,16 @@ export function SlotGeneratorWizard({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>{t('slotGenerator.bookingMode', 'Boeken')}</Label>
-                <Select value={bookingMode} onValueChange={(v) => setBookingMode(v as 'single' | 'cycle')}>
+                <Select value={bookingMode} onValueChange={(v) => setBookingMode(v as 'both' | 'cycle')}>
                   <SelectTrigger aria-label={t('slotGenerator.bookingMode', 'Boeken')}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cycle">{t('slotGenerator.bookingCycle', 'Hele cyclus')}</SelectItem>
-                    <SelectItem value="single">{t('slotGenerator.bookingSingle', 'Losse sessies')}</SelectItem>
+                    <SelectItem value="cycle">{t('slotGenerator.bookingCycle', 'Alleen hele cyclus')}</SelectItem>
+                    <SelectItem value="both">{t('slotGenerator.bookingBoth', 'Hele cyclus óf losse sessies')}</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t('slotGenerator.bookingModeHelp', 'Bij “óf losse sessies” kiest de speler zelf bij het boeken: de hele cyclus of losse sessies.')}
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>{t('slotGenerator.visibility', 'Zichtbaarheid')}</Label>
