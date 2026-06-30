@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
-import { 
-  Settings, 
-  AlertCircle, 
+import {
+  Settings,
+  AlertCircle,
   Loader2,
   FileText,
   UserPlus,
   Trash2,
-  MessageSquare
+  MessageSquare,
+  ListChecks
 } from 'lucide-react';
 import { Globe, Clock } from 'lucide-react';
 import { COMMON_TIMEZONES } from '@/lib/timezones';
@@ -34,6 +35,8 @@ import {
   type AcademyConnectStatus,
 } from '@/lib/academyPayments';
 import { AcademyMolliePaymentCard } from '@/components/academy/AcademyMolliePaymentCard';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { normalizeRichTextHtml } from '@/lib/richText';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { AcademyPriceDisplayCard } from '@/components/academy/AcademyPriceDisplayCard';
 
@@ -69,6 +72,8 @@ export default function AcademySettings() {
   const [warningMaxRatingSpread, setWarningMaxRatingSpread] = useState<string>('');
   const [warningMaxAgeDiffYears, setWarningMaxAgeDiffYears] = useState<string>('');
   const [savingWarnings, setSavingWarnings] = useState(false);
+  const [rebookRules, setRebookRules] = useState('');
+  const [savingRebookRules, setSavingRebookRules] = useState(false);
   const termsEditor = useEditor({
     extensions: [
       StarterKit,
@@ -158,6 +163,32 @@ export default function AcademySettings() {
     loadTermsAndWelcome();
   }, [activeAcademy, termsEditor]);
 
+  // Load the academy's default rebooking rules. Read separately + tolerantly so a not-yet-applied
+  // migration (the rebook_rules column may be absent) cannot break the rest of the settings load.
+  useEffect(() => {
+    if (!activeAcademy) return;
+    let cancelled = false;
+    const loadRebookRules = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('academy_profiles')
+          .select('rebook_rules')
+          .eq('id', activeAcademy.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled && data?.rebook_rules) {
+          setRebookRules(data.rebook_rules);
+        }
+      } catch {
+        // Column not present yet (deploy order) — degrade to blank.
+      }
+    };
+    loadRebookRules();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAcademy]);
+
   const handleSaveTerms = async () => {
     if (!activeAcademy || !termsEditor) return;
     setSavingTerms(true);
@@ -192,6 +223,24 @@ export default function AcademySettings() {
       toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('welcomeMessage.saveError', 'Failed to save welcome message')), variant: 'destructive' });
     } finally {
       setSavingWelcome(false);
+    }
+  };
+
+  const handleSaveRebookRules = async () => {
+    if (!activeAcademy) return;
+    setSavingRebookRules(true);
+    try {
+      const { error } = await supabase
+        .from('academy_profiles')
+        .update({ rebook_rules: normalizeRichTextHtml(rebookRules) })
+        .eq('id', activeAcademy.id);
+      if (error) throw error;
+      toast({ title: t('rebookRules.saved', 'Rebooking rules saved') });
+    } catch (error) {
+      logger.error('Error saving rebooking rules', error instanceof Error ? error : new Error(String(error)), { component: 'AcademySettings' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('rebookRules.saveError', 'Failed to save rebooking rules')), variant: 'destructive' });
+    } finally {
+      setSavingRebookRules(false);
     }
   };
 
@@ -459,6 +508,34 @@ export default function AcademySettings() {
             <div className="flex justify-end">
               <Button onClick={handleSaveWelcomeMessage} disabled={savingWelcome}>
                 {savingWelcome && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {t('common.save', 'Save Changes')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Default rebooking rules */}
+        <Card className={flushOnMobileCardClass()}>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ListChecks className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">
+                {t('rebookRules.title', 'Rebooking rules')}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              {t('rebookRules.description', 'Rules players see in the rebooking invitation and must agree to before paying. Used as the default for new rebookings.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <RichTextEditor
+              value={rebookRules}
+              onChange={setRebookRules}
+              placeholder={t('rebookRules.placeholder', 'e.g. Payment within 7 days. No refunds after the cycle start date.')}
+            />
+            <div className="flex justify-end">
+              <Button onClick={handleSaveRebookRules} disabled={savingRebookRules}>
+                {savingRebookRules && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {t('common.save', 'Save Changes')}
               </Button>
             </div>

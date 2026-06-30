@@ -685,6 +685,7 @@ export type Database = {
           phone: string | null
           platform_fee_override: number | null
           price_display_mode: string
+          rebook_rules: string | null
           slug: string
           social_facebook: string | null
           social_instagram: string | null
@@ -740,6 +741,7 @@ export type Database = {
           phone?: string | null
           platform_fee_override?: number | null
           price_display_mode?: string
+          rebook_rules?: string | null
           slug: string
           social_facebook?: string | null
           social_instagram?: string | null
@@ -795,6 +797,7 @@ export type Database = {
           phone?: string | null
           platform_fee_override?: number | null
           price_display_mode?: string
+          rebook_rules?: string | null
           slug?: string
           social_facebook?: string | null
           social_instagram?: string | null

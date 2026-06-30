@@ -216,7 +216,7 @@ export async function updateAcademyProfile(
     return null;
   }
 
-  return data;
+  return data as AcademyProfile | null;
 }
 
 // Get academy trainers

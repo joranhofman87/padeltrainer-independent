@@ -393,6 +393,13 @@
     "saved": "Welcome message saved",
     "saveError": "Failed to save welcome message"
   },
+  "rebookRules": {
+    "title": "Rebooking rules",
+    "description": "Rules players see in the rebooking invitation and must agree to before paying. Used as the default for new rebookings.",
+    "placeholder": "e.g. Payment within 7 days. No refunds after the cycle start date.",
+    "saved": "Rebooking rules saved",
+    "saveError": "Failed to save rebooking rules"
+  },
   "nav": {
     "agenda": "Agenda",
     "dashboard": "Dashboard",

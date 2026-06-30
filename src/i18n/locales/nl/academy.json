@@ -519,6 +519,13 @@
     "saved": "Welkomstbericht opgeslagen",
     "saveError": "Kon het welkomstbericht niet opslaan"
   },
+  "rebookRules": {
+    "title": "Herboekingsregels",
+    "description": "Regels die spelers zien in de herboekingsuitnodiging en waarmee ze akkoord moeten gaan voordat ze betalen. Wordt gebruikt als standaard voor nieuwe herboekingen.",
+    "placeholder": "bijv. Betaling binnen 7 dagen. Geen restitutie na de startdatum van de cyclus.",
+    "saved": "Herboekingsregels opgeslagen",
+    "saveError": "Kon de herboekingsregels niet opslaan"
+  },
   "nav": {
     "agenda": "Agenda",
     "dashboard": "Dashboard",
