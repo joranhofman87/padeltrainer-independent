@@ -624,6 +624,7 @@ export default function TrainerInvoices() {
                     onToggleSelect={toggleSelect}
                     onToggleSelectAll={toggleSelectAllVisible}
                     onRowClick={(inv) => navigate(`/app/trainer/invoices/${inv.id}/edit`)}
+                    rowHref={(inv) => `/app/trainer/invoices/${inv.id}/edit`}
                     labels={{
                       selectAll: "Select all",
                       number: t("invoices.number", "Nummer"),

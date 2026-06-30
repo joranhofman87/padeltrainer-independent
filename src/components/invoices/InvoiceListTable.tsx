@@ -2,12 +2,8 @@ import type { ReactNode } from 'react';
 import type { Locale } from 'date-fns';
 import { format } from 'date-fns';
 import { Mail } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { SortableTableHead } from '@/components/ui/sortable-table-head';
-import { dataTableCardContentClass } from '@/components/ui/app-page';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { InvoiceDeliveryChip } from '@/components/email/InvoiceDeliveryChip';
 import { formatCurrency } from '@/lib/format';
 import type { SortDirection } from '@/hooks/useTableSort';
@@ -57,6 +53,9 @@ interface InvoiceListTableProps<T extends InvoiceListRow> {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (rows: T[]) => void;
   onRowClick: (row: T) => void;
+  /** Per-row destination for the number-cell <Link> — the open-in-new-tab target. Role-specific
+   *  (`/app/{trainer|academy}/invoices/:id/edit`). */
+  rowHref: (row: T) => string;
   /** Role-specific per-row actions cell (ShareDropdown / forward button etc.). */
   renderActions: (row: T) => ReactNode;
 }
@@ -65,7 +64,12 @@ interface InvoiceListTableProps<T extends InvoiceListRow> {
  * The desktop invoice LIST table (9 columns) shared by the trainer + academy pages. Columns 1–8
  * (selection, number, player, delivery, date, paid/due, amount, status) are identical across roles
  * — including the now-shared `InvoiceListStatusBadge`; the role-specific actions column is injected
- * via `renderActions`. Each page keeps its own (divergent) mobile card list. Behaviour-preserving.
+ * via `renderActions`. Each page keeps its own (divergent) mobile card list, so the whole desktop
+ * table stays hidden on mobile (`hidden md:block`) and the engine's own breakpoint is disabled.
+ *
+ * Built on the shared {@link DataTable} engine: the number cell is the per-row `<Link>` (so right /
+ * middle / Cmd-click opens the invoice in a new tab), while the whole-row `onClick` stays as the
+ * dead-area convenience (gated by the engine so modifier clicks fall through to the link).
  */
 export function InvoiceListTable<T extends InvoiceListRow>({
   rows,
@@ -79,85 +83,94 @@ export function InvoiceListTable<T extends InvoiceListRow>({
   onToggleSelect,
   onToggleSelectAll,
   onRowClick,
+  rowHref,
   renderActions,
 }: InvoiceListTableProps<T>) {
-  const allSelected = rows.length > 0 && rows.every((i) => selectedIds.has(i.id));
   const fmt = (value: string) => format(new Date(value), 'dd MMM yyyy', { locale: dateFnsLocale });
+
+  const columns: ColumnDef<T>[] = [
+    {
+      key: 'number',
+      header: labels.number,
+      className: 'font-mono text-sm',
+      renderCell: (inv) => inv.invoice_number,
+      linkTo: (inv) => rowHref(inv),
+    },
+    { key: 'player', header: labels.player, renderCell: (inv) => inv.player_name },
+    {
+      key: 'delivery',
+      header: labels.delivery,
+      renderCell: (inv) => (
+        <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={inv.linked_email != null} />
+      ),
+    },
+    { key: 'date', header: labels.date, renderCell: (inv) => fmt(inv.invoice_date) },
+    activeTab === 'paid'
+      ? {
+          key: 'paid_at',
+          header: labels.paymentDate,
+          sortKey: 'paid_at',
+          renderCell: (inv) => (inv.paid_at ? fmt(inv.paid_at) : '-'),
+        }
+      : {
+          key: 'due_date',
+          header: labels.dueDate,
+          sortKey: 'due_date',
+          renderCell: (inv) => fmt(inv.due_date),
+        },
+    {
+      key: 'total',
+      header: labels.amount,
+      sortKey: 'total',
+      align: 'right',
+      className: 'font-medium',
+      renderCell: (inv) => formatCurrency(inv.total),
+    },
+    {
+      key: 'status',
+      header: labels.status,
+      sortKey: '_computedStatus',
+      renderCell: (inv) => (
+        <div className="flex items-center gap-1.5">
+          <InvoiceListStatusBadge invoiceId={inv.id} status={inv.computed_status} />
+          {inv.forwarded_at && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                {labels.forwardedOn(format(new Date(inv.forwarded_at), 'dd MMM yyyy HH:mm', { locale: dateFnsLocale }))}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="hidden md:block">
-      <Card>
-        <CardContent className={dataTableCardContentClass}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox checked={allSelected} onCheckedChange={() => onToggleSelectAll(rows)} aria-label={labels.selectAll} />
-                </TableHead>
-                <TableHead>{labels.number}</TableHead>
-                <TableHead>{labels.player}</TableHead>
-                <TableHead>{labels.delivery}</TableHead>
-                <TableHead>{labels.date}</TableHead>
-                {activeTab === 'paid' ? (
-                  <SortableTableHead sortKey="paid_at" currentSortKey={sortKey} currentDirection={sortDirection} onSort={onSort}>
-                    {labels.paymentDate}
-                  </SortableTableHead>
-                ) : (
-                  <SortableTableHead sortKey="due_date" currentSortKey={sortKey} currentDirection={sortDirection} onSort={onSort}>
-                    {labels.dueDate}
-                  </SortableTableHead>
-                )}
-                <SortableTableHead sortKey="total" currentSortKey={sortKey} currentDirection={sortDirection} onSort={onSort} className="text-right">
-                  {labels.amount}
-                </SortableTableHead>
-                <SortableTableHead sortKey="_computedStatus" currentSortKey={sortKey} currentDirection={sortDirection} onSort={onSort}>
-                  {labels.status}
-                </SortableTableHead>
-                <TableHead className="text-right">{labels.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((inv) => (
-                <TableRow key={inv.id} className="cursor-pointer" onClick={() => onRowClick(inv)}>
-                  <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds.has(inv.id)}
-                      onCheckedChange={() => onToggleSelect(inv.id)}
-                      aria-label={labels.selectRow(inv.invoice_number)}
-                    />
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
-                  <TableCell>{inv.player_name}</TableCell>
-                  <TableCell>
-                    <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={inv.linked_email != null} />
-                  </TableCell>
-                  <TableCell>{fmt(inv.invoice_date)}</TableCell>
-                  <TableCell>{activeTab === 'paid' ? (inv.paid_at ? fmt(inv.paid_at) : '-') : fmt(inv.due_date)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <InvoiceListStatusBadge invoiceId={inv.id} status={inv.computed_status} />
-                      {inv.forwarded_at && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {labels.forwardedOn(format(new Date(inv.forwarded_at), 'dd MMM yyyy HH:mm', { locale: dateFnsLocale }))}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-end gap-1">{renderActions(inv)}</div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable<T>
+        columns={columns}
+        rows={rows}
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        onSort={onSort}
+        onRowClick={onRowClick}
+        selection={{
+          selectedIds,
+          onToggle: onToggleSelect,
+          onToggleAll: onToggleSelectAll,
+          rowAriaLabel: (inv) => labels.selectRow(inv.invoice_number),
+          selectAllAriaLabel: labels.selectAll,
+        }}
+        renderActions={renderActions}
+        actionsHeader={labels.actions}
+        // The whole desktop table is already wrapped in `hidden md:block` (each page renders its own
+        // mobile card list), so the engine must NOT also hide its inner scroll region — that would
+        // double-hide and leave an empty card shell on mobile.
+        desktopOnly={false}
+      />
     </div>
   );
 }
