@@ -42,8 +42,9 @@ describe('SlotGeneratorWizard', () => {
     expect(screen.getByLabelText('Trainer')).toBeInTheDocument();
   });
 
-  it('configure → preview → generate calls the create-lib with a draft-intent payload', async () => {
+  it('configure → preview → generate → done step → publish all', async () => {
     const generate = vi.fn().mockResolvedValue({ cycleIds: ['c1'], cyclesCreated: 1, slotsCreated: 25, skippedOverlaps: 0 });
+    const publishAll = vi.fn().mockResolvedValue({ published: 1, failed: 0 });
     renderWithCycles(
       <SlotGeneratorWizard
         ownerType="trainer"
@@ -52,6 +53,7 @@ describe('SlotGeneratorWizard', () => {
         trainerSelection={{ mode: 'self', trainerId: 'tr1' }}
         availableLocations={locations}
         generate={generate}
+        publishAll={publishAll}
       />,
     );
 
@@ -80,6 +82,12 @@ describe('SlotGeneratorWizard', () => {
     expect(input.plan.weekdays).toEqual(['monday']);
     expect(input.plan.windowStart).toBe('15:00');
     expect(input.plan.timezone).toBe('Europe/Amsterdam');
+
+    // After generate we land on the 'done' step (no auto-navigate); publish-all then ships + returns.
+    const publishBtn = await screen.findByRole('button', { name: /Publiceer alle/ });
+    fireEvent.click(publishBtn);
+    // default visibility = private → makePublic = false
+    await waitFor(() => expect(publishAll).toHaveBeenCalledWith(['c1'], false));
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/app/trainer/cycles'));
   });
 

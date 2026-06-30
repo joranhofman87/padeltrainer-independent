@@ -182,6 +182,32 @@ export async function publishCycle(
   if (visErr) throw visErr;
 }
 
+/**
+ * Publish a batch of cycli at once — e.g. all the per-series draft cycli the slot generator just
+ * created. Resilient: one cyclus failing to publish never aborts the rest; returns how many
+ * published / failed so the caller can report partial success. `makePublic` applies to the whole
+ * batch (the generator's run shares a single visibility intent). `publishOne` is an injectable seam
+ * for tests; production uses the real {@link publishCycle}.
+ */
+export async function publishCycles(
+  cycleIds: string[],
+  makePublic: boolean,
+  client: SupabaseClient<Database> = supabase,
+  publishOne: typeof publishCycle = publishCycle,
+): Promise<{ published: number; failed: number }> {
+  let published = 0;
+  let failed = 0;
+  for (const id of cycleIds) {
+    try {
+      await publishOne(id, makePublic, client);
+      published += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { published, failed };
+}
+
 /** Delete the given sessions, re-verifying right before deletion that none gained an
  *  occupying booking since the preview (a player booking is never silently cancelled).
  *  Deleting an availability_slot CASCADES (FK ON DELETE CASCADE) to its bookings, claims,
