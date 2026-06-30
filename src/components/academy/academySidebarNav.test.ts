@@ -28,22 +28,32 @@ describe('academySidebarNav', () => {
     ]);
   });
 
-  it('marks registrations active on both /registrations and the shared /cycles CRUD pages', () => {
+  it('training-cycle pages (/cycles/*) highlight Schedule (Schema), not Registrations', () => {
+    const schedule = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'schedule')!;
     const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
-    expect(isAcademyNavItemActive('/app/academy/registrations', registrations)).toBe(true);
-    expect(isAcademyNavItemActive('/app/academy/cycles/new', registrations)).toBe(true);
-    expect(isAcademyNavItemActive('/app/academy/cycles/abc-123', registrations)).toBe(true);
-    expect(isAcademyNavItemActive('/app/academy/players', registrations)).toBe(false);
-  });
-
-  it('keeps the Agenda cycle-ops (rebook / bulk-copy) under Agenda, not Registrations', () => {
-    const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
-    const agenda = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'agenda')!;
-    for (const path of ['/app/academy/cycles/rebook', '/app/academy/cycles/bulk-copy']) {
-      expect(isAcademyNavItemActive(path, agenda)).toBe(true);
+    for (const path of ['/app/academy/cycles/new', '/app/academy/cycles/abc-123', '/app/academy/cycles/abc-123/edit']) {
+      expect(isAcademyNavItemActive(path, schedule)).toBe(true);
       expect(isAcademyNavItemActive(path, registrations)).toBe(false);
     }
-    // plain /agenda still highlights Agenda; registration CRUD still highlights Registrations
+    // Registrations highlight only on their own /registrations section.
+    expect(isAcademyNavItemActive('/app/academy/registrations', registrations)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/registrations/abc-123/edit', registrations)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/registrations', schedule)).toBe(false);
+    // The Schedule page itself still highlights Schedule.
+    expect(isAcademyNavItemActive('/app/academy/calendar', schedule)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/players', schedule)).toBe(false);
+  });
+
+  it('keeps the Agenda cycle-ops (rebook / bulk-copy / :id/rebook) under Agenda, not Schedule', () => {
+    const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
+    const agenda = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'agenda')!;
+    const schedule = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'schedule')!;
+    for (const path of ['/app/academy/cycles/rebook', '/app/academy/cycles/bulk-copy', '/app/academy/cycles/abc-123/rebook']) {
+      expect(isAcademyNavItemActive(path, agenda)).toBe(true);
+      expect(isAcademyNavItemActive(path, schedule)).toBe(false);
+      expect(isAcademyNavItemActive(path, registrations)).toBe(false);
+    }
+    // plain /agenda still highlights Agenda; cycle CRUD highlights Schedule (not Agenda)
     expect(isAcademyNavItemActive('/app/academy/agenda', agenda)).toBe(true);
     expect(isAcademyNavItemActive('/app/academy/cycles/new', agenda)).toBe(false);
   });

@@ -68,6 +68,38 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [editEndDateGroup, setEditEndDateGroup] = useState<CyclusGroup | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
 
+  // Persist the active filters so opening a cycle and clicking back keeps them (this page unmounts on
+  // navigation, resetting useState). Keyed by academy so a stale trainer/location can't leak across
+  // academies; sessionStorage so it resets on a new browser session. Persisting starts only AFTER the
+  // one-time restore, so the restore can't be clobbered by a default-value write.
+  const filterStorageKey = activeAcademy ? `academyCyclusFilters:${activeAcademy.id}` : null;
+  const [filtersRestored, setFiltersRestored] = useState(false);
+  useEffect(() => {
+    if (!filterStorageKey || filtersRestored) return;
+    try {
+      const raw = sessionStorage.getItem(filterStorageKey);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (typeof s.search === 'string') setSearch(s.search);
+        if (typeof s.filterTrainer === 'string') setFilterTrainer(s.filterTrainer);
+        if (typeof s.filterLocation === 'string') setFilterLocation(s.filterLocation);
+        if (['all', 'paid', 'unpaid', 'no_players'].includes(s.filterPaid)) setFilterPaid(s.filterPaid);
+        if (['all', 'public', 'private'].includes(s.filterVisibility)) setFilterVisibility(s.filterVisibility);
+        if (['current', 'future', 'past', 'all'].includes(s.timeFilter)) setTimeFilter(s.timeFilter);
+      }
+    } catch { /* ignore malformed stored filters */ }
+    setFiltersRestored(true);
+  }, [filterStorageKey, filtersRestored]);
+  useEffect(() => {
+    if (!filterStorageKey || !filtersRestored) return;
+    try {
+      sessionStorage.setItem(
+        filterStorageKey,
+        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter }),
+      );
+    } catch { /* ignore quota/serialization errors */ }
+  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter]);
+
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
