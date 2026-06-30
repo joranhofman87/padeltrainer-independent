@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planSlots, SlotPlanError, MAX_PLANNED_SLOTS, type SlotPlanConfig } from './slotPlan';
+import { planSlots, groupSlotsBySeries, SlotPlanError, MAX_PLANNED_SLOTS, type SlotPlanConfig } from './slotPlan';
 
 const TZ = 'Europe/Amsterdam';
 
@@ -154,5 +154,57 @@ describe('planSlots — guards', () => {
     ['bad date format', { startDate: '01-06-2026' }],
   ])('throws on %s', (_label, override) => {
     expect(() => planSlots({ ...base, ...(override as Partial<SlotPlanConfig>) })).toThrow(SlotPlanError);
+  });
+});
+
+describe('groupSlotsBySeries', () => {
+  it('splits one weekday with a multi-slot window into one series per start time', () => {
+    // Mondays 15:00–18:00 @60 over 2 weeks → 6 slots → 3 series (15:00/16:00/17:00), 2 each.
+    const drafts = planSlots({
+      ...base,
+      weekdays: ['monday'],
+      windowStart: '15:00',
+      windowEnd: '18:00',
+      slotDurationMin: 60,
+      startDate: '2026-06-01',
+      weeks: 2,
+    });
+    const series = groupSlotsBySeries(drafts, TZ, 'nl-NL');
+    expect(series.map((s) => s.label)).toEqual(['ma 15:00', 'ma 16:00', 'ma 17:00']);
+    expect(series.every((s) => s.slots.length === 2)).toBe(true);
+  });
+
+  it('keeps different weekdays at the same time as separate series', () => {
+    const drafts = planSlots({
+      ...base,
+      weekdays: ['monday', 'wednesday'],
+      windowStart: '18:00',
+      windowEnd: '19:00',
+      slotDurationMin: 60,
+      startDate: '2026-06-01',
+      weeks: 2,
+    });
+    const series = groupSlotsBySeries(drafts, TZ, 'nl-NL');
+    expect(series.map((s) => s.label).sort()).toEqual(['ma 18:00', 'wo 18:00']);
+    expect(series.every((s) => s.slots.length === 2)).toBe(true);
+  });
+
+  it('partitions: every draft lands in exactly one series, keys are unique', () => {
+    const drafts = planSlots({
+      ...base,
+      weekdays: ['monday', 'tuesday'],
+      windowStart: '15:00',
+      windowEnd: '17:00',
+      slotDurationMin: 60,
+      startDate: '2026-06-01',
+      weeks: 3,
+    });
+    const series = groupSlotsBySeries(drafts, TZ, 'nl-NL');
+    expect(series.reduce((n, s) => n + s.slots.length, 0)).toBe(drafts.length);
+    expect(new Set(series.map((s) => s.key)).size).toBe(series.length);
+  });
+
+  it('returns [] for no drafts', () => {
+    expect(groupSlotsBySeries([], TZ, 'nl-NL')).toEqual([]);
   });
 });

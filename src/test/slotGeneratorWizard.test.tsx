@@ -43,7 +43,7 @@ describe('SlotGeneratorWizard', () => {
   });
 
   it('configure → preview → generate calls the create-lib with a draft-intent payload', async () => {
-    const generate = vi.fn().mockResolvedValue({ cycleId: 'c1', slotsCreated: 25, skippedOverlaps: 0 });
+    const generate = vi.fn().mockResolvedValue({ cycleIds: ['c1'], cyclesCreated: 1, slotsCreated: 25, skippedOverlaps: 0 });
     renderWithCycles(
       <SlotGeneratorWizard
         ownerType="trainer"

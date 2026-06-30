@@ -78,36 +78,52 @@ beforeEach(async () => {
 });
 
 describe('generateCycleWithSlots (against real Postgres)', () => {
-  it('creates exactly one DRAFT cycle + N private slots with the right flags', async () => {
+  it('creates one DRAFT cyclus PER (weekday+time) series, each priced for its own sessions', async () => {
+    // Mondays 15:00–18:00 @60 over 2 weeks → 3 series (Mon 15:00 / 16:00 / 17:00), 2 sessions each.
     const res = await generateCycleWithSlots(input(), supa);
     expect(res.slotsCreated).toBe(6);
     expect(res.skippedOverlaps).toBe(0);
+    expect(res.cyclesCreated).toBe(3);
+    expect(res.cycleIds).toHaveLength(3);
+    expect(await count('cycles')).toBe(3);
 
-    expect(await count('cycles')).toBe(1);
-    const cycle = (
-      await db.query<{
-        status: string;
-        type: string;
-        price_per_session: number;
-        total_price: number;
-        settings: Record<string, unknown>;
-      }>(`SELECT status, type, price_per_session, total_price, settings FROM cycles WHERE id = $1`, [res.cycleId])
-    ).rows[0];
-    expect(cycle.status).toBe('draft');
-    expect(cycle.type).toBe('cyclus');
-    expect(Number(cycle.price_per_session)).toBe(20);
-    expect(Number(cycle.total_price)).toBe(120); // 20 × 6
-    expect(cycle.settings.generated_by).toBe('slot_generator');
-    expect(cycle.settings.publish_visibility).toBe('public');
-    expect(cycle.settings.allow_single_booking).toBe(true);
+    const names: string[] = [];
+    for (const cid of res.cycleIds) {
+      const cycle = (
+        await db.query<{
+          name: string;
+          status: string;
+          type: string;
+          price_per_session: number;
+          total_price: number;
+          settings: Record<string, unknown>;
+        }>(`SELECT name, status, type, price_per_session, total_price, settings FROM cycles WHERE id = $1`, [cid])
+      ).rows[0];
+      expect(cycle.status).toBe('draft');
+      expect(cycle.type).toBe('cyclus');
+      expect(Number(cycle.price_per_session)).toBe(20);
+      expect(Number(cycle.total_price)).toBe(40); // 20 × 2 weekly sessions in THIS series (not the whole batch)
+      expect(cycle.settings.generated_by).toBe('slot_generator');
+      expect(cycle.settings.publish_visibility).toBe('public');
+      expect(cycle.settings.allow_single_booking).toBe(true);
+      expect(cycle.name.startsWith('Summer training – ')).toBe(true); // base name + "ma 15:00" series suffix
+      names.push(cycle.name);
+      // each series = its own 2 private (draft) slots
+      expect(await count('availability_slots WHERE cyclus_id = $1', [cid])).toBe(2);
+      expect(await count('availability_slots WHERE cyclus_id = $1 AND is_public = true', [cid])).toBe(0);
+    }
+    // the three cycli are the three distinct start times
+    expect(names.some((n) => n.includes('15:00'))).toBe(true);
+    expect(names.some((n) => n.includes('16:00'))).toBe(true);
+    expect(names.some((n) => n.includes('17:00'))).toBe(true);
 
-    expect(await count('availability_slots WHERE cyclus_id = $1', [res.cycleId])).toBe(6);
-    // DRAFT: every generated slot is private and thus excluded from the public booking query.
-    expect(await count('availability_slots WHERE cyclus_id = $1 AND is_public = true', [res.cycleId])).toBe(0);
+    // the 6 slots span exactly 3 distinct cyclus_ids (one per series)
+    expect(
+      (await db.query<{ n: number }>(`SELECT count(DISTINCT cyclus_id)::int AS n FROM availability_slots`)).rows[0].n,
+    ).toBe(3);
     const slot = (
       await db.query<{ allow_single_booking: boolean; max_participants: number; trainer_id: string }>(
-        `SELECT allow_single_booking, max_participants, trainer_id FROM availability_slots WHERE cyclus_id = $1 LIMIT 1`,
-        [res.cycleId],
+        `SELECT allow_single_booking, max_participants, trainer_id FROM availability_slots LIMIT 1`,
       )
     ).rows[0];
     expect(slot.allow_single_booking).toBe(true);
@@ -118,7 +134,9 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
   it('stores the public/private intent so publish can apply it (private cycle)', async () => {
     const res = await generateCycleWithSlots(input({ publishVisibility: 'private' }), supa);
     const settings = (
-      await db.query<{ settings: Record<string, unknown> }>(`SELECT settings FROM cycles WHERE id = $1`, [res.cycleId])
+      await db.query<{ settings: Record<string, unknown> }>(`SELECT settings FROM cycles WHERE id = $1`, [
+        res.cycleIds[0],
+      ])
     ).rows[0].settings;
     expect(settings.publish_visibility).toBe('private');
     // still draft + private regardless of intent
@@ -149,10 +167,11 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
     expect(await count('cycles')).toBe(0);
   });
 
-  it('abort cleanup: a failing slot insert deletes the just-created draft cycle', async () => {
-    // max_participants 99 violates the table CHECK (<= 8) → slot insert fails after the cycle row exists.
+  it('abort cleanup: a failing slot insert deletes ALL the just-created draft cycli', async () => {
+    // max_participants 99 violates the table CHECK (<= 8) → the single slot insert fails after all 3
+    // per-series cycle rows exist → cleanup must delete every one of them.
     await expect(generateCycleWithSlots(input({ maxParticipants: 99 }), supa)).rejects.toThrow(SlotGeneratorError);
-    expect(await count('cycles')).toBe(0); // cycle was rolled back by the abort cleanup
+    expect(await count('cycles')).toBe(0); // all per-series cycli rolled back by the abort cleanup
     expect(await count('availability_slots')).toBe(0);
   });
 });
