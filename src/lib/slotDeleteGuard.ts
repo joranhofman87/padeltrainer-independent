@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
+import { cancelBookingsAndSync } from '@/lib/bookings';
+import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 
 /**
  * Data-loss guard for slot deletion.
@@ -80,4 +82,64 @@ export async function applySlotDeleteToCycle(
     protectedCount: Number(row?.protected_count ?? 0),
     protectedSlotIds: row?.protected_slot_ids ?? [],
   };
+}
+
+export interface CancelAndDeleteSlotsResult extends SlotDeleteResult {
+  /** Active bookings that were soft-cancelled to free the slots for deletion. */
+  cancelledBookings: number;
+  /** Cancel/delete committed but a follow-up invoice resync threw (non-fatal). */
+  syncError: Error | null;
+}
+
+/**
+ * Remove sessions that STILL HAVE bookings: soft-cancel every active booking on `slotIds` first
+ * (so the guarded {@link applySlotDeleteToCycle} will actually delete them), then delete the slots,
+ * then resync the cycle's split amounts. The "Don't update invoices" toggle threads through as
+ * `skipInvoices` — when set, neither the booking-removal nor the split resync touches invoices
+ * (the owner reconciles billing manually), matching the rest of the cycle page.
+ *
+ * Use this only where the owner has EXPLICITLY opted to drop a booked session (the per-session
+ * delete confirm and the looptijd trim's "also remove booked sessions" opt-in). The plain
+ * {@link applySlotDeleteToCycle} still protects booked slots for every other path.
+ */
+export async function cancelBookingsAndDeleteSlots(
+  cycleId: string | null,
+  slotIds: string[],
+  options?: { skipInvoices?: boolean },
+): Promise<CancelAndDeleteSlotsResult> {
+  if (slotIds.length === 0) {
+    return { deletedCount: 0, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null };
+  }
+  const skip = options?.skipInvoices ?? false;
+
+  // 1. Cancel the active bookings on these slots (the RPC refuses to delete a slot that still holds
+  //    an occupying booking). cancelBookingsAndSync reconciles those bookings' invoices unless skip.
+  const { data: bookingRows, error: bErr } = await supabase
+    .from('bookings')
+    .select('id')
+    .in('slot_id', slotIds)
+    .in('status', CAPACITY_OCCUPYING_STATUSES as unknown as string[]);
+  if (bErr) throw bErr;
+  const bookingIds = (bookingRows ?? []).map((b) => b.id as string);
+
+  let syncError: Error | null = null;
+  if (bookingIds.length > 0) {
+    const res = await cancelBookingsAndSync(bookingIds, supabase, { skipInvoiceSync: skip });
+    if (res.cancelError) throw res.cancelError;
+    if (res.syncError) syncError = res.syncError;
+  }
+
+  // 2. Delete the now-empty slots via the guarded RPC.
+  const del = await applySlotDeleteToCycle(cycleId, slotIds);
+
+  // 3. Rebuild the cycle's split amounts (the RPC only stamps split_count) — unless skipping invoices.
+  if (del.deletedCount > 0 && !skip) {
+    try {
+      await syncSplitCountForCycle(cycleId);
+    } catch (e) {
+      syncError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+
+  return { ...del, cancelledBookings: bookingIds.length, syncError };
 }

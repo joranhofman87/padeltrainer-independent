@@ -999,6 +999,7 @@
     "afterCount": "{{count}} sessions fall after the new end date.",
     "protected": "{{count}} of these have bookings and will be kept.",
     "removeUnbooked": "Remove the {{count}} empty sessions (no bookings)",
+    "removeBooked": "Also remove the {{count}} session(s) with bookings — this cancels those bookings",
     "willAdd": "{{count}} new weekly sessions will be created (same day, time, trainer and price).",
     "saved": "End date updated",
     "savedWithAdd": "End date updated · {{count}} sessions added",
@@ -1184,6 +1185,8 @@
     "deleteSlot": {
       "confirmTitle": "Delete this session?",
       "confirmBody": "This removes the session. A session with a booking is kept — cancel its booking first.",
+      "confirmBodyEmpty": "This removes the session.",
+      "confirmBodyBooked": "This session has {{count}} booking(s). They will be cancelled and the session removed.",
       "deleted": "Session deleted",
       "hasBooking": "This session still has a booking — cancel it first.",
       "error": "Could not delete the session. Please try again."
