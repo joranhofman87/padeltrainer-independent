@@ -983,6 +983,14 @@
     "event": "Een eenmalige activiteit, zoals een toernooi of clinic.",
     "registration": "Een open formulier om aanmeldingen van spelers voor een trainingscyclus te verzamelen."
   },
+  "rebookRules": {
+    "label": "Herboekingsregels (spelers moeten akkoord gaan voordat ze betalen)",
+    "help": "Wordt op de betaalpagina getoond met een verplicht \"Ik ga akkoord\"-vinkje. Dit staat los van het bericht in de e-mail hierboven.",
+    "placeholder": "bijv. Betaling binnen 7 dagen. Geen restitutie na de startdatum van de cyclus.",
+    "saveDefault": "Opslaan als standaard",
+    "savedDefault": "Opgeslagen als standaard",
+    "saveDefaultError": "Kon niet als standaard opslaan"
+  },
   "rebookCohort": {
     "pickDate": "Kies een datum",
     "counting": "Spelers tellen…",
