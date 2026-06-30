@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, X, Save, Euro } from 'lucide-react';
+import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, X, Save, Euro, UserPlus, Repeat } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +25,13 @@ import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/
 import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
 import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
+import { addPlayersToCycle, swapPlayerInCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
+import { CycleRosterPlayerPickerDialog } from '@/components/cycles/CycleRosterPlayerPickerDialog';
+import { UpdateAffectedInvoicesDialog } from '@/components/invoices/UpdateAffectedInvoicesDialog';
+import { buildAffectedInvoicesSummary, type AffectedInvoicesSummary } from '@/lib/affectedInvoices';
+import { applyAddPlayerInvoiceChoice } from '@/lib/invoiceAfterAddPlayer';
+import type { InvoiceUpdateChoice } from '@/lib/invoiceUpdateChoice';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
@@ -64,6 +70,12 @@ export interface CycleDetailViewProps {
    * "Don't update invoices" option) on the roster. Trainer/club omit → roster stays view-only.
    */
   canRemoveFromCycle?: boolean;
+  /**
+   * Academy roster management: enables "Add players" and per-player "Change"
+   * (replace across the whole cycle) on the roster. Trainer/club omit → no
+   * add/change. Goes together with `canRemoveFromCycle` for the academy.
+   */
+  canManageRoster?: boolean;
   /** i18n namespace (default 'cycles' — the neutral home for cycle UI strings). */
   namespace?: string;
 }
@@ -93,6 +105,7 @@ export function CycleDetailView({
   fixedRatingSystem,
   onMutated,
   canRemoveFromCycle = false,
+  canManageRoster = false,
   namespace = 'cycles',
 }: CycleDetailViewProps) {
   const { t, i18n } = useTranslation(namespace);
@@ -143,6 +156,16 @@ export function CycleDetailView({
   const [removeTarget, setRemoveTarget] = useState<CycleRosterEntry | null>(null);
   const [removingFromCycle, setRemovingFromCycle] = useState(false);
 
+  // Whole-cycle add / change-player (academy roster actions).
+  const [addOpen, setAddOpen] = useState(false);
+  const [changeTarget, setChangeTarget] = useState<CycleRosterEntry | null>(null);
+  const [rosterBusy, setRosterBusy] = useState(false);
+  // Sent/paid-invoice confirmation after an add/change that touched invoices.
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceSummary, setInvoiceSummary] = useState<AffectedInvoicesSummary | null>(null);
+  const [pendingInvoiceSlotIds, setPendingInvoiceSlotIds] = useState<string[]>([]);
+  const [invoiceApplying, setInvoiceApplying] = useState(false);
+
   // Future (not-yet-started) sessions are the whole-cycle edit/delete scope (matches the slot-detail
   // "future only" rule). The delete RPC keeps any still-booked session; the edit RPC keeps any slot
   // it would have to shrink below its occupancy.
@@ -150,6 +173,9 @@ export function CycleDetailView({
     () => (data?.slots ?? []).filter((s) => new Date(s.start_time).getTime() >= Date.now()).map((s) => s.id),
     [data],
   );
+  // Roster add/change/remove apply to EVERY session of the cycle (past + future) so a wrong
+  // planning can be fully corrected — the owner's chosen scope for these actions.
+  const allSlotIds = useMemo(() => (data?.slots ?? []).map((s) => s.id), [data]);
 
   const cycle = data?.cycle ?? null;
   const slots = useMemo(() => data?.slots ?? [], [data]);
@@ -327,20 +353,20 @@ export function CycleDetailView({
     }
   };
 
-  // Remove one player from the whole series (all UPCOMING sessions), honouring the sticky
+  // Remove one player from the whole series (EVERY session, past + future), honouring the sticky
   // "Don't update invoices" toggle. Bookings are soft-cancelled via the canonical facade; paid
   // invoices are protected regardless (the lib skips them).
   const handleRemoveFromCycle = async () => {
     if (!removeTarget) return;
     setRemovingFromCycle(true);
     try {
-      if (futureSlotIds.length === 0) {
+      if (allSlotIds.length === 0) {
         toast(t('detail.roster.removeFromCycleNone'));
         setRemoveTarget(null);
         return;
       }
       const res = await cancelPlayerBookingsInCycle(
-        futureSlotIds,
+        allSlotIds,
         { playerId: removeTarget.playerId, guestPlayerId: removeTarget.guestPlayerId },
         supabase,
         { skipInvoiceSync: skipInvoiceUpdates },
@@ -355,6 +381,99 @@ export function CycleDetailView({
       toast.error(getFriendlyErrorMessage(err, t('detail.roster.removeFromCycleError')));
     } finally {
       setRemovingFromCycle(false);
+    }
+  };
+
+  // Shared after-add/change handling: surface "some sessions skipped" info, then either open the
+  // sent/paid-invoice confirmation (only when invoices were updated AND sent/paid ones are affected)
+  // or just refetch. Returns true when the invoice dialog took over (caller must not refetch yet).
+  const handleRosterAddResult = (res: AddPlayersToCycleResult): boolean => {
+    if (res.blockedSlotIds.length > 0) {
+      toast(t('detail.roster.addBlocked', { count: res.blockedSlotIds.length }));
+    }
+    if (res.rebalanceFailed) {
+      toast.error(t('detail.roster.rebalanceFailed'));
+    }
+    if (res.invoiceResult?.needsConfirmation && !skipInvoiceUpdates) {
+      setPendingInvoiceSlotIds(res.affectedSlotIds);
+      setInvoiceSummary(buildAffectedInvoicesSummary(res.invoiceResult.classification));
+      setInvoiceDialogOpen(true);
+      return true;
+    }
+    return false;
+  };
+
+  // Add one player to EVERY session of the cycle (skips sessions where they're already booked or
+  // that are full). Honours the sticky "Don't update invoices" toggle.
+  const handleAddPlayer = async (guestPlayerId: string) => {
+    setRosterBusy(true);
+    try {
+      const res = await addPlayersToCycle({
+        cycleId,
+        guestPlayerIds: [guestPlayerId],
+        skipInvoices: skipInvoiceUpdates,
+      });
+      setAddOpen(false);
+      if (res.insertedCount === 0) {
+        toast(t('detail.roster.addNone'));
+      } else {
+        toast.success(t('detail.roster.added', { count: res.insertedCount }));
+      }
+      const deferred = handleRosterAddResult(res);
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      if (!deferred) onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.roster.addError')));
+    } finally {
+      setRosterBusy(false);
+    }
+  };
+
+  // Replace one enrolled player with another across EVERY session by re-pointing the outgoing
+  // player's bookings to the incoming guest IN PLACE (keeps amount/paid state — no €0 sessions, no
+  // orphaned draft). Invoices reconcile only when the sticky toggle is off.
+  const handleSwapPlayer = async (toGuestPlayerId: string) => {
+    if (!changeTarget) return;
+    setRosterBusy(true);
+    try {
+      const res = await swapPlayerInCycle({
+        cycleId,
+        fromPlayer: { playerId: changeTarget.playerId, guestPlayerId: changeTarget.guestPlayerId },
+        toGuestPlayerId,
+        skipInvoices: skipInvoiceUpdates,
+      });
+      if (res.error) throw res.error;
+      setChangeTarget(null);
+      if (res.reassignedCount + res.cancelledCollisionCount === 0) {
+        toast(t('detail.roster.changeNone'));
+      } else {
+        toast.success(t('detail.roster.changed', { count: res.reassignedCount }));
+        if (res.syncFailed) toast.error(t('detail.roster.changeSyncFailed'));
+      }
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.roster.changeError')));
+    } finally {
+      setRosterBusy(false);
+    }
+  };
+
+  const handleInvoiceChoice = async (choice: InvoiceUpdateChoice) => {
+    setInvoiceApplying(true);
+    try {
+      if (choice !== 'skip' && pendingInvoiceSlotIds.length > 0) {
+        await applyAddPlayerInvoiceChoice(pendingInvoiceSlotIds, choice);
+      }
+    } catch (err) {
+      logger.error('Failed to apply invoice update choice after roster add/change', err as Error);
+    } finally {
+      setInvoiceApplying(false);
+      setInvoiceDialogOpen(false);
+      setPendingInvoiceSlotIds([]);
+      setInvoiceSummary(null);
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
     }
   };
 
@@ -662,10 +781,18 @@ export function CycleDetailView({
       {/* Roster */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            {t('detail.roster.title')}
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              {t('detail.roster.title')}
+            </CardTitle>
+            {canManageRoster && (
+              <Button variant="outline" size="sm" onClick={() => setAddOpen(true)} className="shrink-0">
+                <UserPlus className="h-4 w-4 mr-1.5" />
+                {t('detail.roster.addPlayer')}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {roster.length === 0 ? (
@@ -677,6 +804,17 @@ export function CycleDetailView({
                   <Badge variant="outline" className="gap-1.5 font-normal">
                     {p.name}
                     <span className="text-muted-foreground">{t('detail.roster.sessionCount', { count: p.sessionCount })}</span>
+                    {canManageRoster && p.guestPlayerId && (
+                      <button
+                        type="button"
+                        aria-label={t('detail.roster.changePlayer')}
+                        title={t('detail.roster.changePlayer')}
+                        className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        onClick={() => setChangeTarget(p)}
+                      >
+                        <Repeat className="h-3 w-3" />
+                      </button>
+                    )}
                     {canRemoveFromCycle && (
                       <button
                         type="button"
@@ -836,6 +974,55 @@ export function CycleDetailView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add player(s) to the whole cycle */}
+      {canManageRoster && (
+        <CycleRosterPlayerPickerDialog
+          open={addOpen}
+          onOpenChange={(o) => !rosterBusy && setAddOpen(o)}
+          academyProfileId={academyProfileId}
+          title={t('detail.roster.addTitle')}
+          description={t('detail.roster.addDescription')}
+          confirmLabel={t('detail.roster.addConfirm')}
+          loading={rosterBusy}
+          onConfirm={(guestId) => void handleAddPlayer(guestId)}
+          skipInvoiceUpdates={skipInvoiceUpdates}
+          onSkipInvoiceUpdatesChange={setSkipInvoiceUpdates}
+          namespace={namespace}
+        />
+      )}
+
+      {/* Replace one enrolled player across the whole cycle */}
+      {canManageRoster && (
+        <CycleRosterPlayerPickerDialog
+          open={!!changeTarget}
+          onOpenChange={(o) => !rosterBusy && !o && setChangeTarget(null)}
+          academyProfileId={academyProfileId}
+          title={t('detail.roster.changeTitle', { name: changeTarget?.name ?? '' })}
+          description={t('detail.roster.changeDescription')}
+          confirmLabel={t('detail.roster.changeConfirm')}
+          loading={rosterBusy}
+          onConfirm={(guestId) => void handleSwapPlayer(guestId)}
+          excludeGuestPlayerIds={changeTarget?.guestPlayerId ? [changeTarget.guestPlayerId] : []}
+          skipInvoiceUpdates={skipInvoiceUpdates}
+          onSkipInvoiceUpdatesChange={setSkipInvoiceUpdates}
+          namespace={namespace}
+        />
+      )}
+
+      {/* Sent/paid-invoice confirmation after a roster add/change that updated invoices */}
+      {invoiceSummary && (
+        <UpdateAffectedInvoicesDialog
+          open={invoiceDialogOpen}
+          onOpenChange={(o) => {
+            // Dismissing without a choice = leave sent/paid invoices as they are ("skip").
+            if (!o && !invoiceApplying) void handleInvoiceChoice('skip');
+          }}
+          summary={invoiceSummary}
+          loading={invoiceApplying}
+          onConfirm={(choice) => void handleInvoiceChoice(choice)}
+        />
+      )}
 
       {/* Per-session delete confirmation */}
       <AlertDialog open={!!deleteSlotTarget} onOpenChange={(o) => !deletingSlot && !o && setDeleteSlotTarget(null)}>
