@@ -181,10 +181,6 @@
     "saveFailed": "Failed to save cycle",
     "locationRequired": "Select a training location so players show the right club."
   },
-  "detail": {
-    "pricesIncludeVat": "All prices include VAT",
-    "pricesExcludeVat": "All prices exclude VAT"
-  },
   "actions": {
     "openEnrollment": "Open Enrollment",
     "closeEnrollment": "Close Enrollment",

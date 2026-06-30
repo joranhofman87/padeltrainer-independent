@@ -191,20 +191,6 @@
     "saveFailed": "Opslaan mislukt. Probeer het opnieuw.",
     "locationRequired": "Kies een trainingslocatie zodat spelers de juiste club te zien krijgen."
   },
-  "detail": {
-    "priceTable": "Tarieven",
-    "type": "Type",
-    "pricePerSession": "Per les",
-    "totalPrice": "Totaal",
-    "sessions": "Lessen",
-    "weeks": "weken",
-    "weeksColumn": "{{count}} weken",
-    "cyclusOption": "Optie",
-    "durationOptions": "Beschikbare duur",
-    "terms": "Voorwaarden",
-    "pricesIncludeVat": "Alle prijzen zijn inclusief BTW",
-    "pricesExcludeVat": "Alle prijzen zijn exclusief BTW"
-  },
   "actions": {
     "openEnrollment": "Inschrijving openen",
     "closeEnrollment": "Inschrijving sluiten",
