@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { reportDeployDriftFallback } from '@/lib/deployDrift';
+import { logger } from '@/lib/logger';
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
 
@@ -38,6 +39,34 @@ export async function getCycleRebookPaymentMode(
     return settings?.rebook_payment_mode === 'upfront' ? 'upfront' : 'deferred_split';
   } catch {
     return 'deferred_split';
+  }
+}
+
+/**
+ * Best-effort record that the player consented to the rebooking rules (stamps
+ * slot_priority_claims.rules_accepted_at via the token-gated accept_rebook_rules RPC). Called just
+ * before the player proceeds to keep/pay, because the accept then redirects to Mollie. NEVER throws
+ * and never hangs (races a short timeout): a consent-logging failure or stall (e.g. the RPC not yet
+ * deployed) must not block the rebooking/payment flow — the client-side checkbox has already
+ * enforced the agreement. Idempotent server-side.
+ */
+export async function recordRebookRulesConsent(token: string): Promise<void> {
+  try {
+    // The caller awaits this right before a checkout redirect, so a stalled connection must not pin
+    // the player on "Working…". Race the RPC against a short timer; on timeout, log and proceed.
+    const timeout = new Promise<{ error: unknown }>((resolve) =>
+      setTimeout(() => resolve({ error: new Error('timeout') }), 2500),
+    );
+    const { error } = await Promise.race([
+      supabase.rpc('accept_rebook_rules', { _token: token }),
+      timeout,
+    ]);
+    if (error) throw error;
+  } catch (e) {
+    logger.warn('rebook rules consent record failed (best-effort, proceeding)', {
+      component: 'priorityClaims',
+      error: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
