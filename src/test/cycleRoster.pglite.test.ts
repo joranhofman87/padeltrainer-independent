@@ -51,7 +51,8 @@ beforeAll(async () => {
   db = new PGlite();
   supa = createPgliteSupabase(db) as unknown as SupabaseClient<Database>;
   await db.exec(`
-    CREATE TABLE cycles (id uuid PRIMARY KEY, split_payment boolean, price_per_session numeric);
+    -- Mirror prod: split_payment lives in the settings JSON, NOT a top-level column.
+    CREATE TABLE cycles (id uuid PRIMARY KEY, settings jsonb, price_per_session numeric);
     CREATE TABLE availability_slots (
       id uuid PRIMARY KEY, cyclus_id uuid, start_time text, end_time text,
       price_per_session numeric, max_participants int
@@ -68,7 +69,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.exec(`DELETE FROM bookings; DELETE FROM availability_slots; DELETE FROM cycles; DELETE FROM guest_players;`);
-  await db.exec(`INSERT INTO cycles (id, split_payment, price_per_session) VALUES ('${CYCLE}', false, 20);`);
+  await db.exec(`INSERT INTO cycles (id, settings, price_per_session) VALUES ('${CYCLE}', '{"split_payment": false}'::jsonb, 20);`);
   // One PAST session + two upcoming — start_time as ISO text (sorts chronologically).
   await db.exec(`INSERT INTO availability_slots (id, cyclus_id, start_time, end_time, price_per_session, max_participants) VALUES
     ('${SP}','${CYCLE}','2020-01-01T10:00:00.000Z','2020-01-01T11:00:00.000Z', 20, 4),
@@ -125,6 +126,21 @@ describe('addPlayersToCycle (skipInvoices) — all-sessions scope', () => {
     expect(res.insertedCount).toBe(2); // S1 + S2 only
     expect(res.alreadyBookedSlotIds).toContain(SP);
     expect(await activeForGuest(GA)).toEqual([SP, S1, S2].sort()); // SP still the single completed row
+  });
+
+  it('reads split_payment from the cycle settings JSON (not a top-level column) and splits accordingly', async () => {
+    // Regression for the "column cycles.split_payment does not exist" 400: split_payment lives in
+    // settings. With a split cycle + an occupied €20 slot, the added player pays the €10 split share,
+    // proving fetchCyclePricing read it from settings.
+    await db.exec(`UPDATE cycles SET settings = '{"split_payment": true}'::jsonb WHERE id = '${CYCLE}';`);
+    await db.exec(`UPDATE availability_slots SET price_per_session = 20 WHERE id = '${S1}';`);
+    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, payment_amount, paid_externally) VALUES
+      ('${S1}','${GC}','confirmed','pending', 20, false);`);
+
+    const res = await addPlayersToCycle({ cycleId: CYCLE, guestPlayerIds: [GA], skipInvoices: true, client: supa });
+
+    expect(res.insertedCount).toBe(3);
+    expect(await amountOnSlot(GA, S1)).toBe(10); // split with the existing co-occupant on the €20 slot
   });
 });
 

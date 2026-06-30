@@ -57,12 +57,16 @@ async function fetchCyclePricing(
 ): Promise<{ splitPayment: boolean; pricePerSession: number | null }> {
   const { data, error } = await client
     .from("cycles")
-    .select("split_payment, price_per_session")
+    .select("settings, price_per_session")
     .eq("id", cycleId)
     .single();
   if (error) throw error;
+  // split_payment is NOT a top-level column on `cycles` — it lives in the settings JSON, exactly as
+  // CycleDetailView's pricing card reads it (`cycle.settings?.split_payment`). Selecting it directly
+  // 400s with "column cycles.split_payment does not exist".
+  const settings = (data?.settings ?? {}) as { split_payment?: boolean };
   return {
-    splitPayment: Boolean(data?.split_payment),
+    splitPayment: Boolean(settings.split_payment),
     pricePerSession: data?.price_per_session ?? null,
   };
 }
