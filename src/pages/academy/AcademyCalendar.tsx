@@ -15,7 +15,7 @@ import {
   parseISO,
 } from "date-fns";
 import { nl, enUS, es, de, fr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, ArrowLeft, Plus, Clock, BarChart3, List, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CalendarDays, CalendarRange, ArrowLeft, Plus, CalendarPlus, Clock, BarChart3, List, SlidersHorizontal, X, User, MapPin, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
@@ -696,6 +696,11 @@ export default function AcademyCalendar() {
           </Button>
           <h1 className="text-xl font-display font-semibold">{t("calendar.title", "Agenda")}</h1>
           <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-1.5" aria-label={t("slotGenerator.cta", "Snel sessies genereren")} onClick={() => navigate("/app/academy/slot/generate")}>
+              <CalendarPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("slotGenerator.cta", "Snel sessies genereren")}</span>
+              <span className="sm:hidden">{t("slotGenerator.ctaShort", "Genereren")}</span>
+            </Button>
             <Button size="sm" className="h-9 gap-1.5" aria-label={t("calendar.new", "New session")} onClick={() => navigate("/app/academy/slot/new")}>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t("calendar.new", "New session")}</span>
