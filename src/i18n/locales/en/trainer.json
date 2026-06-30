@@ -1413,7 +1413,9 @@
       "confirmBody": "This permanently deletes the selected cycles and their open slots. Any cycle that still has player bookings is skipped (never auto-cancelled) and reported back. This cannot be undone.",
       "done": "Deleted {{count}} cycles",
       "doneSkipped": "{{deleted}} deleted, {{skipped}} skipped (have bookings)",
-      "partial": "{{deleted}} deleted, {{skipped}} skipped, {{failed}} failed"
+      "partial": "{{deleted}} deleted, {{skipped}} skipped, {{failed}} failed",
+      "forceBooked": "Also delete cycles with bookings (cancels their bookings)",
+      "forceWarning": "{{count}} selected cycle(s) have bookings: those bookings will be cancelled. This cannot be undone."
     }
   },
   "pendingAttendance": {

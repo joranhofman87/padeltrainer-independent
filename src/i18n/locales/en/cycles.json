@@ -1166,7 +1166,8 @@
     "editCycle": "Edit cycle",
     "editPrice": "Edit price",
     "editEndDate": "Length",
-    "deleteCycle": "Remove future sessions",
+    "deleteCycle": "Delete entire cycle",
+    "deleteCycleHint": "Deletes the cycle, all its sessions and cancels every booking. This cannot be undone.",
     "sessions": {
       "title": "Sessions",
       "empty": "This cycle has no sessions yet.",
@@ -1232,13 +1233,15 @@
       "noPlayers": "—"
     },
     "delete": {
-      "confirmTitle": "Remove future sessions?",
-      "confirmBody": "Empty future sessions will be removed. Booked sessions are kept — cancel their bookings first if you want to remove those too.",
+      "confirmTitle": "Delete entire cycle?",
+      "confirmBodyBooked": "This permanently deletes the ENTIRE cycle: all {{sessions}} sessions, and cancels {{players}} player(s)' bookings.",
+      "confirmBodyEmpty": "This deletes the whole cycle and all {{sessions}} sessions.",
+      "irreversible": "This cannot be undone.",
       "confirm": "Delete",
+      "confirmCycle": "Delete cycle",
       "cancel": "Cancel",
-      "removed": "{{count}} sessions removed",
-      "kept": "{{count}} booked sessions kept",
-      "nothing": "No empty future sessions to remove",
+      "deleted": "Cycle deleted · {{sessions}} sessions, {{bookings}} bookings cancelled",
+      "partial": "{{kept}} session(s) kept — a new booking came in during deletion. Please try again.",
       "error": "Could not delete. Please try again."
     },
     "price": {

@@ -34,8 +34,9 @@ import { buildAffectedInvoicesSummary, type AffectedInvoicesSummary } from '@/li
 import { applyAddPlayerInvoiceChoice } from '@/lib/invoiceAfterAddPlayer';
 import type { InvoiceUpdateChoice } from '@/lib/invoiceUpdateChoice';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
-import { applySlotDeleteToCycle, cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
-import { syncSplitCountForCycle, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
+import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
+import { deleteCycle } from '@/lib/cycleWrites';
+import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import { applyCycleEndDate } from '@/lib/cycleExtension';
 import { updateCyclePricing, applySlotEditToCycle, publishCycle, type ExtraCost } from '@/lib/cycles';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
@@ -66,6 +67,12 @@ export interface CycleDetailViewProps {
   fixedRatingSystem?: string | null;
   /** Called after a successful cycle-scope mutation, so the wrapper can refetch its own surfaces. */
   onMutated?: () => void;
+  /**
+   * Called after the WHOLE cycle is deleted (every session removed + cycle row gone). The wrapper
+   * navigates away — the cycle no longer exists, so staying on this page would only show "not found".
+   * Falls back to `onMutated` when omitted.
+   */
+  onCycleDeleted?: () => void;
   /**
    * Academy roster surface: enables a per-player "remove from whole cycle" action (with the sticky
    * "Don't update invoices" option) on the roster. Trainer/club omit → roster stays view-only.
@@ -105,6 +112,7 @@ export function CycleDetailView({
   locations = [],
   fixedRatingSystem,
   onMutated,
+  onCycleDeleted,
   canRemoveFromCycle = false,
   canManageRoster = false,
   namespace = 'cycles',
@@ -292,33 +300,44 @@ export function CycleDetailView({
   const handleDeleteCycle = async () => {
     setDeleting(true);
     try {
-      // Atomic, booked-slot-protecting delete (F2). cycleId drives the in-transaction split-count
-      // stamp; the RPC keeps any session that still holds an active booking (reported as
-      // protectedCount) so only empty sessions are ever removed.
-      const res = await applySlotDeleteToCycle(cycleId, futureSlotIds);
-      // The RPC only stamps invoices.split_count — it does NOT rebuild line-item amounts. Rebuild them
-      // now (matches the slot-detail delete path + the RPC's documented contract) UNLESS the page-level
-      // toggle says to leave invoices alone. Non-fatal: the delete already committed, so a resync
-      // hiccup must not surface as a delete failure.
-      if (res.deletedCount > 0 && !skipInvoiceUpdates) {
+      // FULL cycle delete: cancel EVERY active booking across ALL sessions (past + future), delete all
+      // sessions, then remove the cycle row so it disappears from the list. `cancelBookingsAndDeleteSlots`
+      // cancels the exact CAPACITY_OCCUPYING set the RPC protects, then the RPC deletes the now-empty
+      // slots and resyncs split counts — all honouring the page-level "Don't update invoices" toggle.
+      // Pass cycleId only for a real cycle row (orphan groups have no row → null, like the table view).
+      const hasCycleRow = !!cycle;
+      const res = await cancelBookingsAndDeleteSlots(
+        hasCycleRow ? cycleId : null,
+        allSlotIds,
+        { skipInvoices: skipInvoiceUpdates },
+      );
+      if (res.syncError) logger.error('Invoice resync failed after full cycle delete', res.syncError);
+      // Only remove the cycle row once every session is actually gone. If a booking raced in during the
+      // delete (protectedCount > 0) some sessions survive — keep the row so they don't become orphans.
+      const fullyCleared = res.protectedCount === 0;
+      if (hasCycleRow && fullyCleared) {
         try {
-          await syncSplitCountForCycle(cycleId);
+          await deleteCycle(cycleId);
         } catch (e) {
-          logger.error('Failed to sync split count after cycle delete', e as Error);
+          logger.error('Failed to delete cycle row after clearing its sessions', e as Error);
         }
       }
-      const parts: string[] = [];
-      if (res.deletedCount > 0) parts.push(t('detail.delete.removed', { count: res.deletedCount }));
-      if (res.protectedCount > 0) parts.push(t('detail.delete.kept', { count: res.protectedCount }));
-      if (parts.length === 0) parts.push(t('detail.delete.nothing'));
-      const message = parts.join(' · ');
-      // Close first so the (now-disabled) confirm can't be re-fired and any parent refetch happens
-      // with the dialog already dismissed.
+      // Close first so the (now-disabled) confirm can't be re-fired and any parent refetch/navigation
+      // happens with the dialog already dismissed.
       setDeleteOpen(false);
-      if (res.deletedCount > 0) toast.success(message);
-      else toast(message);
-      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
-      onMutated?.();
+      if (fullyCleared) {
+        toast.success(t('detail.delete.deleted', { sessions: res.deletedCount, bookings: res.cancelledBookings }));
+        void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+        // The cycle is gone — leave the page. Falls back to a refetch when no navigation is wired.
+        if (onCycleDeleted) onCycleDeleted();
+        else onMutated?.();
+      } else {
+        // Rare race: a new booking landed mid-delete. We cancelled + removed what we could; report it
+        // and stay on the page so the owner can retry.
+        toast(t('detail.delete.partial', { kept: res.protectedCount }));
+        void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+        onMutated?.();
+      }
     } catch (err) {
       toast.error(getFriendlyErrorMessage(err, t('detail.delete.error')));
     } finally {
@@ -1014,13 +1033,13 @@ export function CycleDetailView({
         </Card>
       )}
 
-      {/* Danger zone: whole-cycle delete (empty future sessions). */}
+      {/* Danger zone: FULL cycle delete — cancels every booking + removes all sessions + the cycle. */}
       {canEdit && (
         <Card className="border-destructive/30">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <div className="text-sm">
               <p className="font-medium">{t('detail.deleteCycle')}</p>
-              <p className="text-muted-foreground">{t('detail.delete.confirmBody')}</p>
+              <p className="text-muted-foreground">{t('detail.deleteCycleHint')}</p>
             </div>
             <Button
               variant="outline"
@@ -1100,13 +1119,27 @@ export function CycleDetailView({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Whole-cycle delete confirmation */}
+      {/* FULL cycle delete confirmation — strong warning: this cancels every booking and cannot be undone. */}
       <AlertDialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('detail.delete.confirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('detail.delete.confirmBody')}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {totalPlayers > 0
+                ? t('detail.delete.confirmBodyBooked', { sessions: totalSlots, players: totalPlayers })
+                : t('detail.delete.confirmBodyEmpty', { sessions: totalSlots })}
+            </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm font-medium text-destructive">
+            {t('detail.delete.irreversible')}
+          </div>
+          {totalPlayers > 0 && (
+            <SkipInvoiceUpdatesCheckbox
+              checked={skipInvoiceUpdates}
+              onCheckedChange={setSkipInvoiceUpdates}
+              disabled={deleting}
+            />
+          )}
           <Separator />
           <AlertDialogFooter>
             <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
@@ -1114,7 +1147,7 @@ export function CycleDetailView({
             </Button>
             <Button variant="destructive" onClick={() => void handleDeleteCycle()} disabled={deleting}>
               {deleting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              {t('detail.delete.confirm')}
+              {t('detail.delete.confirmCycle')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

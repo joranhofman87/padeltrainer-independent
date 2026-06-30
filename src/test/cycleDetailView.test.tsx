@@ -12,6 +12,7 @@ const {
   mockUseCycleDetail,
   mockApplyDelete,
   mockCancelDelete,
+  mockDeleteCycle,
   mockSyncSplit,
   mockSyncPrice,
   mockUpdatePricing,
@@ -24,6 +25,7 @@ const {
   mockUseCycleDetail: vi.fn(),
   mockApplyDelete: vi.fn(),
   mockCancelDelete: vi.fn((..._a: unknown[]) => Promise.resolve({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null })),
+  mockDeleteCycle: vi.fn((..._a: unknown[]) => Promise.resolve()),
   mockSyncSplit: vi.fn(() => Promise.resolve()),
   mockSyncPrice: vi.fn(() => Promise.resolve()),
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
@@ -39,6 +41,7 @@ vi.mock('@/lib/slotDeleteGuard', () => ({
   applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a),
   cancelBookingsAndDeleteSlots: (...a: unknown[]) => mockCancelDelete(...a),
 }));
+vi.mock('@/lib/cycleWrites', () => ({ deleteCycle: (...a: unknown[]) => mockDeleteCycle(...a) }));
 vi.mock('@/lib/invoiceSync', () => ({
   syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
   syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
@@ -176,6 +179,8 @@ beforeEach(() => {
   mockApplyDelete.mockReset();
   mockCancelDelete.mockReset();
   mockCancelDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 0, syncError: null });
+  mockDeleteCycle.mockReset();
+  mockDeleteCycle.mockResolvedValue(undefined);
   mockSyncSplit.mockReset();
   mockSyncSplit.mockResolvedValue(undefined);
   mockSyncPrice.mockReset();
@@ -221,7 +226,7 @@ describe('CycleDetailView (inline edit)', () => {
     // No per-row edit/delete actions, no danger-zone delete.
     expect(screen.queryByRole('button', { name: 'Edit session' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete session' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Remove future sessions/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Delete entire cycle/ })).not.toBeInTheDocument();
   });
 
   it('opens a single session on row click', () => {
@@ -360,46 +365,61 @@ describe('CycleDetailView (inline edit)', () => {
     await waitFor(() => expect(mockCancelDelete).toHaveBeenCalledWith('cy1', ['s1'], { skipInvoices: true }));
   });
 
-  // --- Whole-cycle delete ---
-  it('delete cycle: confirm → applySlotDeleteToCycle(cycleId, future slot ids) + resync + onMutated', async () => {
+  // --- Whole-cycle delete (FULL: cancel all bookings + delete ALL sessions + remove the cycle row) ---
+  it('delete cycle: confirm → cancelBookingsAndDeleteSlots(cycleId, ALL slot ids, {skipInvoices:false}) + deleteCycle + onCycleDeleted', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 1, protectedSlotIds: ['s1'] });
+    mockCancelDelete.mockResolvedValue({ deletedCount: 2, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 2, syncError: null });
+    const onCycleDeleted = vi.fn();
+    const onMutated = vi.fn();
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onCycleDeleted={onCycleDeleted} onMutated={onMutated} />);
+    fireEvent.click(screen.getByRole('button', { name: /Delete entire cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete cycle$/ }));
+    await waitFor(() => expect(mockCancelDelete).toHaveBeenCalledWith('cy1', ['s1', 's2'], { skipInvoices: false }));
+    await waitFor(() => expect(mockDeleteCycle).toHaveBeenCalledWith('cy1'));
+    await waitFor(() => expect(onCycleDeleted).toHaveBeenCalled());
+    // navigation owns the post-delete refresh — onMutated is NOT also fired
+    expect(onMutated).not.toHaveBeenCalled();
+  });
+
+  it('delete cycle: falls back to onMutated when onCycleDeleted is not wired', async () => {
+    mockUseCycleDetail.mockReturnValue(loaded);
+    mockCancelDelete.mockResolvedValue({ deletedCount: 2, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 2, syncError: null });
     const onMutated = vi.fn();
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onMutated={onMutated} />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalledWith('cy1', ['s1', 's2']));
-    await waitFor(() => expect(mockSyncSplit).toHaveBeenCalledWith('cy1'));
+    fireEvent.click(screen.getByRole('button', { name: /Delete entire cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete cycle$/ }));
+    await waitFor(() => expect(mockDeleteCycle).toHaveBeenCalledWith('cy1'));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
   });
 
-  it('delete cycle: skips resync when nothing was deleted', async () => {
+  it('delete cycle: a booking racing in (protectedCount>0) keeps the cycle row and does not navigate away', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 0, protectedCount: 2, protectedSlotIds: ['s1', 's2'] });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
-    expect(mockSyncSplit).not.toHaveBeenCalled();
+    mockCancelDelete.mockResolvedValue({ deletedCount: 1, protectedCount: 1, protectedSlotIds: ['s1'], cancelledBookings: 0, syncError: null });
+    const onCycleDeleted = vi.fn();
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit onCycleDeleted={onCycleDeleted} />);
+    fireEvent.click(screen.getByRole('button', { name: /Delete entire cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete cycle$/ }));
+    await waitFor(() => expect(mockCancelDelete).toHaveBeenCalled());
+    expect(mockDeleteCycle).not.toHaveBeenCalled();
+    expect(onCycleDeleted).not.toHaveBeenCalled();
   });
 
-  it('delete cycle: toggle "don\'t update invoices" → no resync even when sessions were deleted', async () => {
+  it('delete cycle: toggle "don\'t update invoices" → cancelBookingsAndDeleteSlots called with skipInvoices:true', async () => {
     mockUseCycleDetail.mockReturnValue(loaded);
-    mockApplyDelete.mockResolvedValue({ deletedCount: 2, protectedCount: 0, protectedSlotIds: [] });
+    mockCancelDelete.mockResolvedValue({ deletedCount: 2, protectedCount: 0, protectedSlotIds: [], cancelledBookings: 2, syncError: null });
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
     fireEvent.click(screen.getByRole('checkbox')); // page-level "Don't update invoices" toggle
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-    await waitFor(() => expect(mockApplyDelete).toHaveBeenCalled());
-    expect(mockSyncSplit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Delete entire cycle/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Delete cycle$/ }));
+    await waitFor(() => expect(mockCancelDelete).toHaveBeenCalledWith('cy1', ['s1', 's2'], { skipInvoices: true }));
   });
 
   it('delete cycle: cancel does NOT call the RPC', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEdit />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove future sessions/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Delete entire cycle/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
-    expect(mockApplyDelete).not.toHaveBeenCalled();
+    expect(mockCancelDelete).not.toHaveBeenCalled();
   });
 
   // --- States ---
