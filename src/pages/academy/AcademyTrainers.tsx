@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { Users, ExternalLink, Clock, UserPlus, MapPin, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { compactDataTableClass, DataTableCard } from '@/components/ui/data-table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
@@ -15,14 +15,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger';
 import { ListPageShell, ListPageState } from '@/components/ui/list-page-shell';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -162,6 +154,115 @@ export default function AcademyTrainers() {
 
   const activeTrainers = trainers.filter((t) => t.status === 'active');
 
+  type AcademyTrainerRow = {
+    id: string;
+    profile?: { full_name?: string | null; avatar_url?: string | null } | null;
+    locations?: { id: string; name: string }[];
+    show_on_academy_page?: boolean;
+    trainer_profile?: { slug?: string | null; id?: string | null } | null;
+  };
+
+  const trainerColumns: ColumnDef<AcademyTrainerRow>[] = [
+    {
+      key: 'name',
+      header: t('common:name', 'Name'),
+      headClassName: 'w-[250px]',
+      // The name cell is its own <Link> (so right/middle/Cmd-click opens a new tab); no engine linkTo.
+      renderCell: (trainer) => (
+        <Link to={`/app/academy/trainers/${trainer.id}`} className="flex items-center gap-3 hover:opacity-80">
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
+            <AvatarFallback className="text-xs">{getInitials(trainer.profile?.full_name)}</AvatarFallback>
+          </Avatar>
+          <span className="font-medium truncate">{trainer.profile?.full_name || t('common:trainer')}</span>
+        </Link>
+      ),
+    },
+    {
+      key: 'locations',
+      header: t('common:locations.title', 'Locations'),
+      renderCell: (trainer) =>
+        trainer.locations && trainer.locations.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {trainer.locations.map((loc) => (
+              <Badge key={loc.id} variant="secondary" className="text-xs">
+                <MapPin className="h-3 w-3 mr-1" />
+                {loc.name}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <span className="text-muted-foreground text-sm">-</span>
+        ),
+    },
+    {
+      key: 'visible',
+      header: t('trainers.showOnAcademyPage', 'Visible'),
+      headClassName: 'text-center',
+      className: 'text-center',
+      renderCell: (trainer) => {
+        const hasName = !!trainer.profile?.full_name;
+        const isVisible = !!trainer.show_on_academy_page;
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex justify-center">
+                  <Switch
+                    checked={isVisible}
+                    onCheckedChange={(checked) => handleVisibilityToggle(trainer.id, checked, hasName)}
+                    disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {hasName
+                    ? isVisible
+                      ? t('trainers.visibilityHint')
+                      : t('trainers.hidden')
+                    : t('trainers.incompleteProfile')}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
+    },
+  ];
+
+  const renderTrainerActions = (trainer: AcademyTrainerRow) => (
+    <>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('trainers.openInNewTab', 'Open in new tab')}
+              onClick={() =>
+                navigate(localizePath(`/trainer/${trainer.trainer_profile?.slug || trainer.trainer_profile?.id}`))
+              }
+            >
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t('trainers.viewProfile', 'View public profile')}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t('common:next')}
+        onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </>
+  );
+
   return (
     <ListPageShell
       isLoading={loading}
@@ -241,9 +342,14 @@ export default function AcademyTrainers() {
               </Card>
             }
           >
-            <DataTableCard
-              testId="academy-trainers-table-scroll"
-              className={flushOnMobileCardClass()}
+            <DataTable<AcademyTrainerRow>
+              columns={trainerColumns}
+              rows={activeTrainers}
+              compact
+              cardTestId="academy-trainers-table-scroll"
+              cardClassName={flushOnMobileCardClass()}
+              actionsHeader={t('common:actions', 'Actions')}
+              renderActions={renderTrainerActions}
               mobile={
                 <div className="md:hidden divide-y divide-border/60">
                   {activeTrainers.map((trainer) => {
@@ -303,118 +409,7 @@ export default function AcademyTrainers() {
                   })}
                 </div>
               }
-            >
-              <Table className={compactDataTableClass}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[250px]">{t('common:name', 'Name')}</TableHead>
-                     <TableHead>{t('common:locations.title', 'Locations')}</TableHead>
-                     <TableHead className="text-center">{t('trainers.showOnAcademyPage', 'Visible')}</TableHead>
-                     <TableHead className="text-right w-[100px]">{t('common:actions', 'Actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activeTrainers.map((trainer) => {
-                    const hasName = !!trainer.profile?.full_name;
-                    const isVisible = trainer.show_on_academy_page;
-
-                    return (
-                      <TableRow key={trainer.id}>
-                         <TableCell>
-                          <div
-                            className="flex items-center gap-3 cursor-pointer hover:opacity-80"
-                            onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
-                          >
-                            <Avatar className="h-9 w-9">
-                              <AvatarImage src={trainer.profile?.avatar_url || ''} alt={trainer.profile?.full_name || ''} />
-                              <AvatarFallback className="text-xs">
-                                {getInitials(trainer.profile?.full_name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium truncate">
-                              {trainer.profile?.full_name || t('common:trainer')}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {trainer.locations && trainer.locations.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {trainer.locations.map((loc: any) => (
-                                <Badge key={loc.id} variant="secondary" className="text-xs">
-                                  <MapPin className="h-3 w-3 mr-1" />
-                                  {loc.name}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="flex justify-center">
-                                  <Switch
-                                    checked={isVisible}
-                                    onCheckedChange={(checked) =>
-                                      handleVisibilityToggle(trainer.id, checked, hasName)
-                                    }
-                                    disabled={updatingVisibility === trainer.id || (!hasName && !isVisible)}
-                                  />
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>
-                                  {hasName
-                                    ? isVisible
-                                      ? t('trainers.visibilityHint')
-                                      : t('trainers.hidden')
-                                    : t('trainers.incompleteProfile')}
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon" aria-label={t('trainers.openInNewTab', 'Open in new tab')}
-                                    onClick={() =>
-                                      navigate(
-                                        localizePath(
-                                          `/trainer/${trainer.trainer_profile?.slug || trainer.trainer_profile?.id}`
-                                        )
-                                      )
-                                    }
-                                  >
-                                    <ExternalLink className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{t('trainers.viewProfile', 'View public profile')}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <Button
-                              variant="ghost"
-                              size="icon" aria-label={t('common:next')}
-                              onClick={() => navigate(`/app/academy/trainers/${trainer.id}`)}
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </DataTableCard>
+            />
           </ListPageState>
         </TabsContent>
 
