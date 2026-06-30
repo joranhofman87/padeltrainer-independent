@@ -9,13 +9,14 @@ import { cancelBookingsAndSync, insertBookings, insertBookingSingle } from './bo
 
 const syncMock = syncInvoicesAfterBookingRemoval as unknown as ReturnType<typeof vi.fn>;
 
-/** Minimal chainable supabase stub: from(..).update(..).in(..) → { error }. */
-function mockClient(updateError: unknown = null) {
-  const inFn = vi.fn().mockResolvedValue({ error: updateError });
+/** Minimal chainable supabase stub: from(..).update(..).in(..).select(..) → { data, error }. */
+function mockClient(updateError: unknown = null, updatedRows: Array<{ id: string }> = [{ id: 'b1' }]) {
+  const select = vi.fn().mockResolvedValue({ data: updateError ? null : updatedRows, error: updateError });
+  const inFn = vi.fn().mockReturnValue({ select });
   const update = vi.fn().mockReturnValue({ in: inFn });
   const from = vi.fn().mockReturnValue({ update });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { client: { from } as any, from, update, in: inFn };
+  return { client: { from } as any, from, update, in: inFn, select };
 }
 
 describe('cancelBookingsAndSync', () => {
@@ -64,6 +65,16 @@ describe('cancelBookingsAndSync', () => {
     expect(r.cancelError).toBeNull();
     expect(r.syncError).toBeInstanceOf(Error);
     expect((r.syncError as Error).message).toBe('boom');
+  });
+
+  it('returns a cancelError (not phantom success) when the update changes 0 rows', async () => {
+    // RLS can silently update 0 rows with NO error (the academy-manager bookings bug). The guard
+    // must surface this so callers never claim "removed from N sessions" while nothing changed.
+    const { client } = mockClient(null, []); // no error, but zero rows updated
+    const r = await cancelBookingsAndSync(['b1'], client);
+    expect(syncMock).not.toHaveBeenCalled();
+    expect(r.cancelError).toBeInstanceOf(Error);
+    expect(r.syncError).toBeNull();
   });
 });
 

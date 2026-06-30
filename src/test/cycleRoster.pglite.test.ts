@@ -16,6 +16,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 import { addPlayersToCycle, swapPlayerInCycle } from '@/lib/cycleRoster';
 import { insertGuestsIntoSlots } from '@/lib/slotBookingWrite';
+import { cancelBookingsAndSync } from '@/lib/bookings';
 
 let db: PGlite;
 let supa: SupabaseClient<Database>;
@@ -194,6 +195,25 @@ describe('swapPlayerInCycle (skipInvoices) — in-place reassign across all sess
     )).rows[0];
     expect(row.guest_player_id).toBe(GA);
     expect(row.player_id).toBeNull(); // stale profile link cleared → seat belongs to GA only
+  });
+});
+
+describe('cancelBookingsAndSync — 0-row guard (RLS-blocked / phantom-success)', () => {
+  it('returns a cancelError when the update changes NO rows (the academy-manager RLS bug symptom)', async () => {
+    // No booking with this id exists → the UPDATE matches 0 rows. Before the guard this returned
+    // success (no error), letting the UI claim "removed from N sessions" while nothing changed.
+    const res = await cancelBookingsAndSync(['90000000-0000-0000-0000-000000000099'], supa, { skipInvoiceSync: true });
+    expect(res.cancelError).not.toBeNull();
+  });
+
+  it('succeeds when it actually cancels a booking', async () => {
+    const id = '70000000-0000-0000-0000-000000000071';
+    await db.exec(`INSERT INTO bookings (id, slot_id, guest_player_id, status, payment_status, paid_externally) VALUES
+      ('${id}','${S1}','${GB}','confirmed','pending', false);`);
+    const res = await cancelBookingsAndSync([id], supa, { skipInvoiceSync: true });
+    expect(res.cancelError).toBeNull();
+    const row = (await db.query<{ status: string }>(`SELECT status FROM bookings WHERE id = $1`, [id])).rows[0];
+    expect(row.status).toBe('cancelled');
   });
 });
 
