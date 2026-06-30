@@ -2,9 +2,43 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { formatDate } from '@/lib/format';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
+
+interface SourceRow {
+  id: string;
+  source_title?: string | null;
+  source_url?: string | null;
+  allowed_to_use?: boolean | null;
+  notes?: string | null;
+  retrieved_at?: string | null;
+}
+
+const columns: ColumnDef<SourceRow>[] = [
+  { key: 'title', header: 'Title', renderCell: (s) => s.source_title || '—' },
+  {
+    key: 'url',
+    header: 'URL',
+    renderCell: (s) => (
+      <a
+        href={s.source_url || undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 text-primary hover:underline max-w-xs truncate"
+      >
+        {s.source_url} <ExternalLink className="h-3 w-3" />
+      </a>
+    ),
+  },
+  {
+    key: 'allowed',
+    header: 'Allowed',
+    renderCell: (s) => <Badge variant={s.allowed_to_use ? 'default' : 'destructive'}>{s.allowed_to_use ? 'Yes' : 'No'}</Badge>,
+  },
+  { key: 'notes', header: 'Notes', className: 'max-w-xs truncate', renderCell: (s) => s.notes || '—' },
+  { key: 'retrieved', header: 'Retrieved', className: 'text-sm text-muted-foreground', renderCell: (s) => formatDate(s.retrieved_at) },
+];
 
 export default function AdminBlogSources() {
   const { id } = useParams<{ id: string }>();
@@ -14,7 +48,7 @@ export default function AdminBlogSources() {
     queryFn: async () => {
       const { data, error } = await (supabase as any).from('sources').select('*').eq('article_id', id).order('retrieved_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []) as SourceRow[];
     },
     enabled: !!id,
   });
@@ -22,38 +56,12 @@ export default function AdminBlogSources() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Article Sources</h1>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead>URL</TableHead>
-            <TableHead>Allowed</TableHead>
-            <TableHead>Notes</TableHead>
-            <TableHead>Retrieved</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
-          ) : sources.length === 0 ? (
-            <TableRow><TableCell colSpan={5} className="text-center py-8">No sources</TableCell></TableRow>
-          ) : (
-            sources.map((s: any) => (
-              <TableRow key={s.id}>
-                <TableCell>{s.source_title || '—'}</TableCell>
-                <TableCell>
-                  <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline max-w-xs truncate">
-                    {s.source_url} <ExternalLink className="h-3 w-3" />
-                  </a>
-                </TableCell>
-                <TableCell><Badge variant={s.allowed_to_use ? 'default' : 'destructive'}>{s.allowed_to_use ? 'Yes' : 'No'}</Badge></TableCell>
-                <TableCell className="max-w-xs truncate">{s.notes || '—'}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{formatDate(s.retrieved_at)}</TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+      <DataTable<SourceRow>
+        columns={columns}
+        rows={sources}
+        desktopOnly={false}
+        empty={isLoading ? 'Loading...' : 'No sources'}
+      />
     </div>
   );
 }

@@ -1123,12 +1123,12 @@
   },
   "src/pages/admin/AdminBlogSources.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 2
+      "count": 1
     }
   },
   "src/pages/admin/AdminBlogTopics.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 3
+      "count": 2
     }
   },
   "src/pages/admin/AdminCertifications.tsx": {
