@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { subscriptionStatusVariant } from '@/lib/adminStatus';
 import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
 import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
@@ -127,18 +128,6 @@ export default function AdminAcademies() {
     "desc"
   );
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case "active":
-        return "default";
-      case "trial":
-        return "secondary";
-      case "expired":
-        return "destructive";
-      default:
-        return "outline";
-    }
-  };
 
 
   const handleBulkVerify = async () => {
@@ -409,7 +398,7 @@ export default function AdminAcademies() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadgeVariant(subscriptionStatus)}>
+                      <Badge variant={subscriptionStatusVariant(subscriptionStatus)}>
                         {subscriptionStatus}
                       </Badge>
                       {academy.subscription_tier && (

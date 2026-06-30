@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { subscriptionStatusVariant } from '@/lib/adminStatus';
 import { useAdminTrainers, useInvalidateAdminData, type TrainerProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -136,18 +137,6 @@ export default function AdminTrainers() {
     "desc"
   );
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case "active":
-        return "default";
-      case "trial":
-        return "secondary";
-      case "expired":
-        return "destructive";
-      default:
-        return "outline";
-    }
-  };
 
   return (
     <ListPageShell
@@ -271,7 +260,7 @@ export default function AdminTrainers() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadgeVariant(status)}>{status}</Badge>
+                      <Badge variant={subscriptionStatusVariant(status)}>{status}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {format(new Date(trainer.created_at), "MMM d, yyyy")}

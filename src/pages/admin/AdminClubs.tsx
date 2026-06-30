@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { subscriptionStatusVariant } from '@/lib/adminStatus';
 import { useAdminClubs, useInvalidateAdminData, ClubProfileAdmin } from "@/hooks/useAdminData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,18 +146,6 @@ export default function AdminClubs() {
     "_name"
   );
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case "active":
-        return "default";
-      case "trial":
-        return "secondary";
-      case "expired":
-        return "destructive";
-      default:
-        return "outline";
-    }
-  };
 
   if (clubsLoading) {
     return (
@@ -328,7 +317,7 @@ export default function AdminClubs() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadgeVariant(status)}>{status}</Badge>
+                      <Badge variant={subscriptionStatusVariant(status)}>{status}</Badge>
                       {club.subscription_tier && (
                         <span className="ml-2 text-xs text-muted-foreground">
                           ({club.subscription_tier})

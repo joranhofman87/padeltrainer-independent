@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
+import { WaitingListStatusBadge } from './WaitingListStatusBadge';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,18 +71,6 @@ export default function MyWaitingListEntries() {
     fetchEntries();
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <Badge variant="default">{t('myEntries.active')}</Badge>;
-      case 'contacted':
-        return <Badge variant="secondary">{t('myEntries.contacted')}</Badge>;
-      case 'archived':
-        return <Badge variant="outline">{t('myEntries.archived')}</Badge>;
-      default:
-        return null;
-    }
-  };
 
   if (loading) {
     return (
@@ -114,7 +102,7 @@ export default function MyWaitingListEntries() {
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                {getStatusBadge(entry.status)}
+                <WaitingListStatusBadge status={entry.status} labelPrefix="myEntries" />
                 <span className="text-sm capitalize">
                   {t(`form.lessonTypes.${entry.lesson_type}`)}
                 </span>

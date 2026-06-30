@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { GuestPlayerSlotCombobox } from '@/components/players/GuestPlayerSlotCombobox';
 import { useTranslation } from "react-i18next";
 import { Loader2, CreditCard, RefreshCw, Trash2, Info, X, Receipt } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
@@ -216,12 +217,14 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       <div className="space-y-1.5">
         <Label className="text-xs">{t("bookings.player")}</Label>
         {isGuestBooking ? (
-          <Select value={selectedPlayerId || ""} onValueChange={setSelectedPlayerId} disabled={isFetching}>
-            <SelectTrigger className="h-9"><SelectValue placeholder={t("bookings.selectPlayer")} /></SelectTrigger>
-            <SelectContent>
-              {players.map(p => <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <GuestPlayerSlotCombobox
+            players={players}
+            value={selectedPlayerId || ""}
+            onValueChange={setSelectedPlayerId}
+            disabled={isFetching}
+            showEmail
+            placeholder={t("bookings.selectPlayer")}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">{playerName} <span className="text-xs">(registered)</span></p>
         )}

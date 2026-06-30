@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { WaitingListStatusBadge } from './WaitingListStatusBadge';
 import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { useTranslation } from 'react-i18next';
@@ -125,18 +126,6 @@ export default function WaitingListTable({
     fetchEntries();
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <Badge variant="default">{t('management.filters.active')}</Badge>;
-      case 'contacted':
-        return <Badge variant="secondary">{t('management.filters.contacted')}</Badge>;
-      case 'archived':
-        return <Badge variant="outline">{t('management.filters.archived')}</Badge>;
-      default:
-        return null;
-    }
-  };
 
   if (loading) {
     return (
@@ -226,7 +215,7 @@ export default function WaitingListTable({
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell>{getStatusBadge(entry.status)}</TableCell>
+                      <TableCell><WaitingListStatusBadge status={entry.status} labelPrefix="management.filters" /></TableCell>
                       <TableCell>
                         {format(new Date(entry.created_at), 'MMM d, yyyy')}
                       </TableCell>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -153,9 +154,7 @@ export default function CalendarSettings() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <FullPageLoader />
     );
   }
 
