@@ -3,14 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, differenceInWeeks } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -38,7 +31,6 @@ import {
   ToggleLeft,
   ToggleRight,
   Search,
-  ArrowUpDown,
   QrCode,
 } from 'lucide-react';
 import { type Cycle, updateCycle } from '@/lib/cycles';
@@ -54,6 +46,8 @@ interface CyclesTableProps {
   cycles: Cycle[];
   locations?: { id: string; name: string; city: string }[];
   onEdit: (cycle: Cycle) => void;
+  /** Per-row destination for the name-cell <Link> (open-in-new-tab) — should match `onEdit`'s target. */
+  rowHref?: (cycle: Cycle) => string;
   onDuplicate?: (cycle: Cycle) => void;
   onDeleted: () => void;
   ownerType: 'trainer' | 'club' | 'academy';
@@ -69,6 +63,7 @@ export default function CyclesTable({
   cycles,
   locations: _locations = [],
   onEdit,
+  rowHref,
   onDuplicate,
   onDeleted,
   ownerType,
@@ -213,16 +208,132 @@ export default function CyclesTable({
     ).values()
   );
 
-  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="-ml-3 h-8 data-[state=open]:bg-accent"
-      onClick={() => handleSort(field)}
-    >
-      {children}
-      <ArrowUpDown className="ml-2 h-4 w-4" />
-    </Button>
+  const columns: ColumnDef<Cycle>[] = [
+    {
+      key: 'name',
+      header: t('form.registrationName', 'Name'),
+      sortKey: 'name',
+      linkTo: rowHref ? (cycle) => rowHref(cycle) : undefined,
+      renderCell: (cycle) => (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{cycle.name}</span>
+            {cycle.type === 'event' && (
+              <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
+                {t('type.event', 'Event')}
+              </Badge>
+            )}
+          </div>
+          <div className="text-sm text-muted-foreground md:hidden">{cycle.location?.name || '-'}</div>
+        </>
+      ),
+    },
+    {
+      key: 'location',
+      header: t('common:location', 'Location'),
+      sortKey: 'location',
+      headClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell',
+      renderCell: (cycle) =>
+        cycle.location ? (
+          <span className="text-sm">
+            {cycle.location.name}
+            <span className="text-muted-foreground ml-1">({cycle.location.city})</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
+    },
+    {
+      key: 'period',
+      header: t('common:period', 'Period'),
+      sortKey: 'start_date',
+      headClassName: 'hidden sm:table-cell',
+      className: 'hidden sm:table-cell',
+      renderCell: (cycle) => <span className="text-sm">{formatPeriod(cycle)}</span>,
+    },
+    {
+      key: 'status',
+      header: t('common:status', 'Status'),
+      sortKey: 'status',
+      renderCell: (cycle) => getStatusBadge(cycle.status),
+    },
+    {
+      key: 'applications',
+      header: t('stats.applications'),
+      sortKey: 'applications',
+      headClassName: 'hidden lg:table-cell',
+      className: 'hidden lg:table-cell',
+      renderCell: (cycle) => (
+        <Badge variant="outline" className="font-normal">
+          <Users className="h-3 w-3 mr-1" />
+          {cycle._intakeCount || 0}
+        </Badge>
+      ),
+    },
+    {
+      key: 'price',
+      header: t('common:price', 'Price'),
+      headClassName: 'hidden lg:table-cell',
+      className: 'hidden lg:table-cell text-sm',
+      renderCell: (cycle) => formatPrice(cycle),
+    },
+  ];
+
+  const renderRowActions = (cycle: Cycle) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-8 w-8">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onEdit(cycle)}>
+          <Edit className="h-4 w-4 mr-2" />
+          {cycle.type === 'registration' ? t('editRegistration', 'Edit Registration') : t('editCycle')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleViewRequests(cycle)}>
+          <Users className="h-4 w-4 mr-2" />
+          {t('actions.viewRequests')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleCopyLink(cycle)}>
+          <ExternalLink className="h-4 w-4 mr-2" />
+          {t('actions.shareLink')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setQrCycle(cycle)}>
+          <QrCode className="h-4 w-4 mr-2" />
+          {t('actions.qrCode', 'QR code')}
+        </DropdownMenuItem>
+        {onDuplicate && (
+          <DropdownMenuItem onClick={() => onDuplicate(cycle)}>
+            <Copy className="h-4 w-4 mr-2" />
+            {t('common:duplicate', 'Duplicate')}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => handleToggleStatus(cycle)}>
+          {cycle.status === 'open' ? (
+            <>
+              <ToggleLeft className="h-4 w-4 mr-2" />
+              {t('actions.closeEnrollment')}
+            </>
+          ) : (
+            <>
+              <ToggleRight className="h-4 w-4 mr-2" />
+              {t('actions.openEnrollment')}
+            </>
+          )}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => setCycleToDelete(cycle)}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash className="h-4 w-4 mr-2" />
+          {cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   return (
@@ -268,136 +379,17 @@ export default function CyclesTable({
       </div>
 
       {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>
-                <SortableHeader field="name">{t('form.registrationName', 'Name')}</SortableHeader>
-              </TableHead>
-              <TableHead className="hidden md:table-cell">
-                <SortableHeader field="location">{t('common:location', 'Location')}</SortableHeader>
-              </TableHead>
-              <TableHead className="hidden sm:table-cell">
-                <SortableHeader field="start_date">{t('common:period', 'Period')}</SortableHeader>
-              </TableHead>
-              <TableHead>
-                <SortableHeader field="status">{t('common:status', 'Status')}</SortableHeader>
-              </TableHead>
-              <TableHead className="hidden lg:table-cell">
-                <SortableHeader field="applications">{t('stats.applications')}</SortableHeader>
-              </TableHead>
-              <TableHead className="hidden lg:table-cell">{t('common:price', 'Price')}</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredCycles.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  {cycles.length === 0 ? t('noCycles') : t('common:noResults', 'No results found')}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredCycles.map((cycle) => (
-                <TableRow key={cycle.id} className="cursor-pointer" onClick={() => onEdit(cycle)}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{cycle.name}</span>
-                      {cycle.type === 'event' && (
-                        <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
-                          {t('type.event', 'Event')}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground md:hidden">
-                      {cycle.location?.name || '-'}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {cycle.location ? (
-                      <span className="text-sm">
-                        {cycle.location.name}
-                        <span className="text-muted-foreground ml-1">({cycle.location.city})</span>
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <span className="text-sm">{formatPeriod(cycle)}</span>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(cycle.status)}</TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <Badge variant="outline" className="font-normal">
-                      <Users className="h-3 w-3 mr-1" />
-                      {cycle._intakeCount || 0}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm">
-                    {formatPrice(cycle)}
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="Open actions menu" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(cycle)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          {cycle.type === 'registration' ? t('editRegistration', 'Edit Registration') : t('editCycle')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleViewRequests(cycle)}>
-                          <Users className="h-4 w-4 mr-2" />
-                          {t('actions.viewRequests')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleCopyLink(cycle)}>
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          {t('actions.shareLink')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setQrCycle(cycle)}>
-                          <QrCode className="h-4 w-4 mr-2" />
-                          {t('actions.qrCode', 'QR code')}
-                        </DropdownMenuItem>
-                        {onDuplicate && (
-                          <DropdownMenuItem onClick={() => onDuplicate(cycle)}>
-                            <Copy className="h-4 w-4 mr-2" />
-                            {t('common:duplicate', 'Duplicate')}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleToggleStatus(cycle)}>
-                          {cycle.status === 'open' ? (
-                            <>
-                              <ToggleLeft className="h-4 w-4 mr-2" />
-                              {t('actions.closeEnrollment')}
-                            </>
-                          ) : (
-                            <>
-                              <ToggleRight className="h-4 w-4 mr-2" />
-                              {t('actions.openEnrollment')}
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => setCycleToDelete(cycle)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash className="h-4 w-4 mr-2" />
-                          {cycle.type === 'registration' ? t('deleteRegistration', 'Delete Registration') : t('deleteCycle')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable<Cycle>
+        columns={columns}
+        rows={filteredCycles}
+        sortKey={sortField}
+        sortDirection={sortDirection}
+        onSort={(key) => handleSort(key as SortField)}
+        onRowClick={onEdit}
+        renderActions={renderRowActions}
+        desktopOnly={false}
+        empty={cycles.length === 0 ? t('noCycles') : t('common:noResults', 'No results found')}
+      />
 
       <DeleteCycleDialog
         cycle={cycleToDelete}
