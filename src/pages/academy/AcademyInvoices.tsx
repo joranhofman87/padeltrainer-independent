@@ -880,6 +880,7 @@ export default function AcademyInvoices() {
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={toggleSelectAllVisible}
                 onRowClick={(inv) => navigate(`/app/academy/invoices/${inv.id}/edit`)}
+                rowHref={(inv) => `/app/academy/invoices/${inv.id}/edit`}
                 labels={{
                   selectAll: t("invoices.selectAll", "Select all"),
                   number: t("invoices.number", "Number"),

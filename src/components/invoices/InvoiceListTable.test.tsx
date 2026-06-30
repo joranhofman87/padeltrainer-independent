@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { enUS } from 'date-fns/locale';
 import { InvoiceListTable, type InvoiceListRow, type InvoiceListTableLabels } from './InvoiceListTable';
 
@@ -28,11 +29,16 @@ function renderTable(overrides: Partial<React.ComponentProps<typeof InvoiceListT
     sortKey: null, sortDirection: null,
     onSort: vi.fn(), selectedIds: new Set<string>(),
     onToggleSelect: vi.fn(), onToggleSelectAll: vi.fn(), onRowClick: vi.fn(),
+    rowHref: (inv: Row) => `/app/x/invoices/${inv.id}/edit`,
     renderActions: (inv: Row) => <button>act-{inv.id}</button>,
     ...overrides,
   };
-  render(<InvoiceListTable<Row> {...props} />);
-  return props;
+  const { unmount } = render(
+    <MemoryRouter>
+      <InvoiceListTable<Row> {...props} />
+    </MemoryRouter>,
+  );
+  return { ...props, unmount };
 }
 
 describe('InvoiceListTable', () => {
@@ -50,9 +56,17 @@ describe('InvoiceListTable', () => {
     expect(screen.getByText('act-b')).toBeInTheDocument();
   });
 
+  it('renders the invoice number as a link to the row href (open-in-new-tab) and does not double-fire onRowClick', () => {
+    const { onRowClick } = renderTable();
+    const link = screen.getByRole('link', { name: 'INV-1' });
+    expect(link).toHaveAttribute('href', '/app/x/invoices/a/edit');
+    fireEvent.click(link);
+    expect(onRowClick).not.toHaveBeenCalled(); // the link cell stops propagation
+  });
+
   it('navigates on row click but not when the checkbox is clicked', () => {
     const { onRowClick, onToggleSelect } = renderTable();
-    fireEvent.click(screen.getByText('Alice'));
+    fireEvent.click(screen.getByText('Alice')); // the player cell is dead-area => whole-row onClick
     expect(onRowClick).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByLabelText('Select INV-1'));
     expect(onToggleSelect).toHaveBeenCalledWith('a');
@@ -72,25 +86,11 @@ describe('InvoiceListTable', () => {
   });
 
   it('shows the due-date column on the unpaid tab and the payment-date column on the paid tab', () => {
-    const { unmount } = render(
-      <InvoiceListTable<Row>
-        rows={rows} activeTab="unpaid" dateFnsLocale={enUS} labels={labels}
-        sortKey={null} sortDirection={null} onSort={vi.fn()} selectedIds={new Set()}
-        onToggleSelect={vi.fn()} onToggleSelectAll={vi.fn()} onRowClick={vi.fn()}
-        renderActions={() => null}
-      />,
-    );
+    const { unmount } = renderTable({ activeTab: 'unpaid', renderActions: () => null });
     expect(screen.getByText('Due')).toBeInTheDocument();
     expect(screen.queryByText('Payment date')).not.toBeInTheDocument();
     unmount();
-    render(
-      <InvoiceListTable<Row>
-        rows={rows} activeTab="paid" dateFnsLocale={enUS} labels={labels}
-        sortKey={null} sortDirection={null} onSort={vi.fn()} selectedIds={new Set()}
-        onToggleSelect={vi.fn()} onToggleSelectAll={vi.fn()} onRowClick={vi.fn()}
-        renderActions={() => null}
-      />,
-    );
+    renderTable({ activeTab: 'paid', renderActions: () => null });
     expect(screen.getByText('Payment date')).toBeInTheDocument();
   });
 
