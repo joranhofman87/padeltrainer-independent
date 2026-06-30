@@ -2,6 +2,7 @@
 // The multi-week cyclus bulk-create feature: self-contained state, communicates only via props.
 // AddSlotDialog re-exports BulkCreateContent so the three by-name importers stay unchanged.
 import { useState, useEffect } from "react";
+import { TIME_OPTIONS } from '@/lib/timeOptions';
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -42,11 +43,6 @@ import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
-const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
-  const hours = Math.floor(i / 2);
-  const minutes = (i % 2) * 30;
-  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
-});
 
 interface BulkSlotConfig {
   startDate: Date;

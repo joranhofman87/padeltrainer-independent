@@ -1,9 +1,10 @@
 import { buildDynamicOgUrl } from '@/lib/dynamicOgImage';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocationReviewStats } from '@/hooks/useCourtReviews';
-import { MapPin, ExternalLink, Loader2, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Share2, Copy, Check, MessageCircle, GraduationCap, Home, Sun } from 'lucide-react';
+import { MapPin, ExternalLink, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Share2, Copy, Check, MessageCircle, GraduationCap, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
 import { WaitingListCard } from '@/components/waitingList';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
@@ -380,9 +381,7 @@ export default function LocationDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <FullPageLoader />
     );
   }
 

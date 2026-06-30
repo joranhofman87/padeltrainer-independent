@@ -35,6 +35,7 @@ export type GuestPlayerSlotComboboxProps = {
   /** Player ids that cannot be selected (e.g. already chosen in another slot). */
   disabledPlayerIds?: string[];
   showEmail?: boolean;
+  disabled?: boolean;
   className?: string;
   "data-testid"?: string;
   /**
@@ -60,6 +61,7 @@ export function GuestPlayerSlotCombobox({
   clearLabel = "-",
   disabledPlayerIds = [],
   showEmail = false,
+  disabled = false,
   className,
   "data-testid": testId,
   onSearchValueChange,
@@ -99,6 +101,7 @@ export function GuestPlayerSlotCombobox({
           type="button"
           variant="outline"
           role="combobox"
+          disabled={disabled}
           aria-expanded={open}
           aria-label={triggerLabel}
           data-testid={testId}
