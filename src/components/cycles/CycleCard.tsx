@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { CycleStatusBadge } from './CycleStatusBadge';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -68,18 +69,6 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
     loadCounts();
   }, [cycle.id]);
 
-  const getStatusVariant = (status: string): 'success' | 'warning' | 'muted' | 'secondary' => {
-    switch (status) {
-      case 'open':
-        return 'success';
-      case 'closed':
-        return 'warning';
-      case 'archived':
-        return 'muted';
-      default:
-        return 'secondary';
-    }
-  };
 
   const handleStatusChange = async (newStatus: Cycle['status']) => {
     setIsUpdating(true);
@@ -116,9 +105,7 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                 {t('type.event', 'Event')}
               </Badge>
             )}
-            <Badge variant={getStatusVariant(cycle.status)} className="text-xs">
-              {t(`status.${cycle.status}`)}
-            </Badge>
+            <CycleStatusBadge status={cycle.status} />
             
             {/* Payment method badge for events */}
             {cycle.type === 'event' && (() => {

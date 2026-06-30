@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
+import { CycleStatusBadge } from './CycleStatusBadge';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, differenceInWeeks } from 'date-fns';
@@ -154,25 +155,6 @@ export default function CyclesTable({
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-      draft: 'secondary',
-      open: 'default',
-      closed: 'outline',
-      archived: 'secondary',
-    };
-    const colors: Record<string, string> = {
-      draft: 'bg-muted text-muted-foreground',
-      open: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
-      closed: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
-      archived: 'bg-muted text-muted-foreground',
-    };
-    return (
-      <Badge variant={variants[status]} className={colors[status]}>
-        {t(`status.${status}`)}
-      </Badge>
-    );
-  };
 
   const formatPeriod = (cycle: Cycle) => {
     if (cycle.is_always_open) return t('alwaysOpen.badge', 'Always open');
@@ -250,7 +232,7 @@ export default function CyclesTable({
       key: 'status',
       header: t('common:status', 'Status'),
       sortKey: 'status',
-      renderCell: (cycle) => getStatusBadge(cycle.status),
+      renderCell: (cycle) => <CycleStatusBadge status={cycle.status} />,
     },
     {
       key: 'applications',

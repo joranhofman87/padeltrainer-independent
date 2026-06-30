@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { CycleStatusBadge } from '@/components/cycles/CycleStatusBadge';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useTranslation } from 'react-i18next';
@@ -394,19 +395,6 @@ export default function AcademyCycleDetail() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      draft: 'bg-muted text-muted-foreground',
-      open: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
-      closed: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
-      archived: 'bg-muted text-muted-foreground',
-    };
-    return (
-      <Badge variant="outline" className={colors[status]}>
-        {t(`status.${status}`)}
-      </Badge>
-    );
-  };
 
   // Schedule grid event handlers with optimistic updates
   const scheduleGridHandlers = {
@@ -626,7 +614,7 @@ export default function AcademyCycleDetail() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold truncate">{cycle.name}</h1>
-              {getStatusBadge(cycle.status)}
+              <CycleStatusBadge status={cycle.status} />
               {cycle.type === 'event' && (
                 <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
                   {t('type.event', 'Event')}

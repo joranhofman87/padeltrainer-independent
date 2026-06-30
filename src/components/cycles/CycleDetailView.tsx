@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { CycleStatusBadge } from './CycleStatusBadge';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -643,7 +644,7 @@ export function CycleDetailView({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-semibold truncate">{title}</h1>
-              {statusKey && <Badge variant="secondary">{t(`status.${statusKey}`)}</Badge>}
+              {statusKey && <CycleStatusBadge status={statusKey} />}
             </div>
             <p className="text-sm text-muted-foreground">
               {fmtPeriod(periodStart)} → {fmtPeriod(periodEnd, true)}
