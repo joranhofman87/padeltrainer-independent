@@ -6,7 +6,6 @@ import { Loader2, UserPlus, X, Users, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { insertBookings } from "@/lib/bookings";
 import { SkipInvoiceUpdatesCheckbox } from "@/components/booking/SkipInvoiceUpdatesCheckbox";
-import { CAPACITY_OCCUPYING_STATUSES } from "@/lib/lessons";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
 import {
@@ -25,12 +24,16 @@ import type { InvoiceAfterAddPlayerResult } from "@/lib/invoiceAfterAddPlayer";
 import { formatPrice } from "@/lib/pricing";
 import {
   buildGuestBookingInsertRow,
-  buildRebalanceAmountGroups,
   calculateSlotBookingPricing,
   countActiveBookings,
   getRebalanceBookingIds,
   resolveSlotSessionPrice,
 } from "@/lib/bookingPricing";
+import {
+  insertGuestsIntoSlots,
+  rebalanceExistingOnSlot,
+  INSERTED_BOOKING_SELECT,
+} from "@/lib/slotBookingWrite";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -71,16 +74,6 @@ interface InlineBookPlayerProps {
 }
 
 const EMPTY_PLAYER_SLOTS = ["", "", "", ""];
-
-type ExistingBookingRow = {
-  id: string;
-  slot_id: string;
-  payment_status: string | null;
-  paid_externally: boolean | null;
-};
-
-const INSERTED_BOOKING_SELECT =
-  "id, slot_id, guest_player_id, player_id, payment_amount, payment_status, paid_externally";
 
 export function InlineBookPlayer({
   trainerId,
@@ -225,75 +218,6 @@ export function InlineBookPlayer({
     newPlayerCount: selectedCount,
   });
 
-  const rebalanceExistingOnSlot = async (
-    slotId: string,
-    rebalanceIds: string[],
-    amount: number,
-    sessionPriceForOriginal: number,
-  ): Promise<void> => {
-    if (rebalanceIds.length === 0) return;
-
-    // Re-read discounts so a negotiated discount survives the rebalance: each
-    // row keeps discount_amount/discount_reason and pays share − discount.
-    const { data: existingRows, error: fetchError } = await supabase
-      .from("bookings")
-      .select("id, discount_amount")
-      .in("id", rebalanceIds);
-
-    if (fetchError) {
-      logger.error("Failed to load bookings for rebalance", fetchError, {
-        component: "InlineBookPlayer",
-        slotId,
-        rebalanceIds,
-      });
-      throw fetchError;
-    }
-
-    for (const group of buildRebalanceAmountGroups(existingRows ?? [], amount)) {
-      const { error } = await supabase
-        .from("bookings")
-        .update({
-          payment_amount: group.paymentAmount,
-          original_amount: sessionPriceForOriginal,
-        })
-        .in("id", group.bookingIds)
-        // Never rewrite an already-settled booking's amount when rebalancing a
-        // split — a paid player must keep what they paid.
-        .neq("payment_status", "paid")
-        .neq("paid_externally", true);
-
-      if (error) {
-        logger.error("Failed to rebalance booking amounts", error, {
-          component: "InlineBookPlayer",
-          slotId,
-          rebalanceIds: group.bookingIds,
-          amount: group.paymentAmount,
-        });
-        throw error;
-      }
-    }
-  };
-
-  const fetchExistingBookingsBySlot = async (
-    slotIds: string[],
-  ): Promise<Map<string, ExistingBookingRow[]>> => {
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("id, slot_id, payment_status, paid_externally")
-      .in("slot_id", slotIds)
-      .in("status", [...CAPACITY_OCCUPYING_STATUSES]);
-
-    if (error) throw error;
-
-    const bySlot = new Map<string, ExistingBookingRow[]>();
-    for (const row of data || []) {
-      const list = bySlot.get(row.slot_id) || [];
-      list.push(row);
-      bySlot.set(row.slot_id, list);
-    }
-    return bySlot;
-  };
-
   const showInvoiceFollowUpToasts = (
     invoiceResult: Awaited<ReturnType<typeof syncInvoicesAfterAddPlayer>>,
     sentWasUpdated: boolean,
@@ -420,71 +344,20 @@ export function InlineBookPlayer({
         .filter(Boolean);
 
       if (bookingScope === "cyclus" && slot.cyclus_id && cyclusSlots.length > 0) {
-        const bySlot = await fetchExistingBookingsBySlot(cyclusSlots.map(s => s.id));
-        const bookingsToInsert = cyclusSlots.flatMap((cyclusSlot) => {
-          const existingOnSlot = (bySlot.get(cyclusSlot.id) || []).length;
-          // Each cyclus slot carries its own price/duration — never the
-          // clicked slot's price for the whole cycle.
-          const pricing = calculateSlotBookingPricing({
-            sessionPrice: resolveCyclusSlotPrice(cyclusSlot),
+        // Book every future cyclus session via the shared primitive (same money
+        // math the cycle-roster add uses). Each session prices on its own price.
+        const { insertedRows, rebalanceFailed: cyclusRebalanceFailed } =
+          await insertGuestsIntoSlots({
+            slots: cyclusSlots,
+            guestPlayerIds: selectedPlayers.map((p) => p.id),
             splitPayment,
-            existingActiveBookingCount: existingOnSlot,
-            newPlayerCount: selectedPlayers.length,
+            skipRebalance: skipInvoiceUpdates,
+            notes: notesValue,
+            resolveSessionPrice: resolveCyclusSlotPrice,
+            client: supabase,
           });
-
-          return selectedPlayers.map((player, playerIndex) =>
-            buildGuestBookingInsertRow({
-              slotId: cyclusSlot.id,
-              guestPlayerId: player.id,
-              paymentAmount: pricing.newPlayerAmounts[playerIndex] ?? 0,
-              sessionPrice: pricing.sessionPrice,
-              notes: notesValue,
-            }),
-          );
-        });
-
-        const { data: insertedRows, error } = await insertBookings(
-          bookingsToInsert,
-          supabase,
-          INSERTED_BOOKING_SELECT,
-        );
-        if (error) throw error;
         insertSucceeded = true;
-
-        for (const cyclusSlot of cyclusSlots) {
-          const existingOnSlot = (bySlot.get(cyclusSlot.id) || []).length;
-          const pricing = calculateSlotBookingPricing({
-            sessionPrice: resolveCyclusSlotPrice(cyclusSlot),
-            splitPayment,
-            existingActiveBookingCount: existingOnSlot,
-            newPlayerCount: selectedPlayers.length,
-          });
-
-          // skipInvoiceUpdates ⇒ leave co-occupants' split amounts untouched too.
-          if (skipInvoiceUpdates || !pricing.shouldRebalanceExisting || pricing.existingBookingsNewAmount == null) {
-            continue;
-          }
-
-          const rebalanceIds = (bySlot.get(cyclusSlot.id) || [])
-            .filter((b) => b.payment_status !== "paid" && !b.paid_externally)
-            .map((b) => b.id);
-
-          try {
-            await rebalanceExistingOnSlot(
-              cyclusSlot.id,
-              rebalanceIds,
-              pricing.existingBookingsNewAmount,
-              pricing.sessionPrice,
-            );
-          } catch (rebalanceError) {
-            rebalanceFailed = true;
-            logger.error(
-              "Cyclus slot rebalance failed after insert",
-              rebalanceError instanceof Error ? rebalanceError : new Error(String(rebalanceError)),
-              { component: "InlineBookPlayer", slotId: cyclusSlot.id },
-            );
-          }
-        }
+        if (cyclusRebalanceFailed) rebalanceFailed = true;
 
         const guestIds = selectedPlayers.map(p => p.id);
         if (guestIds.length > 0) {

@@ -191,20 +191,6 @@
     "saveFailed": "Opslaan mislukt. Probeer het opnieuw.",
     "locationRequired": "Kies een trainingslocatie zodat spelers de juiste club te zien krijgen."
   },
-  "detail": {
-    "priceTable": "Tarieven",
-    "type": "Type",
-    "pricePerSession": "Per les",
-    "totalPrice": "Totaal",
-    "sessions": "Lessen",
-    "weeks": "weken",
-    "weeksColumn": "{{count}} weken",
-    "cyclusOption": "Optie",
-    "durationOptions": "Beschikbare duur",
-    "terms": "Voorwaarden",
-    "pricesIncludeVat": "Alle prijzen zijn inclusief BTW",
-    "pricesExcludeVat": "Alle prijzen zijn exclusief BTW"
-  },
   "actions": {
     "openEnrollment": "Inschrijving openen",
     "closeEnrollment": "Inschrijving sluiten",
@@ -1334,10 +1320,33 @@
       "sessionCount": "{{count}}×",
       "removeFromCycle": "Uit cyclus verwijderen",
       "removeFromCycleConfirm": "{{name}} uit deze cyclus verwijderen?",
-      "removeFromCycleDescription": "Verwijdert de speler uit alle komende sessies van deze reeks.",
+      "removeFromCycleDescription": "Verwijdert de speler uit alle sessies van deze cyclus (ook sessies die al geweest zijn).",
       "removedFromCycle": "Uit {{count}} sessie(s) verwijderd",
-      "removeFromCycleNone": "Geen komende sessies om de speler uit te verwijderen.",
-      "removeFromCycleError": "Kon de speler niet uit de cyclus verwijderen. Probeer het opnieuw."
+      "removeFromCycleNone": "Geen sessies om de speler uit te verwijderen.",
+      "removeFromCycleError": "Kon de speler niet uit de cyclus verwijderen. Probeer het opnieuw.",
+      "addPlayer": "Speler toevoegen",
+      "addTitle": "Speler toevoegen aan cyclus",
+      "addDescription": "Voegt de speler toe aan alle sessies van deze cyclus (ook sessies die al geweest zijn).",
+      "addConfirm": "Toevoegen",
+      "added": "Toegevoegd aan {{count}} sessie(s)",
+      "addNone": "Geen sessies om de speler aan toe te voegen (al ingedeeld of vol).",
+      "addBlocked": "{{count}} sessie(s) overgeslagen omdat ze vol zijn.",
+      "addError": "Kon de speler niet toevoegen. Probeer het opnieuw.",
+      "changePlayer": "Speler vervangen",
+      "changeTitle": "{{name}} vervangen",
+      "changeDescription": "Vervangt deze speler door een andere in alle sessies van deze cyclus.",
+      "changeConfirm": "Vervangen",
+      "changed": "Speler vervangen in {{count}} sessie(s)",
+      "changeNone": "Deze speler heeft geen boekingen in deze cyclus.",
+      "changeSyncFailed": "Speler vervangen, maar facturen konden niet volledig worden bijgewerkt. Controleer de facturen.",
+      "changeError": "Kon de speler niet vervangen. Probeer het opnieuw.",
+      "rebalanceFailed": "Toegevoegd, maar de verdeling van een gedeelde sessie kon niet worden bijgewerkt. Controleer de facturen.",
+      "picker": {
+        "select": "Selecteer een speler",
+        "loading": "Spelers laden…",
+        "empty": "Geen speler gevonden.",
+        "addNew": "Nieuwe speler toevoegen"
+      }
     },
     "payment": {
       "allPaid": "Betaald",
