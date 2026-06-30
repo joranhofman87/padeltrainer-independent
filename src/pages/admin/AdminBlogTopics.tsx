@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Plus, Play, Loader2 } from 'lucide-react';
@@ -62,6 +62,35 @@ export default function AdminBlogTopics() {
 
   const statusColor = (s: string) => s === 'done' ? 'default' : s === 'in_progress' ? 'secondary' : s === 'failed' ? 'destructive' : 'outline';
 
+  type TopicRow = { id: string; primary_keyword: string; angle?: string | null; locales?: string[]; status: string };
+  const columns: ColumnDef<TopicRow>[] = [
+    { key: 'keyword', header: 'Keyword', className: 'font-medium', renderCell: (topic) => topic.primary_keyword },
+    { key: 'angle', header: 'Angle', renderCell: (topic) => topic.angle || '—' },
+    {
+      key: 'locales',
+      header: 'Locales',
+      renderCell: (topic) => (
+        <div className="flex gap-1">{topic.locales?.map((l) => <Badge key={l} variant="outline" className="text-xs">{l}</Badge>)}</div>
+      ),
+    },
+    { key: 'status', header: 'Status', renderCell: (topic) => <Badge variant={statusColor(topic.status)}>{topic.status}</Badge> },
+    {
+      key: 'actions',
+      header: 'Actions',
+      renderCell: (topic) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => generateMutation.mutate(topic.id)}
+          disabled={topic.status === 'in_progress' || generateMutation.isPending}
+        >
+          {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+          Generate
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -111,46 +140,12 @@ export default function AdminBlogTopics() {
         </Dialog>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Keyword</TableHead>
-            <TableHead>Angle</TableHead>
-            <TableHead>Locales</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
-          ) : topics.length === 0 ? (
-            <TableRow><TableCell colSpan={5} className="text-center py-8">No topics yet</TableCell></TableRow>
-          ) : (
-            topics.map((topic: any) => (
-              <TableRow key={topic.id}>
-                <TableCell className="font-medium">{topic.primary_keyword}</TableCell>
-                <TableCell>{topic.angle || '—'}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">{topic.locales?.map((l: string) => <Badge key={l} variant="outline" className="text-xs">{l}</Badge>)}</div>
-                </TableCell>
-                <TableCell><Badge variant={statusColor(topic.status)}>{topic.status}</Badge></TableCell>
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => generateMutation.mutate(topic.id)}
-                    disabled={topic.status === 'in_progress' || generateMutation.isPending}
-                  >
-                    {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
-                    Generate
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+      <DataTable<TopicRow>
+        columns={columns}
+        rows={topics}
+        desktopOnly={false}
+        empty={isLoading ? 'Loading...' : 'No topics yet'}
+      />
     </div>
   );
 }
