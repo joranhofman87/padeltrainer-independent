@@ -1,19 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
@@ -135,31 +126,17 @@ export function PlayerRemoveCard({
         </CardContent>
       </Card>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{copy.confirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{copy.confirmDesc}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removing}>
-              {t('players.detail.cancel', 'Cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              data-testid={`${rolePrefix}-player-remove-confirm`}
-              disabled={removing}
-              onClick={(e) => {
-                e.preventDefault();
-                void handleRemove();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {removing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {copy.removeButton}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={copy.confirmTitle}
+        description={copy.confirmDesc}
+        confirmLabel={copy.removeButton}
+        cancelLabel={t('players.detail.cancel', 'Cancel')}
+        onConfirm={handleRemove}
+        loading={removing}
+        confirmTestId={`${rolePrefix}-player-remove-confirm`}
+      />
     </>
   );
 }
