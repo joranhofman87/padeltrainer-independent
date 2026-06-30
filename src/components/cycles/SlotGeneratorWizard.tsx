@@ -16,6 +16,7 @@ import { HolidayRangeEditor, type HolidayRange } from './HolidayRangeEditor';
 import { SlotLocationPicker, type SlotLocation } from '@/components/slots/SlotLocationPicker';
 import { planSlots, groupSlotsBySeries, type SlotDraft, type SlotPlanConfig, type Weekday } from '@/lib/slotPlan';
 import { generateCycleWithSlots, type GenerateCycleInput } from '@/lib/slotGenerator';
+import { publishCycles } from '@/lib/cycleWrites';
 
 export interface SlotGeneratorTrainer {
   id: string;
@@ -32,6 +33,8 @@ export interface SlotGeneratorWizardProps {
   timezone?: string;
   /** Test/override seam for the create-lib (defaults to the real one). */
   generate?: typeof generateCycleWithSlots;
+  /** Test/override seam for the batch publish (defaults to the real one). */
+  publishAll?: typeof publishCycles;
 }
 
 const TIME_OPTIONS: string[] = [];
@@ -49,11 +52,14 @@ export function SlotGeneratorWizard({
   availableLocations,
   timezone = 'Europe/Amsterdam',
   generate = generateCycleWithSlots,
+  publishAll = publishCycles,
 }: SlotGeneratorWizardProps) {
   const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<'configure' | 'preview'>('configure');
+  const [step, setStep] = useState<'configure' | 'preview' | 'done'>('configure');
+  const [createdCycleIds, setCreatedCycleIds] = useState<string[]>([]);
+  const [publishing, setPublishing] = useState(false);
   const [cycleName, setCycleName] = useState('');
   const [pickedTrainerId, setPickedTrainerId] = useState('');
   const [locationId, setLocationId] = useState<string | null>(null);
@@ -147,17 +153,39 @@ export function SlotGeneratorWizard({
         locale: i18n.language,
       };
       const res = await generate(input);
-      toast.success(
-        t('slotGenerator.createdCycles', '{{cycles}} cycli met {{count}} sessies aangemaakt als concept.', {
-          cycles: res.cyclesCreated,
-          count: res.slotsCreated,
-        }),
-      );
-      navigate(backHref);
+      // Land on a result step that offers a one-click "publish all" — per-series generation makes
+      // many draft cycli, and publishing them one-by-one would undo the "quick" of quick-generate.
+      setCreatedCycleIds(res.cycleIds);
+      setStep('done');
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('slotGenerator.errGeneric', 'Er ging iets mis. Probeer het opnieuw.')));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePublishAll = async () => {
+    setPublishing(true);
+    try {
+      const { published, failed } = await publishAll(createdCycleIds, visibility === 'public');
+      if (failed > 0) {
+        toast.warning(
+          t('slotGenerator.publishedSome', '{{published}} van {{total}} cycli gepubliceerd; {{failed}} mislukt.', {
+            published,
+            total: createdCycleIds.length,
+            failed,
+          }),
+        );
+      } else {
+        toast.success(
+          t('slotGenerator.publishedAll', '{{count}} cycli gepubliceerd.', { count: published }),
+        );
+      }
+      navigate(backHref);
+    } catch (e) {
+      toast.error(getFriendlyErrorMessage(e, t('slotGenerator.errGeneric', 'Er ging iets mis. Probeer het opnieuw.')));
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -329,7 +357,7 @@ export function SlotGeneratorWizard({
             </div>
           </CardContent>
         </Card>
-      ) : (
+      ) : step === 'preview' ? (
         <Card>
           <CardHeader>
             <CardTitle>
@@ -370,6 +398,28 @@ export function SlotGeneratorWizard({
               <Button onClick={handleGenerate} disabled={submitting}>
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-2 h-4 w-4" />}
                 {t('slotGenerator.generate', 'Genereer als concept')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {t('slotGenerator.doneTitle', '{{count}} cycli aangemaakt als concept', { count: createdCycleIds.length })}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {t('slotGenerator.doneHint', 'Ze staan nu als CONCEPT in je agenda. Publiceer ze om ze boekbaar te maken — in één keer hieronder, of later per cyclus.')}
+            </p>
+            <div className="flex flex-col sm:flex-row justify-end gap-2">
+              <Button variant="outline" onClick={() => navigate(backHref)} disabled={publishing}>
+                {t('slotGenerator.doneLater', 'Later, naar overzicht')}
+              </Button>
+              <Button onClick={handlePublishAll} disabled={publishing}>
+                {publishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-2 h-4 w-4" />}
+                {t('slotGenerator.publishAll', 'Publiceer alle {{count}} cycli', { count: createdCycleIds.length })}
               </Button>
             </div>
           </CardContent>
