@@ -190,6 +190,25 @@ describe('DataTable', () => {
     expect(onRowClick).not.toHaveBeenCalled();
   });
 
+  // --- Sticky header / column order / cell title ---
+  it('stickyHeader pins the header row', () => {
+    const { container } = renderDT(<DataTable columns={columns} rows={rows} stickyHeader />);
+    expect(container.querySelector('thead')).toHaveClass('sticky');
+  });
+
+  it('renders columns in visibleKeys ORDER (a re-shown column lands where the menu put it)', () => {
+    renderDT(<DataTable columns={columns} rows={rows} visibleKeys={['amount', 'name']} />);
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Amount', 'Name']);
+  });
+
+  it('applies cellTitle as the <td> title attribute (truncation tooltip)', () => {
+    const cols: ColumnDef<Row>[] = [
+      { key: 'name', header: 'Name', renderCell: (r) => r.name, cellTitle: (r) => `full: ${r.name}` },
+    ];
+    renderDT(<DataTable columns={cols} rows={rows} />);
+    expect(screen.getByText('Alice').closest('td')).toHaveAttribute('title', 'full: Alice');
+  });
+
   // --- Empty ---
   it('renders the empty slot when there are no rows', () => {
     renderDT(<DataTable columns={columns} rows={[]} empty={<span>No data yet</span>} />);

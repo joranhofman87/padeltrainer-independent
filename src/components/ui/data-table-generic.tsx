@@ -37,6 +37,8 @@ export interface ColumnDef<T> {
   align?: Align;
   /** `<td>` className (truncation, width, responsive `hidden md:table-cell`, …). */
   className?: string;
+  /** `<td>` `title` attribute (hover tooltip for truncated cells). */
+  cellTitle?: (row: T) => string | undefined;
   /** `<th>` className. */
   headClassName?: string;
   /** Metadata for an external column-visibility menu — the engine itself reads `visibleKeys`. */
@@ -89,6 +91,8 @@ export interface DataTableProps<T extends { id: string }> {
   mobile?: ReactNode;
   /** Compact operational density (h-10 rows). */
   compact?: boolean;
+  /** Pins the header row to the top of the scroll region (`sticky top-0`). */
+  stickyHeader?: boolean;
   cardTestId?: string;
   cardClassName?: string;
   /** Forwarded to DataTableCard — set false for dashboard/compact tables that show on mobile too. */
@@ -124,13 +128,21 @@ export function DataTable<T extends { id: string }>({
   empty,
   mobile,
   compact,
+  stickyHeader,
   cardTestId,
   cardClassName,
   desktopOnly,
   getRowKey = (row) => row.id,
 }: DataTableProps<T>) {
+  // `visibleKeys` controls BOTH which columns show AND their order (a column-visibility menu that
+  // appends a re-shown column expects it to land in that order). No `visibleKeys` => every column in
+  // declared order.
+  const byKey = new Map(columns.map((c) => [c.key, c] as const));
   const visibleColumns = visibleKeys
-    ? columns.filter((c) => visibleKeys.includes(c.key))
+    ? visibleKeys.flatMap((k) => {
+        const c = byKey.get(k);
+        return c ? [c] : [];
+      })
     : columns;
   const colCount = visibleColumns.length + (selection ? 1 : 0) + (renderActions ? 1 : 0);
 
@@ -148,7 +160,7 @@ export function DataTable<T extends { id: string }>({
       desktopOnly={desktopOnly}
     >
       <Table className={cn(compact && compactDataTableClass)}>
-        <TableHeader>
+        <TableHeader className={cn(stickyHeader && 'sticky top-0 z-10 bg-background')}>
           <TableRow>
             {selection && (
               <TableHead className="w-10">
@@ -243,6 +255,7 @@ export function DataTable<T extends { id: string }>({
                       <TableCell
                         key={col.key}
                         className={cn(col.align && alignClass[col.align], col.className)}
+                        title={col.cellTitle?.(row)}
                       >
                         {cellInner}
                       </TableCell>
