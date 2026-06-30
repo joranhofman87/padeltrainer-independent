@@ -1192,6 +1192,7 @@
       "title": "Players in this cycle",
       "empty": "No players assigned yet.",
       "sessionCount": "{{count}}×",
+      "guest": "Guest",
       "removeFromCycle": "Remove from cycle",
       "removeFromCycleConfirm": "Remove {{name}} from this cycle?",
       "removeFromCycleDescription": "Removes the player from every session of this cycle (including sessions that have already taken place).",

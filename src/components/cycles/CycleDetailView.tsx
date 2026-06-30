@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, X, Save, Euro, UserPlus, Repeat } from 'lucide-react';
+import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, Save, Euro, UserPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +27,8 @@ import { useCycleDetail, type CycleDetailSlot, type CycleRosterEntry } from '@/l
 import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { addPlayersToCycle, swapPlayerInCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
-import { CycleRosterPlayerPickerDialog } from '@/components/cycles/CycleRosterPlayerPickerDialog';
+import { CycleRosterInlinePicker } from '@/components/cycles/CycleRosterInlinePicker';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { UpdateAffectedInvoicesDialog } from '@/components/invoices/UpdateAffectedInvoicesDialog';
 import { buildAffectedInvoicesSummary, type AffectedInvoicesSummary } from '@/lib/affectedInvoices';
 import { applyAddPlayerInvoiceChoice } from '@/lib/invoiceAfterAddPlayer';
@@ -156,9 +157,12 @@ export function CycleDetailView({
   const [removeTarget, setRemoveTarget] = useState<CycleRosterEntry | null>(null);
   const [removingFromCycle, setRemovingFromCycle] = useState(false);
 
-  // Whole-cycle add / change-player (academy roster actions).
-  const [addOpen, setAddOpen] = useState(false);
-  const [changeTarget, setChangeTarget] = useState<CycleRosterEntry | null>(null);
+  // Whole-cycle add / change-player (academy roster actions) — inline, like the slot page.
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const [addSelectedId, setAddSelectedId] = useState('');
+  // Which roster row is expanded for inline edit (change / remove), keyed by its stable id.
+  const [expandedRosterKey, setExpandedRosterKey] = useState<string | null>(null);
+  const [changeSelectedId, setChangeSelectedId] = useState('');
   const [rosterBusy, setRosterBusy] = useState(false);
   // Sent/paid-invoice confirmation after an add/change that touched invoices.
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
@@ -413,7 +417,8 @@ export function CycleDetailView({
         guestPlayerIds: [guestPlayerId],
         skipInvoices: skipInvoiceUpdates,
       });
-      setAddOpen(false);
+      setAddPanelOpen(false);
+      setAddSelectedId('');
       if (res.insertedCount === 0) {
         toast(t('detail.roster.addNone'));
       } else {
@@ -432,18 +437,18 @@ export function CycleDetailView({
   // Replace one enrolled player with another across EVERY session by re-pointing the outgoing
   // player's bookings to the incoming guest IN PLACE (keeps amount/paid state — no €0 sessions, no
   // orphaned draft). Invoices reconcile only when the sticky toggle is off.
-  const handleSwapPlayer = async (toGuestPlayerId: string) => {
-    if (!changeTarget) return;
+  const handleSwapPlayer = async (entry: CycleRosterEntry, toGuestPlayerId: string) => {
     setRosterBusy(true);
     try {
       const res = await swapPlayerInCycle({
         cycleId,
-        fromPlayer: { playerId: changeTarget.playerId, guestPlayerId: changeTarget.guestPlayerId },
+        fromPlayer: { playerId: entry.playerId, guestPlayerId: entry.guestPlayerId },
         toGuestPlayerId,
         skipInvoices: skipInvoiceUpdates,
       });
       if (res.error) throw res.error;
-      setChangeTarget(null);
+      setExpandedRosterKey(null);
+      setChangeSelectedId('');
       if (res.reassignedCount + res.cancelledCollisionCount === 0) {
         toast(t('detail.roster.changeNone'));
       } else {
@@ -787,49 +792,127 @@ export function CycleDetailView({
               {t('detail.roster.title')}
             </CardTitle>
             {canManageRoster && (
-              <Button variant="outline" size="sm" onClick={() => setAddOpen(true)} className="shrink-0">
-                <UserPlus className="h-4 w-4 mr-1.5" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => { setAddPanelOpen((o) => !o); setAddSelectedId(''); }}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
                 {t('detail.roster.addPlayer')}
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent>
-          {roster.length === 0 ? (
+          {roster.length === 0 && !addPanelOpen ? (
             <p className="py-4 text-center text-sm text-muted-foreground">{t('detail.roster.empty')}</p>
           ) : (
-            <ul className="flex flex-wrap gap-2">
-              {roster.map((p, i) => (
-                <li key={`${p.playerId ?? p.guestPlayerId ?? p.name}-${i}`}>
-                  <Badge variant="outline" className="gap-1.5 font-normal">
-                    {p.name}
-                    <span className="text-muted-foreground">{t('detail.roster.sessionCount', { count: p.sessionCount })}</span>
-                    {canManageRoster && p.guestPlayerId && (
-                      <button
-                        type="button"
-                        aria-label={t('detail.roster.changePlayer')}
-                        title={t('detail.roster.changePlayer')}
-                        className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                        onClick={() => setChangeTarget(p)}
-                      >
-                        <Repeat className="h-3 w-3" />
-                      </button>
+            <div className="space-y-1">
+              {roster.map((p, i) => {
+                const rowKey = p.guestPlayerId ?? p.playerId ?? `${p.name}-${i}`;
+                const expanded = expandedRosterKey === rowKey;
+                const canChange = canManageRoster && !!p.guestPlayerId;
+                const interactive = canChange || canRemoveFromCycle;
+                return (
+                  <div key={rowKey}>
+                    <button
+                      type="button"
+                      disabled={!interactive}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors enabled:hover:bg-accent/50 disabled:cursor-default"
+                      onClick={() => { setExpandedRosterKey(expanded ? null : rowKey); setChangeSelectedId(''); }}
+                    >
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-[10px]">{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">{t('detail.roster.sessionCount', { count: p.sessionCount })}</p>
+                      </div>
+                      {p.guestPlayerId && (
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5">{t('detail.roster.guest', 'Guest')}</Badge>
+                      )}
+                      {interactive && <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    </button>
+
+                    {expanded && interactive && (
+                      <div className="mt-1 mb-2 ml-11 mr-1 rounded-lg border bg-muted/30 p-3 space-y-3">
+                        {canChange && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-muted-foreground">{t('detail.roster.changeDescription')}</p>
+                            <div className="flex items-center gap-2">
+                              <CycleRosterInlinePicker
+                                academyProfileId={academyProfileId}
+                                value={changeSelectedId}
+                                onValueChange={setChangeSelectedId}
+                                excludeGuestPlayerIds={p.guestPlayerId ? [p.guestPlayerId] : []}
+                                disabled={rosterBusy}
+                                namespace={namespace}
+                              />
+                              <Button
+                                size="sm"
+                                className="shrink-0"
+                                disabled={!changeSelectedId || rosterBusy}
+                                onClick={() => void handleSwapPlayer(p, changeSelectedId)}
+                              >
+                                {rosterBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                                {t('detail.roster.changeConfirm')}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        <SkipInvoiceUpdatesCheckbox
+                          checked={skipInvoiceUpdates}
+                          onCheckedChange={setSkipInvoiceUpdates}
+                          disabled={rosterBusy}
+                        />
+
+                        {canRemoveFromCycle && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            disabled={rosterBusy}
+                            onClick={() => setRemoveTarget(p)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1.5" />
+                            {t('detail.roster.removeFromCycle')}
+                          </Button>
+                        )}
+                      </div>
                     )}
-                    {canRemoveFromCycle && (
-                      <button
-                        type="button"
-                        aria-label={t('detail.roster.removeFromCycle')}
-                        title={t('detail.roster.removeFromCycle')}
-                        className="-mr-1 ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setRemoveTarget(p)}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
+                  </div>
+                );
+              })}
+
+              {canManageRoster && addPanelOpen && (
+                <div className="mt-2 rounded-lg border bg-muted/30 p-3 space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground">{t('detail.roster.addDescription')}</p>
+                  <CycleRosterInlinePicker
+                    academyProfileId={academyProfileId}
+                    value={addSelectedId}
+                    onValueChange={setAddSelectedId}
+                    disabled={rosterBusy}
+                    namespace={namespace}
+                  />
+                  <SkipInvoiceUpdatesCheckbox
+                    checked={skipInvoiceUpdates}
+                    onCheckedChange={setSkipInvoiceUpdates}
+                    disabled={rosterBusy}
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" disabled={!addSelectedId || rosterBusy} onClick={() => void handleAddPlayer(addSelectedId)}>
+                      {rosterBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                      {t('detail.roster.addConfirm')}
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={rosterBusy} onClick={() => { setAddPanelOpen(false); setAddSelectedId(''); }}>
+                      {t('detail.delete.cancel')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -974,41 +1057,6 @@ export function CycleDetailView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Add player(s) to the whole cycle */}
-      {canManageRoster && (
-        <CycleRosterPlayerPickerDialog
-          open={addOpen}
-          onOpenChange={(o) => !rosterBusy && setAddOpen(o)}
-          academyProfileId={academyProfileId}
-          title={t('detail.roster.addTitle')}
-          description={t('detail.roster.addDescription')}
-          confirmLabel={t('detail.roster.addConfirm')}
-          loading={rosterBusy}
-          onConfirm={(guestId) => void handleAddPlayer(guestId)}
-          skipInvoiceUpdates={skipInvoiceUpdates}
-          onSkipInvoiceUpdatesChange={setSkipInvoiceUpdates}
-          namespace={namespace}
-        />
-      )}
-
-      {/* Replace one enrolled player across the whole cycle */}
-      {canManageRoster && (
-        <CycleRosterPlayerPickerDialog
-          open={!!changeTarget}
-          onOpenChange={(o) => !rosterBusy && !o && setChangeTarget(null)}
-          academyProfileId={academyProfileId}
-          title={t('detail.roster.changeTitle', { name: changeTarget?.name ?? '' })}
-          description={t('detail.roster.changeDescription')}
-          confirmLabel={t('detail.roster.changeConfirm')}
-          loading={rosterBusy}
-          onConfirm={(guestId) => void handleSwapPlayer(guestId)}
-          excludeGuestPlayerIds={changeTarget?.guestPlayerId ? [changeTarget.guestPlayerId] : []}
-          skipInvoiceUpdates={skipInvoiceUpdates}
-          onSkipInvoiceUpdatesChange={setSkipInvoiceUpdates}
-          namespace={namespace}
-        />
-      )}
 
       {/* Sent/paid-invoice confirmation after a roster add/change that updated invoices */}
       {invoiceSummary && (
