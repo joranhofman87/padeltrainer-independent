@@ -138,6 +138,7 @@ export default function AcademyRegistrations() {
           cycles={cycles}
           locations={locations}
           onEdit={(c) => navigate(`/app/academy/registrations/${c.id}`)}
+          rowHref={(c) => `/app/academy/registrations/${c.id}`}
           onDuplicate={(c) => navigate(`/app/academy/registrations/new?type=registration&duplicateFrom=${c.id}`)}
           onDeleted={fetchCycles}
           ownerType="academy"

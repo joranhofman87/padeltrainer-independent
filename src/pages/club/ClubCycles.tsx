@@ -117,6 +117,7 @@ export default function ClubCycles() {
           cycles={cycles}
           locations={locations}
           onEdit={(c) => navigate(`/app/club/registrations/${c.id}/edit`)}
+          rowHref={(c) => `/app/club/registrations/${c.id}/edit`}
           onDuplicate={handleDuplicate}
           onDeleted={fetchCycles}
           ownerType="club"
