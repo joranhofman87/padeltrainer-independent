@@ -26,8 +26,9 @@ import { useTableSort } from '@/hooks/useTableSort';
 import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
-import { syncInvoicesAfterPriceChange, syncSplitCountForCycle } from '@/lib/invoiceSync';
-import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
+import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
+import { deleteCycle } from '@/lib/cycleWrites';
 import {
   computeCyclusGroupPaymentStatus,
   matchesPaidFilter,
@@ -65,6 +66,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [filterPaid, setFilterPaid] = useState<PaidFilterValue>('all');
   const [filterVisibility, setFilterVisibility] = useState<'all' | 'public' | 'private'>('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // Opt-in (default off): also delete selected cycli that still have bookings, cancelling those
+  // bookings first. Off = the safe legacy behaviour (booked cycli are skipped, never auto-cancelled).
+  const [forceDeleteBooked, setForceDeleteBooked] = useState(false);
   const [editEndDateGroup, setEditEndDateGroup] = useState<CyclusGroup | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
 
@@ -670,6 +674,12 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
+  // How many of the selected cycli still have bookings — drives the "also delete booked cycli" opt-in
+  // (and its warning) in the delete dialog.
+  const selectedBookedCount = sortedData.filter(
+    (g) => selectedIds.has(g.group_key) && g.cyclus_id && g.max_booked > 0,
+  ).length;
+
   // Deep link: focus matching bulk/recurring group (orphan cyclus_id)
   useEffect(() => {
     if (!highlightCyclusId || groups.length === 0) return;
@@ -748,43 +758,58 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     }
   };
 
-  // Bulk-delete the selected cycli. SKIPS any cyclus that has bookings (a player booking is
-  // never silently cancelled) — those are reported back. Each cyclus is independent: one
-  // failure never aborts the rest.
+  // Bulk-delete the selected cycli. By default SKIPS any cyclus that has bookings (a player booking is
+  // never silently cancelled) and reports it back. When `forceDeleteBooked` is on, those bookings are
+  // cancelled first so the cyclus can be fully deleted too. Each cyclus is independent: one failure
+  // never aborts the rest. The cycle row itself is removed once all its sessions are gone, so a fully
+  // deleted cyclus disappears from the list instead of lingering as an empty shell.
   const handleBulkDelete = async () => {
     const groups = sortedData.filter(g => selectedIds.has(g.group_key) && g.cyclus_id);
     setBulkUpdating(true);
     let deleted = 0;
     let skipped = 0;
     const failed: string[] = [];
+    // Remove a cycle's row only once NO slot ANYWHERE still references it (cyclus-wide, so a
+    // multi-trainer cyclus only loses its row when the last trainer's slots are gone) and never on a
+    // count-query error (a null count must not strand sibling slots via ON DELETE SET NULL).
+    const removeCycleRowIfEmpty = async (cyclusId: string) => {
+      const { count, error: countErr } = await supabase
+        .from('availability_slots')
+        .select('id', { count: 'exact', head: true })
+        .eq('cyclus_id', cyclusId);
+      if (!countErr && count === 0) await deleteCycle(cyclusId);
+    };
     try {
       for (const g of groups) {
         try {
-          if (g.max_booked > 0) { skipped++; continue; }
+          if (g.max_booked > 0 && !forceDeleteBooked) { skipped++; continue; }
           const [cyclusId, trainerId] = g.group_key.split('::');
           let sq = supabase.from('availability_slots').select('id').eq('cyclus_id', cyclusId);
           if (trainerId) sq = sq.eq('trainer_id', trainerId);
           const { data: slotRows } = await sq;
           const slotIds = (slotRows || []).map((s: { id: string }) => s.id);
-          if (slotIds.length === 0) { deleted++; continue; }
-          // Atomic delete (the same canonical RPC the slot-detail + cycle-detail use): it locks the
-          // bookings FOR UPDATE and KEEPS any slot that gained a booking since the list loaded —
-          // closing the re-check-then-delete TOCTOU vs bookings.slot_id ON DELETE CASCADE. A real
-          // cycle (has_cycle_row) drives the in-transaction split recalc.
-          const res = await applySlotDeleteToCycle(g.has_cycle_row ? cyclusId : null, slotIds);
+          if (slotIds.length === 0) {
+            // Empty shell (a cycle row with no sessions) — remove the row so it leaves the list, but
+            // only when the cyclus is truly empty cyclus-wide (guards the multi-trainer TOCTOU).
+            if (g.has_cycle_row) await removeCycleRowIfEmpty(cyclusId);
+            deleted++;
+            continue;
+          }
+          // Cancel any active bookings (force path), then atomically delete the now-empty slots via the
+          // same canonical guarded RPC the slot-detail + cycle-detail use: it locks bookings FOR UPDATE
+          // and KEEPS any slot that gained a booking since the list loaded — closing the
+          // re-check-then-delete TOCTOU vs bookings.slot_id ON DELETE CASCADE. A real cycle
+          // (has_cycle_row) drives the in-transaction split recalc + line-item rebuild internally.
+          // Invoices reconcile (this list view has no per-page skip toggle).
+          const res = await cancelBookingsAndDeleteSlots(g.has_cycle_row ? cyclusId : null, slotIds);
           if (res.deletedCount === 0 && res.protectedCount > 0) {
             // a booking raced in after the list loaded → the whole group is kept
             skipped++;
             continue;
           }
-          // The RPC stamps split_count but not invoice line items — rebuild them for a real cycle.
-          if (res.deletedCount > 0 && g.has_cycle_row) {
-            try {
-              await syncSplitCountForCycle(cyclusId);
-            } catch (e) {
-              logger.error('Failed to sync split count after bulk cyclus delete', e as Error);
-            }
-          }
+          // Remove the cycle row once every session for this cyclus is gone (only the group that
+          // clears the last slot deletes the row).
+          if (g.has_cycle_row) await removeCycleRowIfEmpty(cyclusId);
           deleted++;
         } catch (e) {
           logger.error('Bulk cyclus delete failed', e as Error, { group: g.group_key });
@@ -799,6 +824,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         toast({ title: t('cyclesTab.bulkDelete.done', { count: deleted }) });
       }
       setSelectedIds(new Set());
+      setForceDeleteBooked(false);
       setDeleteDialogOpen(false);
       fetchCyclusData();
     } finally {
@@ -1246,7 +1272,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <Dialog open={deleteDialogOpen} onOpenChange={(o) => { if (!bulkUpdating) { setDeleteDialogOpen(o); if (!o) setForceDeleteBooked(false); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -1256,6 +1282,24 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           <p className="text-sm text-muted-foreground py-2">
             {t('cyclesTab.bulkDelete.confirmBody', { defaultValue: 'This permanently deletes the selected cycli and their open slots. Any cyclus that still has player bookings is skipped (never auto-cancelled) and reported back. This cannot be undone.' })}
           </p>
+          {selectedBookedCount > 0 && (
+            <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={forceDeleteBooked}
+                  onCheckedChange={(v) => setForceDeleteBooked(v === true)}
+                  disabled={bulkUpdating}
+                  className="mt-0.5"
+                />
+                <span className="font-medium">{t('cyclesTab.bulkDelete.forceBooked')}</span>
+              </label>
+              {forceDeleteBooked && (
+                <p className="text-sm font-medium text-destructive">
+                  {t('cyclesTab.bulkDelete.forceWarning', { count: selectedBookedCount })}
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={bulkUpdating}>
               {t('cyclesTab.cancel')}

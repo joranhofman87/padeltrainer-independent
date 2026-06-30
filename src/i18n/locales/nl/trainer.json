@@ -1416,7 +1416,9 @@
       "confirmBody": "Dit verwijdert de geselecteerde cycli en hun open slots definitief. Cycli met spelersboekingen worden overgeslagen (nooit automatisch geannuleerd) en teruggekoppeld. Dit kan niet ongedaan worden gemaakt.",
       "done": "{{count}} cycli verwijderd",
       "doneSkipped": "{{deleted}} verwijderd, {{skipped}} overgeslagen (hebben boekingen)",
-      "partial": "{{deleted}} verwijderd, {{skipped}} overgeslagen, {{failed}} mislukt"
+      "partial": "{{deleted}} verwijderd, {{skipped}} overgeslagen, {{failed}} mislukt",
+      "forceBooked": "Ook cycli met boekingen verwijderen (annuleert hun boekingen)",
+      "forceWarning": "{{count}} geselecteerde cyclus/cycli met boekingen: die boekingen worden geannuleerd. Dit kan niet ongedaan worden gemaakt."
     }
   },
   "pendingAttendance": {

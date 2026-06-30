@@ -73,6 +73,7 @@ export default function AcademyCycleDetailView() {
         trainers={trainers}
         locations={locations}
         onOpenSlot={(slotId) => navigate(`/app/academy/slot/${slotId}`)}
+        onCycleDeleted={() => navigate('/app/academy/calendar?tab=list')}
       />
     </div>
   );

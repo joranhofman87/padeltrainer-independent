@@ -50,6 +50,7 @@ export default function TrainerCycleDetailView() {
         canPublish
         locations={locations}
         onOpenSlot={(slotId) => navigate(`/app/trainer/slot/${slotId}`)}
+        onCycleDeleted={() => navigate('/app/trainer/cycles')}
       />
     </div>
   );

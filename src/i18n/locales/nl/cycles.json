@@ -1292,7 +1292,8 @@
     "editCycle": "Cyclus bewerken",
     "editPrice": "Prijs bewerken",
     "editEndDate": "Looptijd",
-    "deleteCycle": "Toekomstige sessies verwijderen",
+    "deleteCycle": "Hele cyclus verwijderen",
+    "deleteCycleHint": "Verwijdert de cyclus, alle sessies en annuleert alle boekingen. Kan niet ongedaan worden gemaakt.",
     "sessions": {
       "title": "Sessies",
       "empty": "Deze cyclus heeft nog geen sessies.",
@@ -1358,13 +1359,15 @@
       "noPlayers": "—"
     },
     "delete": {
-      "confirmTitle": "Toekomstige sessies verwijderen?",
-      "confirmBody": "Lege toekomstige sessies worden verwijderd. Geboekte sessies blijven behouden — annuleer eerst hun boekingen als je die ook wilt verwijderen.",
+      "confirmTitle": "Hele cyclus verwijderen?",
+      "confirmBodyBooked": "Dit verwijdert de VOLLEDIGE cyclus: alle {{sessions}} sessies, en annuleert de boekingen van {{players}} spelers.",
+      "confirmBodyEmpty": "Dit verwijdert de hele cyclus en alle {{sessions}} sessies.",
+      "irreversible": "Dit kan niet ongedaan worden gemaakt.",
       "confirm": "Verwijderen",
+      "confirmCycle": "Cyclus verwijderen",
       "cancel": "Annuleren",
-      "removed": "{{count}} sessies verwijderd",
-      "kept": "{{count}} geboekte sessies behouden",
-      "nothing": "Geen lege toekomstige sessies om te verwijderen",
+      "deleted": "Cyclus verwijderd · {{sessions}} sessies, {{bookings}} boekingen geannuleerd",
+      "partial": "{{kept}} sessie(s) behouden — er kwam een nieuwe boeking binnen tijdens het verwijderen. Probeer het opnieuw.",
       "error": "Verwijderen mislukt. Probeer het opnieuw."
     },
     "price": {
