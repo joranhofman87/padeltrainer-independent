@@ -1318,6 +1318,7 @@
       "title": "Spelers in deze cyclus",
       "empty": "Nog geen spelers ingedeeld.",
       "sessionCount": "{{count}}×",
+      "guest": "Gast",
       "removeFromCycle": "Uit cyclus verwijderen",
       "removeFromCycleConfirm": "{{name}} uit deze cyclus verwijderen?",
       "removeFromCycleDescription": "Verwijdert de speler uit alle sessies van deze cyclus (ook sessies die al geweest zijn).",
