@@ -15,7 +15,8 @@ import {
  */
 export type AvailabilityOwner =
   | { type: 'academy'; academyId: string }
-  | { type: 'trainer'; trainerId: string };
+  | { type: 'trainer'; trainerId: string }
+  | { type: 'location'; locationId: string };
 
 /** The columns the availability transform + tier-visibility filter need. */
 type RawSlotSelect = RawPublicSlotRow & {
@@ -36,6 +37,9 @@ const SLOT_SELECT = `
 /** Build the availability_slots `.or()` filter for an owner (academy = its own + its trainers'). */
 async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string> {
   if (owner.type === 'trainer') return `trainer_id.eq.${owner.trainerId}`;
+  // location (public club / venue page): everything bookable AT this venue, whichever trainer.
+  // availability_slots.location_id is set on public slots + anon-readable, so no trainer join needed.
+  if (owner.type === 'location') return `location_id.eq.${owner.locationId}`;
   // academy: the base academy_trainers table is not anon-readable — use the public view.
   const { data: trainerRows } = await supabase
     .from('academy_trainers_public')
@@ -59,7 +63,10 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
 } {
   const [dayGroups, setDayGroups] = useState<PublicDayGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const ownerKey = owner.type === 'academy' ? `a:${owner.academyId}` : `t:${owner.trainerId}`;
+  const ownerKey =
+    owner.type === 'academy' ? `a:${owner.academyId}`
+    : owner.type === 'trainer' ? `t:${owner.trainerId}`
+    : `l:${owner.locationId}`;
 
   useEffect(() => {
     let cancelled = false;
