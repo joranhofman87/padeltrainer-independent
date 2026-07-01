@@ -17,6 +17,7 @@ import {
   getCycleRebookPaymentMode,
   getCycleStartDate,
   recordRebookRulesConsent,
+  recordPriorityClaimIntent,
   type RebookPaymentMode,
   type RebookGroup,
   type RebookGroupApplyResult,
@@ -111,10 +112,21 @@ export default function PriorityClaimPage() {
     loadClaim();
   }, [loadClaim]);
 
+  // Store WHICH button they clicked, the moment they land from an email button — even if they
+  // never finish checkout. Best-effort; only stamps a still-pending claim, never changes status.
+  useEffect(() => {
+    if (token && data && (intent === 'accept' || intent === 'decline')) {
+      void recordPriorityClaimIntent(token, intent);
+    }
+  }, [token, data, intent]);
+
   const onClaim = async () => {
     if (!token) return;
     setActing(true);
     try {
+      // Record the Yes click before we leave for payment (captures an on-page press + a later
+      // abandoned checkout). Best-effort, never blocks.
+      void recordPriorityClaimIntent(token, 'accept');
       // Record consent BEFORE accepting — a successful accept redirects to Mollie, so nothing after
       // it runs. Best-effort: never blocks the flow (the checkbox already enforced the agreement).
       if (rebookRules) await recordRebookRulesConsent(token);
