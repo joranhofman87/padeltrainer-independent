@@ -402,6 +402,8 @@
       "price": "Prijs",
       "name": "Naam",
       "namePlaceholder": "Voor- en achternaam",
+      "firstName": "Voornaam",
+      "lastName": "Achternaam",
       "email": "E-mailadres",
       "phone": "Telefoon",
       "notes": "Opmerking",

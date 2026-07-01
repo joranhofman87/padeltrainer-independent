@@ -54,26 +54,30 @@ interface GuestBookingDialogProps {
  */
 export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: GuestBookingDialogProps) {
   const { t, i18n } = useTranslation('common');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [mode, setMode] = useState<'single' | 'cyclus'>('single');
+  // Default to the WHOLE cyclus (only relevant when the slot is part of one) — nudges the fuller
+  // booking; the visitor can toggle down to a single session.
+  const [mode, setMode] = useState<'single' | 'cyclus'>('cyclus');
   const [sessions, setSessions] = useState<CyclusSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
   const cyclusId = slot?.cyclus_id ?? null;
 
-  // Reset the form (and default back to single) whenever a new slot is opened.
+  // Reset the form (and default back to whole-cyclus) whenever a new slot is opened.
   useEffect(() => {
     if (open) {
-      setFullName('');
+      setFirstName('');
+      setLastName('');
       setEmail('');
       setPhone('');
       setNotes('');
       setSubmitting(false);
-      setMode('single');
+      setMode('cyclus');
     }
   }, [open, slot?.id]);
 
@@ -119,8 +123,10 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
     `${formatZonedDayLabel(s.start_time, timezone, i18n.language)} · ${formatZonedTime(s.start_time, timezone)}–${formatZonedTime(s.end_time, timezone)}`;
 
   const canSubmit =
-    fullName.trim().length > 0 &&
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
     EMAIL_RE.test(email.trim()) &&
+    phone.trim().length > 0 &&
     !submitting &&
     !(effectiveMode === 'cyclus' && loadingSessions);
 
@@ -134,9 +140,10 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
         {
           body: {
             ...(bookCyclus ? { cyclusId } : { slotId: slot.id }),
-            fullName: fullName.trim(),
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
             email: email.trim(),
-            phone: phone.trim() || undefined,
+            phone: phone.trim(),
             notes: notes.trim() || undefined,
           },
         },
@@ -263,15 +270,25 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
         </div>
 
         <div className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="guest-name">{t('booking.guest.name', 'Naam')}</Label>
-            <Input
-              id="guest-name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              autoComplete="name"
-              placeholder={t('booking.guest.namePlaceholder', 'Voor- en achternaam')}
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="guest-first">{t('booking.guest.firstName', 'Voornaam')}</Label>
+              <Input
+                id="guest-first"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                autoComplete="given-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="guest-last">{t('booking.guest.lastName', 'Achternaam')}</Label>
+              <Input
+                id="guest-last"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                autoComplete="family-name"
+              />
+            </div>
           </div>
           <div className="space-y-1">
             <Label htmlFor="guest-email">{t('booking.guest.email', 'E-mailadres')}</Label>
@@ -286,9 +303,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="guest-phone">
-              {t('booking.guest.phone', 'Telefoon')} <span className="text-muted-foreground">({t('booking.guest.optional', 'optioneel')})</span>
-            </Label>
+            <Label htmlFor="guest-phone">{t('booking.guest.phone', 'Telefoon')}</Label>
             <Input
               id="guest-phone"
               type="tel"

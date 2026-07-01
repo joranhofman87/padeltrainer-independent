@@ -57,9 +57,17 @@ const renderDialog = () =>
   render(<GuestBookingDialog slot={slot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
 
 const fillValid = () => {
-  fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Jan de Vries' } });
+  fireEvent.change(screen.getByLabelText('Voornaam'), { target: { value: 'Jan' } });
+  fireEvent.change(screen.getByLabelText('Achternaam'), { target: { value: 'de Vries' } });
   fireEvent.change(screen.getByLabelText('E-mailadres'), { target: { value: 'jan@x.nl' } });
+  fireEvent.change(screen.getByLabelText('Telefoon'), { target: { value: '0612345678' } });
 };
+
+const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A' };
+const twoSessions = [
+  { id: 's1', start_time: '2026-09-01T10:00:00Z', end_time: '2026-09-01T11:00:00Z', price_per_session: 20 },
+  { id: 's2', start_time: '2026-09-08T10:00:00Z', end_time: '2026-09-08T11:00:00Z', price_per_session: 20 },
+];
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -68,30 +76,25 @@ beforeEach(() => {
 });
 
 describe('GuestBookingDialog', () => {
-  it('shows the slot summary and disables checkout until name + valid email', () => {
+  it('disables checkout until first name, last name, valid email AND phone are all filled', () => {
     renderDialog();
-    expect(screen.getByText('Coach Bo')).toBeInTheDocument();
-    // Passive login link (no email lookup / enumeration).
     expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/auth');
     const payBtn = screen.getByRole('button', { name: /Afrekenen/ });
     expect(payBtn).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Jan' } });
-    fireEvent.change(screen.getByLabelText('E-mailadres'), { target: { value: 'not-an-email' } });
-    expect(payBtn).toBeDisabled();
-
+    fireEvent.change(screen.getByLabelText('Voornaam'), { target: { value: 'Jan' } });
+    fireEvent.change(screen.getByLabelText('Achternaam'), { target: { value: 'de Vries' } });
     fireEvent.change(screen.getByLabelText('E-mailadres'), { target: { value: 'jan@x.nl' } });
+    expect(payBtn).toBeDisabled(); // phone still required
+
+    fireEvent.change(screen.getByLabelText('Telefoon'), { target: { value: '0612345678' } });
     expect(payBtn).toBeEnabled();
   });
 
-  it('submits the server-derived booking (slotId + guest details, no amount) and redirects to the checkout URL', async () => {
+  it('submits the single slot (firstName + lastName + phone) and redirects to the checkout URL', async () => {
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/checkout/abc', token: 'tok-1' }, error: null });
-    // Intercept the redirect without navigating jsdom.
     const hrefSetter = vi.fn();
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { set href(v: string) { hrefSetter(v); } },
-    });
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
 
     renderDialog();
     fillValid();
@@ -99,52 +102,45 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', fullName: 'Jan de Vries', email: 'jan@x.nl', phone: undefined, notes: undefined },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
     });
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/checkout/abc'));
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it('a cyclus slot DEFAULTS to booking just this session (single)', async () => {
+  it('a cyclus slot DEFAULTS to booking the WHOLE cyclus', async () => {
+    cyclusSessions.current = twoSessions;
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/xyz' }, error: null });
+    const hrefSetter = vi.fn();
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
+
+    render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    fillValid();
+    const payBtn = screen.getByRole('button', { name: /Afrekenen/ });
+    await waitFor(() => expect(payBtn).toBeEnabled()); // sessions loaded (whole-cyclus mode not blocked)
+    fireEvent.click(payBtn);
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
+      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+    });
+    await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/c/xyz'));
+  });
+
+  it('toggling to "This session only" books the single slot instead', async () => {
+    cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/s/1' }, error: null });
     Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
 
-    const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A' };
     render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Alleen deze sessie/ }));
     fillValid();
     fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', fullName: 'Jan de Vries', email: 'jan@x.nl', phone: undefined, notes: undefined },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
     });
-  });
-
-  it('lists the sessions + total and books the WHOLE cyclus when "Whole series" is chosen', async () => {
-    cyclusSessions.current = [
-      { id: 's1', start_time: '2026-09-01T10:00:00Z', end_time: '2026-09-01T11:00:00Z', price_per_session: 20 },
-      { id: 's2', start_time: '2026-09-08T10:00:00Z', end_time: '2026-09-08T11:00:00Z', price_per_session: 20 },
-    ];
-    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/xyz', token: 'tok-c' }, error: null });
-    const hrefSetter = vi.fn();
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
-
-    const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A' };
-    render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
-
-    // Pick the whole-series option → its label carries the session count + total (2 sessies · €40.00).
-    const cyclusBtn = await screen.findByRole('button', { name: /Hele cyclus/ });
-    fireEvent.click(cyclusBtn);
-    await waitFor(() => expect(cyclusBtn.textContent).toContain('40'));
-
-    fillValid();
-    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
-
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
-    expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
-      body: { cyclusId: 'cyc-1', fullName: 'Jan de Vries', email: 'jan@x.nl', phone: undefined, notes: undefined },
-    });
-    await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/c/xyz'));
   });
 
   it('shows a toast (no redirect) when the slot is full', async () => {
