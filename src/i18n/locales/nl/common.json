@@ -366,7 +366,22 @@
   "booking": {
     "pickTitle": "Boek een training",
     "pickSubtitle": "Kies een dag en tijd die jou uitkomt",
-    "pickDay": "Kies een dag"
+    "pickDay": "Kies een dag",
+    "success": {
+      "seoTitle": "Je boeking",
+      "seoDescription": "Bekijk de status van je training-boeking.",
+      "loading": "Je boeking laden…",
+      "notFoundTitle": "Boeking niet gevonden",
+      "notFoundBody": "We konden deze boeking niet vinden. Controleer de link uit je e-mail.",
+      "confirmedTitle": "Je training is geboekt!",
+      "paid": "Betaald",
+      "confirmedBody": "Je ontvangt een bevestiging per e-mail. Maak een account aan om je boekingen te beheren.",
+      "createAccount": "Account aanmaken",
+      "pendingTitle": "Betaling verwerken…",
+      "pendingBody": "We bevestigen je boeking zodra de betaling binnen is. Dit kan even duren.",
+      "cancelledTitle": "Boeking niet voltooid",
+      "cancelledBody": "Deze boeking is niet betaald of is verlopen. Je plek is weer vrijgegeven — probeer opnieuw te boeken."
+    }
   },
   "availableSlots": "Beschikbare plekken",
   "slot": "plek",

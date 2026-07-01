@@ -366,7 +366,22 @@
   "booking": {
     "pickTitle": "Book a training",
     "pickSubtitle": "Pick a day and time that suits you",
-    "pickDay": "Choose a day"
+    "pickDay": "Choose a day",
+    "success": {
+      "seoTitle": "Your booking",
+      "seoDescription": "Check the status of your training booking.",
+      "loading": "Loading your booking…",
+      "notFoundTitle": "Booking not found",
+      "notFoundBody": "We couldn't find this booking. Please check the link from your email.",
+      "confirmedTitle": "Your training is booked!",
+      "paid": "Paid",
+      "confirmedBody": "You'll receive a confirmation by email. Create an account to manage your bookings.",
+      "createAccount": "Create account",
+      "pendingTitle": "Processing payment…",
+      "pendingBody": "We'll confirm your booking as soon as the payment arrives. This can take a moment.",
+      "cancelledTitle": "Booking not completed",
+      "cancelledBody": "This booking wasn't paid or has expired. Your spot has been released — please try booking again."
+    }
   },
   "availableSlots": "Available Slots",
   "spotLeft": "spot left",
