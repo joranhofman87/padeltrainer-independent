@@ -74,7 +74,13 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           .eq('is_public', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time', { ascending: true })
-          .limit(50);
+          // A cyclus runs for months, so 50 was far too low — an academy with a couple
+          // of weekly series fills 50 within the first fortnight and later months (e.g. a
+          // 13 Jul–17 Aug cyclus) never load. 500 covers realistic public pages AND keeps
+          // the downstream slot-id `.in()` queries (capacity + visibility) URL-safe: the
+          // PostgREST `in.()` filter 200s at ~500 ids but 400s around 1000. Academies past
+          // 500 future public slots need cursor pagination — tracked separately.
+          .limit(500);
         const slots = (slotsRaw ?? []) as unknown as RawSlotSelect[];
         if (slots.length === 0) {
           if (!cancelled) setDayGroups([]);
