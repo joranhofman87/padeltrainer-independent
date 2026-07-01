@@ -27,12 +27,13 @@ export function AcademyPublicOpenSlots({ academyId, academySlug, timezone }: Aca
   const [guestSlot, setGuestSlot] = useState<PublicSlot | null>(null);
 
   const handleSelect = (slot: PublicSlot) => {
-    if (slot.cyclus_id) {
-      navigate(localizePath(`/academies/${academySlug}/register/${slot.cyclus_id}`));
-      return;
-    }
+    // Guest pay-first (once deployed): the dialog books a single slot OR a whole
+    // cyclus (it keys off slot.cyclus_id). Until the flag is flipped, keep today's
+    // routing (cyclus → registration, single → the trainer's book page).
     if (GUEST_PAYFIRST_ENABLED) {
       setGuestSlot(slot);
+    } else if (slot.cyclus_id) {
+      navigate(localizePath(`/academies/${academySlug}/register/${slot.cyclus_id}`));
     } else if (slot.trainer_slug) {
       navigate(localizePath(`/book/${slot.trainer_slug}`));
     }

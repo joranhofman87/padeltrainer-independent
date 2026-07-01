@@ -94,6 +94,23 @@ describe('GuestBookingDialog', () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
+  it('books the WHOLE cyclus (create-guest-cyclus-payment + cyclusId) for a cyclus slot', async () => {
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/xyz', token: 'tok-c' }, error: null });
+    const hrefSetter = vi.fn();
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
+
+    const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A', total_price: 200 };
+    render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    fillValid();
+    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
+      body: { cyclusId: 'cyc-1', fullName: 'Jan de Vries', email: 'jan@x.nl', phone: undefined, notes: undefined },
+    });
+    await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/c/xyz'));
+  });
+
   it('shows a toast (no redirect) when the slot is full', async () => {
     invokeMock.mockResolvedValue({
       data: null,

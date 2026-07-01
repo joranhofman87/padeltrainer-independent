@@ -29,7 +29,7 @@ serve(async (req) => {
     const { data, error } = await supabase.rpc("get_guest_booking_by_token", { _token: token });
     if (error) throw new Error(error.message);
     const row = (Array.isArray(data) ? data[0] : data) as
-      | { payment_status: string | null; status: string | null; start_time: string; end_time: string; cyclus_name: string | null; payment_amount: number | null; hold_expires_at: string | null }
+      | { payment_status: string | null; status: string | null; start_time: string; end_time: string; cyclus_name: string | null; payment_amount: number | null; hold_expires_at: string | null; session_count: number | null }
       | undefined;
     if (!row) return json({ error: "not_found" }, 404);
 
@@ -43,6 +43,7 @@ serve(async (req) => {
       slotEnd: row.end_time,
       cyclusName: row.cyclus_name ?? null,
       amount: row.payment_amount != null ? Number(row.payment_amount) : null,
+      sessionCount: row.session_count != null ? Number(row.session_count) : 1,
     });
   } catch (_error) {
     return json({ error: "server_error" }, 500);
