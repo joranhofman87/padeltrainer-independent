@@ -11,6 +11,21 @@
 
 import { amountsMatch } from "./booking-pricing.ts";
 
+/**
+ * Tolerance for matching the Mollie-charged total against the SUM of per-booking `payment_amount`s.
+ * Per-booking amounts are stored to the cent, so an N-booking payment can legitimately differ from
+ * the charged total by up to ~half a cent per booking; a flat 1ct tolerance wrongly rejected valid
+ * multi-session cyclus payments (money taken, bookings stuck). Scales with the booking count.
+ */
+export function bookingSumTolerance(bookingCount: number): number {
+  return Math.max(0.01, bookingCount * 0.01);
+}
+
+/** Does the Mollie-paid amount match the sum of per-booking amounts for an N-booking payment? */
+export function bookingSumMatches(expectedSum: number, paidValue: number, bookingCount: number): boolean {
+  return amountsMatch(expectedSum, paidValue, bookingSumTolerance(bookingCount));
+}
+
 export type InvoicePaymentDecision = {
   /** Amount did not match the invoice total — refuse to mark paid. */
   amountMismatch: boolean;

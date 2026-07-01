@@ -11,6 +11,7 @@ import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-e
 import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from "../_shared/payment-audit.ts";
 import {
   applyBookingPaymentWriteback,
+  bookingSumTolerance,
   evaluateInvoicePayment,
   findCancelledPaidBookings,
   shouldRunBookingPaidSideEffects,
@@ -673,7 +674,7 @@ serve(async (req) => {
       // the cent, so the sum can legitimately differ from the charged total by
       // up to ~half a cent per booking. A flat 1ct tolerance wrongly rejected
       // legitimate multi-session cyclus payments (money taken, booking stuck).
-      const sumTolerance = Math.max(0.01, bookingIds.length * 0.01);
+      const sumTolerance = bookingSumTolerance(bookingIds.length);
       if (expectedSum > 0 && !amountsMatch(expectedSum, paidValue, sumTolerance)) {
         logStep("BLOCKED: Payment amount mismatch", { bookingIds, expectedSum, paidValue, sumTolerance });
         await notifySlackError("mollie-webhook", "Payment amount mismatch — bookings not marked paid", {
