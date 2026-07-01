@@ -19,6 +19,7 @@ type GuestBookingState = {
   slotEnd: string;
   cyclusName: string | null;
   amount: number | null;
+  sessionCount?: number | null;
 };
 
 // Keep the /booking/:token URL out of Referer headers — the token is an
@@ -123,8 +124,16 @@ export default function GuestBookingSuccess() {
               <h1 className="text-xl font-semibold">{t("booking.success.confirmedTitle", "Je training is geboekt!")}</h1>
               <div className="w-full rounded-lg border bg-background p-4 text-left space-y-1">
                 {booking.cyclusName && <p className="font-medium">{booking.cyclusName}</p>}
+                {(booking.sessionCount ?? 1) > 1 && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("booking.success.sessions", "{{count}} sessies", { count: booking.sessionCount })}
+                  </p>
+                )}
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CalendarClock className="h-4 w-4" aria-hidden /> {renderWhen(booking)}
+                  <CalendarClock className="h-4 w-4" aria-hidden />
+                  {(booking.sessionCount ?? 1) > 1
+                    ? t("booking.success.firstSession", "Eerste sessie: {{when}}", { when: renderWhen(booking) })
+                    : renderWhen(booking)}
                 </p>
                 {booking.amount != null && (
                   <p className="text-sm text-muted-foreground">

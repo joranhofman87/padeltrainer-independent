@@ -27,6 +27,8 @@ const MUST_BE_PUBLIC = [
   // Mollie connect / payment-init (reached from public pay pages / OAuth callbacks)
   'create-invoice-payment', 'create-registration-invoice', 'create-rebook-invoice',
   'mollie-connect-academy', 'mollie-connect-trainer', 'check-mollie-connect-status', 'verify-mollie-payment',
+  // anonymous guest pay-first (public booking widget) — server-authoritative, own rate-limit
+  'create-guest-slot-payment', 'create-guest-cyclus-payment', 'get-guest-booking',
 ];
 
 const toml = readFileSync('supabase/config.toml', 'utf8');
