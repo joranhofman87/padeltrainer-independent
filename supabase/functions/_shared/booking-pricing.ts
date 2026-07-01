@@ -43,6 +43,23 @@ export function computeSingleSlotPaymentAmount(
   return allowSingle && maxP > 1 ? perSpotPrice * bookingQuantity : slotPrice;
 }
 
+export type ExtraCost = { price?: number | null; type?: string | null; description?: string | null };
+
+/**
+ * Total extra costs for ONE session — the sum of every positive extra cost on the slot. Mirrors what
+ * the public UI shows (PublicSlotRow / GuestBookingDialog `extrasTotal = extra_costs.reduce(+price)`),
+ * so the server charges exactly what the guest was quoted. Per-session for one session, so `one_time`
+ * vs per-session collapse to the same single charge. (Multi-session cyclus billing of extras — where
+ * one_time bills once and per-session bills per session, per auto-create-invoice — is a follow-up.)
+ */
+export function sumSlotExtraCosts(extraCosts: ExtraCost[] | null | undefined): number {
+  if (!Array.isArray(extraCosts)) return 0;
+  return extraCosts.reduce((sum, ec) => {
+    const p = Number(ec?.price);
+    return sum + (Number.isFinite(p) && p > 0 ? p : 0);
+  }, 0);
+}
+
 export function computeCyclusTotalFromSlots(
   slots: SlotPricingInput[],
   hourlyRate: number | null,

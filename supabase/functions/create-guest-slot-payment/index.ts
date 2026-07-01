@@ -27,7 +27,7 @@
 // (release_expired_guest_slot_holds) is the backstop.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
-import { computeSingleSlotPaymentAmount, type SlotPricingInput } from "../_shared/booking-pricing.ts";
+import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
@@ -119,14 +119,21 @@ Deno.serve(async (req) => {
     const { data: slot } = await supabase
       .from("availability_slots")
       .select(
-        "id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, cyclus_name, priority_window_ends_at, member_window_ends_at, public_release_status",
+        "id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs, is_public, cyclus_name, priority_window_ends_at, member_window_ends_at, public_release_status",
       )
       .eq("id", slotId)
       .maybeSingle();
     if (!slot) return json({ error: "slot_not_found" }, 404);
 
-    // 2. Visibility guard: guests may book ONLY public-tier slots. hasPendingClaim
-    // is set conservatively true so any live priority window blocks the guest.
+    // 2. Visibility guard. FIRST: is_public — the primary published flag the public read filters on
+    // (usePublicAvailability .eq('is_public', true)). The tier windows below do NOT consider it, so a
+    // private slot with no active window would otherwise resolve to 'public' and be bookable via a
+    // crafted slotId. Then: guests may book ONLY public-tier slots; hasPendingClaim is set
+    // conservatively true so any live priority window blocks the guest.
+    if (slot.is_public !== true) {
+      logStep("Refused — slot not public (is_public)", { slotId });
+      return json({ error: "slot_not_bookable" }, 403);
+    }
     const tier = resolveSlotTier({
       priorityWindowEndsAt: slot.priority_window_ends_at,
       hasPendingClaim: true,
@@ -148,7 +155,11 @@ Deno.serve(async (req) => {
       const { data: tp } = await supabase.from("trainer_profiles").select("hourly_rate").eq("id", slot.trainer_id).maybeSingle();
       hourlyRate = tp?.hourly_rate != null ? Number(tp.hourly_rate) : null;
     }
-    const expectedAmount = computeSingleSlotPaymentAmount(slot as unknown as SlotPricingInput, hourlyRate, 1);
+    // Base session price + the slot's extra costs (balls, court hire, …) — the guest is quoted
+    // price_per_session + extrasTotal on the card/dialog, so the charge must include the extras too.
+    const expectedAmount =
+      computeSingleSlotPaymentAmount(slot as unknown as SlotPricingInput, hourlyRate, 1) +
+      sumSlotExtraCosts(slot.extra_costs as ExtraCost[] | null);
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
     // 4. Recipient — resolved the SAME way mollie-webhook will later CONFIRM the
