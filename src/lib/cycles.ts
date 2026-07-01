@@ -6,6 +6,8 @@ import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { isMissingRpc, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { toCycle, toIntakeRequest } from './cycleMappers';
 import { updateCycle } from './cycleWrites';
+import type { Cycle } from './cycleTypes';
+import type { Json } from '@/integrations/supabase/types';
 export type * from './cycleTypes';
 export * from './cycleProposalSlots';
 export * from './cycleIntakeReads';
@@ -109,13 +111,32 @@ export async function countCyclesIntakesWithFallback(cycleIds: string[]): Promis
 }
 
 /**
- * Cycles to show on an owner's PUBLIC page ("Open for Registration"). Private by
- * default: a cycle is only listed publicly once it's explicitly marked
- * `settings.publish_visibility = 'public'` (the "Show on public page" toggle).
- * This is a privacy filter — an `open` cycle is NOT public unless opted in, so a
- * private/unpublished cycle never leaks onto the academy/trainer page or its SEO.
- * (All callers are public surfaces: AcademyOpenCycles, TrainerOpenCycles, the
- * AcademyPublicProfile JSON-LD.)
+ * Keep only cycles that have at least one PUBLIC, future slot (is_public=true). This is
+ * the ONE public/private signal across the app: the availability calendar shows exactly
+ * these slots, and the cyclus-overview bulk "make public/private" toggles this same
+ * is_public (setSlotVisibility). Cycles with no public future slots — including empty
+ * shells (0 slots) — are private by default and never leak onto the public page or its SEO.
+ */
+export async function filterCyclesWithPublicSlots(
+  cycles: Cycle[],
+  client: typeof supabase = supabase,
+): Promise<Cycle[]> {
+  if (cycles.length === 0) return cycles;
+  const { data } = await client
+    .from('availability_slots')
+    .select('cyclus_id')
+    .in('cyclus_id', cycles.map((c) => c.id))
+    .eq('is_public', true)
+    .gte('start_time', new Date().toISOString());
+  const withPublicSlots = new Set((data ?? []).map((s) => s.cyclus_id));
+  return cycles.filter((c) => withPublicSlots.has(c.id));
+}
+
+/**
+ * Cycles to show on an owner's PUBLIC page ("Open for Registration"). Private by default:
+ * only cycles with a public bookable slot are listed (see {@link filterCyclesWithPublicSlots}),
+ * so a private/unpublished cycle never leaks onto the academy/trainer page or its SEO.
+ * All callers are public surfaces (AcademyOpenCycles, TrainerOpenCycles, AcademyPublicProfile JSON-LD).
  */
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
@@ -124,11 +145,10 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .eq('status', 'open')
-    .eq('settings->>publish_visibility', 'public')
     .order('start_date', { ascending: true, nullsFirst: true });
 
   if (error) throw error;
-  return (data || []).map(toCycle);
+  return filterCyclesWithPublicSlots((data || []).map(toCycle));
 }
 
 // Fetch all open cycles for a location (from trainers, academies, and clubs at that location)
@@ -168,7 +188,6 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'trainer')
       .in('owner_id', trainerIds)
       .eq('status', 'open')
-      .eq('settings->>publish_visibility', 'public') // public page: private-by-default (see getActiveCycles)
       .eq('location_id', locationId);
     if (trainerCycles) allCycles.push(...trainerCycles.map(toCycle));
   }
@@ -180,7 +199,6 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'academy')
       .in('owner_id', academyIds)
       .eq('status', 'open')
-      .eq('settings->>publish_visibility', 'public') // public page: private-by-default (see getActiveCycles)
       .eq('location_id', locationId);
     if (academyCycles) allCycles.push(...academyCycles.map(toCycle));
   }
@@ -192,12 +210,13 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'club')
       .in('owner_id', clubIds)
       .eq('status', 'open')
-      .eq('settings->>publish_visibility', 'public') // public page: private-by-default (see getActiveCycles)
       .eq('location_id', locationId);
     if (clubCycles) allCycles.push(...clubCycles.map(toCycle));
   }
   
-  return allCycles.sort((a, b) => {
+  // Public page: only cycles with a public bookable slot (same filter as getActiveCycles).
+  const publicCycles = await filterCyclesWithPublicSlots(allCycles);
+  return publicCycles.sort((a, b) => {
     // Always-open first
     if (a.is_always_open && !b.is_always_open) return -1;
     if (!a.is_always_open && b.is_always_open) return 1;
