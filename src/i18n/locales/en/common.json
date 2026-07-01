@@ -381,6 +381,24 @@
       "pendingBody": "We'll confirm your booking as soon as the payment arrives. This can take a moment.",
       "cancelledTitle": "Booking not completed",
       "cancelledBody": "This booking wasn't paid or has expired. Your spot has been released — please try booking again."
+    },
+    "guest": {
+      "title": "Book this training",
+      "subtitle": "Enter your details and pay directly. Your spot is only booked once payment is complete.",
+      "price": "Price",
+      "name": "Name",
+      "namePlaceholder": "First and last name",
+      "email": "Email address",
+      "phone": "Phone",
+      "notes": "Note",
+      "optional": "optional",
+      "pay": "Check out",
+      "payAmount": "Check out · {{amount}}",
+      "slotFull": "This spot was just taken. Please choose another time.",
+      "alreadyBooked": "You've already booked this training.",
+      "paymentUnavailable": "Online payment isn't available for this training.",
+      "notBookable": "This training can no longer be booked.",
+      "failed": "Something went wrong. Please try again."
     }
   },
   "availableSlots": "Available Slots",
