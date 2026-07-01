@@ -60,6 +60,8 @@ describe('GuestBookingDialog', () => {
   it('shows the slot summary and disables checkout until name + valid email', () => {
     renderDialog();
     expect(screen.getByText('Coach Bo')).toBeInTheDocument();
+    // Passive login link (no email lookup / enumeration).
+    expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/auth');
     const payBtn = screen.getByRole('button', { name: /Afrekenen/ });
     expect(payBtn).toBeDisabled();
 

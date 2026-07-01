@@ -394,6 +394,8 @@
       "optional": "optional",
       "pay": "Check out",
       "payAmount": "Check out · {{amount}}",
+      "haveAccount": "Already have an account?",
+      "login": "Log in",
       "slotFull": "This spot was just taken. Please choose another time.",
       "alreadyBooked": "You've already booked this training.",
       "paymentUnavailable": "Online payment isn't available for this training.",
