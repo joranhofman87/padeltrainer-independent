@@ -34,9 +34,15 @@ interface Props {
   timezone?: string;
   /** yyyy-MM-dd of the currently-selected day — highlighted (public two-pane calendar). */
   selectedKey?: string | null;
+  /**
+   * Hide the per-day seat count + free/full badge. Used by the PUBLIC availability calendar,
+   * where sessions are booked as a whole (no per-spot capacity to advertise). Admin callers omit
+   * it and keep the capacity summary.
+   */
+  hideCapacity?: boolean;
 }
 
-export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, selectedKey }: Props) {
+export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, selectedKey, hideCapacity }: Props) {
   const { i18n, t } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
@@ -190,7 +196,7 @@ export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, 
               )}
 
               {/* Footer: capacity + free badge */}
-              {totalSeats > 0 && (
+              {!hideCapacity && totalSeats > 0 && (
                 <div className="mt-auto flex items-center justify-between gap-1">
                   <span className="text-[10px] tabular-nums text-muted-foreground">
                     {bookedSeats}/{totalSeats}

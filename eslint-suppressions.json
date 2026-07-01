@@ -479,7 +479,7 @@
   },
   "src/components/trainer/TrainerOpenSlots.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 1
     },
     "react-hooks/exhaustive-deps": {
       "count": 1

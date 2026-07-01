@@ -67,6 +67,21 @@ describe('mapAndGroupPublicSlots', () => {
     expect(groups[0].slots.map((s) => s.id)).toEqual(['ok']);
   });
 
+  it('whole-slot (allow_single_booking=false) has capacity 1: unbooked shows 1 spot, one booking makes it full', () => {
+    const slots = [
+      row({ id: 'whole-open', start_time: '2026-09-01T12:00:00Z', allow_single_booking: false, max_participants: 4 }),
+      row({ id: 'whole-taken', start_time: '2026-09-01T13:00:00Z', allow_single_booking: false, max_participants: 4 }),
+    ];
+    const groups = mapAndGroupPublicSlots(
+      slots,
+      // whole-taken has ONE booking → full for a whole-slot even though max_participants is 4.
+      ctx({ visibleIds: new Set(['whole-open', 'whole-taken']), bookingCounts: { 'whole-taken': 1 } }),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].slots.map((s) => s.id)).toEqual(['whole-open']);
+    expect(groups[0].slots[0].spots_left).toBe(1); // capacity 1, not max_participants
+  });
+
   it('dedupes by id', () => {
     const slots = [
       row({ id: 'dup', start_time: '2026-09-01T12:00:00Z' }),
