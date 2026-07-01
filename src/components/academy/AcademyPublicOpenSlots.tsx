@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { AvailabilityPicker } from '@/components/booking/AvailabilityPicker';
+import { AvailabilityCalendar } from '@/components/booking/AvailabilityCalendar';
 import { GuestBookingDialog } from '@/components/booking/GuestBookingDialog';
 import { GUEST_PAYFIRST_ENABLED } from '@/lib/bookingFlags';
 import type { PublicSlot } from '@/lib/publicAvailability';
@@ -14,7 +14,7 @@ interface AcademyPublicOpenSlotsProps {
 }
 
 /**
- * Academy public-page availability. Thin wrapper: the shared {@link AvailabilityPicker} owns the
+ * Academy public-page availability. Thin wrapper: the shared {@link AvailabilityCalendar} owns the
  * visual picker + data (usePublicAvailability); this supplies the academy's owner descriptor,
  * timezone, and the booking routing. A cyclus tap goes to the registration flow; a single-slot tap
  * opens guest pay-first ({@link GuestBookingDialog}) once the edge functions are deployed
@@ -41,7 +41,7 @@ export function AcademyPublicOpenSlots({ academyId, academySlug, timezone }: Aca
 
   return (
     <>
-      <AvailabilityPicker owner={{ type: 'academy', academyId }} onSelect={handleSelect} timezone={timezone} />
+      <AvailabilityCalendar owner={{ type: 'academy', academyId }} onSelect={handleSelect} timezone={timezone} />
       <GuestBookingDialog
         slot={guestSlot}
         open={guestSlot !== null}

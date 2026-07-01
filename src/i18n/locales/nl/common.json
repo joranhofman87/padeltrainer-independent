@@ -367,6 +367,10 @@
     "pickTitle": "Boek een training",
     "pickSubtitle": "Kies een dag en tijd die jou uitkomt",
     "pickDay": "Kies een dag",
+    "calendar": {
+      "prevMonth": "Vorige maand",
+      "nextMonth": "Volgende maand"
+    },
     "success": {
       "seoTitle": "Je boeking",
       "seoDescription": "Bekijk de status van je training-boeking.",
