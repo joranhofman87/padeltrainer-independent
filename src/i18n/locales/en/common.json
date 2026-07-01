@@ -363,6 +363,11 @@
   "errorSaving": "Failed to save changes",
   "loginToEditDetails": "Log in to update your details",
   "to": "To",
+  "booking": {
+    "pickTitle": "Book a training",
+    "pickSubtitle": "Pick a day and time that suits you",
+    "pickDay": "Choose a day"
+  },
   "availableSlots": "Available Slots",
   "spotLeft": "spot left",
   "spotsLeft": "spots left",
