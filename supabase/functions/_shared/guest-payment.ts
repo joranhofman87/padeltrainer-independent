@@ -179,3 +179,24 @@ export function distributeAmountCents(totalEuros: number, n: number): number[] {
   const remainder = totalCents - base * n;
   return Array.from({ length: n }, (_, i) => (base + (i < remainder ? 1 : 0)) / 100);
 }
+
+/**
+ * Map a failed Mollie payment-create body to a STABLE client error code so a guest sees
+ * a clear reason instead of an opaque 500. The common one on a freshly-connected account
+ * is a 422 "The payment method is not activated on your account" (field: method) — the
+ * academy/trainer hasn't finished payment setup → `mollie_not_ready`. Anything else is
+ * unexpected + retryable → `mollie_error`. Never leaks the raw Mollie body to the client.
+ */
+export function classifyMollieCreateError(errText: string): "mollie_not_ready" | "mollie_error" {
+  try {
+    const parsed = JSON.parse(errText) as { detail?: unknown; field?: unknown };
+    const detail = typeof parsed?.detail === "string" ? parsed.detail.toLowerCase() : "";
+    const field = typeof parsed?.field === "string" ? parsed.field.toLowerCase() : "";
+    if (field === "method" || /not activated|not enabled|no active payment method/.test(detail)) {
+      return "mollie_not_ready";
+    }
+  } catch (_) {
+    // Non-JSON body → treat as a generic, retryable failure.
+  }
+  return "mollie_error";
+}

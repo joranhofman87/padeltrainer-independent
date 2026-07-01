@@ -416,6 +416,7 @@
       "slotFull": "Deze plek is net volgeboekt. Kies een ander moment.",
       "alreadyBooked": "Je hebt deze training al geboekt.",
       "paymentUnavailable": "Online betalen is niet beschikbaar voor deze training.",
+      "paymentTemporarilyUnavailable": "Online betalen is tijdelijk niet beschikbaar. Probeer het later opnieuw.",
       "notBookable": "Deze training kan niet meer geboekt worden.",
       "failed": "Er ging iets mis. Probeer het opnieuw."
     }
