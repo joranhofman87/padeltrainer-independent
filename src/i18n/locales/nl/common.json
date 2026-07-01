@@ -369,7 +369,8 @@
     "pickDay": "Kies een dag",
     "calendar": {
       "prevMonth": "Vorige maand",
-      "nextMonth": "Volgende maand"
+      "nextMonth": "Volgende maand",
+      "noSessions": "Geen sessies op deze dag."
     },
     "success": {
       "seoTitle": "Je boeking",

@@ -1,17 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { addMonths, format, startOfMonth } from 'date-fns';
+import { addMonths, format, parseISO, startOfMonth } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import AgendaMonth from '@/components/agenda/AgendaMonth';
 import type { AgendaSlot } from '@/components/agenda/AgendaWeekByTrainer';
 import { PublicSlotRow } from './PublicSlotRow';
 import { usePublicAvailability, type AvailabilityOwner } from '@/hooks/usePublicAvailability';
-import { formatZonedDayLabel, zonedDateKey } from '@/lib/zonedFormat';
+import { zonedDateKey } from '@/lib/zonedFormat';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
@@ -27,10 +26,11 @@ interface AvailabilityCalendarProps {
 }
 
 /**
- * Public availability as a MONTH CALENDAR: days with bookable sessions are marked (session count +
- * free-spots); tapping a day opens a sheet listing that day's slots as tappable rows, which delegate
- * to the caller's booking flow (guest pay-first dialog). Reuses the admin {@link AgendaMonth} grid +
- * the shared {@link PublicSlotRow}. Owner-timezone-correct; renders nothing until there is availability.
+ * Public availability as a two-pane MONTH CALENDAR (Calendly-style): the month grid on the left
+ * (days marked with session count + free-spots), and the selected day's bookable slots in a panel on
+ * the RIGHT on desktop / BELOW on mobile. The first available day is pre-selected; tapping a slot
+ * delegates to the caller's booking flow (guest pay-first dialog). Reuses the admin {@link AgendaMonth}
+ * grid + the shared {@link PublicSlotRow}. Owner-timezone-correct; renders nothing until there is availability.
  */
 export function AvailabilityCalendar({
   owner,
@@ -43,11 +43,24 @@ export function AvailabilityCalendar({
   const slots = useMemo(() => dayGroups.flatMap((g) => g.slots), [dayGroups]);
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
-  // Start on the first month that actually has availability.
-  const [currentDate, setCurrentDate] = useState<Date>(() =>
-    startOfMonth(slots.length ? new Date(slots[0].start_time) : new Date()),
-  );
+  const [currentDate, setCurrentDate] = useState<Date>(() => startOfMonth(new Date()));
   const [selectedKey, setSelectedKey] = useState<string | null>(null); // owner-tz yyyy-MM-dd
+  const jumpedToFirstMonth = useRef(false);
+
+  // Jump to the first month that actually has availability (once, when slots load).
+  useEffect(() => {
+    if (!jumpedToFirstMonth.current && slots.length) {
+      jumpedToFirstMonth.current = true;
+      setCurrentDate(startOfMonth(new Date(slots[0].start_time)));
+    }
+  }, [slots]);
+
+  // Pre-select the first available day in the visible month, and re-select on month nav.
+  useEffect(() => {
+    const monthPrefix = format(currentDate, 'yyyy-MM');
+    const firstInMonth = slots.map((s) => zonedDateKey(s.start_time, timezone)).find((k) => k.startsWith(monthPrefix));
+    setSelectedKey(firstInMonth ?? null);
+  }, [currentDate, slots, timezone]);
 
   const agendaSlots: AgendaSlot[] = useMemo(
     () =>
@@ -85,21 +98,9 @@ export function AvailabilityCalendar({
   }
   if (slots.length === 0) return null;
 
-  const handleDayClick = (day: Date) => {
-    // AgendaMonth keys its cells by the calendar date string; a slot's owner-tz date
-    // key matches that, so use the same string to find the day's slots.
-    const key = format(day, 'yyyy-MM-dd');
-    if (slots.some((s) => zonedDateKey(s.start_time, timezone) === key)) {
-      setSelectedKey(key);
-    }
-  };
-
-  const handleSelect = (slot: PublicSlot) => {
-    setSelectedKey(null); // close the day sheet before the booking dialog opens
-    onSelect(slot);
-  };
-
-  const sheetTitle = daySlots.length ? formatZonedDayLabel(daySlots[0].start_time, timezone, i18n.language) : '';
+  // AgendaMonth keys its cells by the calendar date string; a slot's owner-tz date key matches that.
+  const handleDayClick = (day: Date) => setSelectedKey(format(day, 'yyyy-MM-dd'));
+  const dayTitle = selectedKey ? format(parseISO(selectedKey), 'EEEE d MMMM', { locale: dateFnsLocale }) : '';
 
   return (
     <Card className={className}>
@@ -110,46 +111,49 @@ export function AvailabilityCalendar({
         </CardTitle>
         <CardDescription>{t('booking.pickSubtitle', 'Kies een dag en tijd die jou uitkomt')}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Month navigation */}
-        <div className="flex items-center justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={t('booking.calendar.prevMonth', 'Vorige maand')}
-            onClick={() => setCurrentDate((d) => addMonths(d, -1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm font-semibold capitalize">{format(currentDate, 'MMMM yyyy', { locale: dateFnsLocale })}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={t('booking.calendar.nextMonth', 'Volgende maand')}
-            onClick={() => setCurrentDate((d) => addMonths(d, 1))}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <AgendaMonth slots={agendaSlots} currentDate={currentDate} timezone={timezone} onDayClick={handleDayClick} />
-      </CardContent>
-
-      {/* Day detail — the tapped day's bookable slots */}
-      <Sheet open={selectedKey !== null} onOpenChange={(o) => !o && setSelectedKey(null)}>
-        <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="capitalize">{sheetTitle}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-2" role="list">
-            {daySlots.map((slot) => (
-              <PublicSlotRow key={slot.id} slot={slot} timezone={timezone} onSelect={handleSelect} />
-            ))}
+      <CardContent>
+        <div className="flex flex-col gap-4 md:flex-row">
+          {/* Calendar (left on desktop) */}
+          <div className="min-w-0 space-y-3 md:flex-1">
+            <div className="flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label={t('booking.calendar.prevMonth', 'Vorige maand')}
+                onClick={() => setCurrentDate((d) => addMonths(d, -1))}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-semibold capitalize">{format(currentDate, 'MMMM yyyy', { locale: dateFnsLocale })}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label={t('booking.calendar.nextMonth', 'Volgende maand')}
+                onClick={() => setCurrentDate((d) => addMonths(d, 1))}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <AgendaMonth slots={agendaSlots} currentDate={currentDate} timezone={timezone} onDayClick={handleDayClick} selectedKey={selectedKey} />
           </div>
-        </SheetContent>
-      </Sheet>
+
+          {/* Day detail (right on desktop, below on mobile) */}
+          <div className="md:w-72 md:shrink-0 md:border-l md:pl-4">
+            <p className="mb-2 text-sm font-semibold capitalize">{dayTitle || t('booking.pickDay', 'Kies een dag')}</p>
+            {daySlots.length > 0 ? (
+              <div className="space-y-2" role="list">
+                {daySlots.map((slot) => (
+                  <PublicSlotRow key={slot.id} slot={slot} timezone={timezone} onSelect={onSelect} />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('booking.calendar.noSessions', 'Geen sessies op deze dag.')}</p>
+            )}
+          </div>
+        </div>
+      </CardContent>
     </Card>
   );
 }

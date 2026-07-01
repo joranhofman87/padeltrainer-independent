@@ -32,9 +32,11 @@ interface Props {
    * admin callers, which keep the original browser-local grouping.
    */
   timezone?: string;
+  /** yyyy-MM-dd of the currently-selected day — highlighted (public two-pane calendar). */
+  selectedKey?: string | null;
 }
 
-export default function AgendaMonth({ slots, currentDate, onDayClick, timezone }: Props) {
+export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, selectedKey }: Props) {
   const { i18n, t } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
@@ -131,6 +133,7 @@ export default function AgendaMonth({ slots, currentDate, onDayClick, timezone }
                 'hover:bg-accent/30',
                 !inMonth && 'bg-muted/20 text-muted-foreground/60',
                 today && 'bg-primary/5',
+                selectedKey === key && 'ring-2 ring-inset ring-primary bg-primary/10',
                 idx % 7 === 6 && 'border-r-0',
               )}
             >

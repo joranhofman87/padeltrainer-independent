@@ -369,7 +369,8 @@
     "pickDay": "Choose a day",
     "calendar": {
       "prevMonth": "Previous month",
-      "nextMonth": "Next month"
+      "nextMonth": "Next month",
+      "noSessions": "No sessions on this day."
     },
     "success": {
       "seoTitle": "Your booking",

@@ -50,20 +50,15 @@ describe('AvailabilityCalendar', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('shows the month grid, and a day tap opens a sheet whose slot row books', () => {
+  it('pre-selects the first available day and books its slot row inline (two-pane, no sheet)', async () => {
     useAvailabilityMock.mockReturnValue({ dayGroups: [{ dateKey: '2026-09-15', label: 'x', slots: [slot] }], loading: false });
     const onSelect = vi.fn();
     render(
       <AvailabilityCalendar owner={{ type: 'academy', academyId: 'a1' }} onSelect={onSelect} timezone="Europe/Amsterdam" />,
     );
 
-    // Month grid rendered (the slot day cell carries a "session" count).
-    const dayCell = screen.getAllByRole('button').find((b) => /session/i.test(b.textContent || ''));
-    expect(dayCell).toBeTruthy();
-
-    // Tapping the day opens the day sheet with the slot as a row.
-    fireEvent.click(dayCell!);
-    const row = screen.getByRole('listitem');
+    // The first available day is auto-selected → its slot row shows in the day panel (no sheet to open).
+    const row = await screen.findByRole('listitem');
     expect(row.textContent).toContain('Coach Bo');
 
     // Tapping the row delegates to the booking flow.
