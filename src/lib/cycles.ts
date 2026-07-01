@@ -108,6 +108,15 @@ export async function countCyclesIntakesWithFallback(cycleIds: string[]): Promis
   }
 }
 
+/**
+ * Cycles to show on an owner's PUBLIC page ("Open for Registration"). Private by
+ * default: a cycle is only listed publicly once it's explicitly marked
+ * `settings.publish_visibility = 'public'` (the "Show on public page" toggle).
+ * This is a privacy filter — an `open` cycle is NOT public unless opted in, so a
+ * private/unpublished cycle never leaks onto the academy/trainer page or its SEO.
+ * (All callers are public surfaces: AcademyOpenCycles, TrainerOpenCycles, the
+ * AcademyPublicProfile JSON-LD.)
+ */
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   const { data, error } = await supabase
     .from('cycles')
@@ -115,6 +124,7 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId)
     .eq('status', 'open')
+    .eq('settings->>publish_visibility', 'public')
     .order('start_date', { ascending: true, nullsFirst: true });
 
   if (error) throw error;
@@ -158,6 +168,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'trainer')
       .in('owner_id', trainerIds)
       .eq('status', 'open')
+      .eq('settings->>publish_visibility', 'public') // public page: private-by-default (see getActiveCycles)
       .eq('location_id', locationId);
     if (trainerCycles) allCycles.push(...trainerCycles.map(toCycle));
   }
@@ -169,6 +180,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'academy')
       .in('owner_id', academyIds)
       .eq('status', 'open')
+      .eq('settings->>publish_visibility', 'public') // public page: private-by-default (see getActiveCycles)
       .eq('location_id', locationId);
     if (academyCycles) allCycles.push(...academyCycles.map(toCycle));
   }
@@ -180,6 +192,7 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('owner_type', 'club')
       .in('owner_id', clubIds)
       .eq('status', 'open')
+      .eq('settings->>publish_visibility', 'public') // public page: private-by-default (see getActiveCycles)
       .eq('location_id', locationId);
     if (clubCycles) allCycles.push(...clubCycles.map(toCycle));
   }

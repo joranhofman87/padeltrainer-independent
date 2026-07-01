@@ -74,12 +74,41 @@ export async function applySlotEditToCycle(
   };
 }
 
-export async function updateCycleSettings(cycleId: string, settings: CycleSettings): Promise<void> {
-  const { error } = await supabase
+export async function updateCycleSettings(
+  cycleId: string,
+  settings: CycleSettings,
+  client: SupabaseClient<Database> = supabase,
+): Promise<void> {
+  const { error } = await client
     .from('cycles')
     .update({ settings: settings as unknown as Json })
     .eq('id', cycleId);
   if (error) throw error;
+}
+
+/**
+ * Toggle whether a cycle is shown on the owner's PUBLIC page ("Show on public page").
+ * Sets settings.publish_visibility (the flag getActiveCycles/getLocationCycles filter on —
+ * private by default) AND flips its slots' is_public to match, so the availability calendar
+ * and the registration list stay consistent. Merges into existing settings (updateCycleSettings
+ * replaces the whole object).
+ */
+export async function setCyclePublicVisibility(
+  cycleId: string,
+  isPublic: boolean,
+  currentSettings: CycleSettings | null | undefined,
+  slotIds: string[],
+  client: SupabaseClient<Database> = supabase,
+): Promise<void> {
+  await updateCycleSettings(
+    cycleId,
+    { ...(currentSettings ?? {}), publish_visibility: isPublic ? 'public' : 'private' },
+    client,
+  );
+  if (slotIds.length > 0) {
+    const { error } = await setSlotVisibility(slotIds, isPublic, client);
+    if (error) throw error;
+  }
 }
 
 export async function createCycle(
