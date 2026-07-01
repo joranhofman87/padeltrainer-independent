@@ -38,7 +38,9 @@ import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
 import { deleteCycle } from '@/lib/cycleWrites';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import { applyCycleEndDate } from '@/lib/cycleExtension';
-import { updateCyclePricing, applySlotEditToCycle, publishCycle, type ExtraCost } from '@/lib/cycles';
+import { updateCyclePricing, applySlotEditToCycle, publishCycle, setCyclePublicVisibility, type ExtraCost } from '@/lib/cycles';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
@@ -124,6 +126,7 @@ export function CycleDetailView({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [savingVisibility, setSavingVisibility] = useState(false);
   // Page-level "Don't update invoices" toggle (checked = SKIP invoice resync). Sticky across the
   // page session; threaded into the roster remove + the cycle delete + the per-session delete.
   const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
@@ -602,6 +605,27 @@ export function CycleDetailView({
     }
   };
 
+  // Show/hide this cycle on the owner's PUBLIC page. Private by default — the public
+  // registration list + availability calendar only surface cycles toggled public.
+  const isPubliclyVisible = cycle?.settings?.publish_visibility === 'public';
+  const handleToggleVisibility = async (next: boolean) => {
+    setSavingVisibility(true);
+    try {
+      await setCyclePublicVisibility(cycleId, next, cycle?.settings, allSlotIds);
+      toast.success(
+        next
+          ? t('detail.visibility.nowPublic', 'Cyclus staat nu op de openbare pagina.')
+          : t('detail.visibility.nowPrivate', 'Cyclus is verborgen van de openbare pagina.'),
+      );
+      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
+      onMutated?.();
+    } catch (err) {
+      toast.error(getFriendlyErrorMessage(err, t('detail.visibility.error', 'Bijwerken mislukt.')));
+    } finally {
+      setSavingVisibility(false);
+    }
+  };
+
   const fmtDayTime = (slot: CycleDetailSlot) => {
     const start = parseISO(slot.start_time);
     const end = parseISO(slot.end_time);
@@ -669,6 +693,31 @@ export function CycleDetailView({
               {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Rocket className="h-4 w-4 mr-1.5" />}
               {t('detail.publish.cta', 'Publiceren')}
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {canPublish && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="text-sm min-w-0">
+              <Label htmlFor="cycle-public-toggle" className="font-medium">
+                {t('detail.visibility.title', 'Toon op openbare pagina')}
+              </Label>
+              <p className="text-muted-foreground">
+                {t('detail.visibility.body', 'Spelers zien deze cyclus alleen op je openbare pagina wanneer dit aanstaat. Standaard privé.')}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {savingVisibility && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              <Switch
+                id="cycle-public-toggle"
+                checked={isPubliclyVisible}
+                disabled={savingVisibility}
+                onCheckedChange={(v) => void handleToggleVisibility(v)}
+                aria-label={t('detail.visibility.title', 'Toon op openbare pagina')}
+              />
+            </div>
           </CardContent>
         </Card>
       )}

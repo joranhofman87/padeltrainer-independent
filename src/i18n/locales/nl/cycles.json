@@ -1402,6 +1402,13 @@
       "noFuture": "Geen toekomstige sessies om te bewerken",
       "loadError": "Kon de sessie niet laden. Probeer het opnieuw.",
       "error": "Bijwerken mislukt. Probeer het opnieuw."
+    },
+    "visibility": {
+      "title": "Toon op openbare pagina",
+      "body": "Spelers zien deze cyclus alleen op je openbare pagina wanneer dit aanstaat. Standaard privé.",
+      "nowPublic": "Cyclus staat nu op de openbare pagina.",
+      "nowPrivate": "Cyclus is verborgen van de openbare pagina.",
+      "error": "Bijwerken mislukt."
     }
   }
 }
