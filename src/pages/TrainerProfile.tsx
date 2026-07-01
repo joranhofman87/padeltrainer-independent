@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { TrainerReviews } from '@/components/reviews/TrainerReviews';
 import { TrainerOpenCycles } from '@/components/trainer/TrainerOpenCycles';
-import { TrainerOpenSlots } from '@/components/trainer/TrainerOpenSlots';
+import { PublicAvailabilitySection } from '@/components/booking/PublicAvailabilitySection';
 import { WaitingListCard } from '@/components/waitingList';
 import { getTrainerAverageRating, getTrainerReviews } from '@/lib/reviews';
 import { PROVINCES } from '@/lib/provinces';
@@ -520,8 +520,14 @@ export default function TrainerProfile() {
 
         <ProfileContentGrid>
           <ProfileMainColumn>
-            {/* Open Slots */}
-            {trainer && <TrainerOpenSlots trainerId={trainer.id} trainerSlug={trainerSlug} />}
+            {/* Open Slots — same visual two-pane calendar + guest pay-first flow as the academy page.
+                An academy-trainer's payment routes to the academy's Mollie automatically (edge fn). */}
+            {trainer && (
+              <PublicAvailabilitySection
+                owner={{ type: 'trainer', trainerId: trainer.id }}
+                timezone={(trainerAcademy as { timezone?: string | null } | null)?.timezone ?? undefined}
+              />
+            )}
 
             {/* Open Registrations */}
             {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
