@@ -8,6 +8,11 @@
  * book page). Once the owner has deployed the functions + migrations, flip this to
  * true in a one-line PR to make guest single-slot pay-first live.
  */
-// Typed `boolean` (not narrowed to the `false` literal) so gating conditions
-// aren't flagged as constant/unreachable while the flag is off.
-export const GUEST_PAYFIRST_ENABLED: boolean = false;
+// Typed `boolean` (not narrowed to the `true` literal) so gating conditions
+// aren't flagged as constant/unreachable.
+//
+// ENABLED 2026-07-01: migrations 20260704150000/160000/170000/180000 applied +
+// edge fns create-guest-slot-payment / create-guest-cyclus-payment / get-guest-booking
+// deployed + anon-reachability smoke-tested. A single-slot / cyclus tap on the academy
+// public page now opens the guest pay-first dialog.
+export const GUEST_PAYFIRST_ENABLED: boolean = true;
