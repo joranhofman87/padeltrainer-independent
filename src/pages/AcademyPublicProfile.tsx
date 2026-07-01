@@ -303,6 +303,7 @@ export default function AcademyPublicProfile() {
           <AcademyPublicOpenSlots
             academyId={academy.id!}
             academySlug={academy.slug || ''}
+            timezone={(academy as { timezone?: string | null }).timezone ?? undefined}
           />
 
           {(academy as any).waiting_list_enabled && (

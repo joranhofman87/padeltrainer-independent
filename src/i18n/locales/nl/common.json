@@ -363,6 +363,11 @@
   "errorSaving": "Opslaan mislukt",
   "loginToEditDetails": "Log in om je gegevens aan te passen",
   "to": "Aan",
+  "booking": {
+    "pickTitle": "Boek een training",
+    "pickSubtitle": "Kies een dag en tijd die jou uitkomt",
+    "pickDay": "Kies een dag"
+  },
   "availableSlots": "Beschikbare plekken",
   "slot": "plek",
   "slots": "plekken",
