@@ -15,6 +15,10 @@ CREATE INDEX IF NOT EXISTS bookings_public_token_idx
 -- return ONE representative row (the EARLIEST session) but with the TOTAL paid and
 -- the session count, so the confirm page can show "Cyclus X — N sessions, from …".
 -- For a single-slot booking N=1, so this is identical to before.
+--
+-- Adding session_count changes the RETURNS TABLE signature, which CREATE OR REPLACE
+-- cannot do (42P13) — DROP the prior (20260704160000) definition first.
+DROP FUNCTION IF EXISTS public.get_guest_booking_by_token(uuid);
 CREATE OR REPLACE FUNCTION public.get_guest_booking_by_token(_token uuid)
 RETURNS TABLE (
   booking_id        uuid,
