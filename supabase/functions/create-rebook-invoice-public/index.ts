@@ -1,0 +1,204 @@
+// Slice A — UPFRONT no-login SINGLE-claim rebook payment. A player rebooking JUST themselves (no
+// group) pays their OWN full cycle at checkout WITHOUT logging in. Token-gated (the claim_token is the
+// capability); everything DB-side runs as the service role after the token check. Mirrors
+// create-group-rebook-invoice, but scopes to the claimant's cyclus-wide claims (by identity, not a
+// group) and mints ONE full-price invoice over only the claimant's own bookings.
+//
+// Lifecycle (see docs/audits/SLICE_A_NOLOGIN_REBOOK_PAYMENT_DESIGN.md): claims are marked 'claimed'
+// at ACCEPT here (respond_to_priority_claim), NOT by the webhook. Full price is structural — a single
+// claimant identity means auto-create-invoice's split auto-detect cannot fire. Idempotency is the
+// unique partial index on invoices.rebook_cyclus_id (one active invoice per claimant+cyclus).
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
+
+interface RebookInvoice { id: string; public_token: string; status: string }
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(supabaseUrl, serviceKey);
+    const serviceAuth = { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
+
+    /** The single active (non-cancelled) rebook invoice for this claimant + cyclus, or null. The
+     *  unique partial index on invoices(rebook_cyclus_id, COALESCE(player_id, guest_player_id)) WHERE
+     *  status<>'cancelled' guarantees at most one. */
+    const activeRebookInvoice = async (
+      cyclusId: string, playerId: string | null, guestId: string | null,
+    ): Promise<RebookInvoice | null> => {
+      let q = admin.from("invoices")
+        .select("id, public_token, status")
+        .eq("rebook_cyclus_id", cyclusId)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      q = playerId ? q.eq("player_id", playerId) : q.eq("guest_player_id", guestId!);
+      const { data } = await q.maybeSingle();
+      return (data as RebookInvoice | null)?.public_token ? (data as RebookInvoice) : null;
+    };
+
+    /** Best-effort Mollie checkout for an UNPAID invoice (paid needs none; the client falls back to
+     *  the /pay/:token bank-transfer page with the same publicToken). */
+    const startCheckout = async (inv: RebookInvoice): Promise<string | undefined> => {
+      if (inv.status === "paid") return undefined;
+      try {
+        const { data: pay } = await admin.functions.invoke("create-invoice-payment", {
+          body: { publicToken: inv.public_token, invoiceId: inv.id },
+          headers: serviceAuth,
+        });
+        return (pay as { paymentUrl?: string })?.paymentUrl;
+      } catch (_) { return undefined; }
+    };
+
+    /** Undo the seats we just booked (invoice already cancelled by the caller): cancel the bookings and
+     *  reset their claims to pending so the claimant can pay the winning invoice / retry. */
+    const undoSeats = async (bookingIds: string[]) => {
+      await admin.from("bookings").update({ status: "cancelled" }).in("id", bookingIds);
+      await admin.from("slot_priority_claims")
+        .update({ status: "pending", booking_id: null, responded_at: null })
+        .in("booking_id", bookingIds);
+    };
+
+    const { token } = await req.json();
+    if (!token || typeof token !== "string") return json({ ok: false, error: "token is required" }, 400);
+
+    // Token gate: a valid claim. The holder is the claimant; their identity (never client input) scopes
+    // everything below. Groups have their own path (create-group-rebook-invoice).
+    const { data: claim } = await admin
+      .from("slot_priority_claims")
+      .select("id, player_id, guest_player_id, slot_id, rebook_group_id, status")
+      .eq("claim_token", token)
+      .maybeSingle();
+    if (!claim) return json({ ok: false, error: "claim_not_found" }, 404);
+    if (claim.rebook_group_id) return json({ ok: false, reason: "is_group" });
+
+    const pid = (claim.player_id as string | null) ?? null;
+    const gid = (claim.guest_player_id as string | null) ?? null;
+    if (!pid && !gid) return json({ ok: false, reason: "unscoped_claim" });
+
+    // Resolve the cyclus the claim belongs to (its slot's cyclus).
+    const { data: slot } = await admin
+      .from("availability_slots").select("cyclus_id").eq("id", claim.slot_id).maybeSingle();
+    const cyclusId = (slot?.cyclus_id as string | null) ?? null;
+    if (!cyclusId) return json({ ok: false, reason: "no_cyclus" });
+
+    // DOUBLE-PAY GUARD (sequential): any active rebook invoice already covers this claimant+cyclus →
+    // hand THAT one back (re-click / returning). The unique index makes a 2nd active one impossible.
+    const existing = await activeRebookInvoice(cyclusId, pid, gid);
+    if (existing) {
+      const checkoutUrl = await startCheckout(existing);
+      return json({ ok: true, alreadyStarted: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status, checkoutUrl });
+    }
+
+    // FULL-CYCLE SCOPE (F2/A-4): all the CLAIMANT's claims across this cyclus, by identity — derived
+    // server-side, never client-supplied booking IDs.
+    const { data: cyclusSlots } = await admin
+      .from("availability_slots").select("id").eq("cyclus_id", cyclusId);
+    const cyclusSlotIds = (cyclusSlots ?? []).map((s: { id: string }) => s.id);
+    if (cyclusSlotIds.length === 0) return json({ ok: false, reason: "no_cyclus_slots" });
+
+    let mq = admin.from("slot_priority_claims")
+      .select("claim_token, status")
+      .in("slot_id", cyclusSlotIds)
+      .in("status", ["pending", "claimed"])
+      .is("rebook_group_id", null); // single path only — never sweep the claimant's GROUP claims
+    mq = pid ? mq.eq("player_id", pid) : mq.eq("guest_player_id", gid!);
+    const { data: myClaims } = await mq;
+    if (!myClaims || myClaims.length === 0) return json({ ok: false, reason: "no_claims" });
+
+    // Accept each still-pending claim (books the claimant's own seat; strict → a TTL HOLD). The legacy
+    // single-claim RPC path books one slot per call. A failed sibling (e.g. slot_full) must not block
+    // the rest.
+    let strict = false;
+    for (const mc of myClaims as { claim_token: string; status: string }[]) {
+      if (mc.status !== "pending") continue;
+      const { data: acc, error: accErr } = await admin.rpc("respond_to_priority_claim", {
+        _token: mc.claim_token, _action: "accept",
+      });
+      if (accErr) continue;
+      if ((acc as { strict?: boolean } | null)?.strict === true) strict = true;
+    }
+
+    // Collect the claimant's now-claimed booking ids across the cyclus.
+    let bq = admin.from("slot_priority_claims")
+      .select("booking_id")
+      .in("slot_id", cyclusSlotIds)
+      .eq("status", "claimed")
+      .not("booking_id", "is", null)
+      .is("rebook_group_id", null);
+    bq = pid ? bq.eq("player_id", pid) : bq.eq("guest_player_id", gid!);
+    const { data: booked } = await bq;
+    const bookingIds = [...new Set((booked ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean))] as string[];
+    if (bookingIds.length === 0) return json({ ok: false, reason: "nothing_booked" });
+
+    // After we've booked seats, a mint failure must RELEASE the seats on a STRICT cycle (no seat
+    // without an online payment) and report strict_mollie_unavailable; a NON-strict cycle keeps the
+    // seat as a reserved commitment (the academy follows up / the client shows "reserved").
+    const failAfterAccept = (reason: string): Promise<Response> | Response => {
+      if (strict) return undoSeats(bookingIds).then(() => json({ ok: false, reason: "strict_mollie_unavailable" }));
+      return json({ ok: false, reason });
+    };
+
+    // Mint ONE invoice over ONLY this claimant's bookings (single identity → the split auto-detect
+    // cannot fire → full cycle price). auto-create-invoice runs service-role + is guest-aware.
+    const { data: aci, error: aciErr } = await admin.functions.invoke("auto-create-invoice", {
+      body: { bookingIds, asDraft: false },
+      headers: serviceAuth,
+    });
+    if (aciErr) return await failAfterAccept("mint_failed");
+    if ((aci as { skipped?: boolean })?.skipped) {
+      return await failAfterAccept((aci as { reason?: string })?.reason ?? "business_incomplete");
+    }
+
+    // Read back the invoice, scoped to the claimant identity (their bookings are theirs alone).
+    let rb = admin.from("invoices")
+      .select("id, public_token, status")
+      .overlaps("booking_ids", bookingIds)
+      .neq("status", "cancelled")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    rb = pid ? rb.eq("player_id", pid) : rb.eq("guest_player_id", gid!);
+    const { data: invoice } = await rb.maybeSingle();
+    if (!invoice?.public_token) return await failAfterAccept("no_invoice");
+
+    // Tag rebook_cyclus_id → trips the unique index if a concurrent mint already won. On conflict:
+    // cancel OUR duplicate invoice (VERIFY the cancel) and hand back the winner. We do NOT undo the
+    // bookings here: this is the SAME claimant double-clicking, so the winning invoice bills these very
+    // bookings — cancelling them would strand the winner. Exactly one invoice stays payable.
+    const { error: tagErr } = await admin.from("invoices")
+      .update({ rebook_cyclus_id: cyclusId }).eq("id", invoice.id);
+    if (tagErr) {
+      const { error: cancelErr } = await admin.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
+      if (cancelErr) return json({ ok: false, reason: "mint_conflict", message: String(cancelErr) });
+      const winner = await activeRebookInvoice(cyclusId, pid, gid);
+      if (winner) {
+        const checkoutUrl = await startCheckout(winner);
+        return json({ ok: true, alreadyStarted: true, invoiceId: winner.id, publicToken: winner.public_token, status: winner.status, checkoutUrl });
+      }
+      return json({ ok: false, reason: "retry" });
+    }
+
+    // Start the Mollie checkout. Non-strict: best-effort — the client falls back to /pay/:token
+    // (bank transfer) with the same publicToken. STRICT: mandatory — if none, ABORT: cancel invoice,
+    // cancel HOLDS, reset claims to pending (no seat without an online payment; no bank fallback).
+    const checkoutUrl = await startCheckout(invoice as RebookInvoice);
+    if (strict && !checkoutUrl) {
+      await admin.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
+      await undoSeats(bookingIds);
+      return json({ ok: false, reason: "strict_mollie_unavailable" });
+    }
+    return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status, checkoutUrl });
+  } catch (e) {
+    const message = String((e as Error)?.message ?? e);
+    await notifySlackEdgeError("create-rebook-invoice-public", message);
+    return json({ ok: false, error: "internal_error", message }, 500);
+  }
+});

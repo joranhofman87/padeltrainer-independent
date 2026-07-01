@@ -835,6 +835,28 @@ async function mintRebookInvoiceFallback(
   return { ...accept, mode: 'upfront_unavailable' };
 }
 
+export interface PublicRebookInvoiceResult {
+  ok: boolean;
+  reason?: string;
+  alreadyStarted?: boolean;
+  invoiceId?: string;
+  publicToken?: string;
+  status?: string;
+  checkoutUrl?: string;
+}
+
+/**
+ * Slice A — the NO-LOGIN single-claim rebook payment. Token-gated: the edge fn accepts the
+ * claimant's whole-cyclus claims, mints ONE full-price invoice over only their bookings, and starts
+ * a Mollie checkout — all server-side, works logged-in OR logged-out. Returns `reason: 'is_group'`
+ * for a group claim (the caller should use the group path instead).
+ */
+export async function createRebookInvoicePublic(token: string): Promise<PublicRebookInvoiceResult> {
+  const { data, error } = await supabase.functions.invoke('create-rebook-invoice-public', { body: { token } });
+  if (error) return { ok: false, reason: 'invoke_failed' };
+  return (data as PublicRebookInvoiceResult) ?? { ok: false };
+}
+
 /**
  * Accept a priority claim and, when the cycle's rebook_payment_mode is
  * 'upfront', immediately create a Mollie checkout for the player's accepted
@@ -847,9 +869,10 @@ async function mintRebookInvoiceFallback(
  * (checkout could not be started) instead of surfacing an error.
  */
 export async function acceptClaimAndStartPayment(token: string): Promise<AcceptAndPayResult | null> {
-  const accept = await acceptClaimWithToken(token);
-  if (!accept?.ok) return accept;
-
+  // Determine the payment mode + target cyclus BEFORE accepting: an UPFRONT claim delegates the whole
+  // accept + ONE full-price invoice + checkout to the no-login token path (Slice A), so it works
+  // logged-in OR logged-out and always charges full price (owner #1). Only the deferred / group-member
+  // fallback below accepts client-side.
   let slot: ClaimSlotInfo | null = null;
   let mode: RebookPaymentMode = 'deferred_split';
   let playerId: string | null = null;
@@ -859,9 +882,31 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     playerId = ((claimData?.claim as { player_id?: string | null } | undefined)?.player_id) ?? null;
     mode = await getCycleRebookPaymentMode(slot?.cyclus_id);
   } catch {
-    // Mode lookup failed — the commitment stands; fall back to the default.
-    return { ...accept, mode: 'deferred' };
+    // Mode lookup failed — accept as a plain commitment (deferred).
+    const a = await acceptClaimWithToken(token);
+    return a?.ok ? { ...a, mode: 'deferred' } : a;
   }
+
+  // UPFRONT → the no-login public path (accept + one full-price invoice + checkout). A group claim
+  // comes back 'is_group' (a member's just-my-spot) → fall through to the legacy authed path.
+  if (mode === 'upfront' && slot?.cyclus_id) {
+    const res = await createRebookInvoicePublic(token);
+    // 'is_group' = a group member's just-my-spot → fall through to the legacy authed path. Any other
+    // result is handled here (the public fn already accepted the claim server-side, so we must NOT
+    // fall through and re-accept — that would show a misleading "already responded").
+    if (res && res.reason !== 'is_group' && res.reason !== 'invoke_failed' && res.reason !== 'claim_not_found') {
+      if (res.ok && res.checkoutUrl) return { ok: true, status: 'claimed', mode: 'upfront', checkoutUrl: res.checkoutUrl };
+      if (res.ok && res.publicToken) return { ok: true, status: 'claimed', mode: 'upfront_invoiced', publicToken: res.publicToken };
+      if (res.reason === 'strict_mollie_unavailable') return { ok: true, status: 'pending', mode: 'strict_mollie_unavailable' };
+      // Booked server-side but no checkout/invoice (e.g. the academy's payment setup is incomplete):
+      // the seat is reserved — surface that (manual follow-up), don't lose it or double-accept.
+      return { ok: true, status: 'claimed', mode: 'upfront_unavailable' };
+    }
+  }
+
+  // LEGACY: plain accept — a deferred commitment, or the authed just-my-spot path for a GROUP member.
+  const accept = await acceptClaimWithToken(token);
+  if (!accept?.ok) return accept;
   if (mode !== 'upfront' || !slot?.cyclus_id) return { ...accept, mode: 'deferred' };
 
   // STRICT pay-first (opt-in per cycle: settings.rebook_strict_mollie): the accept already created
