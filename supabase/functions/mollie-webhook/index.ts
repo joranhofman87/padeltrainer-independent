@@ -8,6 +8,7 @@ import {
   usesInvoicePaidBranch,
 } from "../_shared/mollie-webhook-metadata.ts";
 import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
+import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from "../_shared/payment-audit.ts";
 import {
   applyBookingPaymentWriteback,
   evaluateInvoicePayment,
@@ -228,6 +229,7 @@ serve(async (req) => {
     }
 
     logStep("Webhook received", { paymentId });
+    await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.webhookReceived, mollie_payment_id: paymentId });
 
     // Look up booking to find trainer + academy for token resolution
     const { data: bookingForToken, error: bookingForTokenError } = await supabase
@@ -307,6 +309,7 @@ serve(async (req) => {
         "Refused payment processing: no connected Mollie account resolved",
         { paymentId, trainerId },
       );
+      await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.noConnectedMollieAccount, mollie_payment_id: paymentId, metadata: { trainerId } });
       // Deliberate refusal (M-25): a retry cannot connect a Mollie account,
       // so 200 (no retry) — we've alerted internally for manual follow-up.
       return new Response("OK", { status: 200 });
@@ -382,6 +385,7 @@ serve(async (req) => {
             "Payment received for an unknown/deleted invoice — needs manual review",
             { paymentId, invoiceId: invoiceIdFromMetadata },
           );
+          await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paymentForUnknownInvoice, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata });
           return new Response("OK", { status: 200 });
         }
 
@@ -405,6 +409,7 @@ serve(async (req) => {
             "Invoice payment amount mismatch — invoice not marked paid",
             { paymentId, invoiceId: invoiceIdFromMetadata, expectedTotal, paidValue },
           );
+          await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.amountMismatchBlocked, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata, amount: paidValue, metadata: { expectedTotal, paidValue } });
           // Deliberate refusal (M-25): retrying can never fix the amount.
           return new Response("OK", { status: 200 });
         }
@@ -420,6 +425,7 @@ serve(async (req) => {
             "Payment received for a CANCELLED invoice — needs manual refund/review",
             { paymentId, invoiceId: invoiceIdFromMetadata, paidValue },
           );
+          await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paymentForCancelledInvoice, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata, amount: paidValue });
           // Deliberate refusal (M-25): retrying can never un-cancel the invoice.
           return new Response("OK", { status: 200 });
         }
@@ -452,6 +458,7 @@ serve(async (req) => {
 
         if (claimedPaidTransition) {
           logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
+          await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.invoiceMarkedPaid, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata, amount: paidValue });
 
           // Only notify on the first transition to paid (the claim above) —
           // duplicate deliveries must not re-send payment_received.
@@ -477,6 +484,7 @@ serve(async (req) => {
           logStep("Invoice already paid — duplicate delivery, notifications skipped", {
             invoiceId: invoiceIdFromMetadata,
           });
+          await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.duplicateWebhookIgnored, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata });
         }
 
         // Also sync linked bookings so dashboard shows correct payment status.
@@ -652,6 +660,7 @@ serve(async (req) => {
           bookingIds: cancelledPaid,
           paymentId: payment.id,
         });
+        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paymentForCancelledBooking, mollie_payment_id: payment.id, booking_id: cancelledPaid[0], metadata: { bookingIds: cancelledPaid } });
       }
 
       const expectedSum = (amountRows || []).reduce(
@@ -673,6 +682,7 @@ serve(async (req) => {
           paidValue,
           paymentId: payment.id,
         });
+        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.amountMismatchBlocked, mollie_payment_id: payment.id, booking_id: bookingIds[0], amount: paidValue, metadata: { bookingIds, expectedSum, paidValue } });
         // Deliberate refusal (M-25): retrying can never fix the amount.
         return new Response("OK", { status: 200 });
       }
@@ -722,6 +732,15 @@ serve(async (req) => {
       count: bookingIds.length,
       transitioned: transitionedRows.length,
     });
+    if (payment.status === "paid") {
+      await auditLog(supabase, {
+        function_name: "mollie-webhook",
+        status: transitionedRows.length > 0 ? AUDIT.bookingMarkedPaid : AUDIT.duplicateWebhookIgnored,
+        mollie_payment_id: payment.id,
+        booking_id: bookingIds[0],
+        metadata: { bookingIds, transitioned: transitionedRows.length },
+      });
+    }
 
     // (A4 strict rebook) A failed/canceled/expired payment just cancelled these strict holds —
     // reset their priority claims to 'pending' so the seat is re-offerable (mirror
