@@ -154,6 +154,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Phone is mandatory on every public sign-up (registrations AND events) — the client
+    // CycleApplicationForm already blocks an empty phone; this is the server-side backstop,
+    // matching the create-guest-{slot,cyclus}-payment guards.
+    if (typeof phone !== "string" || phone.trim() === "") {
+      return invalidPayload("Field 'phone' is required", corsHeaders);
+    }
+
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Duplicate check: reject same email + cycle within 60 seconds (prevents double-clicks)

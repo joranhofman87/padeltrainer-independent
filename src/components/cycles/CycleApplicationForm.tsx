@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { Loader2, CheckCircle2, CreditCard, Banknote, Info } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { createOptionalPhoneSchema, createRequiredPhoneSchema } from '@/lib/validation';
+import { createRequiredPhoneSchema } from '@/lib/validation';
 import { buildGuestPlayerDbFields, prefillProfileNameFields } from '@/lib/profileName';
 import { getTermsForCycleOwner } from '@/lib/terms';
 import { logger } from '@/lib/logger';
@@ -166,13 +166,12 @@ export default function CycleApplicationForm({
     first_name: z.string().trim().min(2, t('application.form.firstNameMin')),
     last_name: z.string().trim().min(2, t('application.form.lastNameMin')),
     email: z.string().email(t('application.form.emailInvalid')),
-    // Phone is mandatory on registration sign-ups; events keep it optional.
-    phone: isEvent
-      ? createOptionalPhoneSchema(t('application.form.validation.phoneInvalid'))
-      : createRequiredPhoneSchema(
-          t('application.form.validation.phoneInvalid'),
-          t('application.form.validation.phoneRequired'),
-        ),
+    // Phone is mandatory on every public sign-up (registrations AND events) — we need a
+    // reachable number for the applicant. Same rule as the registration leg.
+    phone: createRequiredPhoneSchema(
+      t('application.form.validation.phoneInvalid'),
+      t('application.form.validation.phoneRequired'),
+    ),
     password: z.string().optional(),
     birth_date: z.string().min(1, t('application.form.birthDateRequired')),
     rating: z.coerce.number().optional(),
@@ -527,14 +526,7 @@ export default function CycleApplicationForm({
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>
-                    {t('application.form.phone')}
-                    {isEvent && (
-                      <span className="text-muted-foreground font-normal ml-1">
-                        ({t('application.form.phoneOptional')})
-                      </span>
-                    )}
-                  </FormLabel>
+                  <FormLabel>{t('application.form.phone')}</FormLabel>
                   <FormControl>
                     <Input {...field} type="tel" />
                   </FormControl>

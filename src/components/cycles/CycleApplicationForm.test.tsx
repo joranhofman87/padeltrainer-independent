@@ -196,9 +196,9 @@ describe('CycleApplicationForm', () => {
     expect(screen.queryByText(/optional/i)).not.toBeInTheDocument();
   });
 
-  it('keeps phone optional on event forms', () => {
+  it('marks phone as required (no "optional" tag) on event forms too', () => {
     renderForm({ cycle: { ...baseCycle, type: 'event' } });
-    expect(screen.getByText(/optional/i)).toBeInTheDocument();
+    expect(screen.queryByText(/optional/i)).not.toBeInTheDocument();
   });
 
   it('renders a submit button', () => {
