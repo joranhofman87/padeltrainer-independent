@@ -419,46 +419,59 @@ export default function PriorityClaimPage() {
                   checkboxLabel={t('rebooking.rulesConsentLabel', 'I agree to the rebooking rules')}
                 />
               )}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button
-                  onClick={onClaim}
-                  disabled={acting || rulesBlocked}
-                  variant={intent === 'decline' ? 'outline' : 'default'}
-                  className="flex-1"
-                >
-                  {acting ? t('rebooking.working', 'Working…') : t('rebooking.keep', 'Yes, keep my spot')}
-                </Button>
-                <Button
-                  onClick={onDecline}
-                  disabled={acting}
-                  variant={intent === 'decline' ? 'default' : 'outline'}
-                  className="flex-1"
-                >
-                  {acting ? '…' : t('rebooking.release', 'No, release my spot')}
-                </Button>
-              </div>
+              {/* Whole-group rebook is the PRIMARY action: one player rebooks + (upfront) pays for
+                  the whole group at full price and edits the roster (keep/remove/add people). DEFERRED
+                  → open the roster editor now (each player billed their share at cycle start). UPFRONT
+                  → pay-first (book only the captain's seat + one full-price group invoice + checkout),
+                  then assign the roster after payment. "Just my own spot" stays as a secondary option. */}
+              {group?.can_rebook_group && group.members.length > 1 ? (
+                <>
+                  <Button
+                    onClick={paymentMode === 'upfront'
+                      ? onUpfrontGroupPay
+                      : () => { if (token && rebookRules) void recordRebookRulesConsent(token); setGroupMode('apply'); }}
+                    disabled={acting || rulesBlocked}
+                    className="w-full"
+                  >
+                    {acting
+                      ? t('rebooking.working', 'Working…')
+                      : paymentMode === 'upfront'
+                        ? t('rebookGroup.primaryUpfront', 'Ja — boek en betaal voor de hele groep')
+                        : t('rebookGroup.primary', 'Ja — schrijf de hele groep opnieuw in')}
+                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button onClick={onClaim} disabled={acting || rulesBlocked} variant="outline" className="flex-1">
+                      {t('rebooking.keepJustMe', 'Alleen mijn eigen plek')}
+                    </Button>
+                    <Button onClick={onDecline} disabled={acting} variant="outline" className="flex-1">
+                      {acting ? '…' : t('rebooking.release', 'No, release my spot')}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    onClick={onClaim}
+                    disabled={acting || rulesBlocked}
+                    variant={intent === 'decline' ? 'outline' : 'default'}
+                    className="flex-1"
+                  >
+                    {acting ? t('rebooking.working', 'Working…') : t('rebooking.keep', 'Yes, keep my spot')}
+                  </Button>
+                  <Button
+                    onClick={onDecline}
+                    disabled={acting}
+                    variant={intent === 'decline' ? 'default' : 'outline'}
+                    className="flex-1"
+                  >
+                    {acting ? '…' : t('rebooking.release', 'No, release my spot')}
+                  </Button>
+                </div>
+              )}
               {rulesBlocked && (
                 <p className="text-xs text-muted-foreground">
                   {t('rebooking.consentRequiredHint', 'Agree to the rebooking rules above to continue.')}
                 </p>
-              )}
-              {/* Re-book the whole group. DEFERRED → open the roster editor now (each player is
-                  billed their own share at cycle start). UPFRONT → pay-first: book only the
-                  captain's seat + one group invoice + checkout, then assign the roster after
-                  payment (manage mode) — so no guests/bookings are created before money lands. */}
-              {group?.can_rebook_group && group.members.length > 1 && (
-                <button
-                  type="button"
-                  onClick={paymentMode === 'upfront'
-                    ? onUpfrontGroupPay
-                    : () => { if (token && rebookRules) void recordRebookRulesConsent(token); setGroupMode('apply'); }}
-                  disabled={acting || rulesBlocked}
-                  className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2"
-                >
-                  {paymentMode === 'upfront'
-                    ? t('rebookGroup.entryUpfront', 'Boek en betaal in één keer voor de hele groep →')
-                    : t('rebookGroup.entry', 'Boek je voor de anderen ook? Schrijf de hele groep opnieuw in →')}
-                </button>
               )}
             </div>
           )}
