@@ -1276,13 +1276,6 @@
       "noFuture": "No future sessions to edit",
       "loadError": "Could not load the session. Please try again.",
       "error": "Could not update. Please try again."
-    },
-    "visibility": {
-      "title": "Show on public page",
-      "body": "Players only see this cycle on your public page when this is on. Private by default.",
-      "nowPublic": "Cycle is now shown on your public page.",
-      "nowPrivate": "Cycle is hidden from your public page.",
-      "error": "Update failed."
     }
   }
 }
