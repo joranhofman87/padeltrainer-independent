@@ -381,6 +381,24 @@
       "pendingBody": "We bevestigen je boeking zodra de betaling binnen is. Dit kan even duren.",
       "cancelledTitle": "Boeking niet voltooid",
       "cancelledBody": "Deze boeking is niet betaald of is verlopen. Je plek is weer vrijgegeven — probeer opnieuw te boeken."
+    },
+    "guest": {
+      "title": "Boek deze training",
+      "subtitle": "Vul je gegevens in en reken direct af. Je plek is pas geboekt na betaling.",
+      "price": "Prijs",
+      "name": "Naam",
+      "namePlaceholder": "Voor- en achternaam",
+      "email": "E-mailadres",
+      "phone": "Telefoon",
+      "notes": "Opmerking",
+      "optional": "optioneel",
+      "pay": "Afrekenen",
+      "payAmount": "Afrekenen · {{amount}}",
+      "slotFull": "Deze plek is net volgeboekt. Kies een ander moment.",
+      "alreadyBooked": "Je hebt deze training al geboekt.",
+      "paymentUnavailable": "Online betalen is niet beschikbaar voor deze training.",
+      "notBookable": "Deze training kan niet meer geboekt worden.",
+      "failed": "Er ging iets mis. Probeer het opnieuw."
     }
   },
   "availableSlots": "Beschikbare plekken",
