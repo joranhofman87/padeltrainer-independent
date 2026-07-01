@@ -1,41 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { format, parseISO, isSameDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import { Calendar, MapPin, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/lib/supabaseClient';
-import { filterVisibleSlotIds } from '@/lib/slotVisibility';
-import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { formatPrice } from '@/lib/pricing';
-
-interface SlotData {
-  id: string;
-  start_time: string;
-  end_time: string;
-  cyclus_id: string | null;
-  cyclus_name: string | null;
-  court_type: string | null;
-  location_name: string | null;
-  trainer_name: string | null;
-  trainer_slug: string | null;
-  price_per_session: number | null;
-  total_price: number | null;
-  extra_costs: { description: string; price: number }[];
-  max_participants: number;
-  allow_single_booking: boolean;
-  spots_left: number;
-  split_payment: boolean;
-}
-
-interface DayGroup {
-  date: Date;
-  slots: SlotData[];
-}
+import { usePublicAvailability } from '@/hooks/usePublicAvailability';
 
 interface AcademyPublicOpenSlotsProps {
   academyId: string;
@@ -47,176 +21,10 @@ const DATE_LOCALES: Record<string, typeof enUS> = { nl, en: enUS, es, de, fr };
 export function AcademyPublicOpenSlots({ academyId, academySlug }: AcademyPublicOpenSlotsProps) {
   const { t, i18n } = useTranslation(['trainer', 'common']);
   const navigate = useNavigate();
-  const [dayGroups, setDayGroups] = useState<DayGroup[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const localizePath = useLocalizedPathFn();
   const dateLocale = DATE_LOCALES[i18n.language] || enUS;
-
-  useEffect(() => {
-    fetchOpenSlots();
-  }, [academyId]);
-
-  const fetchOpenSlots = async () => {
-    try {
-      // Fetch active trainer IDs for this academy. Uses the anon-readable view —
-      // the base academy_trainers table is not anon-readable.
-      const { data: trainerRows } = await supabase
-        .from('academy_trainers_public')
-        .select('trainer_profile_id')
-        .eq('academy_profile_id', academyId);
-
-      const trainerIds = (trainerRows || []).map(t => t.trainer_profile_id);
-
-      // Build OR filter: academy-level slots OR trainer-owned slots
-      const orFilter = trainerIds.length > 0
-        ? `academy_profile_id.eq.${academyId},trainer_id.in.(${trainerIds.join(',')})`
-        : `academy_profile_id.eq.${academyId}`;
-
-      const { data: slotsData } = await supabase
-        .from('availability_slots')
-        .select(`
-          id,
-          start_time,
-          end_time,
-          cyclus_id,
-          cyclus_name,
-          court_type,
-          is_public,
-          price_per_session,
-          total_price,
-          max_participants,
-          allow_single_booking,
-          extra_costs,
-          split_payment,
-          location_id,
-          trainer_id,
-          priority_window_ends_at,
-          member_window_ends_at,
-          public_release_status,
-          source_cycle_id,
-          locations:location_id(name)
-        `)
-        .or(orFilter)
-        
-        .eq('is_public', true)
-        .gte('start_time', new Date().toISOString())
-        .order('start_time', { ascending: true })
-        .limit(50);
-
-      if (!slotsData || slotsData.length === 0) {
-        setDayGroups([]);
-        setLoading(false);
-        return;
-      }
-
-      // Collect unique trainer IDs from slots
-      const slotTrainerIds = [...new Set(slotsData.map(s => s.trainer_id).filter(Boolean))];
-
-      // Fetch trainer slugs + user_ids
-      const trainerMap: Record<string, { slug: string | null; user_id: string | null }> = {};
-      if (slotTrainerIds.length > 0) {
-        const { data: trainerProfiles } = await supabase
-          .from('trainer_profiles_safe' as any)
-          .select('id, slug, user_id')
-          .in('id', slotTrainerIds);
-        (trainerProfiles || []).forEach((tp: any) => {
-          trainerMap[tp.id] = { slug: tp.slug, user_id: tp.user_id };
-        });
-      }
-
-      // Fetch trainer names from profiles
-      const userIds = [...new Set(Object.values(trainerMap).map(t => t.user_id).filter(Boolean))] as string[];
-      const nameMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles_public' as any)
-          .select('user_id, full_name')
-          .in('user_id', userIds);
-        (profiles || []).forEach((p: any) => {
-          if (p.full_name) nameMap[p.user_id] = p.full_name;
-        });
-      }
-
-      // Fetch booking counts
-      const slotIds = slotsData.map(s => s.id);
-      const { data: bookingsData } = await supabase
-        .from('bookings')
-        .select('slot_id')
-        .in('slot_id', slotIds)
-        .in('status', ['pending', 'confirmed']);
-
-      const bookingCounts: Record<string, number> = {};
-      bookingsData?.forEach(b => {
-        bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
-      });
-
-      // Tier-aware visibility
-      const visibleIds = await filterVisibleSlotIds(slotsData.map((s: any) => ({
-        id: s.id,
-        priority_window_ends_at: s.priority_window_ends_at,
-        member_window_ends_at: s.member_window_ends_at,
-        public_release_status: s.public_release_status,
-        source_cycle_id: s.source_cycle_id,
-      })));
-
-      // Dedupe by slot id
-      const seen = new Set<string>();
-      const availableSlots: SlotData[] = slotsData
-        .filter(s => {
-          if (seen.has(s.id)) return false;
-          seen.add(s.id);
-          if (!visibleIds.has(s.id)) return false;
-          const maxP = s.max_participants || 4;
-          return (bookingCounts[s.id] || 0) < maxP;
-        })
-        .map(s => {
-          const maxP = s.max_participants || 4;
-          const booked = bookingCounts[s.id] || 0;
-          const trainer = trainerMap[s.trainer_id] || { slug: null, user_id: null };
-          const trainerName = trainer.user_id ? nameMap[trainer.user_id] || null : null;
-          const parsedExtras: { description: string; price: number }[] = Array.isArray(s.extra_costs)
-            ? (s.extra_costs as any[]).filter(e => e && typeof e.price === 'number')
-            : [];
-          return {
-            id: s.id,
-            start_time: s.start_time,
-            end_time: s.end_time,
-            cyclus_id: s.cyclus_id,
-            cyclus_name: s.cyclus_name,
-            court_type: s.court_type,
-            location_name: (s.locations as any)?.name || null,
-            trainer_name: trainerName,
-            trainer_slug: trainer.slug,
-            price_per_session: s.price_per_session || null,
-            total_price: s.total_price || null,
-            extra_costs: parsedExtras,
-            max_participants: maxP,
-            allow_single_booking: s.allow_single_booking || false,
-            spots_left: maxP - booked,
-            split_payment: (s as any).split_payment || false,
-          };
-        });
-
-      // Group by day
-      const groups: DayGroup[] = [];
-      for (const slot of availableSlots) {
-        const slotDate = parseISO(slot.start_time);
-        const existingGroup = groups.find(g => isSameDay(g.date, slotDate));
-        if (existingGroup) {
-          existingGroup.slots.push(slot);
-        } else {
-          groups.push({ date: slotDate, slots: [slot] });
-        }
-      }
-
-      setDayGroups(groups);
-    } catch (error) {
-      logger.error('Error fetching academy open slots', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyPublicOpenSlots' });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { dayGroups, loading } = usePublicAvailability({ type: 'academy', academyId });
 
   if (loading || dayGroups.length === 0) {
     return null;
