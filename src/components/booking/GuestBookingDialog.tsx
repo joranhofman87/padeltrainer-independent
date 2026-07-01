@@ -14,12 +14,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { formatPrice } from '@/lib/pricing';
 import { formatZonedDayLabel, formatZonedTime } from '@/lib/zonedFormat';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type CyclusSession = { id: string; start_time: string; end_time: string; price_per_session: number | null };
 
 /** Read the `{ error }` code from a supabase functions.invoke failure body (non-2xx). */
 async function extractFnErrorCode(error: unknown): Promise<string | null> {
@@ -39,15 +42,15 @@ interface GuestBookingDialogProps {
   slot: PublicSlot | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Owner IANA timezone so the slot time renders owner-local. */
+  /** Owner IANA timezone so times render owner-local. */
   timezone: string;
 }
 
 /**
- * Guest single-slot PAY-FIRST checkout: a non-tech visitor enters name/email/phone and is sent
- * straight to Mollie. The seat is only held + the booking only created server-side by
- * create-guest-slot-payment (server-authoritative price/recipient); this dialog just collects the
- * details and redirects to the returned checkout URL. Cyclus booking is a later phase.
+ * Guest PAY-FIRST checkout. If the tapped slot belongs to a cyclus, the visitor CHOOSES between
+ * booking just this session or the whole series — the cyclus option lists every session (day + time)
+ * and shows the summed total. Details go straight to Mollie; the seat(s) are only held + priced
+ * server-side (create-guest-slot-payment / create-guest-cyclus-payment).
  */
 export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: GuestBookingDialogProps) {
   const { t, i18n } = useTranslation('common');
@@ -56,8 +59,13 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<'single' | 'cyclus'>('single');
+  const [sessions, setSessions] = useState<CyclusSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
-  // Reset the form whenever a new slot is opened.
+  const cyclusId = slot?.cyclus_id ?? null;
+
+  // Reset the form (and default back to single) whenever a new slot is opened.
   useEffect(() => {
     if (open) {
       setFullName('');
@@ -65,35 +73,67 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       setPhone('');
       setNotes('');
       setSubmitting(false);
+      setMode('single');
     }
   }, [open, slot?.id]);
 
+  // Load the cyclus's future public sessions so the "whole cyclus" option can list them + total.
+  useEffect(() => {
+    if (!open || !cyclusId) {
+      setSessions([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSessions(true);
+    void (async () => {
+      const { data } = await supabase
+        .from('availability_slots')
+        .select('id, start_time, end_time, price_per_session')
+        .eq('cyclus_id', cyclusId)
+        .eq('is_public', true)
+        .gte('start_time', new Date().toISOString())
+        .order('start_time', { ascending: true });
+      if (!cancelled) {
+        setSessions((data ?? []) as CyclusSession[]);
+        setLoadingSessions(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, cyclusId]);
+
   if (!slot) return null;
 
-  // A cyclus tap books the WHOLE series (create-guest-cyclus-payment); a single tap
-  // books just that session. Amount shown is the cyclus total vs the per-session price;
-  // the server recomputes authoritatively either way.
-  const isCyclus = !!slot.cyclus_id;
+  const isCyclusSlot = !!cyclusId;
+  const effectiveMode: 'single' | 'cyclus' = isCyclusSlot ? mode : 'single';
   const extrasTotal = slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
-  const price = isCyclus
-    ? (slot.total_price != null && slot.total_price > 0 ? slot.total_price : null)
-    : slot.price_per_session != null && slot.price_per_session > 0
-      ? slot.price_per_session + extrasTotal
-      : null;
+  const singlePrice =
+    slot.price_per_session != null && slot.price_per_session > 0 ? slot.price_per_session + extrasTotal : null;
+  const cyclusTotal = sessions.reduce((sum, s) => sum + (s.price_per_session ?? 0), 0);
+  const price = effectiveMode === 'cyclus' ? (cyclusTotal > 0 ? cyclusTotal : null) : singlePrice;
+
   const dayLabel = formatZonedDayLabel(slot.start_time, timezone, i18n.language);
   const timeLabel = `${formatZonedTime(slot.start_time, timezone)}–${formatZonedTime(slot.end_time, timezone)}`;
+  const fmtSession = (s: CyclusSession) =>
+    `${formatZonedDayLabel(s.start_time, timezone, i18n.language)} · ${formatZonedTime(s.start_time, timezone)}–${formatZonedTime(s.end_time, timezone)}`;
 
-  const canSubmit = fullName.trim().length > 0 && EMAIL_RE.test(email.trim()) && !submitting;
+  const canSubmit =
+    fullName.trim().length > 0 &&
+    EMAIL_RE.test(email.trim()) &&
+    !submitting &&
+    !(effectiveMode === 'cyclus' && loadingSessions);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
+      const bookCyclus = effectiveMode === 'cyclus';
       const { data, error } = await supabase.functions.invoke(
-        isCyclus ? 'create-guest-cyclus-payment' : 'create-guest-slot-payment',
+        bookCyclus ? 'create-guest-cyclus-payment' : 'create-guest-slot-payment',
         {
           body: {
-            ...(isCyclus ? { cyclusId: slot.cyclus_id } : { slotId: slot.id }),
+            ...(bookCyclus ? { cyclusId } : { slotId: slot.id }),
             fullName: fullName.trim(),
             email: email.trim(),
             phone: phone.trim() || undefined,
@@ -135,27 +175,76 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {isCyclus ? t('booking.guest.titleCyclus', 'Boek deze cyclus') : t('booking.guest.title', 'Boek deze training')}
+            {effectiveMode === 'cyclus'
+              ? t('booking.guest.titleCyclus', 'Boek deze cyclus')
+              : t('booking.guest.title', 'Boek deze training')}
           </DialogTitle>
           <DialogDescription>
             {t('booking.guest.subtitle', 'Vul je gegevens in en reken direct af. Je plek is pas geboekt na betaling.')}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Slot / cyclus summary */}
+        {/* This-session vs whole-cyclus choice (only when the slot is part of a cyclus). */}
+        {isCyclusSlot && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-label={t('booking.guest.modeSingle', 'Alleen deze sessie')}
+              aria-pressed={mode === 'single'}
+              onClick={() => setMode('single')}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                mode === 'single' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted',
+              )}
+            >
+              <span className="block text-sm font-medium">{t('booking.guest.modeSingle', 'Alleen deze sessie')}</span>
+              {singlePrice != null && <span className="block text-xs text-muted-foreground">{formatPrice(singlePrice)}</span>}
+            </button>
+            <button
+              type="button"
+              aria-label={t('booking.guest.modeCyclus', 'Hele cyclus')}
+              aria-pressed={mode === 'cyclus'}
+              onClick={() => setMode('cyclus')}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                mode === 'cyclus' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted',
+              )}
+            >
+              <span className="block text-sm font-medium">{t('booking.guest.modeCyclus', 'Hele cyclus')}</span>
+              <span className="block text-xs text-muted-foreground">
+                {loadingSessions
+                  ? '…'
+                  : `${sessions.length} ${sessions.length === 1 ? t('session', 'sessie') : t('booking.guest.sessions', 'sessies')}${cyclusTotal > 0 ? ` · ${formatPrice(cyclusTotal)}` : ''}`}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Summary */}
         <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1">
           {slot.cyclus_name && <p className="font-medium">{slot.cyclus_name}</p>}
           {slot.trainer_name && <p className={slot.cyclus_name ? 'text-muted-foreground' : 'font-medium'}>{slot.trainer_name}</p>}
-          <p className="flex items-center gap-2 text-muted-foreground">
-            <CalendarClock className="h-4 w-4" aria-hidden />
-            {isCyclus ? (
-              <span>{t('booking.guest.wholeCyclusFrom', 'Hele cyclus, vanaf {{day}}', { day: dayLabel })}</span>
+
+          {effectiveMode === 'cyclus' ? (
+            loadingSessions ? (
+              <p className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> {t('booking.guest.loadingSessions', 'Sessies laden…')}
+              </p>
             ) : (
-              <span>
-                <span className="capitalize">{dayLabel}</span> · {timeLabel}
-              </span>
-            )}
-          </p>
+              <div className="max-h-40 overflow-y-auto space-y-0.5 pt-0.5">
+                {sessions.map((s) => (
+                  <p key={s.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CalendarClock className="h-3 w-3 shrink-0" aria-hidden /> <span className="capitalize">{fmtSession(s)}</span>
+                  </p>
+                ))}
+              </div>
+            )
+          ) : (
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <CalendarClock className="h-4 w-4" aria-hidden /> <span className="capitalize">{dayLabel}</span> · {timeLabel}
+            </p>
+          )}
+
           {slot.location_name && (
             <p className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4" aria-hidden /> {slot.location_name}
@@ -163,8 +252,8 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
           )}
           {price != null && (
             <p className="font-semibold pt-1">
-              {isCyclus ? t('booking.guest.total', 'Totaal') : t('booking.guest.price', 'Prijs')}: {formatPrice(price)}
-              {isCyclus && slot.split_payment && (
+              {effectiveMode === 'cyclus' ? t('booking.guest.total', 'Totaal') : t('booking.guest.price', 'Prijs')}: {formatPrice(price)}
+              {effectiveMode === 'cyclus' && slot.split_payment && (
                 <span className="ml-1 text-xs font-normal text-muted-foreground">
                   ({t('booking.guest.splitNote', 'verdeeld over spelers')})
                 </span>
