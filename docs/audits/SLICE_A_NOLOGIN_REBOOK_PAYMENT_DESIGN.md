@@ -22,6 +22,8 @@ Codex reviewed this design (verdict: **approve the approach, request design chan
 
 Non-blocking (opportunistic): `get-public-invoice` doesn't pass `_academy_profile_id` to `get_invoice_recipient_identity`, so academy billing-email overrides aren't applied to the public-page display (`get-public-invoice:88-99`); `send-invoice-email` does pass it, so delivery is fine.
 
+**Owner decision (2026-07-01) — deferred mode:** full price applies ONLY to the **upfront no-login checkout** that Slice A builds. The **deferred** mode (invoice at cycle start) stays **as-is with its ÷headcount split** — Slice A does **not** touch the deferred minter. (So the same cycle costs full price via pay-now, or a split share via deferred invoicing.)
+
 ---
 
 ## 1. The gap, precisely
@@ -105,7 +107,7 @@ This mirrors `create-group-rebook-invoice` closely; the differences are scope (t
 2. **A-6** — strict-mode server-side cleanup (cancel + reset claims to pending on checkout-start failure).
 3. **A-3** — client routing: upfront single claim (logged-in **and** logged-out) → token mint → `/pay/:token`, no `getUser()`.
 4. **A-5** — confirm (don't add) the webhook behavior: bookings paid on the invoice branch, claims already `claimed` from accept.
-5. **A-2 deferred (only if owner says full-price applies to deferred)** — full-price the deferred minter too.
+5. ~~A-2 deferred~~ — **DROPPED** (owner: keep deferred as-is with its split). Slice A does not touch the deferred minter.
 6. Full gates + **hand the built money path back to Codex** for a final verify (mirrors F3/F5).
 
 **Required tests before merge** (Codex's set):
