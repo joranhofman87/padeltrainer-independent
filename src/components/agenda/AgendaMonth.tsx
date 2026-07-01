@@ -35,14 +35,16 @@ interface Props {
   /** yyyy-MM-dd of the currently-selected day — highlighted (public two-pane calendar). */
   selectedKey?: string | null;
   /**
-   * Hide the per-day seat count + free/full badge. Used by the PUBLIC availability calendar,
-   * where sessions are booked as a whole (no per-spot capacity to advertise). Admin callers omit
-   * it and keep the capacity summary.
+   * PUBLIC availability mode. Each day cell collapses to a simple date + a GREEN highlight when it
+   * has bookable sessions (a muted cell when it doesn't) — no session count, location logos or seat
+   * numbers. The detail (times / trainers / price) lives in the side panel on click. Keeps the grid
+   * a clean availability heatmap that scales when many trainers' slots are aggregated. Admin callers
+   * omit it and keep the full per-day summary.
    */
-  hideCapacity?: boolean;
+  availabilityOnly?: boolean;
 }
 
-export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, selectedKey, hideCapacity }: Props) {
+export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, selectedKey, availabilityOnly }: Props) {
   const { i18n, t } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
@@ -128,22 +130,31 @@ export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, 
           const fillState = daySlots.length === 0
             ? 'empty'
             : getFillState({ bookedCount: bookedSeats, maxParticipants: totalSeats || 1, isPast });
+          // Public mode: a day is "available" (green) when it has upcoming bookable sessions.
+          const hasAvailability = daySlots.length > 0 && !isPast;
 
           return (
             <button
               key={key + idx}
               type="button"
               onClick={() => onDayClick?.(day)}
+              aria-label={
+                availabilityOnly
+                  ? `${format(day, 'd MMMM', { locale: dateFnsLocale })} — ${hasAvailability ? t('calendar.available', 'available') : t('calendar.noAvailability', 'no availability')}`
+                  : undefined
+              }
               className={cn(
                 'min-h-[112px] sm:min-h-[132px] border-b border-r last:border-r-0 p-2 text-left transition-colors flex flex-col gap-1.5',
                 'hover:bg-accent/30',
                 !inMonth && 'bg-muted/20 text-muted-foreground/60',
                 today && 'bg-primary/5',
+                // Green availability heatmap (public mode only).
+                availabilityOnly && hasAvailability && 'bg-success-soft hover:bg-success-soft/80',
                 selectedKey === key && 'ring-2 ring-inset ring-primary bg-primary/10',
                 idx % 7 === 6 && 'border-r-0',
               )}
             >
-              {/* Header: date + session count */}
+              {/* Header: date + (public: green availability dot | admin: session count) */}
               <div className="flex items-baseline justify-between">
                 <span
                   className={cn(
@@ -153,17 +164,19 @@ export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, 
                 >
                   {format(day, 'd')}
                 </span>
-                {daySlots.length > 0 && (
-                  <span className="text-[10px] tabular-nums text-muted-foreground">
-                    {daySlots.length} {daySlots.length === 1
-                      ? t('calendar.unitSession', 'session')
-                      : t('calendar.unitSessions', 'sessions')}
-                  </span>
-                )}
+                {availabilityOnly
+                  ? hasAvailability && <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+                  : daySlots.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-muted-foreground">
+                        {daySlots.length} {daySlots.length === 1
+                          ? t('calendar.unitSession', 'session')
+                          : t('calendar.unitSessions', 'sessions')}
+                      </span>
+                    )}
               </div>
 
-              {/* Location rows */}
-              {locations.length > 0 && (
+              {/* Location rows (admin only) */}
+              {!availabilityOnly && locations.length > 0 && (
                 <div className="space-y-0.5 min-w-0">
                   {locations.slice(0, 2).map((loc, i) => (
                     <div key={i} className="flex items-center gap-1 min-w-0">
@@ -195,8 +208,8 @@ export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, 
                 </div>
               )}
 
-              {/* Footer: capacity + free badge */}
-              {!hideCapacity && totalSeats > 0 && (
+              {/* Footer: capacity + free badge (admin only) */}
+              {!availabilityOnly && totalSeats > 0 && (
                 <div className="mt-auto flex items-center justify-between gap-1">
                   <span className="text-[10px] tabular-nums text-muted-foreground">
                     {bookedSeats}/{totalSeats}
