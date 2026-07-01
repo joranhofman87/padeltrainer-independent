@@ -1,0 +1,161 @@
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { filterVisibleSlotIds } from '@/lib/slotVisibility';
+import type { PublicReleaseStatus } from '@/lib/priorityClaims';
+import { logger } from '@/lib/logger';
+import {
+  mapAndGroupPublicSlots,
+  type PublicDayGroup,
+  type RawPublicSlotRow,
+} from '@/lib/publicAvailability';
+
+/**
+ * Which owner's public availability to load. Owner-agnostic so one hook powers the academy, trainer
+ * and (later) club public pages + the visual booking widget.
+ */
+export type AvailabilityOwner =
+  | { type: 'academy'; academyId: string }
+  | { type: 'trainer'; trainerId: string };
+
+/** The columns the availability transform + tier-visibility filter need. */
+type RawSlotSelect = RawPublicSlotRow & {
+  is_public: boolean;
+  priority_window_ends_at: string | null;
+  member_window_ends_at: string | null;
+  public_release_status: PublicReleaseStatus | null;
+  source_cycle_id: string | null;
+};
+
+const SLOT_SELECT = `
+  id, start_time, end_time, cyclus_id, cyclus_name, court_type, is_public,
+  price_per_session, total_price, max_participants, allow_single_booking, extra_costs,
+  split_payment, location_id, trainer_id, priority_window_ends_at, member_window_ends_at,
+  public_release_status, source_cycle_id, locations:location_id(name)
+`;
+
+/** Build the availability_slots `.or()` filter for an owner (academy = its own + its trainers'). */
+async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string> {
+  if (owner.type === 'trainer') return `trainer_id.eq.${owner.trainerId}`;
+  // academy: the base academy_trainers table is not anon-readable — use the public view.
+  const { data: trainerRows } = await supabase
+    .from('academy_trainers_public')
+    .select('trainer_profile_id')
+    .eq('academy_profile_id', owner.academyId);
+  const trainerIds = (trainerRows || []).map((t) => t.trainer_profile_id);
+  return trainerIds.length > 0
+    ? `academy_profile_id.eq.${owner.academyId},trainer_id.in.(${trainerIds.join(',')})`
+    : `academy_profile_id.eq.${owner.academyId}`;
+}
+
+/**
+ * Load an owner's public, bookable availability as day-grouped {@link PublicSlot}s. Anon-safe:
+ * reads only public slots via the *_safe / *_public views, enforces tier-visibility with
+ * filterVisibleSlotIds, and drops full slots. The pure shaping lives in mapAndGroupPublicSlots.
+ * (Behavior lifted verbatim from AcademyPublicOpenSlots; now reusable across surfaces.)
+ */
+export function usePublicAvailability(owner: AvailabilityOwner): {
+  dayGroups: PublicDayGroup[];
+  loading: boolean;
+} {
+  const [dayGroups, setDayGroups] = useState<PublicDayGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const ownerKey = owner.type === 'academy' ? `a:${owner.academyId}` : `t:${owner.trainerId}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const orFilter = await resolveOwnerFilter(owner);
+        const { data: slotsRaw } = await supabase
+          .from('availability_slots')
+          .select(SLOT_SELECT)
+          .or(orFilter)
+          .eq('is_public', true)
+          .gte('start_time', new Date().toISOString())
+          .order('start_time', { ascending: true })
+          .limit(50);
+        const slots = (slotsRaw ?? []) as unknown as RawSlotSelect[];
+        if (slots.length === 0) {
+          if (!cancelled) setDayGroups([]);
+          return;
+        }
+
+        // Trainer slug + user_id (trainer_profiles_safe is a view, not in generated types).
+        const slotTrainerIds = [...new Set(slots.map((s) => s.trainer_id).filter(Boolean))] as string[];
+        const trainerMap: Record<string, { slug: string | null; user_id: string | null }> = {};
+        if (slotTrainerIds.length > 0) {
+          const { data } = await supabase
+            .from('trainer_profiles_safe' as never)
+            .select('id, slug, user_id')
+            .in('id', slotTrainerIds);
+          const rows = (data ?? []) as { id: string; slug: string | null; user_id: string | null }[];
+          rows.forEach((tp) => {
+            trainerMap[tp.id] = { slug: tp.slug, user_id: tp.user_id };
+          });
+        }
+
+        // Trainer names (profiles_public is a view too).
+        const userIds = [...new Set(Object.values(trainerMap).map((t) => t.user_id).filter(Boolean))] as string[];
+        const nameMap: Record<string, string> = {};
+        if (userIds.length > 0) {
+          const { data } = await supabase
+            .from('profiles_public' as never)
+            .select('user_id, full_name')
+            .in('user_id', userIds);
+          const rows = (data ?? []) as { user_id: string; full_name: string | null }[];
+          rows.forEach((p) => {
+            if (p.full_name) nameMap[p.user_id] = p.full_name;
+          });
+        }
+
+        // Capacity: count occupying bookings per slot.
+        const slotIds = slots.map((s) => s.id);
+        const { data: bookingsData } = await supabase
+          .from('bookings')
+          .select('slot_id')
+          .in('slot_id', slotIds)
+          .in('status', ['pending', 'confirmed']);
+        const bookingCounts: Record<string, number> = {};
+        (bookingsData || []).forEach((b) => {
+          bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+        });
+
+        // Tier-aware visibility (priority/member windows, public_release_status) — anon-safe.
+        const visibleIds = await filterVisibleSlotIds(
+          slots.map((s) => ({
+            id: s.id,
+            priority_window_ends_at: s.priority_window_ends_at,
+            member_window_ends_at: s.member_window_ends_at,
+            public_release_status: s.public_release_status,
+            source_cycle_id: s.source_cycle_id,
+          })),
+        );
+
+        const groups = mapAndGroupPublicSlots(slots as unknown as RawPublicSlotRow[], {
+          bookingCounts,
+          visibleIds,
+          trainerMap,
+          nameMap,
+        });
+        if (!cancelled) setDayGroups(groups);
+      } catch (error) {
+        logger.error(
+          'Error fetching public availability',
+          error instanceof Error ? error : new Error(String(error)),
+          { component: 'usePublicAvailability', owner: ownerKey },
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run only when the owner changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerKey]);
+
+  return { dayGroups, loading };
+}
