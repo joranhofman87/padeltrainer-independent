@@ -140,7 +140,7 @@ export function AvailabilityCalendar({
           </div>
 
           {/* Day detail (right on desktop, below on mobile) */}
-          <div className="md:w-72 md:shrink-0 md:border-l md:pl-4">
+          <div className="md:w-80 md:shrink-0 md:border-l md:pl-4">
             <p className="mb-2 text-sm font-semibold capitalize">{dayTitle || t('booking.pickDay', 'Kies een dag')}</p>
             {daySlots.length > 0 ? (
               <div className="space-y-2" role="list">

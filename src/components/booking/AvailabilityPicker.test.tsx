@@ -48,17 +48,17 @@ describe('AvailabilityPicker', () => {
     setup([slot('a', '2026-06-01T09:00:00Z')]); // 11:00 Amsterdam (summer +2)
     render(<AvailabilityPicker owner={{ type: 'academy', academyId: 'a1' }} onSelect={vi.fn()} timezone={AMS} />);
     expect(screen.getByText('Boek een training')).toBeInTheDocument();
-    expect(screen.getByText('11:00')).toBeInTheDocument(); // NOT 09:00 (browser/UTC)
+    expect(screen.getByText(/11:00/)).toBeInTheDocument(); // NOT 09:00 (browser/UTC) — combined "11:00–12:00" label
     expect(screen.getByText('Coach Jansen')).toBeInTheDocument();
   });
 
   it('selecting another day shows that day’s slots', () => {
     setup([slot('a', '2026-06-01T09:00:00Z'), slot('b', '2026-06-02T14:00:00Z')]);
     render(<AvailabilityPicker owner={{ type: 'trainer', trainerId: 't1' }} onSelect={vi.fn()} timezone={AMS} />);
-    expect(screen.getByText('11:00')).toBeInTheDocument(); // day 1 default
-    expect(screen.queryByText('16:00')).not.toBeInTheDocument();
+    expect(screen.getByText(/11:00/)).toBeInTheDocument(); // day 1 default
+    expect(screen.queryByText(/16:00/)).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('tab')[1]); // day 2
-    expect(screen.getByText('16:00')).toBeInTheDocument(); // 14:00 UTC → 16:00 Ams
+    expect(screen.getByText(/16:00/)).toBeInTheDocument(); // 14:00 UTC → 16:00 Ams
   });
 
   it('clicking a slot calls onSelect with it', () => {
