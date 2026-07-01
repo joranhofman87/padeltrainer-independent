@@ -70,23 +70,35 @@ export async function tierFlat(supabase: SupabaseClient, tier: string): Promise<
 // -> that academy's Mollie, else the trainer's OWN Mollie. Keyed off the slot's
 // trainer_id (never client input). Using the identical predicate to the webhook is
 // load-bearing: the org that CHARGES here must equal the org that later CONFIRMS the
-// paid hold. (Do NOT route by slot.academy_profile_id — the webhook's booking branch
-// never reads it.)
+// paid hold.
+//
+// A trainer can belong to MORE than one academy. When the slot carries an
+// academy_profile_id, pass it as slotAcademyProfileId to disambiguate WHICH academy
+// membership charges — else a 2+-academy trainer collapses the .maybeSingle() (multiple
+// active rows) and the payment mis-routes to the trainer's OWN Mollie instead of the
+// slot's academy (Codex F3). The webhook applies the IDENTICAL filter off the same
+// slot.academy_profile_id, so charge + confirm still resolve to the same org. When it's
+// null (or the trainer belongs to a single academy) the filter is a no-op — behaviour
+// is byte-for-byte unchanged.
 export async function resolveSlotRecipient(
   supabase: SupabaseClient,
   trainerProfileId: string,
+  slotAcademyProfileId?: string | null,
 ): Promise<MollieRecipient> {
   let accessToken: string | null = null;
   let recipientType: "academy" | "trainer" | null = null;
   let mollieOrgId: string | null = null;
   let platformFee = 1.0;
 
-  const { data: academyTrainer } = await supabase
+  let academyTrainerQuery = supabase
     .from("academy_trainers")
     .select("academy_profile_id, academy:academy_profiles(id, platform_fee_override)")
     .eq("trainer_profile_id", trainerProfileId)
-    .eq("status", "active")
-    .maybeSingle();
+    .eq("status", "active");
+  if (slotAcademyProfileId) {
+    academyTrainerQuery = academyTrainerQuery.eq("academy_profile_id", slotAcademyProfileId);
+  }
+  const { data: academyTrainer } = await academyTrainerQuery.maybeSingle();
 
   if (academyTrainer?.academy_profile_id) {
     const { data: academyMollie } = await supabase
