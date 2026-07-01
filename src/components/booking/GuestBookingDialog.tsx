@@ -192,6 +192,14 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
           </div>
         </div>
 
+        {/* Returning users self-identify — no email lookup, so no account-enumeration surface. */}
+        <p className="text-xs text-muted-foreground text-center">
+          {t('booking.guest.haveAccount', 'Al een account?')}{' '}
+          <a href="/app/auth" className="underline hover:text-foreground">
+            {t('booking.guest.login', 'Log in')}
+          </a>
+        </p>
+
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             {t('cancel', 'Annuleren')}

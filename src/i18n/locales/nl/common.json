@@ -394,6 +394,8 @@
       "optional": "optioneel",
       "pay": "Afrekenen",
       "payAmount": "Afrekenen · {{amount}}",
+      "haveAccount": "Al een account?",
+      "login": "Log in",
       "slotFull": "Deze plek is net volgeboekt. Kies een ander moment.",
       "alreadyBooked": "Je hebt deze training al geboekt.",
       "paymentUnavailable": "Online betalen is niet beschikbaar voor deze training.",
