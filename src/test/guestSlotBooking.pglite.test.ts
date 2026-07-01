@@ -27,7 +27,7 @@ const count = async (sql: string): Promise<number> =>
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
-    CREATE TABLE availability_slots (id uuid PRIMARY KEY, max_participants integer);
+    CREATE TABLE availability_slots (id uuid PRIMARY KEY, max_participants integer, allow_single_booking boolean, is_public boolean);
     CREATE TABLE bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       slot_id uuid, player_id uuid, guest_player_id uuid,
@@ -42,7 +42,7 @@ beforeAll(async () => {
       _hold_minutes integer DEFAULT 20, _notes text DEFAULT NULL
     ) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
     DECLARE
-      v_max integer; v_taken integer;
+      v_max integer; v_taken integer; v_is_public boolean;
       v_hold_min integer := GREATEST(5, LEAST(60, COALESCE(_hold_minutes, 20)));
       v_existing uuid; v_id uuid;
     BEGIN
@@ -51,7 +51,10 @@ beforeAll(async () => {
        WHERE slot_id = _slot_id AND guest_player_id = _guest_player_id
          AND status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now() LIMIT 1;
       IF v_existing IS NOT NULL THEN RETURN v_existing; END IF;
-      SELECT max_participants INTO v_max FROM public.availability_slots WHERE id = _slot_id;
+      SELECT CASE WHEN COALESCE(allow_single_booking, false) THEN COALESCE(max_participants, 1) ELSE 1 END,
+             COALESCE(is_public, false)
+        INTO v_max, v_is_public FROM public.availability_slots WHERE id = _slot_id;
+      IF NOT v_is_public THEN RAISE EXCEPTION 'slot_not_public' USING ERRCODE = 'check_violation'; END IF;
       SELECT count(*) INTO v_taken FROM public.bookings
        WHERE slot_id = _slot_id AND (
          COALESCE(status, 'confirmed') IN ('confirmed', 'pending', 'pending_approval')
@@ -76,8 +79,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.exec(
+    // allow_single_booking=true so effective capacity = max_participants (2) for the capacity tests.
     `DELETE FROM bookings; DELETE FROM availability_slots;
-     INSERT INTO availability_slots (id, max_participants) VALUES ('${SLOT}', 2);`,
+     INSERT INTO availability_slots (id, max_participants, allow_single_booking, is_public) VALUES ('${SLOT}', 2, true, true);`,
   );
 });
 
@@ -107,6 +111,22 @@ describe('book_guest_slot_for_payment', () => {
     await book(G2); // 2/2
     await expect(
       db.query(`SELECT public.book_guest_slot_for_payment('${SLOT}'::uuid, '${G3}'::uuid, 20, 20, NULL)`),
+    ).rejects.toThrow(/slot_full/);
+  });
+
+  it('refuses a NON-PUBLIC slot (is_public=false) even with capacity — slot_not_public', async () => {
+    await db.exec(`UPDATE availability_slots SET is_public = false WHERE id = '${SLOT}'`);
+    await expect(
+      db.query(`SELECT public.book_guest_slot_for_payment('${SLOT}'::uuid, '${G1}'::uuid, 20, 20, NULL)`),
+    ).rejects.toThrow(/slot_not_public/);
+    expect(await count(`bookings WHERE slot_id = '${SLOT}'`)).toBe(0);
+  });
+
+  it('whole-slot (allow_single_booking=false) is capacity 1 — a second guest is refused', async () => {
+    await db.exec(`UPDATE availability_slots SET allow_single_booking = false WHERE id = '${SLOT}'`);
+    await book(G1); // 1/1
+    await expect(
+      db.query(`SELECT public.book_guest_slot_for_payment('${SLOT}'::uuid, '${G2}'::uuid, 20, 20, NULL)`),
     ).rejects.toThrow(/slot_full/);
   });
 

@@ -94,15 +94,21 @@ Deno.serve(async (req) => {
     const { data: slots } = await supabase
       .from("availability_slots")
       .select(
-        "id, trainer_id, academy_profile_id, cyclus_name, price_per_session, start_time, end_time, max_participants, allow_single_booking, priority_window_ends_at, member_window_ends_at, public_release_status",
+        "id, trainer_id, academy_profile_id, cyclus_name, price_per_session, start_time, end_time, max_participants, allow_single_booking, is_public, priority_window_ends_at, member_window_ends_at, public_release_status",
       )
       .eq("cyclus_id", cyclusId)
       .gt("start_time", nowIso)
       .order("start_time", { ascending: true });
     if (!slots || slots.length === 0) return json({ error: "cyclus_not_bookable" }, 404);
 
-    // 2. Visibility: every session must be public-tier.
+    // 2. Visibility: every session must be PUBLISHED (is_public) AND public-tier. is_public is the
+    // primary published flag the public read filters on and the tier windows do NOT consider it, so a
+    // private session with no active window would otherwise resolve to 'public' and be bookable.
     for (const s of slots) {
+      if (s.is_public !== true) {
+        logStep("Refused — a session is not public (is_public)", { cyclusId, slotId: s.id });
+        return json({ error: "slot_not_bookable" }, 403);
+      }
       const tier = resolveSlotTier({
         priorityWindowEndsAt: s.priority_window_ends_at,
         hasPendingClaim: true,
