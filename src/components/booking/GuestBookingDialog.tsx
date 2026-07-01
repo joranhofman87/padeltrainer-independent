@@ -163,8 +163,10 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
         return;
       } else if (code === 'already_booked') {
         toast.error(t('booking.guest.alreadyBooked', 'Je hebt deze training al geboekt.'));
-      } else if (code === 'no_mollie_account' || code === 'missing_mollie_profile') {
+      } else if (code === 'no_mollie_account' || code === 'missing_mollie_profile' || code === 'mollie_not_ready') {
         toast.error(t('booking.guest.paymentUnavailable', 'Online betalen is niet beschikbaar voor deze training.'));
+      } else if (code === 'mollie_error') {
+        toast.error(t('booking.guest.paymentTemporarilyUnavailable', 'Online betalen is tijdelijk niet beschikbaar. Probeer het later opnieuw.'));
       } else if (code === 'slot_not_bookable' || code === 'slot_in_past' || code === 'cyclus_not_bookable') {
         toast.error(t('booking.guest.notBookable', 'Deze training kan niet meer geboekt worden.'));
       } else {

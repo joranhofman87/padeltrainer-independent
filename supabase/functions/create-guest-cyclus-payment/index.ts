@@ -23,7 +23,7 @@ import { applySplitPayment, computeCyclusTotalFromSlots, type SlotPricingInput }
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
-import { distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
+import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
 
 type Supa = SupabaseClient;
 const ENDPOINT = "create-guest-cyclus-payment";
@@ -315,7 +315,10 @@ serve(async (req) => {
         function_name: ENDPOINT, recipient_type: recipientType, mollie_org_id: mollieOrgId,
         amount: expectedAmount, status: "error", error_message: errText.slice(0, 500),
       });
-      throw new Error(`Mollie error: ${errText}`);
+      // Surface a clear, safe reason (e.g. the academy hasn't activated a payment method)
+      // instead of throwing into the opaque server_error 500. Holds already released above.
+      logStep("Mollie create failed", { status: mollieRes.status, body: errText.slice(0, 300) });
+      return json({ error: classifyMollieCreateError(errText) }, 400);
     }
 
     const payment = await mollieRes.json();

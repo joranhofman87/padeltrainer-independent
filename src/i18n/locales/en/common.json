@@ -416,6 +416,7 @@
       "slotFull": "This spot was just taken. Please choose another time.",
       "alreadyBooked": "You've already booked this training.",
       "paymentUnavailable": "Online payment isn't available for this training.",
+      "paymentTemporarilyUnavailable": "Online payment is temporarily unavailable. Please try again later.",
       "notBookable": "This training can no longer be booked.",
       "failed": "Something went wrong. Please try again."
     }
