@@ -77,6 +77,7 @@ serve(async (req) => {
 
     if (!cyclusId) return json({ error: "cyclus_required" }, 400);
     if (!EMAIL_RE.test(email)) return json({ error: "invalid_email" }, 400);
+    if (!phone) return json({ error: "phone_required" }, 400);
     if (!name.full_name) return json({ error: "name_required" }, 400);
 
     // Dual fail-open rate limit (trusted-last-hop IP + email).

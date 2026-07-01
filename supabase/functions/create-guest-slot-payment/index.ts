@@ -98,6 +98,7 @@ serve(async (req) => {
 
     if (!slotId) return json({ error: "slot_required" }, 400);
     if (!EMAIL_RE.test(email)) return json({ error: "invalid_email" }, 400);
+    if (!phone) return json({ error: "phone_required" }, 400);
     if (!name.full_name) return json({ error: "name_required" }, 400);
 
     // Rate-limit on IP (trusted last hop) AND email, both fail-open. The email key
