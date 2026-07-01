@@ -136,7 +136,7 @@ export function AvailabilityCalendar({
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <AgendaMonth slots={agendaSlots} currentDate={currentDate} timezone={timezone} onDayClick={handleDayClick} selectedKey={selectedKey} hideCapacity />
+            <AgendaMonth slots={agendaSlots} currentDate={currentDate} timezone={timezone} onDayClick={handleDayClick} selectedKey={selectedKey} availabilityOnly />
           </div>
 
           {/* Day detail (right on desktop, below on mobile) */}

@@ -144,6 +144,8 @@
     "trainersNoSlots": "Geen tijdsloten:",
     "unitSession": "sessie",
     "unitSessions": "sessies",
+    "available": "beschikbaar",
+    "noAvailability": "geen beschikbaarheid",
     "viewDay": "Dag",
     "viewMonth": "Maand",
     "viewSession": "Bekijk sessie om {{time}}",

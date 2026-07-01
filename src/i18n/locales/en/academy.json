@@ -824,6 +824,8 @@
     "trainersNoSlots": "No slots:",
     "unitSession": "session",
     "unitSessions": "sessions",
+    "available": "available",
+    "noAvailability": "no availability",
     "viewDay": "Day",
     "viewMonth": "Month",
     "viewSession": "View session at {{time}}",
