@@ -6,6 +6,7 @@ import { LocalizedLink } from '@/components/LocalizedLink';
 import { useLocationReviewStats } from '@/hooks/useCourtReviews';
 import { MapPin, ExternalLink, Star, Users, Building2, CheckCircle, LayoutGrid, Calendar, Settings, Share2, Copy, Check, MessageCircle, GraduationCap, Home, Sun } from 'lucide-react';
 import { LocationOpenCycles } from '@/components/club/LocationOpenCycles';
+import { PublicAvailabilitySection } from '@/components/booking/PublicAvailabilitySection';
 import { WaitingListCard } from '@/components/waitingList';
 import { UpcomingTournaments } from '@/components/club/UpcomingTournaments';
 import { useLocalizedPathFn, useCurrentLanguage } from '@/hooks/useLocalizedPath';
@@ -579,6 +580,10 @@ export default function LocationDetail() {
               locationName={location.name}
               clubSlug={clubProfile?.id}
             />
+
+            {/* Bookable availability at this venue — same green calendar + guest pay-first as the
+                academy/trainer pages. An academy-trainer's charge routes to the academy's Mollie. */}
+            <PublicAvailabilitySection owner={{ type: 'location', locationId: location.id }} />
 
             {/* Waiting List Card */}
             <WaitingListCard
