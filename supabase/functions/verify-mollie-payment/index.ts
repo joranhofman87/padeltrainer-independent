@@ -113,14 +113,22 @@ async function refreshTokenIfNeeded(
 
 async function resolveAccessToken(
   supabase: any,
-  trainerId: string
+  trainerId: string,
+  slotAcademyProfileId?: string | null,
 ): Promise<string | null> {
-  const { data: academyTrainer } = await supabase
+  // When the slot names an academy, filter by it so a trainer in 2+ academies resolves to the
+  // RIGHT one (else .maybeSingle() collapses on the multiple active rows). This is a CONFIRM path
+  // too — it must resolve the same org the charge side used, off the same slot.academy_profile_id
+  // (Codex F3). Null (or single-academy trainer) → no-op, unchanged.
+  let academyTrainerQuery = supabase
     .from("academy_trainers")
     .select("academy_profile_id, status")
     .eq("trainer_profile_id", trainerId)
-    .eq("status", "active")
-    .maybeSingle();
+    .eq("status", "active");
+  if (slotAcademyProfileId) {
+    academyTrainerQuery = academyTrainerQuery.eq("academy_profile_id", slotAcademyProfileId);
+  }
+  const { data: academyTrainer } = await academyTrainerQuery.maybeSingle();
 
   if (academyTrainer?.academy_profile_id) {
     const { data: academyMollie } = await supabase
@@ -189,7 +197,7 @@ serve(async (req) => {
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, mollie_payment_id, payment_status, payment_amount, player_id, slot_id, availability_slots!inner(trainer_id)")
+      .select("id, mollie_payment_id, payment_status, payment_amount, player_id, slot_id, availability_slots!inner(trainer_id, academy_profile_id)")
       .eq("id", bookingId)
       .single();
 
@@ -224,7 +232,8 @@ serve(async (req) => {
       });
     }
 
-    const slotsData = booking.availability_slots as unknown as { trainer_id: string } | null;
+    const slotsData = booking.availability_slots as unknown as
+      { trainer_id: string; academy_profile_id: string | null } | null;
     const trainerId = slotsData?.trainer_id ?? null;
     if (!trainerId) {
       return new Response(JSON.stringify({ error: "Trainer not found for booking", paid: false }), {
@@ -233,7 +242,9 @@ serve(async (req) => {
       });
     }
 
-    const recipientAccessToken = await resolveAccessToken(supabase, trainerId);
+    // Same slot.academy_profile_id disambiguation as the charge side, so a multi-academy trainer's
+    // sync verify hits the SAME connected org the payment was created on (Codex F3).
+    const recipientAccessToken = await resolveAccessToken(supabase, trainerId, slotsData?.academy_profile_id ?? null);
     if (!recipientAccessToken) {
       logStep("No connected account token for verification", { trainerId, molliePaymentId });
       return new Response(JSON.stringify({ error: "Payment account unavailable", paid: false }), {

@@ -128,8 +128,14 @@ Deno.serve(async (req) => {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
     }
 
-    // 4. Recipient — same predicate as mollie-webhook will use to CONFIRM.
-    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(supabase, trainerId);
+    // 4. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
+    //    share one academy, so slots[0].academy_profile_id disambiguates a multi-academy trainer
+    //    (Codex F3); the webhook resolves the same academy off any of these slots.
+    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
+      supabase,
+      trainerId,
+      slots[0].academy_profile_id as string | null,
+    );
     if (!accessToken || !recipientType) {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
     }

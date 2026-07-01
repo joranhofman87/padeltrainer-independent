@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
     const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
       supabase,
       slot.trainer_id as string,
+      slot.academy_profile_id as string | null,
     );
     if (!accessToken || !recipientType) {
       logStep("Refused — no connected Mollie account", { slotId });

@@ -142,15 +142,24 @@ async function refreshTokenIfNeeded(
 
 async function resolveAccessToken(
   supabase: any,
-  trainerId: string
+  trainerId: string,
+  slotAcademyProfileId?: string | null,
 ): Promise<string | null> {
-  // First check if trainer is part of an active academy
-  const { data: academyTrainer } = await supabase
+  // First check if trainer is part of an active academy. When the slot names an academy,
+  // filter by it so a trainer who belongs to 2+ academies routes to the RIGHT one (else the
+  // .maybeSingle() collapses on the multiple active rows and mis-resolves). The charge side
+  // (resolveSlotRecipient / create-mollie-payment) applies the IDENTICAL filter off the same
+  // slot.academy_profile_id, so the org that CONFIRMS equals the org that CHARGED (Codex F3).
+  // Null (or a single-academy trainer) → no-op, byte-for-byte unchanged.
+  let academyTrainerQuery = supabase
     .from("academy_trainers")
     .select("academy_profile_id, status")
     .eq("trainer_profile_id", trainerId)
-    .eq("status", "active")
-    .maybeSingle();
+    .eq("status", "active");
+  if (slotAcademyProfileId) {
+    academyTrainerQuery = academyTrainerQuery.eq("academy_profile_id", slotAcademyProfileId);
+  }
+  const { data: academyTrainer } = await academyTrainerQuery.maybeSingle();
 
   if (academyTrainer?.academy_profile_id) {
     const { data: academyMollie } = await supabase
@@ -220,10 +229,10 @@ serve(async (req) => {
 
     logStep("Webhook received", { paymentId });
 
-    // Look up booking to find trainer for token resolution
+    // Look up booking to find trainer + academy for token resolution
     const { data: bookingForToken, error: bookingForTokenError } = await supabase
       .from("bookings")
-      .select("slot_id, availability_slots!inner(trainer_id)")
+      .select("slot_id, availability_slots!inner(trainer_id, academy_profile_id)")
       .eq("mollie_payment_id", paymentId)
       .limit(1)
       .maybeSingle();
@@ -234,12 +243,15 @@ serve(async (req) => {
       throw new Error(`Booking lookup failed: ${bookingForTokenError.message}`);
     }
 
-    const slotsData = bookingForToken?.availability_slots as unknown as { trainer_id: string } | null;
+    const slotsData = bookingForToken?.availability_slots as unknown as
+      { trainer_id: string; academy_profile_id: string | null } | null;
     const trainerId = slotsData?.trainer_id;
     let recipientAccessToken: string | null = null;
 
     if (trainerId) {
-      recipientAccessToken = await resolveAccessToken(supabase, trainerId);
+      // Pass the slot's academy so a multi-academy trainer resolves to the SAME org the
+      // charge side used (Codex F3). All slots in a cyclus payment share this academy.
+      recipientAccessToken = await resolveAccessToken(supabase, trainerId, slotsData?.academy_profile_id ?? null);
     }
 
     // If no token from booking, try resolving via invoice

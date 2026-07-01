@@ -197,6 +197,9 @@ serve(async (req) => {
 
     let expectedAmount: number;
     let preExistingBookingIds: string[] = [];
+    // The slot's academy (when set) disambiguates a multi-academy trainer so the charge routes to
+    // the SAME org the webhook will confirm against (Codex F3). Null → unchanged behaviour.
+    let recipientAcademyProfileId: string | null = null;
 
     if (requestedBookingIds.length > 0) {
       const { data: existingBookings, error: bookingsError } = await supabase
@@ -204,7 +207,7 @@ serve(async (req) => {
         .select(`
           id, player_id, payment_status, status, slot_id,
           availability_slots!inner(
-            id, trainer_id, cyclus_id, price_per_session, start_time, end_time,
+            id, trainer_id, academy_profile_id, cyclus_id, price_per_session, start_time, end_time,
             max_participants, allow_single_booking
           )
         `)
@@ -265,7 +268,9 @@ serve(async (req) => {
         );
       }
 
-      const slots = existingBookings.map((b) => b.availability_slots as SlotPricingInput & { cyclus_id: string | null });
+      const slots = existingBookings.map((b) => b.availability_slots as SlotPricingInput & { cyclus_id: string | null; academy_profile_id: string | null });
+      // All slots in a cyclus share one academy; use it to disambiguate a multi-academy trainer.
+      recipientAcademyProfileId = slots[0]?.academy_profile_id ?? null;
       const cyclusIds = [...new Set(slots.map((s) => s.cyclus_id).filter(Boolean))];
       let splitPayment = false;
 
@@ -307,7 +312,7 @@ serve(async (req) => {
     } else {
       const { data: slot, error: slotError } = await supabase
         .from("availability_slots")
-        .select("id, trainer_id, price_per_session, start_time, end_time, max_participants, allow_single_booking")
+        .select("id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking")
         .eq("id", slotId)
         .single();
 
@@ -325,6 +330,7 @@ serve(async (req) => {
         );
       }
 
+      recipientAcademyProfileId = (slot as { academy_profile_id: string | null }).academy_profile_id ?? null;
       expectedAmount = computeSingleSlotPaymentAmount(slot, hourlyRate, 1);
       logStep("Server-computed single-slot amount", { expectedAmount });
     }
@@ -347,8 +353,11 @@ serve(async (req) => {
     let platformFee = 1.00; // Default to starter fee (€1.00)
 
     if (trainerProfileId) {
-      // First check if trainer is part of an active academy
-      const { data: academyTrainer } = await supabase
+      // First check if trainer is part of an active academy. When the slot names an academy,
+      // filter by it so a multi-academy trainer routes to the RIGHT one; the webhook applies the
+      // identical filter off the same slot.academy_profile_id, so charge org == confirm org
+      // (Codex F3). Null → no-op, unchanged.
+      let academyTrainerQuery = supabase
         .from("academy_trainers")
         .select(`
           academy_profile_id,
@@ -356,8 +365,11 @@ serve(async (req) => {
           academy:academy_profiles(id, platform_fee_override)
         `)
         .eq("trainer_profile_id", trainerProfileId)
-        .eq("status", "active")
-        .maybeSingle();
+        .eq("status", "active");
+      if (recipientAcademyProfileId) {
+        academyTrainerQuery = academyTrainerQuery.eq("academy_profile_id", recipientAcademyProfileId);
+      }
+      const { data: academyTrainer } = await academyTrainerQuery.maybeSingle();
 
       if (academyTrainer?.academy_profile_id) {
         logStep("Trainer is part of academy", { academyId: academyTrainer.academy_profile_id });
