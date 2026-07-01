@@ -402,6 +402,8 @@
       "price": "Price",
       "name": "Name",
       "namePlaceholder": "First and last name",
+      "firstName": "First name",
+      "lastName": "Last name",
       "email": "Email address",
       "phone": "Phone",
       "notes": "Note",
