@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, MapPin, Users } from 'lucide-react';
+import { ChevronRight, MapPin } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatPrice } from '@/lib/pricing';
 import { formatZonedTime } from '@/lib/zonedFormat';
@@ -65,10 +65,6 @@ export function PublicSlotRow({
               <span className="truncate">{slot.location_name}</span>
             </span>
           )}
-          <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
-            <Users className="h-3 w-3 shrink-0" />
-            {slot.spots_left}&nbsp;{slot.spots_left === 1 ? t('spotLeft', 'spot left') : t('spotsLeft', 'spots left')}
-          </span>
         </div>
 
         {/* Line 3 (cyclus only): whole-cyclus total + optional split note */}

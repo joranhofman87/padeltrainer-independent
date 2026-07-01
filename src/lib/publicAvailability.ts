@@ -68,6 +68,16 @@ export interface ShapeContext {
 
 const DEFAULT_MAX_PARTICIPANTS = 4;
 
+/**
+ * Effective BOOKING capacity of a slot. `allow_single_booking` false = the session is booked as a
+ * WHOLE (one booking takes it, full price) → capacity 1; true = per-spot → capacity max_participants.
+ * Mirrors the server RPCs (20260704190000) so the read-side "is it full?" matches what the booking
+ * RPC will actually allow. max_participants is kept separately as the attendee count.
+ */
+export function bookingCapacity(maxParticipants: number, allowSingleBooking: boolean | null | undefined): number {
+  return allowSingleBooking ? maxParticipants : 1;
+}
+
 function parseExtraCosts(value: unknown): { description: string; price: number }[] {
   return Array.isArray(value)
     ? (value as { description: string; price: number }[]).filter((e) => e && typeof e.price === 'number')
@@ -86,7 +96,7 @@ export function mapAndGroupPublicSlots(rawSlots: RawPublicSlotRow[], ctx: ShapeC
       seen.add(s.id);
       if (!ctx.visibleIds.has(s.id)) return false;
       const maxP = s.max_participants || DEFAULT_MAX_PARTICIPANTS;
-      return (ctx.bookingCounts[s.id] || 0) < maxP;
+      return (ctx.bookingCounts[s.id] || 0) < bookingCapacity(maxP, s.allow_single_booking);
     })
     .map((s) => {
       const maxP = s.max_participants || DEFAULT_MAX_PARTICIPANTS;
@@ -109,7 +119,7 @@ export function mapAndGroupPublicSlots(rawSlots: RawPublicSlotRow[], ctx: ShapeC
         extra_costs: parseExtraCosts(s.extra_costs),
         max_participants: maxP,
         allow_single_booking: s.allow_single_booking || false,
-        spots_left: maxP - booked,
+        spots_left: bookingCapacity(maxP, s.allow_single_booking) - booked,
         split_payment: s.split_payment || false,
       };
     });

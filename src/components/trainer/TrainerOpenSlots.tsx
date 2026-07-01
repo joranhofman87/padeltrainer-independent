@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isSameDay } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Calendar, Clock, MapPin, Users, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, MapPin, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabaseClient';
+import { bookingCapacity } from '@/lib/publicAvailability';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
@@ -27,6 +28,21 @@ interface SlotData {
   allow_single_booking: boolean;
   spots_left: number;
   split_payment: boolean;
+}
+
+/** The availability_slots columns this component reads (the generated row type omits some). */
+interface RawSlotRow {
+  id: string;
+  start_time: string;
+  end_time: string;
+  cyclus_id: string | null;
+  cyclus_name: string | null;
+  court_type: string | null;
+  max_participants: number | null;
+  price_per_session: number | null;
+  allow_single_booking: boolean | null;
+  split_payment: boolean | null;
+  locations: { name: string | null } | null;
 }
 
 interface CycleGroup {
@@ -129,29 +145,28 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
       })));
 
       // Filter to slots with availability and map
-      const availableSlots: SlotData[] = slotsData
-        .filter(s => {
-          if (!visibleIds.has(s.id)) return false;
-          const maxParticipants = (s as any).max_participants || 4;
-          const booked = bookingCounts[s.id] || 0;
-          return booked < maxParticipants;
+      const availableSlots: SlotData[] = (slotsData as unknown as RawSlotRow[])
+        .filter(r => {
+          if (!visibleIds.has(r.id)) return false;
+          const booked = bookingCounts[r.id] || 0;
+          return booked < bookingCapacity(r.max_participants || 4, r.allow_single_booking);
         })
-        .map(s => {
-          const maxParticipants = (s as any).max_participants || 4;
-          const booked = bookingCounts[s.id] || 0;
+        .map(r => {
+          const maxParticipants = r.max_participants || 4;
+          const booked = bookingCounts[r.id] || 0;
           return {
-            id: s.id,
-            start_time: s.start_time,
-            end_time: s.end_time,
-            cyclus_id: s.cyclus_id,
-            cyclus_name: s.cyclus_name,
-            court_type: s.court_type,
-            location_name: (s.locations as any)?.name || null,
-            price_per_session: (s as any).price_per_session || null,
+            id: r.id,
+            start_time: r.start_time,
+            end_time: r.end_time,
+            cyclus_id: r.cyclus_id,
+            cyclus_name: r.cyclus_name,
+            court_type: r.court_type,
+            location_name: r.locations?.name || null,
+            price_per_session: r.price_per_session || null,
             max_participants: maxParticipants,
-            allow_single_booking: (s as any).allow_single_booking || false,
-            spots_left: maxParticipants - booked,
-            split_payment: (s as any).split_payment || false,
+            allow_single_booking: r.allow_single_booking || false,
+            spots_left: bookingCapacity(maxParticipants, r.allow_single_booking) - booked,
+            split_payment: r.split_payment || false,
           };
         });
 
@@ -273,11 +288,7 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                 </span>
               )}
             </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Users className="h-3 w-3" />
-                {cg.minSpotsLeft} {cg.minSpotsLeft === 1 ? t('common:spotLeft', 'spot left') : t('common:spotsLeft', 'spots left')}
-              </span>
+            <div className="flex items-center justify-end">
               {cg.totalPrice != null && cg.totalPrice > 0 && (
                 <Badge variant="secondary" className="font-semibold">
                   {formatPrice(cg.totalPrice)}
@@ -320,10 +331,6 @@ export function TrainerOpenSlots({ trainerId, trainerSlug }: TrainerOpenSlotsPro
                             {slot.location_name}
                           </span>
                         )}
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          {slot.spots_left} {slot.spots_left === 1 ? t('common:spotLeft', 'spot left') : t('common:spotsLeft', 'spots left')}
-                        </span>
                       </div>
                     </div>
                   </div>
