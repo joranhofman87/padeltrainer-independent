@@ -367,6 +367,10 @@
     "pickTitle": "Book a training",
     "pickSubtitle": "Pick a day and time that suits you",
     "pickDay": "Choose a day",
+    "calendar": {
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month"
+    },
     "success": {
       "seoTitle": "Your booking",
       "seoDescription": "Check the status of your training booking.",

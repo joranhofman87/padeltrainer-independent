@@ -15,6 +15,7 @@ import {
 } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { zonedDateKey } from '@/lib/zonedFormat';
 import { fillStateClasses, getFillState } from './agendaTokens';
 import type { AgendaSlot } from './AgendaWeekByTrainer';
 
@@ -24,9 +25,16 @@ interface Props {
   slots: AgendaSlot[];
   currentDate: Date;
   onDayClick?: (day: Date) => void;
+  /**
+   * When set, slots are grouped onto day cells by their day in THIS IANA timezone
+   * (the owner's) rather than the browser's — so a near-midnight slot lands on the
+   * correct academy-local day on the public availability calendar. Omitted by the
+   * admin callers, which keep the original browser-local grouping.
+   */
+  timezone?: string;
 }
 
-export default function AgendaMonth({ slots, currentDate, onDayClick }: Props) {
+export default function AgendaMonth({ slots, currentDate, onDayClick, timezone }: Props) {
   const { i18n, t } = useTranslation('academy');
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
@@ -48,13 +56,13 @@ export default function AgendaMonth({ slots, currentDate, onDayClick }: Props) {
   const byDay = useMemo(() => {
     const map = new Map<string, AgendaSlot[]>();
     slots.forEach((s) => {
-      const key = format(parseISO(s.start_time), 'yyyy-MM-dd');
+      const key = timezone ? zonedDateKey(s.start_time, timezone) : format(parseISO(s.start_time), 'yyyy-MM-dd');
       const arr = map.get(key) || [];
       arr.push(s);
       map.set(key, arr);
     });
     return map;
-  }, [slots]);
+  }, [slots, timezone]);
 
   const weekDayLabels = useMemo(
     () => Array.from({ length: 7 }, (_, i) => format(addDays(gridStart, i), 'EEE', { locale: dateFnsLocale })),
