@@ -1054,8 +1054,10 @@
     "email": "Email",
     "phone": "Phone",
     "addToGroup": "Add to group",
-    "addFirstNameRequired": "Enter at least a first name.",
-    "addEmailInvalid": "Enter a valid email address."
+    "addFirstNameRequired": "Enter a first name.",
+    "addLastNameRequired": "Enter a last name.",
+    "addEmailInvalid": "Enter a valid email address.",
+    "addPhoneRequired": "Enter a phone number."
   },
   "rebookManage": {
     "title": "Manage rebooking",

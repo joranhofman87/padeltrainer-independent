@@ -7,9 +7,9 @@ import { Label } from '@/components/ui/label';
 
 export interface NewGroupMember {
   firstName: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
+  lastName: string;
+  email: string;
+  phone: string;
 }
 
 interface Props {
@@ -22,8 +22,9 @@ interface Props {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Minimal inline form to capture a NEW group member (first name required; last name,
- * email, phone optional). Emits the details upward — the actual guest_player row is
+ * Minimal inline form to capture a NEW group member. ALL fields are required
+ * (first name, last name, email, phone) — a new player joining the group must be
+ * fully reachable. Emits the details upward — the actual guest_player row is
  * created server-side (token-gated) by the caller, never written from here.
  */
 export function AddGroupMemberFields({ disabled, onAdd }: Props) {
@@ -38,10 +39,14 @@ export function AddGroupMemberFields({ disabled, onAdd }: Props) {
 
   const submit = () => {
     const fn = firstName.trim();
-    if (!fn) { setError(t('rebookGroup.addFirstNameRequired', 'Vul minstens een voornaam in.')); return; }
+    const ln = lastName.trim();
     const em = email.trim();
-    if (em && !EMAIL_RE.test(em)) { setError(t('rebookGroup.addEmailInvalid', 'Vul een geldig e-mailadres in.')); return; }
-    onAdd({ firstName: fn, lastName: lastName.trim() || undefined, email: em || undefined, phone: phone.trim() || undefined });
+    const ph = phone.trim();
+    if (!fn) { setError(t('rebookGroup.addFirstNameRequired', 'Vul een voornaam in.')); return; }
+    if (!ln) { setError(t('rebookGroup.addLastNameRequired', 'Vul een achternaam in.')); return; }
+    if (!em || !EMAIL_RE.test(em)) { setError(t('rebookGroup.addEmailInvalid', 'Vul een geldig e-mailadres in.')); return; }
+    if (!ph) { setError(t('rebookGroup.addPhoneRequired', 'Vul een telefoonnummer in.')); return; }
+    onAdd({ firstName: fn, lastName: ln, email: em, phone: ph });
     reset();
   };
 
@@ -49,19 +54,19 @@ export function AddGroupMemberFields({ disabled, onAdd }: Props) {
     <div className="rounded-md border p-3 space-y-2">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div className="space-y-1">
-          <Label htmlFor="ngm-first" className="text-xs">{t('rebookGroup.firstName', 'Voornaam')}</Label>
+          <Label htmlFor="ngm-first" className="text-xs">{t('rebookGroup.firstName', 'Voornaam')} <span className="text-rose-500">*</span></Label>
           <Input id="ngm-first" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={disabled} />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ngm-last" className="text-xs">{t('rebookGroup.lastName', 'Achternaam')}</Label>
+          <Label htmlFor="ngm-last" className="text-xs">{t('rebookGroup.lastName', 'Achternaam')} <span className="text-rose-500">*</span></Label>
           <Input id="ngm-last" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={disabled} />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ngm-email" className="text-xs">{t('rebookGroup.email', 'E-mail')}</Label>
+          <Label htmlFor="ngm-email" className="text-xs">{t('rebookGroup.email', 'E-mail')} <span className="text-rose-500">*</span></Label>
           <Input id="ngm-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={disabled} />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ngm-phone" className="text-xs">{t('rebookGroup.phone', 'Telefoon')}</Label>
+          <Label htmlFor="ngm-phone" className="text-xs">{t('rebookGroup.phone', 'Telefoon')} <span className="text-rose-500">*</span></Label>
           <Input id="ngm-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={disabled} />
         </div>
       </div>

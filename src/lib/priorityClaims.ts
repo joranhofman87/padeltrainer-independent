@@ -609,6 +609,20 @@ export async function declineClaimWithToken(token: string, reason?: string) {
 }
 
 /**
+ * Record WHICH button the player clicked on the invite (accept|decline) — best-effort, fires on
+ * landing from the email button and on the on-page Yes press. Stamps response_intent on a still-
+ * pending claim without touching status, so a "clicked Yes, abandoned checkout" is visible. Never
+ * throws (a failed intent log must never block the actual accept/decline flow).
+ */
+export async function recordPriorityClaimIntent(token: string, intent: 'accept' | 'decline'): Promise<void> {
+  try {
+    await supabase.rpc('record_priority_claim_intent' as never, { _token: token, _intent: intent } as never);
+  } catch {
+    // best-effort analytics — swallow.
+  }
+}
+
+/**
  * Accept a priority claim = commit to the next cycle (no upfront payment).
  * Creates a confirmed, unpaid commitment booking server-side and marks the
  * claim 'claimed'. Returns the RPC result, e.g. { ok, status, booking_id } or
@@ -670,14 +684,14 @@ export async function fetchRebookGroupByToken(token: string): Promise<RebookGrou
 /** Token-gated mint of a new guest player for the group (the anon captain can't write
  *  guest_players directly). Returns the guest_players.id to pass to applyRebookGroup. */
 export async function createRebookGroupGuest(token: string, input: {
-  firstName: string; lastName?: string; email?: string; phone?: string;
+  firstName: string; lastName: string; email: string; phone: string;
 }): Promise<string> {
   const { data, error } = await supabase.rpc('create_rebook_group_guest', {
     _token: token,
     _first_name: input.firstName,
-    _last_name: input.lastName ?? null,
-    _email: input.email ?? null,
-    _phone: input.phone ?? null,
+    _last_name: input.lastName,
+    _email: input.email,
+    _phone: input.phone,
   });
   if (error) throw error;
   return data as string;

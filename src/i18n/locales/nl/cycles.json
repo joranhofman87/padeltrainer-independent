@@ -1179,8 +1179,10 @@
     "email": "E-mail",
     "phone": "Telefoon",
     "addToGroup": "Toevoegen aan groep",
-    "addFirstNameRequired": "Vul minstens een voornaam in.",
-    "addEmailInvalid": "Vul een geldig e-mailadres in."
+    "addFirstNameRequired": "Vul een voornaam in.",
+    "addLastNameRequired": "Vul een achternaam in.",
+    "addEmailInvalid": "Vul een geldig e-mailadres in.",
+    "addPhoneRequired": "Vul een telefoonnummer in."
   },
   "rebookManage": {
     "title": "Herboeking beheren",

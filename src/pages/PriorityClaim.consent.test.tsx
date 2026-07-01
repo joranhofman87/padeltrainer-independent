@@ -14,6 +14,7 @@ vi.mock('@/lib/priorityClaims', () => ({
   getCycleRebookPaymentMode: vi.fn(),
   getCycleStartDate: vi.fn(),
   recordRebookRulesConsent: vi.fn(),
+  recordPriorityClaimIntent: vi.fn(),
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (_k: string, d?: string) => d ?? _k }) }));
 vi.mock('react-helmet-async', () => ({ Helmet: () => null }));
