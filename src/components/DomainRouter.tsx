@@ -198,6 +198,7 @@ const AcademyEditInvoice = lazy(() => import('@/pages/academy/AcademyEditInvoice
 
 // Public pages
 const PublicInvoicePay = lazy(() => import('@/pages/PublicInvoicePay'));
+const GuestBookingSuccess = lazy(() => import('@/pages/GuestBookingSuccess'));
 
 // Other
 const NotFound = lazy(() => import('@/pages/NotFound'));
@@ -213,6 +214,9 @@ export function DomainRouter() {
       <Routes>
         {/* Public invoice payment page */}
         <Route path="/pay/:token" element={<PublicInvoicePay />} />
+
+        {/* Login-free guest booking confirmation (post-payment redirect target) */}
+        <Route path="/booking/:token" element={<GuestBookingSuccess />} />
 
         {/* API callback routes (legacy + new path) */}
         <Route path="/api/mollie-callback" element={<MollieCallback />} />

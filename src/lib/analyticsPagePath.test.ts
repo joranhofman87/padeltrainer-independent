@@ -12,6 +12,10 @@ describe('sanitizeAnalyticsPagePath', () => {
     );
   });
 
+  it('redacts guest booking token paths', () => {
+    expect(sanitizeAnalyticsPagePath('/booking/secret-token-abc', '?status=success')).toBe('/booking/:token');
+  });
+
   it('keeps normal app paths with search', () => {
     expect(sanitizeAnalyticsPagePath('/app/signup/player', '?source=paid_invoice')).toBe(
       '/app/signup/player?source=paid_invoice',

@@ -193,6 +193,9 @@ verify_jwt = false
 [functions.create-guest-slot-payment]
 verify_jwt = false
 
+[functions.get-guest-booking]
+verify_jwt = false
+
 [functions.create-registration-invoice]
 verify_jwt = false
 
