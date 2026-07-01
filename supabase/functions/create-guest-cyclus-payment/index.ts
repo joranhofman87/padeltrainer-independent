@@ -16,7 +16,6 @@
 //   - IDENTITY is always a guest_players row; metadata.booking_ids (NO invoice_id);
 //     mollie_payment_id + a stable public_token persisted; TTL sweep + best-effort
 //     soft-cancel backstop on failure.
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { applySplitPayment, computeCyclusTotalFromSlots, type SlotPricingInput } from "../_shared/booking-pricing.ts";
@@ -55,7 +54,7 @@ async function writeAuditLog(
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = corsHeadersFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const json = (body: unknown, status = 200) =>
