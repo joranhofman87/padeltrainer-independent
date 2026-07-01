@@ -25,7 +25,6 @@
 // mollie_payment_id is persisted so the webhook can also route by it. On any
 // post-hold failure the hold is best-effort soft-cancelled; the TTL sweep
 // (release_expired_guest_slot_holds) is the backstop.
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, type SlotPricingInput } from "../_shared/booking-pricing.ts";
@@ -72,7 +71,7 @@ async function writeAuditLog(
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = corsHeadersFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
