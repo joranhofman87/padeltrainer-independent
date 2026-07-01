@@ -5,9 +5,19 @@ import type { PublicSlot } from '@/lib/publicAvailability';
 
 const invokeMock = vi.fn();
 const toastErrorMock = vi.fn();
+// Cyclus sessions the dialog fetches via supabase.from — set per test.
+const cyclusSessions: { current: unknown[] } = { current: [] };
 
 vi.mock('@/lib/supabaseClient', () => ({
-  supabase: { functions: { invoke: (...args: unknown[]) => invokeMock(...args) } },
+  supabase: {
+    functions: { invoke: (...args: unknown[]) => invokeMock(...args) },
+    from: () => {
+      const q: Record<string, unknown> = {};
+      for (const m of ['select', 'eq', 'gte', 'order']) q[m] = () => q;
+      q.then = (resolve: (v: { data: unknown }) => void) => resolve({ data: cyclusSessions.current });
+      return q;
+    },
+  },
 }));
 
 vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastErrorMock(...a) } }));
@@ -54,6 +64,7 @@ const fillValid = () => {
 beforeEach(() => {
   invokeMock.mockReset();
   toastErrorMock.mockReset();
+  cyclusSessions.current = [];
 });
 
 describe('GuestBookingDialog', () => {
@@ -94,13 +105,38 @@ describe('GuestBookingDialog', () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it('books the WHOLE cyclus (create-guest-cyclus-payment + cyclusId) for a cyclus slot', async () => {
+  it('a cyclus slot DEFAULTS to booking just this session (single)', async () => {
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/s/1' }, error: null });
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+
+    const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A' };
+    render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    fillValid();
+    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
+      body: { slotId: 'slot-1', fullName: 'Jan de Vries', email: 'jan@x.nl', phone: undefined, notes: undefined },
+    });
+  });
+
+  it('lists the sessions + total and books the WHOLE cyclus when "Whole series" is chosen', async () => {
+    cyclusSessions.current = [
+      { id: 's1', start_time: '2026-09-01T10:00:00Z', end_time: '2026-09-01T11:00:00Z', price_per_session: 20 },
+      { id: 's2', start_time: '2026-09-08T10:00:00Z', end_time: '2026-09-08T11:00:00Z', price_per_session: 20 },
+    ];
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/xyz', token: 'tok-c' }, error: null });
     const hrefSetter = vi.fn();
     Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
 
-    const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A', total_price: 200 };
+    const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A' };
     render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+
+    // Pick the whole-series option → its label carries the session count + total (2 sessies · €40.00).
+    const cyclusBtn = await screen.findByRole('button', { name: /Hele cyclus/ });
+    fireEvent.click(cyclusBtn);
+    await waitFor(() => expect(cyclusBtn.textContent).toContain('40'));
+
     fillValid();
     fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
 
