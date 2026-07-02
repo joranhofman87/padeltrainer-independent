@@ -3,7 +3,7 @@ import { logger } from '@/lib/logger';
 import { resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
 import type { GuestResolveScope } from '@/lib/playerResolve';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
-import { isMissingRpc, reportDeployDriftFallback } from '@/lib/deployDrift';
+import { isMissingRpc, isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { toCycle, toIntakeRequest } from './cycleMappers';
 import { updateCycle } from './cycleWrites';
 import type { Cycle } from './cycleTypes';
@@ -126,18 +126,50 @@ const PUBLIC_REGISTRATION_CYCLE_TYPES = ['registration', 'event'] as const;
  * availability calendar via their public slots. All callers are public surfaces
  * (AcademyOpenCycles, TrainerOpenCycles, AcademyPublicProfile JSON-LD).
  */
-export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
-  const { data, error } = await supabase
-    .from('cycles')
-    .select('*, location:locations(id, name, city)')
-    .eq('owner_type', ownerType)
-    .eq('owner_id', ownerId)
-    .eq('status', 'open')
-    .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
-    .order('start_date', { ascending: true, nullsFirst: true });
+/**
+ * Batch-fetch the {id,name,city} location for a set of cycles and attach it as
+ * `cycle.location` (the shape AcademyOpenCycles / AcademyPublicProfile render).
+ * Used instead of a PostgREST embed because the anon path reads through the
+ * cycles_public VIEW, and PostgREST cannot embed on a plain view (raises PGRST200,
+ * which our missing-relation detector treats as "view missing"). A plain view +
+ * JS location join is the repo pattern for every `_public`/`_safe` surface.
+ */
+async function attachCycleLocations(cycles: Cycle[]): Promise<Cycle[]> {
+  const ids = Array.from(
+    new Set(cycles.map((c) => c.location_id).filter((id): id is string => !!id)),
+  );
+  if (ids.length === 0) return cycles;
+  const { data } = await supabase.from('locations').select('id, name, city').in('id', ids);
+  const byId = new Map((data || []).map((l) => [l.id, l]));
+  return cycles.map((c) => ({ ...c, location: c.location_id ? byId.get(c.location_id) ?? null : null }));
+}
 
-  if (error) throw error;
-  return (data || []).map(toCycle);
+export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
+  // Public/anon list (AcademyOpenCycles / TrainerOpenCycles / AcademyPublicProfile).
+  // Read through the sanitized cycles_public view (PLAIN columns, NO embed) so
+  // settings.notify_admin_emails never reaches an unauthenticated caller (P2-1),
+  // then attach locations via a JS join. The view is status='open' only, which this
+  // query already filtered to. Graceful fallback to the base table while the view
+  // migration is not yet applied (frontend deploys first).
+  const runQuery = (relation: 'cycles_public' | 'cycles') =>
+    supabase
+      .from(relation as never)
+      .select('*')
+      .eq('owner_type', ownerType)
+      .eq('owner_id', ownerId)
+      .eq('status', 'open')
+      .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
+      .order('start_date', { ascending: true, nullsFirst: true });
+
+  const { data, error } = await runQuery('cycles_public');
+  if (error) {
+    if (!isMissingRelation(error)) throw error;
+    reportDeployDriftFallback('cycles_public', { path: 'getActiveCycles' });
+    const { data: baseData, error: baseErr } = await runQuery('cycles');
+    if (baseErr) throw baseErr;
+    return attachCycleLocations((baseData || []).map((r) => toCycle(r as Record<string, unknown>)));
+  }
+  return attachCycleLocations((data || []).map((r) => toCycle(r as Record<string, unknown>)));
 }
 
 // Fetch all open cycles for a location (from trainers, academies, and clubs at that location)
@@ -167,45 +199,51 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
 
   const clubIds = clubProfiles?.map(c => c.id) || [];
   
-  // Fetch cycles from all owner types
+  // Fetch cycles from all owner types.
+  // Public/anon page (LocationOpenCycles on locations/:slug). Read through the
+  // sanitized cycles_public view (PLAIN columns, no embed) so settings.notify_admin_emails
+  // never reaches an unauthenticated caller (P2-1). No JS location join is needed here —
+  // this query is already scoped to a single locationId and LocationOpenCycles does not
+  // read cycle.location. Graceful fallback to the base table while the view migration is
+  // not yet applied (frontend deploys first).
+  const readOpenCyclesForOwner = async (
+    ownerType: 'trainer' | 'academy' | 'club',
+    ownerIds: string[],
+  ): Promise<Cycle[]> => {
+    const runQuery = (relation: 'cycles_public' | 'cycles') =>
+      supabase
+        .from(relation as never)
+        .select('*')
+        .eq('owner_type', ownerType)
+        .in('owner_id', ownerIds)
+        .eq('status', 'open')
+        .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
+        .eq('location_id', locationId);
+    const { data, error } = await runQuery('cycles_public');
+    if (error) {
+      if (!isMissingRelation(error)) throw error;
+      reportDeployDriftFallback('cycles_public', { path: 'getLocationCycles', ownerType });
+      const { data: baseData, error: baseErr } = await runQuery('cycles');
+      if (baseErr) throw baseErr;
+      return (baseData || []).map((r) => toCycle(r as Record<string, unknown>));
+    }
+    return (data || []).map((r) => toCycle(r as Record<string, unknown>));
+  };
+
   const allCycles: Cycle[] = [];
-  
+
   if (trainerIds.length > 0) {
-    const { data: trainerCycles } = await supabase
-      .from('cycles')
-      .select('*')
-      .eq('owner_type', 'trainer')
-      .in('owner_id', trainerIds)
-      .eq('status', 'open')
-      .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
-      .eq('location_id', locationId);
-    if (trainerCycles) allCycles.push(...trainerCycles.map(toCycle));
+    allCycles.push(...(await readOpenCyclesForOwner('trainer', trainerIds)));
   }
-  
+
   if (academyIds.length > 0) {
-    const { data: academyCycles } = await supabase
-      .from('cycles')
-      .select('*')
-      .eq('owner_type', 'academy')
-      .in('owner_id', academyIds)
-      .eq('status', 'open')
-      .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
-      .eq('location_id', locationId);
-    if (academyCycles) allCycles.push(...academyCycles.map(toCycle));
+    allCycles.push(...(await readOpenCyclesForOwner('academy', academyIds)));
   }
 
   if (clubIds.length > 0) {
-    const { data: clubCycles } = await supabase
-      .from('cycles')
-      .select('*')
-      .eq('owner_type', 'club')
-      .in('owner_id', clubIds)
-      .eq('status', 'open')
-      .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
-      .eq('location_id', locationId);
-    if (clubCycles) allCycles.push(...clubCycles.map(toCycle));
+    allCycles.push(...(await readOpenCyclesForOwner('club', clubIds)));
   }
-  
+
   return allCycles.sort((a, b) => {
     // Always-open first
     if (a.is_always_open && !b.is_always_open) return -1;
@@ -229,6 +267,41 @@ export async function getCycle(cycleId: string): Promise<Cycle | null> {
     throw error;
   }
   return toCycle(data);
+}
+
+/**
+ * PUBLIC (anon) single-cycle read for the register/:cycleId form. Goes through the
+ * postgres-owned `cycles_public` view (PLAIN columns, no embed), which sanitizes
+ * `settings` (strips notify_admin_emails / notify_admin_on_submission) — so an
+ * unauthenticated caller can never read the staff notification list (P2-1). The view
+ * only exposes status='open' cycles, which is exactly what the public form serves.
+ *
+ * Graceful fallback: the frontend auto-deploys before the owner applies the view
+ * migration, so a missing `cycles_public` (PGRST205 / PGRST200 / 42P01) drops back to
+ * the base `cycles` table (unchanged legacy behaviour, still anon-readable until the
+ * SAME migration restricts it) and reports deploy drift. Admin editors keep using
+ * {@link getCycle} (full settings) — do NOT repoint that.
+ */
+export async function getPublicCycle(cycleId: string): Promise<Cycle | null> {
+  const { data, error } = await supabase
+    .from('cycles_public' as never)
+    .select('*')
+    .eq('id', cycleId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingRelation(error)) {
+      reportDeployDriftFallback('cycles_public', { path: 'getPublicCycle' });
+      const { data: baseData, error: baseErr } = await supabase
+        .from('cycles')
+        .select('*')
+        .eq('id', cycleId)
+        .maybeSingle();
+      if (baseErr) throw baseErr;
+      return baseData ? toCycle(baseData as Record<string, unknown>) : null;
+    }
+    throw error;
+  }
+  return data ? toCycle(data as Record<string, unknown>) : null;
 }
 
 // Bookings in any of these statuses occupy a session → that session must NEVER be
