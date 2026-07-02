@@ -83,6 +83,7 @@ const NAV_LABELS: Record<string, string> = {
   'nav.subscription': 'Subscription',
   'nav.earnings': 'Earnings',
   'nav.myProfile': 'My Profile',
+  'nav.sessions': 'Sessions',
   'nav.logout': 'Log out',
   'nav.closeMenu': 'Close menu',
   badge: 'Trainer',

@@ -1,7 +1,32 @@
 {
   "badge": "Trainer",
+  "sessions": {
+    "title": "Sessies",
+    "subtitle": "Alle manieren om trainingen en inschrijvingen op te zetten, op één plek. Kies wat je wilt doen.",
+    "newSession": {
+      "title": "Nieuwe sessie",
+      "description": "Voeg één losse training toe aan je agenda — kies datum, tijd en locatie. Handig voor een eenmalige of extra les.",
+      "cta": "Sessie toevoegen"
+    },
+    "generate": {
+      "title": "Snel sessies genereren",
+      "description": "Genereer in één keer een hele reeks trainingen (bijv. elke week op hetzelfde tijdstip) voor een volledige periode. Ideaal om een nieuw blok in te plannen.",
+      "cta": "Sessies genereren"
+    },
+    "nextRound": {
+      "title": "Volgende ronde opzetten",
+      "description": "Kopieer je huidige sessies naar een nieuwe periode, zodat je een volgend blok niet helemaal opnieuw hoeft in te plannen.",
+      "cta": "Ronde opzetten"
+    },
+    "registration": {
+      "title": "Nieuwe inschrijving",
+      "description": "Maak een inschrijfformulier waarop spelers zich zelf voor een cursus of event kunnen aanmelden — inclusief online betaling.",
+      "cta": "Inschrijving maken"
+    }
+  },
   "nav": {
     "agenda": "Agenda",
+    "sessions": "Sessies",
     "myProfile": "Mijn profiel",
     "dashboard": "Dashboard",
     "schedule": "Rooster",

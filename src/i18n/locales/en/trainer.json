@@ -1,7 +1,32 @@
 {
   "badge": "Trainer",
+  "sessions": {
+    "title": "Sessions",
+    "subtitle": "Every way to set up trainings and registrations, in one place. Pick what you want to do.",
+    "newSession": {
+      "title": "New session",
+      "description": "Add a single training to your agenda — pick the date, time and location. Best for a one-off or an extra lesson.",
+      "cta": "Add session"
+    },
+    "generate": {
+      "title": "Quickly generate sessions",
+      "description": "Generate a whole series of trainings at once (e.g. every week at the same time) for an entire period. Ideal for scheduling a new block.",
+      "cta": "Generate sessions"
+    },
+    "nextRound": {
+      "title": "Set up the next round",
+      "description": "Copy your current sessions into a new period so you don't have to schedule a whole new block from scratch.",
+      "cta": "Set up round"
+    },
+    "registration": {
+      "title": "New registration",
+      "description": "Create a registration form where players sign themselves up for a course or event — online payment included.",
+      "cta": "Create registration"
+    }
+  },
   "nav": {
     "agenda": "Agenda",
+    "sessions": "Sessions",
     "myProfile": "My Profile",
     "dashboard": "Dashboard",
     "schedule": "Schedule",

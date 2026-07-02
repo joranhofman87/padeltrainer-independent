@@ -6,7 +6,7 @@ describe('academySidebarNav', () => {
     expect(ACADEMY_PRIMARY_NAV.map((item) => item.id)).toEqual([
       'dashboard',
       'schedule',
-      'agenda',
+      'sessions',
       'players',
       'trainers',
       'registrations',
@@ -19,7 +19,7 @@ describe('academySidebarNav', () => {
     expect(ACADEMY_PRIMARY_NAV.map((item) => item.to)).toEqual([
       '/app/academy',
       '/app/academy/calendar',
-      '/app/academy/agenda',
+      '/app/academy/sessions',
       '/app/academy/players',
       '/app/academy/trainers',
       '/app/academy/registrations',
@@ -44,18 +44,18 @@ describe('academySidebarNav', () => {
     expect(isAcademyNavItemActive('/app/academy/players', schedule)).toBe(false);
   });
 
-  it('keeps the Agenda cycle-ops (rebook / bulk-copy / :id/rebook) under Agenda, not Schedule', () => {
+  it('routes the "next round" cycle-ops (rebook / bulk-copy / :id/rebook) to Sessions, not Schedule', () => {
     const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
-    const agenda = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'agenda')!;
+    const sessions = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'sessions')!;
     const schedule = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'schedule')!;
     for (const path of ['/app/academy/cycles/rebook', '/app/academy/cycles/bulk-copy', '/app/academy/cycles/abc-123/rebook']) {
-      expect(isAcademyNavItemActive(path, agenda)).toBe(true);
+      expect(isAcademyNavItemActive(path, sessions)).toBe(true);
       expect(isAcademyNavItemActive(path, schedule)).toBe(false);
       expect(isAcademyNavItemActive(path, registrations)).toBe(false);
     }
-    // plain /agenda still highlights Agenda; cycle CRUD highlights Schedule (not Agenda)
-    expect(isAcademyNavItemActive('/app/academy/agenda', agenda)).toBe(true);
-    expect(isAcademyNavItemActive('/app/academy/cycles/new', agenda)).toBe(false);
+    // the Sessions hub highlights Sessions; cycle CRUD highlights Schedule (not Sessions)
+    expect(isAcademyNavItemActive('/app/academy/sessions', sessions)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/cycles/new', sessions)).toBe(false);
   });
 
   it('includes Trainers nav item after Players and before Registrations', () => {
