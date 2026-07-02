@@ -1,0 +1,52 @@
+# Quality Gates
+
+Purpose: the single canonical map of every automated check — what each `package.json` script does, what CI actually protects, and where the real gate lives (some obvious-looking gates check nothing).
+Audience / AI-read: yes
+Status: canonical (source of truth) | last updated 2026-07-02
+
+Before you change code, know which gate will catch a mistake — and which gates give false confidence. Related: [LINTING.md](./LINTING.md) (ratchet mechanics), [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) (test layers), [technical-debt/QUALITY_GATES_BACKLOG.md](./technical-debt/QUALITY_GATES_BACKLOG.md) (missing gates).
+
+## TL;DR — the traps
+
+- **`npm run typecheck` / bare `tsc` is NOT the gate.** Root `tsconfig.json` has `files: []` and type-checks nothing. The real type gate is `typecheck:baseline` (`tsc -p tsconfig.app.json`, ratcheted). A value-call to an un-imported name is a runtime `ReferenceError` that only this gate catches — lint, vitest and `vite build` all miss it.
+- **Edge functions (`supabase/functions/*/index.ts`) are NOT type-checked or `deno check`ed in CI.** `edge-tests` runs `deno test --no-check` on `_shared/` only. The 813-line `mollie-webhook` and 95 other function entrypoints ship with a green build even if a symbol is mistyped or un-imported. See backlog P0-1.
+- **Migrations + edge functions do NOT auto-deploy.** CI only *validates*. The owner applies migrations and redeploys functions manually. Frontend auto-deploys via Vercel on merge to `main`.
+- **`git commit --admin` past a red build is only safe for the known perma-red gates** (`types-drift` line-10 CLI mismatch). Never `--admin` past a genuinely new `typecheck:baseline` / `db-reset` / `vitest` failure.
+
+## Gate table
+
+| Gate | Script | What it catches | In CI? | Notes |
+|---|---|---|---|---|
+| Lint (ratcheted) | `npm run lint` (`eslint .`) | New eslint violations of any rule (role-isolation imports, a11y, hooks, unused). | ✅ `test.yml` → `lint` | Gated by `eslint-suppressions.json`, **shrink-only**: a NEW violation fails; fixing a suppressed one requires `npm run lint:prune` + commit or the gate fails on stale suppressions. See [LINTING.md](./LINTING.md). |
+| Edge config drift | `npm run check:edge-config` (`scripts/check-edge-fn-config.mjs`) | A public/self-authenticating edge fn missing `verify_jwt = false` in `config.toml` → gateway 401s it on deploy (e.g. mollie/stripe webhooks, public images). | ✅ `test.yml` → `lint` | Hardcoded allowlist `MUST_BE_PUBLIC`. **Add every new no-JWT function to it** or the guard is blind to it. |
+| Type-check (real) | `npm run typecheck:baseline` (`scripts/check-tsc-baseline.mjs`) | NEW `tsc -p tsconfig.app.json` errors vs `scripts/tsc-app.baseline.json`. Cross-module name resolution → the un-imported-name `ReferenceError` class. | ✅ `test.yml` → `typecheck` | Project is perma-red with known pre-existing errors; ratchets on new only (signature = `file\|code\|message`, line/col stripped). Regenerate: `npm run typecheck:baseline:update`. **`npm run typecheck` and root `tsc` check nothing.** |
+| Production build | `npm run build` (`vite build`) | Import/resolution/build-time failures; broken bundle. | ✅ `test.yml` → `typecheck` | Does NOT type-check app source (SWC strips types). Complements, does not replace, `typecheck:baseline`. |
+| Unit tests | `npm test` (`vitest run`) | App-lib logic, money-path libs (via the PGlite/Supabase harness), component behavior. | ✅ `test.yml` → `test` | Full `vitest run` is a required gate. Includes the real money-path libs against real Postgres (PGlite). Does NOT cover Deno edge fn `index.ts`. |
+| Data-integrity rehearsals | `npm run db:rehearse:all` (`scripts/db/run-all-rehearsals.mjs`) | RLS tenant isolation, RPC contracts, and list-partition completeness (a list RPC must never HIDE a record — e.g. paid/unpaid invoice tabs are a complete partition across every status). Split recalc, capacity locks, atomic invoice numbering, booking-tier enforcement. | ✅ `test.yml` → `test` | **Auto-discovers every `scripts/db/rehearse-*.{mjs,ts}`** (43 today) — adding a rehearsal auto-includes it; none can be silently dropped. Individual `db:rehearse:*` scripts exist for local iteration. |
+| i18n parity | `bun scripts/check-i18n-parity.ts` (`npm run i18n:check`) | en/nl key drift — a translation key present in one locale but missing in the other. | ✅ `test.yml` → `test` | Runs under **Bun**, not Node. |
+| Edge unit tests | `deno test --no-check … supabase/functions/_shared/` (`npm run test:edge`) | Shared edge logic: auth gates, Mollie payment-ready, pricing math, guest-name resolution. | ✅ `test.yml` → `edge-tests` | **`--no-check`**: no `node_modules`, so Deno can't resolve `@types/node` (transitive via supabase-js) — type-check phase would kill the job. Value = RUNNING the tests, not type-checking. **Only `_shared/` runs; function `index.ts` files run in NO CI gate.** Per-function `index.test.ts` are integration tests (need a *deployed* fn + secrets) — intentionally excluded. |
+| Migration validity | `supabase db reset --yes` (`npm run db:reset`) | A migration that fails to apply from scratch; broken SQL; ordering issues. | ✅ `migrations.yml` → `db-reset` | Only runs on PRs touching `supabase/migrations/**`, `types.ts`, or the drift script. This is the REAL migration gate. CLI pinned to `2.107.0`. |
+| Generated-types drift | `npx tsx scripts/check-types-drift.ts` (`npm run db:types:check`) | `src/integrations/supabase/types.ts` out of sync with the schema after a migration. | ✅ `migrations.yml` → `types-drift` | **Known perma-red on a line-10 CLI header mismatch** → merges go `--admin`. Uploads `types.generated.ts` artifact on failure so you can diff/regenerate. |
+| E2E (non-auth + role/pay/booking smoke) | `npx playwright test …` (`npm run test:e2e`) | Render + routing + i18n + a11y + RLS-health + invoice-health + perf; role/payment/booking UI smoke (non-destructive, route-mocked). | ⏰ `e2e.yml` **weekly** (Sun 05:00 UTC) + manual | NOT on every PR. No account/booking creation. |
+| SEO smoke | `npx playwright test e2e/seo-smoke.spec.ts` | Prod render-page/indexing (Googlebot GETs); 404 pass-through. | ⏰ `seo-smoke.yml` weekly (Mon) + manual | Read-only against **prod**. Run after deploying the Cloudflare worker. |
+| Sitemap smoke | curl checks (inline in workflow) | Every sitemap variant + `llms-full-txt` returns non-empty XML with ≥1 `<url>`. | ⏰ `sitemap.yml` weekly (Mon) + manual | Read-only against the prod sitemap edge fn. |
+
+## What each CI workflow runs
+
+- **`test.yml`** (every push/PR to main): 4 parallel jobs —
+  - `lint`: `npm run lint` + `check:edge-config`
+  - `typecheck`: `typecheck:baseline` + `vite build`
+  - `test`: `vitest run` + `db:rehearse:all` + i18n parity
+  - `edge-tests`: `deno test --no-check` on `_shared/`
+- **`migrations.yml`** (PRs touching migrations/types only): `supabase db reset` + generated-types drift.
+- **`e2e.yml`**, **`seo-smoke.yml`**, **`sitemap.yml`**: scheduled/manual, not per-PR.
+
+## Deploy reality (why gates ≠ shipped)
+
+CI validates; it does not deploy DB or edge changes.
+
+- **Frontend** → auto-deploys via Vercel on merge to `main`.
+- **DB migrations** → owner applies manually (dashboard SQL editor / `db push`). Agents have no service key.
+- **Edge functions** → owner redeploys manually. A green build does NOT mean a fixed edge fn is live.
+
+When a change requires owner action, say so explicitly and point at the relevant runbook (`docs/PHASE*_RUNBOOK.md`, `docs/payments/PAYMENT_RECOVERY_RUNBOOK.md`, `audit/DEPLOY_CHECKLIST.md`).
