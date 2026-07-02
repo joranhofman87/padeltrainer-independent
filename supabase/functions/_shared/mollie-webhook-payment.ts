@@ -9,7 +9,7 @@
  *    webhook deliveries must be no-ops for side-effects).
  */
 
-import { amountsMatch } from "./booking-pricing.ts";
+import { amountsMatch, parseMollieAmountValue } from "./booking-pricing.ts";
 
 /**
  * Tolerance for matching the Mollie-charged total against the SUM of per-booking `payment_amount`s.
@@ -238,6 +238,49 @@ async function resolveSurvivorAndSettle(
 
   return transitionedSurvivor ? survivor.id : null;
 }
+
+
+/**
+ * P2-5 reversal detection. A Mollie payment can be reversed AFTER it settled paid:
+ *  - a full chargeback flips `status` to "charged_back";
+ *  - a partial chargeback or a refund leaves `status === "paid"` but sets a non-zero
+ *    `amountChargedBack` / `amountRefunded` {value,currency} object.
+ * The webhook must NOT auto-resurrect/downgrade booking or invoice state (that risks
+ * clobbering a legitimate re-payment or a concurrent manual fix); it only surfaces the
+ * reversal for manual reconciliation (audit row + Slack alert). Pure so it is CI-covered.
+ */
+export type MollieReversal = {
+  isReversal: boolean;
+  /** "charged_back" | "refunded" | null — what triggered it (chargeback wins if both). */
+  kind: "charged_back" | "refunded" | null;
+  chargedBackValue: number;
+  refundedValue: number;
+};
+
+export function detectPaymentReversal(
+  payment: {
+    status?: string;
+    amountChargedBack?: { value?: string | number } | null;
+    amountRefunded?: { value?: string | number } | null;
+  } | null | undefined,
+): MollieReversal {
+  const chargedBackRaw = parseMollieAmountValue(payment?.amountChargedBack?.value);
+  const refundedRaw = parseMollieAmountValue(payment?.amountRefunded?.value);
+  const chargedBackValue = Number.isFinite(chargedBackRaw) ? chargedBackRaw : 0;
+  const refundedValue = Number.isFinite(refundedRaw) ? refundedRaw : 0;
+
+  const isChargedBack = payment?.status === "charged_back" || chargedBackValue > 0;
+  const isRefunded = refundedValue > 0;
+
+  if (isChargedBack) {
+    return { isReversal: true, kind: "charged_back", chargedBackValue, refundedValue };
+  }
+  if (isRefunded) {
+    return { isReversal: true, kind: "refunded", chargedBackValue, refundedValue };
+  }
+  return { isReversal: false, kind: null, chargedBackValue, refundedValue };
+}
+
 
 /**
  * Bookings that a *paid* Mollie payment is landing on while they are already

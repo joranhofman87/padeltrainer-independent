@@ -35,6 +35,14 @@ export async function runBookingPaidSideEffects(opts: {
 }): Promise<void> {
   const { supabase, bookingIds, paymentAmountValue, source, logStep, notifySlackError } = opts;
 
+  // P2-12: settle the slot_priority_claims row for a paid strict-hold booking on
+  // WHICHEVER path (webhook OR verify-mollie-payment) first flips it paid. If only
+  // the webhook did this, a webhook-loss left the claim 'pending' → the expiry cron
+  // (expire_lapsed_priority_claims) expired it and computeReleasedSlotIds — which
+  // inspects claim state, not whether a PAID booking occupies the seat — released
+  // the PAID seat to the public tier (overbook). Non-fatal by design.
+  await finalizePriorityClaims(supabase, bookingIds, logStep);
+
   // Auto-create invoice (auto-create-invoice dedupes internally)
   try {
     const { error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {
@@ -136,5 +144,61 @@ export async function runBookingPaidSideEffects(opts: {
       error: emailError instanceof Error ? emailError.message : String(emailError),
     });
     // Don't throw — email failure must not fail the caller (claim already consumed)
+  }
+}
+
+/**
+ * Mark the slot_priority_claims row for each just-paid booking as 'claimed' (P2-12).
+ *
+ * Moved here (out of mollie-webhook) so BOTH the webhook and verify-mollie-payment
+ * settle the claim the moment they confirm a strict-hold paid booking — independent
+ * of webhook delivery. Without this on the verify path, a lost webhook left the
+ * claim 'pending', the expiry cron later expired it, and the seat — though PAID —
+ * was released to the public tier.
+ *
+ * Idempotent: only rows still status='pending' are transitioned, so re-running
+ * (duplicate delivery, or verify + a late webhook) is a no-op. A claim already
+ * 'claimed'/'expired'/'released'/'declined' is left untouched. Each booking is
+ * matched by its player_id and/or guest_player_id via separate .eq() updates —
+ * behaviour-equivalent to the previous .or() while staying pglite-testable.
+ * Non-fatal: failures are logged, not thrown (the paid claim is already consumed).
+ */
+export async function finalizePriorityClaims(
+  supabase: SupabaseClient,
+  bookingIds: string[],
+  logStep: LogStep,
+): Promise<void> {
+  if (bookingIds.length === 0) return;
+  try {
+    const { data: paidBookings } = await supabase
+      .from("bookings")
+      .select("id, slot_id, player_id, guest_player_id")
+      .in("id", bookingIds);
+    for (const b of (paidBookings ?? []) as Array<{
+      id: string;
+      slot_id: string;
+      player_id: string | null;
+      guest_player_id: string | null;
+    }>) {
+      const responded_at = new Date().toISOString();
+      if (b.player_id) {
+        await supabase
+          .from("slot_priority_claims")
+          .update({ status: "claimed", responded_at, booking_id: b.id })
+          .eq("slot_id", b.slot_id)
+          .eq("status", "pending")
+          .eq("player_id", b.player_id);
+      }
+      if (b.guest_player_id) {
+        await supabase
+          .from("slot_priority_claims")
+          .update({ status: "claimed", responded_at, booking_id: b.id })
+          .eq("slot_id", b.slot_id)
+          .eq("status", "pending")
+          .eq("guest_player_id", b.guest_player_id);
+      }
+    }
+  } catch (e) {
+    logStep("Failed to mark priority claim claimed (non-fatal)", { error: String(e) });
   }
 }
