@@ -39,6 +39,38 @@ interface LineItem {
   vat_rate?: number;
 }
 
+/**
+ * Detects whether any line item's unit_price changed relative to the original
+ * invoice. Matches by a stable per-description signature (a multiset of
+ * unit_price values keyed on description) rather than array index, so deleting
+ * or reordering an untouched row does NOT misfire as a price change. Adding a
+ * brand-new row or editing an existing price both count as a change.
+ */
+export function hasLineItemPriceChanges(
+  original: Pick<LineItem, 'description' | 'unit_price'>[],
+  current: Pick<LineItem, 'description' | 'unit_price'>[],
+): boolean {
+  // Multiset of original unit_price values per description.
+  const originalByDesc = new Map<string, number[]>();
+  for (const li of original) {
+    const arr = originalByDesc.get(li.description) ?? [];
+    arr.push(li.unit_price);
+    originalByDesc.set(li.description, arr);
+  }
+  for (const li of current) {
+    const arr = originalByDesc.get(li.description);
+    const idx = arr ? arr.indexOf(li.unit_price) : -1;
+    if (idx === -1) {
+      // No surviving original row with this description+price → a real change
+      // (edited price or a newly added row).
+      return true;
+    }
+    // Consume the matched original so duplicate descriptions match 1:1.
+    arr!.splice(idx, 1);
+  }
+  return false;
+}
+
 interface EditInvoiceData {
   id: string;
   line_items: LineItem[];
@@ -196,14 +228,10 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
     }
   }, [lineItems, vatRate, pricesIncludeVat]);
 
-  const originalPrices = useMemo(() => {
-    if (!invoice?.line_items) return {};
-    const map: Record<number, number> = {};
-    invoice.line_items.forEach((li: LineItem, i: number) => { map[i] = li.unit_price; });
-    return map;
-  }, [invoice]);
-
-  const hasPriceChanges = lineItems.some((li, i) => li.unit_price !== (originalPrices[i] ?? li.unit_price));
+  const hasPriceChanges = useMemo(
+    () => hasLineItemPriceChanges(invoice?.line_items ?? [], lineItems),
+    [invoice, lineItems],
+  );
   const hasBookings = (invoice?.booking_ids?.length ?? 0) > 0;
 
   const handleSave = async () => {
