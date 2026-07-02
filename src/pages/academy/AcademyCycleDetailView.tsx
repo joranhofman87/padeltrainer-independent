@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { useCycleDetail } from '@/lib/cycleDetail';
 import { CycleDetailView } from '@/components/cycles/CycleDetailView';
+import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { logger } from '@/lib/logger';
 
 type Option = { id: string; name: string };
@@ -18,8 +20,19 @@ export default function AcademyCycleDetailView() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const navigate = useNavigate();
   const { activeAcademy } = useAcademyContext();
+  const queryClient = useQueryClient();
   const [trainers, setTrainers] = useState<Option[]>([]);
   const [locations, setLocations] = useState<Option[]>([]);
+
+  // After ANY cycle-scope mutation in the shared view (price / roster add-swap-remove / end-date /
+  // session or full-cycle delete), the affected invoices + players changed. Invalidate the academy
+  // invoice list + all academy player data so they don't show stale money for up to the 60s staleTime
+  // (the shared view only invalidates its own ['cycle-detail', id] query). (P2-14)
+  const academyId = activeAcademy?.id;
+  const handleMutated = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
+    if (academyId) invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyId });
+  }, [queryClient, academyId]);
 
   useEffect(() => {
     if (!activeAcademy) return;
@@ -73,6 +86,7 @@ export default function AcademyCycleDetailView() {
         trainers={trainers}
         locations={locations}
         onOpenSlot={(slotId) => navigate(`/app/academy/slot/${slotId}`)}
+        onMutated={handleMutated}
         onCycleDeleted={() => navigate('/app/academy/calendar?tab=list')}
       />
     </div>

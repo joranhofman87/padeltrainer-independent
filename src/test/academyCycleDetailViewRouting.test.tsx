@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // The academy wrapper supplies role props + redirects a registration/event cycle to its workflow.
 vi.mock('@/components/academy/AcademyLayout', () => ({ useAcademyContext: () => ({ activeAcademy: { id: 'ac1' } }) }));
@@ -17,13 +18,16 @@ const AcademyCycleDetailView = (await import('@/pages/academy/AcademyCycleDetail
 
 function renderAt(type: string | undefined) {
   mockUseCycleDetail.mockReturnValue({ data: type === undefined ? undefined : { cycle: { type } } });
+  const qc = new QueryClient();
   return render(
-    <MemoryRouter initialEntries={['/app/academy/cycles/cy1']}>
-      <Routes>
-        <Route path="/app/academy/cycles/:cycleId" element={<AcademyCycleDetailView />} />
-        <Route path="/app/academy/registrations/:cycleId" element={<div data-testid="reg-workflow" />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/app/academy/cycles/cy1']}>
+        <Routes>
+          <Route path="/app/academy/cycles/:cycleId" element={<AcademyCycleDetailView />} />
+          <Route path="/app/academy/registrations/:cycleId" element={<div data-testid="reg-workflow" />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
