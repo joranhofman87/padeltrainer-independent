@@ -168,7 +168,9 @@ export function AvailabilityCalendar({
           <div className="md:w-80 md:shrink-0 md:border-l md:pl-4">
             <p className="mb-2 text-sm font-semibold capitalize">{dayTitle || t('booking.pickDay', 'Kies een dag')}</p>
             {daySlots.length > 0 ? (
-              <div className="space-y-2" role="list">
+              // Bounded height + scroll so a busy day (10+ sessions) can't balloon the
+              // panel out of proportion — the box stays put and you scroll for more.
+              <div className="max-h-[26rem] space-y-2 overflow-y-auto pr-1" role="list">
                 {daySlots.map((slot) => (
                   <PublicSlotRow key={slot.id} slot={slot} timezone={timezone} onSelect={onSelect} />
                 ))}
