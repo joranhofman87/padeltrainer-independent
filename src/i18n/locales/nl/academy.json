@@ -788,6 +788,8 @@
       "recipientCount": "{{count}} ontvanger(s) geselecteerd",
       "replyToHint": "Antwoorden van spelers gaan naar je reply-to e-mail. Je kunt dit instellen in",
       "replyToHintLink": "factuurinstellingen",
+      "subjectLabel": "E-mailonderwerp",
+      "subjectPlaceholder": "Factuur {first_name}",
       "messageLabel": "E-mailbericht",
       "messagePlaceholder": "Hi {first_name},\n\nHierbij je factuur. Laat het weten als je vragen hebt.\n\nBedankt!",
       "variablesHelp": "Variabele invoegen:",

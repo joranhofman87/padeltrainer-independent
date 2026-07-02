@@ -12,6 +12,7 @@ import { markInvoicesSent } from "@/lib/invoices";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { InvoiceEmailMessageField } from "./InvoiceEmailMessageField";
+import { EmailSubjectField } from "@/components/email/EmailSubjectField";
 
 interface Props {
   open: boolean;
@@ -23,12 +24,17 @@ interface Props {
   defaultMessage?: string;
   /** Persist the current message as the account default (parent owns the write). */
   onSaveDefault?: (message: string) => void;
+  /** Pre-fill the subject with the academy's saved default (empty ⇒ the composed default). */
+  defaultSubject?: string;
+  /** Persist the current subject as the account default (parent owns the write). */
+  onSaveDefaultSubject?: (subject: string) => void;
 }
 
-export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, onSent, defaultMessage = "", onSaveDefault }: Props) {
+export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, onSent, defaultMessage = "", onSaveDefault, defaultSubject = "", onSaveDefaultSubject }: Props) {
   const { t } = useTranslation("academy");
   const { user } = useAuth();
   const [customMessage, setCustomMessage] = useState(defaultMessage);
+  const [customSubject, setCustomSubject] = useState(defaultSubject);
   const [markAsSent, setMarkAsSent] = useState(true);
   const [sending, setSending] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
@@ -38,15 +44,18 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
 
   // Re-seed from the saved default each time the dialog opens.
   useEffect(() => {
-    if (open) setCustomMessage(defaultMessage);
-  }, [open, defaultMessage]);
+    if (open) {
+      setCustomMessage(defaultMessage);
+      setCustomSubject(defaultSubject);
+    }
+  }, [open, defaultMessage, defaultSubject]);
 
   const handlePreview = async () => {
     if (invoiceIds.length === 0) return;
     setPreviewLoading(true);
     try {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoiceIds[0], customMessage, language, previewOnly: true },
+        body: { invoiceId: invoiceIds[0], customMessage, customSubject, language, previewOnly: true },
       });
       if (data?.html) {
         setPreviewHtml(data.html);
@@ -66,7 +75,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
     setTestSending(true);
     try {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoiceIds[0], customMessage, language, testEmail: email },
+        body: { invoiceId: invoiceIds[0], customMessage, customSubject, language, testEmail: email },
       });
       if (data?.success) {
         toast.success(t("invoices.bulk.testSent", "Test email sent to {{email}}", { email }));
@@ -82,7 +91,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
 
   const [, setProgress] = useState({ current: 0, total: 0, sent: 0, noEmail: 0, failed: 0 });
 
-  const runBulkSend = async (ids: string[], message: string, mark: boolean, toastId: string | number) => {
+  const runBulkSend = async (ids: string[], message: string, subject: string, mark: boolean, toastId: string | number) => {
     let sent = 0, noEmail = 0, failed = 0;
     const total = ids.length;
     const CONCURRENCY = 3;
@@ -102,7 +111,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
         const id = ids[i];
         try {
           const { data } = await supabase.functions.invoke("send-invoice-email", {
-            body: { invoiceId: id, customMessage: message },
+            body: { invoiceId: id, customMessage: message, customSubject: subject },
           });
           if (data?.error === "no_email") {
             noEmail++;
@@ -136,6 +145,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
   const handleSend = () => {
     const ids = [...invoiceIds];
     const message = customMessage;
+    const subject = customSubject;
     const mark = markAsSent;
     const toastId = `bulk-invoice-email-${Date.now()}`;
 
@@ -143,7 +153,7 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
     setProgress({ current: 0, total: ids.length, sent: 0, noEmail: 0, failed: 0 });
 
     // Fire-and-forget: keeps running even if dialog closes
-    runBulkSend(ids, message, mark, toastId).finally(() => {
+    runBulkSend(ids, message, subject, mark, toastId).finally(() => {
       setSending(false);
       setProgress({ current: 0, total: 0, sent: 0, noEmail: 0, failed: 0 });
     });
@@ -181,6 +191,17 @@ export function BulkInvoiceEmailDialog({ open, onClose, invoiceIds, language, on
                 .
               </p>
             </div>
+            <EmailSubjectField
+              id="custom-subject"
+              value={customSubject}
+              onChange={setCustomSubject}
+              disabled={sending}
+              label={t("invoices.bulk.subjectLabel", "Email subject")}
+              placeholder={t("invoices.bulk.subjectPlaceholder", "Factuur {first_name}")}
+              variablesHelp={t("invoices.bulk.variablesHelp", "Insert variable:")}
+              onSaveDefault={onSaveDefaultSubject ? () => onSaveDefaultSubject(customSubject) : undefined}
+              saveDefaultLabel={t("invoices.bulk.saveAsDefault", "Save as default")}
+            />
             <InvoiceEmailMessageField
               id="custom-msg"
               value={customMessage}

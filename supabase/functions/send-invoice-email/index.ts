@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,6 +60,8 @@ const handler = async (req: Request): Promise<Response> => {
     const { invoiceId } = body;
     const customMessageRaw = typeof body.customMessage === "string" ? body.customMessage : "";
     const customMessage = customMessageRaw.slice(0, 2000);
+    // Optional academy-authored subject line; empty ⇒ the default composed below.
+    const customSubject = sanitizeEmailSubject(body.customSubject);
     // Language is now resolved server-side from the recipient/organization.
     // The caller may pass `language` only as an explicit override for previews/test sends.
     const languageOverride = typeof body.language === "string"
@@ -340,7 +343,12 @@ const handler = async (req: Request): Promise<Response> => {
       ? `<div style="margin: 0 0 24px; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(personalizedMessage)}</div>`
       : "";
 
-    const subject = `${tr.subject} ${invoice.invoice_number} - ${businessName}`;
+    // Academy-authored subject if set (tokens like {first_name} still substituted), else the
+    // default "Factuur <number> - <business>". Re-sanitized after substitution so a {full_name}
+    // carrying a stray newline can't defeat the header-injection guard.
+    const subject = sanitizeEmailSubject(
+      customSubject ? substituteVars(customSubject) : `${tr.subject} ${invoice.invoice_number} - ${businessName}`,
+    );
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           ${customHtml}

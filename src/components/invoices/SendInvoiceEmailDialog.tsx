@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { InvoiceEmailMessageField } from "./InvoiceEmailMessageField";
+import { EmailSubjectField } from "@/components/email/EmailSubjectField";
 
 interface Props {
   open: boolean;
@@ -18,14 +19,18 @@ interface Props {
   language?: string;
   /** Pre-filled message (e.g. the academy's saved default template). */
   defaultMessage?: string;
+  /** Pre-filled subject (empty ⇒ the composed default). */
+  defaultSubject?: string;
   /** Link to the invoice settings tab where reply-to is configured. */
   replyToSettingsHref?: string;
   /** Whether the parent's send mutation is in flight (disables the dialog). */
   sending?: boolean;
   /** Fire the actual send — the parent owns the mutation (success/no-email/refresh). */
-  onSend: (customMessage: string) => void;
+  onSend: (customMessage: string, customSubject: string) => void;
   /** Persist the current message as the account default (parent owns the write). */
   onSaveDefault?: (message: string) => void;
+  /** Persist the current subject as the account default (parent owns the write). */
+  onSaveDefaultSubject?: (subject: string) => void;
 }
 
 /**
@@ -42,27 +47,33 @@ export function SendInvoiceEmailDialog({
   playerName,
   language,
   defaultMessage = "",
+  defaultSubject = "",
   replyToSettingsHref,
   sending = false,
   onSend,
   onSaveDefault,
+  onSaveDefaultSubject,
 }: Props) {
   const { t } = useTranslation("academy");
   const [message, setMessage] = useState(defaultMessage);
+  const [subject, setSubject] = useState(defaultSubject);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  // Re-seed the message from the default each time the dialog opens.
+  // Re-seed the message + subject from the defaults each time the dialog opens.
   useEffect(() => {
-    if (open) setMessage(defaultMessage);
-  }, [open, defaultMessage]);
+    if (open) {
+      setMessage(defaultMessage);
+      setSubject(defaultSubject);
+    }
+  }, [open, defaultMessage, defaultSubject]);
 
   const handlePreview = async () => {
     if (!invoiceId) return;
     setPreviewLoading(true);
     try {
       const { data } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId, customMessage: message, language, previewOnly: true },
+        body: { invoiceId, customMessage: message, customSubject: subject, language, previewOnly: true },
       });
       if (data?.html) {
         setPreviewHtml(data.html);
@@ -78,7 +89,7 @@ export function SendInvoiceEmailDialog({
 
   const handleSend = () => {
     if (!invoiceId || sending) return;
-    onSend(message);
+    onSend(message, subject);
   };
 
   return (
@@ -106,6 +117,17 @@ export function SendInvoiceEmailDialog({
                 </p>
               </div>
             )}
+            <EmailSubjectField
+              id="send-invoice-subject"
+              value={subject}
+              onChange={setSubject}
+              disabled={sending}
+              label={t("invoices.send.subjectLabel", "Email subject (optional)")}
+              placeholder={t("invoices.send.subjectPlaceholder", "Factuur {first_name}")}
+              variablesHelp={t("invoices.send.variablesHelp", "Insert variable:")}
+              onSaveDefault={onSaveDefaultSubject ? () => onSaveDefaultSubject(subject) : undefined}
+              saveDefaultLabel={t("invoices.send.saveAsDefault", "Save as default")}
+            />
             <InvoiceEmailMessageField
               value={message}
               onChange={setMessage}

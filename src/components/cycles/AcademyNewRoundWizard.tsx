@@ -24,6 +24,7 @@ import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
+import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
@@ -94,6 +95,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [submitting, setSubmitting] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
   const [invitationMessage, setInvitationMessage] = useState('');
+  const [invitationSubject, setInvitationSubject] = useState('');
   const [rebookRules, setRebookRules] = useState('');
 
   useEffect(() => {
@@ -136,9 +138,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
+      invitationSubject: invitationSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, rebookRules],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, rebookRules],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -418,7 +421,16 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   players: Math.max(0, review.players - review.noEmailTotal),
                 })}
               </p>
-              <div className="rounded-md border p-3">
+              <div className="space-y-3 rounded-md border p-3">
+                <EmailSubjectField
+                  id="rebook-invite-subject"
+                  value={invitationSubject}
+                  onChange={setInvitationSubject}
+                  disabled={submitting}
+                  label={t('newRound.inviteSubjectLabel', 'Onderwerp van de uitnodiging (optioneel)')}
+                  placeholder={t('newRound.inviteSubjectPlaceholder', 'Reserveer je plek voor de volgende cyclus')}
+                  variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                />
                 <EmailMessageField
                   id="rebook-invite-message"
                   value={invitationMessage}
