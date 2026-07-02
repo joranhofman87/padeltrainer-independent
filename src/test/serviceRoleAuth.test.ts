@@ -2,9 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   buildServiceRoleAuthDebug,
   extractBearerToken,
-  isServiceRoleJwtForProject,
   isServiceRoleRequest,
-  parseSupabaseJwtClaims,
   resolveServiceRoleToken,
 } from '../../supabase/functions/_shared/service-role-auth.ts';
 
@@ -52,7 +50,18 @@ describe('isServiceRoleRequest', () => {
     expect(isServiceRoleRequest(req)).toBe(true);
   });
 
-  it('accepts matching service_role JWT in Authorization and apikey', () => {
+  it('accepts bare (non-Bearer) Authorization value matching env key', () => {
+    const req = new Request('http://localhost', {
+      headers: { Authorization: 'test-service-role-key' },
+    });
+    expect(isServiceRoleRequest(req)).toBe(true);
+    expect(resolveServiceRoleToken(req)).toBe('test-service-role-key');
+  });
+
+  // P0 regression: a forged, unsigned service_role JWT (correct role + project ref)
+  // supplied as bearer == apikey must NEVER be trusted. It is not the env key, so
+  // there is no signature-free path to service-role privilege.
+  it('REJECTS a forged service_role JWT even with the correct project ref', () => {
     const jwt = makeJwt({ role: 'service_role', ref: 'myproject' });
     const req = new Request('http://localhost', {
       headers: {
@@ -60,8 +69,15 @@ describe('isServiceRoleRequest', () => {
         apikey: jwt,
       },
     });
-    expect(isServiceRoleRequest(req)).toBe(true);
-    expect(resolveServiceRoleToken(req)).toBe(jwt);
+    expect(isServiceRoleRequest(req)).toBe(false);
+    expect(resolveServiceRoleToken(req)).toBeNull();
+  });
+
+  it('resolveServiceRoleToken returns the env key (never the request token) on match', () => {
+    const req = new Request('http://localhost', {
+      headers: { Authorization: 'Bearer test-service-role-key', apikey: 'test-service-role-key' },
+    });
+    expect(resolveServiceRoleToken(req)).toBe('test-service-role-key');
   });
 
   it('rejects anon JWT without env match', () => {
@@ -101,13 +117,5 @@ describe('buildServiceRoleAuthDebug', () => {
       apiKeyEqualsServiceRoleKey: true,
     });
     expect(JSON.stringify(debug)).not.toContain('test-service-role-key');
-  });
-});
-
-describe('parseSupabaseJwtClaims', () => {
-  it('reads role and ref from JWT payload', () => {
-    const jwt = makeJwt({ role: 'service_role', ref: 'myproject' });
-    expect(parseSupabaseJwtClaims(jwt)).toEqual({ role: 'service_role', ref: 'myproject' });
-    expect(isServiceRoleJwtForProject(jwt)).toBe(true);
   });
 });

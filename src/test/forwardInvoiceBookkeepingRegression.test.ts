@@ -78,14 +78,18 @@ describe('bookkeeping regression: service-role auth', () => {
     expect(isServiceRoleRequest(req)).toBe(true);
   });
 
-  it('accepts identical valid service_role JWT in Authorization and apikey', () => {
+  // P0 regression: a forged, unsigned service_role JWT (identical in Authorization
+  // and apikey) must be REJECTED. Trusting its claims without verifying the
+  // signature was a full unauthenticated cross-tenant breach — service-role is now
+  // only granted on a byte-exact match of the configured SUPABASE_SERVICE_ROLE_KEY.
+  it('rejects a forged service_role JWT in Authorization and apikey', () => {
     const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
     const body = btoa(JSON.stringify({ role: 'service_role', ref: 'rlproject' }));
     const jwt = `${header}.${body}.sig`;
     const req = new Request('http://localhost', {
       headers: { Authorization: `Bearer ${jwt}`, apikey: jwt },
     });
-    expect(isServiceRoleRequest(req)).toBe(true);
+    expect(isServiceRoleRequest(req)).toBe(false);
   });
 
   it('rejects unauthenticated/public calls via forward-invoice auth_denied', () => {
