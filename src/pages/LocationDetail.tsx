@@ -529,6 +529,13 @@ export default function LocationDetail() {
           )}
         </ProfileHeroCard>
 
+        {/* Bookable availability at this venue — FULL WIDTH so the calendar has room. Same green
+            calendar + guest pay-first as the academy/trainer pages; an academy-trainer's charge
+            routes to the academy's Mollie. Always shown, even with no open sessions yet. */}
+        <div className="mb-6">
+          <PublicAvailabilitySection owner={{ type: 'location', locationId: location.id }} alwaysShow />
+        </div>
+
         {/* Content Grid */}
         <ProfileContentGrid>
           {/* Main Content */}
@@ -544,33 +551,6 @@ export default function LocationDetail() {
                 ) : (
                   <p className="text-muted-foreground italic">{t('common:locations.noDescription')}</p>
                 )}
-
-                {!isClaimed && (
-                  <div className="border-t pt-4">
-                    <div className="flex items-start gap-3">
-                      <Building2 className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">
-                          {t('club:claim.aboutSectionNote', 'This club hasn\'t been claimed yet. Are you the owner or manager?')}
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (!user) {
-                              navigate(localizePath('/auth'));
-                              return;
-                            }
-                            setShowClaimDialog(true);
-                          }}
-                        >
-                          <Building2 className="h-4 w-4 mr-1" />
-                          {t('club:claim.button')}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -580,10 +560,6 @@ export default function LocationDetail() {
               locationName={location.name}
               clubSlug={clubProfile?.id}
             />
-
-            {/* Bookable availability at this venue — same green calendar + guest pay-first as the
-                academy/trainer pages. An academy-trainer's charge routes to the academy's Mollie. */}
-            <PublicAvailabilitySection owner={{ type: 'location', locationId: location.id }} />
 
             {/* Waiting List Card */}
             <WaitingListCard
@@ -635,21 +611,6 @@ export default function LocationDetail() {
                       </div>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* City Trainers Cross-Link */}
-            {citySlug && (
-              <Card>
-                <CardContent className="p-4">
-                  <LocalizedLink 
-                    to={`/trainers/${citySlug}`}
-                    className="flex items-center gap-2 text-primary hover:underline font-medium"
-                  >
-                    <Users className="h-4 w-4" />
-                    {t('common:findMoreTrainersIn', { city: location.city, defaultValue: `Find more trainers in ${location.city}` })} →
-                  </LocalizedLink>
                 </CardContent>
               </Card>
             )}
@@ -763,6 +724,23 @@ export default function LocationDetail() {
             </CardContent>
           </Card>
         </ProfileFullWidthSection>
+
+        {/* Full Width - Find more trainers in the city (moved out of the sidebar so it goes full width) */}
+        {citySlug && (
+          <ProfileFullWidthSection>
+            <Card>
+              <CardContent className="p-6 text-center">
+                <LocalizedLink
+                  to={`/trainers/${citySlug}`}
+                  className="inline-flex items-center gap-2 font-medium text-primary hover:underline"
+                >
+                  <Users className="h-5 w-5" />
+                  {t('common:findMoreTrainersIn', { city: location.city, defaultValue: `Find more trainers in ${location.city}` })} →
+                </LocalizedLink>
+              </CardContent>
+            </Card>
+          </ProfileFullWidthSection>
+        )}
 
         {/* Full Width - Academies Section */}
         {academies.length > 0 && (

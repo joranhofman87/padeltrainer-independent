@@ -367,6 +367,7 @@
     "pickTitle": "Book a training",
     "pickSubtitle": "Pick a day and time that suits you",
     "pickDay": "Choose a day",
+    "noAvailability": "There are no open trainings right now. Check back later or get in touch.",
     "calendar": {
       "prevMonth": "Previous month",
       "nextMonth": "Next month",

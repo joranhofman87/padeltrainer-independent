@@ -14,6 +14,8 @@ interface PublicAvailabilitySectionProps {
   timezone?: string;
   /** Academy slug — enables the cyclus → registration fallback route when guest pay-first is off. */
   academySlug?: string;
+  /** Show the booking section (with an empty state) even when there is no availability. */
+  alwaysShow?: boolean;
 }
 
 /**
@@ -26,10 +28,11 @@ interface PublicAvailabilitySectionProps {
  * so a trainer who belongs to an academy checks out through the academy automatically — no prop
  * needed here. Amount is the full slot/cyclus price (whole-slot when allow_single_booking=false).
  *
- * Renders nothing when there is no availability. Extracted from AcademyPublicOpenSlots so the
- * trainer page reuses the exact same picker + booking flow.
+ * Renders nothing when there is no availability, unless `alwaysShow` is set (then it shows an
+ * empty-state card). Extracted from AcademyPublicOpenSlots so the trainer page reuses the exact
+ * same picker + booking flow.
  */
-export function PublicAvailabilitySection({ owner, timezone, academySlug }: PublicAvailabilitySectionProps) {
+export function PublicAvailabilitySection({ owner, timezone, academySlug, alwaysShow }: PublicAvailabilitySectionProps) {
   const navigate = useNavigate();
   const localizePath = useLocalizedPathFn();
   const [guestSlot, setGuestSlot] = useState<PublicSlot | null>(null);
@@ -49,7 +52,7 @@ export function PublicAvailabilitySection({ owner, timezone, academySlug }: Publ
 
   return (
     <>
-      <AvailabilityCalendar owner={owner} onSelect={handleSelect} timezone={timezone} />
+      <AvailabilityCalendar owner={owner} onSelect={handleSelect} timezone={timezone} alwaysShow={alwaysShow} />
       <GuestBookingDialog
         slot={guestSlot}
         open={guestSlot !== null}

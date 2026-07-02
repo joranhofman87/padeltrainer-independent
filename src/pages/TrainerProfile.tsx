@@ -495,6 +495,19 @@ export default function TrainerProfile() {
           )}
         </div>
 
+        {/* Bookable availability — FULL WIDTH and first, so visitors land on the agenda.
+            Same two-pane calendar + guest pay-first flow as the academy page; an academy-trainer's
+            payment routes to the academy's Mollie automatically (edge fn). Always shown. */}
+        {trainer && (
+          <div className="mb-8">
+            <PublicAvailabilitySection
+              owner={{ type: 'trainer', trainerId: trainer.id }}
+              timezone={(trainerAcademy as { timezone?: string | null } | null)?.timezone ?? undefined}
+              alwaysShow
+            />
+          </div>
+        )}
+
         {/* Video Modal */}
         {showVideo && videoInfo && (
           <div 
@@ -520,15 +533,6 @@ export default function TrainerProfile() {
 
         <ProfileContentGrid>
           <ProfileMainColumn>
-            {/* Open Slots — same visual two-pane calendar + guest pay-first flow as the academy page.
-                An academy-trainer's payment routes to the academy's Mollie automatically (edge fn). */}
-            {trainer && (
-              <PublicAvailabilitySection
-                owner={{ type: 'trainer', trainerId: trainer.id }}
-                timezone={(trainerAcademy as { timezone?: string | null } | null)?.timezone ?? undefined}
-              />
-            )}
-
             {/* Open Registrations */}
             {trainer && <TrainerOpenCycles trainerId={trainer.id} trainerName={profile.full_name || 'Trainer'} />}
 
