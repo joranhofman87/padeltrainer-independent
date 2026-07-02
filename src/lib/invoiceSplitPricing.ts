@@ -39,6 +39,20 @@ export function resolveInvoiceUnitPrice(input: InvoiceSplitPriceInput): number {
   return round2(base);
 }
 
+/**
+ * Mirror of supabase/functions/_shared/booking-pricing.ts shouldSkipExtrasForPaidExtrasBookings.
+ * True when the extra-cost lines must NOT be appended because the booking's payment_amount
+ * already includes them (single-slot pay-first). Non-cyclus + every booking flagged.
+ */
+export function shouldSkipExtrasForPaidExtrasBookings(
+  bookings: { amount_includes_extras?: boolean | null }[],
+  allSameCyclus: boolean,
+): boolean {
+  if (allSameCyclus) return false;
+  if (!bookings || bookings.length === 0) return false;
+  return bookings.every((b) => b?.amount_includes_extras === true);
+}
+
 export type BookingWithSlotPrice = {
   payment_amount?: number | null;
   availability_slots?: { price_per_session?: number | null } | null;

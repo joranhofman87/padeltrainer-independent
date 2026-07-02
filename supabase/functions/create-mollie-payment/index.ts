@@ -7,6 +7,8 @@ import {
   computeSingleSlotPaymentAmount,
   resolveSplitDivisorFromSlots,
   hasNonUniformCapacity,
+  sumSlotExtraCosts,
+  type ExtraCost,
   type SlotPricingInput,
 } from "../_shared/booking-pricing.ts";
 import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
@@ -203,6 +205,9 @@ serve(async (req) => {
     // The slot's academy (when set) disambiguates a multi-academy trainer so the charge routes to
     // the SAME org the webhook will confirm against (Codex F3). Null → unchanged behaviour.
     let recipientAcademyProfileId: string | null = null;
+    // Set only on the single-slot branch: the charge includes slot extra_costs, so the
+    // booking is stamped amount_includes_extras and the invoice must not re-append them.
+    let singleSlotIncludesExtras = false;
 
     if (requestedBookingIds.length > 0) {
       const { data: existingBookings, error: bookingsError } = await supabase
@@ -311,7 +316,7 @@ serve(async (req) => {
     } else {
       const { data: slot, error: slotError } = await supabase
         .from("availability_slots")
-        .select("id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking")
+        .select("id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs")
         .eq("id", slotId)
         .single();
 
@@ -330,8 +335,17 @@ serve(async (req) => {
       }
 
       recipientAcademyProfileId = (slot as { academy_profile_id: string | null }).academy_profile_id ?? null;
-      expectedAmount = computeSingleSlotPaymentAmount(slot, hourlyRate, 1);
-      logStep("Server-computed single-slot amount", { expectedAmount });
+      // Base session price + the slot's extra costs (balls, court hire, …). The player is
+      // quoted price_per_session + extras on the booking screen, so the charge — and thus
+      // the booking.payment_amount the invoice reads back — must include the extras too.
+      // This mirrors the guest single-slot path (create-guest-slot-payment) so both charge
+      // the identical total, and the booking is flagged amount_includes_extras below so
+      // auto-create-invoice does NOT re-append the extras (P1-5 / P2-7).
+      expectedAmount =
+        computeSingleSlotPaymentAmount(slot, hourlyRate, 1) +
+        sumSlotExtraCosts((slot as { extra_costs?: ExtraCost[] | null }).extra_costs ?? null);
+      singleSlotIncludesExtras = true;
+      logStep("Server-computed single-slot amount (incl. extras)", { expectedAmount });
     }
 
     if (expectedAmount <= 0) {
@@ -624,6 +638,20 @@ serve(async (req) => {
       bookingId = newBookingId as string;
       allBookingIds.push(bookingId);
       logStep("Booking created", { bookingId, payment_amount: expectedAmount });
+
+      // Stamp that payment_amount already includes the slot extra_costs so
+      // auto-create-invoice / invoiceSync do NOT re-append them (P1-5). Best-effort:
+      // if the column isn't deployed yet, log and continue — the charge must never fail
+      // on this, and the invoice then falls back to today's behavior.
+      if (singleSlotIncludesExtras) {
+        const { error: flagError } = await supabase
+          .from("bookings")
+          .update({ amount_includes_extras: true })
+          .eq("id", bookingId);
+        if (flagError) {
+          logStep("Could not set amount_includes_extras (non-fatal)", { error: flagError.message });
+        }
+      }
     }
 
     const origin = redirectUrl || req.headers.get("origin") || "https://padeltrainer.ai";

@@ -15,6 +15,7 @@ import {
   calculateVatTotals,
   applySplit,
 } from "@/lib/invoiceCalc";
+import { shouldSkipExtrasForPaidExtrasBookings } from "@/lib/invoiceSplitPricing";
 import {
   fetchAllRows,
   fetchAllByInChunks,
@@ -392,15 +393,32 @@ async function applyRemovalRecalculation(
     });
   }
 
-  // Add extra costs from cycle settings, fall back to slot extra_costs
-  const extraCosts = await resolveExtraCosts(sharedCyclusId, firstSlot.extra_costs);
-  appendExtraCostLineItems(
-    lineItems,
-    extraCosts,
-    splitCount,
-    remainingBookings.length,
-    defaultVatRate,
-  );
+  // Add extra costs from cycle settings, fall back to slot extra_costs — UNLESS the
+  // remaining bookings' payment_amount already includes them (single-slot pay-first).
+  // Best-effort flag read so a missing column just falls back to appending (as before).
+  let extrasAlreadyCharged = false;
+  {
+    const { data: extrasFlagRows, error: extrasFlagError } = await supabase
+      .from("bookings")
+      .select("id, amount_includes_extras")
+      .in("id", remainingBookingIds);
+    if (!extrasFlagError) {
+      extrasAlreadyCharged = shouldSkipExtrasForPaidExtrasBookings(
+        (extrasFlagRows ?? []) as { amount_includes_extras?: boolean | null }[],
+        allSameCyclus,
+      );
+    }
+  }
+  if (!extrasAlreadyCharged) {
+    const extraCosts = await resolveExtraCosts(sharedCyclusId, firstSlot.extra_costs);
+    appendExtraCostLineItems(
+      lineItems,
+      extraCosts,
+      splitCount,
+      remainingBookings.length,
+      defaultVatRate,
+    );
+  }
 
   // Calculate VAT (multi-rate aware)
   const slotPricesIncludeVat = firstSlot.prices_include_vat ?? true;

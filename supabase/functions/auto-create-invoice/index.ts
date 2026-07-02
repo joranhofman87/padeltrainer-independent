@@ -10,7 +10,7 @@ import {
   resolveInvoiceUnitPrice,
   splitAmongPlayersForInvoiceCreate,
 } from "../_shared/invoice-split-pricing.ts";
-import { resolveSplitDivisorFromSlots } from "../_shared/booking-pricing.ts";
+import { resolveSplitDivisorFromSlots, shouldSkipExtrasForPaidExtrasBookings } from "../_shared/booking-pricing.ts";
 
 const corsHeaders = sharedCors;
 
@@ -372,7 +372,33 @@ serve(async (req) => {
       }
     }
 
-    if (extraCosts && Array.isArray(extraCosts)) {
+    // Skip re-appending extras when payment_amount already includes them — the single-slot
+    // pay-first paths (create-mollie-payment single-slot + create-guest-slot-payment) bake
+    // sumSlotExtraCosts into payment_amount and stamp amount_includes_extras. Best-effort
+    // read: a missing column / read error is treated as "not flagged" so behavior is unchanged
+    // until the migration + charge fns are deployed (P1-5 / P2-7).
+    let extrasAlreadyCharged = false;
+    {
+      const { data: extrasFlagRows, error: extrasFlagError } = await supabase
+        .from("bookings")
+        .select("id, amount_includes_extras")
+        .in("id", bookingIds);
+      if (extrasFlagError) {
+        logStep("amount_includes_extras read failed — appending extras as before (non-fatal)", {
+          error: extrasFlagError.message,
+        });
+      } else {
+        extrasAlreadyCharged = shouldSkipExtrasForPaidExtrasBookings(
+          (extrasFlagRows ?? []) as { amount_includes_extras?: boolean | null }[],
+          allSameCyclus,
+        );
+      }
+    }
+    if (extrasAlreadyCharged) {
+      logStep("Skipping extra_costs append — payment_amount already includes extras", { bookingIds });
+    }
+
+    if (!extrasAlreadyCharged && extraCosts && Array.isArray(extraCosts)) {
       const splitForExtras = requestedSplitAmongPlayers ?? splitAmongPlayers;
       for (const ec of extraCosts) {
         if (ec.description && ec.price > 0) {
