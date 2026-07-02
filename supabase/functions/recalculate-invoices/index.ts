@@ -273,13 +273,34 @@ Deno.serve(async (req) => {
           updatePayload.line_items = lineItems;
         }
 
-        const { error: updateErr } = await supabaseAdmin
+        // Status guard (P2-6): re-check status at write time so an admin recalc
+        // racing a Mollie payment that flips this invoice to `paid` (or a cancel)
+        // mid-loop can NOT overwrite the just-paid total/subtotal/vat_amount or null
+        // pdf_url. Mirrors mollie-webhook's no-downgrade `.neq("status","paid")` and
+        // invoiceSync's optimistic guard. A concurrent transition out of an editable
+        // status matches zero rows → treated as a skipped conflict, NOT success.
+        const { data: updatedRows, error: updateErr } = await supabaseAdmin
           .from("invoices")
           .update(updatePayload)
-          .eq("id", inv.id);
+          .eq("id", inv.id)
+          .in("status", ["draft", "sent", "pending"])
+          .select("id");
 
-        result.updated = !updateErr;
-        if (updateErr) result.error = updateErr.message;
+        if (updateErr) {
+          result.updated = false;
+          result.error = updateErr.message;
+        } else if (!updatedRows || updatedRows.length === 0) {
+          // Row moved out of an editable status between SELECT and UPDATE
+          // (concurrent payment/cancel). Skip it — do not report as updated.
+          result.updated = false;
+          result.skipped = true;
+          result.reason = "status changed concurrently (skipped)";
+          console.warn(
+            `recalculate-invoices: skipped ${inv.invoice_number} (${inv.id}) — status changed concurrently (paid/cancelled)`,
+          );
+        } else {
+          result.updated = true;
+        }
       } else {
         result.updated = false;
       }
