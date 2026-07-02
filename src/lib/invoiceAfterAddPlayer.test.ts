@@ -121,17 +121,14 @@ describe("syncInvoicesAfterAddPlayer", () => {
     // default invoke returns success
 
     fromMock.mockImplementation((table: string) => {
-      if (table === "bookings") {
+      // G5: the split divisor is now the slot CAPACITY (max_participants), read from
+      // availability_slots — not a live player count from bookings.
+      if (table === "availability_slots") {
         return {
           select: vi.fn().mockReturnValue({
-            in: vi.fn().mockReturnValue({
-              in: vi.fn().mockResolvedValue({
-                data: [
-                  { player_id: null, guest_player_id: "g1" },
-                  { player_id: null, guest_player_id: "g2" },
-                ],
-                error: null,
-              }),
+            in: vi.fn().mockResolvedValue({
+              data: [{ max_participants: 4 }, { max_participants: 4 }],
+              error: null,
             }),
           }),
         };
@@ -168,7 +165,7 @@ describe("syncInvoicesAfterAddPlayer", () => {
     expect(result.created).toBe(0);
   });
 
-  it("passes splitAmongPlayers when split payment active", async () => {
+  it("passes splitAmongPlayers = slot capacity when split payment active", async () => {
     invokeMock.mockResolvedValue({ data: { success: true }, error: null });
 
     await syncInvoicesAfterAddPlayer({
@@ -177,8 +174,9 @@ describe("syncInvoicesAfterAddPlayer", () => {
       slotIds: ["slot-1", "slot-2"],
     });
 
+    // Divisor = MAX(max_participants) = 4 (the court capacity), NOT the live player count.
     expect(invokeMock).toHaveBeenCalledWith("auto-create-invoice", {
-      body: { bookingIds: ["b1"], asDraft: true, splitAmongPlayers: 2 },
+      body: { bookingIds: ["b1"], asDraft: true, splitAmongPlayers: 4 },
     });
   });
 

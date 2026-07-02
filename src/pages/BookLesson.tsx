@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { insertBookings, insertBookingSingle } from '@/lib/bookings';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
+import { resolveSplitDivisor } from '@/lib/splitDivisor';
 import { initiateCyclePayment } from '@/lib/cyclePayment';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { getApplicableTerms } from '@/lib/terms';
@@ -434,17 +435,13 @@ export default function BookLesson() {
           // stale abandoned-checkout pending row into this payment and
           // mis-spread the split amount across more rows than intended.
           const bookingIds = ((insertedCycleBookings as { id: string }[] | null) ?? []).map(b => b.id);
-          // Calculate payment amount: if split_payment, divide by number of confirmed players + this player
+          // Payment amount (INDICATIVE — create-mollie-payment recomputes server-side).
+          // G5: split by the cycle's frozen court CAPACITY, matching the server divisor
+          // so the pre-checkout amount agrees (no "client amount ignored" mismatch log).
           let paymentAmount = selectedCyclus.totalPrice;
           if (cycleSettings?.split_payment) {
-            // Count existing confirmed players for this cycle
-            const { count: existingPlayers } = await supabase
-              .from('bookings')
-              .select('player_id', { count: 'exact', head: true })
-              .in('slot_id', selectedCyclus.slots.map(s => s.id))
-              .in('status', ['pending', 'confirmed']);
-            const totalPlayers = Math.max(existingPlayers || 1, 1);
-            paymentAmount = Math.round((selectedCyclus.totalPrice / totalPlayers) * 100) / 100;
+            const divisor = resolveSplitDivisor(selectedCyclus.slots);
+            paymentAmount = Math.round((selectedCyclus.totalPrice / divisor) * 100) / 100;
           }
           // A3: create the Mollie payment and, on failure, soft-cancel the
           // just-inserted bookings so a failed checkout never strands

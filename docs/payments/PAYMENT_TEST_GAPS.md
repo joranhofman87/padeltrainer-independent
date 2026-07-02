@@ -87,15 +87,34 @@ directly tested — a future edit could diverge the two functions.
 confirm return the same org for shared fixtures. Files: `_shared/guest-payment.ts`, `mollie-webhook/index.ts`,
 `verify-mollie-payment/index.ts`.
 
-## G5 — Split-payment divisor race (Codex F4) (P0/P1, logged-in cycle)
+## G5 — Split-payment divisor race (Codex F4) — ✅ ADDRESSED (Option A: freeze to capacity)
 
-**Scenario:** `create-mollie-payment` fixes the split divisor (÷ distinct players) at charge time. If a second
-player books the same cycle while the first is on the Mollie checkout, the first was charged `total/2` but the
-cohort is now 3 — no re-division/compensation.
-**Why untested:** no concurrent-cycle-booking split test.
-**Approach:** PGlite/integration — seed a split cycle, first payer computes divisor 2, insert a second booker,
-assert the invariant we want (either freeze the cohort at accept, or re-divide at webhook). This likely needs a
-**product decision** first (freeze vs re-divide). Files: `create-mollie-payment/index.ts:293-305`, `cyclePayment.ts`.
+**Scenario (fixed):** the split divisor was the LIVE distinct-player count, recomputed at each charge — so a
+cohort change mid-checkout drifted the divisor (over/under-collection; paid-early vs paid-late locked different
+rates).
+
+**Decision (owner):** Option A — **freeze the divisor to COURT CAPACITY** (`MAX(max_participants)` across the
+cycle's slots). A pure function of the slot rows, so it can't drift, is identical at every site, and never
+overcharges (each pays exactly total ÷ seats; the academy absorbs empty seats). Divisor 1 ⇒ no split.
+
+**Fix (shipped):** one canonical rule — `resolveSplitDivisorFromSlots` in `_shared/booking-pricing.ts` (edge) +
+`src/lib/splitDivisor.ts` (client mirror, contract-tested equal). Applied at every AUTO split site: the charge
+paths (`create-mollie-payment`, `create-guest-cyclus-payment`), the invoice paths (`recalc_cycle_split_count`
+migration `20260705150000`, `auto-create-invoice` auto-detect, `invoiceAfterAddPlayer` draft, `invoiceSync`
+reads the RPC value), the bank-transfer rebook fallback (`create-rebook-invoice`), and the indicative client
+amounts (`BookLesson`, `priorityClaims`). So charge = per-booking stamp = invoice line-items always agree,
+preserving the webhook `sum(payment_amount)==paid` invariant. Adversarially reviewed (2 rounds).
+
+**Conscious scope exclusion (open product question):** the **proposal/commitment subsystem** —
+`finalize-proposals` and `_shared/cycle-commitment-invoicing.ts` (via `generate-cycle-commitment-invoices`) —
+still splits a cycle's total by the **committed group headcount** ("deferred split-by-headcount"), by design.
+Whether a committed/proposed GROUP should split by its own headcount or by court capacity is a distinct product
+decision (÷headcount can bill more than ÷capacity when the group is under-full). Not changed here; flagged for
+the owner. These are deferred/AI flows, separate from the direct book→pay/invoice paths above.
+
+**Remaining test coverage:** a PGlite concurrency test (two split-cycle bookers) is now trivial to write since
+the divisor is frozen — the second booker's divisor is unchanged. Files: `create-mollie-payment/index.ts`,
+`create-guest-cyclus-payment/index.ts`, `_shared/booking-pricing.ts`, migration `20260705150000`.
 
 ## G6 — Logged-in cycle capacity lock (P1, invariant #9)
 

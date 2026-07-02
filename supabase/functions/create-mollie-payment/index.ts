@@ -5,6 +5,8 @@ import {
   amountsMatch,
   computeCyclusTotalFromSlots,
   computeSingleSlotPaymentAmount,
+  resolveSplitDivisorFromSlots,
+  hasNonUniformCapacity,
   type SlotPricingInput,
 } from "../_shared/booking-pricing.ts";
 import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
@@ -287,23 +289,19 @@ serve(async (req) => {
 
       const total = computeCyclusTotalFromSlots(slots, hourlyRate);
       if (splitPayment) {
-        const slotIds = [...new Set(existingBookings.map((b) => b.slot_id))];
-        // Split by DISTINCT participants, not booking rows. A multi-session
-        // cycle has players×sessions rows, so counting rows divided the cycle
-        // far too many ways and massively undercharged each payer.
-        const { data: participantRows } = await supabase
-          .from("bookings")
-          .select("player_id, guest_player_id")
-          .in("slot_id", slotIds)
-          // Include strict HOLDS ('payment_pending') as committed participants — else the FIRST
-          // payer of a split+strict cycle is divided by too few players and overcharged.
-          .in("status", ["pending", "confirmed", "payment_pending"]);
-        const distinctPlayers = new Set(
-          (participantRows || [])
-            .map((b) => b.player_id ?? b.guest_player_id)
-            .filter(Boolean),
-        ).size;
-        expectedAmount = applySplitPayment(total, distinctPlayers || 1);
+        // G5: split by the cycle's COURT CAPACITY (frozen), NOT the live player count.
+        // A pure function of the slot rows, so it can't drift as the cohort forms
+        // mid-checkout (the old race) and never overcharges — each player pays exactly
+        // total ÷ seats. divisor 1 ⇒ no split (applySplitPayment returns the full total).
+        const divisor = resolveSplitDivisorFromSlots(slots);
+        if (hasNonUniformCapacity(slots)) {
+          logStep("WARN: split cycle has non-uniform slot capacity — using MAX (never overcharges)", {
+            cyclusId: cyclusIds[0],
+            divisor,
+            capacities: slots.map((s) => s.max_participants),
+          });
+        }
+        expectedAmount = applySplitPayment(total, divisor);
       } else {
         expectedAmount = total;
       }

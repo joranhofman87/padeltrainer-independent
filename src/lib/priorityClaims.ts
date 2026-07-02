@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { resolveSplitDivisor } from '@/lib/splitDivisor';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { reportDeployDriftFallback } from '@/lib/deployDrift';
 import { logger } from '@/lib/logger';
@@ -994,24 +995,19 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     // Strict: the payable bookings ARE the holds to release if checkout can't start.
     if (strict) for (const id of payableBookingIds) if (!strictHoldIds.includes(id)) strictHoldIds.push(id);
 
-    // Amount, mirroring BookLesson's cycle branch: sum of price_per_session
-    // over the player's booked slots; with split_payment, divided by the
-    // distinct committed players (pending+confirmed) on those slots. This is
-    // indicative only — the edge function recomputes it with service role.
+    // Amount, mirroring BookLesson's cycle branch: sum of price_per_session over the
+    // player's booked slots; with split_payment, divided by the cycle's frozen court
+    // CAPACITY (G5), matching the edge function's divisor. Indicative only — the edge
+    // function recomputes it with service role.
     const total = payableSlotIds.reduce((sum, id) => sum + (priceBySlot.get(id) ?? 0), 0);
     let amount = total;
     if (splitPayment) {
-      const { data: participantRows } = await supabase
-        .from('bookings')
-        .select('player_id, guest_player_id')
-        .in('slot_id', payableSlotIds)
-        .in('status', ['pending', 'confirmed', 'payment_pending']);
-      const distinctPlayers = new Set(
-        (participantRows || [])
-          .map((b) => b.player_id ?? b.guest_player_id)
-          .filter(Boolean),
-      ).size;
-      amount = Math.round((total / Math.max(distinctPlayers, 1)) * 100) / 100;
+      const { data: capRows } = await supabase
+        .from('availability_slots')
+        .select('max_participants')
+        .in('id', payableSlotIds);
+      const divisor = resolveSplitDivisor((capRows || []) as { max_participants?: number | null }[]);
+      amount = Math.round((total / divisor) * 100) / 100;
     }
 
     const paymentSetup = await hasValidPaymentSetup(slot.trainer_id, slot.trainer_id, false);

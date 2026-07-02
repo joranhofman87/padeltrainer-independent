@@ -18,7 +18,7 @@
 //     soft-cancel backstop on failure.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
-import { applySplitPayment, computeCyclusTotalFromSlots, type SlotPricingInput } from "../_shared/booking-pricing.ts";
+import { applySplitPayment, computeCyclusTotalFromSlots, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
@@ -161,19 +161,18 @@ Deno.serve(async (req) => {
 
     let expectedAmount = total;
     if (splitPayment) {
-      // Divide the cyclus total by DISTINCT participants (existing others + this guest).
-      // Excluding this guest's own rows makes it robust to re-clicks.
-      const { data: participants } = await supabase
-        .from("bookings")
-        .select("player_id, guest_player_id")
-        .in("slot_id", slotIds)
-        .in("status", ["pending", "confirmed", "payment_pending"]);
-      const others = new Set(
-        (participants || [])
-          .map((b) => (b.player_id ?? b.guest_player_id) as string | null)
-          .filter((id): id is string => !!id && id !== guestPlayerId),
-      );
-      expectedAmount = applySplitPayment(total, others.size + 1);
+      // G5: split by the cycle's COURT CAPACITY (frozen), not the live participant count.
+      // A pure function of the slot rows → stable across re-clicks and concurrent joins,
+      // and never overcharges (each guest pays exactly total ÷ seats). divisor 1 ⇒ no split.
+      const divisor = resolveSplitDivisorFromSlots(slots);
+      if (hasNonUniformCapacity(slots)) {
+        logStep("WARN: split cycle has non-uniform slot capacity — using MAX (never overcharges)", {
+          cyclusId,
+          divisor,
+          capacities: slots.map((s) => s.max_participants),
+        });
+      }
+      expectedAmount = applySplitPayment(total, divisor);
     }
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
