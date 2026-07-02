@@ -7,6 +7,7 @@ import {
   resolveRecipient,
 } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,16 +134,19 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const body = await req.json();
-    const { claimIds, slotId, testEmail, resend, customMessage } = body as {
+    const { claimIds, slotId, testEmail, resend, customMessage, customSubject } = body as {
       claimIds?: string[];
       slotId?: string;
       testEmail?: string;
       resend?: boolean;
       customMessage?: string;
+      customSubject?: string;
     };
     const isTest = !!testEmail;
     // Optional academy-authored intro injected at the top of every invite (escaped + tokenized).
     const inviteMessage = typeof customMessage === "string" ? customMessage.trim().slice(0, 2000) : "";
+    // Optional academy-authored subject line; empty ⇒ the default below. Sanitized (no CR/LF).
+    const inviteSubject = sanitizeEmailSubject(customSubject);
 
     if (!(claimIds && claimIds.length) && !slotId) {
       return new Response(JSON.stringify({ error: "claimIds or slotId required" }), {
@@ -399,7 +403,15 @@ const handler = async (req: Request): Promise<Response> => {
       const { error: sendErr } = await sendInviteWithRetry(resendClient, {
         from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
         to: [recipientEmail],
-        subject: testEmail ? "[TEST] Reserveer je plek voor de volgende cyclus" : "Reserveer je plek voor de volgende cyclus",
+        subject: (() => {
+          // Academy-authored subject if set (with {first_name} etc. substituted per
+          // recipient), else the default. Re-sanitized after substitution so a name with a
+          // stray newline can't defeat the header-injection guard. [TEST] prefix for tests.
+          const base = sanitizeEmailSubject(
+            inviteSubject ? substituteVars(inviteSubject, recipientName) : "Reserveer je plek voor de volgende cyclus",
+          );
+          return testEmail ? `[TEST] ${base}` : base;
+        })(),
         html,
       });
       if (sendErr) {

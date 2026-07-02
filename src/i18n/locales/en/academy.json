@@ -660,6 +660,8 @@
       "recipientCount": "{{count}} recipient(s) selected",
       "replyToHint": "Replies from players go to your reply-to email. You can set this in",
       "replyToHintLink": "invoice settings",
+      "subjectLabel": "Email subject",
+      "subjectPlaceholder": "Invoice {first_name}",
       "messageLabel": "Email message",
       "messagePlaceholder": "Hi {first_name},\n\nHere is your invoice. Let me know if you have any questions.\n\nThanks!",
       "variablesHelp": "Insert variable:",

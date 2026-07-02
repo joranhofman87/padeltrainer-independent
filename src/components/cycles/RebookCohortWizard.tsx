@@ -21,6 +21,7 @@ import { HolidayRangeEditor } from './HolidayRangeEditor';
 import { RebookAccessWindows } from './RebookAccessWindows';
 import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
+import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
@@ -110,6 +111,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [preparing, setPreparing] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
   const [invitationMessage, setInvitationMessage] = useState('');
+  const [invitationSubject, setInvitationSubject] = useState('');
   const [rebookRules, setRebookRules] = useState('');
 
   useEffect(() => {
@@ -154,6 +156,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
+      invitationSubject: invitationSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
     }),
     [
@@ -172,6 +175,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       sessionPrice,
       holidays,
       invitationMessage,
+      invitationSubject,
       rebookRules,
     ],
   );
@@ -315,7 +319,16 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <p className="text-sm font-medium">
           {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: emailCount })}
         </p>
-        <div className="rounded-md border p-3">
+        <div className="space-y-3 rounded-md border p-3">
+          <EmailSubjectField
+            id="rebook-invite-subject"
+            value={invitationSubject}
+            onChange={setInvitationSubject}
+            disabled={submitting}
+            label={t('rebookCohort.inviteSubjectLabel', 'Onderwerp van de uitnodiging (optioneel)')}
+            placeholder={t('rebookCohort.inviteSubjectPlaceholder', 'Reserveer je plek voor de volgende cyclus')}
+            variablesHelp={t('rebookCohort.inviteVariablesHelp', 'Voeg variabele toe:')}
+          />
           <EmailMessageField
             id="rebook-invite-message"
             value={invitationMessage}

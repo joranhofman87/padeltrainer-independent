@@ -84,9 +84,10 @@ export default function AcademyInvoices() {
   const [sendingAll, setSendingAll] = useState(false);
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null; customMessage: string }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '' });
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null; customMessage: string; customSubject: string }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '', customSubject: '' });
   const [composeInvoice, setComposeInvoice] = useState<Invoice | null>(null);
   const [defaultEmailMessage, setDefaultEmailMessage] = useState("");
+  const [defaultEmailSubject, setDefaultEmailSubject] = useState("");
   const [sendingInvoiceIds, setSendingInvoiceIds] = useState<Set<string>>(new Set());
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState<null | "reset" | "delete">(null);
@@ -262,7 +263,7 @@ export default function AcademyInvoices() {
   // migration isn't applied yet the column-select errors → data is null → "" ,
   // so the feature degrades to blank and deploy order doesn't matter.
   useEffect(() => {
-    if (!academyId) { setDefaultEmailMessage(""); return; }
+    if (!academyId) { setDefaultEmailMessage(""); setDefaultEmailSubject(""); return; }
     let cancelled = false;
     (async () => {
       const { data } = await supabase
@@ -271,6 +272,14 @@ export default function AcademyInvoices() {
         .eq("id", academyId)
         .maybeSingle();
       if (!cancelled) setDefaultEmailMessage(data?.invoice_email_message ?? "");
+      // Separate select so a not-yet-applied invoice_email_subject column can't blank
+      // the message default (the column-select would error the whole row otherwise).
+      const { data: subjRow } = await supabase
+        .from("academy_profiles")
+        .select("invoice_email_subject")
+        .eq("id", academyId)
+        .maybeSingle();
+      if (!cancelled) setDefaultEmailSubject((subjRow as { invoice_email_subject?: string | null } | null)?.invoice_email_subject ?? "");
     })();
     return () => { cancelled = true; };
   }, [academyId]);
@@ -287,6 +296,20 @@ export default function AcademyInvoices() {
     }
     setDefaultEmailMessage(message.trim());
     toast.success(t("invoices.send.savedDefault", "Saved as your default message"));
+  };
+
+  const handleSaveDefaultSubject = async (subject: string) => {
+    if (!academyId) return;
+    const { error } = await supabase
+      .from("academy_profiles")
+      .update({ invoice_email_subject: subject.trim() || null } as never)
+      .eq("id", academyId);
+    if (error) {
+      toast.error(t("invoices.send.saveDefaultSubjectFailed", "Could not save default subject"));
+      return;
+    }
+    setDefaultEmailSubject(subject.trim());
+    toast.success(t("invoices.send.savedDefaultSubject", "Saved as your default subject"));
   };
 
   const invoiceSettingsLabels = buildInvoiceSettingsLabels(t, "academy");
@@ -326,9 +349,9 @@ export default function AcademyInvoices() {
   // Send single invoice (with email)
   type SendInvoiceResult = { noEmail: boolean; skipped?: boolean; email?: string; invoice?: Invoice };
   const sendInvoiceMutation = useMutation({
-    mutationFn: async ({ invoice, customMessage }: { invoice: Invoice; customMessage?: string }): Promise<SendInvoiceResult> => {
+    mutationFn: async ({ invoice, customMessage, customSubject }: { invoice: Invoice; customMessage?: string; customSubject?: string }): Promise<SendInvoiceResult> => {
       const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", {
-        body: { invoiceId: invoice.id, customMessage },
+        body: { invoiceId: invoice.id, customMessage, customSubject },
       });
       if (fnError) throw fnError;
 
@@ -360,16 +383,17 @@ export default function AcademyInvoices() {
         return next;
       });
     },
-    onSuccess: (result, { customMessage }) => {
+    onSuccess: (result, { customMessage, customSubject }) => {
       if (result.noEmail && result.invoice) {
-        // Carry the composed message into the address-collection fallback so the
-        // retry sends the same message the academy just wrote.
+        // Carry the composed message + subject into the address-collection fallback so
+        // the retry sends the same email the academy just wrote.
         setEmailDialog({
           open: true,
           invoiceId: result.invoice.id,
           playerName: result.invoice.player_name,
           guestPlayerId: result.invoice.guest_player_id,
           customMessage: customMessage ?? "",
+          customSubject: customSubject ?? "",
         });
         return;
       }
@@ -455,14 +479,14 @@ export default function AcademyInvoices() {
   };
 
   const handleEmailSubmitAndSend = async (email: string) => {
-    const { invoiceId, guestPlayerId, customMessage } = emailDialog;
+    const { invoiceId, guestPlayerId, customMessage, customSubject } = emailDialog;
 
     if (guestPlayerId) {
       await supabase.from("guest_players").update({ email }).eq("id", guestPlayerId);
     }
 
     const { data, error: fnError } = await supabase.functions.invoke("send-invoice-email", {
-      body: { invoiceId, customMessage },
+      body: { invoiceId, customMessage, customSubject },
     });
 
     // Only mark sent after a confirmed delivery
@@ -969,18 +993,20 @@ export default function AcademyInvoices() {
         replyToSettingsHref="/app/academy/invoices?tab=settings"
         defaultMessage={defaultEmailMessage}
         onSaveDefault={handleSaveDefaultMessage}
+        defaultSubject={defaultEmailSubject}
+        onSaveDefaultSubject={handleSaveDefaultSubject}
         sending={composeInvoice ? sendingInvoiceIds.has(composeInvoice.id) : false}
-        onSend={(customMessage) => {
+        onSend={(customMessage, customSubject) => {
           const invoice = composeInvoice;
           if (!invoice) return;
           setComposeInvoice(null);
-          sendInvoiceMutation.mutate({ invoice, customMessage });
+          sendInvoiceMutation.mutate({ invoice, customMessage, customSubject });
         }}
       />
 
       <InvoiceEmailDialog
         open={emailDialog.open}
-        onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '' })}
+        onClose={() => setEmailDialog({ open: false, invoiceId: '', playerName: '', guestPlayerId: null, customMessage: '', customSubject: '' })}
         playerName={emailDialog.playerName}
         onSubmit={handleEmailSubmitAndSend}
       />
@@ -992,6 +1018,8 @@ export default function AcademyInvoices() {
         language={i18n.language || "nl"}
         defaultMessage={defaultEmailMessage}
         onSaveDefault={handleSaveDefaultMessage}
+        defaultSubject={defaultEmailSubject}
+        onSaveDefaultSubject={handleSaveDefaultSubject}
         onSent={() => {
           setSelectedIds(new Set());
           invalidateInvoicesAndPlayers();

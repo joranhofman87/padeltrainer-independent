@@ -1061,6 +1061,8 @@
     "confirmGroupLine": "{{players}} spelers · {{sessions}} sessies",
     "confirmEmails": "{{players}} spelers krijgen nu een uitnodiging per e-mail.",
     "confirmSend": "Versturen",
+    "inviteSubjectLabel": "Onderwerp van de uitnodiging (optioneel)",
+    "inviteSubjectPlaceholder": "Reserveer je plek voor de volgende cyclus",
     "inviteMessageLabel": "Persoonlijk bericht in de uitnodiging (optioneel)",
     "inviteMessagePlaceholder": "Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.",
     "inviteVariablesHelp": "Voeg variabele toe:"
@@ -1118,6 +1120,8 @@
     "reviewGroupLine": "{{players}} spelers · {{sessions}} sessies",
     "reviewHolidays": "Vakanties overgeslagen: {{names}}",
     "reviewEmails": "{{players}} spelers krijgen nu een uitnodiging per e-mail.",
+    "inviteSubjectLabel": "Onderwerp van de uitnodiging (optioneel)",
+    "inviteSubjectPlaceholder": "Reserveer je plek voor de volgende cyclus",
     "inviteMessageLabel": "Persoonlijk bericht in de uitnodiging (optioneel)",
     "inviteMessagePlaceholder": "Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.",
     "inviteVariablesHelp": "Voeg variabele toe:",

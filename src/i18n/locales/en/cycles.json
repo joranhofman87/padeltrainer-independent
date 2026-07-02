@@ -936,6 +936,8 @@
     "confirmGroupLine": "{{players}} players · {{sessions}} sessions",
     "confirmEmails": "{{players}} players will be emailed an invitation now.",
     "confirmSend": "Send",
+    "inviteSubjectLabel": "Subject of the invitation (optional)",
+    "inviteSubjectPlaceholder": "Reserve your spot for the next cycle",
     "inviteMessageLabel": "Personal message in the invitation (optional)",
     "inviteMessagePlaceholder": "E.g. Great to have you back! Confirm your regular spot for the next round below.",
     "inviteVariablesHelp": "Insert variable:"
@@ -993,6 +995,8 @@
     "reviewGroupLine": "{{players}} players · {{sessions}} sessions",
     "reviewHolidays": "Holidays skipped: {{names}}",
     "reviewEmails": "{{players}} players will be emailed an invitation now.",
+    "inviteSubjectLabel": "Subject of the invitation (optional)",
+    "inviteSubjectPlaceholder": "Reserve your spot for the next cycle",
     "inviteMessageLabel": "Personal message in the invitation (optional)",
     "inviteMessagePlaceholder": "E.g. Great to have you back! Confirm your regular spot for the next round below.",
     "inviteVariablesHelp": "Insert variable:",

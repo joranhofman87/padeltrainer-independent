@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders, requireUser, jsonForbidden } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -155,6 +156,9 @@ serve(async (req) => {
     const invitationMessage: string = typeof body?.invitationMessage === "string"
       ? body.invitationMessage.trim().slice(0, 2000)
       : "";
+    // Optional academy-authored subject line for the invitation email (empty ⇒ default).
+    // Stored on the cycle + forwarded to send-priority-claim-invitation (which re-sanitizes).
+    const invitationSubject: string = sanitizeEmailSubject(body?.invitationSubject);
     // Rebooking rules (rich HTML). Stored on the new cycle for the claim/pay page to show + gate
     // consent against — NOT sent in the invitation email (that uses invitationMessage above).
     const rebookRules: string = typeof body?.rebookRules === "string"
@@ -458,7 +462,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_rules: rebookRules || null },
+        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null },
       })
       .select("id, name")
       .single();
@@ -604,7 +608,7 @@ serve(async (req) => {
       for (let i = 0; i < representativeClaimIds.length; i += 50) {
         const batch = representativeClaimIds.slice(i, i + 50);
         const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
-          body: { claimIds: batch, customMessage: invitationMessage || undefined },
+          body: { claimIds: batch, customMessage: invitationMessage || undefined, customSubject: invitationSubject || undefined },
         });
         if (error || !data) {
           // The whole invocation failed — none of this batch was emailed.
