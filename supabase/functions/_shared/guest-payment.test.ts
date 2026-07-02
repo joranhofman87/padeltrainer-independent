@@ -79,6 +79,61 @@ Deno.test("resolveSlotRecipient: for a SINGLE-academy trainer the hint is a no-o
   assertEquals(noHint.accessToken, "tok-A"); // maybeSingle returns the one row either way
 });
 
+Deno.test("resolveSlotRecipient (P1-9): academy slot + academy charge-ready routes to the ACADEMY", async () => {
+  const fixtures = {
+    academy_trainers: [
+      { trainer_profile_id: T, status: "active", academy_profile_id: "A", academy: { platform_fee_override: null } },
+    ],
+    academy_mollie_accounts: [
+      { academy_profile_id: "A", onboarding_complete: true, charges_enabled: true, access_token: "tok-A", mollie_organization_id: "org-A", refresh_token: null, token_expires_at: null },
+    ],
+    trainer_mollie_accounts: [
+      { trainer_id: T, onboarding_complete: true, access_token: "tok-own", mollie_organization_id: "org-own", refresh_token: null, token_expires_at: null },
+    ],
+    subscription_plans: [{ tier: "academy", plan_type: "trainer", is_active: true, platform_fee_flat: 0.5 }],
+    trainer_profiles: [{ id: T, platform_fee_override: null, subscription_status: "inactive" }],
+  };
+  const r = await resolveSlotRecipient(makeSupabase(fixtures), T, "A");
+  assertEquals(r.recipientType, "academy");
+  assertEquals(r.accessToken, "tok-A");
+  assertEquals(r.mollieOrgId, "org-A");
+});
+
+Deno.test("resolveSlotRecipient (P1-9): academy slot + academy NOT charge-ready REFUSES, never the trainer personal Mollie", async () => {
+  const fixtures = {
+    academy_trainers: [
+      { trainer_profile_id: T, status: "active", academy_profile_id: "A", academy: { platform_fee_override: null } },
+    ],
+    academy_mollie_accounts: [
+      { academy_profile_id: "A", onboarding_complete: true, charges_enabled: false, access_token: "tok-A", mollie_organization_id: "org-A", refresh_token: null, token_expires_at: null },
+    ],
+    trainer_mollie_accounts: [
+      { trainer_id: T, onboarding_complete: true, access_token: "tok-own", mollie_organization_id: "org-own", refresh_token: null, token_expires_at: null },
+    ],
+    subscription_plans: [{ tier: "academy", plan_type: "trainer", is_active: true, platform_fee_flat: 0.5 }],
+    trainer_profiles: [{ id: T, platform_fee_override: null, subscription_status: "inactive" }],
+  };
+  const r = await resolveSlotRecipient(makeSupabase(fixtures), T, "A");
+  assertEquals(r.accessToken, null);
+  assertEquals(r.recipientType, null);
+  assertEquals(r.mollieOrgId, null);
+});
+
+Deno.test("resolveSlotRecipient (P1-9): trainer-only slot (no academy) routes to the TRAINER", async () => {
+  const fixtures = {
+    academy_trainers: [],
+    academy_mollie_accounts: [],
+    trainer_mollie_accounts: [
+      { trainer_id: T, onboarding_complete: true, access_token: "tok-own", mollie_organization_id: "org-own", refresh_token: null, token_expires_at: null },
+    ],
+    subscription_plans: [{ tier: "starter", plan_type: "trainer", is_active: true, platform_fee_flat: 1.0 }],
+    trainer_profiles: [{ id: T, platform_fee_override: null, subscription_status: "inactive" }],
+  };
+  const r = await resolveSlotRecipient(makeSupabase(fixtures), T, null);
+  assertEquals(r.recipientType, "trainer");
+  assertEquals(r.accessToken, "tok-own");
+});
+
 const sum = (xs: number[]) => Math.round(xs.reduce((a, b) => a + b, 0) * 100) / 100;
 
 Deno.test("distributeAmountCents splits evenly and sums back to the total", () => {

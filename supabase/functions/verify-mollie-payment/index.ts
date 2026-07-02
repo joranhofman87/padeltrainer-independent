@@ -147,6 +147,15 @@ async function resolveAccessToken(
     }
   }
 
+  // OWNER INTENT (P1-9): for an academy slot (slotAcademyProfileId set) the recipient is
+  // ALWAYS the academy — mirror the charge side (resolveSlotRecipient) and the webhook,
+  // which refuse rather than falling back to the trainer. If the academy branch above did
+  // not resolve a token, return null so the caller returns a graceful 400 instead of
+  // confirming against the trainer's personal Mollie. Keeps charge-org == confirm-org.
+  if (slotAcademyProfileId) {
+    return null;
+  }
+
   const { data: trainerMollie } = await supabase
     .from("trainer_mollie_accounts")
     .select("access_token, refresh_token, token_expires_at")

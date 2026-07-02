@@ -411,8 +411,13 @@ serve(async (req) => {
       }
     }
 
-    // If not routed to academy, check trainer's own Mollie account
-    if (!recipientAccessToken && trainerProfileId) {
+    // If not routed to academy, check trainer's own Mollie account.
+    // OWNER INTENT (P1-9): never fall back to the trainer's personal Mollie for an
+    // ACADEMY slot (recipientAcademyProfileId set) — the money must go to the academy.
+    // When the academy Mollie is missing/not charge-ready, recipientAccessToken stays
+    // null and the "No Mollie account" block below returns a clean 400, blocking the
+    // booking instead of paying the trainer. Only trainer-owned slots use this branch.
+    if (!recipientAccessToken && trainerProfileId && !recipientAcademyProfileId) {
       const { data: trainerMollie } = await supabase
         .from("trainer_mollie_accounts")
         .select("mollie_organization_id, access_token, refresh_token, token_expires_at")

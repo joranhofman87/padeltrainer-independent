@@ -180,6 +180,17 @@ async function resolveAccessToken(
     }
   }
 
+  // OWNER INTENT (P1-9): for an academy slot (slotAcademyProfileId set) the recipient is
+  // ALWAYS the academy - mirror the charge side (resolveSlotRecipient), which refuses
+  // rather than falling back to the trainer. If the academy branch above did not resolve
+  // a token, return null so the webhook's no-connected-account-token refusal fires
+  // (Slack alert + 200, no retry) instead of silently confirming the hold against the
+  // trainer's personal Mollie. Only a trainer-owned slot/invoice (no academy hint) may
+  // use the trainer account. This keeps charge-org == confirm-org.
+  if (slotAcademyProfileId) {
+    return null;
+  }
+
   // Check trainer's own Mollie account
   const { data: trainerMollie } = await supabase
     .from("trainer_mollie_accounts")
