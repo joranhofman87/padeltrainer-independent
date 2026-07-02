@@ -1,6 +1,24 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
+ * Await a Supabase delete/update builder, surface a real DB error instead of
+ * swallowing it. Sequential FK-ordered deletes MUST go through this so an FK
+ * rejection (e.g. a RESTRICT/NO ACTION reference blocking the delete) aborts
+ * loudly rather than silently self-healing via an unrelated ON DELETE CASCADE.
+ */
+async function runDelete(
+  op: PromiseLike<{ error: unknown }>,
+  label: string
+): Promise<void> {
+  const { error } = await op;
+  if (error) {
+    console.error(`deleteUserData: failed to delete ${label}:`, error);
+    const msg = (error as { message?: string } | null)?.message ?? String(error);
+    throw new Error(`deleteUserData failed at ${label}: ${msg}`);
+  }
+}
+
+/**
  * Deletes all data associated with a user across all tables.
  * Used by both admin delete-user and self-service request-account-deletion.
  * 
@@ -122,10 +140,47 @@ export async function deleteUserData(
       supabaseAdmin.from("proposed_assignments").delete().eq("trainer_id", trainerProfile.id),
     ]);
 
-    // These may have FK dependencies, do sequentially
-    await supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id);
-    await supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id);
-    await supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id);
+    // FK-ordered sequential deletes. guest_players is referenced by invoices
+    // (NO ACTION) and intake_requests (NO ACTION), so BOTH must be removed
+    // before guest_players or the guest_players delete is FK-rejected.
+    // bookings.slot_id is ON DELETE CASCADE, so deleting the slots first
+    // cascades away the bookings that reference these guests.
+    await runDelete(
+      supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id),
+      "availability_slots"
+    );
+
+    // Delete cycles owned by this trainer (and their intake_requests, which
+    // reference this trainer's guest_players via NO ACTION) BEFORE guest_players.
+    const { data: trainerCycles } = await supabaseAdmin
+      .from("cycles")
+      .select("id")
+      .eq("owner_type", "trainer")
+      .eq("owner_id", trainerProfile.id);
+
+    if (trainerCycles && trainerCycles.length > 0) {
+      const cycleIds = trainerCycles.map((c) => c.id);
+      await runDelete(
+        supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds),
+        "intake_requests (trainer cycles)"
+      );
+      await runDelete(
+        supabaseAdmin.from("cycles").delete().in("id", cycleIds),
+        "cycles (trainer)"
+      );
+    }
+
+    // invoices reference guest_players (NO ACTION) — must precede guest_players.
+    await runDelete(
+      supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id),
+      "invoices"
+    );
+
+    // Now safe: all NO ACTION references to these guests are gone.
+    await runDelete(
+      supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id),
+      "guest_players"
+    );
 
     // Remove trainer from academy associations and invitations
     await Promise.all([
@@ -139,19 +194,6 @@ export async function deleteUserData(
       .from("reviews")
       .update({ trainer_id: null })
       .eq("trainer_id", trainerProfile.id);
-
-    // Delete cycles owned by this trainer
-    const { data: trainerCycles } = await supabaseAdmin
-      .from("cycles")
-      .select("id")
-      .eq("owner_type", "trainer")
-      .eq("owner_id", trainerProfile.id);
-
-    if (trainerCycles && trainerCycles.length > 0) {
-      const cycleIds = trainerCycles.map((c) => c.id);
-      await supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds);
-      await supabaseAdmin.from("cycles").delete().in("id", cycleIds);
-    }
 
     // Delete trainer profile
     await supabaseAdmin.from("trainer_profiles").delete().eq("user_id", targetUserId);
