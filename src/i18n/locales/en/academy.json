@@ -400,8 +400,33 @@
     "saved": "Rebooking rules saved",
     "saveError": "Failed to save rebooking rules"
   },
+  "sessions": {
+    "title": "Sessions",
+    "subtitle": "Every way to set up trainings and registrations, in one place. Pick what you want to do.",
+    "newSession": {
+      "title": "New session",
+      "description": "Add a single training to the agenda — pick the date, time, trainer and location. Best for a one-off or an extra lesson.",
+      "cta": "Add session"
+    },
+    "generate": {
+      "title": "Quickly generate sessions",
+      "description": "Generate a whole series of trainings at once (e.g. every week at the same time) for an entire period. Ideal for scheduling a new block.",
+      "cta": "Generate sessions"
+    },
+    "nextRound": {
+      "title": "Set up the next round",
+      "description": "Carry an existing group into a new round: copy the sessions and invite the same players to rebook and pay again.",
+      "cta": "Set up round"
+    },
+    "registration": {
+      "title": "New registration",
+      "description": "Create a registration form where players sign themselves up for a course or event — online payment included.",
+      "cta": "Create registration"
+    }
+  },
   "nav": {
     "agenda": "Agenda",
+    "sessions": "Sessions",
     "dashboard": "Dashboard",
     "trainers": "Trainers",
     "players": "Players",

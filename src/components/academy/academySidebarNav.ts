@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard,
   Calendar,
-  CalendarClock,
+  CalendarPlus,
   Users,
   UserRoundCog,
   CalendarDays,
@@ -13,7 +13,7 @@ import {
 export type AcademyNavItemId =
   | 'dashboard'
   | 'schedule'
-  | 'agenda'
+  | 'sessions'
   | 'players'
   | 'trainers'
   | 'registrations'
@@ -50,12 +50,12 @@ export const ACADEMY_PRIMARY_NAV: AcademyNavItem[] = [
     testId: 'nav-academy-schedule',
   },
   {
-    id: 'agenda',
-    to: '/app/academy/agenda',
-    labelKey: 'nav.agenda',
-    defaultLabel: 'Agenda',
-    icon: CalendarClock,
-    testId: 'nav-academy-agenda',
+    id: 'sessions',
+    to: '/app/academy/sessions',
+    labelKey: 'nav.sessions',
+    defaultLabel: 'Sessions',
+    icon: CalendarPlus,
+    testId: 'nav-academy-sessions',
   },
   {
     id: 'players',
@@ -105,27 +105,27 @@ const SETTINGS_SECTION_PREFIXES = [
   '/app/academy/locations',
 ] as const;
 
-// Rebook + bulk-copy (incl. /cycles/:id/rebook) live under /cycles/* but are AGENDA operations —
-// they act on current cycles' scheduling, are launched from the Agenda, and return there.
-const AGENDA_CYCLE_ROUTES = [
+// Rebook + bulk-copy (incl. /cycles/:id/rebook) live under /cycles/* but are "set up next
+// round" operations — launched from the Sessions hub — so they highlight Sessions.
+const NEXT_ROUND_CYCLE_ROUTES = [
   '/app/academy/cycles/rebook',
   '/app/academy/cycles/bulk-copy',
 ] as const;
 
-function isAgendaCycleRoute(pathname: string): boolean {
+function isNextRoundCycleRoute(pathname: string): boolean {
   return (
-    AGENDA_CYCLE_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/')) ||
-    // /app/academy/cycles/:cycleId/rebook → the rebook manager (an Agenda op).
+    NEXT_ROUND_CYCLE_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/')) ||
+    // /app/academy/cycles/:cycleId/rebook → the rebook manager (a "next round" op).
     /^\/app\/academy\/cycles\/[^/]+\/rebook(\/|$)/.test(pathname)
   );
 }
 
 // Training-cycle CRUD (/cycles/new, /cycles/:id, /cycles/:id/edit) is a SCHEDULE ("Schema") thing —
 // these pages are opened from the Schedule's cyclus tab. Registrations now live entirely under
-// /registrations/*, so a training-cycle page must NOT highlight Registrations. (Agenda cycle-ops
-// — rebook/bulk-copy — stay under Agenda.)
+// /registrations/*, so a training-cycle page must NOT highlight Registrations. ("Next round"
+// cycle-ops — rebook/bulk-copy — highlight Sessions instead.)
 function isScheduleCycleRoute(pathname: string): boolean {
-  return pathname.startsWith('/app/academy/cycles') && !isAgendaCycleRoute(pathname);
+  return pathname.startsWith('/app/academy/cycles') && !isNextRoundCycleRoute(pathname);
 }
 
 export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): boolean {
@@ -135,8 +135,9 @@ export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): 
   if (item.id === 'schedule') {
     return pathname.startsWith(item.to) || isScheduleCycleRoute(pathname);
   }
-  if (item.id === 'agenda') {
-    return pathname.startsWith(item.to) || isAgendaCycleRoute(pathname);
+  if (item.id === 'sessions') {
+    // The Sessions hub + the "next round" ops (rebook / bulk-copy) launched from it.
+    return pathname.startsWith(item.to) || isNextRoundCycleRoute(pathname);
   }
   if (item.id === 'registrations') {
     // Registrations are their own /registrations/* section now — NOT /cycles/*.

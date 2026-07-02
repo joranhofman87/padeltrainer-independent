@@ -126,6 +126,7 @@ const TrainerCreateInvoice = lazy(() => import('@/pages/trainer/TrainerCreateInv
 const TrainerEditInvoice = lazy(() => import('@/pages/trainer/TrainerEditInvoice'));
 const TrainerSlotDetail = lazy(() => import('@/pages/trainer/TrainerSlotDetail'));
 const TrainerAgenda = lazy(() => import('@/pages/trainer/TrainerAgenda'));
+const TrainerSessions = lazy(() => import('@/pages/trainer/TrainerSessions'));
 const TrainerCreateSlot = lazy(() => import('@/pages/trainer/TrainerCreateSlot'));
 const TrainerGenerateSlots = lazy(() => import('@/pages/trainer/TrainerGenerateSlots'));
 
@@ -180,6 +181,7 @@ const AcademyCycleDetailView = lazy(() => import('@/pages/academy/AcademyCycleDe
 const AcademyRebookManage = lazy(() => import('@/pages/academy/AcademyRebookManage'));
 const AcademyCalendar = lazy(() => import('@/pages/academy/AcademyCalendar'));
 const AcademyAgenda = lazy(() => import('@/pages/academy/AcademyAgenda'));
+const AcademySessions = lazy(() => import('@/pages/academy/AcademySessions'));
 const AcademySlotDetail = lazy(() => import('@/pages/academy/AcademySlotDetail'));
 const AcademyCreateSlot = lazy(() => import('@/pages/academy/AcademyCreateSlot'));
 const AcademyGenerateSlots = lazy(() => import('@/pages/academy/AcademyGenerateSlots'));
@@ -266,6 +268,7 @@ export function DomainRouter() {
           <Route path="terms" element={<TrainerTerms />} />
           <Route path="calendar" element={<TrainerCalendar />} />
           <Route path="agenda" element={<TrainerAgenda />} />
+          <Route path="sessions" element={<TrainerSessions />} />
           <Route path="players" element={<TrainerPlayers />} />
           <Route path="players/:playerId" element={<TrainerPlayerDetail />} />
           <Route path="cyclus" element={<TrainerCyclus />} />
@@ -369,6 +372,7 @@ export function DomainRouter() {
           <Route path="cycles/:cycleId/edit" element={<CycleFormPage ownerType="academy" />} />
           <Route path="calendar" element={<AcademyCalendar />} />
           <Route path="agenda" element={<AcademyAgenda />} />
+          <Route path="sessions" element={<AcademySessions />} />
           <Route path="slot/new" element={<AcademyCreateSlot />} />
           <Route path="slot/generate" element={<AcademyGenerateSlots />} />
           <Route path="slot/:slotId" element={<AcademySlotDetail />} />
