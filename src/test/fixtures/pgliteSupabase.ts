@@ -14,7 +14,7 @@ import type { PGlite } from '@electric-sql/pglite';
 
 type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps' | 'gte';
 interface Filter { kind: FilterKind; col: string; val: unknown; }
-interface SupaResult<T> { data: T; error: { message: string } | null; }
+interface SupaResult<T> { data: T; error: { message: string; code?: string } | null; }
 
 const isPrimitive = (v: unknown) => v === null || ['string', 'number', 'boolean'].includes(typeof v);
 // jsonb columns (line_items, vat_breakdown, settings) carry objects / arrays-of-objects; text[]
@@ -157,7 +157,11 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
       const rows = res.rows as unknown[];
       return { data: this.singleRow ? (rows[0] ?? null) : rows, error: null };
     } catch (e) {
-      return { data: this.singleRow ? null : [], error: { message: (e as Error).message } };
+      // Surface the Postgres error `code` (e.g. '23505' unique_violation) so
+      // helpers that branch on error.code (applyBookingPaymentWriteback M-17
+      // tolerance) behave against PGlite as they do against PostgREST.
+      const err = e as { message?: string; code?: string };
+      return { data: this.singleRow ? null : [], error: { message: err.message ?? String(e), code: err.code } };
     }
   }
 }

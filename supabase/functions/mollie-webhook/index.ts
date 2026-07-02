@@ -801,9 +801,14 @@ serve(async (req) => {
     const bookingsAlreadyPaid = (transitionedRows?.length ?? 0) === 0;
 
     if (shouldRunBookingPaidSideEffects(payment.status, bookingsAlreadyPaid)) {
+      // P1-4: key side-effects (auto-create-invoice + confirmation email/Slack)
+      // off the SURVIVOR/transitioned ids — NOT the raw metadata list. On an
+      // M-17 collision the colliding hold was cancelled and its survivor stamped
+      // paid; pulling the raw metadata id in would invoice/email a cancelled row.
+      const paidIds = transitionedRows.map((r) => r.id);
       await runBookingPaidSideEffects({
         supabase,
-        bookingIds,
+        bookingIds: paidIds.length > 0 ? paidIds : bookingIds,
         paymentAmountValue: payment.amount?.value,
         source: "mollie-webhook",
         logStep,
