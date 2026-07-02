@@ -144,7 +144,11 @@ export default function AgendaMonth({ slots, currentDate, onDayClick, timezone, 
                   : undefined
               }
               className={cn(
-                'min-h-[112px] sm:min-h-[132px] border-b border-r last:border-r-0 p-2 text-left transition-colors flex flex-col gap-1.5',
+                'border-b border-r last:border-r-0 p-2 text-left transition-colors flex flex-col gap-1.5',
+                // Public availability cells hold only a date + a dot, so they can be far
+                // shorter than the admin cells (which pack in locations + seat counts). Kept
+                // tall enough that the month grid still roughly matches the side panel height.
+                availabilityOnly ? 'min-h-[64px] sm:min-h-[76px]' : 'min-h-[112px] sm:min-h-[132px]',
                 'hover:bg-accent/30',
                 !inMonth && 'bg-muted/20 text-muted-foreground/60',
                 today && 'bg-primary/5',
