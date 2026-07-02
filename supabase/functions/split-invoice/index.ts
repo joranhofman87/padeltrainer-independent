@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireUser, corsHeaders as sharedCors } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { invoiceOriginalBookingsAreSplitShares } from "../_shared/invoice-split-pricing.ts";
 
 const corsHeaders = sharedCors;
 
@@ -287,10 +288,12 @@ serve(async (req) => {
 
     const slotIds = [...new Set(invoiceBookings.map((b) => b.slot_id))];
 
-    // 3. Find ALL confirmed bookings on those slots (to discover other players)
+    // 3. Find ALL confirmed bookings on those slots (to discover other players).
+    // Join the slot price so we can detect (P2-8) that the ORIGINAL invoice's
+    // bookings already carry per-recipient split shares before dividing again.
     const { data: allBookings } = await supabase
       .from("bookings")
-      .select("id, slot_id, player_id, guest_player_id, status, payment_amount")
+      .select("id, slot_id, player_id, guest_player_id, status, payment_amount, availability_slots(price_per_session)")
       .in("slot_id", slotIds)
       .in("status", ["confirmed", "attended"]);
 
@@ -325,6 +328,51 @@ serve(async (req) => {
 
     const totalPlayers = Object.keys(playerBookings).length;
     logStep("Found players", { totalPlayers, players: Object.keys(playerBookings) });
+
+    // P2-8: refuse to split when the ORIGINAL invoice's own bookings already
+    // carry per-recipient split shares (uniform payment_amount whose amount×N ≈
+    // slot price). Such an invoice's total already equals the sum of the shares
+    // (e.g. a backfill-invoices asDraft invoice built from mid-Mollie bookings
+    // that has neither split_count>1 nor a "(1/N)" marker), so dividing by N a
+    // second time under-bills. No-op, mirroring the alreadySplit early-return.
+    const originalPlayerKeyForShareCheck =
+      invoice.player_id || `guest:${invoice.guest_player_id}`;
+    // Normalize the embedded to-one join to the { price_per_session } object the
+    // predicate expects. PostgREST returns a single object for a to-one FK at
+    // runtime, but the query builder types it as an array — read either shape and
+    // fall back to undefined (predicate then safely returns false). (P2-8)
+    const originalPlayerBookings = allBookings
+      .filter(
+        (b) => (b.player_id || `guest:${b.guest_player_id}`) === originalPlayerKeyForShareCheck,
+      )
+      .map((b) => {
+        const slot = Array.isArray(b.availability_slots)
+          ? b.availability_slots[0]
+          : b.availability_slots;
+        return {
+          payment_amount: b.payment_amount,
+          availability_slots: slot
+            ? { price_per_session: (slot as { price_per_session?: number | null }).price_per_session }
+            : null,
+        };
+      });
+    if (invoiceOriginalBookingsAreSplitShares(originalPlayerBookings, totalPlayers)) {
+      logStep("Invoice already reflects per-recipient shares, skipping", {
+        invoiceId,
+        totalPlayers,
+      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          alreadySplit: true,
+          message: "Invoice already reflects per-recipient shares",
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     if (totalPlayers <= 1) {
       return new Response(
