@@ -7,6 +7,7 @@ import {
   computeSingleSlotPaymentAmount,
   type SlotPricingInput,
 } from "../_shared/booking-pricing.ts";
+import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -488,6 +489,11 @@ serve(async (req) => {
 
     let bookingId: string;
     const allBookingIds: string[] = [...preExistingBookingIds];
+    // If we supersede a prior payment below (drift-cancel / non-open fall-through), its
+    // id salts the idempotency key so a re-price-back-to-original within Mollie's 1h
+    // window can't replay the now-dead checkout. Unset on the plain timeout-retry path
+    // (no prior id), so that path stays deterministic and Mollie replays as intended.
+    let recreatedAfterPaymentId: string | null = null;
 
     if (allBookingIds.length > 0) {
       bookingId = allBookingIds[0];
@@ -515,6 +521,9 @@ serve(async (req) => {
       }
 
       if (priorState?.mollie_payment_id) {
+        // Consumed only if we fall through to create a fresh payment (the reuse-open and
+        // already-paid branches return early); marks the payment this request supersedes.
+        recreatedAfterPaymentId = priorState.mollie_payment_id;
         try {
           const probe = await fetch(
             `https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`,
@@ -628,7 +637,12 @@ serve(async (req) => {
       webhookUrl: `${supabaseUrl}/functions/v1/mollie-webhook`,
       metadata: {
         booking_id: bookingId,
-        booking_ids: allBookingIds,
+        // Canonically ordered: Mollie diffs the RAW body against the Idempotency-Key,
+        // so booking_ids order MUST be deterministic across a retry. It is stable today
+        // (allBookingIds = the client-supplied array), but sorting a copy pins the
+        // invariant so a future refactor sourcing it from a DB read can't reintroduce a
+        // same-key/different-body 400. Order is set-semantic to the webhook.
+        booking_ids: [...allBookingIds].sort(),
         player_id: playerProfile.id,
         trainer_id: trainerId,
         recipient_type: recipientType,
@@ -698,12 +712,26 @@ serve(async (req) => {
       logStep("Test mode enabled for OAuth payment");
     }
 
+    // G2: idempotency key = fingerprint of the exact body (see _shared/mollie-idempotency.ts).
+    // A timeout + retry that re-sends the SAME body replays the ORIGINAL payment (no
+    // duplicate checkout); a genuinely different body (a fresh pre-booking id, or a
+    // split amount that drifted under concurrency) gets a NEW key, so Mollie never
+    // 400s on same-key/different-body. The existing-bookings re-pay path — the classic
+    // double-charge vector — has a stable body and is fully covered. The salt (id of any
+    // just-superseded payment) keeps a re-price-back-to-original within 1h from replaying
+    // the now-dead checkout.
+    const idempotencyKey = await mollieIdempotencyKey(
+      recreatedAfterPaymentId ? `cmp:recreate:${recreatedAfterPaymentId}` : "cmp",
+      paymentData,
+    );
+
     // Create payment via Mollie API using connected account's token
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${recipientAccessToken}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(paymentData),
     });
@@ -725,7 +753,9 @@ serve(async (req) => {
     }
 
     const payment = await mollieResponse.json();
-    logStep("Mollie payment created", { paymentId: payment.id, recipientType, mollieOrgId });
+    // Mollie flags a deduped retry with this header — logging it proves the G2 guard fired.
+    const idempotentReplayed = mollieResponse.headers.get("Idempotent-Replayed") === "true";
+    logStep("Mollie payment created", { paymentId: payment.id, recipientType, mollieOrgId, idempotentReplayed });
 
     // Update booking(s) with Mollie payment ID
     await supabase
@@ -742,7 +772,7 @@ serve(async (req) => {
       amount: expectedAmount,
       status: "success",
       mollie_payment_id: payment.id,
-      metadata: { bookingIds: allBookingIds, profileId: mollieProfileId, fee: effectiveFee },
+      metadata: { bookingIds: allBookingIds, profileId: mollieProfileId, fee: effectiveFee, idempotentReplayed },
     });
 
     // Slack notification for successful payment creation

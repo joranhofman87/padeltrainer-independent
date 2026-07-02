@@ -23,6 +23,7 @@ import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
+import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 type Supa = SupabaseClient;
 const ENDPOINT = "create-guest-cyclus-payment";
@@ -208,7 +209,15 @@ Deno.serve(async (req) => {
       }
       throw new Error(`Failed to reserve cyclus: ${rpcError.message}`);
     }
-    bookingIds = (idsData as string[]) ?? [];
+    // Sort into a CANONICAL order immediately. The RPC returns ids in input-slot order
+    // on the create path but via an unordered array_agg on the idempotent re-click
+    // branch, so the order is not stable across a retry. Since these ids go into the
+    // Mollie payment body (metadata.booking_ids) and Mollie diffs the RAW body against
+    // the Idempotency-Key, an unstable order would make a plain timeout-retry a
+    // same-key/different-body 400. Sorting here fixes the order for the body AND for
+    // every index-based use below (the per-booking amount split is order-immaterial —
+    // all rows are this guest's and the webhook checks the SUM).
+    bookingIds = [...((idsData as string[]) ?? [])].sort();
     if (bookingIds.length === 0) throw new Error("No bookings returned from cyclus hold");
     logStep("Guest cyclus holds created", { cyclusId, count: bookingIds.length, expectedAmount });
 
@@ -314,9 +323,20 @@ Deno.serve(async (req) => {
     }
     if (mollieApiKey.startsWith("test_")) paymentData.testmode = true;
 
+    // G2: idempotency key = fingerprint of the exact body. The hold RPC dedups
+    // re-clicks to the SAME bookingIds set (sorted to a canonical order above so the raw
+    // body is byte-stable across a retry) and the token is stable, so a retry re-sends an
+    // identical body → Mollie replays the ORIGINAL payment. Salted with any superseded
+    // payment id (kept on the holds until the fresh POST succeeds, like cmp/cip) so a
+    // split-divisor ROUND-TRIP within 1h (a participant joins then leaves → amount
+    // returns to a prior value) can't replay the now-cancelled earlier checkout.
+    const idempotencyKey = await mollieIdempotencyKey(
+      priorPaymentId ? `gcp:recreate:${priorPaymentId}` : "gcp",
+      paymentData,
+    );
     const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(paymentData),
     });
     if (!mollieRes.ok) {
@@ -339,7 +359,7 @@ Deno.serve(async (req) => {
     await writeAuditLog(supabase, {
       function_name: ENDPOINT, recipient_type: recipientType, mollie_org_id: mollieOrgId,
       amount: expectedAmount, status: "success", mollie_payment_id: payment.id,
-      metadata: { profileId: mollieProfileId, fee: effectiveFee, sessions: bookingIds.length, guest: true },
+      metadata: { profileId: mollieProfileId, fee: effectiveFee, sessions: bookingIds.length, guest: true, idempotentReplayed: mollieRes.headers.get("Idempotent-Replayed") === "true" },
     });
     await notifySlack(supabase, "payment_created", {
       type: "guest_cyclus", recipientType, mollieOrgId,

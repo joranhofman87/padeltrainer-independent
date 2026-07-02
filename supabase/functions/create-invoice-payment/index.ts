@@ -5,6 +5,7 @@ import {
   getTrainerMolliePaymentReadiness,
   type MolliePaymentUnavailableReason,
 } from "../_shared/mollie-payment-ready.ts";
+import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -260,6 +261,13 @@ serve(async (req) => {
 
     const isTestMode = mollieApiKey.startsWith("test_");
 
+    // If this request supersedes a prior payment (drift-cancel / stale clear below),
+    // remember its id so the fresh payment's idempotency key is salted with it. That
+    // prevents a re-price-back-to-the-original within Mollie's 1h window from replaying
+    // the now-dead original checkout (identical body → identical key). A normal
+    // timeout-retry never enters this branch (no persisted id), so it stays deterministic.
+    let recreatedAfterPaymentId: string | null = null;
+
     // Check if existing payment is still usable before creating a new one
     if (invoice.mollie_payment_url && invoice.mollie_payment_id && invoice.status !== "paid") {
       try {
@@ -302,11 +310,16 @@ serve(async (req) => {
             logStep("Existing payment no longer open", { paymentId: invoice.mollie_payment_id, status: existing.status });
           }
         }
-        // Stale / cancelled / amount-drifted — clear stored URL so a fresh payment is created
-        await supabase.from("invoices")
-          .update({ mollie_payment_url: null, mollie_payment_id: null })
-          .eq("id", invoice.id);
-        logStep("Cleared stale payment URL", { oldPaymentId: invoice.mollie_payment_id });
+        // Remember the payment we're superseding so it SALTS the idempotency key (a
+        // re-price-back-to-original within 1h then can't replay this now-dead checkout).
+        // Crucially, DO NOT null mollie_payment_id/url here — mirror create-mollie-payment,
+        // which keeps the old id on the row until a successful fresh POST overwrites it
+        // (below). That way a lost-response retry re-reads the old id, re-enters this
+        // block, and reproduces the SAME salted key → Mollie replays instead of minting a
+        // second payment. The reuse guard above re-probes before ever reusing, so a
+        // stale/cancelled id is never wrongly reused for payment.
+        recreatedAfterPaymentId = invoice.mollie_payment_id ?? null;
+        logStep("Superseding prior payment (kept for idempotency salt)", { oldPaymentId: invoice.mollie_payment_id });
       } catch {
         logStep("Error checking existing payment, will create new");
       }
@@ -393,11 +406,22 @@ serve(async (req) => {
 
     logStep("Creating Mollie payment", { invoiceNumber: invoice.invoice_number, amount: invoice.total, recipientType, mollieOrgId });
 
+    // G2: idempotency key = fingerprint of the exact body. The invoice id + amount are
+    // stable across a retry → Mollie replays the ORIGINAL payment (no second checkout).
+    // A re-priced invoice sends a different amount → a different key → a fresh payment
+    // (the drift-cancel path above already retired the stale one), so Mollie never 400s.
+    // The salt (id of any just-superseded payment) keeps a re-price-back-to-original
+    // within 1h from replaying the now-dead original checkout.
+    const idempotencyKey = await mollieIdempotencyKey(
+      recreatedAfterPaymentId ? `cip:recreate:${recreatedAfterPaymentId}` : "cip",
+      paymentBody,
+    );
     const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(paymentBody),
     });
@@ -437,7 +461,9 @@ serve(async (req) => {
       })
       .eq("id", invoice.id);
 
-    logStep("Payment created", { paymentId: molliePayment.id, checkoutUrl, recipientType, mollieOrgId });
+    // Mollie flags a deduped retry with this header — logging it proves the G2 guard fired.
+    const idempotentReplayed = mollieRes.headers.get("Idempotent-Replayed") === "true";
+    logStep("Payment created", { paymentId: molliePayment.id, checkoutUrl, recipientType, mollieOrgId, idempotentReplayed });
 
     // Write success audit log
     await writeAuditLog(supabase, {
@@ -448,7 +474,7 @@ serve(async (req) => {
       amount: invoice.total,
       status: "success",
       mollie_payment_id: molliePayment.id,
-      metadata: { invoiceNumber: invoice.invoice_number, profileId: mollieProfileId },
+      metadata: { invoiceNumber: invoice.invoice_number, profileId: mollieProfileId, idempotentReplayed },
     });
 
     // Slack notification for successful payment creation

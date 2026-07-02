@@ -32,6 +32,7 @@ import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
+import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 type Supa = SupabaseClient;
 const ENDPOINT = "create-guest-slot-payment";
@@ -330,9 +331,13 @@ Deno.serve(async (req) => {
     }
     if (mollieApiKey.startsWith("test_")) paymentData.testmode = true;
 
+    // G2: idempotency key = fingerprint of the exact body. The hold RPC dedups
+    // re-clicks to the SAME bookingId and the token is stable, so a retry re-sends an
+    // identical body → Mollie replays the ORIGINAL payment (no duplicate checkout).
+    const idempotencyKey = await mollieIdempotencyKey("gsp", paymentData);
     const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(paymentData),
     });
     if (!mollieRes.ok) {
@@ -356,7 +361,7 @@ Deno.serve(async (req) => {
     await writeAuditLog(supabase, {
       function_name: "create-guest-slot-payment", booking_id: bookingId, recipient_type: recipientType,
       mollie_org_id: mollieOrgId, amount: expectedAmount, status: "success", mollie_payment_id: payment.id,
-      metadata: { profileId: mollieProfileId, fee: effectiveFee, guest: true },
+      metadata: { profileId: mollieProfileId, fee: effectiveFee, guest: true, idempotentReplayed: mollieRes.headers.get("Idempotent-Replayed") === "true" },
     });
     await notifySlack(supabase, "payment_created", {
       type: "guest_booking", recipientType, mollieOrgId,
