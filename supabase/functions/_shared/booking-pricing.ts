@@ -60,6 +60,26 @@ export function sumSlotExtraCosts(extraCosts: ExtraCost[] | null | undefined): n
   }, 0);
 }
 
+/**
+ * True when the extra-cost line items must NOT be appended to an invoice because the
+ * booking's payment_amount ALREADY includes them. This is the single-slot pay-first case
+ * (create-mollie-payment single-slot + create-guest-slot-payment): the online charge bakes
+ * sumSlotExtraCosts into payment_amount, so re-appending extras would overstate the invoice
+ * (authed path, P1-5) or double-count them (guest path, P2-7).
+ *
+ * Only fires for a NON-cyclus booking set where EVERY booking carries the flag. Cyclus /
+ * multi-slot charges never include extras and are never flagged, so extras keep being
+ * appended there; manual (non-pay-first) bookings are never flagged either.
+ */
+export function shouldSkipExtrasForPaidExtrasBookings(
+  bookings: { amount_includes_extras?: boolean | null }[],
+  allSameCyclus: boolean,
+): boolean {
+  if (allSameCyclus) return false;
+  if (!bookings || bookings.length === 0) return false;
+  return bookings.every((b) => b?.amount_includes_extras === true);
+}
+
 export function computeCyclusTotalFromSlots(
   slots: SlotPricingInput[],
   hourlyRate: number | null,

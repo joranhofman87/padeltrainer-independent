@@ -122,8 +122,121 @@ export async function applyBookingPaymentWriteback(
     .neq("payment_status", "paid")
     .neq("status", "cancelled")
     .select("id");
-  if (error) throw new Error(`Failed to update bookings: ${error.message}`);
-  return (data ?? []) as { id: string }[];
+  if (!error) return (data ?? []) as { id: string }[];
+
+  // M-17 tolerance (P1-4): flipping a payment_pending HOLD to 'confirmed' enters
+  // the (slot_id, guest_player_id) / (slot_id, player_id) partial unique index
+  // whose predicate is status IN ('pending','confirmed','completed'). If a staff
+  // member added the SAME person to the SAME slot while the guest was paying, a
+  // pre-existing active booking already occupies that index slot and this flip
+  // raises 23505. A batched .update() aborts entirely on the FIRST 23505, so we
+  // fall back to per-id handling: flip each id on its own, and route only the
+  // truly-colliding id(s) through the survivor path (stamp the pre-existing
+  // active booking paid, cancel the redundant hold). Never surface 23505 to the
+  // caller (which would 500 → Mollie retries forever with money already captured).
+  const code = (error as { code?: string }).code;
+  if (code !== "23505") throw new Error(`Failed to update bookings: ${error.message}`);
+  return await applyBookingPaymentWritebackPerId(supabase, bookingIds, updateData);
+}
+
+/**
+ * Per-id fallback for {@link applyBookingPaymentWriteback} after a batch 23505.
+ * Non-colliding ids flip exactly as the batch would have; a colliding id is
+ * replaced by its SURVIVOR (the pre-existing active booking on the same slot for
+ * the same guest/player). Returns the final set of survivor/paid ids that THIS
+ * call transitioned — same contract the batch path returns (drives the caller's
+ * bookingsAlreadyPaid gate and keys the paid side-effects).
+ */
+async function applyBookingPaymentWritebackPerId(
+  supabase: MollieWriteClient,
+  bookingIds: string[],
+  updateData: Record<string, unknown>,
+): Promise<{ id: string }[]> {
+  const transitioned: { id: string }[] = [];
+  for (const id of bookingIds) {
+    const { data, error } = await supabase
+      .from("bookings")
+      .update(updateData)
+      .in("id", [id])
+      .neq("payment_status", "paid")
+      .neq("status", "cancelled")
+      .select("id");
+    if (!error) {
+      for (const r of (data ?? []) as { id: string }[]) transitioned.push(r);
+      continue;
+    }
+    if ((error as { code?: string }).code !== "23505") {
+      throw new Error(`Failed to update bookings: ${error.message}`);
+    }
+    // This id collided: find its survivor and stamp/cancel accordingly.
+    const survivorId = await resolveSurvivorAndSettle(supabase, id, updateData);
+    if (survivorId) transitioned.push({ id: survivorId });
+  }
+  return transitioned;
+}
+
+/**
+ * A payment_pending HOLD (`holdId`) collided with the M-17 unique index while
+ * being flipped paid. Resolve the SURVIVOR — a DIFFERENT active
+ * ('pending'/'confirmed'/'completed') booking on the same slot for the same
+ * (guest_player_id ?? player_id) — stamp it with the SAME `updateData` under the
+ * SAME idempotency guard (a survivor already paid transitions 0 rows), and
+ * cancel the redundant hold. Returns the survivor id IFF this call actually
+ * transitioned it to paid (so it flows into the paid side-effects exactly once);
+ * returns null if the survivor was already paid or cannot be resolved.
+ */
+async function resolveSurvivorAndSettle(
+  supabase: MollieWriteClient,
+  holdId: string,
+  updateData: Record<string, unknown>,
+): Promise<string | null> {
+  const { data: holdRow } = await supabase
+    .from("bookings")
+    .select("id, slot_id, guest_player_id, player_id")
+    .in("id", [holdId])
+    .neq("id", "__never__") // no-op filter to keep the adapter's builder shape
+    .select("id, slot_id, guest_player_id, player_id");
+  const hold = (Array.isArray(holdRow) ? holdRow[0] : holdRow) as
+    | { id: string; slot_id: string | null; guest_player_id: string | null; player_id: string | null }
+    | undefined;
+  if (!hold?.slot_id) return null;
+
+  let survivorQuery = supabase
+    .from("bookings")
+    .select("id, payment_status")
+    .eq("slot_id", hold.slot_id)
+    .neq("id", holdId)
+    .in("status", ["pending", "confirmed", "completed"]);
+  if (hold.guest_player_id) {
+    survivorQuery = survivorQuery.eq("guest_player_id", hold.guest_player_id);
+  } else if (hold.player_id) {
+    survivorQuery = survivorQuery.eq("player_id", hold.player_id);
+  } else {
+    return null;
+  }
+  const { data: survivors } = await survivorQuery;
+  const survivor = ((survivors ?? []) as { id: string; payment_status: string | null }[])[0];
+  if (!survivor) return null;
+
+  // Stamp the survivor paid (idempotent via the guard); capture whether THIS
+  // call transitioned it so side-effects run exactly once.
+  const { data: stamped } = await supabase
+    .from("bookings")
+    .update(updateData)
+    .in("id", [survivor.id])
+    .neq("payment_status", "paid")
+    .neq("status", "cancelled")
+    .select("id");
+  const transitionedSurvivor = ((stamped ?? []) as { id: string }[]).length > 0;
+
+  // Cancel the redundant hold so it stops occupying capacity / the index.
+  await supabase
+    .from("bookings")
+    .update({ status: "cancelled" })
+    .in("id", [holdId])
+    .neq("payment_status", "paid");
+
+  return transitionedSurvivor ? survivor.id : null;
 }
 
 /**

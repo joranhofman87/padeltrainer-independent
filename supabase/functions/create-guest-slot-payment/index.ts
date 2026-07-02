@@ -222,6 +222,19 @@ Deno.serve(async (req) => {
     bookingId = newBookingId as string;
     logStep("Guest hold created", { bookingId, expectedAmount, recipientType });
 
+    // The guest charge already includes sumSlotExtraCosts (see expectedAmount above), so
+    // stamp the booking to stop auto-create-invoice / invoiceSync re-appending the extras
+    // (P2-7 double-count). Best-effort: a missing column just falls back to today's behavior.
+    {
+      const { error: flagError } = await supabase
+        .from("bookings")
+        .update({ amount_includes_extras: true })
+        .eq("id", bookingId);
+      if (flagError) {
+        logStep("Could not set amount_includes_extras (non-fatal)", { error: flagError.message });
+      }
+    }
+
     // M-15 idempotency: a re-click returns the SAME hold row (the RPC dedups a live
     // hold). Before minting again, reuse/refuse based on the hold's current payment
     // so we never create a SECOND Mollie payment that orphans the first — the row

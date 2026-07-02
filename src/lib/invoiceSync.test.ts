@@ -23,6 +23,8 @@ interface SelectChain {
   eq: (col: string, val: unknown) => SelectChain;
   in: (col: string, vals: unknown) => SelectChain;
   overlaps: (col: string, vals: unknown) => SelectChain;
+  order: (col: string, opts?: unknown) => SelectChain;
+  range: (from: number, to: number) => Promise<QueryResult>;
   maybeSingle: () => Promise<QueryResult>;
   then: (
     onFulfilled: (v: QueryResult) => unknown,
@@ -30,8 +32,16 @@ interface SelectChain {
   ) => Promise<unknown>;
 }
 
-function makeSelectChain(table: string): SelectChain {
+function makeSelectChain(table: string, columns?: string): SelectChain {
+  // The extras-flag probe (`select('id, amount_includes_extras')`) is a SEPARATE
+  // bookings read (P1-5) from the main slot-detail read consumed via bookingsResults.
+  // Return empty for it WITHOUT consuming a bookingsResult so the ordered fixture keeps
+  // modelling only the primary reads (empty → shouldSkipExtras=false → extras appended
+  // as before, which is what these split/concurrency tests assert).
+  const isExtrasFlagProbe =
+    table === 'bookings' && !!columns && columns.includes('amount_includes_extras');
   const listResult = (): QueryResult => {
+    if (isExtrasFlagProbe) return { data: [], error: null };
     if (table === 'invoices') return invoicesListResult;
     if (table === 'bookings') {
       return bookingsResults.shift() ?? { data: [], error: null };
@@ -49,6 +59,13 @@ function makeSelectChain(table: string): SelectChain {
     eq: () => chain,
     in: () => chain,
     overlaps: () => chain,
+    order: () => chain,
+    // Paging terminal (fetchAllRows): the first window returns the full (small)
+    // result — under the 1000-row page size it's a short page, so paging stops
+    // after one call; any later window returns empty. Consumes one list result
+    // per paged read, matching the old .then()-terminated behaviour.
+    range: (from: number) =>
+      Promise.resolve(from === 0 ? listResult() : { data: [], error: null }),
     maybeSingle: () => Promise.resolve(singleResult()),
     then: (onFulfilled, onRejected) =>
       Promise.resolve(listResult()).then(onFulfilled, onRejected),
@@ -59,7 +76,7 @@ function makeSelectChain(table: string): SelectChain {
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     from: (table: string) => ({
-      select: () => makeSelectChain(table),
+      select: (columns?: string) => makeSelectChain(table, columns),
       update: (payload: Record<string, unknown>) => {
         const filters: Array<[string, unknown]> = [];
         const chain = {

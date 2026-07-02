@@ -10,7 +10,7 @@ import {
   resolveInvoiceUnitPrice,
   splitAmongPlayersForInvoiceCreate,
 } from "../_shared/invoice-split-pricing.ts";
-import { resolveSplitDivisorFromSlots } from "../_shared/booking-pricing.ts";
+import { resolveSplitDivisorFromSlots, shouldSkipExtrasForPaidExtrasBookings } from "../_shared/booking-pricing.ts";
 
 const corsHeaders = sharedCors;
 
@@ -372,7 +372,33 @@ serve(async (req) => {
       }
     }
 
-    if (extraCosts && Array.isArray(extraCosts)) {
+    // Skip re-appending extras when payment_amount already includes them — the single-slot
+    // pay-first paths (create-mollie-payment single-slot + create-guest-slot-payment) bake
+    // sumSlotExtraCosts into payment_amount and stamp amount_includes_extras. Best-effort
+    // read: a missing column / read error is treated as "not flagged" so behavior is unchanged
+    // until the migration + charge fns are deployed (P1-5 / P2-7).
+    let extrasAlreadyCharged = false;
+    {
+      const { data: extrasFlagRows, error: extrasFlagError } = await supabase
+        .from("bookings")
+        .select("id, amount_includes_extras")
+        .in("id", bookingIds);
+      if (extrasFlagError) {
+        logStep("amount_includes_extras read failed — appending extras as before (non-fatal)", {
+          error: extrasFlagError.message,
+        });
+      } else {
+        extrasAlreadyCharged = shouldSkipExtrasForPaidExtrasBookings(
+          (extrasFlagRows ?? []) as { amount_includes_extras?: boolean | null }[],
+          allSameCyclus,
+        );
+      }
+    }
+    if (extrasAlreadyCharged) {
+      logStep("Skipping extra_costs append — payment_amount already includes extras", { bookingIds });
+    }
+
+    if (!extrasAlreadyCharged && extraCosts && Array.isArray(extraCosts)) {
       const splitForExtras = requestedSplitAmongPlayers ?? splitAmongPlayers;
       for (const ec of extraCosts) {
         if (ec.description && ec.price > 0) {
@@ -639,46 +665,83 @@ serve(async (req) => {
     // sequence in the window between scan and insert) re-allocate and retry —
     // the RPC has already advanced the counter, so each retry gets a fresh
     // number. Any other 23505 is the booking-set duplicate guard (handled below).
+    // P1-6: creation is now ATOMIC per (trainer, recipient) via create_invoice_deduped,
+    // which takes pg_advisory_xact_lock(hashtextextended(trainer||':'||recipient,0)) and does
+    // the OVERLAP dedup recheck + INSERT in one transaction. This closes the non-transactional
+    // read-then-insert race where two concurrent same-recipient calls with overlapping-but-
+    // unequal booking sets (e.g. [A] and [A,B]) both passed the JS pre-check and both inserted,
+    // billing booking A on two active invoices. The JS pre-check above stays as a fast-path;
+    // the RPC is the real guard. On invoice-NUMBER collision the RPC re-raises 23505 with the
+    // unique_invoice_number_per_* constraint name, so the reallocate-and-retry loop still fires.
+    const invoicePayload = {
+      trainer_id: trainerId,
+      academy_profile_id: academyProfileId,
+      invoice_number: invoiceNumber,
+      invoice_date: invoiceDate.toISOString().split("T")[0],
+      due_date: dueDate.toISOString().split("T")[0],
+      player_id: playerId,
+      guest_player_id: guestPlayerId || null,
+      player_name: playerName,
+      player_business_name: playerBusinessName,
+      player_address: playerAddress,
+      player_btw_number: playerBtwNumber,
+      line_items: lineItems,
+      subtotal: Math.round(subtotal * 100) / 100,
+      vat_rate: vatRate,
+      vat_amount: Math.round(vatAmount * 100) / 100,
+      total: Math.round(totalInclusive * 100) / 100,
+      ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
+      prices_include_vat: slotPricesIncludeVat,
+      status: invoiceStatus,
+      booking_ids: bookingIds,
+      // M-33: structural split divisor (forward-only; legacy invoices stay
+      // NULL and readers fall back to the "(1/N)" description marker).
+      ...((requestedSplitAmongPlayers ?? splitAmongPlayers ?? 1) > 1
+        ? { split_count: requestedSplitAmongPlayers ?? splitAmongPlayers }
+        : {}),
+      ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
+    };
+
     let invoice: { id: string } | null = null;
     let insertError: { code?: string; message: string; details?: string } | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await supabase
-        .from("invoices")
-        .insert({
-          trainer_id: trainerId,
-          academy_profile_id: academyProfileId,
-          invoice_number: invoiceNumber,
-          invoice_date: invoiceDate.toISOString().split("T")[0],
-          due_date: dueDate.toISOString().split("T")[0],
-          player_id: playerId,
-          guest_player_id: guestPlayerId || null,
-          player_name: playerName,
-          player_business_name: playerBusinessName,
-          player_address: playerAddress,
-          player_btw_number: playerBtwNumber,
-          line_items: lineItems,
-          subtotal: Math.round(subtotal * 100) / 100,
-          vat_rate: vatRate,
-          vat_amount: Math.round(vatAmount * 100) / 100,
-          total: Math.round(totalInclusive * 100) / 100,
-          ...(Object.keys(vatBreakdown).length > 0 ? { vat_breakdown: vatBreakdown } : {}),
-          prices_include_vat: slotPricesIncludeVat,
-          status: invoiceStatus,
-          booking_ids: bookingIds,
-          // M-33: structural split divisor (forward-only; legacy invoices stay
-          // NULL and readers fall back to the "(1/N)" description marker).
-          ...((requestedSplitAmongPlayers ?? splitAmongPlayers ?? 1) > 1
-            ? { split_count: requestedSplitAmongPlayers ?? splitAmongPlayers }
-            : {}),
-          ...(allPaid ? { paid_at: new Date().toISOString(), sent_at: new Date().toISOString() } : {}),
-        })
-        .select()
-        .single();
-      invoice = res.data;
+      invoicePayload.invoice_number = invoiceNumber;
+      const res = await supabase.rpc("create_invoice_deduped", { _payload: invoicePayload });
       insertError = res.error;
-      if (!insertError) break;
+      if (!insertError) {
+        const result = res.data as {
+          id: string;
+          invoice_number: string;
+          status: string;
+          sent_at: string | null;
+          booking_ids: string[] | null;
+          total: number | null;
+          deduped: boolean;
+        } | null;
+        // Overlap dedup won under the lock: an active invoice already bills one of these
+        // bookings. Sync-to-paid if applicable and return it, same as the pre-check path.
+        if (result?.deduped) {
+          logStep("Duplicate invoice found under lock, skipping creation", {
+            existingId: result.id,
+            existingNumber: result.invoice_number,
+          });
+          await syncDedupedInvoiceToPaid({
+            id: result.id,
+            status: result.status,
+            sent_at: result.sent_at,
+            booking_ids: result.booking_ids ?? [],
+            total: result.total ?? 0,
+          });
+          return new Response(
+            JSON.stringify({ success: true, invoiceId: result.id, invoiceNumber: result.invoice_number, deduped: true }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        invoice = result ? { id: result.id } : null;
+        break;
+      }
 
-      const errText = `${insertError.message ?? ""} ${insertError.details ?? ""}`;
+      const errText = `${insertError.message ?? ""} ${(insertError as { details?: string }).details ?? ""}`;
       const isNumberCollision = insertError.code === "23505" &&
         /unique_invoice_number_per_(trainer|academy)/.test(errText);
       if (!isNumberCollision) break;

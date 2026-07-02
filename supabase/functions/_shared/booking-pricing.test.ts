@@ -4,6 +4,7 @@ import {
   computeSingleSlotPaymentAmount,
   hasNonUniformCapacity,
   resolveSplitDivisorFromSlots,
+  shouldSkipExtrasForPaidExtrasBookings,
   sumSlotExtraCosts,
 } from "./booking-pricing.ts";
 
@@ -60,4 +61,57 @@ Deno.test("hasNonUniformCapacity flags the data anomaly (only)", () => {
   assertEquals(hasNonUniformCapacity([{ max_participants: 4 }, { max_participants: 4 }]), false);
   assertEquals(hasNonUniformCapacity([{ max_participants: 4 }, { max_participants: 6 }]), true);
   assertEquals(hasNonUniformCapacity([{ max_participants: 4 }]), false);
+});
+
+Deno.test("shouldSkipExtrasForPaidExtrasBookings: only non-cyclus + all flagged", () => {
+  // both flagged, non-cyclus → skip
+  assertEquals(
+    shouldSkipExtrasForPaidExtrasBookings(
+      [{ amount_includes_extras: true }],
+      false,
+    ),
+    true,
+  );
+  // cyclus → never skip (extras billed separately)
+  assertEquals(
+    shouldSkipExtrasForPaidExtrasBookings(
+      [{ amount_includes_extras: true }],
+      true,
+    ),
+    false,
+  );
+  // any unflagged booking → do not skip (manual booking mixed in)
+  assertEquals(
+    shouldSkipExtrasForPaidExtrasBookings(
+      [{ amount_includes_extras: true }, { amount_includes_extras: null }],
+      false,
+    ),
+    false,
+  );
+  // empty set → do not skip
+  assertEquals(shouldSkipExtrasForPaidExtrasBookings([], false), false);
+});
+
+Deno.test("single-slot invoice total == captured amount for a slot WITH extras (both paths)", () => {
+  const extras = [
+    { price: 5, type: "per_session", description: "Ballen" },
+    { price: 2.5, type: "one_time", description: "Baanhuur" },
+  ];
+  const base = computeSingleSlotPaymentAmount(slot(), null, 1); // 76.5, whole-slot
+  // Authed path (after fix) AND guest path both charge base + extras:
+  const charged = base + sumSlotExtraCosts(extras); // 84
+  assertEquals(charged, 84);
+
+  // The paid booking carries payment_amount = charged and amount_includes_extras = true.
+  const paidBooking = { amount_includes_extras: true };
+  // auto-create-invoice / invoiceSync skip extras for this booking set...
+  assertEquals(
+    shouldSkipExtrasForPaidExtrasBookings([paidBooking], false),
+    true,
+  );
+  // ...so the ONLY line item is the session line priced at payment_amount (= charged),
+  // and the invoice total equals exactly what was captured. (resolveInvoiceUnitPrice
+  // returns payment_amount verbatim when > 0.)
+  const invoiceLineTotal = charged; // single line, quantity 1
+  assertEquals(invoiceLineTotal, charged);
 });

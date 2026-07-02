@@ -15,6 +15,13 @@ import {
   calculateVatTotals,
   applySplit,
 } from "@/lib/invoiceCalc";
+import { shouldSkipExtrasForPaidExtrasBookings } from "@/lib/invoiceSplitPricing";
+import {
+  fetchAllRows,
+  fetchAllByInChunks,
+  chunk,
+  SUPABASE_IN_CHUNK_SIZE,
+} from "@/lib/supabasePaging";
 
 // "overdue" is a valid STORED status (invoices_status_check) and overdue
 // invoices are still unpaid — they must recalc like sent/pending ones
@@ -286,13 +293,15 @@ async function applyRemovalRecalculation(
     return applied ? "cancelled" : "conflict";
   }
 
-  // Fetch remaining bookings with slot details
-  const { data: bookingRows, error: bookingsError } = await supabase
-    .from("bookings")
-    .select(BOOKING_WITH_SLOT_SELECT)
-    .in("id", remainingBookingIds);
-
-  if (bookingsError) throw bookingsError;
+  // Fetch remaining bookings with slot details. Paged/chunked so an invoice
+  // referencing >1000 bookings is fully rebuilt (PostgREST caps each page).
+  const bookingRows = await fetchAllByInChunks(remainingBookingIds, (idChunk) =>
+    supabase
+      .from("bookings")
+      .select(BOOKING_WITH_SLOT_SELECT)
+      .in("id", idChunk)
+      .order("id", { ascending: true }),
+  );
 
   const remainingBookings = (bookingRows ?? []) as unknown as BookingWithSlot[];
   if (remainingBookings.length === 0) return "noop";
@@ -384,15 +393,32 @@ async function applyRemovalRecalculation(
     });
   }
 
-  // Add extra costs from cycle settings, fall back to slot extra_costs
-  const extraCosts = await resolveExtraCosts(sharedCyclusId, firstSlot.extra_costs);
-  appendExtraCostLineItems(
-    lineItems,
-    extraCosts,
-    splitCount,
-    remainingBookings.length,
-    defaultVatRate,
-  );
+  // Add extra costs from cycle settings, fall back to slot extra_costs — UNLESS the
+  // remaining bookings' payment_amount already includes them (single-slot pay-first).
+  // Best-effort flag read so a missing column just falls back to appending (as before).
+  let extrasAlreadyCharged = false;
+  {
+    const { data: extrasFlagRows, error: extrasFlagError } = await supabase
+      .from("bookings")
+      .select("id, amount_includes_extras")
+      .in("id", remainingBookingIds);
+    if (!extrasFlagError) {
+      extrasAlreadyCharged = shouldSkipExtrasForPaidExtrasBookings(
+        (extrasFlagRows ?? []) as { amount_includes_extras?: boolean | null }[],
+        allSameCyclus,
+      );
+    }
+  }
+  if (!extrasAlreadyCharged) {
+    const extraCosts = await resolveExtraCosts(sharedCyclusId, firstSlot.extra_costs);
+    appendExtraCostLineItems(
+      lineItems,
+      extraCosts,
+      splitCount,
+      remainingBookings.length,
+      defaultVatRate,
+    );
+  }
 
   // Calculate VAT (multi-rate aware)
   const slotPricesIncludeVat = firstSlot.prices_include_vat ?? true;
@@ -431,6 +457,51 @@ export async function recalculateInvoiceAfterRemoval(
   );
 }
 
+interface OverlapInvoiceRow {
+  id: string;
+  status: string;
+  booking_ids: string[] | null;
+  invoice_number?: string;
+}
+
+/**
+ * Fetch every invoice whose booking_ids overlap `bookingIds`, restricted to
+ * `statuses`, with NO silent PostgREST row-cap truncation.
+ *
+ * Two independent unbounded axes are handled:
+ *   - the booking-id INPUT is chunked (overlap over A∪B ≡ overlap over A OR B),
+ *     keeping the request array/URL bounded, and
+ *   - each chunk's RESULT is range-paged until exhausted.
+ * Invoices matched by more than one chunk are de-duped by id.
+ */
+async function fetchInvoicesOverlappingBookings(
+  bookingIds: string[],
+  statuses: string[],
+  extraColumns = "",
+): Promise<OverlapInvoiceRow[]> {
+  if (bookingIds.length === 0) return [];
+  const columns = `id, status, booking_ids${extraColumns ? `, ${extraColumns}` : ""}`;
+  const byId = new Map<string, OverlapInvoiceRow>();
+  for (const idChunk of chunk(bookingIds, SUPABASE_IN_CHUNK_SIZE)) {
+    const rows = await fetchAllRows<OverlapInvoiceRow>(
+      () =>
+        supabase
+          .from("invoices")
+          .select(columns)
+          .in("status", statuses)
+          .overlaps("booking_ids", idChunk)
+          .order("id", { ascending: true }) as unknown as {
+          range: (
+            from: number,
+            to: number,
+          ) => PromiseLike<{ data: OverlapInvoiceRow[] | null; error: unknown }>;
+        },
+    );
+    for (const row of rows) byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 /**
  * Recalculate unpaid invoices after slot price changes.
  * Finds invoices with bookings on the given slots and rebuilds totals.
@@ -445,27 +516,26 @@ export async function syncInvoicesAfterPriceChange(
 
   const statuses = options?.statuses ?? DEFAULT_PRICE_SYNC_STATUSES;
 
-  // Find bookings on these slots
-  const { data: bookings, error: bookingsError } = await supabase
-    .from("bookings")
-    .select("id, slot_id, payment_amount")
-    .in("slot_id", slotIds)
-    .in("status", ["confirmed", "pending"]);
+  // Find bookings on these slots (paged/chunked — a large cycle can have
+  // >1000 bookings, past which a single PostgREST response is truncated).
+  const bookings = await fetchAllByInChunks(slotIds, (idChunk) =>
+    supabase
+      .from("bookings")
+      .select("id, slot_id, payment_amount")
+      .in("slot_id", idChunk)
+      .in("status", ["confirmed", "pending"])
+      .order("id", { ascending: true }),
+  );
 
-  if (bookingsError) throw bookingsError;
-  if (!bookings || bookings.length === 0) return;
+  if (bookings.length === 0) return;
 
   const bookingIds = bookings.map((b) => b.id);
 
-  // Find invoices overlapping with these bookings (status filter configurable)
-  const { data: invoices, error: invoicesError } = await supabase
-    .from("invoices")
-    .select("id, status, booking_ids")
-    .in("status", statuses)
-    .overlaps("booking_ids", bookingIds);
-
-  if (invoicesError) throw invoicesError;
-  if (!invoices || invoices.length === 0) return;
+  // Find invoices overlapping with these bookings (status filter configurable).
+  // The booking-id input is chunked (overlap over A∪B = overlap over A OR B)
+  // and each chunk's result is range-paged, then invoices are de-duped by id.
+  const invoices = await fetchInvoicesOverlappingBookings(bookingIds, statuses);
+  if (invoices.length === 0) return;
 
   // Full recalculate with zero removed bookings: forces a rebuild of line
   // items from current slot/booking data.
@@ -481,13 +551,14 @@ async function applySplitRebuild(
   state: InvoiceState,
   playerCount: number,
 ): Promise<"updated" | "noop" | "conflict"> {
-  const { data: bookingRows, error: bookingsError } = await supabase
-    .from("bookings")
-    .select(BOOKING_WITH_SLOT_SELECT)
-    .in("id", state.booking_ids)
-    .in("status", ["confirmed", "pending"]);
-
-  if (bookingsError) throw bookingsError;
+  const bookingRows = await fetchAllByInChunks(state.booking_ids, (idChunk) =>
+    supabase
+      .from("bookings")
+      .select(BOOKING_WITH_SLOT_SELECT)
+      .in("id", idChunk)
+      .in("status", ["confirmed", "pending"])
+      .order("id", { ascending: true }),
+  );
 
   const invBookings = (bookingRows ?? []) as unknown as BookingWithSlot[];
   if (invBookings.length === 0) return "noop";
@@ -571,36 +642,40 @@ export async function syncSplitCountForCycle(
   if (!playerCount || playerCount <= 1) return;
 
   // 2. Locate the active bookings → the unpaid sibling invoices to rebuild.
-  const { data: cycleSlots, error: slotsError } = await supabase
-    .from("availability_slots")
-    .select("id")
-    .eq("cyclus_id", cyclusId);
-
-  if (slotsError) throw slotsError;
-  if (!cycleSlots || cycleSlots.length === 0) return;
+  // Every fetch below is paged/chunked: a whole-season cycle can carry >1000
+  // slots and >1000 bookings, past which a single PostgREST response truncates
+  // and later invoices would silently keep the OLD split share.
+  const cycleSlots = await fetchAllRows<{ id: string }>(() =>
+    supabase
+      .from("availability_slots")
+      .select("id")
+      .eq("cyclus_id", cyclusId)
+      .order("id", { ascending: true }),
+  );
+  if (cycleSlots.length === 0) return;
 
   const slotIds = cycleSlots.map((s) => s.id);
 
-  const { data: activeBookings, error: activeBookingsError } = await supabase
-    .from("bookings")
-    .select("id")
-    .in("slot_id", slotIds)
-    .in("status", ["confirmed", "pending"]);
-
-  if (activeBookingsError) throw activeBookingsError;
-  if (!activeBookings || activeBookings.length === 0) return;
+  const activeBookings = await fetchAllByInChunks<{ id: string }>(
+    slotIds,
+    (idChunk) =>
+      supabase
+        .from("bookings")
+        .select("id")
+        .in("slot_id", idChunk)
+        .in("status", ["confirmed", "pending"])
+        .order("id", { ascending: true }),
+  );
+  if (activeBookings.length === 0) return;
 
   const activeBookingIds = activeBookings.map((b) => b.id);
 
   // 3. Find all unpaid invoices overlapping with these bookings
-  const { data: invoices, error: invoicesError } = await supabase
-    .from("invoices")
-    .select("id, booking_ids, status")
-    .in("status", UNPAID_SYNC_STATUSES)
-    .overlaps("booking_ids", activeBookingIds);
-
-  if (invoicesError) throw invoicesError;
-  if (!invoices || invoices.length === 0) return;
+  const invoices = await fetchInvoicesOverlappingBookings(
+    activeBookingIds,
+    UNPAID_SYNC_STATUSES,
+  );
+  if (invoices.length === 0) return;
 
   // 4. For each invoice, rebuild with the new split count
   for (const inv of invoices) {
@@ -632,14 +707,12 @@ export async function syncInvoicesAfterBookingRemoval(
   const result: BookingRemovalSyncResult = { skippedPaidInvoiceNumbers: [] };
   if (removedBookingIds.length === 0) return result;
 
-  const { data: invoices, error } = await supabase
-    .from("invoices")
-    .select("id, invoice_number, status, booking_ids")
-    .in("status", [...UNPAID_SYNC_STATUSES, "paid"])
-    .overlaps("booking_ids", removedBookingIds);
-
-  if (error) throw error;
-  if (!invoices || invoices.length === 0) return result;
+  const invoices = await fetchInvoicesOverlappingBookings(
+    removedBookingIds,
+    [...UNPAID_SYNC_STATUSES, "paid"],
+    "invoice_number",
+  );
+  if (invoices.length === 0) return result;
 
   for (const inv of invoices) {
     const overlapping = ((inv.booking_ids as string[]) || []).filter(

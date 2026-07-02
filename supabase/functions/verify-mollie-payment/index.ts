@@ -7,7 +7,7 @@ import {
 } from "../_shared/booking-access.ts";
 import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
 import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
-import { findCancelledPaidBookings } from "../_shared/mollie-webhook-payment.ts";
+import { applyBookingPaymentWriteback, findCancelledPaidBookings } from "../_shared/mollie-webhook-payment.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[VERIFY-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
@@ -145,6 +145,15 @@ async function resolveAccessToken(
         return token;
       }
     }
+  }
+
+  // OWNER INTENT (P1-9): for an academy slot (slotAcademyProfileId set) the recipient is
+  // ALWAYS the academy — mirror the charge side (resolveSlotRecipient) and the webhook,
+  // which refuse rather than falling back to the trainer. If the academy branch above did
+  // not resolve a token, return null so the caller returns a graceful 400 instead of
+  // confirming against the trainer's personal Mollie. Keeps charge-org == confirm-org.
+  if (slotAcademyProfileId) {
+    return null;
   }
 
   const { data: trainerMollie } = await supabase
@@ -347,34 +356,41 @@ serve(async (req) => {
       // transitioned rows and skips them. The status!='cancelled' guard mirrors
       // applyBookingPaymentWriteback so a late payment can't resurrect a
       // cancelled booking on this path either.
-      const { data: transitionedRows, error: updateError } = await supabase
-        .from("bookings")
-        .update({
+      // P1-4: route through the shared, 23505-tolerant writeback so a
+      // payment_pending HOLD flipped paid here can't collide with the M-17
+      // (slot, guest|player) index and 500 the verify. Returns the SURVIVOR/
+      // transitioned id set (colliding hold cancelled, survivor stamped paid).
+      let transitionedRows: { id: string }[] = [];
+      let writebackFailed = false;
+      try {
+        transitionedRows = await applyBookingPaymentWriteback(supabase, metadataIds, {
           payment_status: "paid",
           status: "confirmed",
           mollie_transaction_id: payment.id,
           paid_at: new Date().toISOString(),
-        })
-        .in("id", metadataIds)
-        .neq("payment_status", "paid")
-        .neq("status", "cancelled")
-        .select("id");
+        });
+      } catch (writebackErr) {
+        writebackFailed = true;
+        logStep("Warning: Failed to update bookings", {
+          error: writebackErr instanceof Error ? writebackErr.message : String(writebackErr),
+        });
+      }
 
-      if (updateError) {
-        logStep("Warning: Failed to update bookings", { error: updateError.message });
-      } else {
+      if (!writebackFailed) {
+        const paidIds = transitionedRows.map((r) => r.id);
         logStep("Bookings updated to paid", {
           metadataIds,
-          transitioned: transitionedRows?.length ?? 0,
+          transitioned: paidIds.length,
         });
 
-        if ((transitionedRows?.length ?? 0) > 0) {
+        if (paidIds.length > 0) {
           // Before this, bookings verified here got no invoice and no
           // confirmation email — and the late webhook skipped them forever
-          // because they were already paid (M-26).
+          // because they were already paid (M-26). Key side-effects off the
+          // SURVIVOR/paid ids, not the raw metadata list (P1-4).
           await runBookingPaidSideEffects({
             supabase,
-            bookingIds: metadataIds,
+            bookingIds: paidIds,
             paymentAmountValue: payment.amount?.value,
             source: "verify-mollie-payment",
             logStep,

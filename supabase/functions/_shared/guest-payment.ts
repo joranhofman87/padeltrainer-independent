@@ -118,7 +118,16 @@ export async function resolveSlotRecipient(
     }
   }
 
-  if (!accessToken) {
+  // OWNER INTENT (P1-9): when the slot carries an academy_profile_id the trainer is
+  // acting AS PART OF that academy, so the money must ALWAYS go to the academy - never
+  // the trainer's personal Mollie. If the academy branch above did not resolve a token
+  // (academy Mollie missing / not charge-ready), we REFUSE here (leave accessToken null)
+  // rather than fall through to the trainer account. The caller turns a null recipient
+  // into a clear 'online betaling niet beschikbaar' 400, so the booking is blocked
+  // instead of paid to the wrong account. Only a trainer-OWNED slot (no academy hint)
+  // may use the trainer branch. The webhook (resolveAccessToken) applies the identical
+  // rule so charge-org == confirm-org.
+  if (!accessToken && !slotAcademyProfileId) {
     const { data: trainerMollie } = await supabase
       .from("trainer_mollie_accounts")
       .select("mollie_organization_id, access_token, refresh_token, token_expires_at")
