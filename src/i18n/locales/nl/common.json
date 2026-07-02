@@ -367,6 +367,7 @@
     "pickTitle": "Boek een training",
     "pickSubtitle": "Kies een dag en tijd die jou uitkomt",
     "pickDay": "Kies een dag",
+    "noAvailability": "Er zijn op dit moment geen open trainingen. Kom later terug of neem contact op.",
     "calendar": {
       "prevMonth": "Vorige maand",
       "nextMonth": "Volgende maand",

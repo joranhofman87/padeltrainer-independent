@@ -23,6 +23,8 @@ interface AvailabilityCalendarProps {
   /** Owner IANA timezone so day grouping + times are academy-local, not browser-local. */
   timezone?: string;
   className?: string;
+  /** When there is no availability: render an empty-state card instead of nothing. */
+  alwaysShow?: boolean;
 }
 
 /**
@@ -37,6 +39,7 @@ export function AvailabilityCalendar({
   onSelect,
   timezone = 'Europe/Amsterdam',
   className,
+  alwaysShow = false,
 }: AvailabilityCalendarProps) {
   const { t, i18n } = useTranslation('common');
   const { dayGroups, loading } = usePublicAvailability(owner);
@@ -96,7 +99,29 @@ export function AvailabilityCalendar({
       </Card>
     );
   }
-  if (slots.length === 0) return null;
+  if (slots.length === 0) {
+    if (!alwaysShow) return null;
+    // Public pages ask to show the booking section even with nothing bookable yet.
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-primary" />
+            {t('booking.pickTitle', 'Boek een training')}
+          </CardTitle>
+          <CardDescription>{t('booking.pickSubtitle', 'Kies een dag en tijd die jou uitkomt')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="py-10 text-center">
+            <CalendarClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/60" />
+            <p className="text-sm text-muted-foreground">
+              {t('booking.noAvailability', 'Er zijn op dit moment geen open trainingen. Kom later terug of neem contact op.')}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // AgendaMonth keys its cells by the calendar date string; a slot's owner-tz date key matches that.
   const handleDayClick = (day: Date) => setSelectedKey(format(day, 'yyyy-MM-dd'));
