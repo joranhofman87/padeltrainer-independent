@@ -45,75 +45,67 @@ export function buildServiceRoleAuthDebug(req: Request): ServiceRoleAuthDebug {
   };
 }
 
-function projectRefFromSupabaseUrl(url: string | undefined): string | null {
-  if (!url) return null;
-  const match = url.match(/https:\/\/([^.]+)\.supabase\.co/);
-  return match?.[1] ?? null;
-}
-
-/** Decode Supabase JWT claims without signature verification (fallback only). */
-export function parseSupabaseJwtClaims(
-  token: string,
-): { role?: string; ref?: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
+/**
+ * Constant-time string equality. Avoids leaking the service-role key through
+ * comparison timing. Length mismatch folds into the result (never early-returns
+ * on a per-character difference).
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  let diff = ab.length ^ bb.length;
+  const max = Math.max(ab.length, bb.length);
+  for (let i = 0; i < max; i++) {
+    diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
   }
-}
-
-/** True when token is a service_role JWT for this project (env missing fallback). */
-export function isServiceRoleJwtForProject(token: string): boolean {
-  const claims = parseSupabaseJwtClaims(token);
-  if (!claims || claims.role !== "service_role") return false;
-  const projectRef = projectRefFromSupabaseUrl(Deno.env.get("SUPABASE_URL"));
-  if (projectRef && claims.ref && claims.ref !== projectRef) return false;
-  return true;
+  return diff === 0;
 }
 
 /**
- * True when request carries the service-role key via Authorization and/or apikey.
- * Accepts env string match OR matching service_role JWT in both headers (dashboard/env drift).
+ * True ONLY when the request carries the project's real service-role key
+ * (byte-for-byte) via `Authorization: Bearer <key>`, a bare `Authorization`
+ * value, or the `apikey` header.
+ *
+ * There is deliberately NO claims-only JWT fallback: a `service_role` JWT is
+ * trusted only when it exactly equals the configured `SUPABASE_SERVICE_ROLE_KEY`.
+ * Decoding a token's claims without verifying its signature (as a previous
+ * fallback did) let anyone forge an unsigned `{role:'service_role'}` token and
+ * obtain a real RLS-bypassing client — a full unauthenticated cross-tenant
+ * breach. Fails closed when the env key is unset.
+ *
+ * Operational note: legitimate service-role callers (the Vercel daily cron via
+ * `invokeEdgeFunction`, and pg_cron via `app.settings.service_role_key`) all send
+ * this exact key. After a service-role key rotation, the caller env AND the
+ * function secret must both be updated to the new key, or these calls 401 until
+ * they are — that config-sync burden is the correct cost of not trusting
+ * unsigned claims.
  */
 export function isServiceRoleRequest(req: Request): boolean {
   const envKey = getEnvServiceRoleKey();
+  if (!envKey) return false;
+
   const authHeader = req.headers.get("Authorization");
-  const apiKey = req.headers.get("apikey")?.trim() ?? null;
   const bearerToken = extractBearerToken(authHeader);
+  const apiKey = req.headers.get("apikey")?.trim() ?? null;
+  const rawAuth = authHeader?.trim() ?? null;
 
-  if (envKey) {
-    if (authHeader?.trim() === `Bearer ${envKey}`) return true;
-    if (bearerToken && bearerToken === envKey) return true;
-    if (apiKey && apiKey === envKey) return true;
-  }
-
-  // Agreed service_role JWT in Authorization + apikey (valid when env compare fails).
-  if (bearerToken && apiKey && bearerToken === apiKey && isServiceRoleJwtForProject(bearerToken)) {
-    return true;
-  }
+  if (bearerToken && timingSafeEqual(bearerToken, envKey)) return true;
+  if (apiKey && timingSafeEqual(apiKey, envKey)) return true;
+  // Some callers send a bare (non-"Bearer ") Authorization value.
+  if (rawAuth && rawAuth !== bearerToken && timingSafeEqual(rawAuth, envKey)) return true;
 
   return false;
 }
 
-/** Service-role key for Supabase client: env match first, then agreed request JWT. */
+/**
+ * The service-role key to build a Supabase client with, or null. Always returns
+ * the configured ENV key (never a token taken from the request), and only when
+ * the request is a verified service-role request — so a client can never be
+ * built from an attacker-supplied token.
+ */
 export function resolveServiceRoleToken(req: Request): string | null {
   const envKey = getEnvServiceRoleKey();
-  const bearerToken = extractBearerToken(req.headers.get("Authorization"));
-  const apiKey = req.headers.get("apikey")?.trim() ?? null;
-
-  if (envKey) {
-    if (bearerToken && bearerToken === envKey) return envKey;
-    if (apiKey && apiKey === envKey) return envKey;
-    if (req.headers.get("Authorization")?.trim() === `Bearer ${envKey}`) return envKey;
-  }
-
-  if (bearerToken && apiKey && bearerToken === apiKey && isServiceRoleJwtForProject(bearerToken)) {
-    return bearerToken;
-  }
-
-  return envKey ?? null;
+  if (!envKey) return null;
+  return isServiceRoleRequest(req) ? envKey : null;
 }
