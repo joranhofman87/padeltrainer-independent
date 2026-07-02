@@ -9,6 +9,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { resolveSplitDivisorFromSlots } from "../_shared/booking-pricing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,28 +64,24 @@ serve(async (req: Request) => {
     const payableIds = payable.map((b) => b.id);
     if (payableIds.length === 0) return json({ ok: false, reason: "nothing_payable" });
 
-    // Split divisor — computed exactly like the Mollie upfront path (priorityClaims.ts)
-    // so the manual invoice equals what online checkout would charge: on split_payment
-    // slots, divide the price by the distinct committed players on those slots. Without
-    // this, auto-create-invoice sees one player in the batch and bills the FULL price
-    // (an N× overcharge on shared cycles).
+    // Split divisor — computed exactly like the Mollie upfront path (create-mollie-payment)
+    // so the manual invoice equals what online checkout would charge. G5: on split_payment
+    // slots, divide by the cycle's frozen COURT CAPACITY (max seats), NOT the live player
+    // count — otherwise this fallback invoice would over-bill (÷ live players > ÷ capacity
+    // when the group isn't full) and disagree with the Mollie charge. Without any split,
+    // auto-create-invoice would bill the FULL price (an N× overcharge on shared cycles).
     const payableSlotIds = [...new Set(payable.map((b) => b.slot_id).filter(Boolean))] as string[];
     let splitAmongPlayers: number | undefined;
     if (payableSlotIds.length > 0) {
       const { data: slotRows } = await admin
         .from("availability_slots")
-        .select("split_payment")
+        .select("split_payment, max_participants")
         .in("id", payableSlotIds);
       if ((slotRows ?? []).some((s) => s.split_payment === true)) {
-        const { data: participants } = await admin
-          .from("bookings")
-          .select("player_id, guest_player_id")
-          .in("slot_id", payableSlotIds)
-          .in("status", ["pending", "confirmed"]);
-        const distinct = new Set(
-          (participants ?? []).map((b) => b.player_id ?? b.guest_player_id).filter(Boolean),
-        ).size;
-        splitAmongPlayers = Math.max(distinct, 1);
+        const divisor = resolveSplitDivisorFromSlots(
+          (slotRows ?? []) as { max_participants?: number | null }[],
+        );
+        if (divisor > 1) splitAmongPlayers = divisor;
       }
     }
 

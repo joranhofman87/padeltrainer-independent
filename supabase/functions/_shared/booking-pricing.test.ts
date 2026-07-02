@@ -1,5 +1,11 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { computeSingleSlotPaymentAmount, sumSlotExtraCosts } from "./booking-pricing.ts";
+import {
+  applySplitPayment,
+  computeSingleSlotPaymentAmount,
+  hasNonUniformCapacity,
+  resolveSplitDivisorFromSlots,
+  sumSlotExtraCosts,
+} from "./booking-pricing.ts";
 
 const slot = (over: Record<string, unknown> = {}) => ({
   start_time: "2026-09-01T10:00:00Z",
@@ -30,4 +36,28 @@ Deno.test("no extras → amount is unchanged (regression guard for the €0-extr
   const base = computeSingleSlotPaymentAmount(slot(), null, 1);
   assertEquals(base + sumSlotExtraCosts([]), 76.5);
   assertEquals(base + sumSlotExtraCosts(null), 76.5);
+});
+
+// G5 — the split divisor is the cycle's COURT CAPACITY (frozen), never a live player count.
+Deno.test("resolveSplitDivisorFromSlots = MAX(max_participants), clamp ≥1", () => {
+  assertEquals(resolveSplitDivisorFromSlots([{ max_participants: 4 }, { max_participants: 4 }]), 4);
+  // non-uniform → MAX (never overcharges)
+  assertEquals(resolveSplitDivisorFromSlots([{ max_participants: 4 }, { max_participants: 6 }]), 6);
+  // null / 0 → 1
+  assertEquals(resolveSplitDivisorFromSlots([{ max_participants: null }, { max_participants: 4 }]), 4);
+  assertEquals(resolveSplitDivisorFromSlots([{ max_participants: 1 }]), 1);
+  assertEquals(resolveSplitDivisorFromSlots([]), 1);
+});
+
+Deno.test("capacity divisor is frozen — €40 on a 4-seat court → €10 each regardless of headcount", () => {
+  const divisor = resolveSplitDivisorFromSlots([{ max_participants: 4 }, { max_participants: 4 }]);
+  assertEquals(applySplitPayment(40, divisor), 10);
+  // divisor 1 (capacity ≤ 1) ⇒ no split (full price)
+  assertEquals(applySplitPayment(40, resolveSplitDivisorFromSlots([{ max_participants: 1 }])), 40);
+});
+
+Deno.test("hasNonUniformCapacity flags the data anomaly (only)", () => {
+  assertEquals(hasNonUniformCapacity([{ max_participants: 4 }, { max_participants: 4 }]), false);
+  assertEquals(hasNonUniformCapacity([{ max_participants: 4 }, { max_participants: 6 }]), true);
+  assertEquals(hasNonUniformCapacity([{ max_participants: 4 }]), false);
 });

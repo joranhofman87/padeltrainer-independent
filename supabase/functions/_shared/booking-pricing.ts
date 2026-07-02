@@ -72,6 +72,32 @@ export function applySplitPayment(total: number, playerCount: number): number {
   return Math.round((total / n) * 100) / 100;
 }
 
+/**
+ * G5 — the split-payment divisor is the cycle's COURT CAPACITY, not the live
+ * player count. Freezing to capacity makes the divisor a pure function of the slot
+ * rows: it can't drift as the cohort forms mid-checkout (the old live-count race),
+ * and no player is ever overcharged (each pays exactly total ÷ seats; the academy
+ * absorbs any empty seat). Every split site (Mollie charge, guest charge, invoice
+ * split_count) uses THIS so they can never disagree.
+ *
+ * Rule: MAX(max_participants) across the cycle's slots, each coalesced to ≥1.
+ *  - MAX (not first/min) is order-independent + deterministic across call sites and,
+ *    when a cycle's slots have non-uniform capacity (a data anomaly), never
+ *    overcharges (largest divisor → smallest per-player share).
+ *  - null/0 capacity → 1. A divisor of 1 means "no split" (applySplitPayment returns
+ *    the full total).
+ */
+export function resolveSplitDivisorFromSlots(slots: { max_participants?: number | null }[]): number {
+  const caps = (slots ?? []).map((s) => Math.max(1, Number(s?.max_participants) || 1));
+  return caps.length ? Math.max(...caps) : 1;
+}
+
+/** True when a cycle's slots disagree on capacity — a data anomaly worth logging (never overcharges). */
+export function hasNonUniformCapacity(slots: { max_participants?: number | null }[]): boolean {
+  const caps = new Set((slots ?? []).map((s) => Math.max(1, Number(s?.max_participants) || 1)));
+  return caps.size > 1;
+}
+
 export function amountsMatch(expected: number, actual: number, tolerance = 0.01): boolean {
   return Math.abs(expected - actual) <= tolerance;
 }

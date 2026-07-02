@@ -498,9 +498,10 @@ async function applySplitRebuild(
   const cyclusName = firstSlot.cyclus_name || "Training cyclus";
 
   // Divisor: prefer the authoritative split_count written by
-  // recalc_cycle_split_count (under a per-cycle lock); fall back to the passed
-  // count. This is what makes concurrent split-cycle joins race-safe — the count
-  // is no longer a stale client value.
+  // recalc_cycle_split_count (under a per-cycle lock); fall back to the passed value.
+  // G5: this divisor is now the FROZEN court capacity (max seats), not a live player
+  // count — a pure function of the slots, so concurrent joins can't drift it and it
+  // matches the Mollie/guest charge divisor exactly.
   const splitCount = state.split_count ?? playerCount;
 
   // The split count itself changed, so per-player shares are re-derived from
@@ -558,10 +559,10 @@ export async function syncSplitCountForCycle(
   if (!cyclusId) return;
 
   // 1. Authoritative, race-safe divisor: the RPC takes a per-cycle advisory
-  // lock, recounts unique active players, and writes split_count onto every
-  // unpaid sibling invoice. The rebuild below reads that split_count, so
-  // concurrent joins can no longer stamp a stale 1/N. Returns 0 for a
-  // non-split cycle / when no split is needed.
+  // lock and writes split_count onto every unpaid sibling invoice. G5: split_count
+  // is now the FROZEN court CAPACITY (max seats), not the live player count — the
+  // rebuild below reads it, so it matches the charge path and never drifts. Returns 0
+  // for a non-split cycle / capacity of 1.
   const { data: playerCount, error: rpcError } = await supabase.rpc(
     "recalc_cycle_split_count",
     { _cyclus_id: cyclusId },

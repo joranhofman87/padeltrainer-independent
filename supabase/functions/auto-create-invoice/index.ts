@@ -10,6 +10,7 @@ import {
   resolveInvoiceUnitPrice,
   splitAmongPlayersForInvoiceCreate,
 } from "../_shared/invoice-split-pricing.ts";
+import { resolveSplitDivisorFromSlots } from "../_shared/booking-pricing.ts";
 
 const corsHeaders = sharedCors;
 
@@ -65,6 +66,7 @@ serve(async (req) => {
           prices_include_vat,
           extra_costs,
           split_payment,
+          max_participants,
           locations(name, city)
         )
       `)
@@ -119,13 +121,18 @@ serve(async (req) => {
     }
 
 
-    // Auto-detect split payment from slot if not explicitly passed
+    // Auto-detect split payment from slot if not explicitly passed. G5: split by the
+    // cycle's COURT CAPACITY (frozen), not the live player count — same divisor as the
+    // charge path + recalc_cycle_split_count, so a mixed Mollie/invoice cycle stays
+    // consistent. divisor 1 ⇒ no split.
     let splitAmongPlayers: number | null = requestedSplitAmongPlayers;
     if (!splitAmongPlayers && slot.split_payment === true) {
-      const uniquePlayers = new Set(bookings.map((b) => b.player_id || b.guest_player_id).filter(Boolean));
-      if (uniquePlayers.size > 1) {
-        splitAmongPlayers = uniquePlayers.size;
-        logStep("Auto-detected split payment from slot", { splitAmongPlayers });
+      const divisor = resolveSplitDivisorFromSlots(
+        bookings.map((b) => b.availability_slots as { max_participants?: number | null }),
+      );
+      if (divisor > 1) {
+        splitAmongPlayers = divisor;
+        logStep("Auto-detected split from slot capacity", { splitAmongPlayers });
       }
     }
 

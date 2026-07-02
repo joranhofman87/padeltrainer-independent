@@ -8,6 +8,7 @@ import {
   splitAmongPlayersForInvoiceCreate,
   type BookingWithSlotPrice,
 } from '@/lib/invoiceSplitPricing';
+import { resolveSplitDivisor } from '@/lib/splitDivisor';
 
 export type AddPlayerBookingRow = {
   id: string;
@@ -134,30 +135,29 @@ export function buildAutoCreateInvoicePayload(
   return body;
 }
 
-/** Count unique active participants on the given slots (confirmed/pending). */
-export async function countActiveParticipantsOnSlots(slotIds: string[]): Promise<number> {
-  if (slotIds.length === 0) return 0;
+/**
+ * G5: the split divisor for these slots = the cycle's COURT CAPACITY (frozen), i.e.
+ * MAX(max_participants). NOT the live participant count — so a draft created here
+ * matches the charge path + recalc_cycle_split_count and never drifts. Returns 1 (no
+ * split) on error or capacity ≤ 1.
+ */
+export async function resolveSplitDivisorForSlots(slotIds: string[]): Promise<number> {
+  if (slotIds.length === 0) return 1;
 
   const { data, error } = await supabase
-    .from("bookings")
-    .select("player_id, guest_player_id")
-    .in("slot_id", slotIds)
-    .in("status", ["confirmed", "pending"]);
+    .from("availability_slots")
+    .select("max_participants")
+    .in("id", slotIds);
 
   if (error) {
-    logger.warn("Failed to count active participants for invoice split", {
+    logger.warn("Failed to read slot capacity for invoice split", {
       component: "invoiceAfterAddPlayer",
       error: error.message,
     });
-    return 0;
+    return 1;
   }
 
-  const keys = new Set<string>();
-  for (const row of data || []) {
-    const key = row.player_id || row.guest_player_id;
-    if (key) keys.add(key);
-  }
-  return keys.size;
+  return resolveSplitDivisor((data || []) as { max_participants?: number | null }[]);
 }
 
 async function invokeAutoCreateDraftInvoice(
@@ -250,9 +250,9 @@ export async function syncInvoicesAfterAddPlayer(
 
   let splitAmongPlayers: number | null = null;
   if (input.splitPayment && input.slotIds.length > 0) {
-    const participantCount = await countActiveParticipantsOnSlots(input.slotIds);
-    if (participantCount > 1) {
-      splitAmongPlayers = participantCount;
+    const divisor = await resolveSplitDivisorForSlots(input.slotIds);
+    if (divisor > 1) {
+      splitAmongPlayers = divisor;
     }
   }
 
