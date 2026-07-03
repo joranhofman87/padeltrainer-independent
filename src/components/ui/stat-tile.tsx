@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils';
 
 export interface StatTileProps {
   label: string;
-  value: string;
-  icon: LucideIcon;
+  value: ReactNode;
+  icon?: LucideIcon;
   onClick?: () => void;
   highlight?: boolean;
   loading?: boolean;
@@ -44,21 +44,22 @@ export function StatTile({
           </p>
           {subtext && <p className="mt-0.5 text-[11px] text-muted-foreground">{subtext}</p>}
         </div>
-        {endSlot ?? (
-          <div
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-              highlight ? 'bg-[hsl(var(--brand-50))]' : 'bg-[hsl(var(--navy-50))]',
-            )}
-          >
-            <Icon
+        {endSlot ??
+          (Icon ? (
+            <div
               className={cn(
-                'h-4 w-4',
-                highlight ? 'text-[hsl(var(--brand-600))]' : 'text-[hsl(var(--navy-600))]',
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                highlight ? 'bg-[hsl(var(--brand-50))]' : 'bg-[hsl(var(--navy-50))]',
               )}
-            />
-          </div>
-        )}
+            >
+              <Icon
+                className={cn(
+                  'h-4 w-4',
+                  highlight ? 'text-[hsl(var(--brand-600))]' : 'text-[hsl(var(--navy-600))]',
+                )}
+              />
+            </div>
+          ) : null)}
       </div>
     </Component>
   );
