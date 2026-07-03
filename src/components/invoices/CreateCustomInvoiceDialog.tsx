@@ -6,14 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
-import { getDateFnsLocale } from '@/lib/dateFnsLocale';
-import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -38,8 +35,7 @@ interface CreateCustomInvoiceDialogProps {
 }
 
 export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onCreated }: CreateCustomInvoiceDialogProps) {
-  const { t, i18n } = useTranslation('common');
-  const dateFnsLocale = getDateFnsLocale(i18n.language);
+  const { t } = useTranslation('common');
   const queryClient = useQueryClient();
 
   const [playerName, setPlayerName] = useState('');
@@ -425,22 +421,11 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
           {/* Due date */}
           <div className="flex items-center gap-4">
             <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale })}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={dueDate}
-                  onSelect={(d) => d && setDueDate(d)}
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={dueDate}
+              onChange={(d) => d && setDueDate(d)}
+              size="sm"
+            />
           </div>
 
           {/* Notes */}
