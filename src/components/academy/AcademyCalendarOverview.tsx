@@ -8,9 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -321,30 +319,22 @@ export default function AcademyCalendarOverview({
           {(trainers.length > 1 || locations.length > 1) && (
             <div className="flex items-center gap-2 flex-wrap">
               {locations.length > 1 && (
-                <Select value={filterLocationId} onValueChange={setFilterLocationId}>
-                  <SelectTrigger className="w-[180px] h-8">
-                    <SelectValue placeholder={t('calendar.allLocations', 'All Locations')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('calendar.allLocations', 'All Locations')}</SelectItem>
-                    {locations.map(loc => (
-                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SelectFilter
+                  value={filterLocationId}
+                  onValueChange={setFilterLocationId}
+                  allLabel={t('calendar.allLocations', 'All Locations')}
+                  options={locations.map(loc => ({ value: loc.id, label: loc.name }))}
+                  triggerClassName="w-[180px] h-8"
+                />
               )}
               {trainers.length > 1 && (
-                <Select value={filterTrainerId} onValueChange={setFilterTrainerId}>
-                  <SelectTrigger className="w-[180px] h-8">
-                    <SelectValue placeholder={t('calendar.allTrainers', 'All Trainers')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('calendar.allTrainers', 'All Trainers')}</SelectItem>
-                    {trainers.map(tr => (
-                      <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SelectFilter
+                  value={filterTrainerId}
+                  onValueChange={setFilterTrainerId}
+                  allLabel={t('calendar.allTrainers', 'All Trainers')}
+                  options={trainers.map(tr => ({ value: tr.id, label: tr.name }))}
+                  triggerClassName="w-[180px] h-8"
+                />
               )}
             </div>
           )}

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
@@ -811,6 +812,7 @@ export default function AcademyInvoices() {
           searchValue={searchQuery}
           onSearchChange={setSearchQuery}
         >
+          {/* NOT SelectFilter: custom <SelectValue> children resolve the id -> name trigger label. */}
           {trainers.length > 0 && (
             <Select value={trainerFilter} onValueChange={setTrainerFilter}>
               <SelectTrigger className="w-[180px]">
@@ -828,6 +830,7 @@ export default function AcademyInvoices() {
               </SelectContent>
             </Select>
           )}
+          {/* NOT SelectFilter: custom <SelectValue> children resolve the id -> name trigger label. */}
           {academyLocations.length > 0 && (
             <Select value={locationFilter} onValueChange={setLocationFilter}>
               <SelectTrigger className="w-[180px]">
@@ -846,29 +849,29 @@ export default function AcademyInvoices() {
             </Select>
           )}
           {activeTab !== "cancelled" && (
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                {/* "Open" groups draft + sent + open (everything not overdue/paid) */}
-                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
-                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
-                {/* cancelled is its own tab; draft/sent rolled into "Open" */}
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              allLabel={t("invoices.allStatuses", "Alle statussen")}
+              options={[
+                // "Open" groups draft + sent + open (everything not overdue/paid)
+                { value: "open", label: t("invoices.open", "Open") },
+                { value: "overdue", label: t("invoices.overdue", "Overdue") },
+                { value: "paid", label: t("invoices.paid", "Paid") },
+                // cancelled is its own tab; draft/sent rolled into "Open"
+              ]}
+              triggerClassName="w-[160px]"
+            />
           )}
-          <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
-            <SelectTrigger className="w-[170px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("emailDelivery.filter.all", "All delivery")}</SelectItem>
-              <SelectItem value="undelivered">{t("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={deliveryFilter}
+            onValueChange={setDeliveryFilter}
+            allLabel={t("emailDelivery.filter.all", "All delivery")}
+            options={[
+              { value: "undelivered", label: t("emailDelivery.filter.issue", "Delivery issue") },
+            ]}
+            triggerClassName="w-[170px]"
+          />
         </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { EditCycleEndDateDialog } from '@/components/cycles/EditCycleEndDateDialog';
@@ -957,6 +958,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               />
             </div>
 
+            {/* NOT SelectFilter: a time-scope chooser (default "current"), "all" is deliberately LAST. */}
             <Select value={timeFilter} onValueChange={v => setTimeFilter(v as TimeFilter)}>
               <SelectTrigger className="w-full sm:w-[140px] h-9">
                 <SelectValue />
@@ -970,54 +972,46 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             </Select>
 
             {trainers.length > 1 && (
-              <Select value={filterTrainer} onValueChange={setFilterTrainer}>
-                <SelectTrigger className="w-full sm:w-[160px] h-9">
-                  <SelectValue placeholder={t('calendar.allTrainers', 'All Trainers')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('calendar.allTrainers', 'All Trainers')}</SelectItem>
-                  {trainers.map(tr => (
-                    <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={filterTrainer}
+                onValueChange={setFilterTrainer}
+                allLabel={t('calendar.allTrainers', 'All Trainers')}
+                options={trainers.map(tr => ({ value: tr.id, label: tr.name }))}
+                triggerClassName="w-full sm:w-[160px] h-9"
+              />
             )}
 
             {locations.length > 1 && (
-              <Select value={filterLocation} onValueChange={setFilterLocation}>
-                <SelectTrigger className="w-full sm:w-[160px] h-9">
-                  <SelectValue placeholder={t('calendar.allLocations', 'All Locations')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('calendar.allLocations', 'All Locations')}</SelectItem>
-                  {locations.map(loc => (
-                    <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={filterLocation}
+                onValueChange={setFilterLocation}
+                allLabel={t('calendar.allLocations', 'All Locations')}
+                options={locations.map(loc => ({ value: loc, label: loc }))}
+                triggerClassName="w-full sm:w-[160px] h-9"
+              />
             )}
 
-            <Select value={filterPaid} onValueChange={v => setFilterPaid(v as PaidFilterValue)}>
-              <SelectTrigger className="w-full sm:w-[180px] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('cyclesTab.paidFilterAll')}</SelectItem>
-                <SelectItem value="paid">{t('cyclesTab.paidFilterPaid')}</SelectItem>
-                <SelectItem value="unpaid">{t('cyclesTab.paidFilterUnpaid')}</SelectItem>
-                <SelectItem value="no_players">{t('cyclesTab.paidFilterNoPlayers')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterVisibility} onValueChange={v => setFilterVisibility(v as 'all' | 'public' | 'private')}>
-              <SelectTrigger className="w-full sm:w-[180px] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('cyclesTab.visibilityFilterAll', { defaultValue: 'All visibility' })}</SelectItem>
-                <SelectItem value="public">{t('cyclesTab.visibilityFilterPublic', { defaultValue: 'Public (on profile)' })}</SelectItem>
-                <SelectItem value="private">{t('cyclesTab.visibilityFilterPrivate', { defaultValue: 'Private' })}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={filterPaid}
+              onValueChange={v => setFilterPaid(v as PaidFilterValue)}
+              allLabel={t('cyclesTab.paidFilterAll')}
+              options={[
+                { value: 'paid', label: t('cyclesTab.paidFilterPaid') },
+                { value: 'unpaid', label: t('cyclesTab.paidFilterUnpaid') },
+                { value: 'no_players', label: t('cyclesTab.paidFilterNoPlayers') },
+              ]}
+              triggerClassName="w-full sm:w-[180px] h-9"
+            />
+            <SelectFilter
+              value={filterVisibility}
+              onValueChange={v => setFilterVisibility(v as 'all' | 'public' | 'private')}
+              allLabel={t('cyclesTab.visibilityFilterAll', { defaultValue: 'All visibility' })}
+              options={[
+                { value: 'public', label: t('cyclesTab.visibilityFilterPublic', { defaultValue: 'Public (on profile)' }) },
+                { value: 'private', label: t('cyclesTab.visibilityFilterPrivate', { defaultValue: 'Private' }) },
+              ]}
+              triggerClassName="w-full sm:w-[180px] h-9"
+            />
           </div>
         </CardContent>
       </Card>

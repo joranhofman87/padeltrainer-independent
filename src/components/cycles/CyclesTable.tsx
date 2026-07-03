@@ -7,13 +7,7 @@ import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -349,32 +343,26 @@ export default function CyclesTable({
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[150px]">
-            <SelectValue placeholder={t('intakeRequests.filters.all')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('intakeRequests.filters.all')}</SelectItem>
-            <SelectItem value="draft">{t('status.draft')}</SelectItem>
-            <SelectItem value="open">{t('status.open')}</SelectItem>
-            <SelectItem value="closed">{t('status.closed')}</SelectItem>
-            <SelectItem value="archived">{t('status.archived')}</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          allLabel={t('intakeRequests.filters.all')}
+          options={[
+            { value: 'draft', label: t('status.draft') },
+            { value: 'open', label: t('status.open') },
+            { value: 'closed', label: t('status.closed') },
+            { value: 'archived', label: t('status.archived') },
+          ]}
+          triggerClassName="w-full sm:w-[150px]"
+        />
         {uniqueLocations.length > 0 && (
-          <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder={t('common:allLocations', 'All locations')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('common:allLocations', 'All locations')}</SelectItem>
-              {uniqueLocations.map((loc) => (
-                <SelectItem key={loc.id} value={loc.id}>
-                  {loc.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={locationFilter}
+            onValueChange={setLocationFilter}
+            allLabel={t('common:allLocations', 'All locations')}
+            options={uniqueLocations.map((loc) => ({ value: loc.id, label: loc.name }))}
+            triggerClassName="w-full sm:w-[200px]"
+          />
         )}
       </div>
 
