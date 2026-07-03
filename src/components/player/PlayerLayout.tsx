@@ -1,15 +1,13 @@
 import { useEffect, Suspense } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Menu } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import {
   SidebarProvider,
   SidebarInset,
-  useSidebar,
 } from '@/components/ui/sidebar';
+import { AppMobileHeader } from '@/components/ui/app-mobile-header';
 import { PlayerSidebar } from '@/components/player/PlayerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
@@ -19,28 +17,21 @@ import { QueryErrorState } from '@/components/ui/QueryErrorState';
 function PlayerMobileHeader() {
   const { t } = useTranslation('player');
   const { profile } = useAuth();
-  const { toggleSidebar } = useSidebar();
 
   const displayName = profile?.full_name?.split(' ')[0] || t('nav.dashboard', 'Dashboard');
 
   return (
-    <header
-      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 lg:hidden"
+    // md:hidden (was lg:hidden): the shared sidebar swaps its mobile Sheet for the
+    // desktop rail at md (768px), so the old lg breakpoint left a redundant
+    // hamburger header next to the visible sidebar between 768–1023px.
+    <AppMobileHeader
+      breakpointClass="md:hidden"
       data-testid="player-mobile-header"
+      menuTriggerTestId="player-mobile-menu-trigger"
+      menuLabel={t('nav.openMenu', 'Open menu')}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        onClick={toggleSidebar}
-        aria-label={t('nav.openMenu', 'Open menu')}
-        data-testid="player-mobile-menu-trigger"
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{displayName}</span>
-    </header>
+      {displayName}
+    </AppMobileHeader>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -65,18 +66,13 @@ export default function CyclePricingCard({
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label className="text-sm">{t('pricing.pricePerSession', 'Price per session')}</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
-              <Input
-                type="number"
-                min={0}
-                step={0.01}
-                value={pricePerSession ?? ''}
-                onChange={(e) => onPricePerSessionChange(e.target.value ? Number(e.target.value) : null)}
-                className="pl-7"
-                placeholder="0.00"
-              />
-            </div>
+            <MoneyInput
+              min={0}
+              step={0.01}
+              value={pricePerSession ?? ''}
+              onChange={(e) => onPricePerSessionChange(e.target.value ? Number(e.target.value) : null)}
+              placeholder="0.00"
+            />
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm">{t('pricing.vatMode', 'VAT mode')}</Label>
@@ -131,17 +127,14 @@ export default function CyclePricingCard({
                 placeholder={t('pricing.description', 'Description')}
                 className="flex-1 h-8 text-sm"
               />
-              <div className="relative w-24">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">€</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={cost.price}
-                  onChange={(e) => updateExtraCost(i, { price: Number(e.target.value) })}
-                  className="pl-5 h-8 text-sm"
-                />
-              </div>
+              <MoneyInput
+                size="sm"
+                wrapperClassName="w-24"
+                min={0}
+                step={0.01}
+                value={cost.price}
+                onChange={(e) => updateExtraCost(i, { price: Number(e.target.value) })}
+              />
               <Select
                 value={cost.type || 'one_time'}
                 onValueChange={(v) => updateExtraCost(i, { type: v as 'per_session' | 'one_time' })}

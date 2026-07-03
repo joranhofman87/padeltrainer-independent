@@ -1,7 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { SubscriptionTrialBanner } from '@/components/ui/subscription-trial-banner';
 import { getTrialDaysRemaining } from '@/lib/subscription';
 
 interface TrainerTrialBannerProps {
@@ -9,27 +7,28 @@ interface TrainerTrialBannerProps {
   onUpgrade: () => void;
 }
 
+/**
+ * Thin trainer wrapper around the shared SubscriptionTrialBanner: keeps the
+ * trainer day-granular copy (expired / last day / N days) and CTA labels while
+ * the shared component owns the layout/style.
+ */
 export function TrainerTrialBanner({ trialEndsAt, onUpgrade }: TrainerTrialBannerProps) {
   const { t } = useTranslation('trainer');
   const daysRemaining = getTrialDaysRemaining(trialEndsAt);
   const isExpired = daysRemaining === 0;
-  
+
   return (
-    <Alert variant={isExpired ? 'destructive' : 'default'} className="mb-6 border-border/80">
-      <AlertTriangle className="h-4 w-4" />
-      <AlertDescription className="flex items-center justify-between">
-        <span>
-          {isExpired 
-            ? t('dashboard.trialBanner.expired')
-            : daysRemaining === 1
-              ? t('dashboard.trialBanner.lastDay')
-              : t('dashboard.trialBanner.daysLeft', { days: daysRemaining })
-          }
-        </span>
-        <Button size="sm" variant={isExpired ? 'default' : 'outline'} onClick={onUpgrade}>
-          {isExpired ? t('dashboard.trialBanner.subscribe') : t('dashboard.trialBanner.upgrade')}
-        </Button>
-      </AlertDescription>
-    </Alert>
+    <SubscriptionTrialBanner
+      expired={isExpired}
+      message={
+        isExpired
+          ? t('dashboard.trialBanner.expired')
+          : daysRemaining === 1
+            ? t('dashboard.trialBanner.lastDay')
+            : t('dashboard.trialBanner.daysLeft', { days: daysRemaining })
+      }
+      ctaLabel={isExpired ? t('dashboard.trialBanner.subscribe') : t('dashboard.trialBanner.upgrade')}
+      onCtaClick={onUpgrade}
+    />
   );
 }

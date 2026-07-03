@@ -1,21 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { 
+import {
   Building2,
   Users,
   UserCog,
   Calendar,
   ArrowRight,
   Eye,
-  Clock,
-  AlertTriangle,
   Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatTile } from '@/components/ui/stat-tile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { SubscriptionTrialBanner } from '@/components/ui/subscription-trial-banner';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { getClubPlayers, getClubTrainers } from '@/lib/club';
 import { getClubViewStats } from '@/lib/clubProfileViews';
@@ -67,30 +66,24 @@ export default function ClubDashboard() {
     <div className="container mx-auto px-4 py-8">
       {/* Trial Banner */}
       {isTrialing && trialDaysRemaining > 0 && (
-        <Alert className="mb-6 border-primary bg-primary/5">
-          <Clock className="h-4 w-4" />
-          <AlertTitle>{t('subscription.trialActive')}</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>{t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/app/club/subscription')}>
-              {t('subscription.upgradeNow')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <SubscriptionTrialBanner
+          expired={false}
+          title={t('subscription.trialActive')}
+          message={t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}
+          ctaLabel={t('subscription.upgradeNow')}
+          onCtaClick={() => navigate('/app/club/subscription')}
+        />
       )}
 
       {/* Trial Expired Banner */}
       {isTrialExpired && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>{t('subscription.trialExpired')}</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>{t('subscription.subscribeToAccess')}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/app/club/subscription')}>
-              {t('subscription.upgradeNow')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <SubscriptionTrialBanner
+          expired
+          title={t('subscription.trialExpired')}
+          message={t('subscription.subscribeToAccess')}
+          ctaLabel={t('subscription.upgradeNow')}
+          onCtaClick={() => navigate('/app/club/subscription')}
+        />
       )}
 
       {/* Getting started */}

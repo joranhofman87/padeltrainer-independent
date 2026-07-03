@@ -2,7 +2,7 @@ import { useState, useEffect, createContext, useContext, Suspense } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
-import { Building2, Menu } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 // SubscriptionOverlay removed - now using redirect approach
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,7 +11,8 @@ import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserClubProfiles, type ClubProfile } from '@/lib/club';
 import { ClubSidebar } from '@/components/club/ClubSidebar';
-import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { AppMobileHeader } from '@/components/ui/app-mobile-header';
 import type { Location } from '@/lib/locations';
 
 import { ReferralWidget } from '@/components/ReferralWidget';
@@ -53,26 +54,16 @@ const ACTIVE_CLUB_STORAGE_KEY = 'activeClubId';
 
 function ClubMobileHeader({ clubName }: { clubName?: string }) {
   const { t } = useTranslation('club');
-  const { toggleSidebar } = useSidebar();
 
   return (
-    <header
-      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 md:hidden"
+    <AppMobileHeader
+      breakpointClass="md:hidden"
       data-testid="club-mobile-header"
+      menuTriggerTestId="club-mobile-menu-trigger"
+      menuLabel={t('nav.openMenu', 'Open menu')}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        onClick={toggleSidebar}
-        aria-label={t('nav.openMenu', 'Open menu')}
-        data-testid="club-mobile-menu-trigger"
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{clubName}</span>
-    </header>
+      {clubName}
+    </AppMobileHeader>
   );
 }
 
