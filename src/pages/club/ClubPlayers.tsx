@@ -1,14 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { usePlayerSort, SortableHeader } from '@/components/players/usePlayerSort';
+import { ListPageShell, ListPageState } from '@/components/ui/list-page-shell';
+import { TableToolbar } from '@/components/ui/table-toolbar';
+import { SortableTableHead } from '@/components/ui/sortable-table-head';
+import { ListPagination } from '@/components/ui/list-pagination';
+import { EmptyState } from '@/components/ui/empty-state';
+import { useTableSort } from '@/hooks/useTableSort';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +41,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -48,6 +52,8 @@ import {
   type ClubPlayer,
 } from '@/lib/club';
 
+const PAGE_SIZE = 25;
+
 export default function ClubPlayers() {
   const { t } = useTranslation('club');
   const navigate = useNavigate();
@@ -55,9 +61,12 @@ export default function ClubPlayers() {
   const { user, loading: authLoading } = useAuth();
   const [clubProfileId, setClubProfileId] = useState<string | null>(null);
   const [players, setPlayers] = useState<ClubPlayer[]>([]);
-  const { sortedPlayers, sortKey, sortDir, toggleSort } = usePlayerSort(players);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Toolbar + pagination state
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
 
   // Dialog state
   const [showDialog, setShowDialog] = useState(false);
@@ -73,6 +82,32 @@ export default function ClubPlayers() {
     skill_rating: '',
     notes: '',
   });
+
+  const filteredPlayers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return players;
+    return players.filter(
+      (player) =>
+        (player.full_name || '').toLowerCase().includes(query) ||
+        (player.email || '').toLowerCase().includes(query),
+    );
+  }, [players, search]);
+
+  const { sortedData, sortConfig, handleSort } = useTableSort(
+    filteredPlayers,
+    undefined,
+    undefined,
+    { emptyLast: true },
+  );
+
+  const pageCount = Math.ceil(sortedData.length / PAGE_SIZE);
+  const safePage = Math.min(page, Math.max(0, pageCount - 1));
+  const pagedPlayers = sortedData.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(0);
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -93,7 +128,7 @@ export default function ClubPlayers() {
 
         const clubId = userClubs[0].id;
         setClubProfileId(clubId);
-        
+
         const playersData = await getClubPlayers(clubId);
         setPlayers(playersData);
       } catch (error) {
@@ -195,67 +230,89 @@ export default function ClubPlayers() {
     }
   };
 
-  if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <Skeleton className="h-10 w-48 mb-6" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </div>
-    );
-  }
+  const addPlayerButton = (
+    <Button onClick={openAddDialog}>
+      <Plus className="h-4 w-4 mr-2" />
+      {t('players.addPlayer')}
+    </Button>
+  );
 
   return (
-    <div className="min-h-screen bg-background">
+    // ClubLayout (unlike the academy/trainer layouts) does not pad its <Outlet/>,
+    // so club pages carry their own padding — px-4 py-8 like every club sibling.
+    // Drop the px/py here once the club shell is normalized to pad like the other roles.
+    <ListPageShell
+      className="space-y-4 px-4 py-8"
+      title={t('players.title')}
+      description={t('players.description')}
+      count={players.length}
+      countLabel={{ one: t('players.countOne', 'player'), other: t('players.countOther', 'players') }}
+      actions={addPlayerButton}
+      isLoading={authLoading || loading}
+    >
+      <TableToolbar
+        searchPlaceholder={t('players.searchPlaceholder', 'Search by name or email')}
+        searchValue={search}
+        onSearchChange={handleSearchChange}
+      />
 
-      <div className="container mx-auto px-4 py-8">
-        {players.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">{t('players.empty')}</h3>
-              <p className="text-muted-foreground mb-4">{t('players.emptyDescription')}</p>
-              <Button onClick={openAddDialog}>
-                <Plus className="h-4 w-4 mr-2" />
-                {t('players.addPlayer')}
-              </Button>
-            </CardContent>
+      <ListPageState
+        isEmpty={sortedData.length === 0}
+        empty={
+          <Card className="overflow-hidden border-border/80 shadow-sm">
+            {players.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title={t('players.empty')}
+                description={t('players.emptyDescription')}
+                action={addPlayerButton}
+              />
+            ) : (
+              <EmptyState
+                icon={Users}
+                title={t('players.noResults', 'No players match your search')}
+              />
+            )}
           </Card>
-        ) : (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>{t('players.title')}</CardTitle>
-                <CardDescription>
-                  {players.length} {players.length === 1 ? 'player' : 'players'}
-                </CardDescription>
-              </div>
-              <Button onClick={openAddDialog}>
-                <Plus className="h-4 w-4 mr-2" />
-                {t('players.addPlayer')}
-              </Button>
-            </CardHeader>
-            <CardContent>
+        }
+      >
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableHeader sortKey="name" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                    <SortableTableHead
+                      sortKey="full_name"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof ClubPlayer)}
+                    >
                       {t('players.name')}
-                    </SortableHeader>
-                    <SortableHeader sortKey="email" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="email"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof ClubPlayer)}
+                    >
                       {t('players.email')}
-                    </SortableHeader>
+                    </SortableTableHead>
                     <TableHead>{t('players.phone')}</TableHead>
-                    <SortableHeader sortKey="skill" activeKey={sortKey} direction={sortDir} onToggle={toggleSort}>
+                    <SortableTableHead
+                      sortKey="skill_rating"
+                      currentSortKey={sortConfig.key as string | null}
+                      currentDirection={sortConfig.direction}
+                      onSort={(k) => handleSort(k as keyof ClubPlayer)}
+                    >
                       {t('players.rating')}
-                    </SortableHeader>
+                    </SortableTableHead>
                     <TableHead>{t('players.status')}</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedPlayers.map(player => (
+                  {pagedPlayers.map(player => (
                     <TableRow key={player.id}>
                       <TableCell className="font-medium">{player.full_name}</TableCell>
                       <TableCell>{player.email}</TableCell>
@@ -297,111 +354,118 @@ export default function ClubPlayers() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Add/Edit Dialog */}
-        <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingPlayer ? t('players.editPlayer') : t('players.addPlayer')}
-              </DialogTitle>
-              <DialogDescription>
-                {editingPlayer 
-                  ? 'Update player information'
-                  : 'Add a new player to your club'}
-              </DialogDescription>
-            </DialogHeader>
+        <ListPagination
+          page={safePage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+          className="mt-4"
+        />
+      </ListPageState>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="full_name">{t('players.name')} *</Label>
-                <Input
-                  id="full_name"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  placeholder="John Doe"
-                />
-              </div>
+      {/* Add/Edit Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingPlayer ? t('players.editPlayer') : t('players.addPlayer')}
+            </DialogTitle>
+            <DialogDescription>
+              {editingPlayer
+                ? 'Update player information'
+                : 'Add a new player to your club'}
+            </DialogDescription>
+          </DialogHeader>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">{t('players.email')} *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="john@example.com"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">{t('players.phone')}</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+31 6 12345678"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="skill_rating">{t('players.rating')}</Label>
-                <Input
-                  id="skill_rating"
-                  type="number"
-                  step="0.01"
-                  value={formData.skill_rating}
-                  onChange={(e) => setFormData({ ...formData, skill_rating: e.target.value })}
-                  placeholder="e.g. 5.5"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">{t('players.notes')}</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Any additional notes..."
-                  rows={3}
-                />
-              </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="full_name">{t('players.name')} *</Label>
+              <Input
+                id="full_name"
+                value={formData.full_name}
+                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                placeholder="John Doe"
+              />
             </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
-                {t('common:cancel')}
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {t('common:save')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="space-y-2">
+              <Label htmlFor="email">{t('players.email')} *</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="john@example.com"
+              />
+            </div>
 
-        {/* Delete Confirmation */}
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t('players.deleteConfirm')}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t('players.deleteConfirmDescription')}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-                {t('players.deletePlayer')}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-    </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">{t('players.phone')}</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="+31 6 12345678"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="skill_rating">{t('players.rating')}</Label>
+              <Input
+                id="skill_rating"
+                type="number"
+                step="0.01"
+                value={formData.skill_rating}
+                onChange={(e) => setFormData({ ...formData, skill_rating: e.target.value })}
+                placeholder="e.g. 5.5"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">{t('players.notes')}</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Any additional notes..."
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>
+              {t('common:cancel')}
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('common:save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('players.deleteConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('players.deleteConfirmDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+              {t('players.deletePlayer')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ListPageShell>
   );
 }
