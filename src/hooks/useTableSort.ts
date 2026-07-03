@@ -7,7 +7,21 @@ export interface SortConfig<T> {
   direction: SortDirection;
 }
 
-export function useTableSort<T>(data: T[], defaultSortKey?: keyof T, defaultDirection?: SortDirection) {
+export interface UseTableSortOptions {
+  /**
+   * When true, null, undefined AND empty-string values sort LAST in BOTH
+   * directions (instead of the default: last on asc, first on desc).
+   */
+  emptyLast?: boolean;
+}
+
+export function useTableSort<T>(
+  data: T[],
+  defaultSortKey?: keyof T,
+  defaultDirection?: SortDirection,
+  options?: UseTableSortOptions,
+) {
+  const emptyLast = options?.emptyLast ?? false;
   const [sortConfig, setSortConfig] = useState<SortConfig<T>>({
     key: defaultSortKey ?? null,
     direction: defaultSortKey ? (defaultDirection ?? "asc") : null,
@@ -37,10 +51,19 @@ export function useTableSort<T>(data: T[], defaultSortKey?: keyof T, defaultDire
       const aValue = a[sortConfig.key!];
       const bValue = b[sortConfig.key!];
 
-      // Handle null/undefined
-      if (aValue == null && bValue == null) return 0;
-      if (aValue == null) return sortConfig.direction === "asc" ? 1 : -1;
-      if (bValue == null) return sortConfig.direction === "asc" ? -1 : 1;
+      if (emptyLast) {
+        // Empty values (null/undefined/"") always last regardless of direction
+        const aEmpty = aValue == null || aValue === "";
+        const bEmpty = bValue == null || bValue === "";
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty && !bEmpty) return 1;
+        if (bEmpty && !aEmpty) return -1;
+      } else {
+        // Handle null/undefined
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return sortConfig.direction === "asc" ? 1 : -1;
+        if (bValue == null) return sortConfig.direction === "asc" ? -1 : 1;
+      }
 
       // Handle nested objects (for things like profile.full_name)
       const compareA = aValue;
@@ -79,7 +102,7 @@ export function useTableSort<T>(data: T[], defaultSortKey?: keyof T, defaultDire
     });
 
     return sorted;
-  }, [data, sortConfig]);
+  }, [data, sortConfig, emptyLast]);
 
   return {
     sortedData,
