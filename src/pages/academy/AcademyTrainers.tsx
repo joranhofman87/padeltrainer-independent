@@ -15,17 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger';
 import { ListPageShell, ListPageState } from '@/components/ui/list-page-shell';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -60,6 +50,8 @@ export default function AcademyTrainers() {
     trainerName?: string;
   }>({ canAdd: false });
   const [addingSelf, setAddingSelf] = useState(false);
+  const [cancelInvitationId, setCancelInvitationId] = useState<string | null>(null);
+  const [cancelingInvitation, setCancelingInvitation] = useState(false);
 
   const fetchData = async () => {
     if (!activeAcademy) return;
@@ -133,12 +125,18 @@ export default function AcademyTrainers() {
   };
 
   const handleCancelInvitation = async (invitationId: string) => {
-    const success = await cancelAcademyInvitation(invitationId);
-    if (success) {
-      setPendingInvitations((prev) => prev.filter((i) => i.id !== invitationId));
-      toast.success(t('trainerInvitation.canceled'));
-    } else {
-      toast.error(t('trainerInvitation.cancelFailed', 'Failed to cancel invitation'));
+    setCancelingInvitation(true);
+    try {
+      const success = await cancelAcademyInvitation(invitationId);
+      if (success) {
+        setPendingInvitations((prev) => prev.filter((i) => i.id !== invitationId));
+        toast.success(t('trainerInvitation.canceled'));
+      } else {
+        toast.error(t('trainerInvitation.cancelFailed', 'Failed to cancel invitation'));
+      }
+    } finally {
+      setCancelingInvitation(false);
+      setCancelInvitationId(null);
     }
   };
 
@@ -439,27 +437,13 @@ export default function AcademyTrainers() {
                           })}
                         </p>
                       </div>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            {t('trainerInvitation.cancel')}
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>{t('trainerInvitation.cancelTitle')}</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {t('trainerInvitation.cancelDescription')}
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleCancelInvitation(invitation.id)}>
-                              {t('trainerInvitation.confirmCancel')}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCancelInvitationId(invitation.id)}
+                      >
+                        {t('trainerInvitation.cancel')}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -468,6 +452,22 @@ export default function AcademyTrainers() {
           </ListPageState>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={!!cancelInvitationId}
+        onOpenChange={(open) => {
+          if (!open) setCancelInvitationId(null);
+        }}
+        title={t('trainerInvitation.cancelTitle')}
+        description={t('trainerInvitation.cancelDescription')}
+        confirmLabel={t('trainerInvitation.confirmCancel')}
+        cancelLabel={t('common:cancel')}
+        variant="default"
+        loading={cancelingInvitation}
+        onConfirm={() => {
+          if (cancelInvitationId) return handleCancelInvitation(cancelInvitationId);
+        }}
+      />
     </ListPageShell>
   );
 }

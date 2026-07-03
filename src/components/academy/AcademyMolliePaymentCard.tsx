@@ -14,17 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { AcademyConnectStatus } from '@/lib/academyPayments';
 import {
   getAcademyMollieUiState,
@@ -266,41 +256,41 @@ function DisconnectButton({
 }: {
   disconnecting: boolean;
   disabled?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   label: string;
   title: string;
   description: string;
   cancelLabel: string;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button
-          variant="outline"
-          className="text-destructive hover:text-destructive"
-          disabled={disabled}
-        >
-          <Unplug className="h-4 w-4 mr-2" />
-          {label}
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={disconnecting}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            {disconnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {label}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      <Button
+        variant="outline"
+        className="text-destructive hover:text-destructive"
+        disabled={disabled}
+        onClick={() => setConfirmOpen(true)}
+      >
+        <Unplug className="h-4 w-4 mr-2" />
+        {label}
+      </Button>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={title}
+        description={description}
+        confirmLabel={label}
+        cancelLabel={cancelLabel}
+        loading={disconnecting}
+        onConfirm={async () => {
+          try {
+            await onConfirm();
+          } finally {
+            setConfirmOpen(false);
+          }
+        }}
+      />
+    </>
   );
 }

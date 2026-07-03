@@ -11,17 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { logger } from '@/lib/logger';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import {
   getAcademyLocationsWithDetails,
@@ -211,7 +201,7 @@ interface LocationCardProps {
   academyLocation: AcademyLocationWithDetails;
   managedClubId: string | null;
   onVisibilityToggle: (id: string, field: 'show_on_academy_page' | 'show_on_club_page', value: boolean) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string) => Promise<void>;
   onUpdate: () => void;
   localizePath: (path: string) => string;
   navigate: (path: string) => void;
@@ -228,6 +218,8 @@ function LocationCard({
 }: LocationCardProps) {
   const { t } = useTranslation('academy');
   const location = academyLocation.location;
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   return (
     <Card>
@@ -336,27 +328,32 @@ function LocationCard({
               {t('locations.manageClub')}
             </Button>
           )}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" aria-label={t('locations.remove')}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t('locations.removeTitle')}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('locations.removeDescription')}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onRemove(academyLocation.id)}>
-                  {t('locations.remove')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="destructive"
+            size="sm"
+            aria-label={t('locations.remove')}
+            onClick={() => setConfirmRemoveOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+          <ConfirmDialog
+            open={confirmRemoveOpen}
+            onOpenChange={setConfirmRemoveOpen}
+            title={t('locations.removeTitle')}
+            description={t('locations.removeDescription')}
+            confirmLabel={t('locations.remove')}
+            cancelLabel={t('common:cancel')}
+            loading={removing}
+            onConfirm={async () => {
+              setRemoving(true);
+              try {
+                await onRemove(academyLocation.id);
+              } finally {
+                setRemoving(false);
+                setConfirmRemoveOpen(false);
+              }
+            }}
+          />
         </div>
       </CardContent>
     </Card>

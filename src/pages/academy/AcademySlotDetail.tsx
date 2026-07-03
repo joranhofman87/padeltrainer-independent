@@ -29,10 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { InlineBookPlayer } from '@/components/booking/InlineBookPlayer';
 import { InlineEditBooking } from '@/components/booking/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
@@ -1012,35 +1009,29 @@ export default function AcademySlotDetail() {
       </main>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tTrainer('calendar.deleteSlot', 'Delete slot')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tTrainer('calendar.deleteSlotConfirm', 'Are you sure you want to delete this slot? This cannot be undone.')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {detail.cyclus_id && (
-            <div className="flex items-center space-x-2 py-2">
-              <Checkbox
-                id="delete-cyclus"
-                checked={deleteCyclus}
-                onCheckedChange={c => setDeleteCyclus(!!c)}
-              />
-              <Label htmlFor="delete-cyclus" className="text-sm font-normal cursor-pointer">
-                {tTrainer('calendar.deleteEntireCyclus', 'Delete all future slots in this cyclus')}
-              </Label>
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>{tCommon('cancel', 'Cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {tCommon('delete', 'Delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={tTrainer('calendar.deleteSlot', 'Delete slot')}
+        description={tTrainer('calendar.deleteSlotConfirm', 'Are you sure you want to delete this slot? This cannot be undone.')}
+        confirmLabel={tCommon('delete', 'Delete')}
+        cancelLabel={tCommon('cancel', 'Cancel')}
+        loading={deleting}
+        onConfirm={handleDelete}
+      >
+        {detail.cyclus_id && (
+          <div className="flex items-center space-x-2 py-2">
+            <Checkbox
+              id="delete-cyclus"
+              checked={deleteCyclus}
+              onCheckedChange={c => setDeleteCyclus(!!c)}
+            />
+            <Label htmlFor="delete-cyclus" className="text-sm font-normal cursor-pointer">
+              {tTrainer('calendar.deleteEntireCyclus', 'Delete all future slots in this cyclus')}
+            </Label>
+          </div>
+        )}
+      </ConfirmDialog>
 
     </div>
   );
