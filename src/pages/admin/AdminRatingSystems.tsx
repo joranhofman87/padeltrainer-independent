@@ -17,16 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { RatingSystemConfig, COUNTRY_NAMES, clearRatingSystemsCache } from "@/lib/ratingSystems";
@@ -80,6 +71,7 @@ export default function AdminRatingSystems() {
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [systemToDelete, setSystemToDelete] = useState<RatingSystemConfig | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -252,8 +244,9 @@ export default function AdminRatingSystems() {
   };
 
   const handleDelete = async () => {
-    if (!systemToDelete) return;
+    if (!systemToDelete || deleting) return;
 
+    setDeleting(true);
     try {
       const { error } = await supabase
         .from("rating_systems")
@@ -278,6 +271,8 @@ export default function AdminRatingSystems() {
         description: getFriendlyErrorMessage(error, t("common:toasts.errorDescription", "Something went wrong. Please try again.")),
         variant: "destructive",
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -544,23 +539,21 @@ export default function AdminRatingSystems() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Rating System</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{systemToDelete?.name}"? This action cannot be undone.
-              Players using this rating system will keep their data but won't be able to select it anymore.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Rating System"
+        description={
+          <>
+            Are you sure you want to delete "{systemToDelete?.name}"? This action cannot be undone.
+            Players using this rating system will keep their data but won't be able to select it anymore.
+          </>
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

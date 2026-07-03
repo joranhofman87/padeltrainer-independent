@@ -19,16 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -470,25 +461,16 @@ export default function AdminOnboardingEmails() {
         isSendingTest={sendTestMutation.isPending}
       />
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("onboardingEmails.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("onboardingEmails.deleteConfirm", { name: selectedTemplate?.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("onboardingEmails.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("onboardingEmails.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title={t("onboardingEmails.deleteTitle")}
+        description={t("onboardingEmails.deleteConfirm", { name: selectedTemplate?.name })}
+        confirmLabel={t("onboardingEmails.delete")}
+        cancelLabel={t("onboardingEmails.cancel")}
+        loading={deleteMutation.isPending}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
