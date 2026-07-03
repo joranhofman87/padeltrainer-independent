@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -1013,48 +1014,42 @@ export default function TrainerScheduleOverview() {
 
       {/* Day / Location / Time filters */}
       <div className="flex flex-wrap gap-2 items-center">
-        <Select value={filterDay} onValueChange={setFilterDay}>
-          <SelectTrigger className="w-[140px] h-9 text-sm">
-            <SelectValue placeholder={t("scheduleOverview.allDays", "All days")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("scheduleOverview.allDays", "All days")}</SelectItem>
-            {[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => {
-              const refDate = new Date(2024, 0, dayIdx === 0 ? 7 : dayIdx);
-              return (
-                <SelectItem key={dayIdx} value={dayIdx.toString()}>
-                  {format(refDate, "EEEE", { locale: dateFnsLocale })}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filterDay}
+          onValueChange={setFilterDay}
+          allLabel={t("scheduleOverview.allDays", "All days")}
+          options={[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => {
+            const refDate = new Date(2024, 0, dayIdx === 0 ? 7 : dayIdx);
+            return {
+              value: dayIdx.toString(),
+              label: format(refDate, "EEEE", { locale: dateFnsLocale }),
+            };
+          })}
+          triggerClassName="w-[140px] h-9 text-sm"
+        />
 
-        <Select value={filterLocation} onValueChange={setFilterLocation}>
-          <SelectTrigger className="w-[180px] h-9 text-sm">
-            <SelectValue placeholder={t("scheduleOverview.allLocations", "All locations")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("scheduleOverview.allLocations", "All locations")}</SelectItem>
-            {trainerLocations?.map((loc) => (
-              <SelectItem key={loc.id} value={loc.id}>
-                {loc.name}, {loc.city}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filterLocation}
+          onValueChange={setFilterLocation}
+          allLabel={t("scheduleOverview.allLocations", "All locations")}
+          options={(trainerLocations ?? []).map((loc) => ({
+            value: loc.id,
+            label: `${loc.name}, ${loc.city}`,
+          }))}
+          triggerClassName="w-[180px] h-9 text-sm"
+        />
 
-        <Select value={filterTime} onValueChange={setFilterTime}>
-          <SelectTrigger className="w-[150px] h-9 text-sm">
-            <SelectValue placeholder={t("scheduleOverview.allTimes", "All times")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("scheduleOverview.allTimes", "All times")}</SelectItem>
-            <SelectItem value="morning">{t("scheduleOverview.morning", "Morning")} (06-12)</SelectItem>
-            <SelectItem value="afternoon">{t("scheduleOverview.afternoon", "Afternoon")} (12-17)</SelectItem>
-            <SelectItem value="evening">{t("scheduleOverview.evening", "Evening")} (17-23)</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filterTime}
+          onValueChange={setFilterTime}
+          allLabel={t("scheduleOverview.allTimes", "All times")}
+          options={[
+            { value: "morning", label: `${t("scheduleOverview.morning", "Morning")} (06-12)` },
+            { value: "afternoon", label: `${t("scheduleOverview.afternoon", "Afternoon")} (12-17)` },
+            { value: "evening", label: `${t("scheduleOverview.evening", "Evening")} (17-23)` },
+          ]}
+          triggerClassName="w-[150px] h-9 text-sm"
+        />
 
         {hasActiveFilters && (
           <Button

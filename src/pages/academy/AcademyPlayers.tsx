@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
@@ -604,88 +605,81 @@ export default function AcademyPlayers() {
             }
           >
             {trainers.length > 0 && (
-              <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder={tTrainer('players.allTrainers', 'All Trainers')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{tTrainer('players.allTrainers', 'All Trainers')}</SelectItem>
-                  {trainers.map((tr) => (
-                    <SelectItem key={tr.id} value={tr.id}>
-                      {tr.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={selectedTrainerId}
+                onValueChange={setSelectedTrainerId}
+                allLabel={tTrainer('players.allTrainers', 'All Trainers')}
+                options={trainers.map((tr) => ({ value: tr.id, label: tr.name }))}
+                triggerClassName="w-full sm:w-[160px]"
+              />
             )}
 
             {allLocations.length > 0 && (
-              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder={tTrainer('players.allLocations', 'All Locations')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{tTrainer('players.allLocations', 'All Locations')}</SelectItem>
-                  {allLocations.map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id}>
-                      {loc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={selectedLocation}
+                onValueChange={setSelectedLocation}
+                allLabel={tTrainer('players.allLocations', 'All Locations')}
+                options={allLocations.map((loc) => ({ value: loc.id, label: loc.name }))}
+                triggerClassName="w-full sm:w-[160px]"
+              />
             )}
 
-            <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-full sm:w-[170px]">
-                <SelectValue placeholder={tTrainer('players.allLevels', 'All Levels')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{tTrainer('players.allLevels', 'All Levels')}</SelectItem>
-                <SelectItem value="beginner">{getLevelLabel('beginner', tTrainer)}</SelectItem>
-                <SelectItem value="intermediate">{getLevelLabel('intermediate', tTrainer)}</SelectItem>
-                <SelectItem value="advanced">{getLevelLabel('advanced', tTrainer)}</SelectItem>
-                <SelectItem value="pro">{getLevelLabel('pro', tTrainer)}</SelectItem>
-                <SelectItem value="unrated">{getLevelLabel('unrated', tTrainer)}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedLevel}
+              onValueChange={setSelectedLevel}
+              allLabel={tTrainer('players.allLevels', 'All Levels')}
+              options={[
+                { value: 'beginner', label: getLevelLabel('beginner', tTrainer) },
+                { value: 'intermediate', label: getLevelLabel('intermediate', tTrainer) },
+                { value: 'advanced', label: getLevelLabel('advanced', tTrainer) },
+                { value: 'pro', label: getLevelLabel('pro', tTrainer) },
+                { value: 'unrated', label: getLevelLabel('unrated', tTrainer) },
+              ]}
+              triggerClassName="w-full sm:w-[170px]"
+            />
 
-            <Select value={selectedCyclus} onValueChange={setSelectedCyclus}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder={tTrainer('players.activeCyclus', 'Active Cyclus')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{tTrainer('players.allCyclus', 'All')}</SelectItem>
-                <SelectItem value="yes">{tTrainer('players.hasCyclus', 'Has Cyclus')}</SelectItem>
-                <SelectItem value="no">{tTrainer('players.noCyclus', 'No Cyclus')}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedCyclus}
+              onValueChange={setSelectedCyclus}
+              allLabel={tTrainer('players.allCyclus', 'All')}
+              options={[
+                { value: 'yes', label: tTrainer('players.hasCyclus', 'Has Cyclus') },
+                { value: 'no', label: tTrainer('players.noCyclus', 'No Cyclus') },
+              ]}
+              triggerClassName="w-full sm:w-[160px]"
+              placeholder={tTrainer('players.activeCyclus', 'Active Cyclus')}
+            />
 
-            <Select value={selectedTagId} onValueChange={setSelectedTagId}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder={tTrainer('players.tags.filterAll', 'All Tags')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{tTrainer('players.tags.filterAll', 'All Tags')}</SelectItem>
-                <SelectItem value="untagged">{tTrainer('players.tags.untagged', 'Untagged')}</SelectItem>
-                {tags.map((tag) => (
-                  <SelectItem key={tag.id} value={tag.id}>
-                    <span className={cn('inline-block h-2 w-2 rounded-full mr-2', getTagColorClass(tag.color).split(' ').filter(c => c.startsWith('bg-')).join(' '))} />
-                    {tag.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedTagId}
+              onValueChange={setSelectedTagId}
+              allLabel={tTrainer('players.tags.filterAll', 'All Tags')}
+              options={[
+                { value: 'untagged', label: tTrainer('players.tags.untagged', 'Untagged') },
+                ...tags.map((tag) => ({
+                  value: tag.id,
+                  label: (
+                    <>
+                      <span className={cn('inline-block h-2 w-2 rounded-full mr-2', getTagColorClass(tag.color).split(' ').filter(c => c.startsWith('bg-')).join(' '))} />
+                      {tag.name}
+                    </>
+                  ),
+                })),
+              ]}
+              triggerClassName="w-full sm:w-[160px]"
+            />
 
-            <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
-              <SelectTrigger className="w-full sm:w-[170px]">
-                <SelectValue placeholder={tTrainer('players.payment.filterAll', 'Payment status')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{tTrainer('players.payment.filterAll', 'All payments')}</SelectItem>
-                <SelectItem value="overdue">{tTrainer('players.payment.overdue', 'Overdue')}</SelectItem>
-                <SelectItem value="ok">{tTrainer('players.payment.ok', 'No overdue')}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedPaymentStatus}
+              onValueChange={setSelectedPaymentStatus}
+              allLabel={tTrainer('players.payment.filterAll', 'All payments')}
+              options={[
+                { value: 'overdue', label: tTrainer('players.payment.overdue', 'Overdue') },
+                { value: 'ok', label: tTrainer('players.payment.ok', 'No overdue') },
+              ]}
+              triggerClassName="w-full sm:w-[170px]"
+              placeholder={tTrainer('players.payment.filterAll', 'Payment status')}
+            />
           </TableToolbar>
 
           {/* Players Table */}
