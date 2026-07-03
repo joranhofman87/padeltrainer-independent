@@ -8,6 +8,7 @@ import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/loca
 import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { StatTile } from '@/components/ui/stat-tile';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -260,63 +261,43 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         </div>
       </div>
 
-      {/* Stat cards */}
+      {/* Stat cards — the shared StatTile (loading prop renders the '\u2014' placeholder) */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Calendar className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{isLoading ? '—' : stats.totalSessions}</p>
-              <p className="text-xs text-muted-foreground">{t('reports.sessions', 'Sessions')}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10">
-              <CalendarX2 className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{isLoading ? '—' : stats.emptySlots}</p>
-              <p className="text-xs text-muted-foreground">{t('reports.emptySlots', 'Empty slots')}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/10">
-              <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{isLoading ? '—' : `${stats.fillRate}%`}</p>
-              <p className="text-xs text-muted-foreground">{t('reports.fillRate', 'Fill rate')}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-500/10">
-              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{isLoading ? '—' : stats.openSpots}</p>
-              <p className="text-xs text-muted-foreground">{t('reports.openSpots', 'Open spots')}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/10">
-              <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{isLoading ? '—' : `${stats.totalBooked}/${stats.totalCapacity}`}</p>
-              <p className="text-xs text-muted-foreground">{t('reports.playersBooked', 'Players booked')}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t('reports.sessions', 'Sessions')}
+          value={String(stats.totalSessions)}
+          icon={Calendar}
+          iconClassName="text-primary"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.emptySlots', 'Empty slots')}
+          value={String(stats.emptySlots)}
+          icon={CalendarX2}
+          iconClassName="text-destructive"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.fillRate', 'Fill rate')}
+          value={`${stats.fillRate}%`}
+          icon={TrendingUp}
+          iconClassName="text-emerald-600 dark:text-emerald-400"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.openSpots', 'Open spots')}
+          value={String(stats.openSpots)}
+          icon={AlertTriangle}
+          iconClassName="text-amber-600 dark:text-amber-400"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.playersBooked', 'Players booked')}
+          value={`${stats.totalBooked}/${stats.totalCapacity}`}
+          icon={Users}
+          iconClassName="text-emerald-600 dark:text-emerald-400"
+          loading={isLoading}
+        />
       </div>
 
       {/* Sub-tabs + table */}
