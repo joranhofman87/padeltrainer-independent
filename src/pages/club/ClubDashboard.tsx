@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
-  Building2, 
-  Users, 
-  Calendar, 
+  Building2,
+  Users,
+  UserCog,
+  Calendar,
   ArrowRight,
   Eye,
   Clock,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatTile } from '@/components/ui/stat-tile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { getClubPlayers, getClubTrainers } from '@/lib/club';
@@ -104,71 +106,40 @@ export default function ClubDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/trainers')}>
-          <CardHeader className="pb-2">
-            <CardDescription>{t('stats.trainers')}</CardDescription>
-            <CardTitle className="text-3xl">{stats.trainers}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('trainers.title')} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t('stats.trainers')}
+          value={String(stats.trainers)}
+          icon={UserCog}
+          onClick={() => navigate('/app/club/trainers')}
+        />
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/players')}>
-          <CardHeader className="pb-2">
-            <CardDescription>{t('stats.players')}</CardDescription>
-            <CardTitle className="text-3xl">{stats.players}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('players.title')} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t('stats.players')}
+          value={String(stats.players)}
+          icon={Users}
+          onClick={() => navigate('/app/club/players')}
+        />
 
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/club/calendar')}>
-          <CardHeader className="pb-2">
-            <CardDescription>{t('stats.upcomingSessions')}</CardDescription>
-            <CardTitle className="text-3xl">-</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button variant="ghost" size="sm" className="p-0 h-auto">
-              {t('dashboard.calendar')} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t('stats.upcomingSessions')}
+          value="-"
+          icon={Calendar}
+          onClick={() => navigate('/app/club/calendar')}
+        />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <Eye className="h-3 w-3" />
-              {t('stats.profileViews')}
-            </CardDescription>
-            <CardTitle className="text-3xl">{stats.viewsLast7Days}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {t('stats.last7Days')} · {stats.viewsLast30Days} {t('stats.last30Days').toLowerCase()}
-            </p>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t('stats.profileViews')}
+          value={String(stats.viewsLast7Days)}
+          icon={Eye}
+          subtext={`${t('stats.last7Days')} · ${stats.viewsLast30Days} ${t('stats.last30Days').toLowerCase()}`}
+        />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <Bell className="h-3 w-3" />
-              {t('stats.followers', 'Followers')}
-            </CardDescription>
-            <CardTitle className="text-3xl">{stats.followers}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {t('stats.followersDescription', 'Players following your club')}
-            </p>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t('stats.followers', 'Followers')}
+          value={String(stats.followers)}
+          icon={Bell}
+          subtext={t('stats.followersDescription', 'Players following your club')}
+        />
       </div>
 
       {/* Quick Actions */}
