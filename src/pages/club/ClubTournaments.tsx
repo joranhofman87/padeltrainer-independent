@@ -20,16 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useClubContext } from '@/components/club/ClubLayout';
 import { logger } from '@/lib/logger';
@@ -70,6 +61,7 @@ export default function ClubTournaments() {
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [editingTournament, setEditingTournament] = useState<ClubTournament | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<TournamentFormData>(emptyForm);
@@ -175,14 +167,13 @@ export default function ClubTournaments() {
   async function handleDelete() {
     if (!deletingId) return;
 
+    setDeleting(true);
     try {
       await deleteTournament(deletingId);
       toast({
         title: t('common:success'),
         description: t('tournaments.deleted'),
       });
-      setDeleteDialogOpen(false);
-      setDeletingId(null);
       fetchTournaments();
     } catch (error) {
       logger.error('Error deleting tournament', error as Error, { component: 'ClubTournaments', tournamentId: deletingId });
@@ -191,6 +182,10 @@ export default function ClubTournaments() {
         description: t('tournaments.error'),
         variant: 'destructive',
       });
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+      setDeletingId(null);
     }
   }
 
@@ -408,22 +403,16 @@ export default function ClubTournaments() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('tournaments.deleteConfirm')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('tournaments.deleteConfirmDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              {t('tournaments.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title={t('tournaments.deleteConfirm')}
+        description={t('tournaments.deleteConfirmDescription')}
+        confirmLabel={t('tournaments.delete')}
+        cancelLabel={t('common:cancel')}
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

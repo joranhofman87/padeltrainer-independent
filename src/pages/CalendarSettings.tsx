@@ -16,17 +16,7 @@ import {
   toggleCalendarSync,
   CalendarConnection,
 } from '@/lib/calendar';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function CalendarSettings() {
   const navigate = useNavigate();
@@ -40,6 +30,7 @@ export default function CalendarSettings() {
   const [connecting, setConnecting] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -134,22 +125,26 @@ export default function CalendarSettings() {
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
-    const success = await disconnectGoogleCalendar();
-    
-    if (success) {
-      setConnection(null);
-      toast({
-        title: t('calendarSettings.disconnected'),
-        description: t('calendarSettings.disconnectedDescription'),
-      });
-    } else {
-      toast({
-        title: t('calendarSettings.failedToDisconnect'),
-        description: t('calendarSettings.failedToDisconnectDescription'),
-        variant: 'destructive',
-      });
+    try {
+      const success = await disconnectGoogleCalendar();
+
+      if (success) {
+        setConnection(null);
+        toast({
+          title: t('calendarSettings.disconnected'),
+          description: t('calendarSettings.disconnectedDescription'),
+        });
+      } else {
+        toast({
+          title: t('calendarSettings.failedToDisconnect'),
+          description: t('calendarSettings.failedToDisconnectDescription'),
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setDisconnecting(false);
+      setDisconnectConfirmOpen(false);
     }
-    setDisconnecting(false);
   };
 
   if (authLoading || loading) {
@@ -231,36 +226,30 @@ export default function CalendarSettings() {
                 </div>
 
                 {/* Disconnect Button */}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full text-destructive hover:text-destructive"
-                      disabled={disconnecting}
-                    >
-                      {disconnecting ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Unlink className="h-4 w-4 mr-2" />
-                      )}
-                      {t('calendarSettings.disconnect')}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                       <AlertDialogTitle>{t('calendarSettings.disconnectConfirmTitle')}</AlertDialogTitle>
-                       <AlertDialogDescription>
-                         {t('calendarSettings.disconnectConfirmDescription')}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                       <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-                       <AlertDialogAction onClick={handleDisconnect}>
-                         {t('calendarSettings.disconnect')}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button
+                  variant="outline"
+                  className="w-full text-destructive hover:text-destructive"
+                  disabled={disconnecting}
+                  onClick={() => setDisconnectConfirmOpen(true)}
+                >
+                  {disconnecting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Unlink className="h-4 w-4 mr-2" />
+                  )}
+                  {t('calendarSettings.disconnect')}
+                </Button>
+                <ConfirmDialog
+                  open={disconnectConfirmOpen}
+                  onOpenChange={setDisconnectConfirmOpen}
+                  title={t('calendarSettings.disconnectConfirmTitle')}
+                  description={t('calendarSettings.disconnectConfirmDescription')}
+                  confirmLabel={t('calendarSettings.disconnect')}
+                  cancelLabel={t('cancel')}
+                  variant="default"
+                  loading={disconnecting}
+                  onConfirm={handleDisconnect}
+                />
               </>
             ) : (
               <>

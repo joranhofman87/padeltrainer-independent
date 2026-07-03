@@ -9,16 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2, PartyPopper } from "lucide-react";
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
@@ -272,36 +263,28 @@ export function AddPlayerForm({
 
   return (
     <>
-      <AlertDialog open={sharedEmailConfirmOpen} onOpenChange={setSharedEmailConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("players.sharedEmail.title", "Email already in use")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                "players.sharedEmail.description",
-                "{{names}} already use(s) this email. Create a separate player with the same email anyway (e.g. a family member)?",
-                { names: sharedEmailNames.join(", ") },
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>{t("common:cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              data-testid="shared-email-confirm"
-              disabled={isLoading}
-              onClick={(e) => {
-                e.preventDefault();
-                setSharedEmailConfirmOpen(false);
-                void performInsert();
-              }}
-            >
-              {t("players.sharedEmail.confirm", "Create separate player")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={sharedEmailConfirmOpen}
+        onOpenChange={setSharedEmailConfirmOpen}
+        title={t("players.sharedEmail.title", "Email already in use")}
+        description={t(
+          "players.sharedEmail.description",
+          "{{names}} already use(s) this email. Create a separate player with the same email anyway (e.g. a family member)?",
+          { names: sharedEmailNames.join(", ") },
+        )}
+        confirmLabel={t("players.sharedEmail.confirm", "Create separate player")}
+        cancelLabel={t("common:cancel")}
+        loading={isLoading}
+        variant="default"
+        confirmTestId="shared-email-confirm"
+        onConfirm={async () => {
+          try {
+            await performInsert();
+          } finally {
+            setSharedEmailConfirmOpen(false);
+          }
+        }}
+      />
 
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

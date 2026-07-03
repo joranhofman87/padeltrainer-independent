@@ -17,9 +17,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Send, Save, FileText, History, Loader2, Users, Eye,
   Trash2, Pencil, X, Plus, FlaskConical, Search, RotateCcw,
@@ -119,6 +120,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
+  const [isDeletingDraft, setIsDeletingDraft] = useState(false);
 
   // Manual recipient management
   const [recipients, setRecipients] = useState<{ id: string; full_name: string; email: string; isManual?: boolean }[]>([]);
@@ -289,7 +291,6 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
   const handleSendCampaign = async () => {
-    setShowConfirmSend(false);
     setIsSending(true);
 
     try {
@@ -371,6 +372,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.campaignError')), variant: 'destructive' });
     } finally {
       setIsSending(false);
+      setShowConfirmSend(false);
     }
   };
 
@@ -507,7 +509,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
   const handleDeleteDraft = async (id: string) => {
-    setConfirmDeleteDraftId(null);
+    setIsDeletingDraft(true);
     try {
       await supabase.from('email_campaign_recipients').delete().eq('campaign_id', id);
       await supabase.from('email_campaigns').delete().eq('id', id);
@@ -516,6 +518,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       fetchCampaigns();
     } catch (err) {
       logger.error('Error deleting draft', err as Error);
+    } finally {
+      setIsDeletingDraft(false);
+      setConfirmDeleteDraftId(null);
     }
   };
 
@@ -1145,28 +1150,25 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       </Tabs>
 
       {/* Confirm Send Dialog */}
-      <AlertDialog open={showConfirmSend} onOpenChange={setShowConfirmSend}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('emailCampaign.confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <Trans
-                i18nKey="emailCampaign.confirm.description"
-                t={t}
-                count={recipients.length}
-                values={{ count: recipients.length, subject }}
-                components={[<strong />, <strong />, <strong />, <strong />]}
-              />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSendCampaign}>
-              <Send className="mr-2 h-4 w-4" /> {t('emailCampaign.confirm.sendNow')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showConfirmSend}
+        onOpenChange={setShowConfirmSend}
+        title={t('emailCampaign.confirm.title')}
+        description={
+          <Trans
+            i18nKey="emailCampaign.confirm.description"
+            t={t}
+            count={recipients.length}
+            values={{ count: recipients.length, subject }}
+            components={[<strong />, <strong />, <strong />, <strong />]}
+          />
+        }
+        confirmLabel={<><Send className="mr-2 h-4 w-4" /> {t('emailCampaign.confirm.sendNow')}</>}
+        cancelLabel={t('emailCampaign.confirm.cancel')}
+        loading={isSending}
+        variant="default"
+        onConfirm={handleSendCampaign}
+      />
 
       {/* Preview Dialog */}
       <AlertDialog open={showPreview} onOpenChange={setShowPreview}>
@@ -1195,25 +1197,18 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       </AlertDialog>
 
       {/* Confirm delete draft */}
-      <AlertDialog open={!!confirmDeleteDraftId} onOpenChange={(o) => !o && setConfirmDeleteDraftId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('emailCampaign.history.deleteDraft')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('emailCampaign.history.confirmDeleteDraft')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => confirmDeleteDraftId && handleDeleteDraft(confirmDeleteDraftId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              <Trash2 className="mr-2 h-4 w-4" /> {t('emailCampaign.history.deleteDraft')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!confirmDeleteDraftId}
+        onOpenChange={(o) => !o && setConfirmDeleteDraftId(null)}
+        title={t('emailCampaign.history.deleteDraft')}
+        description={t('emailCampaign.history.confirmDeleteDraft')}
+        confirmLabel={<><Trash2 className="mr-2 h-4 w-4" /> {t('emailCampaign.history.deleteDraft')}</>}
+        cancelLabel={t('emailCampaign.confirm.cancel')}
+        loading={isDeletingDraft}
+        onConfirm={() => {
+          if (confirmDeleteDraftId) return handleDeleteDraft(confirmDeleteDraftId);
+        }}
+      />
     </div>
   );
 }

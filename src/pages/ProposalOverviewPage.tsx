@@ -27,17 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   ArrowLeft,
   CheckCheck,
@@ -119,6 +109,10 @@ export default function ProposalOverviewPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [pageStatus, setPageStatus] = useState<PageStatus>('idle');
   const finalizingRef = useRef(false);
+  // One shared confirm per action (the desktop header and mobile bottom-bar
+  // triggers open the same dialog).
+  const [sendEmailsConfirmOpen, setSendEmailsConfirmOpen] = useState(false);
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
   const [tz, setTz] = useState<string | undefined>(stateTimezone);
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [excludedDates, setExcludedDates] = useState<string[]>([]);
@@ -357,6 +351,7 @@ export default function ProposalOverviewPage() {
       setPageStatus('idle');
     } finally {
       finalizingRef.current = false;
+      setApproveConfirmOpen(false);
     }
   };
 
@@ -386,6 +381,8 @@ export default function ProposalOverviewPage() {
       logger.error('Error sending schedule emails:', err);
       toast.error(getFriendlyErrorMessage(err, 'Failed to send emails'));
       setPageStatus('booked');
+    } finally {
+      setSendEmailsConfirmOpen(false);
     }
   };
 
@@ -418,31 +415,10 @@ export default function ProposalOverviewPage() {
         </div>
         <div className="hidden sm:flex gap-2">
           {(pageStatus === 'booked' || pageStatus === 'sending') && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" disabled={isProcessing}>
-                  {isProcessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
-                  {t('overview.sendEmails', { defaultValue: 'Send Schedule Emails' })}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('overview.sendEmailsTitle', { defaultValue: 'Send schedule emails?' })}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('overview.sendEmailsDescription', {
-                      count: totalAssigned,
-                      defaultValue: 'This will send an email to all {{count}} assigned players with their training schedule and an invitation to create their account.',
-                    })}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleSendEmails}>
-                    {t('overview.confirmSendEmails', { defaultValue: 'Send Emails' })}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button variant="outline" disabled={isProcessing} onClick={() => setSendEmailsConfirmOpen(true)}>
+              {isProcessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+              {t('overview.sendEmails', { defaultValue: 'Send Schedule Emails' })}
+            </Button>
           )}
           {pageStatus === 'notified' && (
             <Badge variant="secondary" className="text-sm py-2 px-3">
@@ -451,32 +427,10 @@ export default function ProposalOverviewPage() {
             </Badge>
           )}
           {(pageStatus === 'idle' || pageStatus === 'booking') && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button disabled={isProcessing || totalAssigned === 0}>
-                  {pageStatus === 'booking' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
-                  {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('overview.approveTitle', { defaultValue: 'Approve & book all proposals?' })}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('overview.approveDescription', {
-                      slots: totalSlots,
-                      players: totalAssigned,
-                      defaultValue: 'This will confirm all {{players}} player assignments across {{slots}} slots and create their bookings. This action cannot be undone.',
-                    })}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleApproveAndBook}>
-                    {t('overview.confirmApprove', { defaultValue: 'Approve & Book' })}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button disabled={isProcessing || totalAssigned === 0} onClick={() => setApproveConfirmOpen(true)}>
+              {pageStatus === 'booking' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
+              {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
+            </Button>
           )}
         </div>
       </div>
@@ -702,66 +656,54 @@ export default function ProposalOverviewPage() {
             {t('overview.back', { defaultValue: 'Back' })}
           </Button>
           {(pageStatus === 'booked' || pageStatus === 'sending') ? (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button className="flex-1" disabled={isProcessing}>
-                  {isProcessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
-                  {t('overview.sendEmails', { defaultValue: 'Send Emails' })}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('overview.sendEmailsTitle', { defaultValue: 'Send schedule emails?' })}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('overview.sendEmailsDescription', {
-                      count: totalAssigned,
-                      defaultValue: 'This will send an email to all {{count}} assigned players with their training schedule.',
-                    })}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleSendEmails}>
-                    {t('overview.confirmSendEmails', { defaultValue: 'Send Emails' })}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button className="flex-1" disabled={isProcessing} onClick={() => setSendEmailsConfirmOpen(true)}>
+              {isProcessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+              {t('overview.sendEmails', { defaultValue: 'Send Emails' })}
+            </Button>
           ) : pageStatus === 'notified' ? (
             <Badge variant="secondary" className="flex-1 flex items-center justify-center py-2">
               <CheckCheck className="h-4 w-4 mr-1" />
               {t('overview.allDone', { defaultValue: 'Done!' })}
             </Badge>
           ) : (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button className="flex-1" disabled={isProcessing || totalAssigned === 0}>
-                  {pageStatus === 'booking' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
-                  {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('overview.approveTitle', { defaultValue: 'Approve & book all?' })}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('overview.approveDescription', {
-                      slots: totalSlots,
-                      players: totalAssigned,
-                      defaultValue: 'This will confirm all {{players}} player assignments across {{slots}} slots.',
-                    })}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('overview.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleApproveAndBook}>
-                    {t('overview.confirmApprove', { defaultValue: 'Approve & Book' })}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button className="flex-1" disabled={isProcessing || totalAssigned === 0} onClick={() => setApproveConfirmOpen(true)}>
+              {pageStatus === 'booking' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCheck className="h-4 w-4 mr-1" />}
+              {t('proposals.approveAll', { defaultValue: 'Approve & Book all' })}
+            </Button>
           )}
         </div>
       </div>
+
+      {/* Shared confirms for the desktop header + mobile bottom-bar triggers */}
+      <ConfirmDialog
+        open={sendEmailsConfirmOpen}
+        onOpenChange={setSendEmailsConfirmOpen}
+        title={t('overview.sendEmailsTitle', { defaultValue: 'Send schedule emails?' })}
+        description={t('overview.sendEmailsDescription', {
+          count: totalAssigned,
+          defaultValue: 'This will send an email to all {{count}} assigned players with their training schedule and an invitation to create their account.',
+        })}
+        confirmLabel={t('overview.confirmSendEmails', { defaultValue: 'Send Emails' })}
+        cancelLabel={t('overview.cancel', { defaultValue: 'Cancel' })}
+        variant="default"
+        loading={pageStatus === 'sending'}
+        onConfirm={handleSendEmails}
+      />
+      <ConfirmDialog
+        open={approveConfirmOpen}
+        onOpenChange={setApproveConfirmOpen}
+        title={t('overview.approveTitle', { defaultValue: 'Approve & book all proposals?' })}
+        description={t('overview.approveDescription', {
+          slots: totalSlots,
+          players: totalAssigned,
+          defaultValue: 'This will confirm all {{players}} player assignments across {{slots}} slots and create their bookings. This action cannot be undone.',
+        })}
+        confirmLabel={t('overview.confirmApprove', { defaultValue: 'Approve & Book' })}
+        cancelLabel={t('overview.cancel', { defaultValue: 'Cancel' })}
+        variant="default"
+        loading={pageStatus === 'booking'}
+        onConfirm={handleApproveAndBook}
+      />
     </div>
   );
 }
