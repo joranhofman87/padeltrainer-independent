@@ -6,17 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, Trash2, Bell } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -34,6 +24,8 @@ export default function MyWaitingListEntries() {
   const [entries, setEntries] = useState<WaitingListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // One controlled confirm keyed by entry id instead of an AlertDialog per row.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchEntries = async () => {
     if (!profile?.id) return;
@@ -52,23 +44,27 @@ export default function MyWaitingListEntries() {
 
   const handleDelete = async (entryId: string) => {
     setDeletingId(entryId);
-    const { error } = await deleteWaitingListEntry(entryId);
-    setDeletingId(null);
+    try {
+      const { error } = await deleteWaitingListEntry(entryId);
 
-    if (error) {
+      if (error) {
+        toast({
+          title: 'Error',
+          description: getFriendlyErrorMessage(error, t('myEntries.deleteError', 'Could not remove you from the waiting list. Please try again.')),
+          variant: 'destructive',
+        });
+        return;
+      }
+
       toast({
-        title: 'Error',
-        description: getFriendlyErrorMessage(error, t('myEntries.deleteError', 'Could not remove you from the waiting list. Please try again.')),
-        variant: 'destructive',
+        title: 'Removed',
+        description: 'You have been removed from the waiting list',
       });
-      return;
+      fetchEntries();
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
     }
-
-    toast({
-      title: 'Removed',
-      description: 'You have been removed from the waiting list',
-    });
-    fetchEntries();
   };
 
 
@@ -112,38 +108,34 @@ export default function MyWaitingListEntries() {
               </p>
             </div>
             
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon" aria-label="Delete"
-                  className="text-muted-foreground hover:text-destructive"
-                  disabled={deletingId === entry.id}
-                >
-                  {deletingId === entry.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('myEntries.remove')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('myEntries.removeConfirm')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleDelete(entry.id)}>
-                    {t('myEntries.remove')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button
+              variant="ghost"
+              size="icon" aria-label="Delete"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={deletingId === entry.id}
+              onClick={() => setConfirmDeleteId(entry.id)}
+            >
+              {deletingId === entry.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
           </div>
         ))}
+        <ConfirmDialog
+          open={!!confirmDeleteId}
+          onOpenChange={(open) => !open && setConfirmDeleteId(null)}
+          title={t('myEntries.remove')}
+          description={t('myEntries.removeConfirm')}
+          confirmLabel={t('myEntries.remove')}
+          cancelLabel="Cancel"
+          variant="default"
+          loading={!!confirmDeleteId && deletingId === confirmDeleteId}
+          onConfirm={() => {
+            if (confirmDeleteId) return handleDelete(confirmDeleteId);
+          }}
+        />
       </CardContent>
     </Card>
   );

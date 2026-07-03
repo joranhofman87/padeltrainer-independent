@@ -16,17 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -94,6 +84,7 @@ export function EditBookingDialog({
   const [isDeleting, setIsDeleting] = useState(false);
   const [affectedInvoices, setAffectedInvoices] = useState<AffectedInvoiceInfo[]>([]);
   const [isCheckingInvoices, setIsCheckingInvoices] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (booking && open) {
@@ -223,6 +214,7 @@ export function EditBookingDialog({
       });
     } finally {
       setIsDeleting(false);
+      setRemoveConfirmOpen(false);
     }
   };
 
@@ -343,57 +335,47 @@ export function EditBookingDialog({
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button 
-                variant="destructive" 
-                className="w-full sm:w-auto sm:mr-auto"
-                disabled={isLoading || isDeleting}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t("bookings.removePlayer", "Remove Player")}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t("bookings.deleteBookingConfirm", "Remove player from booking?")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("bookings.deleteBookingWarning", "This action cannot be undone. The slot will become available again.")}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              {paidInvoices.length > 0 && (
-                <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                  <CreditCard className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
-                  <p className="text-sm text-orange-800 dark:text-orange-200">
-                    {t("bookings.deletePaidInvoiceWarning", "This booking is on paid invoice {{number}}. Removing the player will not change the amount already paid — arrange compensation with the player separately.", {
-                      number: paidInvoices.map(i => i.invoice_number).join(", "),
-                    })}
-                  </p>
-                </div>
-              )}
-              {unpaidInvoices.length > 0 && (
-                <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <Receipt className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
-                    {t("bookings.deleteUnpaidInvoiceWarning", "Invoice {{number}} will be recalculated automatically after removal.", {
-                      number: unpaidInvoices.map(i => i.invoice_number).join(", "),
-                    })}
-                  </p>
-                </div>
-              )}
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  disabled={isCheckingInvoices || isDeleting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {t("bookings.removePlayer", "Remove Player")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="destructive"
+            className="w-full sm:w-auto sm:mr-auto"
+            disabled={isLoading || isDeleting}
+            onClick={() => setRemoveConfirmOpen(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {t("bookings.removePlayer", "Remove Player")}
+          </Button>
+          <ConfirmDialog
+            open={removeConfirmOpen}
+            onOpenChange={setRemoveConfirmOpen}
+            title={t("bookings.deleteBookingConfirm", "Remove player from booking?")}
+            description={t("bookings.deleteBookingWarning", "This action cannot be undone. The slot will become available again.")}
+            confirmLabel={t("bookings.removePlayer", "Remove Player")}
+            cancelLabel={t("common:cancel")}
+            loading={isDeleting}
+            confirmDisabled={isCheckingInvoices}
+            onConfirm={handleDelete}
+          >
+            {paidInvoices.length > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                <CreditCard className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-orange-800 dark:text-orange-200">
+                  {t("bookings.deletePaidInvoiceWarning", "This booking is on paid invoice {{number}}. Removing the player will not change the amount already paid — arrange compensation with the player separately.", {
+                    number: paidInvoices.map(i => i.invoice_number).join(", "),
+                  })}
+                </p>
+              </div>
+            )}
+            {unpaidInvoices.length > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <Receipt className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  {t("bookings.deleteUnpaidInvoiceWarning", "Invoice {{number}} will be recalculated automatically after removal.", {
+                    number: unpaidInvoices.map(i => i.invoice_number).join(", "),
+                  })}
+                </p>
+              </div>
+            )}
+          </ConfirmDialog>
           <div className="flex gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading || isDeleting} className="flex-1 sm:flex-none">
               {t("common:cancel")}

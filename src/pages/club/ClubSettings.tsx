@@ -26,17 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useClubContext } from "@/components/club/ClubLayout";
@@ -75,6 +65,9 @@ export default function ClubSettings() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [savingWelcome, setSavingWelcome] = useState(false);
+  // One controlled confirm keyed by manager id instead of an AlertDialog per row.
+  const [removeManagerId, setRemoveManagerId] = useState<string | null>(null);
+  const [removingManager, setRemovingManager] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -126,19 +119,25 @@ export default function ClubSettings() {
   };
 
   const handleRemoveManager = async (managerId: string) => {
-    const success = await removeClubManager(managerId);
-    if (success) {
-      setManagers((prev) => prev.filter((m) => m.id !== managerId));
-      toast({
-        title: "Manager removed",
-        description: "The manager has been removed from the club.",
-      });
-    } else {
-      toast({
-        title: "Error",
-        description: "Failed to remove manager.",
-        variant: "destructive",
-      });
+    setRemovingManager(true);
+    try {
+      const success = await removeClubManager(managerId);
+      if (success) {
+        setManagers((prev) => prev.filter((m) => m.id !== managerId));
+        toast({
+          title: "Manager removed",
+          description: "The manager has been removed from the club.",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to remove manager.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setRemovingManager(false);
+      setRemoveManagerId(null);
     }
   };
 
@@ -265,30 +264,15 @@ export default function ClubSettings() {
                   </div>
                 </div>
                 {isOwner && manager.role !== "owner" && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label="Delete" className="text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>{t("managers.removeTitle")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("managers.removeDescription")}
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleRemoveManager(manager.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Remove
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Delete"
+                    className="text-destructive"
+                    onClick={() => setRemoveManagerId(manager.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
             ))}
@@ -297,6 +281,18 @@ export default function ClubSettings() {
                 No managers found
               </p>
             )}
+            <ConfirmDialog
+              open={!!removeManagerId}
+              onOpenChange={(open) => !open && setRemoveManagerId(null)}
+              title={t("managers.removeTitle")}
+              description={t("managers.removeDescription")}
+              confirmLabel="Remove"
+              cancelLabel="Cancel"
+              loading={removingManager}
+              onConfirm={() => {
+                if (removeManagerId) return handleRemoveManager(removeManagerId);
+              }}
+            />
           </div>
         </CardContent>
       </Card>

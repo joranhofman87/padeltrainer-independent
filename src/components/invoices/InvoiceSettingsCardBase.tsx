@@ -17,10 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatInvoiceNumber } from '@/lib/invoiceNumber';
 import { renumberDraftInvoices } from '@/lib/renumberDraftInvoices';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 /**
  * Translation strings the shared card needs. The trainer / academy wrappers
@@ -855,21 +852,17 @@ export function InvoiceSettingsCardBase({
         </CardContent>
       </Card>
 
-      <AlertDialog open={showRenumberDialog} onOpenChange={setShowRenumberDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{labels.renumberTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{labels.renumberDescription}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={renumbering}>{labels.renumberCancel}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRenumberDrafts} disabled={renumbering}>
-              {renumbering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {labels.renumberConfirm}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showRenumberDialog}
+        onOpenChange={setShowRenumberDialog}
+        title={labels.renumberTitle}
+        description={labels.renumberDescription}
+        confirmLabel={labels.renumberConfirm}
+        cancelLabel={labels.renumberCancel}
+        loading={renumbering}
+        variant="default"
+        onConfirm={handleRenumberDrafts}
+      />
     </>
   );
 }

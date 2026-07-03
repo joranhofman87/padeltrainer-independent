@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare, Euro } from 'lucide-react';
 import { ExtraCostPresetsCard } from '@/components/settings/ExtraCostPresetsCard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
@@ -335,31 +335,23 @@ export default function TrainerBookingSettings() {
         </Card>
       </main>
 
-      <AlertDialog open={showVatBulkDialog} onOpenChange={setShowVatBulkDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('bookingSettings.vatBulkUpdateTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('bookingSettings.vatBulkUpdateDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setShowVatBulkDialog(false);
-                setPendingVatValue(null);
-              }}
-              disabled={bulkUpdating}
-            >
-              {t('bookingSettings.vatBulkUpdateCancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkUpdateVat} disabled={bulkUpdating}>
-              {bulkUpdating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {t('bookingSettings.vatBulkUpdateConfirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showVatBulkDialog}
+        onOpenChange={setShowVatBulkDialog}
+        title={t('bookingSettings.vatBulkUpdateTitle')}
+        description={t('bookingSettings.vatBulkUpdateDescription')}
+        confirmLabel={t('bookingSettings.vatBulkUpdateConfirm')}
+        cancelLabel={t('bookingSettings.vatBulkUpdateCancel')}
+        variant="default"
+        loading={bulkUpdating}
+        onConfirm={handleBulkUpdateVat}
+        onCancel={() => {
+          // Explicit "no thanks" clears the stashed toggle value (Escape/overlay
+          // dismissal deliberately keeps today's behaviour: close only).
+          setShowVatBulkDialog(false);
+          setPendingVatValue(null);
+        }}
+      />
     </>
   );
 }

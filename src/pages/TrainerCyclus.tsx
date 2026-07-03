@@ -23,16 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   ArrowLeft,
   Plus,
@@ -513,31 +504,19 @@ export default function TrainerCyclus() {
         )}
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deletingCyclus} onOpenChange={(open) => !open && setDeletingCyclus(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("cyclus.deleteConfirmTitle", "Delete Training Cycle?")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("cyclus.deleteConfirmDescription", "This will delete all {{count}} sessions in '{{name}}' and cancel any associated bookings. This action cannot be undone.", {
-                count: deletingCyclus?.future_sessions || 0,
-                name: deletingCyclus?.cyclus_name || "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>
-              {t("common:cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteCyclus}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? t("common:deleting", "Deleting...") : t("cyclus.deleteCyclus", "Delete Cyclus")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!deletingCyclus}
+        onOpenChange={(open) => !open && setDeletingCyclus(null)}
+        title={t("cyclus.deleteConfirmTitle", "Delete Training Cycle?")}
+        description={t("cyclus.deleteConfirmDescription", "This will delete all {{count}} sessions in '{{name}}' and cancel any associated bookings. This action cannot be undone.", {
+          count: deletingCyclus?.future_sessions || 0,
+          name: deletingCyclus?.cyclus_name || "",
+        })}
+        confirmLabel={isDeleting ? t("common:deleting", "Deleting...") : t("cyclus.deleteCyclus", "Delete Cyclus")}
+        cancelLabel={t("common:cancel")}
+        loading={isDeleting}
+        onConfirm={handleDeleteCyclus}
+      />
     </div>
   );
 }
