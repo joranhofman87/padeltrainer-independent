@@ -11,7 +11,8 @@ import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import {
   Dialog,
   DialogContent,
@@ -195,13 +196,7 @@ export default function ClubTournaments() {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <ListPageSkeleton />;
   }
 
   return (
@@ -237,16 +232,18 @@ export default function ClubTournaments() {
       )}
 
       {tournaments.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">{t('tournaments.empty')}</h3>
-            <p className="text-muted-foreground mb-4">{t('tournaments.emptyDescription')}</p>
-            <Button onClick={openCreateDialog}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t('tournaments.add')}
-            </Button>
-          </CardContent>
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <EmptyState
+            icon={Trophy}
+            title={t('tournaments.empty')}
+            description={t('tournaments.emptyDescription')}
+            action={
+              <Button onClick={openCreateDialog}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t('tournaments.add')}
+              </Button>
+            }
+          />
         </Card>
       ) : (
         <div className="grid gap-4">

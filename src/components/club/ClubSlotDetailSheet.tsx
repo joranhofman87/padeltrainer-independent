@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { 
@@ -245,10 +246,7 @@ export function ClubSlotDetailSheet({
                 ))}
               </div>
             ) : bookings.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                <User className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>{t("calendar.noBookings", "No bookings yet")}</p>
-              </div>
+              <EmptyState icon={User} title={t("calendar.noBookings", "No bookings yet")} />
             ) : (
               <div className="space-y-2">
                 {bookings.map((booking) => {
