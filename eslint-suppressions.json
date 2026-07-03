@@ -373,11 +373,6 @@
       "count": 1
     }
   },
-  "src/components/players/usePlayerSort.tsx": {
-    "react-refresh/only-export-components": {
-      "count": 1
-    }
-  },
   "src/components/profiles/VideoManager.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
