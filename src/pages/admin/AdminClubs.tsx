@@ -12,13 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -180,58 +174,50 @@ export default function AdminClubs() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Select value={countryFilter} onValueChange={(val) => {
-            setCountryFilter(val);
-            setCityFilter("all");
-          }}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Country" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All countries</SelectItem>
-              {countries.map((country) => (
-                <SelectItem key={country} value={country}>
-                  {country}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={countryFilter}
+            onValueChange={(val) => {
+              setCountryFilter(val);
+              setCityFilter("all");
+            }}
+            allLabel="All countries"
+            options={countries.map((country) => ({ value: country, label: country }))}
+            placeholder="Country"
+            triggerClassName="w-[160px]"
+          />
 
-          <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="City" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All cities</SelectItem>
-              {filteredCities.map((city) => (
-                <SelectItem key={city} value={city}>
-                  {city}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={cityFilter}
+            onValueChange={setCityFilter}
+            allLabel="All cities"
+            options={filteredCities.map((city) => ({ value: city, label: city }))}
+            placeholder="City"
+            triggerClassName="w-[180px]"
+          />
 
-          <Select value={verifiedFilter} onValueChange={setVerifiedFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Verified" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="yes">Verified</SelectItem>
-              <SelectItem value="no">Unverified</SelectItem>
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={verifiedFilter}
+            onValueChange={setVerifiedFilter}
+            allLabel="All"
+            options={[
+              { value: "yes", label: "Verified" },
+              { value: "no", label: "Unverified" },
+            ]}
+            placeholder="Verified"
+            triggerClassName="w-[140px]"
+          />
 
-          <Select value={paidFilter} onValueChange={setPaidFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Paid" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="yes">Paid</SelectItem>
-              <SelectItem value="no">Unpaid</SelectItem>
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={paidFilter}
+            onValueChange={setPaidFilter}
+            allLabel="All"
+            options={[
+              { value: "yes", label: "Paid" },
+              { value: "no", label: "Unpaid" },
+            ]}
+            placeholder="Paid"
+            triggerClassName="w-[140px]"
+          />
         </div>
       </div>
 

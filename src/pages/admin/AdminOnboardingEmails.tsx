@@ -2,13 +2,7 @@ import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Pencil, Trash2, Eye, Mail, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -221,28 +215,30 @@ export default function AdminOnboardingEmails() {
                   <CardDescription>{t("onboardingEmails.templatesDescription")}</CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Select value={userTypeFilter} onValueChange={setUserTypeFilter}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue placeholder={t("onboardingEmails.filterUserType")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("onboardingEmails.allUserTypes")}</SelectItem>
-                      <SelectItem value="player">{t("onboardingEmails.userTypes.player")}</SelectItem>
-                      <SelectItem value="trainer">{t("onboardingEmails.userTypes.trainer")}</SelectItem>
-                      <SelectItem value="club">{t("onboardingEmails.userTypes.club")}</SelectItem>
-                      <SelectItem value="academy">{t("onboardingEmails.userTypes.academy")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={activeFilter} onValueChange={setActiveFilter}>
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue placeholder={t("onboardingEmails.filterStatus")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("onboardingEmails.allStatuses")}</SelectItem>
-                      <SelectItem value="active">{t("onboardingEmails.activeOnly")}</SelectItem>
-                      <SelectItem value="inactive">{t("onboardingEmails.inactiveOnly")}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={userTypeFilter}
+                    onValueChange={setUserTypeFilter}
+                    allLabel={t("onboardingEmails.allUserTypes")}
+                    options={[
+                      { value: "player", label: t("onboardingEmails.userTypes.player") },
+                      { value: "trainer", label: t("onboardingEmails.userTypes.trainer") },
+                      { value: "club", label: t("onboardingEmails.userTypes.club") },
+                      { value: "academy", label: t("onboardingEmails.userTypes.academy") },
+                    ]}
+                    placeholder={t("onboardingEmails.filterUserType")}
+                    triggerClassName="w-[140px]"
+                  />
+                  <SelectFilter
+                    value={activeFilter}
+                    onValueChange={setActiveFilter}
+                    allLabel={t("onboardingEmails.allStatuses")}
+                    options={[
+                      { value: "active", label: t("onboardingEmails.activeOnly") },
+                      { value: "inactive", label: t("onboardingEmails.inactiveOnly") },
+                    ]}
+                    placeholder={t("onboardingEmails.filterStatus")}
+                    triggerClassName="w-[120px]"
+                  />
                 </div>
               </div>
             </CardHeader>

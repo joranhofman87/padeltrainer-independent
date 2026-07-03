@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import {
   Dialog,
   DialogContent,
@@ -540,18 +541,19 @@ export default function AdminUsers() {
           ) : undefined
         }
       >
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All roles</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="trainer">Trainer</SelectItem>
-            <SelectItem value="player">Player</SelectItem>
-            <SelectItem value="none">No role</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={roleFilter}
+          onValueChange={setRoleFilter}
+          allLabel="All roles"
+          options={[
+            { value: "admin", label: "Admin" },
+            { value: "trainer", label: "Trainer" },
+            { value: "player", label: "Player" },
+            { value: "none", label: "No role" },
+          ]}
+          placeholder="Filter by role"
+          triggerClassName="w-[180px]"
+        />
       </TableToolbar>
 
       <ListPageState
@@ -739,6 +741,7 @@ export default function AdminUsers() {
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Role</h4>
               <div className="flex items-center gap-2">
+                {/* NOT SelectFilter: role-assignment form input, no "all" sentinel — not a list filter */}
                 <Select value={newRole} onValueChange={setNewRole}>
                   <SelectTrigger className="flex-1">
                     <SelectValue />

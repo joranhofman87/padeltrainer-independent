@@ -11,13 +11,7 @@ import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import {
   Table,
   TableBody,
@@ -149,20 +143,17 @@ export default function WaitingListTable({
         </h2>
       </div>
       <TableToolbar trailing={
-        <Select
+        <SelectFilter
           value={statusFilter}
           onValueChange={(val) => setStatusFilter(val as WaitingListStatus | 'all')}
-        >
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('management.filters.all')}</SelectItem>
-            <SelectItem value="active">{t('management.filters.active')}</SelectItem>
-            <SelectItem value="contacted">{t('management.filters.contacted')}</SelectItem>
-            <SelectItem value="archived">{t('management.filters.archived')}</SelectItem>
-          </SelectContent>
-        </Select>
+          allLabel={t('management.filters.all')}
+          options={[
+            { value: 'active', label: t('management.filters.active') },
+            { value: 'contacted', label: t('management.filters.contacted') },
+            { value: 'archived', label: t('management.filters.archived') },
+          ]}
+          triggerClassName="w-[160px]"
+        />
       } />
       {entries.length === 0 ? (
         <Card className="overflow-hidden border-border/80 shadow-sm">
