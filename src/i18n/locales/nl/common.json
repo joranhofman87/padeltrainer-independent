@@ -1,4 +1,7 @@
 {
+  "datePicker": {
+    "pickDate": "Kies een datum"
+  },
   "journey": {
     "title": "Mijn pad",
     "subtitle": "Je voortgang, feedback en notities door de tijd",
