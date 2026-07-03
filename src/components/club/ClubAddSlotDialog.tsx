@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TimeSelect } from "@/components/ui/time-select";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -36,12 +37,6 @@ import { createCycle } from "@/lib/cycles";
 import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
 import { getUserClubProfiles } from "@/lib/club";
 import { formatDate } from "@/lib/format";
-
-const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
-  const hours = Math.floor(i / 2);
-  const minutes = (i % 2) * 30;
-  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
-});
 
 // Lesson interface removed - lessons table no longer exists
 
@@ -183,18 +178,7 @@ export function ClubAddSlotDialog({
           {/* Time */}
           <div className="space-y-2">
             <Label>{tTrainer("calendar.time")}</Label>
-            <Select value={slotTime} onValueChange={setSlotTime}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_OPTIONS.map((time) => (
-                  <SelectItem key={time} value={time}>
-                    {time}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TimeSelect value={slotTime} onValueChange={setSlotTime} />
           </div>
 
           {/* Duration */}
@@ -551,21 +535,11 @@ export function ClubBulkCreateSheet({
                     {/* Time */}
                     <div className="space-y-1">
                       <Label className="text-xs">{tTrainer("calendar.time")}</Label>
-                      <Select
+                      <TimeSelect
                         value={slot.startTime}
                         onValueChange={(v) => updateBulkSlot(index, { startTime: v })}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        triggerClassName="h-8"
+                      />
                     </div>
 
                     {/* Duration */}

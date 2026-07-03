@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { TIME_OPTIONS } from '@/lib/timeOptions';
 import { useTranslation } from "react-i18next";
 import { addMinutes, setHours, setMinutes, startOfDay, isBefore } from "date-fns";
 import { Plus, Repeat, GraduationCap, User } from "lucide-react";
@@ -10,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TimeSelect } from "@/components/ui/time-select";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { SlotLocationPicker, type SlotLocation } from "@/components/slots/SlotLocationPicker";
@@ -150,18 +150,7 @@ export function AddSlotDialog({
           {/* Time */}
           <div className="space-y-2">
             <Label>{t("calendar.time")}</Label>
-            <Select value={slotTime} onValueChange={setSlotTime}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_OPTIONS.map((time) => (
-                  <SelectItem key={time} value={time}>
-                    {time}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TimeSelect value={slotTime} onValueChange={setSlotTime} />
           </div>
 
           {/* Duration */}
