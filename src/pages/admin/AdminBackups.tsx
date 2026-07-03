@@ -11,16 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Collapsible,
   CollapsibleContent,
@@ -293,39 +284,35 @@ export default function AdminBackups() {
       )}
 
       {/* Delete Confirmation */}
-      <AlertDialog
+      <ConfirmDialog
         open={!!deleteFolder}
-        onOpenChange={() => setDeleteFolder(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Backup verwijderen</AlertDialogTitle>
-            <AlertDialogDescription>
-              Weet je zeker dat je de backup van{" "}
-              <strong>
-                {deleteFolder
-                  ? (() => {
-                      const d = parseTimestamp(deleteFolder);
-                      return d
-                        ? format(d, "dd MMM yyyy HH:mm")
-                        : deleteFolder;
-                    })()
-                  : ""}
-              </strong>{" "}
-              wilt verwijderen? Dit kan niet ongedaan worden gemaakt.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteFolder && deleteMutation.mutate(deleteFolder)}
-            >
-              Verwijderen
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onOpenChange={(open) => {
+          if (!open) setDeleteFolder(null);
+        }}
+        title="Backup verwijderen"
+        description={
+          <>
+            Weet je zeker dat je de backup van{" "}
+            <strong>
+              {deleteFolder
+                ? (() => {
+                    const d = parseTimestamp(deleteFolder);
+                    return d
+                      ? format(d, "dd MMM yyyy HH:mm")
+                      : deleteFolder;
+                  })()
+                : ""}
+            </strong>{" "}
+            wilt verwijderen? Dit kan niet ongedaan worden gemaakt.
+          </>
+        }
+        confirmLabel="Verwijderen"
+        cancelLabel="Annuleren"
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteFolder) deleteMutation.mutate(deleteFolder);
+        }}
+      />
     </div>
   );
 }
