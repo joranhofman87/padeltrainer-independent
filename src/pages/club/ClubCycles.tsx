@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageSkeleton } from '@/components/ui/list-page-skeleton';
 import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { type Cycle } from '@/lib/cycles';
 import { listRegistrationCycles } from '@/lib/registrations';
@@ -68,9 +69,7 @@ export default function ClubCycles() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-6">
-        <Skeleton className="h-8 w-48 mb-6" />
-        <Skeleton className="h-12 w-full mb-4" />
-        <Skeleton className="h-64 w-full" />
+        <ListPageSkeleton />
       </div>
     );
   }
@@ -99,19 +98,17 @@ export default function ClubCycles() {
 
       {/* Cycles Table or Empty State */}
       {cycles.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="mx-auto h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-            <CalendarDays className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="font-semibold mb-1 text-lg">{t('noRegistrations', 'No registrations yet')}</h3>
-          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            {t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
-          </p>
-          <Button onClick={() => navigate('/app/club/registrations/new?type=registration')}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('createRegistration', 'Create Registration')}
-          </Button>
-        </div>
+        <EmptyState
+          icon={CalendarDays}
+          title={t('noRegistrations', 'No registrations yet')}
+          description={t('noRegistrationsDescription', 'Create a registration to start collecting player interest')}
+          action={
+            <Button onClick={() => navigate('/app/club/registrations/new?type=registration')}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('createRegistration', 'Create Registration')}
+            </Button>
+          }
+        />
       ) : (
         <CyclesTable
           cycles={cycles}

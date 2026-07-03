@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import {
   checkClubSubscription, 
   createClubCheckout, 
@@ -154,9 +155,8 @@ export default function ClubSubscription() {
   if (authLoading || loading || planLoading) {
     return (
       <div className="min-h-screen bg-background p-4 md:p-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <Skeleton className="h-12 w-64" />
-          <Skeleton className="h-64 w-full" />
+        <div className="max-w-4xl mx-auto">
+          <ListPageSkeleton />
         </div>
       </div>
     );
@@ -165,13 +165,17 @@ export default function ClubSubscription() {
   if (!activeClub) {
     return (
       <div className="min-h-screen bg-background p-4 md:p-8">
-        <div className="max-w-4xl mx-auto text-center py-12">
-          <Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">{t("noClubs")}</h1>
-          <p className="text-muted-foreground mb-6">{t("noClubsDescription")}</p>
-          <Button onClick={() => navigate("/locations")}>
-            {t("browseLocations")}
-          </Button>
+        <div className="max-w-4xl mx-auto">
+          <EmptyState
+            icon={Building2}
+            title={t("noClubs")}
+            description={t("noClubsDescription")}
+            action={
+              <Button onClick={() => navigate("/locations")}>
+                {t("browseLocations")}
+              </Button>
+            }
+          />
         </div>
       </div>
     );
