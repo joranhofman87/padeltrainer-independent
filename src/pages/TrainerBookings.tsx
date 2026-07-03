@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
+import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Dialog,
@@ -26,7 +28,6 @@ import {
   CheckCircle2,
   XCircle,
   MessageSquare,
-  CreditCard,
   RefreshCw,
   Bell
 } from 'lucide-react';
@@ -290,13 +291,13 @@ export default function TrainerBookings() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">{t('manageBookings.statusPending')}</Badge>;
+        return <BookingStatusBadge status="pending" />;
       case 'confirmed':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">{t('manageBookings.statusConfirmed')}</Badge>;
+        return <BookingStatusBadge status="confirmed" />;
       case 'cancelled':
-        return <Badge variant="destructive">{t('manageBookings.statusCancelled')}</Badge>;
+        return <BookingStatusBadge status="cancelled" />;
       case 'completed':
-        return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">{t('manageBookings.statusCompleted')}</Badge>;
+        return <BookingStatusBadge status="completed" />;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -304,18 +305,18 @@ export default function TrainerBookings() {
 
   const getPaymentBadge = (paymentStatus: string, paymentTiming: string, bookingStatus: string) => {
     if (paymentStatus === 'paid') {
-      return <Badge variant="outline" className="border-green-300 text-green-600"><CreditCard className="h-3 w-3 mr-1" />{t('manageBookings.paymentPaid')}</Badge>;
+      return <PaymentStatusBadge kind="paid" label={t('manageBookings.paymentPaid')} />;
     }
     if (paymentStatus === 'waived') {
-      return <Badge variant="outline" className="border-gray-300 text-gray-600">{t('manageBookings.paymentWaived')}</Badge>;
+      return <PaymentStatusBadge kind="waived" label={t('manageBookings.paymentWaived')} />;
     }
     if (paymentTiming === 'after') {
       if (bookingStatus === 'cancelled') {
-        return <Badge variant="outline" className="border-gray-300 text-gray-600">{t('manageBookings.paymentNoCharge')}</Badge>;
+        return <PaymentStatusBadge kind="no_charge" label={t('manageBookings.paymentNoCharge')} />;
       }
-      return <Badge variant="outline" className="border-orange-300 text-orange-600">{t('manageBookings.paymentDueAfter')}</Badge>;
+      return <PaymentStatusBadge kind="due_after" label={t('manageBookings.paymentDueAfter')} />;
     }
-    return <Badge variant="outline" className="border-yellow-300 text-yellow-600">{t('manageBookings.paymentPending')}</Badge>;
+    return <PaymentStatusBadge kind="pending" label={t('manageBookings.paymentPending')} />;
   };
 
   // Filter bookings

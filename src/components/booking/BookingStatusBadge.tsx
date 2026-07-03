@@ -26,6 +26,9 @@ interface BookingStatusBadgeProps {
  * Presentational booking-status badge shared by the player dashboard and bookings
  * page so the same status always renders identically. Maps each booking status to
  * a semantic Badge variant + i18n label.
+ *
+ * Labels live in the `player` i18n namespace; the wording is role-generic and
+ * renders identically for every role that uses this badge.
  */
 export function BookingStatusBadge({ status }: BookingStatusBadgeProps) {
   const { t } = useTranslation('player');
