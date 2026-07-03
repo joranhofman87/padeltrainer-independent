@@ -47,6 +47,7 @@ import {
 import { resolvePublicInvoiceContactEmail } from "@/lib/publicInvoiceContact";
 import { formatCurrency } from "@/lib/format";
 import { QueryErrorState } from "@/components/ui/QueryErrorState";
+import { FullPageLoader } from "@/components/ui/page-spinner";
 
 // Keep the /pay/:token URL out of Referer headers — these tokens grant access
 // to invoice PII until the invoice is paid.
@@ -545,10 +546,10 @@ export default function PublicInvoicePay() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30">
+      <>
         <SEO title={t("invoice.seoTitle")} description={t("invoice.seoDescription")} noIndex={true} />
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+        <FullPageLoader className="bg-muted/30" />
+      </>
     );
   }
 

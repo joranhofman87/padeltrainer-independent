@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { updatePassword } from '@/lib/auth';
@@ -94,11 +95,7 @@ export default function ResetPassword() {
   };
 
   if (isCheckingSession) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader className="p-4" />;
   }
 
   if (!isValidSession) {

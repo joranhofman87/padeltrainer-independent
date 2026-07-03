@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import {
   Dialog,
   DialogContent,
@@ -54,7 +55,6 @@ import {
   Plus,
   Edit,
   Trash2,
-  Loader2,
   ShieldAlert,
   Award,
   Target,
@@ -258,11 +258,7 @@ export default function AdminCertifications() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (!isAdmin) {

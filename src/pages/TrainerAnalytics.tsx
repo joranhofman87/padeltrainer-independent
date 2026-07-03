@@ -12,6 +12,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { getTrainerAverageRating, getTrainerReviews } from '@/lib/reviews';
 import { formatCurrency } from '@/lib/format';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { logger } from '@/lib/logger';
 
 interface MonthlyStats {
@@ -214,11 +215,7 @@ export default function TrainerAnalytics() {
   };
 
   if (loading || loadingStats) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (loadError) {

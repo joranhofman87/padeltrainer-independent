@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { MARKETING_DOMAIN } from '@/lib/domains';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2 } from 'lucide-react';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 
 interface PublicRatingData {
   player_name: string;
@@ -49,11 +49,7 @@ export default function PublicRatingCard() {
   }, [profileId]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1a2e]">
-        <Loader2 className="h-8 w-8 animate-spin text-white" />
-      </div>
-    );
+    return <FullPageLoader className="bg-[#1a1a2e]" spinnerClassName="text-white" />;
   }
 
   if (error || !data) {
