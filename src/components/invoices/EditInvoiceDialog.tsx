@@ -8,16 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
-import { Loader2, CalendarIcon, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
+import { Loader2, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { formatCurrency } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import {
@@ -77,8 +74,7 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
 }
 
 export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId, onDownloadPdf, onMarkPaid, onDelete, invoiceStatus }: EditInvoiceDialogProps) {
-  const { t, i18n } = useTranslation('common');
-  const dateFnsLocale = getDateFnsLocale(i18n.language);
+  const { t } = useTranslation('common');
   const queryClient = useQueryClient();
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -480,22 +476,12 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
             {/* Due date */}
             <div className="flex items-center gap-4">
               <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !dueDate && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dueDate ? format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale }) : t('invoiceForm.dueDate.selectDate')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dueDate}
-                    onSelect={setDueDate}
-                    className={cn("p-3 pointer-events-auto")}
-                  />
-                </PopoverContent>
-              </Popover>
+              <DatePickerPopover
+                value={dueDate}
+                onChange={setDueDate}
+                placeholder={t('invoiceForm.dueDate.selectDate')}
+                size="sm"
+              />
             </div>
 
             {/* Notes */}

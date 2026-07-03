@@ -1,4 +1,7 @@
 {
+  "datePicker": {
+    "pickDate": "Pick a date"
+  },
   "journey": {
     "title": "My Journey",
     "subtitle": "Your progress, feedback and notes over time",

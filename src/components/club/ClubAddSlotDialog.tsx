@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore, addWeeks, getDay } from "date-fns";
-import { CalendarIcon, Plus, Repeat } from "lucide-react";
+import { Plus, Repeat } from "lucide-react";
 import { SlotRatingPicker } from "@/components/slots/SlotRatingPicker";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,13 +19,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -33,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TimeSelect } from "@/components/ui/time-select";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -41,12 +37,6 @@ import { createCycle } from "@/lib/cycles";
 import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
 import { getUserClubProfiles } from "@/lib/club";
 import { formatDate } from "@/lib/format";
-
-const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
-  const hours = Math.floor(i / 2);
-  const minutes = (i % 2) * 30;
-  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
-});
 
 // Lesson interface removed - lessons table no longer exists
 
@@ -177,47 +167,18 @@ export function ClubAddSlotDialog({
           {/* Date */}
           <div className="space-y-2">
             <Label>{tTrainer("calendar.date")}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !slotDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {slotDate ? format(slotDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={slotDate}
-                  onSelect={(date) => date && setSlotDate(date)}
-                  disabled={(date) => isBefore(date, startOfDay(new Date()))}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={slotDate}
+              onChange={(date) => date && setSlotDate(date)}
+              className="w-full"
+              disabled={(date) => isBefore(date, startOfDay(new Date()))}
+            />
           </div>
 
           {/* Time */}
           <div className="space-y-2">
             <Label>{tTrainer("calendar.time")}</Label>
-            <Select value={slotTime} onValueChange={setSlotTime}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_OPTIONS.map((time) => (
-                  <SelectItem key={time} value={time}>
-                    {time}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TimeSelect value={slotTime} onValueChange={setSlotTime} />
           </div>
 
           {/* Duration */}
@@ -563,50 +524,22 @@ export function ClubBulkCreateSheet({
                     {/* Start Date */}
                     <div className="space-y-1">
                       <Label className="text-xs">{tTrainer("calendar.startDate")}</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !slot.startDate && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-3 w-3" />
-                            {format(slot.startDate, "MMM d, yyyy")}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={slot.startDate}
-                            onSelect={(date) => date && updateBulkSlot(index, { startDate: startOfDay(date) })}
-                            initialFocus
-                            className="p-3 pointer-events-auto"
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <DatePickerPopover
+                        value={slot.startDate}
+                        onChange={(date) => date && updateBulkSlot(index, { startDate: startOfDay(date) })}
+                        size="sm"
+                        className="w-full"
+                      />
                     </div>
 
                     {/* Time */}
                     <div className="space-y-1">
                       <Label className="text-xs">{tTrainer("calendar.time")}</Label>
-                      <Select
+                      <TimeSelect
                         value={slot.startTime}
                         onValueChange={(v) => updateBulkSlot(index, { startTime: v })}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        triggerClassName="h-8"
+                      />
                     </div>
 
                     {/* Duration */}

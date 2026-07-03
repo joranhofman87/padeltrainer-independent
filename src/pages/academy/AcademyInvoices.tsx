@@ -35,10 +35,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Settings, FileText, Send, Loader2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning, Download, MoreHorizontal } from "lucide-react";
 import { ListPageShell, ListPageState } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { toast } from "sonner";
@@ -1035,26 +1033,11 @@ export default function AcademyInvoices() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Pick a date")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={bulkDueDate}
-                  onSelect={setBulkDueDate}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={bulkDueDate}
+              onChange={setBulkDueDate}
+              className="w-full"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>

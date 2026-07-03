@@ -1,17 +1,15 @@
 import { useState, useEffect } from "react";
-import { TIME_OPTIONS } from '@/lib/timeOptions';
 import { useTranslation } from "react-i18next";
-import { format, addMinutes, setHours, setMinutes, startOfDay, isBefore } from "date-fns";
-import { CalendarIcon, Plus, Repeat, GraduationCap, User } from "lucide-react";
+import { addMinutes, setHours, setMinutes, startOfDay, isBefore } from "date-fns";
+import { Plus, Repeat, GraduationCap, User } from "lucide-react";
 import { insertAvailabilitySlots } from "@/lib/slots";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { TimeSelect } from "@/components/ui/time-select";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { SlotLocationPicker, type SlotLocation } from "@/components/slots/SlotLocationPicker";
@@ -141,47 +139,18 @@ export function AddSlotDialog({
           {/* Date */}
           <div className="space-y-2">
             <Label>{t("calendar.date")}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !slotDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {slotDate ? format(slotDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={slotDate}
-                  onSelect={(date) => date && setSlotDate(date)}
-                  disabled={(date) => isBefore(date, startOfDay(new Date()))}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={slotDate}
+              onChange={(date) => date && setSlotDate(date)}
+              className="w-full"
+              disabled={(date) => isBefore(date, startOfDay(new Date()))}
+            />
           </div>
 
           {/* Time */}
           <div className="space-y-2">
             <Label>{t("calendar.time")}</Label>
-            <Select value={slotTime} onValueChange={setSlotTime}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_OPTIONS.map((time) => (
-                  <SelectItem key={time} value={time}>
-                    {time}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TimeSelect value={slotTime} onValueChange={setSlotTime} />
           </div>
 
           {/* Duration */}

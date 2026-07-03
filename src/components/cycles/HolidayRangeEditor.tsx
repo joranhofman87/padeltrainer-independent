@@ -4,11 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import { formatDate } from '@/lib/format';
-import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
+import { Plus, Trash2 } from 'lucide-react';
 
 export interface HolidayRange {
   name: string;
@@ -94,31 +91,15 @@ function HolidayDateField({
   minIso?: string;
   onSelect: (iso: string) => void;
 }) {
-  const { t } = useTranslation('cycles');
   return (
     <div>
       <Label className="text-xs">{label}</Label>
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className={cn('w-full sm:w-[160px] justify-start text-left font-normal', !value && 'text-muted-foreground')}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-            {value ? formatDate(parseISO(value), 'PPP') : t('rebookShared.pickDate', 'Kies een datum')}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={value ? parseISO(value) : undefined}
-            onSelect={(d) => onSelect(d ? format(d, 'yyyy-MM-dd') : '')}
-            disabled={minIso ? (date) => date < parseISO(minIso) : undefined}
-            initialFocus
-            className="p-3 pointer-events-auto"
-          />
-        </PopoverContent>
-      </Popover>
+      <DatePickerPopover
+        value={value ? parseISO(value) : undefined}
+        onChange={(d) => onSelect(d ? format(d, 'yyyy-MM-dd') : '')}
+        disabled={minIso ? (date) => date < parseISO(minIso) : undefined}
+        className="w-full sm:w-[160px]"
+      />
     </div>
   );
 }

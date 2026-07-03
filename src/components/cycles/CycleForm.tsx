@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
-import { CalendarIcon, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { createRegistration, updateRegistration, registrationToCycle, cycleInputToRegistrationInput, isMissingRegistrationRpc } from '@/lib/registrations';
-import { Calendar } from '@/components/ui/calendar';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import {
   Form,
   FormControl,
@@ -28,11 +28,6 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 // Dialog imports removed — component now renders inline on a dedicated page
 import {
   Select,
@@ -857,30 +852,13 @@ export default function CycleForm({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.startDate')}</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <DatePickerPopover
+                          value={field.value}
+                          onChange={field.onChange}
+                          className="w-full"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -891,30 +869,14 @@ export default function CycleForm({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? format(field.value, 'PPP') : t('form.sameAsStart', 'Same as start')}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <DatePickerPopover
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder={t('form.sameAsStart', 'Same as start')}
+                          className="w-full"
+                        />
+                      </FormControl>
                       <FormDescription className="text-xs">
                         {t('form.endDateHelp', 'Leave empty for a single-day event')}
                       </FormDescription>
@@ -933,35 +895,18 @@ export default function CycleForm({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.startDate')}</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={(date) => {
-                              field.onChange(date);
-                              // Moving the start re-fills the end from the week count.
-                              const w = Number(form.getValues('number_of_weeks'));
-                              if (date && w > 0) form.setValue('end_date', addWeeks(date, w));
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <DatePickerPopover
+                          value={field.value}
+                          onChange={(date) => {
+                            field.onChange(date);
+                            // Moving the start re-fills the end from the week count.
+                            const w = Number(form.getValues('number_of_weeks'));
+                            if (date && w > 0) form.setValue('end_date', addWeeks(date, w));
+                          }}
+                          className="w-full"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1001,38 +946,20 @@ export default function CycleForm({
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            {field.value ? format(field.value, 'PPP') : t('form.pickDate', 'Pick date')}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={(date) => {
-                            field.onChange(date);
-                            // A manual end date wins; keep the week count in step for display.
-                            const s = form.getValues('start_date');
-                            if (date && s) {
-                              form.setValue('number_of_weeks', Math.max(1, Math.round(differenceInWeeks(date, s))));
-                            }
-                          }}
-                          initialFocus
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <FormControl>
+                      <DatePickerPopover
+                        value={field.value}
+                        onChange={(date) => {
+                          field.onChange(date);
+                          // A manual end date wins; keep the week count in step for display.
+                          const s = form.getValues('start_date');
+                          if (date && s) {
+                            form.setValue('number_of_weeks', Math.max(1, Math.round(differenceInWeeks(date, s))));
+                          }
+                        }}
+                        className="w-full"
+                      />
+                    </FormControl>
                     <p className="text-xs text-muted-foreground">
                       {t('form.endDateHint', 'Automatically set based on weeks. Override to set a specific end date (e.g. last Friday of the cycle).')}
                     </p>
@@ -1082,30 +1009,14 @@ export default function CycleForm({
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>{t('form.enrollmentDeadline')}</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            'w-full pl-3 text-left font-normal',
-                            !field.value && 'text-muted-foreground'
-                          )}
-                        >
-                          {field.value ? format(field.value, 'PPP') : 'No deadline'}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <FormControl>
+                    <DatePickerPopover
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="No deadline"
+                      className="w-full"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

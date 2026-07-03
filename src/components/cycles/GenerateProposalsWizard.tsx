@@ -15,13 +15,13 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TimeSelect } from '@/components/ui/time-select';
+import { buildHalfHourOptions } from '@/lib/timeOptions';
 import {
-  CalendarIcon,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -36,16 +36,9 @@ import { type Cycle, type ScoringWeights, DEFAULT_SCORING_WEIGHTS } from '@/lib/
 import { ScoringWeightsPanel } from './ScoringWeightsPanel';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const TIME_OPTIONS_START: string[] = [];
-const TIME_OPTIONS_END: string[] = [];
-for (let h = 6; h <= 23; h++) {
-  TIME_OPTIONS_START.push(`${h.toString().padStart(2, '0')}:00`);
-  TIME_OPTIONS_START.push(`${h.toString().padStart(2, '0')}:30`);
-  TIME_OPTIONS_END.push(`${h.toString().padStart(2, '0')}:00`);
-  TIME_OPTIONS_END.push(`${h.toString().padStart(2, '0')}:30`);
-}
+const TIME_OPTIONS_START = buildHalfHourOptions(6, 23);
 // 00:00 (midnight) is valid as end-of-day but not as start
-TIME_OPTIONS_END.push('00:00');
+const TIME_OPTIONS_END = buildHalfHourOptions(6, 23, { midnightEnd: true });
 
 export interface TrainerAvailabilityConfig {
   trainerId: string;
@@ -381,22 +374,11 @@ export function GenerateProposalsWizard({
           {/* Start date */}
           <div className="space-y-2">
             <Label>{t('proposals.wizard.startDate', { defaultValue: 'Start date' })}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start text-left font-normal">
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {format(startDate, 'PPP')}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={startDate}
-                  onSelect={(d) => d && setStartDate(d)}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={startDate}
+              onChange={(d) => d && setStartDate(d)}
+              className="w-full"
+            />
           </div>
 
           <Separator />
@@ -479,33 +461,19 @@ export function GenerateProposalsWizard({
                       </SelectContent>
                     </Select>
                     <div className="flex items-center gap-2">
-                      <Select
+                      <TimeSelect
                         value={window.start}
                         onValueChange={(v) => updateWindow(config.trainerId, idx, 'start', v)}
-                      >
-                        <SelectTrigger className="flex-1 sm:w-[90px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS_START.map(t => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        options={TIME_OPTIONS_START}
+                        triggerClassName="flex-1 sm:w-[90px]"
+                      />
                       <span className="text-muted-foreground">–</span>
-                      <Select
+                      <TimeSelect
                         value={window.end}
                         onValueChange={(v) => updateWindow(config.trainerId, idx, 'end', v)}
-                      >
-                        <SelectTrigger className="flex-1 sm:w-[90px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS_END.map(t => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        options={TIME_OPTIONS_END}
+                        triggerClassName="flex-1 sm:w-[90px]"
+                      />
                       <Button
                         variant="ghost"
                         size="icon" aria-label="Delete"

@@ -20,17 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon, Loader2, Upload } from "lucide-react";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
+import { Loader2, Upload } from "lucide-react";
 import { AdminTrainerReviewsTab } from "./AdminTrainerReviewsTab";
 import { MollieDisconnectSection } from "./MollieDisconnectSection";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
@@ -694,28 +687,10 @@ export function TrainerEditDialog({
               {status !== "active" && (
                 <div className="grid gap-2">
                   <Label>Trial Ends At</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "justify-start text-left font-normal",
-                          !trialEndsAt && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {trialEndsAt ? format(trialEndsAt, "PPP") : "Select date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={trialEndsAt}
-                        onSelect={setTrialEndsAt}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePickerPopover
+                    value={trialEndsAt}
+                    onChange={setTrialEndsAt}
+                  />
                 </div>
               )}
 
