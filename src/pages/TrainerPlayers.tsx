@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { useAuth } from '@/hooks/useAuth';
@@ -492,70 +492,71 @@ export default function TrainerPlayers() {
             }
           >
             {allLocations.length > 0 && (
-              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder={t('players.allLocations', 'All Locations')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('players.allLocations', 'All Locations')}</SelectItem>
-                  {allLocations.map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={selectedLocation}
+                onValueChange={setSelectedLocation}
+                allLabel={t('players.allLocations', 'All Locations')}
+                options={allLocations.map((loc) => ({ value: loc.id, label: loc.name }))}
+                triggerClassName="w-full sm:w-[160px]"
+              />
             )}
 
-            <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-full sm:w-[170px]">
-                <SelectValue placeholder={t('players.allLevels', 'All Levels')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('players.allLevels', 'All Levels')}</SelectItem>
-                <SelectItem value="beginner">{getLevelLabel('beginner')}</SelectItem>
-                <SelectItem value="intermediate">{getLevelLabel('intermediate')}</SelectItem>
-                <SelectItem value="advanced">{getLevelLabel('advanced')}</SelectItem>
-                <SelectItem value="pro">{getLevelLabel('pro')}</SelectItem>
-                <SelectItem value="unrated">{getLevelLabel('unrated')}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedLevel}
+              onValueChange={setSelectedLevel}
+              allLabel={t('players.allLevels', 'All Levels')}
+              options={[
+                { value: 'beginner', label: getLevelLabel('beginner') },
+                { value: 'intermediate', label: getLevelLabel('intermediate') },
+                { value: 'advanced', label: getLevelLabel('advanced') },
+                { value: 'pro', label: getLevelLabel('pro') },
+                { value: 'unrated', label: getLevelLabel('unrated') },
+              ]}
+              triggerClassName="w-full sm:w-[170px]"
+            />
 
-            <Select value={selectedCyclus} onValueChange={setSelectedCyclus}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder={t('players.activeCyclus', 'Active Cyclus')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('players.allCyclus', 'All')}</SelectItem>
-                <SelectItem value="yes">{t('players.hasCyclus', 'Has Cyclus')}</SelectItem>
-                <SelectItem value="no">{t('players.noCyclus', 'No Cyclus')}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedCyclus}
+              onValueChange={setSelectedCyclus}
+              allLabel={t('players.allCyclus', 'All')}
+              options={[
+                { value: 'yes', label: t('players.hasCyclus', 'Has Cyclus') },
+                { value: 'no', label: t('players.noCyclus', 'No Cyclus') },
+              ]}
+              triggerClassName="w-full sm:w-[160px]"
+              placeholder={t('players.activeCyclus', 'Active Cyclus')}
+            />
 
-            <Select value={selectedTagId} onValueChange={setSelectedTagId}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder={t('players.tags.filterAll', 'All Tags')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('players.tags.filterAll', 'All Tags')}</SelectItem>
-                <SelectItem value="untagged">{t('players.tags.untagged', 'Untagged')}</SelectItem>
-                {tags.map((tag) => (
-                  <SelectItem key={tag.id} value={tag.id}>
-                    <span className={cn('inline-block h-2 w-2 rounded-full mr-2', getTagColorClass(tag.color).split(' ').filter(c => c.startsWith('bg-')).join(' '))} />
-                    {tag.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedTagId}
+              onValueChange={setSelectedTagId}
+              allLabel={t('players.tags.filterAll', 'All Tags')}
+              options={[
+                { value: 'untagged', label: t('players.tags.untagged', 'Untagged') },
+                ...tags.map((tag) => ({
+                  value: tag.id,
+                  label: (
+                    <>
+                      <span className={cn('inline-block h-2 w-2 rounded-full mr-2', getTagColorClass(tag.color).split(' ').filter(c => c.startsWith('bg-')).join(' '))} />
+                      {tag.name}
+                    </>
+                  ),
+                })),
+              ]}
+              triggerClassName="w-full sm:w-[160px]"
+            />
 
-            <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
-              <SelectTrigger className="w-full sm:w-[170px]">
-                <SelectValue placeholder={t('players.payment.filterAll', 'Payment status')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('players.payment.filterAll', 'All payments')}</SelectItem>
-                <SelectItem value="overdue">{t('players.payment.overdue', 'Overdue')}</SelectItem>
-                <SelectItem value="ok">{t('players.payment.ok', 'No overdue')}</SelectItem>
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={selectedPaymentStatus}
+              onValueChange={setSelectedPaymentStatus}
+              allLabel={t('players.payment.filterAll', 'All payments')}
+              options={[
+                { value: 'overdue', label: t('players.payment.overdue', 'Overdue') },
+                { value: 'ok', label: t('players.payment.ok', 'No overdue') },
+              ]}
+              triggerClassName="w-full sm:w-[170px]"
+              placeholder={t('players.payment.filterAll', 'Payment status')}
+            />
           </TableToolbar>
 
           {sortedPlayers.length === 0 ? (
