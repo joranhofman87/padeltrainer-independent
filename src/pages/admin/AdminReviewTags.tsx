@@ -16,16 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Select,
   SelectContent,
@@ -80,6 +71,7 @@ export default function AdminReviewTags() {
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tagToDelete, setTagToDelete] = useState<ReviewTag | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -235,8 +227,9 @@ export default function AdminReviewTags() {
   };
 
   const handleDelete = async () => {
-    if (!tagToDelete) return;
+    if (!tagToDelete || deleting) return;
 
+    setDeleting(true);
     try {
       const { error } = await supabase
         .from("review_tags")
@@ -260,6 +253,8 @@ export default function AdminReviewTags() {
         description: getFriendlyErrorMessage(error, "Failed to delete tag"),
         variant: "destructive",
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -469,22 +464,16 @@ export default function AdminReviewTags() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Tag</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{tagToDelete?.name}"? This will also remove it from all existing reviews.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Tag"
+        description={<>Are you sure you want to delete "{tagToDelete?.name}"? This will also remove it from all existing reviews.</>}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

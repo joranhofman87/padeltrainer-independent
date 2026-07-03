@@ -6,17 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useIsAdmin } from "@/hooks/useAdminData";
 import { verifyClubClaim, rejectClubClaim, ClubProfile } from "@/lib/club";
@@ -85,6 +75,8 @@ export default function AdminClubClaims() {
   const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
 
   const [processing, setProcessing] = useState<string | null>(null);
+  // One controlled reject confirm keyed by claim instead of an AlertDialog per card.
+  const [rejectingClaim, setRejectingClaim] = useState<PendingClaim | null>(null);
 
   const { data: claims = [], isLoading: claimsLoading } = useQuery({
     queryKey: ["admin", "pendingClaimsList"],
@@ -155,6 +147,7 @@ export default function AdminClubClaims() {
       }
     } finally {
       setProcessing(null);
+      setRejectingClaim(null);
     }
   };
 
@@ -268,42 +261,37 @@ export default function AdminClubClaims() {
                       </>
                     )}
                   </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="flex-1 text-destructive hover:text-destructive"
-                        disabled={processing === claim.id}
-                      >
-                        <X className="h-4 w-4 mr-2" />
-                        Reject
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Reject Club Claim?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently remove this claim. The user will be notified
-                          and will need to submit a new claim if they want to manage this club.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleReject(claim)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Reject Claim
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <Button
+                    variant="outline"
+                    className="flex-1 text-destructive hover:text-destructive"
+                    disabled={processing === claim.id}
+                    onClick={() => setRejectingClaim(claim)}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Reject
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!rejectingClaim}
+        onOpenChange={(open) => !open && setRejectingClaim(null)}
+        title="Reject Club Claim?"
+        description={
+          <>
+            This will permanently remove this claim. The user will be notified
+            and will need to submit a new claim if they want to manage this club.
+          </>
+        }
+        confirmLabel="Reject Claim"
+        cancelLabel="Cancel"
+        loading={!!rejectingClaim && processing === rejectingClaim.id}
+        onConfirm={() => rejectingClaim && handleReject(rejectingClaim)}
+      />
     </div>
   );
 }

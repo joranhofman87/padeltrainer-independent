@@ -1,15 +1,6 @@
 import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Loader2, LogIn } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { LogIn } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
@@ -33,6 +24,7 @@ export function ImpersonateUserDialog({
   const [isLoading, setIsLoading] = useState(false);
 
   const handleImpersonate = async () => {
+    if (isLoading) return;
     setIsLoading(true);
     // Open tab synchronously to avoid popup blocker
     const newTab = window.open('about:blank', '_blank');
@@ -71,42 +63,42 @@ export function ImpersonateUserDialog({
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <LogIn className="h-5 w-5" />
-            Login as User
-          </AlertDialogTitle>
-          <AlertDialogDescription className="space-y-2">
-            <p>
-              You are about to log in as <strong>{targetUserName}</strong>
-              {targetUserEmail && (
-                <span className="text-muted-foreground"> ({targetUserEmail})</span>
-              )}
-            </p>
-            <p className="text-amber-600 dark:text-amber-400">
-              This action is logged for security purposes. Use responsibly for support and debugging only.
-            </p>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleImpersonate} disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating link...
-              </>
-            ) : (
-              <>
-                <LogIn className="mr-2 h-4 w-4" />
-                Login as User
-              </>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      variant="default"
+      title={
+        <span className="flex items-center gap-2">
+          <LogIn className="h-5 w-5" />
+          Login as User
+        </span>
+      }
+      description={
+        <span className="block space-y-2">
+          <span className="block">
+            You are about to log in as <strong>{targetUserName}</strong>
+            {targetUserEmail && (
+              <span className="text-muted-foreground"> ({targetUserEmail})</span>
             )}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </span>
+          <span className="block text-amber-600 dark:text-amber-400">
+            This action is logged for security purposes. Use responsibly for support and debugging only.
+          </span>
+        </span>
+      }
+      confirmLabel={
+        isLoading ? (
+          "Generating link..."
+        ) : (
+          <>
+            <LogIn className="mr-2 h-4 w-4" />
+            Login as User
+          </>
+        )
+      }
+      cancelLabel="Cancel"
+      loading={isLoading}
+      onConfirm={handleImpersonate}
+    />
   );
 }

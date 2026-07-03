@@ -10,20 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Pencil, Trash2, Shield, Loader2 } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PlanEditDialog } from "@/components/admin/PlanEditDialog";
 import { formatCurrency, formatCurrencyMaybe } from "@/lib/format";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function AdminPricing() {
   const navigate = useNavigate();
@@ -282,29 +273,16 @@ export default function AdminPricing() {
       )}
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deletingPlan} onOpenChange={(open) => !open && setDeletingPlan(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("pricing.deletePlan")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pricing.deleteConfirm", { name: deletingPlan?.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("pricing.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deletePlan.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                t("pricing.delete")
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!deletingPlan}
+        onOpenChange={(open) => !open && setDeletingPlan(null)}
+        title={t("pricing.deletePlan")}
+        description={t("pricing.deleteConfirm", { name: deletingPlan?.name })}
+        confirmLabel={t("pricing.delete")}
+        cancelLabel={t("pricing.cancel")}
+        loading={deletePlan.isPending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
