@@ -15,7 +15,7 @@ const BK_A = '50000000-0000-0000-0000-00000000000a';
 const BK_B = '50000000-0000-0000-0000-00000000000b';
 
 const createDeduped = async (payload: Record<string, unknown>) =>
-  (await db.query<{ r: any }>(`SELECT public.create_invoice_deduped($1::jsonb) AS r`, [JSON.stringify(payload)]))
+  (await db.query<{ r: { deduped: boolean; id: string } }>(`SELECT public.create_invoice_deduped($1::jsonb) AS r`, [JSON.stringify(payload)]))
     .rows[0].r;
 
 const basePayload = (num: string, player: string, bookingIds: string[]) => ({
