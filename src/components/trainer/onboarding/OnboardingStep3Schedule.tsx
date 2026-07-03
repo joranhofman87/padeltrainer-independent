@@ -5,9 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { logger } from '@/lib/logger';
 import { CalendarIcon, Clock, Plus, Trash2, AlertTriangle, CheckCircle2, CalendarPlus, Repeat } from 'lucide-react';
 import { format, addMinutes, isBefore, startOfToday, startOfDay, addWeeks, setHours, setMinutes } from 'date-fns';
@@ -391,25 +390,12 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
           {slotMode === 'single' && (
             <>
               <div className="flex flex-col sm:flex-row gap-3">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn('justify-start text-left flex-1', !slotDate && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {slotDate ? format(slotDate, 'EEE, MMM d') : 'Pick a date'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={slotDate}
-                      onSelect={setSlotDate}
-                      disabled={(date) => isBefore(date, startOfToday())}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <DatePickerPopover
+                  value={slotDate}
+                  onChange={setSlotDate}
+                  disabled={(date) => isBefore(date, startOfToday())}
+                  className="flex-1"
+                />
 
                 <div className="flex items-center gap-2 flex-1">
                   <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -484,25 +470,13 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn('justify-start text-left flex-1', !cyclusDate && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {cyclusDate ? format(cyclusDate, 'EEE, MMM d') : 'Pick start day'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={cyclusDate}
-                      onSelect={setCyclusDate}
-                      disabled={(date) => isBefore(date, startOfToday())}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <DatePickerPopover
+                  value={cyclusDate}
+                  onChange={setCyclusDate}
+                  placeholder="Pick start day"
+                  disabled={(date) => isBefore(date, startOfToday())}
+                  className="flex-1"
+                />
 
                 <div className="flex items-center gap-2 flex-1">
                   <Clock className="h-4 w-4 text-muted-foreground shrink-0" />

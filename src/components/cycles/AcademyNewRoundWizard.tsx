@@ -8,15 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, CalendarIcon, ChevronDown, Send } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { formatDate } from '@/lib/format';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/lib/cyclusLabel';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
@@ -281,27 +279,12 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             <CardContent className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs">{t('newRound.startDate', 'Startdatum')}</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn('w-full justify-start text-left font-normal', !startDate && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {startDate ? formatDate(startDate, 'PPP') : t('newRound.pickDate', 'Kies een datum')}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={startDate}
-                      onSelect={(d) => { if (d) { setStartDate(startOfDay(d)); setReview(null); } }}
-                      disabled={(date) => date < startOfDay(new Date())}
-                      initialFocus
-                      className="p-3 pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
+                <DatePickerPopover
+                  value={startDate}
+                  onChange={(d) => { if (d) { setStartDate(startOfDay(d)); setReview(null); } }}
+                  disabled={(date) => date < startOfDay(new Date())}
+                  className="w-full"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t('newRound.weeks', 'Aantal weken')}</Label>
