@@ -22,6 +22,13 @@ export interface ConfirmDialogProps {
   cancelLabel: ReactNode;
   /** Does NOT auto-close: callers close via onOpenChange/state once the action settles. */
   onConfirm: () => void | Promise<void>;
+  /**
+   * Fired ONLY when the Cancel button is clicked (the button still auto-closes via
+   * onOpenChange). Escape/programmatic dismissal do NOT fire it — use this when Cancel
+   * carries its own side effect (e.g. a "go to calendar" button) that plain dismissal
+   * must not trigger.
+   */
+  onCancel?: () => void;
   loading?: boolean;
   /** 'destructive' (default) styles the confirm button red; 'default' uses the primary button. */
   variant?: 'default' | 'destructive';
@@ -50,6 +57,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   onConfirm,
+  onCancel,
   loading = false,
   variant = 'destructive',
   children,
@@ -70,7 +78,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         {children}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading} onClick={onCancel}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             data-testid={confirmTestId}
             disabled={loading || confirmDisabled}

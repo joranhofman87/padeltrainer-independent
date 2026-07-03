@@ -75,4 +75,20 @@ describe('ConfirmDialog', () => {
     fireEvent.click(btn);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it('onCancel fires on the Cancel button click (which still closes)', () => {
+    const onCancel = vi.fn();
+    const { onOpenChange } = setup({ onCancel });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('onCancel does NOT fire on Escape dismissal (only the explicit button)', () => {
+    const onCancel = vi.fn();
+    const { onOpenChange } = setup({ onCancel });
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });
