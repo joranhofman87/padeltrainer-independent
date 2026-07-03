@@ -11,6 +11,7 @@ import { Logo } from '@/components/Logo';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { useTranslation } from 'react-i18next';
 
 const TOTAL_STEPS = 2;
@@ -192,11 +193,7 @@ export default function TrainerOnboarding() {
   };
 
   if (loading || initializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (initError) {

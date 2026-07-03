@@ -25,6 +25,7 @@ import { CycleBundleList } from '@/components/booking/CycleBundleList';
 import { SlotList } from '@/components/booking/SlotList';
 import { BookingSummary } from '@/components/booking/BookingSummary';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 
 interface BookedPlayerInfo {
   skillRating: number | null;
@@ -536,11 +537,7 @@ export default function BookLesson() {
   };
 
   if (loading || loadingData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (loadFailed) {
