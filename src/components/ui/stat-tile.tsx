@@ -9,8 +9,10 @@ export interface StatTileProps {
   onClick?: () => void;
   highlight?: boolean;
   loading?: boolean;
-  subtext?: string;
+  subtext?: ReactNode;
   endSlot?: ReactNode;
+  /** Extra classes for the icon element (e.g. a text color override). */
+  iconClassName?: string;
 }
 
 /** KPI tile for dashboards and summary rows. Presentation-only. */
@@ -23,6 +25,7 @@ export function StatTile({
   loading = false,
   subtext,
   endSlot,
+  iconClassName,
 }: StatTileProps) {
   const Component = onClick ? 'button' : 'div';
 
@@ -56,6 +59,7 @@ export function StatTile({
                 className={cn(
                   'h-4 w-4',
                   highlight ? 'text-[hsl(var(--brand-600))]' : 'text-[hsl(var(--navy-600))]',
+                  iconClassName,
                 )}
               />
             </div>

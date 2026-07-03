@@ -36,32 +36,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useTranslation } from "react-i18next";
 import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
-
-type SlotStatus = "free" | "partial" | "full" | "past" | "private";
-
-function getSlotStatus(slot: SlotWithBookings): SlotStatus {
-  if (slot.is_past) return "past";
-  if (!slot.is_public) return "private";
-  if (slot.active_bookings >= 4) return "full";
-  if (slot.active_bookings > 0) return "partial";
-  return "free";
-}
-
-const statusColors: Record<SlotStatus, string> = {
-  free: "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700",
-  partial: "bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700",
-  full: "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700",
-  past: "bg-muted/30 border-muted opacity-60",
-  private: "bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700",
-};
-
-const statusTextColors: Record<SlotStatus, string> = {
-  free: "text-green-700 dark:text-green-300",
-  partial: "text-orange-700 dark:text-orange-300",
-  full: "text-blue-700 dark:text-blue-300",
-  past: "text-muted-foreground",
-  private: "text-purple-700 dark:text-purple-300",
-};
+import { getSlotStatus, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
 
 interface DayViewSlotCardProps {
   slot: SlotWithBookings;
@@ -117,7 +92,7 @@ export function DayViewSlotCard({
   return (
     <div className={cn(
       "rounded-lg border-2 overflow-hidden transition-all",
-      statusColors[status]
+      slotStatusCardClasses(status)
     )}>
       {/* Header Section */}
       <div className="p-4 bg-background/50">
@@ -125,11 +100,11 @@ export function DayViewSlotCard({
           {/* Time and Lesson Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2">
-              <div className={cn("text-2xl font-bold", statusTextColors[status])}>
+              <div className={cn("text-2xl font-bold", slotStatusTextClasses(status))}>
                 {startTime}
               </div>
               <span className="text-muted-foreground">-</span>
-              <div className={cn("text-2xl font-bold", statusTextColors[status])}>
+              <div className={cn("text-2xl font-bold", slotStatusTextClasses(status))}>
                 {endTime}
               </div>
               {slot.cyclus_id && (
@@ -163,8 +138,8 @@ export function DayViewSlotCard({
               )}
               <div className={cn(
                 "px-3 py-1 rounded-full text-sm font-medium",
-                statusColors[status],
-                statusTextColors[status]
+                slotStatusCardClasses(status),
+                slotStatusTextClasses(status)
               )}>
                 {statusLabel}
               </div>

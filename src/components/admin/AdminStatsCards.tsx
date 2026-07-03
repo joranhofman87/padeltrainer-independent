@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Users, DollarSign, CreditCard, UserCheck, Clock, Building2, UserPlus, ClipboardList } from "lucide-react";
+import { StatTile } from "@/components/ui/stat-tile";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { AdminStats } from "@/lib/admin";
@@ -12,13 +12,15 @@ interface AdminStatsCardsProps {
 function TrendBadge({ trend, thisMonth, lastMonth: _lastMonth }: { trend: number; thisMonth: number; lastMonth: number }) {
   const isPositive = trend >= 0;
   return (
-    <div className="flex items-center gap-1">
+    // Spans (with flex classes) rather than divs: this renders inside StatTile's <p> value
+    // element, where a div would be invalid p>div nesting (hydration warning).
+    <span className="flex items-center gap-1">
       <span className="text-2xl font-bold">{thisMonth}</span>
-      <div className={`flex items-center text-xs ${isPositive ? "text-emerald-500" : "text-red-500"}`}>
+      <span className={`flex items-center text-xs ${isPositive ? "text-emerald-500" : "text-red-500"}`}>
         {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
         <span>{Math.abs(trend).toFixed(0)}%</span>
-      </div>
-    </div>
+      </span>
+    </span>
   );
 }
 
@@ -135,20 +137,15 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <Card 
-          key={card.title} 
-          className={card.onClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
+        <StatTile
+          key={card.title}
+          label={card.title}
+          value={card.customValue ? card.customValue : card.value}
+          subtext={card.description}
+          icon={card.icon}
+          iconClassName={card.color}
           onClick={card.onClick}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
-            <card.icon className={`h-4 w-4 ${card.color}`} />
-          </CardHeader>
-          <CardContent>
-            {card.customValue ? card.customValue : <div className="text-2xl font-bold">{card.value}</div>}
-            <p className="text-xs text-muted-foreground">{card.description}</p>
-          </CardContent>
-        </Card>
+        />
       ))}
     </div>
   );

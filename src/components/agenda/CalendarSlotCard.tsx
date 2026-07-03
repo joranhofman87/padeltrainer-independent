@@ -26,31 +26,7 @@ import { useTranslation } from "react-i18next";
 // See docs/FRONTEND_ARCHITECTURE.md.
 export type { BookedPlayer, SlotWithBookings };
 
-type SlotStatus = "free" | "partial" | "full" | "past" | "private";
-
-function getSlotStatus(slot: SlotWithBookings): SlotStatus {
-  if (slot.is_past) return "past";
-  if (!slot.is_public) return "private";
-  if (slot.active_bookings >= 4) return "full";
-  if (slot.active_bookings > 0) return "partial";
-  return "free";
-}
-
-const statusColors: Record<SlotStatus, string> = {
-  free: "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-900/50",
-  partial: "bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-900/50",
-  full: "bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 hover:bg-blue-200 dark:hover:bg-blue-900/50",
-  past: "bg-muted/30 border-muted opacity-50",
-  private: "bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-900/50",
-};
-
-const statusTextColors: Record<SlotStatus, string> = {
-  free: "text-green-700 dark:text-green-300",
-  partial: "text-orange-700 dark:text-orange-300",
-  full: "text-blue-700 dark:text-blue-300",
-  past: "text-muted-foreground",
-  private: "text-purple-700 dark:text-purple-300",
-};
+import { getSlotStatus, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
 
 interface CalendarSlotCardProps {
   slot: SlotWithBookings;
@@ -110,11 +86,11 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
     <div
       className={cn(
         "rounded-md border p-2 cursor-pointer transition-colors text-xs h-full overflow-hidden",
-        statusColors[status],
+        slotStatusCardClasses(status, { interactive: true }),
         compact && "p-1",
       )}
     >
-      <div className={cn("font-medium flex items-center gap-1", statusTextColors[status])}>
+      <div className={cn("font-medium flex items-center gap-1", slotStatusTextClasses(status))}>
         {startTime} - {endTime}
         {!compact && slot.cyclus_id && (
           <Repeat className="h-3 w-3 opacity-60" />
@@ -140,7 +116,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
         </div>
       )}
       {!compact && (
-        <div className={cn("flex items-center gap-1 mt-1", statusTextColors[status])}>
+        <div className={cn("flex items-center gap-1 mt-1", slotStatusTextClasses(status))}>
           <Users className="h-3 w-3" />
           <span>
             {slot.active_bookings}/4
@@ -215,8 +191,8 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
             <div
               className={cn(
                 "px-2 py-1 rounded text-xs font-medium",
-                statusColors[status],
-                statusTextColors[status]
+                slotStatusCardClasses(status, { interactive: true }),
+                slotStatusTextClasses(status)
               )}
             >
               {statusLabel}
