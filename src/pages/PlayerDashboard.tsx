@@ -9,7 +9,7 @@ import { AppPage, surfaceCardClass } from '@/components/ui/app-page';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { PageHeader } from '@/components/ui/page-header';
 import { EmptyState } from '@/components/ui/empty-state';
-import { BookingStatusBadge } from '@/components/player/BookingStatusBadge';
+import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { format, isAfter } from 'date-fns';
