@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { GraduationCap, Menu } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
@@ -10,7 +10,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { getUserAcademyProfiles, type AcademyProfile } from '@/lib/academy';
 import { logger } from '@/lib/logger';
 import { AcademySidebar } from '@/components/academy/AcademySidebar';
-import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { AppMobileHeader } from '@/components/ui/app-mobile-header';
 import { useToast } from '@/hooks/use-toast';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { useQuery } from '@tanstack/react-query';
@@ -51,23 +52,18 @@ const SUBSCRIPTION_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 function AcademyMobileHeader({ academyName }: { academyName?: string }) {
   const { t } = useTranslation('academy');
-  const { toggleSidebar } = useSidebar();
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 md:hidden">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        onClick={toggleSidebar}
-        aria-label={t('nav.openMenu', 'Open menu')}
-        data-testid="academy-mobile-menu-trigger"
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{academyName}</span>
-    </header>
+    // data-testid on the header was previously missing for academy only — added for
+    // consistency with the other role layouts.
+    <AppMobileHeader
+      breakpointClass="md:hidden"
+      data-testid="academy-mobile-header"
+      menuTriggerTestId="academy-mobile-menu-trigger"
+      menuLabel={t('nav.openMenu', 'Open menu')}
+    >
+      {academyName}
+    </AppMobileHeader>
   );
 }
 

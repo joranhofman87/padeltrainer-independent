@@ -4,6 +4,7 @@ import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabaseClient';
 import { Plus, Trash2, Loader2, Package } from 'lucide-react';
@@ -142,18 +143,13 @@ export function ExtraCostPresetsCard({ trainerId, academyProfileId }: ExtraCostP
                   onChange={(e) => setNewDescription(e.target.value)}
                   placeholder="Omschrijving (bijv. Balhuur)"
                 />
-                <div className="relative">
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={newPrice}
-                    onChange={(e) => setNewPrice(e.target.value ? parseFloat(e.target.value) : '')}
-                    placeholder="0.00"
-                    className="pl-6"
-                  />
-                </div>
+                <MoneyInput
+                  min={0}
+                  step="0.01"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value ? parseFloat(e.target.value) : '')}
+                  placeholder="0.00"
+                />
                 <div className="relative">
                   <Input
                     type="number"

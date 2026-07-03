@@ -3,9 +3,8 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
-import { Menu } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { SidebarProvider, SidebarInset, useSidebar } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { AppMobileHeader } from '@/components/ui/app-mobile-header';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
@@ -18,28 +17,21 @@ import { QueryErrorState } from '@/components/ui/QueryErrorState';
 function TrainerMobileHeader() {
   const { t } = useTranslation('trainer');
   const { profile } = useAuth();
-  const { toggleSidebar } = useSidebar();
 
   const displayName = profile?.full_name?.split(' ')[0] || t('badge', 'Trainer');
 
   return (
-    <header
-      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 lg:hidden"
+    // md:hidden (was lg:hidden): the shared sidebar swaps its mobile Sheet for the
+    // desktop rail at md (768px), so the old lg breakpoint left a redundant
+    // hamburger header next to the visible sidebar between 768–1023px.
+    <AppMobileHeader
+      breakpointClass="md:hidden"
       data-testid="trainer-mobile-header"
+      menuTriggerTestId="trainer-mobile-menu-trigger"
+      menuLabel={t('nav.openMenu', 'Open menu')}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        onClick={toggleSidebar}
-        aria-label={t('nav.openMenu', 'Open menu')}
-        data-testid="trainer-mobile-menu-trigger"
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{displayName}</span>
-    </header>
+      {displayName}
+    </AppMobileHeader>
   );
 }
 

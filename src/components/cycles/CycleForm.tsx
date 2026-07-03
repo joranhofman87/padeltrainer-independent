@@ -13,6 +13,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -1373,49 +1374,42 @@ export default function CycleForm({
                         setPriceTable(updated);
                       }}
                     />
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        value={row.price || ''}
-                        onChange={(e) => {
-                          const updated = [...priceTable];
-                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
-                          setPriceTable(updated);
-                        }}
-                        className="pl-6 text-sm"
-                      />
-                    </div>
+                    <MoneyInput
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={row.price || ''}
+                      onChange={(e) => {
+                        const updated = [...priceTable];
+                        updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                        setPriceTable(updated);
+                      }}
+                      className="text-sm"
+                    />
                     {priceColumns.map((col, ci) => {
                       const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                       return (
-                        <div key={ci} className="relative">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            placeholder="0.00"
-                            value={ep?.price || ''}
-                            onChange={(e) => {
-                              const updated = [...priceTable];
-                              const newPrice = parseFloat(e.target.value) || 0;
-                              const existingExtras = updated[index].extra_prices || [];
-                              const epIdx = existingExtras.findIndex(x => x.column_name === col);
-                              if (epIdx >= 0) {
-                                existingExtras[epIdx] = { ...existingExtras[epIdx], price: newPrice };
-                              } else {
-                                existingExtras.push({ column_name: col, price: newPrice });
-                              }
-                              updated[index] = { ...updated[index], extra_prices: existingExtras };
-                              setPriceTable(updated);
-                            }}
-                            className="pl-6 text-sm"
-                          />
-                        </div>
+                        <MoneyInput
+                          key={ci}
+                          min={0}
+                          step="0.01"
+                          placeholder="0.00"
+                          value={ep?.price || ''}
+                          onChange={(e) => {
+                            const updated = [...priceTable];
+                            const newPrice = parseFloat(e.target.value) || 0;
+                            const existingExtras = updated[index].extra_prices || [];
+                            const epIdx = existingExtras.findIndex(x => x.column_name === col);
+                            if (epIdx >= 0) {
+                              existingExtras[epIdx] = { ...existingExtras[epIdx], price: newPrice };
+                            } else {
+                              existingExtras.push({ column_name: col, price: newPrice });
+                            }
+                            updated[index] = { ...updated[index], extra_prices: existingExtras };
+                            setPriceTable(updated);
+                          }}
+                          className="text-sm"
+                        />
                       );
                     })}
                     <Button
@@ -1561,28 +1555,23 @@ export default function CycleForm({
                       }}
                       title={t('form.numberOfWeeksColumn', 'Weeks')}
                     />
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        value={opt.price_per_session || ''}
-                        onChange={(e) => {
-                          const updated = [...cyclusOptions];
-                          const pps = parseFloat(e.target.value) || 0;
-                          updated[index] = {
-                            ...updated[index],
-                            price_per_session: pps,
-                            total_price: Math.round(updated[index].number_of_sessions * pps * 100) / 100,
-                          };
-                          setCyclusOptions(updated);
-                        }}
-                        className="pl-6"
-                        title={t('form.pricePerSession')}
-                      />
-                    </div>
+                    <MoneyInput
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={opt.price_per_session || ''}
+                      onChange={(e) => {
+                        const updated = [...cyclusOptions];
+                        const pps = parseFloat(e.target.value) || 0;
+                        updated[index] = {
+                          ...updated[index],
+                          price_per_session: pps,
+                          total_price: Math.round(updated[index].number_of_sessions * pps * 100) / 100,
+                        };
+                        setCyclusOptions(updated);
+                      }}
+                      title={t('form.pricePerSession')}
+                    />
                     <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
                       {formatCurrency(opt.total_price || 0)}
                     </div>
@@ -2050,22 +2039,17 @@ export default function CycleForm({
                           setExtraCosts(updated);
                         }}
                       />
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          placeholder="0.00"
-                          value={cost.price || ''}
-                          onChange={(e) => {
-                            const updated = [...extraCosts];
-                            updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
-                            setExtraCosts(updated);
-                          }}
-                          className="pl-7"
-                        />
-                      </div>
+                      <MoneyInput
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={cost.price || ''}
+                        onChange={(e) => {
+                          const updated = [...extraCosts];
+                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                          setExtraCosts(updated);
+                        }}
+                      />
                       <div className="relative">
                         <Input
                           type="number"

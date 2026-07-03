@@ -18,6 +18,7 @@ import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
 import { mergeNewBookingIdsIntoCycleInvoices, syncInvoicesAfterCycleEdit } from "@/lib/cycleEditInvoiceSync";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1414,17 +1415,12 @@ export default function TrainerScheduleOverview() {
 
             <div className="space-y-2">
               <Label>{t("scheduleOverview.pricePerSession", "Price per session")}</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">€</span>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="pl-7"
-                  value={cycleEditData.pricePerSession}
-                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, pricePerSession: e.target.value }))}
-                />
-              </div>
+              <MoneyInput
+                min="0"
+                step="0.01"
+                value={cycleEditData.pricePerSession}
+                onChange={(e) => setCycleEditData((prev) => ({ ...prev, pricePerSession: e.target.value }))}
+              />
             </div>
 
             <div className="flex items-center justify-between">
@@ -1492,21 +1488,17 @@ export default function TrainerScheduleOverview() {
                       }}
                       className="flex-1"
                     />
-                    <div className="relative w-24">
-                      <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">€</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="pl-6"
-                        value={cost.price}
-                        onChange={(e) => {
-                          const updated = [...cycleEditData.extraCosts];
-                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
-                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
-                        }}
-                      />
-                    </div>
+                    <MoneyInput
+                      wrapperClassName="w-24"
+                      min="0"
+                      step="0.01"
+                      value={cost.price}
+                      onChange={(e) => {
+                        const updated = [...cycleEditData.extraCosts];
+                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                        setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                      }}
+                    />
                     <Button
                       type="button"
                       variant="ghost"

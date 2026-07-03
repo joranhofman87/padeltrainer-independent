@@ -1,8 +1,8 @@
 import { useEffect, Suspense } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Menu } from "lucide-react";
-import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppMobileHeader } from "@/components/ui/app-mobile-header";
 import { useTranslation } from "react-i18next";
 import { AdminSidebar } from "./AdminSidebar";
 import { Button } from "@/components/ui/button";
@@ -16,26 +16,19 @@ import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 
 function AdminMobileHeader() {
   const { t } = useTranslation("admin");
-  const { toggleSidebar } = useSidebar();
 
   return (
-    <header
-      className="sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 lg:hidden"
+    // md:hidden (was lg:hidden): the shared sidebar swaps its mobile Sheet for the
+    // desktop rail at md (768px), so the old lg breakpoint left a redundant
+    // hamburger header next to the visible sidebar between 768–1023px.
+    <AppMobileHeader
+      breakpointClass="md:hidden"
       data-testid="admin-mobile-header"
+      menuTriggerTestId="admin-mobile-menu-trigger"
+      menuLabel={t("nav.openMenu", "Open menu")}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        onClick={toggleSidebar}
-        aria-label={t("nav.openMenu", "Open menu")}
-        data-testid="admin-mobile-menu-trigger"
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-      <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{t("panelTitle")}</span>
-    </header>
+      {t("panelTitle")}
+    </AppMobileHeader>
   );
 }
 
