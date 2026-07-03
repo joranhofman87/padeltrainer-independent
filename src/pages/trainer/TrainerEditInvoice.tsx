@@ -25,10 +25,7 @@ import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEditor';
 import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary';
 import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoiceFormTotals';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type LineItem = InvoiceFormLineItem;
 
@@ -53,6 +50,7 @@ export default function TrainerEditInvoice() {
   const [saving, setSaving] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
@@ -293,22 +291,27 @@ export default function TrainerEditInvoice() {
         </div>
       </div>
 
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('back')}</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete}>
-              {isDraft ? t('delete') : t('cancel')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete / cancel confirmation. The old AlertDialog auto-closed on click and ran
+          the delete detached; ConfirmDialog stays open while `deleting` (blocking
+          dismissal + double-fire) and closes on settle — success OR error. */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}
+        description={isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
+        confirmLabel={isDraft ? t('delete') : t('cancel')}
+        cancelLabel={t('back')}
+        loading={deleting}
+        onConfirm={async () => {
+          setDeleting(true);
+          try {
+            await handleDelete();
+          } finally {
+            setDeleting(false);
+            setDeleteConfirmOpen(false);
+          }
+        }}
+      />
     </>
   );
 }

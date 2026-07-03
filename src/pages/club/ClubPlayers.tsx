@@ -23,16 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { logger } from '@/lib/logger';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Table,
   TableBody,
@@ -73,6 +64,7 @@ export default function ClubPlayers() {
   const [editingPlayer, setEditingPlayer] = useState<ClubPlayer | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingPlayer, setDeletingPlayer] = useState<ClubPlayer | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -449,23 +441,29 @@ export default function ClubPlayers() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('players.deleteConfirm')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('players.deleteConfirmDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              {t('players.deletePlayer')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Confirmation. handleDelete's own finally closes the dialog + clears
+          deletingPlayer; `deleting` keeps it open (and un-double-clickable) in flight.
+          Plain dismissal also clears deletingPlayer so no stale row lingers. */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) setDeletingPlayer(null);
+        }}
+        title={t('players.deleteConfirm')}
+        description={t('players.deleteConfirmDescription')}
+        confirmLabel={t('players.deletePlayer')}
+        cancelLabel={t('common:cancel')}
+        loading={deleting}
+        onConfirm={async () => {
+          setDeleting(true);
+          try {
+            await handleDelete();
+          } finally {
+            setDeleting(false);
+          }
+        }}
+      />
     </ListPageShell>
   );
 }
