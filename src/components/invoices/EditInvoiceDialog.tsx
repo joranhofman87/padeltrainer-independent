@@ -17,16 +17,7 @@ import { format, parseISO } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface LineItem {
   description: string;
@@ -542,31 +533,22 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{isDraft ? t('invoiceForm.deleteDialog.deleteTitle') : t('invoiceForm.deleteDialog.cancelTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isDraft
-                ? t('invoiceForm.deleteDialog.deleteDescription')
-                : t('invoiceForm.deleteDialog.cancelDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('invoiceForm.deleteDialog.back')}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                onDelete?.();
-                setDeleteConfirmOpen(false);
-              }}
-            >
-              {isDraft ? t('invoiceForm.deleteDialog.delete') : t('invoiceForm.deleteDialog.cancelInvoice')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete confirmation — onDelete is a synchronous parent callback (fire-and-forget),
+          so there is no in-flight state; onConfirm closes explicitly. */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={isDraft ? t('invoiceForm.deleteDialog.deleteTitle') : t('invoiceForm.deleteDialog.cancelTitle')}
+        description={isDraft
+          ? t('invoiceForm.deleteDialog.deleteDescription')
+          : t('invoiceForm.deleteDialog.cancelDescription')}
+        confirmLabel={isDraft ? t('invoiceForm.deleteDialog.delete') : t('invoiceForm.deleteDialog.cancelInvoice')}
+        cancelLabel={t('invoiceForm.deleteDialog.back')}
+        onConfirm={() => {
+          onDelete?.();
+          setDeleteConfirmOpen(false);
+        }}
+      />
     </>
   );
 }

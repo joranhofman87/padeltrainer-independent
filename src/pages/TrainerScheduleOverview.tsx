@@ -39,16 +39,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Popover,
   PopoverContent,
@@ -1716,51 +1707,44 @@ export default function TrainerScheduleOverview() {
         </DialogContent>
       </Dialog>
 
-      {/* Remove Player Confirm */}
-      <AlertDialog open={!!removeBookingId} onOpenChange={(open) => !open && setRemoveBookingId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("scheduleOverview.removePlayer", "Remove player")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("scheduleOverview.removePlayerConfirm", "Are you sure you want to remove this player from the session?")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removingBooking}>
-              {t("scheduleOverview.cancel", "Cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemovePlayer} disabled={removingBooking}>
-              {removingBooking && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {t("scheduleOverview.removePlayer", "Remove player")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Remove Player Confirm. The old AlertDialog auto-closed on click and ran the
+          cancel detached; ConfirmDialog stays open while `removingBooking` and closes on
+          settle. handleRemovePlayer clears removeBookingId on success itself; the finally
+          also clears it so the error path (which returns early) closes too.
+          variant="default" preserves the original non-destructive confirm button. */}
+      <ConfirmDialog
+        open={!!removeBookingId}
+        onOpenChange={(open) => !open && setRemoveBookingId(null)}
+        title={t("scheduleOverview.removePlayer", "Remove player")}
+        description={t("scheduleOverview.removePlayerConfirm", "Are you sure you want to remove this player from the session?")}
+        confirmLabel={t("scheduleOverview.removePlayer", "Remove player")}
+        cancelLabel={t("scheduleOverview.cancel", "Cancel")}
+        loading={removingBooking}
+        variant="default"
+        onConfirm={async () => {
+          try {
+            await handleRemovePlayer();
+          } finally {
+            setRemoveBookingId(null);
+          }
+        }}
+      />
 
-      {/* Remove Player from Cycle Confirm */}
-      <AlertDialog open={!!confirmRemoveCyclePlayer} onOpenChange={(open) => !open && setConfirmRemoveCyclePlayer(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("scheduleOverview.removeFromCycleConfirm", "Remove {{name}} from all sessions in this cycle?", { name: confirmRemoveCyclePlayer?.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={!!removingPlayerFromCycle}>
-              {t("scheduleOverview.cancel", "Cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemovePlayerFromCycle} disabled={!!removingPlayerFromCycle}>
-              {removingPlayerFromCycle && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Remove Player from Cycle Confirm. handleRemovePlayerFromCycle's own finally
+          clears both removingPlayerFromCycle (shared with the row X-button spinner —
+          keep it shared) and confirmRemoveCyclePlayer, so the handler owns close.
+          variant="default" preserves the original non-destructive confirm button. */}
+      <ConfirmDialog
+        open={!!confirmRemoveCyclePlayer}
+        onOpenChange={(open) => !open && setConfirmRemoveCyclePlayer(null)}
+        title={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+        description={t("scheduleOverview.removeFromCycleConfirm", "Remove {{name}} from all sessions in this cycle?", { name: confirmRemoveCyclePlayer?.name })}
+        confirmLabel={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+        cancelLabel={t("scheduleOverview.cancel", "Cancel")}
+        loading={!!removingPlayerFromCycle}
+        variant="default"
+        onConfirm={handleRemovePlayerFromCycle}
+      />
     </div>
   );
 }

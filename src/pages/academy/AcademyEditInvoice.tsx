@@ -28,16 +28,7 @@ import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoic
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type LineItem = InvoiceFormLineItem;
 
@@ -64,8 +55,10 @@ export default function AcademyEditInvoice() {
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [markPaidConfirmOpen, setMarkPaidConfirmOpen] = useState(false);
   const [markPaidReason, setMarkPaidReason] = useState('');
+  const [markingPaid, setMarkingPaid] = useState(false);
 
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
@@ -397,64 +390,70 @@ export default function AcademyEditInvoice() {
         </div>
       </div>
 
-      {/* Delete / cancel confirmation */}
-      <AlertDialog
+      {/* Delete / cancel confirmation. The old AlertDialog auto-closed on click and ran
+          the delete detached; ConfirmDialog stays open while `deleting` (blocking
+          dismissal + double-fire) and closes on settle — success OR error. */}
+      <ConfirmDialog
         open={deleteConfirmOpen}
         onOpenChange={(open) => { setDeleteConfirmOpen(open); if (!open) setCancelReason(''); }}
+        title={isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}
+        description={isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
+        confirmLabel={isDraft ? t('invoiceEdit.deleteAction') : t('invoiceEdit.cancelAction')}
+        cancelLabel={t('back')}
+        loading={deleting}
+        onConfirm={async () => {
+          setDeleting(true);
+          try {
+            await handleDelete(cancelReason);
+          } finally {
+            setDeleting(false);
+            setDeleteConfirmOpen(false);
+            setCancelReason('');
+          }
+        }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {!isDraft && (
-            <Input
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder={tAcademy('invoices.bulk.cancelReasonPlaceholder', 'Reason (optional) — e.g. email bounced, duplicate')}
-              maxLength={500}
-            />
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('back')}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => handleDelete(cancelReason)}
-            >
-              {isDraft ? t('invoiceEdit.deleteAction') : t('invoiceEdit.cancelAction')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {!isDraft && (
+          <Input
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder={tAcademy('invoices.bulk.cancelReasonPlaceholder', 'Reason (optional) — e.g. email bounced, duplicate')}
+            maxLength={500}
+            disabled={deleting}
+          />
+        )}
+      </ConfirmDialog>
 
-      {/* Mark-as-paid confirmation (with optional reason) */}
-      <AlertDialog
+      {/* Mark-as-paid confirmation (with optional reason). Non-destructive money action →
+          variant="default" (the old AlertDialogAction was a plain primary button). Stays
+          open while `markingPaid` and closes on settle — success OR error. */}
+      <ConfirmDialog
         open={markPaidConfirmOpen}
         onOpenChange={(open) => { setMarkPaidConfirmOpen(open); if (!open) setMarkPaidReason(''); }}
+        title={tAcademy('invoices.markPaidTitle', 'Mark invoice as paid?')}
+        description={tAcademy('invoices.markPaidConfirm', 'This records the invoice as paid. Add an optional note explaining why (e.g. paid in cash).')}
+        confirmLabel={tAcademy('invoices.markPaid', 'Mark as paid')}
+        cancelLabel={t('back')}
+        loading={markingPaid}
+        variant="default"
+        onConfirm={async () => {
+          setMarkingPaid(true);
+          try {
+            await handleMarkPaid(markPaidReason);
+          } finally {
+            setMarkingPaid(false);
+            setMarkPaidConfirmOpen(false);
+            setMarkPaidReason('');
+          }
+        }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tAcademy('invoices.markPaidTitle', 'Mark invoice as paid?')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tAcademy('invoices.markPaidConfirm', 'This records the invoice as paid. Add an optional note explaining why (e.g. paid in cash).')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            value={markPaidReason}
-            onChange={(e) => setMarkPaidReason(e.target.value)}
-            placeholder={tAcademy('invoices.markPaidReasonPlaceholder', 'Reason (optional) — e.g. paid in cash, bank transfer')}
-            maxLength={500}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('back')}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleMarkPaid(markPaidReason)}>
-              {tAcademy('invoices.markPaid', 'Mark as paid')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <Input
+          value={markPaidReason}
+          onChange={(e) => setMarkPaidReason(e.target.value)}
+          placeholder={tAcademy('invoices.markPaidReasonPlaceholder', 'Reason (optional) — e.g. paid in cash, bank transfer')}
+          maxLength={500}
+          disabled={markingPaid}
+        />
+      </ConfirmDialog>
     </>
   );
 }

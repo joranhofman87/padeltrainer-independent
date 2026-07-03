@@ -29,7 +29,7 @@ import { InvoiceStatTiles } from "@/components/invoices/InvoiceStatTiles";
 import { InvoiceListTable } from "@/components/invoices/InvoiceListTable";
 import { InvoiceEmailDialog } from "@/components/invoices/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -765,36 +765,28 @@ export default function TrainerInvoices() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmBulk === "reset"
-                ? t("invoices.bulk.confirmResetTitle", "{{count}} facturen resetten naar concept?", { count: selectedIds.size })
-                : t("invoices.bulk.confirmDeleteTitle", "{{count}} facturen verwijderen?", { count: selectedIds.size })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmBulk === "reset"
-                ? t("invoices.bulk.confirmResetDesc", "Status, verzenddatum en betaaldatum worden gewist. Dit kan niet ongedaan worden gemaakt.")
-                : t("invoices.bulk.confirmDeleteDesc", "Concepten worden definitief verwijderd. Verstuurde facturen worden geannuleerd.")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Annuleren")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                if (confirmBulk === "reset") handleBulkReset();
-                else if (confirmBulk === "delete") handleBulkDelete();
-              }}
-              disabled={bulkRunning}
-            >
-              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              {t("common.confirm", "Bevestigen")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Dual-purpose bulk confirm: reset-to-draft / delete, switched on confirmBulk.
+          The handlers own close (setConfirmBulk(null) after the await settles);
+          loading={bulkRunning} blocks dismissal + double-fire while running.
+          variant="default" preserves the original non-destructive confirm button. */}
+      <ConfirmDialog
+        open={confirmBulk !== null}
+        onOpenChange={(o) => !o && setConfirmBulk(null)}
+        title={confirmBulk === "reset"
+          ? t("invoices.bulk.confirmResetTitle", "{{count}} facturen resetten naar concept?", { count: selectedIds.size })
+          : t("invoices.bulk.confirmDeleteTitle", "{{count}} facturen verwijderen?", { count: selectedIds.size })}
+        description={confirmBulk === "reset"
+          ? t("invoices.bulk.confirmResetDesc", "Status, verzenddatum en betaaldatum worden gewist. Dit kan niet ongedaan worden gemaakt.")
+          : t("invoices.bulk.confirmDeleteDesc", "Concepten worden definitief verwijderd. Verstuurde facturen worden geannuleerd.")}
+        confirmLabel={t("common.confirm", "Bevestigen")}
+        cancelLabel={t("common.cancel", "Annuleren")}
+        loading={bulkRunning}
+        variant="default"
+        onConfirm={() => {
+          if (confirmBulk === "reset") handleBulkReset();
+          else if (confirmBulk === "delete") handleBulkDelete();
+        }}
+      />
     </AppPage>
   );
 }
