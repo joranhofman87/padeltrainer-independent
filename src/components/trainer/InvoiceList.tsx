@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { deleteOrCancelInvoices } from '@/lib/invoices';
@@ -391,18 +391,19 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     <div className="space-y-4">
       {/* Filter */}
       <div className="flex items-center justify-between">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter op status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle facturen</SelectItem>
-            <SelectItem value="draft">Concepten</SelectItem>
-            <SelectItem value="sent">Verzonden</SelectItem>
-            <SelectItem value="paid">Betaald</SelectItem>
-            <SelectItem value="overdue">Verlopen</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+          allLabel="Alle facturen"
+          options={[
+            { value: 'draft', label: 'Concepten' },
+            { value: 'sent', label: 'Verzonden' },
+            { value: 'paid', label: 'Betaald' },
+            { value: 'overdue', label: 'Verlopen' },
+          ]}
+          placeholder="Filter op status"
+          triggerClassName="w-[180px]"
+        />
         <p className="text-sm text-muted-foreground">
           {filteredInvoices.length} facturen
         </p>

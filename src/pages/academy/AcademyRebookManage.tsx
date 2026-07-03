@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -237,38 +237,40 @@ export default function AcademyRebookManage() {
             className="pl-8"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'all' | GroupStatus)}>
-          <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('rebookManage.allStatuses', 'Alle statussen')}</SelectItem>
-            {STATUS_ORDER.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={paymentFilter} onValueChange={(v) => setPaymentFilter(v as PaymentFilter)}>
-          <SelectTrigger className="w-full sm:w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('rebookManage.allPayments', 'Alle betalingen')}</SelectItem>
-            <SelectItem value="unpaid">{t('rebookManage.filterUnpaid', 'Heeft openstaand')}</SelectItem>
-            <SelectItem value="paid">{t('rebookManage.filterPaid', 'Volledig betaald')}</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={(v) => setStatusFilter(v as 'all' | GroupStatus)}
+          allLabel={t('rebookManage.allStatuses', 'Alle statussen')}
+          options={STATUS_ORDER.map((s) => ({ value: s, label: statusLabel(s) }))}
+          triggerClassName="w-full sm:w-[180px]"
+        />
+        <SelectFilter
+          value={paymentFilter}
+          onValueChange={(v) => setPaymentFilter(v as PaymentFilter)}
+          allLabel={t('rebookManage.allPayments', 'Alle betalingen')}
+          options={[
+            { value: 'unpaid', label: t('rebookManage.filterUnpaid', 'Heeft openstaand') },
+            { value: 'paid', label: t('rebookManage.filterPaid', 'Volledig betaald') },
+          ]}
+          triggerClassName="w-full sm:w-[150px]"
+        />
         {trainerOptions.length > 1 && (
-          <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-            <SelectTrigger className="w-full sm:w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('rebookManage.allTrainers', 'Alle trainers')}</SelectItem>
-              {trainerOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={trainerFilter}
+            onValueChange={setTrainerFilter}
+            allLabel={t('rebookManage.allTrainers', 'Alle trainers')}
+            options={trainerOptions.map(([id, name]) => ({ value: id, label: name }))}
+            triggerClassName="w-full sm:w-[160px]"
+          />
         )}
         {locationOptions.length > 1 && (
-          <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger className="w-full sm:w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('rebookManage.allLocations', 'Alle locaties')}</SelectItem>
-              {locationOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={locationFilter}
+            onValueChange={setLocationFilter}
+            allLabel={t('rebookManage.allLocations', 'Alle locaties')}
+            options={locationOptions.map(([id, name]) => ({ value: id, label: name }))}
+            triggerClassName="w-full sm:w-[160px]"
+          />
         )}
       </div>
 

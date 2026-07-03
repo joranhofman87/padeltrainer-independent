@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { AgendaList } from '@/components/agenda/AgendaList';
 import { useAcademyAgenda } from '@/lib/agendaSlots';
 
@@ -97,17 +97,13 @@ export default function AcademyAgenda() {
             </Button>
           )}
         </div>
-        <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder={t('agenda.allTrainers', 'All trainers')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('agenda.allTrainers', 'All trainers')}</SelectItem>
-            {trainers.map((tr) => (
-              <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={trainerFilter}
+          onValueChange={setTrainerFilter}
+          allLabel={t('agenda.allTrainers', 'All trainers')}
+          options={trainers.map((tr) => ({ value: tr.id, label: tr.name }))}
+          triggerClassName="w-[200px]"
+        />
       </div>
 
       {isLoading ? (

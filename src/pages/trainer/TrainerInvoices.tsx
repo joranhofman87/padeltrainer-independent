@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
@@ -575,29 +575,29 @@ export default function TrainerInvoices() {
               searchValue={searchQuery}
               onSearchChange={setSearchQuery}
             >
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                  <SelectItem value="draft">{t("invoices.draft", "Concept")}</SelectItem>
-                  <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                  <SelectItem value="sent">{t("invoices.sent", "Verstuurd")}</SelectItem>
-                  <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
-                  <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
-                  <SelectItem value="cancelled">{t("invoices.cancelled", "Geannuleerd")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
-                <SelectTrigger className="w-[170px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{tDelivery("emailDelivery.filter.all", "All delivery")}</SelectItem>
-                  <SelectItem value="undelivered">{tDelivery("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+                allLabel={t("invoices.allStatuses", "Alle statussen")}
+                options={[
+                  { value: "draft", label: t("invoices.draft", "Concept") },
+                  { value: "open", label: t("invoices.open", "Open") },
+                  { value: "sent", label: t("invoices.sent", "Verstuurd") },
+                  { value: "overdue", label: t("invoices.overdue", "Verlopen") },
+                  { value: "paid", label: t("invoices.paid", "Betaald") },
+                  { value: "cancelled", label: t("invoices.cancelled", "Geannuleerd") },
+                ]}
+                triggerClassName="w-[160px]"
+              />
+              <SelectFilter
+                value={deliveryFilter}
+                onValueChange={setDeliveryFilter}
+                allLabel={tDelivery("emailDelivery.filter.all", "All delivery")}
+                options={[
+                  { value: "undelivered", label: tDelivery("emailDelivery.filter.issue", "Delivery issue") },
+                ]}
+                triggerClassName="w-[170px]"
+              />
             </TableToolbar>
 
             <TabsContent value={activeTab} className="mt-4">
