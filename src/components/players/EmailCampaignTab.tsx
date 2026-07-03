@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -610,79 +610,69 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.trainer')}</Label>
-                  <Select value={filterTrainer} onValueChange={setFilterTrainer}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allTrainers')}</SelectItem>
-                      {trainers.map((tr) => (
-                        <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterTrainer}
+                    onValueChange={setFilterTrainer}
+                    allLabel={t('emailCampaign.recipients.allTrainers')}
+                    options={trainers.map((tr) => ({ value: tr.id, label: tr.name }))}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.location')}</Label>
-                  <Select value={filterLocation} onValueChange={setFilterLocation}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allLocations')}</SelectItem>
-                      {locations.map((l) => (
-                        <SelectItem key={l.id} value={l.name}>{l.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterLocation}
+                    onValueChange={setFilterLocation}
+                    allLabel={t('emailCampaign.recipients.allLocations')}
+                    options={locations.map((l) => ({ value: l.name, label: l.name }))}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.level')}</Label>
-                  <Select value={filterLevel} onValueChange={setFilterLevel}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allLevels')}</SelectItem>
-                      <SelectItem value="beginner">{t('emailCampaign.recipients.beginner')}</SelectItem>
-                      <SelectItem value="intermediate">{t('emailCampaign.recipients.intermediate')}</SelectItem>
-                      <SelectItem value="advanced">{t('emailCampaign.recipients.advanced')}</SelectItem>
-                      <SelectItem value="pro">{t('emailCampaign.recipients.pro')}</SelectItem>
-                      <SelectItem value="unrated">{t('emailCampaign.recipients.unrated')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterLevel}
+                    onValueChange={setFilterLevel}
+                    allLabel={t('emailCampaign.recipients.allLevels')}
+                    options={[
+                      { value: 'beginner', label: t('emailCampaign.recipients.beginner') },
+                      { value: 'intermediate', label: t('emailCampaign.recipients.intermediate') },
+                      { value: 'advanced', label: t('emailCampaign.recipients.advanced') },
+                      { value: 'pro', label: t('emailCampaign.recipients.pro') },
+                      { value: 'unrated', label: t('emailCampaign.recipients.unrated') },
+                    ]}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.activeCyclus')}</Label>
-                  <Select value={filterCyclus} onValueChange={setFilterCyclus}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.all')}</SelectItem>
-                      <SelectItem value="yes">{t('emailCampaign.recipients.yes')}</SelectItem>
-                      <SelectItem value="no">{t('emailCampaign.recipients.no')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterCyclus}
+                    onValueChange={setFilterCyclus}
+                    allLabel={t('emailCampaign.recipients.all')}
+                    options={[
+                      { value: 'yes', label: t('emailCampaign.recipients.yes') },
+                      { value: 'no', label: t('emailCampaign.recipients.no') },
+                    ]}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.tag', 'Tag')}</Label>
-                  <Select value={filterTag} onValueChange={setFilterTag}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allTags', 'All tags')}</SelectItem>
-                      <SelectItem value="untagged">{t('emailCampaign.recipients.untagged', 'Untagged')}</SelectItem>
-                      {tags.map((tag) => (
-                        <SelectItem key={tag.id} value={tag.id}>{tag.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterTag}
+                    onValueChange={setFilterTag}
+                    allLabel={t('emailCampaign.recipients.allTags', 'All tags')}
+                    options={[
+                      { value: 'untagged', label: t('emailCampaign.recipients.untagged', 'Untagged') },
+                      ...tags.map((tag) => ({ value: tag.id, label: tag.name })),
+                    ]}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <Separator />

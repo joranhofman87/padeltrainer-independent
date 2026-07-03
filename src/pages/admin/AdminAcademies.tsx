@@ -17,13 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -278,21 +272,22 @@ export default function AdminAcademies() {
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All academies</SelectItem>
-            <SelectItem value="verified">Verified</SelectItem>
-            <SelectItem value="unverified">Unverified</SelectItem>
-            <SelectItem value="public">Public</SelectItem>
-            <SelectItem value="private">Private</SelectItem>
-            <SelectItem value="active">Subscribed</SelectItem>
-            <SelectItem value="trial">Trial</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          allLabel="All academies"
+          options={[
+            { value: "verified", label: "Verified" },
+            { value: "unverified", label: "Unverified" },
+            { value: "public", label: "Public" },
+            { value: "private", label: "Private" },
+            { value: "active", label: "Subscribed" },
+            { value: "trial", label: "Trial" },
+            { value: "expired", label: "Expired" },
+          ]}
+          placeholder="Filter by status"
+          triggerClassName="w-[180px]"
+        />
       </TableToolbar>
 
       {sortedData.length === 0 ? (

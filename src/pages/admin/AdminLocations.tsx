@@ -29,13 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -357,29 +351,25 @@ export default function AdminLocations() {
           />
         </div>
         <div className="flex flex-wrap gap-3">
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by city" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All cities</SelectItem>
-              {cities.map(city => (
-                <SelectItem key={city} value={city}>
-                  {city}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={verifiedFilter} onValueChange={setVerifiedFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Verified" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="yes">Verified</SelectItem>
-              <SelectItem value="no">Not Verified</SelectItem>
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={selectedCity}
+            onValueChange={setSelectedCity}
+            allLabel="All cities"
+            options={cities.map(city => ({ value: city, label: city }))}
+            placeholder="Filter by city"
+            triggerClassName="w-[180px]"
+          />
+          <SelectFilter
+            value={verifiedFilter}
+            onValueChange={setVerifiedFilter}
+            allLabel="All"
+            options={[
+              { value: 'yes', label: 'Verified' },
+              { value: 'no', label: 'Not Verified' },
+            ]}
+            placeholder="Verified"
+            triggerClassName="w-[150px]"
+          />
           <Button
             variant={showInactive ? 'default' : 'outline'}
             onClick={() => setShowInactive(!showInactive)}

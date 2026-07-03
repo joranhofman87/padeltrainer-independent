@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ListPageShell, ListPageState } from "@/components/ui/list-page-shell";
@@ -108,27 +108,25 @@ export default function AdminGuestPlayers() {
         searchValue={search}
         onSearchChange={setSearch}
       >
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="converted">Converted</SelectItem>
-            <SelectItem value="not_converted">Not converted</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Source" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            {sources.map((s: string) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          allLabel="All statuses"
+          options={[
+            { value: "converted", label: "Converted" },
+            { value: "not_converted", label: "Not converted" },
+          ]}
+          placeholder="Status"
+          triggerClassName="w-[180px]"
+        />
+        <SelectFilter
+          value={sourceFilter}
+          onValueChange={setSourceFilter}
+          allLabel="All sources"
+          options={sources.map((s: string) => ({ value: s, label: s }))}
+          placeholder="Source"
+          triggerClassName="w-[180px]"
+        />
       </TableToolbar>
 
       <ListPageState

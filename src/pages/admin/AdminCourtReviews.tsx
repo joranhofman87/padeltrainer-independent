@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAdminReviews, useUpdateReviewStatus } from '@/hooks/useCourtReviews';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Check, X, Star } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -21,17 +21,17 @@ export default function AdminCourtReviews() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Court Reviews</h1>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filter}
+          onValueChange={setFilter}
+          allLabel="All"
+          options={[
+            { value: 'pending', label: 'Pending' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'rejected', label: 'Rejected' },
+          ]}
+          triggerClassName="w-40"
+        />
       </div>
 
       {isLoading ? (

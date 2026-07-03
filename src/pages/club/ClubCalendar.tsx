@@ -14,13 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { logger } from '@/lib/logger';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { useAuth } from "@/hooks/useAuth";
 import { getUserClubProfiles, getClubTrainerSlots, getClubTrainers } from "@/lib/club";
 import { ClubSlotDetailSheet } from "@/components/club/ClubSlotDetailSheet";
@@ -226,19 +220,13 @@ export default function ClubCalendar() {
               
               {/* Actions and filters */}
               <div className="flex items-center gap-2 flex-wrap">
-                <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
-                  <SelectTrigger className="w-[160px] h-8">
-                    <SelectValue placeholder={t("calendar.allTrainers", "All Trainers")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("calendar.allTrainers", "All Trainers")}</SelectItem>
-                    {trainers.map(trainer => (
-                      <SelectItem key={trainer.id} value={trainer.id}>
-                        {trainer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SelectFilter
+                  value={selectedTrainerId}
+                  onValueChange={setSelectedTrainerId}
+                  allLabel={t("calendar.allTrainers", "All Trainers")}
+                  options={trainers.map(trainer => ({ value: trainer.id, label: trainer.name }))}
+                  triggerClassName="w-[160px] h-8"
+                />
                 
                 <Button variant="outline" size="sm" onClick={() => { setClickedDate(undefined); setClickedTime(undefined); setAddSlotDialogOpen(true); }}>
                   <Plus className="h-4 w-4 mr-1" />
