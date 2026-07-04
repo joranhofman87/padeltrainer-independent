@@ -25,7 +25,9 @@
 ### P0-1 · Upfront rebook invoices undercharge to 1/capacity on `split_payment` cycles
 `supabase/functions/create-group-rebook-invoice/index.ts:105` · `create-rebook-invoice-public/index.ts:150` · root cause `auto-create-invoice/index.ts:129`
 
-**What.** Both upfront-rebook invoice minters call `auto-create-invoice` with `{ bookingIds }` and *deliberately omit* `splitAmongPlayers`, on the stated assumption (in a code comment) that *"single-player batch so the split auto-detect cannot fire → full court price."* **That assumption is false.** `auto-create-invoice:129` fires the split on the slot flag, not the batch:
+> **⚠️ Scope corrected after fix (PR #346).** The original finding lumped in `create-rebook-invoice-public`. That was **wrong** — the two paths have *opposite* correct prices. Only the **group-captain** path undercharges. See "Scope correction" below. Corrected 2026-07-05.
+
+**What (group-captain path only).** `create-group-rebook-invoice` calls `auto-create-invoice` with `{ bookingIds }` and *deliberately omits* `splitAmongPlayers`, on the stated assumption (in a code comment) that *"single-player batch so the split auto-detect cannot fire → full court price."* **That assumption is false.** `auto-create-invoice:129` fires the split on the slot flag, not the batch:
 
 ```ts
 if (!splitAmongPlayers && slot.split_payment === true) {
@@ -34,13 +36,15 @@ if (!splitAmongPlayers && slot.split_payment === true) {
 }
 ```
 
-So on a `split_payment = true` cycle (capacity 4, €40/session), the captain's "whole court" invoice is minted at **€10/session**, not €40. The captain pays 1/4; the other 3 seats are then attached as covered/paid bookings for free. The whole cohort is collected at ~1/capacity of one court fee.
+So on a `split_payment = true` cycle (capacity 4, €40/session), the captain's "whole court" invoice is minted at **€10/session**, not €40. The captain's single payment is meant to cover **every** seat (teammates are attached as record-only paid bookings via `rebook_group_manage`), so it must bill the full court price — but it bills 1/capacity. **The whole cohort is collected at ~1/capacity of one court fee.**
 
-**Why it's real / not caught.** Verified by hand against live code. The auto-detect is capacity-based by design (a correct "G5" decision for the *normal* deferred path, where each player gets their own 1/N invoice and the sum = full court). It's wrong only for the *single-invoice-for-the-whole-court* rebook path. The prior "full price already correct" note was about *not flipping the `split_payment` flag* — correct, but it missed that the mint path auto-divides even without flipping. The one regression test (`rebookPublicGatherScope.pglite.test.ts`) asserts *which* bookings are gathered but never asserts the *amount*, giving false confidence.
+**Why it's real / not caught.** Verified by hand + an independent money-path review against live code. The auto-detect is capacity-based by design (a correct "G5" decision for the *normal* deferred path, where each player gets their own 1/N invoice and the sum = full court). It's wrong only for the *captain-pays-once-for-the-whole-court* path. The prior "full price already correct" note was about *not flipping the `split_payment` flag* — correct, but it missed that the mint path auto-divides even without flipping. The one regression test (`rebookPublicGatherScope.pglite.test.ts`) asserts *which* bookings are gathered but never asserts the *amount*, giving false confidence.
 
-**Blast radius.** Only `split_payment = true` cycles with **upfront** rebooking. Non-split cycles and the deferred path are unaffected. But shared-court pricing is common, so this is likely a live leak.
+**Blast radius.** Only `split_payment = true` cycles with **upfront group** rebooking. Non-split cycles, the deferred path, and the solo path are unaffected. Shared-court pricing is common, so this is likely a live leak.
 
-**Fix.** Pass `splitAmongPlayers: 1` (or add a `forceFullPrice` flag honored by `auto-create-invoice`) in both `create-group-rebook-invoice` and `create-rebook-invoice-public`, so the whole-court mint bills full price regardless of the slot flag. **Add a PGlite test that asserts the minted unit price = full `price_per_session`, not `price_per_session / capacity`.**
+**Fix (shipped, PR #346).** Pass `splitAmongPlayers: 1` in `create-group-rebook-invoice` (`1` ⇒ helper returns null ⇒ no split ⇒ full price). Added `_shared/invoice-split-pricing.test.ts` pinning *both* pricing models (group = full court; solo = share).
+
+**Scope correction — `create-rebook-invoice-public` is CORRECT as-is.** A **solo** claimant rebooking *only their own seat* should pay their **1/capacity share**, not the full court — exactly like the authed sibling `create-rebook-invoice`, whose own comment says *"without any split … would be an N× overcharge on shared cycles"* and deliberately passes the divisor. The public path correctly **omits** the split (auto-detect yields the share). Applying the "fix" there would have **N×-overcharged solo rebookers** — the exact overcharge trap the owner's earlier "don't overcharge the fallback" note warned about. Left unchanged (comment-only clarification in PR #346). *(Open product question: if a solo rebooker on a shared court is instead meant to pay full court price, that's a separate change to both the public path AND the authed `create-rebook-invoice`, which today agree on "share.")*
 
 ---
 
@@ -156,7 +160,7 @@ Frontend auto-deploys (Vercel); **DB migrations + edge fns are applied manually 
 
 ## Prioritized remediation backlog
 
-1. **P0-1** — force full price in `create-group-rebook-invoice` + `create-rebook-invoice-public` (`splitAmongPlayers: 1`) **+ amount-asserting test.** *(money leak, small fix)*
+1. **P0-1** — ✅ **DONE (PR #346, awaiting owner deploy):** force full price in `create-group-rebook-invoice` (`splitAmongPlayers: 1`) + amount-asserting test pinning both models. *(`create-rebook-invoice-public` is correct as-is — see scope correction; do NOT change it.)*
 2. **P1-1** — fix `rebookManage` to read invoices by `rebook_cyclus_id`/`rebook_group_id`/booking overlap. *(academy can't see payments)*
 3. **P1-2** — add the `reminded_at` PGRST fallback. *(deploy-drift landmine)*
 4. **P1-3** — render `total_price` when `price_per_session` is null on the claim card.
