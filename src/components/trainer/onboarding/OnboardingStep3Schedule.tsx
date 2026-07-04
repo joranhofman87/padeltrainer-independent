@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
+import { TimeSelect } from '@/components/ui/time-select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { logger } from '@/lib/logger';
 import { CalendarIcon, Clock, Plus, Trash2, AlertTriangle, CheckCircle2, CalendarPlus, Repeat } from 'lucide-react';
@@ -399,11 +400,10 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
 
                 <div className="flex items-center gap-2 flex-1">
                   <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <Input
-                    type="time"
+                  <TimeSelect
                     value={slotTime}
-                    onChange={(e) => setSlotTime(e.target.value)}
-                    className="flex-1"
+                    onValueChange={setSlotTime}
+                    triggerClassName="flex-1"
                   />
                 </div>
 
@@ -480,11 +480,10 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
 
                 <div className="flex items-center gap-2 flex-1">
                   <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <Input
-                    type="time"
+                  <TimeSelect
                     value={cyclusTime}
-                    onChange={(e) => setCyclusTime(e.target.value)}
-                    className="flex-1"
+                    onValueChange={setCyclusTime}
+                    triggerClassName="flex-1"
                   />
                 </div>
               </div>

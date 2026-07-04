@@ -12,12 +12,11 @@ import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
-import { Loader2, Plus, Trash2, Download, CheckCircle } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface LineItem {
   description: string;
@@ -48,10 +47,6 @@ interface EditInvoiceDialogProps {
   onSaved: () => void;
   trainerId?: string | null;
   academyProfileId?: string | null;
-  onDownloadPdf?: () => void;
-  onMarkPaid?: () => void;
-  onDelete?: () => void;
-  invoiceStatus?: string;
 }
 
 function parseAddress(address?: string | null): { street: string; zipCode: string; city: string } {
@@ -64,7 +59,7 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
   };
 }
 
-export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId, onDownloadPdf, onMarkPaid, onDelete, invoiceStatus }: EditInvoiceDialogProps) {
+export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, academyProfileId }: EditInvoiceDialogProps) {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
 
@@ -75,7 +70,6 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
   const [syncToBookings, setSyncToBookings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Receiver details
   const [playerName, setPlayerName] = useState('');
@@ -257,298 +251,255 @@ export function EditInvoiceDialog({ open, onClose, invoice, onSaved, trainerId, 
 
   if (!invoice) return null;
 
-  const isDraft = invoiceStatus === 'draft';
-
   return (
-    <>
-      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{t('invoiceForm.edit.title')}</DialogTitle>
-            <DialogDescription>{t('invoiceForm.edit.description')}</DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t('invoiceForm.edit.title')}</DialogTitle>
+          <DialogDescription>{t('invoiceForm.edit.description')}</DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-            {/* Receiver details */}
-            <div>
-              <Label className="text-sm font-medium mb-2 block">{t('invoiceForm.receiver.title')}</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder={t('invoiceForm.receiver.name')}
-                  className="text-sm"
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+          {/* Receiver details */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">{t('invoiceForm.receiver.title')}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder={t('invoiceForm.receiver.name')}
+                className="text-sm"
+              />
+              <Input
+                value={playerBusinessName}
+                onChange={(e) => setPlayerBusinessName(e.target.value)}
+                placeholder={t('invoiceForm.receiver.businessNameOptional')}
+                className="text-sm"
+              />
+              <Input
+                value={playerStreet}
+                onChange={(e) => setPlayerStreet(e.target.value)}
+                placeholder={t('invoiceForm.receiver.street')}
+                className="text-sm col-span-2"
+              />
+              <Input
+                value={playerZipCode}
+                onChange={(e) => setPlayerZipCode(e.target.value)}
+                placeholder={t('invoiceForm.receiver.zipCode')}
+                className="text-sm"
+              />
+              <Input
+                value={playerCity}
+                onChange={(e) => setPlayerCity(e.target.value)}
+                placeholder={t('invoiceForm.receiver.city')}
+                className="text-sm"
+              />
+              <Input
+                value={playerBtwNumber}
+                onChange={(e) => setPlayerBtwNumber(e.target.value)}
+                placeholder={t('invoiceForm.receiver.btwNumberOptional')}
+                className="text-sm col-span-2"
+              />
+            </div>
+          </div>
+
+          {/* Line items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium">{t('invoiceForm.lineItems.title')}</Label>
+              <div className="flex items-center gap-1">
+                <ExtraCostPresetPicker
+                  trainerId={trainerId}
+                  academyProfileId={academyProfileId}
+                  onSelect={(cost) => {
+                    setLineItems(prev => [...prev, {
+                      description: cost.description,
+                      quantity: 1,
+                      unit_price: cost.price,
+                      amount: cost.price,
+                      vat_rate: cost.vat_rate,
+                    }]);
+                  }}
                 />
-                <Input
-                  value={playerBusinessName}
-                  onChange={(e) => setPlayerBusinessName(e.target.value)}
-                  placeholder={t('invoiceForm.receiver.businessNameOptional')}
-                  className="text-sm"
-                />
-                <Input
-                  value={playerStreet}
-                  onChange={(e) => setPlayerStreet(e.target.value)}
-                  placeholder={t('invoiceForm.receiver.street')}
-                  className="text-sm col-span-2"
-                />
-                <Input
-                  value={playerZipCode}
-                  onChange={(e) => setPlayerZipCode(e.target.value)}
-                  placeholder={t('invoiceForm.receiver.zipCode')}
-                  className="text-sm"
-                />
-                <Input
-                  value={playerCity}
-                  onChange={(e) => setPlayerCity(e.target.value)}
-                  placeholder={t('invoiceForm.receiver.city')}
-                  className="text-sm"
-                />
-                <Input
-                  value={playerBtwNumber}
-                  onChange={(e) => setPlayerBtwNumber(e.target.value)}
-                  placeholder={t('invoiceForm.receiver.btwNumberOptional')}
-                  className="text-sm col-span-2"
-                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setLineItems(prev => [...prev, {
+                      description: '',
+                      quantity: 1,
+                      unit_price: 0,
+                      amount: 0,
+                      vat_rate: vatRate,
+                    }]);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {t('invoiceForm.lineItems.addRow')}
+                </Button>
               </div>
             </div>
-
-            {/* Line items */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-sm font-medium">{t('invoiceForm.lineItems.title')}</Label>
-                <div className="flex items-center gap-1">
-                  <ExtraCostPresetPicker
-                    trainerId={trainerId}
-                    academyProfileId={academyProfileId}
-                    onSelect={(cost) => {
-                      setLineItems(prev => [...prev, {
-                        description: cost.description,
-                        quantity: 1,
-                        unit_price: cost.price,
-                        amount: cost.price,
-                        vat_rate: cost.vat_rate,
-                      }]);
-                    }}
+            <div className="space-y-2">
+              <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
+                <span>{t('invoiceForm.lineItems.description')}</span>
+                <span>{t('invoiceForm.lineItems.quantity')}</span>
+                <span>{t('invoiceForm.lineItems.price')}</span>
+                <span>{t('invoiceForm.lineItems.vatPercent')}</span>
+                <span>{t('invoiceForm.lineItems.total')}</span>
+                <span></span>
+              </div>
+              {lineItems.map((li, i) => (
+                <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
+                  <Input
+                    value={li.description}
+                    onChange={(e) => updateLineItem(i, 'description', e.target.value)}
+                    placeholder={t('invoiceForm.lineItems.descriptionPlaceholder')}
+                    className="text-sm"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => {
-                      setLineItems(prev => [...prev, {
-                        description: '',
-                        quantity: 1,
-                        unit_price: 0,
-                        amount: 0,
-                        vat_rate: vatRate,
-                      }]);
+                  <Input
+                    type="number"
+                    value={li.quantity === 0 ? '' : li.quantity}
+                    onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                    onBlur={() => {
+                      if (!li.quantity || li.quantity < 1) {
+                        updateLineItem(i, 'quantity', 1);
+                      }
                     }}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    {t('invoiceForm.lineItems.addRow')}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center text-xs font-medium text-muted-foreground px-1">
-                  <span>{t('invoiceForm.lineItems.description')}</span>
-                  <span>{t('invoiceForm.lineItems.quantity')}</span>
-                  <span>{t('invoiceForm.lineItems.price')}</span>
-                  <span>{t('invoiceForm.lineItems.vatPercent')}</span>
-                  <span>{t('invoiceForm.lineItems.total')}</span>
-                  <span></span>
-                </div>
-                {lineItems.map((li, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_4rem_5rem_4rem_5rem_2rem] gap-2 items-center">
-                    <Input
-                      value={li.description}
-                      onChange={(e) => updateLineItem(i, 'description', e.target.value)}
-                      placeholder={t('invoiceForm.lineItems.descriptionPlaceholder')}
-                      className="text-sm"
-                    />
+                    placeholder={t('invoiceForm.lineItems.quantity')}
+                    className="text-sm"
+                    min={1}
+                  />
+                  <Input
+                    type="number"
+                    value={li.unit_price || ''}
+                    onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
+                    placeholder={t('invoiceForm.lineItems.price')}
+                    className="text-sm"
+                    step="0.01"
+                    min={0}
+                  />
+                  <div className="relative">
                     <Input
                       type="number"
-                      value={li.quantity === 0 ? '' : li.quantity}
-                      onChange={(e) => updateLineItem(i, 'quantity', e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
-                      onBlur={() => {
-                        if (!li.quantity || li.quantity < 1) {
-                          updateLineItem(i, 'quantity', 1);
-                        }
-                      }}
-                      placeholder={t('invoiceForm.lineItems.quantity')}
-                      className="text-sm"
-                      min={1}
-                    />
-                    <Input
-                      type="number"
-                      value={li.unit_price || ''}
-                      onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
-                      placeholder={t('invoiceForm.lineItems.price')}
-                      className="text-sm"
-                      step="0.01"
-                      min={0}
-                    />
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        value={li.vat_rate || ''}
-                        onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)}
-                        className="text-sm pr-5"
-                        min={0}
-                        max={100}
-                        step={1}
-                      />
-                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                    </div>
-                    <div className="text-right text-sm font-medium py-2">
-                      {formatCurrency(li.quantity * li.unit_price)}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon" aria-label="Delete"
-                      className="h-7 w-7"
-                      onClick={() => removeLineItem(i)}
-                      disabled={lineItems.length <= 1}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Prices include VAT toggle */}
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">{t('invoiceForm.totals.pricesIncludeVat')}</Label>
-              <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
-            </div>
-
-            {/* Totals */}
-            <div className="border-t pt-3 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
-                Object.entries(vatBreakdown)
-                  .sort(([a], [b]) => Number(a) - Number(b))
-                  .map(([rate, data]) => (
-                    <div key={rate} className="flex justify-between">
-                      <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span>
-                      <span>{formatCurrency(data.vat)}</span>
-                    </div>
-                  ))
-              ) : (
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    {t('invoiceForm.totals.vat')}
-                    <Input
-                      type="number"
-                      value={vatRate}
-                      onChange={(e) => setVatRate(Number(e.target.value) || 0)}
-                      className="w-16 h-7 text-sm inline"
+                      value={li.vat_rate || ''}
+                      onChange={(e) => updateLineItem(i, 'vat_rate', e.target.value)}
+                      className="text-sm pr-5"
                       min={0}
                       max={100}
                       step={1}
                     />
-                    %
-                  </span>
-                  <span>{formatCurrency(vatAmount)}</span>
+                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                  <div className="text-right text-sm font-medium py-2">
+                    {formatCurrency(li.quantity * li.unit_price)}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon" aria-label="Delete"
+                    className="h-7 w-7"
+                    onClick={() => removeLineItem(i)}
+                    disabled={lineItems.length <= 1}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
                 </div>
-              )}
-              <div className="flex justify-between font-bold text-base border-t pt-2">
-                <span>{t('invoiceForm.totals.total')}</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
+              ))}
             </div>
-
-            {/* Due date */}
-            <div className="flex items-center gap-4">
-              <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
-              <DatePickerPopover
-                value={dueDate}
-                onChange={setDueDate}
-                placeholder={t('invoiceForm.dueDate.selectDate')}
-                size="sm"
-              />
-            </div>
-
-            {/* Notes */}
-            <div>
-              <Label className="text-sm mb-1 block">{t('invoiceForm.notes.label')}</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('invoiceForm.notes.placeholder')}
-                rows={2}
-              />
-            </div>
-
-            {/* Sync checkbox */}
-            {hasPriceChanges && hasBookings && (
-              <div className="flex items-center space-x-2 bg-muted/50 p-3 rounded-md">
-                <Checkbox
-                  id="sync-bookings"
-                  checked={syncToBookings}
-                  onCheckedChange={(v) => setSyncToBookings(v === true)}
-                />
-                <Label htmlFor="sync-bookings" className="text-sm cursor-pointer">
-                  {t('invoiceForm.edit.syncToBookings')}
-                </Label>
-              </div>
-            )}
           </div>
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {/* Management actions on the left */}
-            <div className="flex gap-2 mr-auto">
-              {onDownloadPdf && (
-                <Button type="button" variant="outline" size="sm" onClick={onDownloadPdf}>
-                  <Download className="h-4 w-4 mr-2" />
-                  {t('invoiceForm.actions.downloadPdf')}
-                </Button>
-              )}
-              {onMarkPaid && (
-                <Button type="button" variant="outline" size="sm" onClick={onMarkPaid}>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  {t('invoiceForm.actions.markPaid')}
-                </Button>
-              )}
-              {onDelete && (
-                <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteConfirmOpen(true)}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  {isDraft ? t('invoiceForm.actions.deleteInvoice') : t('invoiceForm.actions.cancelInvoice')}
-                </Button>
-              )}
-            </div>
-            {/* Save / Cancel on the right */}
-            <Button variant="outline" onClick={onClose} disabled={saving}>{t('invoiceForm.actions.cancel')}</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {t('invoiceForm.edit.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {/* Prices include VAT toggle */}
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">{t('invoiceForm.totals.pricesIncludeVat')}</Label>
+            <Switch checked={pricesIncludeVat} onCheckedChange={setPricesIncludeVat} />
+          </div>
 
-      {/* Delete confirmation — onDelete is a synchronous parent callback (fire-and-forget),
-          so there is no in-flight state; onConfirm closes explicitly. */}
-      <ConfirmDialog
-        open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
-        title={isDraft ? t('invoiceForm.deleteDialog.deleteTitle') : t('invoiceForm.deleteDialog.cancelTitle')}
-        description={isDraft
-          ? t('invoiceForm.deleteDialog.deleteDescription')
-          : t('invoiceForm.deleteDialog.cancelDescription')}
-        confirmLabel={isDraft ? t('invoiceForm.deleteDialog.delete') : t('invoiceForm.deleteDialog.cancelInvoice')}
-        cancelLabel={t('invoiceForm.deleteDialog.back')}
-        onConfirm={() => {
-          onDelete?.();
-          setDeleteConfirmOpen(false);
-        }}
-      />
-    </>
+          {/* Totals */}
+          <div className="border-t pt-3 space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t('invoiceForm.totals.subtotal')}</span>
+              <span>{formatCurrency(subtotal)}</span>
+            </div>
+            {vatBreakdown && Object.keys(vatBreakdown).length > 1 ? (
+              Object.entries(vatBreakdown)
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([rate, data]) => (
+                  <div key={rate} className="flex justify-between">
+                    <span className="text-muted-foreground">{t('invoiceForm.totals.vatLabel', { rate })}</span>
+                    <span>{formatCurrency(data.vat)}</span>
+                  </div>
+                ))
+            ) : (
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-muted-foreground flex items-center gap-2">
+                  {t('invoiceForm.totals.vat')}
+                  <Input
+                    type="number"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value) || 0)}
+                    className="w-16 h-7 text-sm inline"
+                    min={0}
+                    max={100}
+                    step={1}
+                  />
+                  %
+                </span>
+                <span>{formatCurrency(vatAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-base border-t pt-2">
+              <span>{t('invoiceForm.totals.total')}</span>
+              <span>{formatCurrency(total)}</span>
+            </div>
+          </div>
+
+          {/* Due date */}
+          <div className="flex items-center gap-4">
+            <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
+            <DatePickerPopover
+              value={dueDate}
+              onChange={setDueDate}
+              placeholder={t('invoiceForm.dueDate.selectDate')}
+              size="sm"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <Label className="text-sm mb-1 block">{t('invoiceForm.notes.label')}</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t('invoiceForm.notes.placeholder')}
+              rows={2}
+            />
+          </div>
+
+          {/* Sync checkbox */}
+          {hasPriceChanges && hasBookings && (
+            <div className="flex items-center space-x-2 bg-muted/50 p-3 rounded-md">
+              <Checkbox
+                id="sync-bookings"
+                checked={syncToBookings}
+                onCheckedChange={(v) => setSyncToBookings(v === true)}
+              />
+              <Label htmlFor="sync-bookings" className="text-sm cursor-pointer">
+                {t('invoiceForm.edit.syncToBookings')}
+              </Label>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving}>{t('invoiceForm.actions.cancel')}</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {t('invoiceForm.edit.save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

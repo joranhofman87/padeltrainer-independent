@@ -1057,7 +1057,7 @@ export default function AcademyInvoices() {
       {/* Dual-purpose bulk confirm: reset-to-draft / delete, switched on confirmBulk.
           The handlers own close (setConfirmBulk(null) after the await settles);
           loading={bulkRunning} blocks dismissal + double-fire while running.
-          variant="default" preserves the original non-destructive confirm button. */}
+          Only the delete branch gets the destructive-red confirm button; reset stays plain. */}
       <ConfirmDialog
         open={confirmBulk !== null}
         onOpenChange={(o) => { if (!o) { setConfirmBulk(null); setBulkCancelReason(""); } }}
@@ -1070,7 +1070,7 @@ export default function AcademyInvoices() {
         confirmLabel={t("common.confirm", "Confirm")}
         cancelLabel={t("common.cancel", "Cancel")}
         loading={bulkRunning}
-        variant="default"
+        variant={confirmBulk === "delete" ? "destructive" : "default"}
         onConfirm={() => {
           if (confirmBulk === "reset") handleBulkReset();
           else if (confirmBulk === "delete") handleBulkDelete();

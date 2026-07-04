@@ -14,6 +14,7 @@ import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MoneyInput } from '@/components/ui/money-input';
+import { TimeSelect } from '@/components/ui/time-select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -981,7 +982,13 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.startTime', 'Start Time')}</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      {/* RHF field: ref/onBlur are intentionally dropped — no blur validation on
+                          these fields (plain z.string().default(...), form mode = onSubmit). */}
+                      <TimeSelect
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        ariaLabel={t('form.startTime', 'Start Time')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -994,7 +1001,11 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.endTime', 'End Time')}</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <TimeSelect
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        ariaLabel={t('form.endTime', 'End Time')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -5,6 +5,7 @@ import { Loader2, Save, X, DollarSign, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateInputField } from '@/components/ui/date-input-field';
+import { TimeSelect } from '@/components/ui/time-select';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -197,7 +198,7 @@ export function SlotEditForm({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">{tRole('calendar.time', 'Time')}</Label>
-          <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <TimeSelect value={startTime} onValueChange={setStartTime} />
         </div>
       </div>
 

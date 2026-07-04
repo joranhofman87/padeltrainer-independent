@@ -46,13 +46,22 @@ export function TimeSelect({
   ariaLabel,
   id,
 }: TimeSelectProps) {
+  // Legacy tolerance: sites migrated from free-entry <input type="time"> may hold an
+  // off-grid stored value (e.g. "09:15"). Splice it into the list (sorted) so the
+  // trigger never renders blank and the value stays selectable until changed — new
+  // picks still snap to the half-hour grid. No-op when the value is on-grid.
+  const renderedOptions =
+    value && !options.includes(value)
+      ? [...options, value].sort()
+      : options;
+
   return (
     <Select value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={ariaLabel} className={cn(triggerClassName)}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        {options.map((time) => (
+        {renderedOptions.map((time) => (
           <SelectItem key={time} value={time}>
             {time}
           </SelectItem>
