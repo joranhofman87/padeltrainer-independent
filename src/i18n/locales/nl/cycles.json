@@ -889,6 +889,7 @@
     "browse": "Bekijk beschikbare plekken",
     "perSession": "{{amount}} per sessie",
     "termTotal": "{{total}} voor de hele termijn ({{count}} sessies)",
+    "termTotalFlat": "{{total}} voor de hele termijn",
     "cardTitle": "Hou je je vaste plek?",
     "cardDescription": "Je hebt voorrang om je plek voor de volgende cyclus te houden. Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.",
     "toastReserved": "Top! Je plek is gereserveerd voor de volgende cyclus.",

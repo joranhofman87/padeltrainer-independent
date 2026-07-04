@@ -338,7 +338,7 @@ export default function PriorityClaimPage() {
               {t('rebooking.cycleStarts', 'The new cycle starts on {{date}}.', { date: formatDate(`${cycleStartDate}T12:00:00`, 'd MMMM yyyy') })}
             </p>
           )}
-          {data.slot.price_per_session && (
+          {data.slot.price_per_session ? (
             <div className="flex items-start gap-3">
               <MapPin className="h-5 w-5 mt-0.5 text-muted-foreground" />
               <div className="text-sm">
@@ -353,8 +353,18 @@ export default function PriorityClaimPage() {
                 )}
               </div>
             </div>
-          )}
-          {data.slot.price_per_session && (
+          ) : data.slot.total_price ? (
+            /* Court-priced slot (per-session null): total_price is already the whole-term total. */
+            <div className="flex items-start gap-3">
+              <MapPin className="h-5 w-5 mt-0.5 text-muted-foreground" />
+              <div className="text-sm font-medium text-foreground">
+                {t('rebooking.termTotalFlat', '{{total}} for the full term', {
+                  total: formatCurrency(Number(data.slot.total_price)),
+                })}
+              </div>
+            </div>
+          ) : null}
+          {(data.slot.price_per_session || data.slot.total_price) && (
             <p className="text-xs text-muted-foreground">
               {paymentMode === 'upfront'
                 ? t('rebooking.payNow', 'You pay for the new cycle right away when you confirm your spot.')
