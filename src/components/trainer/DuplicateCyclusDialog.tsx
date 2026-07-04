@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
+import { TimeSelect } from "@/components/ui/time-select";
 import { supabase } from "@/lib/supabaseClient";
 import { insertBookings } from "@/lib/bookings";
 import { createCycle, getCycle, type Cycle } from "@/lib/cycles";
@@ -384,11 +385,10 @@ export function DuplicateCyclusDialog({
             <Label>{t("calendar.startTime", "Start Time")}</Label>
             <div className="relative">
               <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="time"
+              <TimeSelect
                 value={newStartTime}
-                onChange={(e) => setNewStartTime(e.target.value)}
-                className="pl-9"
+                onValueChange={setNewStartTime}
+                triggerClassName="pl-9"
               />
             </div>
             <p className="text-xs text-muted-foreground">

@@ -635,12 +635,6 @@
       "additionalCriteriaHelp": "Voer eventuele extra regels in als vrije tekst. AI interpreteert en past deze toe bij het genereren van voorstellen.",
       "draftRestored": "Je vorige configuratie is hersteld"
     },
-    "guard": {
-      "title": "Belangrijk",
-      "description": "Om voorstellen te genereren, moet je eerst slots of trainingscycli in je agenda aanmaken. zodra de slots zijn aangemaakt, kunnen we spelers matchen op basis van hun beschikbaarheid en voorkeuren.",
-      "goToCalendar": "Ga naar agenda",
-      "continue": "Doorgaan"
-    },
     "statusBadges": {
       "approved": "Goedgekeurd",
       "rejected": "Afgewezen",

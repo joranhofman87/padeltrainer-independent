@@ -768,7 +768,7 @@ export default function TrainerInvoices() {
       {/* Dual-purpose bulk confirm: reset-to-draft / delete, switched on confirmBulk.
           The handlers own close (setConfirmBulk(null) after the await settles);
           loading={bulkRunning} blocks dismissal + double-fire while running.
-          variant="default" preserves the original non-destructive confirm button. */}
+          Only the delete branch gets the destructive-red confirm button; reset stays plain. */}
       <ConfirmDialog
         open={confirmBulk !== null}
         onOpenChange={(o) => !o && setConfirmBulk(null)}
@@ -781,7 +781,7 @@ export default function TrainerInvoices() {
         confirmLabel={t("common.confirm", "Bevestigen")}
         cancelLabel={t("common.cancel", "Annuleren")}
         loading={bulkRunning}
-        variant="default"
+        variant={confirmBulk === "delete" ? "destructive" : "default"}
         onConfirm={() => {
           if (confirmBulk === "reset") handleBulkReset();
           else if (confirmBulk === "delete") handleBulkDelete();

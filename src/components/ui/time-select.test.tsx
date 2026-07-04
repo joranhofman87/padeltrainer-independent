@@ -14,6 +14,12 @@ describe("TimeSelect", () => {
     expect(trigger).toHaveTextContent("09:00");
   });
 
+  it("renders a legacy OFF-GRID value in the trigger instead of a blank (splices it into the options)", () => {
+    // Sites migrated from free-entry <input type="time"> can hold e.g. "09:15".
+    render(<TimeSelect value="09:15" onValueChange={() => {}} ariaLabel="Start time" />);
+    expect(screen.getByRole("combobox", { name: "Start time" })).toHaveTextContent("09:15");
+  });
+
   it("can be disabled", () => {
     render(
       <TimeSelect value="09:00" onValueChange={() => {}} ariaLabel="Start time" disabled />,

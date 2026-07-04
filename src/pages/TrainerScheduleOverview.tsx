@@ -19,6 +19,7 @@ import { mergeNewBookingIdsIntoCycleInvoices, syncInvoicesAfterCycleEdit } from 
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { TimeSelect } from "@/components/ui/time-select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1386,18 +1387,16 @@ export default function TrainerScheduleOverview() {
             <div className="space-y-2">
               <Label>{t("scheduleOverview.time", "Time")}</Label>
               <div className="flex items-center gap-2">
-                <Input
-                  type="time"
+                <TimeSelect
                   value={cycleEditData.startTime}
-                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, startTime: e.target.value }))}
-                  className="flex-1"
+                  onValueChange={(v) => setCycleEditData((prev) => ({ ...prev, startTime: v }))}
+                  triggerClassName="flex-1"
                 />
                 <span className="text-muted-foreground">—</span>
-                <Input
-                  type="time"
+                <TimeSelect
                   value={cycleEditData.endTime}
-                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, endTime: e.target.value }))}
-                  className="flex-1"
+                  onValueChange={(v) => setCycleEditData((prev) => ({ ...prev, endTime: v }))}
+                  triggerClassName="flex-1"
                 />
               </div>
             </div>
