@@ -773,6 +773,7 @@
     "browse": "Browse available spots",
     "perSession": "{{amount}} per session",
     "termTotal": "{{total}} for the full term ({{count}} sessions)",
+    "termTotalFlat": "{{total}} for the full term",
     "cardTitle": "Keep your spot?",
     "cardDescription": "You have priority to keep your spot for the next cycle. You only pay when the cycle starts; the price is split between the players who join.",
     "toastReserved": "Great! Your spot is reserved for the next cycle.",
