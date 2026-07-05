@@ -102,10 +102,12 @@ serve(async (req: Request) => {
     const bookingIds = [...new Set((capClaims ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean))] as string[];
     if (bookingIds.length === 0) return json({ ok: false, reason: "nothing_booked" });
 
-    // 3) Mint ONE invoice for the captain at the FULL price (OMIT splitAmongPlayers; single-player
-    //    batch so the split auto-detect cannot fire) → price_per_session × weeks = the court price.
+    // 3) Mint ONE invoice for the captain at the FULL court price. splitAmongPlayers:1 forces
+    //    no-split: auto-create-invoice otherwise auto-detects a split from slot.split_payment=true
+    //    (÷ court capacity, NOT payer count), which would bill the captain 1/capacity for the whole
+    //    court in this pay-once-for-the-group model. (1 ⇒ helper returns null ⇒ full price.)
     const { data: aci, error: aciErr } = await admin.functions.invoke("auto-create-invoice", {
-      body: { bookingIds, asDraft: false },
+      body: { bookingIds, asDraft: false, splitAmongPlayers: 1 },
       headers: serviceAuth,
     });
     if (aciErr) return json({ ok: false, reason: "mint_failed", message: String(aciErr) });
