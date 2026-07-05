@@ -13,6 +13,7 @@ import { getActiveLocations, Location } from '@/lib/locations';
 import { claimClub, getUserClubProfiles, isLocationClaimed } from '@/lib/club';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { validatePhone } from '@/lib/validation';
@@ -172,11 +173,7 @@ export default function ClubOnboarding() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   return (

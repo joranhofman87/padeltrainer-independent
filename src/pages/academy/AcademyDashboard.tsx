@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { SubscriptionTrialBanner } from '@/components/ui/subscription-trial-banner';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -282,30 +283,24 @@ export default function AcademyDashboard() {
 
       {/* Trial Banner */}
       {isTrialing && trialDaysRemaining > 0 && (
-        <Alert className="mb-6 border-primary bg-primary/5">
-          <Clock className="h-4 w-4" />
-          <AlertTitle>{t('subscription.trialActive')}</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>{t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/subscription')}>
-              {t('subscription.upgradeNow')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <SubscriptionTrialBanner
+          expired={false}
+          title={t('subscription.trialActive')}
+          message={t('subscription.trialDaysRemaining', { days: trialDaysRemaining })}
+          ctaLabel={t('subscription.upgradeNow')}
+          onCtaClick={() => navigate('/app/academy/subscription')}
+        />
       )}
 
       {/* Trial Expired Banner */}
       {isTrialExpired && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>{t('subscription.trialExpired')}</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>{t('subscription.subscribeToAccess')}</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/app/academy/subscription')}>
-              {t('subscription.upgradeNow')}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <SubscriptionTrialBanner
+          expired
+          title={t('subscription.trialExpired')}
+          message={t('subscription.subscribeToAccess')}
+          ctaLabel={t('subscription.upgradeNow')}
+          onCtaClick={() => navigate('/app/academy/subscription')}
+        />
       )}
 
       {/* Subscription Alert */}

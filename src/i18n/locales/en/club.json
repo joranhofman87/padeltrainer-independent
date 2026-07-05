@@ -188,7 +188,11 @@
     "active": "Active",
     "notes": "Notes",
     "deleteConfirm": "Are you sure you want to remove this player?",
-    "deleteConfirmDescription": "This action cannot be undone."
+    "deleteConfirmDescription": "This action cannot be undone.",
+    "searchPlaceholder": "Search by name or email",
+    "noResults": "No players match your search",
+    "countOne": "player",
+    "countOther": "players"
   },
   "profile": {
     "title": "Club Profile",

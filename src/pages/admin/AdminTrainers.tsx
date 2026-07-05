@@ -17,13 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -156,19 +150,20 @@ export default function AdminTrainers() {
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All trainers</SelectItem>
-            <SelectItem value="public">Public</SelectItem>
-            <SelectItem value="private">Private</SelectItem>
-            <SelectItem value="active">Subscribed</SelectItem>
-            <SelectItem value="trial">Trial</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          allLabel="All trainers"
+          options={[
+            { value: "public", label: "Public" },
+            { value: "private", label: "Private" },
+            { value: "active", label: "Subscribed" },
+            { value: "trial", label: "Trial" },
+            { value: "expired", label: "Expired" },
+          ]}
+          placeholder="Filter by status"
+          triggerClassName="w-[180px]"
+        />
       </TableToolbar>
 
       {filteredTrainers.length === 0 ? (

@@ -22,13 +22,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import AgendaWeekByTrainer, { type AgendaSlot } from "@/components/agenda/AgendaWeekByTrainer";
 import AgendaMonth from "@/components/agenda/AgendaMonth";
 import { useAcademyContext } from "@/components/academy/AcademyLayout";
@@ -773,31 +767,23 @@ export default function AcademyCalendar() {
                   <PopoverContent align="end" className="w-72 space-y-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t("calendar.trainer", "Trainer")}</Label>
-                      <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t("calendar.allTrainers", "All trainers")}</SelectItem>
-                          {trainers.map((tr) => (
-                            <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <SelectFilter
+                        value={selectedTrainerId}
+                        onValueChange={setSelectedTrainerId}
+                        allLabel={t("calendar.allTrainers", "All trainers")}
+                        options={trainers.map((tr) => ({ value: tr.id, label: tr.name }))}
+                        triggerClassName="h-9"
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">{t("calendar.location", "Location")}</Label>
-                      <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t("calendar.allLocations", "All locations")}</SelectItem>
-                          {locations.map((loc) => (
-                            <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <SelectFilter
+                        value={selectedLocationId}
+                        onValueChange={setSelectedLocationId}
+                        allLabel={t("calendar.allLocations", "All locations")}
+                        options={locations.map((loc) => ({ value: loc.id, label: loc.name }))}
+                        triggerClassName="h-9"
+                      />
                     </div>
                     {filtersActive && (
                       <Button

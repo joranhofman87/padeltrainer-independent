@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { BookingStatusBadge } from '@/components/player/BookingStatusBadge';
+import { BookingStatusBadge } from '@/components/booking/BookingStatusBadge';
+import { PaymentStatusBadge } from '@/components/booking/PaymentStatusBadge';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, Clock, MapPin, User, Star, FileText, CalendarPlus, CalendarX } from 'lucide-react';
 import { isPast, parseISO } from 'date-fns';
@@ -132,14 +133,14 @@ export default function PlayerBookings() {
     if (!paymentStatus) return null;
     switch (paymentStatus) {
       case 'paid':
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent">{t('bookings.payment.paid')}</Badge>;
+        return <PaymentStatusBadge kind="paid" label={t('bookings.payment.paid')} />;
       case 'waived':
-        return <Badge variant="outline">{t('bookings.payment.waived')}</Badge>;
+        return <PaymentStatusBadge kind="waived" label={t('bookings.payment.waived')} />;
       case 'refunded':
-        return <Badge variant="outline">{t('bookings.payment.refunded')}</Badge>;
+        return <PaymentStatusBadge kind="refunded" label={t('bookings.payment.refunded')} />;
       case 'pending':
         if (['confirmed', 'pending', 'pending_approval'].includes(bookingStatus)) {
-          return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 border-transparent">{t('bookings.payment.unpaid')}</Badge>;
+          return <PaymentStatusBadge kind="unpaid" label={t('bookings.payment.unpaid')} />;
         }
         return null;
       default:

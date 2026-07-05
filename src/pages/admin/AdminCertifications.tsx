@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import {
   Dialog,
   DialogContent,
@@ -38,23 +39,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
   Plus,
   Edit,
   Trash2,
-  Loader2,
   ShieldAlert,
   Award,
   Target,
@@ -87,6 +78,7 @@ export default function AdminCertifications() {
   const [certForm, setCertForm] = useState({ name: '', country: 'NL', description: '' });
   const [specForm, setSpecForm] = useState({ name: '', description: '' });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -239,8 +231,9 @@ export default function AdminCertifications() {
   };
 
   const handleDelete = async () => {
-    if (!deletingItem) return;
-    
+    if (!deletingItem || deleting) return;
+
+    setDeleting(true);
     try {
       if (deletingItem.type === 'cert') {
         await deleteCertification(deletingItem.id);
@@ -252,17 +245,14 @@ export default function AdminCertifications() {
     } catch {
       toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
     } finally {
+      setDeleting(false);
       setDeleteDialogOpen(false);
       setDeletingItem(null);
     }
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (!isAdmin) {
@@ -549,23 +539,21 @@ export default function AdminCertifications() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deletingItem?.type === 'cert' ? 'Certification' : 'Specialization'}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deletingItem?.name}"? This action cannot be undone.
-              Trainers who have this selected will keep it until they update their profile.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title={<>Delete {deletingItem?.type === 'cert' ? 'Certification' : 'Specialization'}?</>}
+        description={
+          <>
+            Are you sure you want to delete "{deletingItem?.name}"? This action cannot be undone.
+            Trainers who have this selected will keep it until they update their profile.
+          </>
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

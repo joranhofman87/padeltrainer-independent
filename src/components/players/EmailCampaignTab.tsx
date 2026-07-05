@@ -11,15 +11,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Send, Save, FileText, History, Loader2, Users, Eye,
   Trash2, Pencil, X, Plus, FlaskConical, Search, RotateCcw,
@@ -119,6 +120,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
+  const [isDeletingDraft, setIsDeletingDraft] = useState(false);
 
   // Manual recipient management
   const [recipients, setRecipients] = useState<{ id: string; full_name: string; email: string; isManual?: boolean }[]>([]);
@@ -289,7 +291,6 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
   const handleSendCampaign = async () => {
-    setShowConfirmSend(false);
     setIsSending(true);
 
     try {
@@ -371,6 +372,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       toast({ title: t('emailCampaign.toasts.error'), description: getFriendlyErrorMessage(err, t('emailCampaign.toasts.campaignError')), variant: 'destructive' });
     } finally {
       setIsSending(false);
+      setShowConfirmSend(false);
     }
   };
 
@@ -507,7 +509,7 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
   };
 
   const handleDeleteDraft = async (id: string) => {
-    setConfirmDeleteDraftId(null);
+    setIsDeletingDraft(true);
     try {
       await supabase.from('email_campaign_recipients').delete().eq('campaign_id', id);
       await supabase.from('email_campaigns').delete().eq('id', id);
@@ -516,6 +518,9 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       fetchCampaigns();
     } catch (err) {
       logger.error('Error deleting draft', err as Error);
+    } finally {
+      setIsDeletingDraft(false);
+      setConfirmDeleteDraftId(null);
     }
   };
 
@@ -605,79 +610,69 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.trainer')}</Label>
-                  <Select value={filterTrainer} onValueChange={setFilterTrainer}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allTrainers')}</SelectItem>
-                      {trainers.map((tr) => (
-                        <SelectItem key={tr.id} value={tr.id}>{tr.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterTrainer}
+                    onValueChange={setFilterTrainer}
+                    allLabel={t('emailCampaign.recipients.allTrainers')}
+                    options={trainers.map((tr) => ({ value: tr.id, label: tr.name }))}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.location')}</Label>
-                  <Select value={filterLocation} onValueChange={setFilterLocation}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allLocations')}</SelectItem>
-                      {locations.map((l) => (
-                        <SelectItem key={l.id} value={l.name}>{l.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterLocation}
+                    onValueChange={setFilterLocation}
+                    allLabel={t('emailCampaign.recipients.allLocations')}
+                    options={locations.map((l) => ({ value: l.name, label: l.name }))}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.level')}</Label>
-                  <Select value={filterLevel} onValueChange={setFilterLevel}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allLevels')}</SelectItem>
-                      <SelectItem value="beginner">{t('emailCampaign.recipients.beginner')}</SelectItem>
-                      <SelectItem value="intermediate">{t('emailCampaign.recipients.intermediate')}</SelectItem>
-                      <SelectItem value="advanced">{t('emailCampaign.recipients.advanced')}</SelectItem>
-                      <SelectItem value="pro">{t('emailCampaign.recipients.pro')}</SelectItem>
-                      <SelectItem value="unrated">{t('emailCampaign.recipients.unrated')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterLevel}
+                    onValueChange={setFilterLevel}
+                    allLabel={t('emailCampaign.recipients.allLevels')}
+                    options={[
+                      { value: 'beginner', label: t('emailCampaign.recipients.beginner') },
+                      { value: 'intermediate', label: t('emailCampaign.recipients.intermediate') },
+                      { value: 'advanced', label: t('emailCampaign.recipients.advanced') },
+                      { value: 'pro', label: t('emailCampaign.recipients.pro') },
+                      { value: 'unrated', label: t('emailCampaign.recipients.unrated') },
+                    ]}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.activeCyclus')}</Label>
-                  <Select value={filterCyclus} onValueChange={setFilterCyclus}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.all')}</SelectItem>
-                      <SelectItem value="yes">{t('emailCampaign.recipients.yes')}</SelectItem>
-                      <SelectItem value="no">{t('emailCampaign.recipients.no')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterCyclus}
+                    onValueChange={setFilterCyclus}
+                    allLabel={t('emailCampaign.recipients.all')}
+                    options={[
+                      { value: 'yes', label: t('emailCampaign.recipients.yes') },
+                      { value: 'no', label: t('emailCampaign.recipients.no') },
+                    ]}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('emailCampaign.recipients.tag', 'Tag')}</Label>
-                  <Select value={filterTag} onValueChange={setFilterTag}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('emailCampaign.recipients.allTags', 'All tags')}</SelectItem>
-                      <SelectItem value="untagged">{t('emailCampaign.recipients.untagged', 'Untagged')}</SelectItem>
-                      {tags.map((tag) => (
-                        <SelectItem key={tag.id} value={tag.id}>{tag.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SelectFilter
+                    value={filterTag}
+                    onValueChange={setFilterTag}
+                    allLabel={t('emailCampaign.recipients.allTags', 'All tags')}
+                    options={[
+                      { value: 'untagged', label: t('emailCampaign.recipients.untagged', 'Untagged') },
+                      ...tags.map((tag) => ({ value: tag.id, label: tag.name })),
+                    ]}
+                    triggerClassName="h-8 text-sm"
+                  />
                 </div>
 
                 <Separator />
@@ -1145,28 +1140,25 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       </Tabs>
 
       {/* Confirm Send Dialog */}
-      <AlertDialog open={showConfirmSend} onOpenChange={setShowConfirmSend}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('emailCampaign.confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              <Trans
-                i18nKey="emailCampaign.confirm.description"
-                t={t}
-                count={recipients.length}
-                values={{ count: recipients.length, subject }}
-                components={[<strong />, <strong />, <strong />, <strong />]}
-              />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSendCampaign}>
-              <Send className="mr-2 h-4 w-4" /> {t('emailCampaign.confirm.sendNow')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showConfirmSend}
+        onOpenChange={setShowConfirmSend}
+        title={t('emailCampaign.confirm.title')}
+        description={
+          <Trans
+            i18nKey="emailCampaign.confirm.description"
+            t={t}
+            count={recipients.length}
+            values={{ count: recipients.length, subject }}
+            components={[<strong />, <strong />, <strong />, <strong />]}
+          />
+        }
+        confirmLabel={<><Send className="mr-2 h-4 w-4" /> {t('emailCampaign.confirm.sendNow')}</>}
+        cancelLabel={t('emailCampaign.confirm.cancel')}
+        loading={isSending}
+        variant="default"
+        onConfirm={handleSendCampaign}
+      />
 
       {/* Preview Dialog */}
       <AlertDialog open={showPreview} onOpenChange={setShowPreview}>
@@ -1195,25 +1187,18 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
       </AlertDialog>
 
       {/* Confirm delete draft */}
-      <AlertDialog open={!!confirmDeleteDraftId} onOpenChange={(o) => !o && setConfirmDeleteDraftId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('emailCampaign.history.deleteDraft')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('emailCampaign.history.confirmDeleteDraft')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('emailCampaign.confirm.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => confirmDeleteDraftId && handleDeleteDraft(confirmDeleteDraftId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              <Trash2 className="mr-2 h-4 w-4" /> {t('emailCampaign.history.deleteDraft')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!confirmDeleteDraftId}
+        onOpenChange={(o) => !o && setConfirmDeleteDraftId(null)}
+        title={t('emailCampaign.history.deleteDraft')}
+        description={t('emailCampaign.history.confirmDeleteDraft')}
+        confirmLabel={<><Trash2 className="mr-2 h-4 w-4" /> {t('emailCampaign.history.deleteDraft')}</>}
+        cancelLabel={t('emailCampaign.confirm.cancel')}
+        loading={isDeletingDraft}
+        onConfirm={() => {
+          if (confirmDeleteDraftId) return handleDeleteDraft(confirmDeleteDraftId);
+        }}
+      />
     </div>
   );
 }

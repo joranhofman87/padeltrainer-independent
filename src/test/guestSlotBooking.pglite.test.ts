@@ -27,7 +27,7 @@ const count = async (sql: string): Promise<number> =>
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
-    CREATE TABLE availability_slots (id uuid PRIMARY KEY, max_participants integer, allow_single_booking boolean, is_public boolean);
+    CREATE TABLE availability_slots (id uuid PRIMARY KEY, max_participants integer, allow_single_booking boolean, is_public boolean, cyclus_id uuid);
     CREATE TABLE bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       slot_id uuid, player_id uuid, guest_player_id uuid,
@@ -42,7 +42,7 @@ beforeAll(async () => {
       _hold_minutes integer DEFAULT 20, _notes text DEFAULT NULL
     ) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
     DECLARE
-      v_max integer; v_taken integer; v_is_public boolean;
+      v_max integer; v_taken integer; v_is_public boolean; v_cyclus_id uuid; v_allow_single boolean;
       v_hold_min integer := GREATEST(5, LEAST(60, COALESCE(_hold_minutes, 20)));
       v_existing uuid; v_id uuid;
     BEGIN
@@ -52,9 +52,11 @@ beforeAll(async () => {
          AND status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now() LIMIT 1;
       IF v_existing IS NOT NULL THEN RETURN v_existing; END IF;
       SELECT CASE WHEN COALESCE(allow_single_booking, false) THEN COALESCE(max_participants, 1) ELSE 1 END,
-             COALESCE(is_public, false)
-        INTO v_max, v_is_public FROM public.availability_slots WHERE id = _slot_id;
+             COALESCE(is_public, false), cyclus_id, COALESCE(allow_single_booking, false)
+        INTO v_max, v_is_public, v_cyclus_id, v_allow_single FROM public.availability_slots WHERE id = _slot_id;
       IF NOT v_is_public THEN RAISE EXCEPTION 'slot_not_public' USING ERRCODE = 'check_violation'; END IF;
+      IF v_cyclus_id IS NOT NULL AND NOT v_allow_single THEN
+        RAISE EXCEPTION 'single_booking_not_allowed' USING ERRCODE = 'check_violation'; END IF;
       SELECT count(*) INTO v_taken FROM public.bookings
        WHERE slot_id = _slot_id AND (
          COALESCE(status, 'confirmed') IN ('confirmed', 'pending', 'pending_approval')
@@ -138,6 +140,35 @@ describe('book_guest_slot_for_payment', () => {
     );
     const id = await book(G3);
     expect(id).toBeTruthy();
+  });
+});
+
+describe('book_guest_slot_for_payment — single-session cyclus guard (P1-2)', () => {
+  const CYC = '10000000-0000-0000-0000-0000000000c1';
+  const CYCLUS = '30000000-0000-0000-0000-000000000001';
+  const bookCyc = (guest: string) =>
+    db.query(`SELECT public.book_guest_slot_for_payment('${CYC}'::uuid, '${guest}'::uuid, 20, 20, NULL)`);
+
+  it('REFUSES a single-session hold on a cyclus session when allow_single_booking=false', async () => {
+    // The exact split-payment shape: a cyclus session the owner did NOT open to single booking.
+    await db.exec(`INSERT INTO availability_slots (id, max_participants, allow_single_booking, is_public, cyclus_id)
+      VALUES ('${CYC}', 4, false, true, '${CYCLUS}')`);
+    await expect(bookCyc(G1)).rejects.toThrow(/single_booking_not_allowed/);
+    expect(await count(`bookings WHERE slot_id = '${CYC}'`)).toBe(0);
+  });
+
+  it('ALLOWS a single-session hold on a cyclus session when allow_single_booking=true', async () => {
+    await db.exec(`INSERT INTO availability_slots (id, max_participants, allow_single_booking, is_public, cyclus_id)
+      VALUES ('${CYC}', 4, true, true, '${CYCLUS}')`);
+    await bookCyc(G1);
+    expect(await count(`bookings WHERE slot_id = '${CYC}'`)).toBe(1);
+  });
+
+  it('ALLOWS a standalone (non-cyclus) allow_single_booking=false slot — the whole-slot case is untouched', async () => {
+    await db.exec(`INSERT INTO availability_slots (id, max_participants, allow_single_booking, is_public, cyclus_id)
+      VALUES ('${CYC}', 4, false, true, NULL)`);
+    await bookCyc(G1);
+    expect(await count(`bookings WHERE slot_id = '${CYC}'`)).toBe(1);
   });
 });
 

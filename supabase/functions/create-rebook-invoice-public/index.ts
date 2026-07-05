@@ -147,8 +147,12 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, reason });
     };
 
-    // Mint ONE invoice over ONLY this claimant's bookings (single identity → the split auto-detect
-    // cannot fire → full cycle price). auto-create-invoice runs service-role + is guest-aware.
+    // Mint ONE invoice over ONLY this claimant's own bookings. We intentionally OMIT
+    // splitAmongPlayers so auto-create-invoice's split auto-detect applies the shared-court
+    // divisor: a SOLO claimant rebooking their own seat pays their 1/capacity share, matching
+    // the authed sibling create-rebook-invoice ("without any split ... would be an N× overcharge
+    // on shared cycles"). Only the whole-group captain (create-group-rebook-invoice) pays full
+    // court price, because that one payment covers every seat. auto-create-invoice is guest-aware.
     const { data: aci, error: aciErr } = await admin.functions.invoke("auto-create-invoice", {
       body: { bookingIds, asDraft: false },
       headers: serviceAuth,

@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     const { data: slot } = await supabase
       .from("availability_slots")
       .select(
-        "id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs, is_public, cyclus_name, priority_window_ends_at, member_window_ends_at, public_release_status",
+        "id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs, is_public, cyclus_id, cyclus_name, priority_window_ends_at, member_window_ends_at, public_release_status",
       )
       .eq("id", slotId)
       .maybeSingle();
@@ -147,6 +147,16 @@ Deno.serve(async (req) => {
     }
     if (new Date(slot.start_time).getTime() <= Date.now()) {
       return json({ error: "slot_in_past" }, 400);
+    }
+    // Single-session booking of a CYCLUS session is only offered when the owner enabled
+    // allow_single_booking (GuestBookingDialog hides the "just this session" option otherwise). Mirror
+    // that here — this endpoint is public (verify_jwt=false), so a crafted call must not bypass it.
+    // Critically, a split_payment session (allow_single_booking=false) is per-seat and priced total÷N
+    // via the cyclus path; a full-price single hold on it would over-collect. The RPC enforces the
+    // same at the mutation boundary (single_booking_not_allowed); this is the clean early refusal.
+    if (slot.cyclus_id && slot.allow_single_booking !== true) {
+      logStep("Refused — single-session booking not allowed for this cyclus session", { slotId });
+      return json({ error: "slot_not_bookable" }, 403);
     }
 
     // 3. Server-authoritative amount. hourly_rate is only a fallback for slots
@@ -216,6 +226,12 @@ Deno.serve(async (req) => {
       if ((bookingError.message || "").includes("slot_full")) {
         logStep("Refused — slot full", { slotId });
         return json({ error: "slot_full" }, 409);
+      }
+      // Mutation-boundary guard (should be unreachable — the early guard above already refused this):
+      // a single-session hold on a cyclus session without allow_single_booking.
+      if ((bookingError.message || "").includes("single_booking_not_allowed")) {
+        logStep("Refused — single_booking_not_allowed (RPC boundary)", { slotId });
+        return json({ error: "slot_not_bookable" }, 403);
       }
       throw new Error(`Failed to reserve seat: ${bookingError.message}`);
     }

@@ -7,15 +7,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, CalendarIcon, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { format, addDays } from 'date-fns';
-import { getDateFnsLocale } from '@/lib/dateFnsLocale';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
@@ -52,12 +49,11 @@ const emptyReceiver = (): InvoiceReceiverFormFields => ({
 });
 
 export default function TrainerCreateInvoice() {
-  const { t, i18n } = useTranslation('common');
+  const { t } = useTranslation('common');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const dateFnsLocale = getDateFnsLocale(i18n.language);
 
   const [receiver, setReceiver] = useState<InvoiceReceiverFormFields>(emptyReceiver);
   const [playerLink, setPlayerLink] = useState<InvoicePlayerLink>({
@@ -291,17 +287,11 @@ export default function TrainerCreateInvoice() {
           <Separator />
           <div className="flex items-center gap-4">
             <Label className="text-sm whitespace-nowrap">{t('invoiceForm.dueDate.label')}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn('justify-start text-left font-normal')}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale })}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={dueDate} onSelect={(d) => d && setDueDate(d)} className={cn('p-3 pointer-events-auto')} />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={dueDate}
+              onChange={(d) => d && setDueDate(d)}
+              size="sm"
+            />
           </div>
           <div><Label className="text-sm mb-1 block">{t('invoiceForm.notes.label')}</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('invoiceForm.notes.placeholder')} rows={2} /></div>
         </CardContent>

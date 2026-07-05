@@ -2,7 +2,6 @@
 // The multi-week cyclus bulk-create feature: self-contained state, communicates only via props.
 // AddSlotDialog re-exports BulkCreateContent so the three by-name importers stay unchanged.
 import { useState, useEffect } from "react";
-import { TIME_OPTIONS } from '@/lib/timeOptions';
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -22,6 +21,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TimeSelect } from "@/components/ui/time-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
@@ -961,21 +961,11 @@ export function BulkCreateContent({
                     {/* Time */}
                     <div className="space-y-1">
                       <Label className="text-xs">{t("calendar.time")}</Label>
-                      <Select
+                      <TimeSelect
                         value={slot.startTime}
                         onValueChange={(v) => updateBulkSlot(index, { startTime: v })}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIME_OPTIONS.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        triggerClassName="h-8"
+                      />
                     </div>
 
                     {/* Duration */}

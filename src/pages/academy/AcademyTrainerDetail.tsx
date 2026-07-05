@@ -13,17 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
@@ -69,6 +59,8 @@ export default function AcademyTrainerDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The trainerId param is the academy_trainers.id
@@ -321,12 +313,18 @@ export default function AcademyTrainerDetail() {
 
   const handleRemoveTrainer = async () => {
     if (!trainerId) return;
-    const success = await removeAcademyTrainer(trainerId);
-    if (success) {
-      sonnerToast.success(t('trainers.removed'));
-      navigate('/app/academy/trainers');
-    } else {
-      sonnerToast.error(t('trainers.failedRemove', 'Failed to remove trainer'));
+    setRemoving(true);
+    try {
+      const success = await removeAcademyTrainer(trainerId);
+      if (success) {
+        sonnerToast.success(t('trainers.removed'));
+        navigate('/app/academy/trainers');
+      } else {
+        sonnerToast.error(t('trainers.failedRemove', 'Failed to remove trainer'));
+      }
+    } finally {
+      setRemoving(false);
+      setConfirmRemoveOpen(false);
     }
   };
 
@@ -669,28 +667,20 @@ export default function AcademyTrainerDetail() {
                   {t('trainers.removeDescription', 'This will remove the trainer from your academy.')}
                 </p>
               </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {t('trainers.remove', 'Remove')}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>{t('trainers.removeTitle')}</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {t('trainers.removeDescription')}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleRemoveTrainer}>
-                      {t('trainers.remove')}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <Button variant="destructive" size="sm" onClick={() => setConfirmRemoveOpen(true)}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                {t('trainers.remove', 'Remove')}
+              </Button>
+              <ConfirmDialog
+                open={confirmRemoveOpen}
+                onOpenChange={setConfirmRemoveOpen}
+                title={t('trainers.removeTitle')}
+                description={t('trainers.removeDescription')}
+                confirmLabel={t('trainers.remove')}
+                cancelLabel={t('common:cancel')}
+                loading={removing}
+                onConfirm={handleRemoveTrainer}
+              />
             </div>
           </CardContent>
         </Card>

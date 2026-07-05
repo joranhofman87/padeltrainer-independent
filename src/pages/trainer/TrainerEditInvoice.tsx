@@ -9,18 +9,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
-import { Loader2, CalendarIcon, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
+import { Loader2, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { nl, enUS } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
@@ -28,10 +25,7 @@ import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEditor';
 import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary';
 import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoiceFormTotals';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type LineItem = InvoiceFormLineItem;
 
@@ -42,12 +36,11 @@ function parseAddress(address?: string | null): { street: string; zipCode: strin
 }
 
 export default function TrainerEditInvoice() {
-  const { t: tTrainer, i18n } = useTranslation('trainer');
+  const { t: tTrainer } = useTranslation('trainer');
   const { t } = useTranslation('common');
   const navigate = useNavigate();
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const queryClient = useQueryClient();
-  const dateFnsLocale = i18n.language === 'nl' ? nl : enUS;
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [vatRate, setVatRate] = useState(21);
@@ -57,6 +50,7 @@ export default function TrainerEditInvoice() {
   const [saving, setSaving] = useState(false);
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [playerName, setPlayerName] = useState('');
   const [playerBusinessName, setPlayerBusinessName] = useState('');
@@ -274,14 +268,12 @@ export default function TrainerEditInvoice() {
             <Separator />
             <div className="flex items-center gap-4">
               <Label className="text-sm whitespace-nowrap">{t('invoiceEdit.dueDate')}</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className={cn('justify-start text-left font-normal', !dueDate && 'text-muted-foreground')}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />{dueDate ? format(dueDate, 'd MMM yyyy', { locale: dateFnsLocale }) : t('invoiceEdit.selectDate')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={dueDate} onSelect={setDueDate} className={cn('p-3 pointer-events-auto')} /></PopoverContent>
-              </Popover>
+              <DatePickerPopover
+                value={dueDate}
+                onChange={setDueDate}
+                placeholder={t('invoiceEdit.selectDate')}
+                size="sm"
+              />
             </div>
             <div><Label className="text-sm mb-1 block">{t('invoiceEdit.notes')}</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('invoiceEdit.notesPlaceholder')} rows={2} /></div>
             {hasPriceChanges && hasBookings && (
@@ -299,22 +291,27 @@ export default function TrainerEditInvoice() {
         </div>
       </div>
 
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('back')}</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete}>
-              {isDraft ? t('delete') : t('cancel')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete / cancel confirmation. The old AlertDialog auto-closed on click and ran
+          the delete detached; ConfirmDialog stays open while `deleting` (blocking
+          dismissal + double-fire) and closes on settle — success OR error. */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={isDraft ? t('invoiceEdit.deleteTitle') : t('invoiceEdit.cancelTitle')}
+        description={isDraft ? t('invoiceEdit.deleteConfirm') : t('invoiceEdit.cancelConfirm')}
+        confirmLabel={isDraft ? t('delete') : t('cancel')}
+        cancelLabel={t('back')}
+        loading={deleting}
+        onConfirm={async () => {
+          setDeleting(true);
+          try {
+            await handleDelete();
+          } finally {
+            setDeleting(false);
+            setDeleteConfirmOpen(false);
+          }
+        }}
+      />
     </>
   );
 }

@@ -7,12 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { toast } from 'sonner';
-import { ArrowLeft, CalendarIcon, ChevronDown, ChevronRight, Loader2, Send, Users } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Send, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { getAcademyLocationsWithDetails } from '@/lib/academy';
@@ -62,20 +60,14 @@ interface ConfirmData {
 }
 
 /** A calendar date field over a yyyy-MM-dd string value (matches the app's other date pickers). */
-function DateField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const selected = value ? parse(value, 'yyyy-MM-dd', new Date()) : undefined;
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" className={cn('w-full justify-start text-left font-normal', !value && 'text-muted-foreground')}>
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {selected ? format(selected, 'd MMM yyyy') : placeholder}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar mode="single" selected={selected} onSelect={(d) => onChange(d ? format(d, 'yyyy-MM-dd') : '')} initialFocus />
-      </PopoverContent>
-    </Popover>
+    <DatePickerPopover
+      value={selected}
+      onChange={(d) => onChange(d ? format(d, 'yyyy-MM-dd') : '')}
+      className="w-full"
+    />
   );
 }
 
@@ -433,14 +425,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <CardContent className="grid sm:grid-cols-2 gap-4">
           <div>
             <Label className="text-xs">{t('rebookCohort.termEnd', 'Einde huidige termijn')}</Label>
-            <DateField value={termEndDate} onChange={setTermEndDate} placeholder={t('rebookCohort.pickDate', 'Kies een datum')} />
+            <DateField value={termEndDate} onChange={setTermEndDate} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('rebookCohort.termEndHint', 'De week waarin de huidige termijn eindigt.')}
             </p>
           </div>
           <div>
             <Label className="text-xs">{t('rebookCohort.newStart', 'Start nieuwe ronde')}</Label>
-            <DateField value={newStartDate} onChange={setNewStartDate} placeholder={t('rebookCohort.pickDate', 'Kies een datum')} />
+            <DateField value={newStartDate} onChange={setNewStartDate} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('rebookCohort.newStartHint', 'Wanneer de volgende termijn begint.')}
             </p>

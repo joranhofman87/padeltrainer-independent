@@ -25,6 +25,7 @@ import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import {
   persistSignupClaimFromSearchParams,
   sanitizeAppRedirect,
@@ -182,11 +183,7 @@ export default function PlayerSignup() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (showVerification) {

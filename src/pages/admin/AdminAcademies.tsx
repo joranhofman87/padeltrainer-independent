@@ -17,13 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,16 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Loader2,
   GraduationCap,
@@ -287,21 +272,22 @@ export default function AdminAcademies() {
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All academies</SelectItem>
-            <SelectItem value="verified">Verified</SelectItem>
-            <SelectItem value="unverified">Unverified</SelectItem>
-            <SelectItem value="public">Public</SelectItem>
-            <SelectItem value="private">Private</SelectItem>
-            <SelectItem value="active">Subscribed</SelectItem>
-            <SelectItem value="trial">Trial</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          allLabel="All academies"
+          options={[
+            { value: "verified", label: "Verified" },
+            { value: "unverified", label: "Unverified" },
+            { value: "public", label: "Public" },
+            { value: "private", label: "Private" },
+            { value: "active", label: "Subscribed" },
+            { value: "trial", label: "Trial" },
+            { value: "expired", label: "Expired" },
+          ]}
+          placeholder="Filter by status"
+          triggerClassName="w-[180px]"
+        />
       </TableToolbar>
 
       {sortedData.length === 0 ? (
@@ -541,33 +527,20 @@ export default function AdminAcademies() {
         />
       )}
 
-      <AlertDialog open={!!deletingAcademy} onOpenChange={(open) => !open && setDeletingAcademy(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Academy</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete <strong>{deletingAcademy?.name}</strong>? This will permanently remove the academy and all associated data including trainers, locations, and managers. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAcademy}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete Academy"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!deletingAcademy}
+        onOpenChange={(open) => !open && setDeletingAcademy(null)}
+        title="Delete Academy"
+        description={
+          <>
+            Are you sure you want to delete <strong>{deletingAcademy?.name}</strong>? This will permanently remove the academy and all associated data including trainers, locations, and managers. This action cannot be undone.
+          </>
+        }
+        confirmLabel={isDeleting ? "Deleting..." : "Delete Academy"}
+        cancelLabel="Cancel"
+        loading={isDeleting}
+        onConfirm={handleDeleteAcademy}
+      />
     </ListPageShell>
   );
 }

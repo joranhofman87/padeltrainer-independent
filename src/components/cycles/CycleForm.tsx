@@ -7,18 +7,20 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, differenceInWeeks, addWeeks, differenceInMinutes, parse } from 'date-fns';
-import { CalendarIcon, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { MiniRichTextEditor } from '@/components/ui/mini-rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
+import { TimeSelect } from '@/components/ui/time-select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { createRegistration, updateRegistration, registrationToCycle, cycleInputToRegistrationInput, isMissingRegistrationRpc } from '@/lib/registrations';
-import { Calendar } from '@/components/ui/calendar';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import {
   Form,
   FormControl,
@@ -28,11 +30,6 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 // Dialog imports removed — component now renders inline on a dedicated page
 import {
   Select,
@@ -857,30 +854,13 @@ export default function CycleForm({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.startDate')}</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <DatePickerPopover
+                          value={field.value}
+                          onChange={field.onChange}
+                          className="w-full"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -891,30 +871,14 @@ export default function CycleForm({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? format(field.value, 'PPP') : t('form.sameAsStart', 'Same as start')}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <DatePickerPopover
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder={t('form.sameAsStart', 'Same as start')}
+                          className="w-full"
+                        />
+                      </FormControl>
                       <FormDescription className="text-xs">
                         {t('form.endDateHelp', 'Leave empty for a single-day event')}
                       </FormDescription>
@@ -933,35 +897,18 @@ export default function CycleForm({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>{t('form.startDate')}</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full pl-3 text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? format(field.value, 'PPP') : 'Pick date'}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={(date) => {
-                              field.onChange(date);
-                              // Moving the start re-fills the end from the week count.
-                              const w = Number(form.getValues('number_of_weeks'));
-                              if (date && w > 0) form.setValue('end_date', addWeeks(date, w));
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <DatePickerPopover
+                          value={field.value}
+                          onChange={(date) => {
+                            field.onChange(date);
+                            // Moving the start re-fills the end from the week count.
+                            const w = Number(form.getValues('number_of_weeks'));
+                            if (date && w > 0) form.setValue('end_date', addWeeks(date, w));
+                          }}
+                          className="w-full"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1001,38 +948,20 @@ export default function CycleForm({
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>{t('form.endDate', 'End Date')}</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            {field.value ? format(field.value, 'PPP') : t('form.pickDate', 'Pick date')}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={(date) => {
-                            field.onChange(date);
-                            // A manual end date wins; keep the week count in step for display.
-                            const s = form.getValues('start_date');
-                            if (date && s) {
-                              form.setValue('number_of_weeks', Math.max(1, Math.round(differenceInWeeks(date, s))));
-                            }
-                          }}
-                          initialFocus
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <FormControl>
+                      <DatePickerPopover
+                        value={field.value}
+                        onChange={(date) => {
+                          field.onChange(date);
+                          // A manual end date wins; keep the week count in step for display.
+                          const s = form.getValues('start_date');
+                          if (date && s) {
+                            form.setValue('number_of_weeks', Math.max(1, Math.round(differenceInWeeks(date, s))));
+                          }
+                        }}
+                        className="w-full"
+                      />
+                    </FormControl>
                     <p className="text-xs text-muted-foreground">
                       {t('form.endDateHint', 'Automatically set based on weeks. Override to set a specific end date (e.g. last Friday of the cycle).')}
                     </p>
@@ -1053,7 +982,13 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.startTime', 'Start Time')}</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      {/* RHF field: ref/onBlur are intentionally dropped — no blur validation on
+                          these fields (plain z.string().default(...), form mode = onSubmit). */}
+                      <TimeSelect
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        ariaLabel={t('form.startTime', 'Start Time')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1066,7 +1001,11 @@ export default function CycleForm({
                   <FormItem>
                     <FormLabel>{t('form.endTime', 'End Time')}</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <TimeSelect
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        ariaLabel={t('form.endTime', 'End Time')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1082,30 +1021,14 @@ export default function CycleForm({
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>{t('form.enrollmentDeadline')}</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            'w-full pl-3 text-left font-normal',
-                            !field.value && 'text-muted-foreground'
-                          )}
-                        >
-                          {field.value ? format(field.value, 'PPP') : 'No deadline'}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <FormControl>
+                    <DatePickerPopover
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="No deadline"
+                      className="w-full"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -1462,49 +1385,42 @@ export default function CycleForm({
                         setPriceTable(updated);
                       }}
                     />
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        value={row.price || ''}
-                        onChange={(e) => {
-                          const updated = [...priceTable];
-                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
-                          setPriceTable(updated);
-                        }}
-                        className="pl-6 text-sm"
-                      />
-                    </div>
+                    <MoneyInput
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={row.price || ''}
+                      onChange={(e) => {
+                        const updated = [...priceTable];
+                        updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                        setPriceTable(updated);
+                      }}
+                      className="text-sm"
+                    />
                     {priceColumns.map((col, ci) => {
                       const ep = (row.extra_prices || []).find(ep => ep.column_name === col);
                       return (
-                        <div key={ci} className="relative">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            placeholder="0.00"
-                            value={ep?.price || ''}
-                            onChange={(e) => {
-                              const updated = [...priceTable];
-                              const newPrice = parseFloat(e.target.value) || 0;
-                              const existingExtras = updated[index].extra_prices || [];
-                              const epIdx = existingExtras.findIndex(x => x.column_name === col);
-                              if (epIdx >= 0) {
-                                existingExtras[epIdx] = { ...existingExtras[epIdx], price: newPrice };
-                              } else {
-                                existingExtras.push({ column_name: col, price: newPrice });
-                              }
-                              updated[index] = { ...updated[index], extra_prices: existingExtras };
-                              setPriceTable(updated);
-                            }}
-                            className="pl-6 text-sm"
-                          />
-                        </div>
+                        <MoneyInput
+                          key={ci}
+                          min={0}
+                          step="0.01"
+                          placeholder="0.00"
+                          value={ep?.price || ''}
+                          onChange={(e) => {
+                            const updated = [...priceTable];
+                            const newPrice = parseFloat(e.target.value) || 0;
+                            const existingExtras = updated[index].extra_prices || [];
+                            const epIdx = existingExtras.findIndex(x => x.column_name === col);
+                            if (epIdx >= 0) {
+                              existingExtras[epIdx] = { ...existingExtras[epIdx], price: newPrice };
+                            } else {
+                              existingExtras.push({ column_name: col, price: newPrice });
+                            }
+                            updated[index] = { ...updated[index], extra_prices: existingExtras };
+                            setPriceTable(updated);
+                          }}
+                          className="text-sm"
+                        />
                       );
                     })}
                     <Button
@@ -1650,28 +1566,23 @@ export default function CycleForm({
                       }}
                       title={t('form.numberOfWeeksColumn', 'Weeks')}
                     />
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">€</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        value={opt.price_per_session || ''}
-                        onChange={(e) => {
-                          const updated = [...cyclusOptions];
-                          const pps = parseFloat(e.target.value) || 0;
-                          updated[index] = {
-                            ...updated[index],
-                            price_per_session: pps,
-                            total_price: Math.round(updated[index].number_of_sessions * pps * 100) / 100,
-                          };
-                          setCyclusOptions(updated);
-                        }}
-                        className="pl-6"
-                        title={t('form.pricePerSession')}
-                      />
-                    </div>
+                    <MoneyInput
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={opt.price_per_session || ''}
+                      onChange={(e) => {
+                        const updated = [...cyclusOptions];
+                        const pps = parseFloat(e.target.value) || 0;
+                        updated[index] = {
+                          ...updated[index],
+                          price_per_session: pps,
+                          total_price: Math.round(updated[index].number_of_sessions * pps * 100) / 100,
+                        };
+                        setCyclusOptions(updated);
+                      }}
+                      title={t('form.pricePerSession')}
+                    />
                     <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
                       {formatCurrency(opt.total_price || 0)}
                     </div>
@@ -2139,22 +2050,17 @@ export default function CycleForm({
                           setExtraCosts(updated);
                         }}
                       />
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          placeholder="0.00"
-                          value={cost.price || ''}
-                          onChange={(e) => {
-                            const updated = [...extraCosts];
-                            updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
-                            setExtraCosts(updated);
-                          }}
-                          className="pl-7"
-                        />
-                      </div>
+                      <MoneyInput
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={cost.price || ''}
+                        onChange={(e) => {
+                          const updated = [...extraCosts];
+                          updated[index] = { ...updated[index], price: parseFloat(e.target.value) || 0 };
+                          setExtraCosts(updated);
+                        }}
+                      />
                       <div className="relative">
                         <Input
                           type="number"

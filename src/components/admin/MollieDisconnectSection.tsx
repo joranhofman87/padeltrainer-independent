@@ -3,17 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Unplug } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/logger";
@@ -41,6 +31,7 @@ export function MollieDisconnectSection({
   const [mollieAccount, setMollieAccount] = useState<MollieAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const fetchMollieAccount = async () => {
     if (entityType === "trainer") {
@@ -89,11 +80,13 @@ export function MollieDisconnectSection({
   };
 
   const handleDisconnect = async () => {
+    if (disconnecting) return;
     setDisconnecting(true);
     try {
       await deleteMollieAccount();
 
       setMollieAccount(null);
+      setConfirmOpen(false);
       toast({
         title: "Mollie disconnected",
         description: `Mollie connection removed for ${entityName}. They can now reconnect.`,
@@ -137,35 +130,26 @@ export function MollieDisconnectSection({
             <p>Onboarding: {mollieAccount.onboarding_complete ? "Complete" : "Incomplete"}</p>
           </div>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" className="w-full">
-                <Unplug className="mr-2 h-4 w-4" />
-                Disconnect Mollie
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect Mollie?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will remove the Mollie connection for <strong>{entityName}</strong>. 
-                  Their access tokens and organization link will be deleted. 
-                  They will need to reconnect Mollie from their earnings page.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDisconnect}
-                  disabled={disconnecting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {disconnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Disconnect
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button variant="destructive" size="sm" className="w-full" onClick={() => setConfirmOpen(true)}>
+            <Unplug className="mr-2 h-4 w-4" />
+            Disconnect Mollie
+          </Button>
+          <ConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title="Disconnect Mollie?"
+            description={
+              <>
+                This will remove the Mollie connection for <strong>{entityName}</strong>.
+                Their access tokens and organization link will be deleted.
+                They will need to reconnect Mollie from their earnings page.
+              </>
+            }
+            confirmLabel="Disconnect"
+            cancelLabel="Cancel"
+            loading={disconnecting}
+            onConfirm={handleDisconnect}
+          />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">

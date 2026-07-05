@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { canBeVisible } from '@/lib/subscription';
@@ -170,11 +171,7 @@ export default function TrainerSettings() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   const canToggleVisibility = subscription ? (canBeVisible(subscription) || inPaidAcademy) : false;

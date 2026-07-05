@@ -23,13 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
+import { TimeSelect } from "@/components/ui/time-select";
 import { supabase } from "@/lib/supabaseClient";
 import { insertBookings } from "@/lib/bookings";
 import { createCycle, getCycle, type Cycle } from "@/lib/cycles";
-import { CalendarIcon } from "lucide-react";
 
 interface CyclusInfo {
   cyclus_id: string;
@@ -374,29 +372,12 @@ export function DuplicateCyclusDialog({
           {/* New Start Date */}
           <div className="space-y-2">
             <Label>{t("calendar.newStartDate")}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !newStartDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {newStartDate ? format(newStartDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={newStartDate}
-                  onSelect={setNewStartDate}
-                  disabled={(date) => date < new Date()}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={newStartDate}
+              onChange={setNewStartDate}
+              disabled={(date) => date < new Date()}
+              className="w-full"
+            />
           </div>
 
           {/* New Start Time */}
@@ -404,11 +385,10 @@ export function DuplicateCyclusDialog({
             <Label>{t("calendar.startTime", "Start Time")}</Label>
             <div className="relative">
               <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="time"
+              <TimeSelect
                 value={newStartTime}
-                onChange={(e) => setNewStartTime(e.target.value)}
-                className="pl-9"
+                onValueChange={setNewStartTime}
+                triggerClassName="pl-9"
               />
             </div>
             <p className="text-xs text-muted-foreground">

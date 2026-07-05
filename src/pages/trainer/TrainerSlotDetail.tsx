@@ -5,7 +5,7 @@ import { format, isPast } from 'date-fns';
 import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Lock, MapPin, Users, Pencil,
-  Trash2, UserPlus, DollarSign, Loader2, Check,
+  Trash2, UserPlus, DollarSign, Check,
   FileText, CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
@@ -27,10 +27,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { InlineBookPlayer } from '@/components/booking/InlineBookPlayer';
 import { InlineEditBooking } from '@/components/booking/InlineEditBooking';
 import { PlayerCoachingNoteEditor } from '@/components/coaching/PlayerCoachingNoteEditor';
@@ -497,26 +494,23 @@ export default function TrainerSlotDetail() {
       </main>
 
       {/* Delete Dialog */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('calendar.deleteSlot', 'Sessie verwijderen')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('calendar.deleteSlotConfirm', 'Weet je zeker dat je deze sessie wilt verwijderen?')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          {detail.cyclus_id && (
-            <div className="flex items-center space-x-2 py-2">
-              <Checkbox id="delete-cyclus" checked={deleteCyclus} onCheckedChange={c => setDeleteCyclus(!!c)} />
-              <Label htmlFor="delete-cyclus" className="text-sm font-normal cursor-pointer">{t('calendar.deleteEntireCyclus', 'Alle toekomstige sessies verwijderen')}</Label>
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>{tCommon('cancel', 'Annuleren')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{tCommon('delete', 'Verwijderen')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={t('calendar.deleteSlot', 'Sessie verwijderen')}
+        description={t('calendar.deleteSlotConfirm', 'Weet je zeker dat je deze sessie wilt verwijderen?')}
+        confirmLabel={tCommon('delete', 'Verwijderen')}
+        cancelLabel={tCommon('cancel', 'Annuleren')}
+        loading={deleting}
+        onConfirm={handleDelete}
+      >
+        {detail.cyclus_id && (
+          <div className="flex items-center space-x-2 py-2">
+            <Checkbox id="delete-cyclus" checked={deleteCyclus} onCheckedChange={c => setDeleteCyclus(!!c)} />
+            <Label htmlFor="delete-cyclus" className="text-sm font-normal cursor-pointer">{t('calendar.deleteEntireCyclus', 'Alle toekomstige sessies verwijderen')}</Label>
+          </div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

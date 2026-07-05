@@ -9,7 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TimeSelect } from '@/components/ui/time-select';
 import { DateInputField } from '@/components/ui/date-input-field';
+import { buildHalfHourOptions } from '@/lib/timeOptions';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { WeekdayToggle } from './WeekdayToggle';
 import { HolidayRangeEditor, type HolidayRange } from './HolidayRangeEditor';
@@ -37,11 +39,7 @@ export interface SlotGeneratorWizardProps {
   publishAll?: typeof publishCycles;
 }
 
-const TIME_OPTIONS: string[] = [];
-for (let h = 6; h <= 23; h++) {
-  TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:00`);
-  TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:30`);
-}
+const TIME_OPTIONS = buildHalfHourOptions(6, 23);
 const DURATIONS = [30, 45, 60, 90, 120];
 
 export function SlotGeneratorWizard({
@@ -266,17 +264,11 @@ export function SlotGeneratorWizard({
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>{t('slotGenerator.windowStart', 'Begintijd')}</Label>
-                <Select value={windowStart} onValueChange={setWindowStart}>
-                  <SelectTrigger aria-label={t('slotGenerator.windowStart', 'Begintijd')}><SelectValue /></SelectTrigger>
-                  <SelectContent>{TIME_OPTIONS.map((tm) => <SelectItem key={tm} value={tm}>{tm}</SelectItem>)}</SelectContent>
-                </Select>
+                <TimeSelect value={windowStart} onValueChange={setWindowStart} options={TIME_OPTIONS} ariaLabel={t('slotGenerator.windowStart', 'Begintijd')} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('slotGenerator.windowEnd', 'Eindtijd')}</Label>
-                <Select value={windowEnd} onValueChange={setWindowEnd}>
-                  <SelectTrigger aria-label={t('slotGenerator.windowEnd', 'Eindtijd')}><SelectValue /></SelectTrigger>
-                  <SelectContent>{TIME_OPTIONS.map((tm) => <SelectItem key={tm} value={tm}>{tm}</SelectItem>)}</SelectContent>
-                </Select>
+                <TimeSelect value={windowEnd} onValueChange={setWindowEnd} options={TIME_OPTIONS} ariaLabel={t('slotGenerator.windowEnd', 'Eindtijd')} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t('slotGenerator.duration', 'Duur (min)')}</Label>
@@ -296,17 +288,11 @@ export function SlotGeneratorWizard({
                 <div className="grid gap-4 sm:grid-cols-2 pl-6">
                   <div className="space-y-1.5">
                     <Label>{t('slotGenerator.breakStart', 'Pauze van')}</Label>
-                    <Select value={breakStart} onValueChange={setBreakStart}>
-                      <SelectTrigger aria-label={t('slotGenerator.breakStart', 'Pauze van')}><SelectValue /></SelectTrigger>
-                      <SelectContent>{TIME_OPTIONS.map((tm) => <SelectItem key={tm} value={tm}>{tm}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <TimeSelect value={breakStart} onValueChange={setBreakStart} options={TIME_OPTIONS} ariaLabel={t('slotGenerator.breakStart', 'Pauze van')} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>{t('slotGenerator.breakEnd', 'Pauze tot')}</Label>
-                    <Select value={breakEnd} onValueChange={setBreakEnd}>
-                      <SelectTrigger aria-label={t('slotGenerator.breakEnd', 'Pauze tot')}><SelectValue /></SelectTrigger>
-                      <SelectContent>{TIME_OPTIONS.map((tm) => <SelectItem key={tm} value={tm}>{tm}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <TimeSelect value={breakEnd} onValueChange={setBreakEnd} options={TIME_OPTIONS} ariaLabel={t('slotGenerator.breakEnd', 'Pauze tot')} />
                   </div>
                 </div>
               )}

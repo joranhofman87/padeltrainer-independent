@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import {
   Popover,
   PopoverContent,
@@ -220,17 +221,13 @@ export function TrainerFilters({
                     />
                     {availableCountries.length > 1 && (
                       <div className="p-2 border-b">
-                        <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder={t('trainersDirectory.allCountries', 'All Countries')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">{t('trainersDirectory.allCountries', 'All Countries')}</SelectItem>
-                            {availableCountries.map(country => (
-                              <SelectItem key={country} value={country}>{country}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <SelectFilter
+                          value={selectedCountry}
+                          onValueChange={setSelectedCountry}
+                          allLabel={t('trainersDirectory.allCountries', 'All Countries')}
+                          options={availableCountries.map(country => ({ value: country, label: country }))}
+                          triggerClassName="h-8 text-xs"
+                        />
                       </div>
                     )}
                     <CommandList className="max-h-[250px]">
@@ -300,8 +297,9 @@ export function TrainerFilters({
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-muted-foreground">{t('trainersDirectory.trainerLevel', 'Trainer Level')}</Label>
               <div className="flex gap-1.5">
-                <Select 
-                  value={filters.ratingSystem || 'any'} 
+                {/* NOT SelectFilter: 'any' sentinel mapped to '' plus a composite state reset — not an "all" list filter */}
+                <Select
+                  value={filters.ratingSystem || 'any'}
                   onValueChange={(v) => onChange({ ...filters, ratingSystem: v === 'any' ? '' : v, minTrainerRating: 0 })}
                 >
                   <SelectTrigger className="h-9 text-sm w-[100px]">
@@ -315,8 +313,9 @@ export function TrainerFilters({
                   </SelectContent>
                 </Select>
                 {selectedRatingSystem && ratingOptions.length > 1 && (
-                  <Select 
-                    value={String(filters.minTrainerRating)} 
+                  /* NOT SelectFilter: numeric threshold select ('Any' = 0 inside the mapped options), no "all" sentinel */
+                  <Select
+                    value={String(filters.minTrainerRating)}
                     onValueChange={(v) => onChange({ ...filters, minTrainerRating: Number(v) })}
                   >
                     <SelectTrigger className="h-9 text-sm w-[80px]">

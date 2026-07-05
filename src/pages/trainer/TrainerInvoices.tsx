@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
@@ -29,10 +29,9 @@ import { InvoiceStatTiles } from "@/components/invoices/InvoiceStatTiles";
 import { InvoiceListTable } from "@/components/invoices/InvoiceListTable";
 import { InvoiceEmailDialog } from "@/components/invoices/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InvoiceSettingsCard } from "@/components/trainer/InvoiceSettingsCard";
 import { ExtraCostPresetsCard } from "@/components/settings/ExtraCostPresetsCard";
@@ -40,7 +39,6 @@ import { Settings, FileText, Send, Loader2, Share2, PlusCircle, Link2, Mail, Che
 import { PageHeader } from "@/components/ui/page-header";
 import { AppPage } from "@/components/ui/app-page";
 import { TableToolbar } from "@/components/ui/table-toolbar";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { nl, enUS } from "date-fns/locale";
@@ -577,29 +575,29 @@ export default function TrainerInvoices() {
               searchValue={searchQuery}
               onSearchChange={setSearchQuery}
             >
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                  <SelectItem value="draft">{t("invoices.draft", "Concept")}</SelectItem>
-                  <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                  <SelectItem value="sent">{t("invoices.sent", "Verstuurd")}</SelectItem>
-                  <SelectItem value="overdue">{t("invoices.overdue", "Verlopen")}</SelectItem>
-                  <SelectItem value="paid">{t("invoices.paid", "Betaald")}</SelectItem>
-                  <SelectItem value="cancelled">{t("invoices.cancelled", "Geannuleerd")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
-                <SelectTrigger className="w-[170px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{tDelivery("emailDelivery.filter.all", "All delivery")}</SelectItem>
-                  <SelectItem value="undelivered">{tDelivery("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
-                </SelectContent>
-              </Select>
+              <SelectFilter
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+                allLabel={t("invoices.allStatuses", "Alle statussen")}
+                options={[
+                  { value: "draft", label: t("invoices.draft", "Concept") },
+                  { value: "open", label: t("invoices.open", "Open") },
+                  { value: "sent", label: t("invoices.sent", "Verstuurd") },
+                  { value: "overdue", label: t("invoices.overdue", "Verlopen") },
+                  { value: "paid", label: t("invoices.paid", "Betaald") },
+                  { value: "cancelled", label: t("invoices.cancelled", "Geannuleerd") },
+                ]}
+                triggerClassName="w-[160px]"
+              />
+              <SelectFilter
+                value={deliveryFilter}
+                onValueChange={setDeliveryFilter}
+                allLabel={tDelivery("emailDelivery.filter.all", "All delivery")}
+                options={[
+                  { value: "undelivered", label: tDelivery("emailDelivery.filter.issue", "Delivery issue") },
+                ]}
+                triggerClassName="w-[170px]"
+              />
             </TableToolbar>
 
             <TabsContent value={activeTab} className="mt-4">
@@ -749,20 +747,11 @@ export default function TrainerInvoices() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Kies een datum")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={bulkDueDate} onSelect={setBulkDueDate} initialFocus className={cn("p-3 pointer-events-auto")} />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={bulkDueDate}
+              onChange={setBulkDueDate}
+              className="w-full"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>
@@ -776,36 +765,28 @@ export default function TrainerInvoices() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => !o && !bulkRunning && setConfirmBulk(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmBulk === "reset"
-                ? t("invoices.bulk.confirmResetTitle", "{{count}} facturen resetten naar concept?", { count: selectedIds.size })
-                : t("invoices.bulk.confirmDeleteTitle", "{{count}} facturen verwijderen?", { count: selectedIds.size })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmBulk === "reset"
-                ? t("invoices.bulk.confirmResetDesc", "Status, verzenddatum en betaaldatum worden gewist. Dit kan niet ongedaan worden gemaakt.")
-                : t("invoices.bulk.confirmDeleteDesc", "Concepten worden definitief verwijderd. Verstuurde facturen worden geannuleerd.")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Annuleren")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                if (confirmBulk === "reset") handleBulkReset();
-                else if (confirmBulk === "delete") handleBulkDelete();
-              }}
-              disabled={bulkRunning}
-            >
-              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              {t("common.confirm", "Bevestigen")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Dual-purpose bulk confirm: reset-to-draft / delete, switched on confirmBulk.
+          The handlers own close (setConfirmBulk(null) after the await settles);
+          loading={bulkRunning} blocks dismissal + double-fire while running.
+          Only the delete branch gets the destructive-red confirm button; reset stays plain. */}
+      <ConfirmDialog
+        open={confirmBulk !== null}
+        onOpenChange={(o) => !o && setConfirmBulk(null)}
+        title={confirmBulk === "reset"
+          ? t("invoices.bulk.confirmResetTitle", "{{count}} facturen resetten naar concept?", { count: selectedIds.size })
+          : t("invoices.bulk.confirmDeleteTitle", "{{count}} facturen verwijderen?", { count: selectedIds.size })}
+        description={confirmBulk === "reset"
+          ? t("invoices.bulk.confirmResetDesc", "Status, verzenddatum en betaaldatum worden gewist. Dit kan niet ongedaan worden gemaakt.")
+          : t("invoices.bulk.confirmDeleteDesc", "Concepten worden definitief verwijderd. Verstuurde facturen worden geannuleerd.")}
+        confirmLabel={t("common.confirm", "Bevestigen")}
+        cancelLabel={t("common.cancel", "Annuleren")}
+        loading={bulkRunning}
+        variant={confirmBulk === "delete" ? "destructive" : "default"}
+        onConfirm={() => {
+          if (confirmBulk === "reset") handleBulkReset();
+          else if (confirmBulk === "delete") handleBulkDelete();
+        }}
+      />
     </AppPage>
   );
 }

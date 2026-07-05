@@ -122,17 +122,48 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           });
         }
 
-        // Capacity: count occupying bookings per slot.
+        // Capacity: count occupying bookings per slot. Anonymous visitors have NO SELECT RLS
+        // on bookings, so the legacy direct read returned 0 for them and every full slot showed
+        // bookable — use the anon-safe SECURITY DEFINER occupancy RPC (counts only, no PII).
         const slotIds = slots.map((s) => s.id);
-        const { data: bookingsData } = await supabase
-          .from('bookings')
-          .select('slot_id')
-          .in('slot_id', slotIds)
-          .in('status', ['pending', 'confirmed']);
         const bookingCounts: Record<string, number> = {};
-        (bookingsData || []).forEach((b) => {
-          bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
-        });
+        const { data: occ, error: occErr } = await supabase.rpc(
+          'get_public_slot_occupancy' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        if (!occErr && occ) {
+          (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
+            bookingCounts[r.slot_id] = r.occupied;
+          });
+        } else {
+          // Deploy-window fallback (RPC not live yet): the legacy direct read — correct for
+          // authed users, no worse than today for anon.
+          const { data: bookingsData } = await supabase
+            .from('bookings')
+            .select('slot_id')
+            .in('slot_id', slotIds)
+            .in('status', ['pending', 'confirmed']);
+          (bookingsData || []).forEach((b) => {
+            bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+          });
+        }
+
+        // Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
+        // so a guest never fills the whole form only to dead-end (create-*-payment refuses /
+        // Mollie 422). Anon-safe RPC (booleans only, no account data). Deploy-window fallback:
+        // RPC not live → don't filter (show all, no worse than today).
+        let paymentReadyIds: Set<string> | null = null;
+        const { data: pr, error: prErr } = await supabase.rpc(
+          'get_public_slot_payment_ready' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        if (!prErr && pr) {
+          paymentReadyIds = new Set(
+            (pr as unknown as { slot_id: string; payment_ready: boolean }[])
+              .filter((r) => r.payment_ready)
+              .map((r) => r.slot_id),
+          );
+        }
 
         // Tier-aware visibility (priority/member windows, public_release_status) — anon-safe.
         const visibleIds = await filterVisibleSlotIds(
@@ -145,9 +176,14 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           })),
         );
 
+        // Bookable = tier-visible AND payment-ready (when the readiness RPC answered).
+        const bookableIds = paymentReadyIds
+          ? new Set([...visibleIds].filter((id) => paymentReadyIds!.has(id)))
+          : visibleIds;
+
         const groups = mapAndGroupPublicSlots(slots as unknown as RawPublicSlotRow[], {
           bookingCounts,
-          visibleIds,
+          visibleIds: bookableIds,
           trainerMap,
           nameMap,
         });

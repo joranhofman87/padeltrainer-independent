@@ -145,19 +145,13 @@ serve(async (req) => {
           ? ` (1/${splitAmongPlayers})`
           : "";
 
-    // Check if trainer belongs to an academy
-    let academyProfileId: string | null = null;
-    const { data: academyTrainer } = await supabase
-      .from("academy_trainers")
-      .select("academy_profile_id")
-      .eq("trainer_profile_id", trainerId)
-      .eq("status", "active")
-      .maybeSingle();
-    if (academyTrainer?.academy_profile_id) {
-      academyProfileId = academyTrainer.academy_profile_id;
-    }
-
-    // Prefer academy on slot when all bookings share one academy (academy cycle slots)
+    // Invoice party = the SLOT's academy_profile_id, the SAME key the CHARGE uses
+    // (resolveSlotRecipient / create-mollie-payment), so charge-org == invoice-org. An
+    // INDEPENDENT slot (academy_profile_id null) invoices the TRAINER — it must NOT fall
+    // back to the trainer's academy via an unfiltered academy_trainers lookup, which would
+    // stamp the receipt (number sequence + business identity/IBAN) to the academy while the
+    // money went to the trainer. length 1 = one academy; 0 = all independent; >1 = a mixed
+    // anomaly → trainer (never silently pick one academy over another).
     const slotAcademyIds = [
       ...new Set(
         bookings
@@ -165,9 +159,7 @@ serve(async (req) => {
           .filter(Boolean),
       ),
     ] as string[];
-    if (slotAcademyIds.length === 1) {
-      academyProfileId = slotAcademyIds[0];
-    }
+    const academyProfileId: string | null = slotAcademyIds.length === 1 ? slotAcademyIds[0] : null;
 
     // Fetch trainer profile with business info
     const { data: trainerProfile, error: trainerError } = await supabase

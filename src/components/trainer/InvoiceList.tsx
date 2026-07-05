@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SelectFilter } from '@/components/ui/select-filter';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { deleteOrCancelInvoices } from '@/lib/invoices';
@@ -29,16 +29,7 @@ import {
   Pencil,
   Users
 } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { format, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -87,8 +78,9 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; invoiceId: string; playerName: string; guestPlayerId: string | null }>({ open: false, invoiceId: '', playerName: '', guestPlayerId: null });
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [splitConfirm, setSplitConfirm] = useState<{ open: boolean; invoiceId: string }>({ open: false, invoiceId: '' });
-  const [voidConfirm, setVoidConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
+  // One confirm for both trash buttons (admin void + regular delete): the two raw
+  // dialogs were byte-identical (same copy, same removeInvoice call).
+  const [removeConfirm, setRemoveConfirm] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
 
   // Per-invoice delivery flag (no email / bounced / failed) — same signal as the
   // dedicated invoice pages, via the authorized batch RPC that resolves the
@@ -335,22 +327,17 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     }
   };
 
-  const handleDelete = async (invoice: Invoice) => {
-    setDeleteConfirm({ open: false, invoice: null });
+  const handleRemoveInvoice = async (invoice: Invoice) => {
     setActionLoading(invoice.id);
-    await removeInvoice(invoice);
-    setActionLoading(null);
-  };
-
-  const handleVoidInvoice = async (invoice: Invoice) => {
-    setVoidConfirm({ open: false, invoice: null });
-    setActionLoading(invoice.id);
-    await removeInvoice(invoice);
-    setActionLoading(null);
+    try {
+      await removeInvoice(invoice);
+    } finally {
+      setActionLoading(null);
+      setRemoveConfirm({ open: false, invoice: null });
+    }
   };
 
   const handleSplitInvoice = async (invoiceId: string) => {
-    setSplitConfirm({ open: false, invoiceId: '' });
     setActionLoading(invoiceId);
     try {
       const { data, error } = await supabase.functions.invoke('split-invoice', {
@@ -372,6 +359,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       toast({ title: 'Fout', description: 'Kon factuur niet splitsen', variant: 'destructive' });
     }
     setActionLoading(null);
+    setSplitConfirm({ open: false, invoiceId: '' });
   };
 
   const filteredInvoices = invoices.filter(inv => {
@@ -391,18 +379,19 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
     <div className="space-y-4">
       {/* Filter */}
       <div className="flex items-center justify-between">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter op status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle facturen</SelectItem>
-            <SelectItem value="draft">Concepten</SelectItem>
-            <SelectItem value="sent">Verzonden</SelectItem>
-            <SelectItem value="paid">Betaald</SelectItem>
-            <SelectItem value="overdue">Verlopen</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={statusFilter}
+          onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+          allLabel="Alle facturen"
+          options={[
+            { value: 'draft', label: 'Concepten' },
+            { value: 'sent', label: 'Verzonden' },
+            { value: 'paid', label: 'Betaald' },
+            { value: 'overdue', label: 'Verlopen' },
+          ]}
+          placeholder="Filter op status"
+          triggerClassName="w-[180px]"
+        />
         <p className="text-sm text-muted-foreground">
           {filteredInvoices.length} facturen
         </p>
@@ -488,7 +477,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                       <Button
                         variant="ghost"
                         size="icon" aria-label="Delete"
-                        onClick={() => setDeleteConfirm({ open: true, invoice })}
+                        onClick={() => setRemoveConfirm({ open: true, invoice })}
                         disabled={actionLoading === invoice.id}
                         title={invoice.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
                       >
@@ -553,7 +542,7 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
                       <Button
                         variant="ghost"
                         size="icon" aria-label="Delete"
-                        onClick={() => setVoidConfirm({ open: true, invoice })}
+                        onClick={() => setRemoveConfirm({ open: true, invoice })}
                         disabled={actionLoading === invoice.id}
                         title={invoice.status === 'draft' ? 'Verwijderen (admin)' : 'Annuleren (admin)'}
                       >
@@ -597,70 +586,32 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
         trainerId={trainerId}
       />
 
-      <AlertDialog open={splitConfirm.open} onOpenChange={(open) => !open && setSplitConfirm({ open: false, invoiceId: '' })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Factuur splitsen over spelers</AlertDialogTitle>
-            <AlertDialogDescription>
-              Weet je zeker dat je deze factuur wilt splitsen over alle spelers? De huidige factuur wordt aangepast (bedragen gedeeld door het aantal spelers) en er worden nieuwe facturen aangemaakt voor de andere spelers.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleSplitInvoice(splitConfirm.invoiceId)}>
-              Splitsen
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={voidConfirm.open} onOpenChange={(open) => !open && setVoidConfirm({ open: false, invoice: null })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {voidConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {voidConfirm.invoice?.status === 'draft'
-                ? `Weet je zeker dat je factuur ${voidConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
-                : `Weet je zeker dat je factuur ${voidConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction 
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => voidConfirm.invoice && handleVoidInvoice(voidConfirm.invoice)}
-            >
-              {voidConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, invoice: null })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteConfirm.invoice?.status === 'draft'
-                ? `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
-                : `Weet je zeker dat je factuur ${deleteConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuleren</AlertDialogCancel>
-            <AlertDialogAction 
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteConfirm.invoice && handleDelete(deleteConfirm.invoice)}
-            >
-              {deleteConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={splitConfirm.open}
+        onOpenChange={(open) => !open && setSplitConfirm({ open: false, invoiceId: '' })}
+        title="Factuur splitsen over spelers"
+        description="Weet je zeker dat je deze factuur wilt splitsen over alle spelers? De huidige factuur wordt aangepast (bedragen gedeeld door het aantal spelers) en er worden nieuwe facturen aangemaakt voor de andere spelers."
+        confirmLabel="Splitsen"
+        cancelLabel="Annuleren"
+        variant="default"
+        loading={!!actionLoading && actionLoading === splitConfirm.invoiceId}
+        onConfirm={() => handleSplitInvoice(splitConfirm.invoiceId)}
+      />
+      <ConfirmDialog
+        open={removeConfirm.open}
+        onOpenChange={(open) => !open && setRemoveConfirm({ open: false, invoice: null })}
+        title={removeConfirm.invoice?.status === 'draft' ? 'Factuur verwijderen' : 'Factuur annuleren'}
+        description={removeConfirm.invoice?.status === 'draft'
+          ? `Weet je zeker dat je factuur ${removeConfirm.invoice?.invoice_number} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
+          : `Weet je zeker dat je factuur ${removeConfirm.invoice?.invoice_number} wilt annuleren? De factuur wordt gemarkeerd als geannuleerd.`
+        }
+        confirmLabel={removeConfirm.invoice?.status === 'draft' ? 'Verwijderen' : 'Annuleren'}
+        cancelLabel="Annuleren"
+        loading={!!removeConfirm.invoice && actionLoading === removeConfirm.invoice.id}
+        onConfirm={() => {
+          if (removeConfirm.invoice) return handleRemoveInvoice(removeConfirm.invoice);
+        }}
+      />
     </div>
   );
 }

@@ -18,6 +18,8 @@ import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
 import { mergeNewBookingIdsIntoCycleInvoices, syncInvoicesAfterCycleEdit } from "@/lib/cycleEditInvoiceSync";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
+import { TimeSelect } from "@/components/ui/time-select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -38,16 +41,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Popover,
   PopoverContent,
@@ -1013,48 +1007,42 @@ export default function TrainerScheduleOverview() {
 
       {/* Day / Location / Time filters */}
       <div className="flex flex-wrap gap-2 items-center">
-        <Select value={filterDay} onValueChange={setFilterDay}>
-          <SelectTrigger className="w-[140px] h-9 text-sm">
-            <SelectValue placeholder={t("scheduleOverview.allDays", "All days")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("scheduleOverview.allDays", "All days")}</SelectItem>
-            {[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => {
-              const refDate = new Date(2024, 0, dayIdx === 0 ? 7 : dayIdx);
-              return (
-                <SelectItem key={dayIdx} value={dayIdx.toString()}>
-                  {format(refDate, "EEEE", { locale: dateFnsLocale })}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filterDay}
+          onValueChange={setFilterDay}
+          allLabel={t("scheduleOverview.allDays", "All days")}
+          options={[1, 2, 3, 4, 5, 6, 0].map((dayIdx) => {
+            const refDate = new Date(2024, 0, dayIdx === 0 ? 7 : dayIdx);
+            return {
+              value: dayIdx.toString(),
+              label: format(refDate, "EEEE", { locale: dateFnsLocale }),
+            };
+          })}
+          triggerClassName="w-[140px] h-9 text-sm"
+        />
 
-        <Select value={filterLocation} onValueChange={setFilterLocation}>
-          <SelectTrigger className="w-[180px] h-9 text-sm">
-            <SelectValue placeholder={t("scheduleOverview.allLocations", "All locations")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("scheduleOverview.allLocations", "All locations")}</SelectItem>
-            {trainerLocations?.map((loc) => (
-              <SelectItem key={loc.id} value={loc.id}>
-                {loc.name}, {loc.city}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filterLocation}
+          onValueChange={setFilterLocation}
+          allLabel={t("scheduleOverview.allLocations", "All locations")}
+          options={(trainerLocations ?? []).map((loc) => ({
+            value: loc.id,
+            label: `${loc.name}, ${loc.city}`,
+          }))}
+          triggerClassName="w-[180px] h-9 text-sm"
+        />
 
-        <Select value={filterTime} onValueChange={setFilterTime}>
-          <SelectTrigger className="w-[150px] h-9 text-sm">
-            <SelectValue placeholder={t("scheduleOverview.allTimes", "All times")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("scheduleOverview.allTimes", "All times")}</SelectItem>
-            <SelectItem value="morning">{t("scheduleOverview.morning", "Morning")} (06-12)</SelectItem>
-            <SelectItem value="afternoon">{t("scheduleOverview.afternoon", "Afternoon")} (12-17)</SelectItem>
-            <SelectItem value="evening">{t("scheduleOverview.evening", "Evening")} (17-23)</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelectFilter
+          value={filterTime}
+          onValueChange={setFilterTime}
+          allLabel={t("scheduleOverview.allTimes", "All times")}
+          options={[
+            { value: "morning", label: `${t("scheduleOverview.morning", "Morning")} (06-12)` },
+            { value: "afternoon", label: `${t("scheduleOverview.afternoon", "Afternoon")} (12-17)` },
+            { value: "evening", label: `${t("scheduleOverview.evening", "Evening")} (17-23)` },
+          ]}
+          triggerClassName="w-[150px] h-9 text-sm"
+        />
 
         {hasActiveFilters && (
           <Button
@@ -1399,18 +1387,16 @@ export default function TrainerScheduleOverview() {
             <div className="space-y-2">
               <Label>{t("scheduleOverview.time", "Time")}</Label>
               <div className="flex items-center gap-2">
-                <Input
-                  type="time"
+                <TimeSelect
                   value={cycleEditData.startTime}
-                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, startTime: e.target.value }))}
-                  className="flex-1"
+                  onValueChange={(v) => setCycleEditData((prev) => ({ ...prev, startTime: v }))}
+                  triggerClassName="flex-1"
                 />
                 <span className="text-muted-foreground">—</span>
-                <Input
-                  type="time"
+                <TimeSelect
                   value={cycleEditData.endTime}
-                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, endTime: e.target.value }))}
-                  className="flex-1"
+                  onValueChange={(v) => setCycleEditData((prev) => ({ ...prev, endTime: v }))}
+                  triggerClassName="flex-1"
                 />
               </div>
             </div>
@@ -1428,17 +1414,12 @@ export default function TrainerScheduleOverview() {
 
             <div className="space-y-2">
               <Label>{t("scheduleOverview.pricePerSession", "Price per session")}</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">€</span>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="pl-7"
-                  value={cycleEditData.pricePerSession}
-                  onChange={(e) => setCycleEditData((prev) => ({ ...prev, pricePerSession: e.target.value }))}
-                />
-              </div>
+              <MoneyInput
+                min="0"
+                step="0.01"
+                value={cycleEditData.pricePerSession}
+                onChange={(e) => setCycleEditData((prev) => ({ ...prev, pricePerSession: e.target.value }))}
+              />
             </div>
 
             <div className="flex items-center justify-between">
@@ -1506,21 +1487,17 @@ export default function TrainerScheduleOverview() {
                       }}
                       className="flex-1"
                     />
-                    <div className="relative w-24">
-                      <span className="absolute left-2 top-2.5 text-xs text-muted-foreground">€</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="pl-6"
-                        value={cost.price}
-                        onChange={(e) => {
-                          const updated = [...cycleEditData.extraCosts];
-                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
-                          setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
-                        }}
-                      />
-                    </div>
+                    <MoneyInput
+                      wrapperClassName="w-24"
+                      min="0"
+                      step="0.01"
+                      value={cost.price}
+                      onChange={(e) => {
+                        const updated = [...cycleEditData.extraCosts];
+                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                        setCycleEditData((prev) => ({ ...prev, extraCosts: updated }));
+                      }}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -1721,51 +1698,44 @@ export default function TrainerScheduleOverview() {
         </DialogContent>
       </Dialog>
 
-      {/* Remove Player Confirm */}
-      <AlertDialog open={!!removeBookingId} onOpenChange={(open) => !open && setRemoveBookingId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("scheduleOverview.removePlayer", "Remove player")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("scheduleOverview.removePlayerConfirm", "Are you sure you want to remove this player from the session?")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removingBooking}>
-              {t("scheduleOverview.cancel", "Cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemovePlayer} disabled={removingBooking}>
-              {removingBooking && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {t("scheduleOverview.removePlayer", "Remove player")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Remove Player Confirm. The old AlertDialog auto-closed on click and ran the
+          cancel detached; ConfirmDialog stays open while `removingBooking` and closes on
+          settle. handleRemovePlayer clears removeBookingId on success itself; the finally
+          also clears it so the error path (which returns early) closes too.
+          variant="default" preserves the original non-destructive confirm button. */}
+      <ConfirmDialog
+        open={!!removeBookingId}
+        onOpenChange={(open) => !open && setRemoveBookingId(null)}
+        title={t("scheduleOverview.removePlayer", "Remove player")}
+        description={t("scheduleOverview.removePlayerConfirm", "Are you sure you want to remove this player from the session?")}
+        confirmLabel={t("scheduleOverview.removePlayer", "Remove player")}
+        cancelLabel={t("scheduleOverview.cancel", "Cancel")}
+        loading={removingBooking}
+        variant="default"
+        onConfirm={async () => {
+          try {
+            await handleRemovePlayer();
+          } finally {
+            setRemoveBookingId(null);
+          }
+        }}
+      />
 
-      {/* Remove Player from Cycle Confirm */}
-      <AlertDialog open={!!confirmRemoveCyclePlayer} onOpenChange={(open) => !open && setConfirmRemoveCyclePlayer(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("scheduleOverview.removeFromCycleConfirm", "Remove {{name}} from all sessions in this cycle?", { name: confirmRemoveCyclePlayer?.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={!!removingPlayerFromCycle}>
-              {t("scheduleOverview.cancel", "Cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemovePlayerFromCycle} disabled={!!removingPlayerFromCycle}>
-              {removingPlayerFromCycle && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Remove Player from Cycle Confirm. handleRemovePlayerFromCycle's own finally
+          clears both removingPlayerFromCycle (shared with the row X-button spinner —
+          keep it shared) and confirmRemoveCyclePlayer, so the handler owns close.
+          variant="default" preserves the original non-destructive confirm button. */}
+      <ConfirmDialog
+        open={!!confirmRemoveCyclePlayer}
+        onOpenChange={(open) => !open && setConfirmRemoveCyclePlayer(null)}
+        title={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+        description={t("scheduleOverview.removeFromCycleConfirm", "Remove {{name}} from all sessions in this cycle?", { name: confirmRemoveCyclePlayer?.name })}
+        confirmLabel={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
+        cancelLabel={t("scheduleOverview.cancel", "Cancel")}
+        loading={!!removingPlayerFromCycle}
+        variant="default"
+        onConfirm={handleRemovePlayerFromCycle}
+      />
     </div>
   );
 }

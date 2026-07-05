@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectFilter } from "@/components/ui/select-filter";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_PAGE_SIZE,
@@ -30,15 +31,13 @@ import { annotateInvoiceStatusReason } from "@/lib/invoiceStatusHistory";
 import { InvoiceEmailDialog } from "@/components/invoices/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { SendInvoiceEmailDialog } from "@/components/invoices/SendInvoiceEmailDialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, FileText, Send, Loader2, PlusCircle, Link2, Mail, CheckCheck, RotateCcw, Trash2, X, CalendarIcon, MailWarning, Download, MoreHorizontal } from "lucide-react";
 import { ListPageShell, ListPageState } from "@/components/ui/list-page-shell";
 import { TableToolbar } from "@/components/ui/table-toolbar";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { toast } from "sonner";
@@ -813,6 +812,7 @@ export default function AcademyInvoices() {
           searchValue={searchQuery}
           onSearchChange={setSearchQuery}
         >
+          {/* NOT SelectFilter: custom <SelectValue> children resolve the id -> name trigger label. */}
           {trainers.length > 0 && (
             <Select value={trainerFilter} onValueChange={setTrainerFilter}>
               <SelectTrigger className="w-[180px]">
@@ -830,6 +830,7 @@ export default function AcademyInvoices() {
               </SelectContent>
             </Select>
           )}
+          {/* NOT SelectFilter: custom <SelectValue> children resolve the id -> name trigger label. */}
           {academyLocations.length > 0 && (
             <Select value={locationFilter} onValueChange={setLocationFilter}>
               <SelectTrigger className="w-[180px]">
@@ -848,29 +849,29 @@ export default function AcademyInvoices() {
             </Select>
           )}
           {activeTab !== "cancelled" && (
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder={t("invoices.allStatuses", "Alle statussen")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("invoices.allStatuses", "Alle statussen")}</SelectItem>
-                {/* "Open" groups draft + sent + open (everything not overdue/paid) */}
-                <SelectItem value="open">{t("invoices.open", "Open")}</SelectItem>
-                <SelectItem value="overdue">{t("invoices.overdue", "Overdue")}</SelectItem>
-                <SelectItem value="paid">{t("invoices.paid", "Paid")}</SelectItem>
-                {/* cancelled is its own tab; draft/sent rolled into "Open" */}
-              </SelectContent>
-            </Select>
+            <SelectFilter
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              allLabel={t("invoices.allStatuses", "Alle statussen")}
+              options={[
+                // "Open" groups draft + sent + open (everything not overdue/paid)
+                { value: "open", label: t("invoices.open", "Open") },
+                { value: "overdue", label: t("invoices.overdue", "Overdue") },
+                { value: "paid", label: t("invoices.paid", "Paid") },
+                // cancelled is its own tab; draft/sent rolled into "Open"
+              ]}
+              triggerClassName="w-[160px]"
+            />
           )}
-          <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
-            <SelectTrigger className="w-[170px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("emailDelivery.filter.all", "All delivery")}</SelectItem>
-              <SelectItem value="undelivered">{t("emailDelivery.filter.issue", "Delivery issue")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <SelectFilter
+            value={deliveryFilter}
+            onValueChange={setDeliveryFilter}
+            allLabel={t("emailDelivery.filter.all", "All delivery")}
+            options={[
+              { value: "undelivered", label: t("emailDelivery.filter.issue", "Delivery issue") },
+            ]}
+            triggerClassName="w-[170px]"
+          />
         </TableToolbar>
 
         <TabsContent value={activeTab} className="mt-4">
@@ -1035,26 +1036,11 @@ export default function AcademyInvoices() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn("w-full justify-start text-left font-normal", !bulkDueDate && "text-muted-foreground")}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {bulkDueDate ? format(bulkDueDate, "dd MMM yyyy", { locale: dateFnsLocale }) : t("invoices.bulk.pickDate", "Pick a date")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={bulkDueDate}
-                  onSelect={setBulkDueDate}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePickerPopover
+              value={bulkDueDate}
+              onChange={setBulkDueDate}
+              className="w-full"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkDueOpen(false)} disabled={bulkRunning}>
@@ -1068,44 +1054,37 @@ export default function AcademyInvoices() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmBulk !== null} onOpenChange={(o) => { if (!o && !bulkRunning) { setConfirmBulk(null); setBulkCancelReason(""); } }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmBulk === "reset"
-                ? t("invoices.bulk.confirmResetTitle", "Reset {{count}} invoices to draft?", { count: selectedIds.size })
-                : t("invoices.bulk.confirmDeleteTitle", "Delete {{count}} invoices?", { count: selectedIds.size })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmBulk === "reset"
-                ? t("invoices.bulk.confirmResetDesc", "Status, sent date and paid date will be cleared. This cannot be undone.")
-                : t("invoices.bulk.confirmDeleteDesc", "Drafts will be removed permanently. Sent invoices will be cancelled.")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {confirmBulk === "delete" && (
-            <Input
-              value={bulkCancelReason}
-              onChange={(e) => setBulkCancelReason(e.target.value)}
-              placeholder={t("invoices.bulk.cancelReasonPlaceholder", "Reason (optional) — e.g. email bounced, duplicate")}
-              disabled={bulkRunning}
-            />
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkRunning}>{t("common.cancel", "Cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                if (confirmBulk === "reset") handleBulkReset();
-                else if (confirmBulk === "delete") handleBulkDelete();
-              }}
-              disabled={bulkRunning}
-            >
-              {bulkRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              {t("common.confirm", "Confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Dual-purpose bulk confirm: reset-to-draft / delete, switched on confirmBulk.
+          The handlers own close (setConfirmBulk(null) after the await settles);
+          loading={bulkRunning} blocks dismissal + double-fire while running.
+          Only the delete branch gets the destructive-red confirm button; reset stays plain. */}
+      <ConfirmDialog
+        open={confirmBulk !== null}
+        onOpenChange={(o) => { if (!o) { setConfirmBulk(null); setBulkCancelReason(""); } }}
+        title={confirmBulk === "reset"
+          ? t("invoices.bulk.confirmResetTitle", "Reset {{count}} invoices to draft?", { count: selectedIds.size })
+          : t("invoices.bulk.confirmDeleteTitle", "Delete {{count}} invoices?", { count: selectedIds.size })}
+        description={confirmBulk === "reset"
+          ? t("invoices.bulk.confirmResetDesc", "Status, sent date and paid date will be cleared. This cannot be undone.")
+          : t("invoices.bulk.confirmDeleteDesc", "Drafts will be removed permanently. Sent invoices will be cancelled.")}
+        confirmLabel={t("common.confirm", "Confirm")}
+        cancelLabel={t("common.cancel", "Cancel")}
+        loading={bulkRunning}
+        variant={confirmBulk === "delete" ? "destructive" : "default"}
+        onConfirm={() => {
+          if (confirmBulk === "reset") handleBulkReset();
+          else if (confirmBulk === "delete") handleBulkDelete();
+        }}
+      >
+        {confirmBulk === "delete" && (
+          <Input
+            value={bulkCancelReason}
+            onChange={(e) => setBulkCancelReason(e.target.value)}
+            placeholder={t("invoices.bulk.cancelReasonPlaceholder", "Reason (optional) — e.g. email bounced, duplicate")}
+            disabled={bulkRunning}
+          />
+        )}
+      </ConfirmDialog>
 
     </ListPageShell>
   );

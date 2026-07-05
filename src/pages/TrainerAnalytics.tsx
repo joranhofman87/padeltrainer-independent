@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatTile } from '@/components/ui/stat-tile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, TrendingUp, TrendingDown, Calendar, Euro, Star, Users } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
@@ -12,6 +13,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { getTrainerAverageRating, getTrainerReviews } from '@/lib/reviews';
 import { formatCurrency } from '@/lib/format';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { logger } from '@/lib/logger';
 
 interface MonthlyStats {
@@ -214,11 +216,7 @@ export default function TrainerAnalytics() {
   };
 
   if (loading || loadingStats) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (loadError) {
@@ -252,40 +250,13 @@ export default function TrainerAnalytics() {
     );
   }
 
-  const StatCard = ({ 
-    title, 
-    value, 
-    icon: Icon, 
-    change, 
-    suffix = '',
-    prefix = '' 
-  }: { 
-    title: string; 
-    value: number | string; 
-    icon: any; 
-    change?: number; 
-    suffix?: string;
-    prefix?: string;
-  }) => (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold">{prefix}{value}{suffix}</p>
-            {change !== undefined && (
-              <div className={`flex items-center gap-1 text-sm mt-1 ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {change >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                <span>{change >= 0 ? '+' : ''}{change}% vs last month</span>
-              </div>
-            )}
-          </div>
-          <div className="p-3 rounded-full bg-primary/10">
-            <Icon className="h-5 w-5 text-primary" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+  // Same trend readout the old local StatCard rendered (colored +/-% with
+  // arrow); span instead of div because StatTile renders subtext inside a <p>.
+  const trendSubtext = (change: number) => (
+    <span className={`flex items-center gap-1 text-sm mt-1 ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+      {change >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+      <span>{change >= 0 ? '+' : ''}{change}% vs last month</span>
+    </span>
   );
 
   return (
@@ -306,28 +277,27 @@ export default function TrainerAnalytics() {
       <main className="container mx-auto px-4 py-8">
         {/* Summary Stats */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard 
-            title={t('analyticsPage.totalBookings')} 
-            value={summary.totalBookings} 
+          <StatTile
+            label={t('analyticsPage.totalBookings')}
+            value={summary.totalBookings}
             icon={Calendar}
-            change={summary.bookingsChange}
+            subtext={trendSubtext(summary.bookingsChange)}
           />
-          <StatCard 
-            title={t('analyticsPage.totalEarnings')} 
+          <StatTile
+            label={t('analyticsPage.totalEarnings')}
             value={formatCurrency(summary.totalEarnings)}
             icon={Euro}
-            change={summary.earningsChange}
+            subtext={trendSubtext(summary.earningsChange)}
           />
-          <StatCard 
-            title={t('analyticsPage.uniqueStudents')} 
-            value={summary.totalStudents} 
+          <StatTile
+            label={t('analyticsPage.uniqueStudents')}
+            value={summary.totalStudents}
             icon={Users}
           />
-          <StatCard 
-            title={t('analyticsPage.averageRating')} 
-            value={summary.averageRating.toFixed(1)} 
+          <StatTile
+            label={t('analyticsPage.averageRating')}
+            value={`${summary.averageRating.toFixed(1)} (${summary.reviewCount})`}
             icon={Star}
-            suffix={` (${summary.reviewCount})`}
           />
         </div>
 

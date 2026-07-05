@@ -91,6 +91,43 @@ function claimsStateOf(responses: Array<'claimed' | 'pending' | 'declined'>): Cl
   return 'declined'; // all declined/expired
 }
 
+export type SingleInvoiceRow = { player_id: string | null; guest_player_id: string | null; status: string };
+export type GroupInvoiceRow = { rebook_group_id: string | null; status: string };
+
+/**
+ * Resolve rebook paid/invoiced state per player. Rebook invoices are NEVER tagged `cycle_id`:
+ * single-claim invoices carry `rebook_cyclus_id` (keyed to a player identity), group invoices
+ * carry `rebook_group_id` (one payment covering EVERY member of that group). So a member is
+ * paid/invoiced iff their own single invoice OR their group's invoice is active/paid. Pure +
+ * exported so the invariant (that the academy's "who paid?" view is correct) is unit-tested.
+ */
+export function buildRebookPaidResolver(
+  singleInvoices: SingleInvoiceRow[],
+  groupInvoices: GroupInvoiceRow[],
+) {
+  const paidKeys = new Set<string>();
+  const invoicedKeys = new Set<string>();
+  for (const inv of singleInvoices) {
+    const key = inv.player_id ?? (inv.guest_player_id ? `g:${inv.guest_player_id}` : null);
+    if (!key || inv.status === 'cancelled') continue;
+    invoicedKeys.add(key);
+    if (inv.status === 'paid') paidKeys.add(key);
+  }
+  const paidGroups = new Set<string>();
+  const invoicedGroups = new Set<string>();
+  for (const inv of groupInvoices) {
+    if (!inv.rebook_group_id || inv.status === 'cancelled') continue;
+    invoicedGroups.add(inv.rebook_group_id);
+    if (inv.status === 'paid') paidGroups.add(inv.rebook_group_id);
+  }
+  return {
+    isPaid: (pk: string, groupId: string | null) =>
+      paidKeys.has(pk) || (groupId != null && paidGroups.has(groupId)),
+    hasInvoice: (pk: string, groupId: string | null) =>
+      invoicedKeys.has(pk) || (groupId != null && invoicedGroups.has(groupId)),
+  };
+}
+
 export async function getCycleRebookStatus(cycleId: string): Promise<RebookManageData> {
   const [{ data: cycle }, { data: slots }] = await Promise.all([
     supabase.from('cycles').select('name, settings').eq('id', cycleId).maybeSingle(),
@@ -116,24 +153,48 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const slotById = new Map(slotRows.map((s) => [s.id, s]));
   const slotIds = slotRows.map((s) => s.id);
 
-  const [{ data: claims }, { data: invoices }] = await Promise.all([
-    supabase
-      .from('slot_priority_claims')
-      .select('id, slot_id, player_id, guest_player_id, status, rebook_group_id, reminded_at')
-      .in('slot_id', slotIds),
-    supabase
-      .from('invoices')
-      .select('player_id, guest_player_id, status')
-      .eq('cycle_id', cycleId),
-  ]);
-  const claimRows = (claims ?? []) as Array<{
+  // P1-2: reminded_at was added by an owner-deployed migration; if it isn't live yet the select
+  // 400s and the whole management view would blank. Retry without it (fallback null), mirroring
+  // getMyPendingPriorityClaims's deploy-window tolerance.
+  type ClaimRow = {
     slot_id: string;
     player_id: string | null;
     guest_player_id: string | null;
     status: string;
     rebook_group_id: string | null;
-    reminded_at: string | null;
-  }>;
+    reminded_at?: string | null;
+  };
+  const claimCols = 'id, slot_id, player_id, guest_player_id, status, rebook_group_id';
+  const primaryClaims = await supabase
+    .from('slot_priority_claims')
+    .select(`${claimCols}, reminded_at`)
+    .in('slot_id', slotIds);
+  let claimData = primaryClaims.data as ClaimRow[] | null;
+  if (
+    primaryClaims.error &&
+    (primaryClaims.error.code === '42703' || /reminded_at/.test(primaryClaims.error.message ?? ''))
+  ) {
+    const fb = await supabase.from('slot_priority_claims').select(claimCols).in('slot_id', slotIds);
+    claimData = fb.data as ClaimRow[] | null;
+  }
+  const claimRows = (claimData ?? []) as ClaimRow[];
+
+  // P1-1: rebook invoices are NEVER tagged cycle_id — single-claim invoices carry rebook_cyclus_id,
+  // group invoices carry rebook_group_id. Read paid/invoiced via those keys (reading cycle_id showed
+  // every rebooked player as unpaid). A group invoice is ONE payment covering all its members, so its
+  // paid/invoiced state propagates to every member of that group.
+  const groupIds = [...new Set(claimRows.map((c) => c.rebook_group_id).filter(Boolean))] as string[];
+  const singleRes = await supabase
+    .from('invoices').select('player_id, guest_player_id, status')
+    // rebook_cyclus_id is a real column missing from the generated types (types.ts drift);
+    // cast the key to a known column so `.eq` type-resolves — the runtime value is unchanged.
+    .eq('rebook_cyclus_id' as 'id', cycleId);
+  const singleInvoices = (singleRes.data ?? []) as SingleInvoiceRow[];
+  let groupInvoices: GroupInvoiceRow[] = [];
+  if (groupIds.length) {
+    const groupRes = await supabase.from('invoices').select('rebook_group_id, status').in('rebook_group_id', groupIds);
+    groupInvoices = (groupRes.data ?? []) as GroupInvoiceRow[];
+  }
 
   // Names.
   const playerIds = [...new Set(claimRows.map((c) => c.player_id).filter(Boolean))] as string[];
@@ -146,15 +207,8 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(p.id, (p.full_name ?? '').trim() || '—');
   for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
 
-  // Paid status per player key (any 'paid' invoice for this cycle).
-  const paidKeys = new Set<string>();
-  const invoicedKeys = new Set<string>();
-  for (const inv of (invoices ?? []) as Array<{ player_id: string | null; guest_player_id: string | null; status: string }>) {
-    const key = inv.player_id ?? (inv.guest_player_id ? `g:${inv.guest_player_id}` : null);
-    if (!key || inv.status === 'cancelled') continue;
-    invoicedKeys.add(key);
-    if (inv.status === 'paid') paidKeys.add(key);
-  }
+  // Single-claim invoices → per identity; group invoices → per group (propagated to members).
+  const { isPaid, hasInvoice: hasInvoiceFor } = buildRebookPaidResolver(singleInvoices, groupInvoices);
 
   const keyOf = (c: { player_id: string | null; guest_player_id: string | null }) =>
     c.player_id ?? `g:${c.guest_player_id}`;
@@ -178,8 +232,8 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         guestPlayerId: c.guest_player_id,
         name: nameByKey.get(pk) ?? '—',
         response: resp,
-        paid: paidKeys.has(pk),
-        hasInvoice: invoicedKeys.has(pk),
+        paid: isPaid(pk, c.rebook_group_id),
+        hasInvoice: hasInvoiceFor(pk, c.rebook_group_id),
         lastRemindedAt: existing?.lastRemindedAt ?? null,
       });
     }
@@ -240,7 +294,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const counts: Record<GroupStatus, number> = { rebooked: 0, awaiting: 0, declined: 0, members: 0, public: 0 };
   for (const grp of groups) counts[grp.status] += 1;
   const allPlayers = groups.flatMap((g) => g.players);
-  const paidCount = allPlayers.filter((p) => p.paid).length;
+  // Only count players who actually rebooked (response==='claimed'). A group-paid invoice's
+  // paid flag propagates to a removed/declined member's still-group-tagged claim, so gating on
+  // 'claimed' (symmetric with unpaidCount) keeps the headline paid figure from over-counting them.
+  const paidCount = allPlayers.filter((p) => p.response === 'claimed' && p.paid).length;
   const unpaidCount = allPlayers.filter((p) => p.response === 'claimed' && !p.paid).length;
 
   return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, paidCount, unpaidCount };

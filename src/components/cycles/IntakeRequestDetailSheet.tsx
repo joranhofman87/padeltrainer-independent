@@ -60,16 +60,7 @@ import {
   linkPlayers,
   unlinkPlayer,
 } from '@/lib/cycles';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { getSuggestedLinks, getDismissedSuggestions, dismissSuggestion, getUnmatchedMentions, getDismissedUnmatched, dismissUnmatchedMention } from '@/lib/suggestLinks';
 import ProposalCard from './ProposalCard';
 import ReassignPlayerDialog from './ReassignPlayerDialog';
@@ -313,37 +304,29 @@ export default function IntakeRequestDetailSheet({
           </div>
 
           {/* Delete confirmation dialog */}
-          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t('intakeRequests.actions.deleteConfirmTitle', { defaultValue: 'Delete this registration?' })}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('intakeRequests.actions.deleteConfirmDescription', { defaultValue: 'This will permanently delete the registration for {{name}}. This action cannot be undone.', name: request.full_name })}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t('intakeRequests.actions.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={async () => {
-                    setIsDeleting(true);
-                    try {
-                      await deleteIntakeRequest(request.id);
-                      toast.success(t('intakeRequests.actions.deleteSuccess', { defaultValue: 'Registration deleted' }));
-                      onOpenChange(false);
-                      onStatusChange?.();
-                    } catch (error: any) {
-                      toast.error(getFriendlyErrorMessage(error, t('intakeRequests.actions.deleteError', { defaultValue: 'Failed to delete registration' })));
-                    } finally {
-                      setIsDeleting(false);
-                    }
-                  }}
-                >
-                  {t('intakeRequests.actions.delete', { defaultValue: 'Delete' })}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <ConfirmDialog
+            open={showDeleteConfirm}
+            onOpenChange={setShowDeleteConfirm}
+            title={t('intakeRequests.actions.deleteConfirmTitle', { defaultValue: 'Delete this registration?' })}
+            description={t('intakeRequests.actions.deleteConfirmDescription', { defaultValue: 'This will permanently delete the registration for {{name}}. This action cannot be undone.', name: request.full_name })}
+            confirmLabel={t('intakeRequests.actions.delete', { defaultValue: 'Delete' })}
+            cancelLabel={t('intakeRequests.actions.cancel', { defaultValue: 'Cancel' })}
+            loading={isDeleting}
+            onConfirm={async () => {
+              setIsDeleting(true);
+              try {
+                await deleteIntakeRequest(request.id);
+                toast.success(t('intakeRequests.actions.deleteSuccess', { defaultValue: 'Registration deleted' }));
+                onOpenChange(false);
+                onStatusChange?.();
+              } catch (error: any) {
+                toast.error(getFriendlyErrorMessage(error, t('intakeRequests.actions.deleteError', { defaultValue: 'Failed to delete registration' })));
+              } finally {
+                setIsDeleting(false);
+                setShowDeleteConfirm(false);
+              }
+            }}
+          />
           {/* Contact Info */}
           <Card>
             <CardHeader className="pb-3">

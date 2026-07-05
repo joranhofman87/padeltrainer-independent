@@ -11,19 +11,19 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { 
-  Users, 
-  Clock, 
-  Check, 
-  Mail, 
-  Phone, 
+import {
+  Users,
+  Clock,
+  Mail,
+  Phone,
   User,
   ExternalLink,
-  CreditCard,
-  AlertCircle,
 } from "lucide-react";
+import { BookingStatusBadge } from "@/components/booking/BookingStatusBadge";
+import { PaymentStatusBadge } from "@/components/booking/PaymentStatusBadge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { formatSlotRating as formatSlotRatingDisplay } from "@/components/slots/SlotRatingPicker";
@@ -123,21 +123,15 @@ export function ClubSlotDetailSheet({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "confirmed":
-        return (
-          <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-            <Check className="h-3 w-3 mr-1" />
-            {t("calendar.confirmed", "Confirmed")}
-          </Badge>
-        );
+        return <BookingStatusBadge status={status} />;
       case "pending":
       case "pending_approval":
-        return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-            <Clock className="h-3 w-3 mr-1" />
-            {t("calendar.pending", "Pending")}
-          </Badge>
-        );
+        // Deliberate visual delta: the shared badge splits the old single yellow "Pending"
+        // chip — pending -> warning "Pending Payment", pending_approval -> info "Awaiting Approval".
+        return <BookingStatusBadge status={status} />;
       default:
+        // Unreachable given the fetch's status filter; kept so any new status renders
+        // nothing here (the shared badge would render the raw status text instead).
         return null;
     }
   };
@@ -145,26 +139,13 @@ export function ClubSlotDetailSheet({
   const getPaymentBadge = (paymentStatus: string) => {
     switch (paymentStatus) {
       case "paid":
-        return (
-          <Badge variant="outline" className="text-green-600 border-green-300">
-            <CreditCard className="h-3 w-3 mr-1" />
-            {t("calendar.paid", "Paid")}
-          </Badge>
-        );
+        return <PaymentStatusBadge kind="paid" label={t("calendar.paid", "Paid")} />;
       case "pending":
-        return (
-          <Badge variant="outline" className="text-yellow-600 border-yellow-300">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            {t("calendar.paymentPending", "Payment Pending")}
-          </Badge>
-        );
+        return <PaymentStatusBadge kind="pending" label={t("calendar.paymentPending", "Payment Pending")} />;
       case "waived":
-        return (
-          <Badge variant="outline" className="text-muted-foreground">
-            {t("calendar.waived", "Waived")}
-          </Badge>
-        );
+        return <PaymentStatusBadge kind="waived" label={t("calendar.waived", "Waived")} />;
       default:
+        // The shared badge requires a kind — keep rendering nothing for unknown payment statuses.
         return null;
     }
   };
@@ -245,10 +226,7 @@ export function ClubSlotDetailSheet({
                 ))}
               </div>
             ) : bookings.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                <User className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>{t("calendar.noBookings", "No bookings yet")}</p>
-              </div>
+              <EmptyState icon={User} title={t("calendar.noBookings", "No bookings yet")} />
             ) : (
               <div className="space-y-2">
                 {bookings.map((booking) => {

@@ -518,12 +518,6 @@
       "ratingSystem": "Rating System",
       "spreadPlaceholder": "e.g., 0.5 for KNLTB"
     },
-    "guard": {
-      "title": "Important",
-      "description": "For the system to generate proposals, you need to create slots or training cycles in your calendar first. Once slots are created, we can match players based on their availability and preferences.",
-      "goToCalendar": "Go to Calendar",
-      "continue": "Continue"
-    },
     "statusBadges": {
       "approved": "Approved",
       "rejected": "Rejected",
@@ -626,6 +620,7 @@
     "loadError": "Could not load cycles. Please try again.",
     "allDone": "Done!",
     "approveTitle": "Approve & book all proposals?",
+    "approveDescription": "This will confirm all {{players}} player assignments across {{slots}} slots and create their bookings. This action cannot be undone.",
     "back": "Back",
     "bookedBanner": "All proposals have been booked! You can now send schedule emails to notify players.",
     "cancel": "Cancel",
@@ -640,6 +635,7 @@
     "removeHolidayDate": "Remove holiday date",
     "sendEmails": "Send Emails",
     "sendEmailsTitle": "Send schedule emails?",
+    "sendEmailsDescription": "This will send an email to all {{count}} assigned players with their training schedule and an invitation to create their account.",
     "size": "Size",
     "subtitle": "Review the full planning before confirming",
     "time": "Time",
@@ -777,6 +773,7 @@
     "browse": "Browse available spots",
     "perSession": "{{amount}} per session",
     "termTotal": "{{total}} for the full term ({{count}} sessions)",
+    "termTotalFlat": "{{total}} for the full term",
     "cardTitle": "Keep your spot?",
     "cardDescription": "You have priority to keep your spot for the next cycle. You only pay when the cycle starts; the price is split between the players who join.",
     "toastReserved": "Great! Your spot is reserved for the next cycle.",
