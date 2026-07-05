@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { fetchMollieReadiness } from "../_shared/mollie-onboarding.ts";
 
 const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -184,6 +185,14 @@ serve(async (req) => {
     // Calculate token expiration time
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
+    // Resolve REAL readiness from Mollie's onboarding/KYC state — do NOT hardcode true. An
+    // account that connected but hasn't finished KYC is not yet chargeable; showing it "ready"
+    // sends guests into a 422 dead-end. On fetch failure, default to NOT ready (conservative);
+    // check-mollie-connect-status reconciles once KYC completes.
+    const readiness = (await fetchMollieReadiness(tokens.access_token)) ??
+      { onboardingComplete: false, chargesEnabled: false, payoutsEnabled: false };
+    logStep("Onboarding readiness resolved", readiness);
+
     // Update the appropriate table based on entity type
     if (entityType === 'trainer') {
       const { error: updateError } = await supabaseClient
@@ -193,9 +202,9 @@ serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt,
-          onboarding_complete: true,
-          charges_enabled: true,
-          payouts_enabled: true,
+          onboarding_complete: readiness.onboardingComplete,
+          charges_enabled: readiness.chargesEnabled,
+          payouts_enabled: readiness.payoutsEnabled,
           updated_at: new Date().toISOString(),
         })
         .eq('trainer_id', entityId);
@@ -214,9 +223,9 @@ serve(async (req) => {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           token_expires_at: tokenExpiresAt,
-          onboarding_complete: true,
-          charges_enabled: true,
-          payouts_enabled: true,
+          onboarding_complete: readiness.onboardingComplete,
+          charges_enabled: readiness.chargesEnabled,
+          payouts_enabled: readiness.payoutsEnabled,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'academy_profile_id' });
 

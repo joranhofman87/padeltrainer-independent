@@ -6,6 +6,7 @@ import {
 } from "../_shared/mollie-payment-ready.ts";
 import { corsHeaders, jsonForbidden, requireUser } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { fetchMollieReadiness } from "../_shared/mollie-onboarding.ts";
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -169,7 +170,7 @@ serve(async (req) => {
       throw new Error("Invalid entity type");
     }
 
-    const statusFields = entityType === "academy"
+    let statusFields = entityType === "academy"
       ? buildAcademyMollieConnectStatus(accountData)
       : buildTrainerMollieConnectStatus(accountData);
 
@@ -192,6 +193,44 @@ serve(async (req) => {
       entityType,
       entityId,
     );
+
+    // P1-3 reconcile: the stored readiness flags may be stale — an account often connects
+    // BEFORE finishing Mollie KYC (or completes it later). Re-derive from Mollie's live
+    // onboarding state and write back if changed, so it self-heals (becomes ready once KYC
+    // completes; gets corrected if it was wrongly "ready"). Only on a DEFINITIVE answer — a
+    // fetch failure returns null and leaves the stored flags untouched (never flap on a blip).
+    if (accessToken) {
+      const readiness = await fetchMollieReadiness(accessToken);
+      if (
+        readiness &&
+        (readiness.chargesEnabled !== statusFields.chargesEnabled ||
+          readiness.onboardingComplete !== statusFields.onboardingComplete ||
+          readiness.payoutsEnabled !== statusFields.payoutsEnabled)
+      ) {
+        const tableName = entityType === "trainer" ? "trainer_mollie_accounts" : "academy_mollie_accounts";
+        const idColumn = entityType === "trainer" ? "trainer_id" : "academy_profile_id";
+        await supabaseClient
+          .from(tableName)
+          .update({
+            onboarding_complete: readiness.onboardingComplete,
+            charges_enabled: readiness.chargesEnabled,
+            payouts_enabled: readiness.payoutsEnabled,
+            updated_at: new Date().toISOString(),
+          })
+          .eq(idColumn, entityId);
+        // Rebuild so the derived paymentReady / reason stay consistent with the new flags.
+        const reconciled = {
+          ...accountData,
+          onboarding_complete: readiness.onboardingComplete,
+          charges_enabled: readiness.chargesEnabled,
+          payouts_enabled: readiness.payoutsEnabled,
+        };
+        statusFields = entityType === "academy"
+          ? buildAcademyMollieConnectStatus(reconciled)
+          : buildTrainerMollieConnectStatus(reconciled);
+        logStep("Reconciled readiness from Mollie onboarding", readiness);
+      }
+    }
 
     if (accessToken && statusFields.chargesEnabled) {
       try {
