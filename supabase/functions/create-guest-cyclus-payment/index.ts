@@ -20,6 +20,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { applySplitPayment, computeCyclusTotalFromSlots, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
+import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -149,6 +150,13 @@ Deno.serve(async (req) => {
     if (!(total > 0)) return json({ error: "invalid_amount" }, 400);
 
     const { data: cycle } = await supabase.from("cycles").select("settings").eq("id", cyclusId).maybeSingle();
+    // Owner switch: a cyclus can be restricted to INDIVIDUAL sessions only (settings.
+    // allow_cyclus_booking=false, e.g. RL Padel's drop-in model). The dialog hides the
+    // whole-series option, but this endpoint is verify_jwt=false — enforce it here.
+    if (!isCyclusBookingAllowed(cycle?.settings)) {
+      logStep("Refused — whole-cyclus booking disabled for this cycle", { cyclusId });
+      return json({ error: "cyclus_not_bookable" }, 403);
+    }
     const splitPayment = ((cycle?.settings as Record<string, unknown>) || {}).split_payment === true;
 
     // 6. Guest identity — always a guest_players row.

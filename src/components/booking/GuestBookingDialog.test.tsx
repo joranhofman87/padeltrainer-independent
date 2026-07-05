@@ -5,16 +5,23 @@ import type { PublicSlot } from '@/lib/publicAvailability';
 
 const invokeMock = vi.fn();
 const toastErrorMock = vi.fn();
-// Cyclus sessions the dialog fetches via supabase.from — set per test.
+// Cyclus sessions + the cycle's public settings row the dialog fetches via supabase.from —
+// set per test.
 const cyclusSessions: { current: unknown[] } = { current: [] };
+const cyclusPublicRow: { current: unknown } = { current: null };
 
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     functions: { invoke: (...args: unknown[]) => invokeMock(...args) },
-    from: () => {
+    from: (table: string) => {
       const q: Record<string, unknown> = {};
       for (const m of ['select', 'eq', 'gte', 'order']) q[m] = () => q;
-      q.then = (resolve: (v: { data: unknown }) => void) => resolve({ data: cyclusSessions.current });
+      if (table === 'cycles_public') {
+        q.maybeSingle = () => Promise.resolve({ data: cyclusPublicRow.current });
+        q.then = (resolve: (v: { data: unknown }) => void) => resolve({ data: cyclusPublicRow.current });
+      } else {
+        q.then = (resolve: (v: { data: unknown }) => void) => resolve({ data: cyclusSessions.current });
+      }
       return q;
     },
   },
@@ -74,6 +81,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   toastErrorMock.mockReset();
   cyclusSessions.current = [];
+  cyclusPublicRow.current = null;
 });
 
 describe('GuestBookingDialog', () => {
@@ -166,6 +174,49 @@ describe('GuestBookingDialog', () => {
     expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
       body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
     });
+  });
+
+  it('slots-only cyclus (allow_cyclus_booking=false): hides the whole-series option and books the single slot', async () => {
+    // RL Padel model: the cycle sells individual sessions ONLY. No mode choice at all —
+    // the dialog goes straight to single-session; the whole-series path is never offered.
+    cyclusSessions.current = twoSessions;
+    cyclusPublicRow.current = { settings: { allow_single_booking: true, allow_cyclus_booking: false } };
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/s/only' }, error: null });
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+
+    render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+
+    // The flag loads async: the mode choice must disappear once settings arrive.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Hele cyclus/ })).toBeNull());
+    expect(screen.queryByRole('button', { name: /Alleen deze sessie/ })).toBeNull();
+
+    fillValid();
+    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+    });
+  });
+
+  it('misconfigured cyclus (BOTH booking modes off) falls back to whole-cyclus so the server guard answers', async () => {
+    // Never silently offer the single path the owner disabled; the edge fn refuses
+    // cyclus_not_bookable and the guest gets the notBookable toast.
+    cyclusSessions.current = twoSessions;
+    cyclusPublicRow.current = { settings: { allow_cyclus_booking: false } };
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: { context: { json: async () => ({ error: 'cyclus_not_bookable' }) } },
+    });
+
+    const lockedSlot: PublicSlot = { ...cyclusSlot, allow_single_booking: false };
+    render(<GuestBookingDialog slot={lockedSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    fillValid();
+    const payBtn = screen.getByRole('button', { name: /Afrekenen/ });
+    await waitFor(() => expect(payBtn).toBeEnabled());
+    fireEvent.click(payBtn);
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', expect.anything()));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Deze training kan niet meer geboekt worden.'));
   });
 
   it('shows a toast (no redirect) when the slot is full', async () => {

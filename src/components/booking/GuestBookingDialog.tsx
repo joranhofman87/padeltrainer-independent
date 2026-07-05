@@ -65,6 +65,9 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const [mode, setMode] = useState<'single' | 'cyclus'>('cyclus');
   const [sessions, setSessions] = useState<CyclusSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  // Owner switch (settings.allow_cyclus_booking via cycles_public): false ⇒ this cyclus
+  // sells INDIVIDUAL sessions only — hide the whole-series option. Absent/true ⇒ unchanged.
+  const [cyclusBookable, setCyclusBookable] = useState(true);
 
   const cyclusId = slot?.cyclus_id ?? null;
 
@@ -81,24 +84,37 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
     }
   }, [open, slot?.id]);
 
-  // Load the cyclus's future public sessions so the "whole cyclus" option can list them + total.
+  // Load the cyclus's future public sessions so the "whole cyclus" option can list them + total,
+  // and the cycle's public settings for the whole-cyclus-bookable switch.
   useEffect(() => {
     if (!open || !cyclusId) {
       setSessions([]);
+      setCyclusBookable(true);
       return;
     }
     let cancelled = false;
     setLoadingSessions(true);
     void (async () => {
-      const { data } = await supabase
-        .from('availability_slots')
-        .select('id, start_time, end_time, price_per_session')
-        .eq('cyclus_id', cyclusId)
-        .eq('is_public', true)
-        .gte('start_time', new Date().toISOString())
-        .order('start_time', { ascending: true });
+      const [{ data }, { data: cyc }] = await Promise.all([
+        supabase
+          .from('availability_slots')
+          .select('id, start_time, end_time, price_per_session')
+          .eq('cyclus_id', cyclusId)
+          .eq('is_public', true)
+          .gte('start_time', new Date().toISOString())
+          .order('start_time', { ascending: true }),
+        // Sanitized anon view; a cycle outside it (not status=open) keeps the default
+        // (bookable) and the create-guest-cyclus-payment guard stays authoritative.
+        supabase
+          .from('cycles_public' as never)
+          .select('settings')
+          .eq('id', cyclusId)
+          .maybeSingle(),
+      ]);
       if (!cancelled) {
         setSessions((data ?? []) as CyclusSession[]);
+        const settings = (cyc as { settings?: Record<string, unknown> } | null)?.settings;
+        setCyclusBookable(settings?.allow_cyclus_booking !== false);
         setLoadingSessions(false);
       }
     })();
@@ -116,7 +132,13 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   // being booked one-off at the full whole-slot price. Standalone (non-cyclus) slots are single by
   // nature and unaffected.
   const canBookSingle = slot.allow_single_booking === true;
-  const effectiveMode: 'single' | 'cyclus' = isCyclusSlot ? (canBookSingle ? mode : 'cyclus') : 'single';
+  // Owner switch inverse: allow_cyclus_booking=false sells individual sessions ONLY. When the
+  // owner disabled BOTH (misconfiguration), fall back to the whole-cyclus path and let the
+  // server guard answer — never silently offer a mode the server would refuse cheaper.
+  const cyclusOffered = !cyclusBookable && canBookSingle ? false : true;
+  const effectiveMode: 'single' | 'cyclus' = isCyclusSlot
+    ? (!cyclusOffered ? 'single' : canBookSingle ? mode : 'cyclus')
+    : 'single';
   const extrasTotal = slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
   const singlePrice =
     slot.price_per_session != null && slot.price_per_session > 0 ? slot.price_per_session + extrasTotal : null;
@@ -200,8 +222,8 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
         </DialogHeader>
 
         {/* This-session vs whole-cyclus choice — only when the slot is part of a cyclus AND the owner
-            allows individual-session booking. */}
-        {isCyclusSlot && canBookSingle && (
+            allows individual-session booking AND the whole series is bookable at all. */}
+        {isCyclusSlot && canBookSingle && cyclusOffered && (
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"

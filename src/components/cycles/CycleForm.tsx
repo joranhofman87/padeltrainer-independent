@@ -114,6 +114,11 @@ export default function CycleForm({
   const [allowSingleBooking, setAllowSingleBooking] = useState<boolean>(
     (cycle?.settings as any)?.allow_single_booking ?? false
   );
+  // Whole-series bookable? Default true (long-standing behavior); off = the cyclus sells
+  // individual sessions only (guests see no "whole cyclus" option; the guest-cyclus edge fn refuses).
+  const [allowCyclusBooking, setAllowCyclusBooking] = useState<boolean>(
+    (cycle?.settings as { allow_cyclus_booking?: boolean } | null | undefined)?.allow_cyclus_booking !== false
+  );
   const [paymentTiming, setPaymentTiming] = useState<'upfront' | 'invoice_after_weeks' | 'manual'>(() => {
     const settings = cycle?.settings as any;
     if (settings?.payment_timing) return settings.payment_timing;
@@ -298,6 +303,9 @@ export default function CycleForm({
         notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
       });
       setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
+      setAllowCyclusBooking(
+        (cycle?.settings as { allow_cyclus_booking?: boolean } | null | undefined)?.allow_cyclus_booking !== false,
+      );
       setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
       const settings = cycle?.settings as any;
       if (settings?.payment_timing) {
@@ -549,6 +557,7 @@ export default function CycleForm({
         start_time: isEvent ? undefined : values.start_time,
         end_time: isEvent ? undefined : values.end_time,
         allow_single_booking: isEvent ? undefined : allowSingleBooking,
+        allow_cyclus_booking: isEvent ? undefined : allowCyclusBooking,
         mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
         payment_timing: isEvent ? undefined : paymentTiming,
         invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
@@ -1931,6 +1940,18 @@ export default function CycleForm({
                 <Switch
                   checked={allowSingleBooking}
                   onCheckedChange={setAllowSingleBooking}
+                />
+              </div>
+
+              {/* Whole-cyclus bookable toggle (off = individual sessions only) */}
+              <div className="flex flex-row items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">{t('form.allowCyclusBooking')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('form.allowCyclusBookingHelp')}</p>
+                </div>
+                <Switch
+                  checked={allowCyclusBooking}
+                  onCheckedChange={setAllowCyclusBooking}
                 />
               </div>
 

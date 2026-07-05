@@ -76,6 +76,8 @@
     "saveAndOpen": "Opslaan & inschrijving openen",
     "allowSingleBooking": "Individuele les boeking toestaan",
     "allowSingleBookingHelp": "Indien uit, moeten spelers de hele cyclus boeken",
+    "allowCyclusBooking": "Hele cyclus boekbaar",
+    "allowCyclusBookingHelp": "Indien uit, kunnen spelers alleen losse sessies boeken (geen hele cyclus)",
     "extraCosts": "Extra kosten",
     "extraCostsHelp": "Voeg kosten toe zoals baanhuur die als aparte factuurregel verschijnen",
     "perSession": "Per sessie",
