@@ -114,7 +114,11 @@ export async function generateCycleWithSlots(
   const { fresh, skipped } = splitByOverlap(drafts, (d) => epochRange(d.startISO, d.endISO), existing);
   const skippedOverlaps = skipped.length;
   if (fresh.length === 0) {
-    throw new SlotGeneratorError('All planned slots already exist for this trainer — nothing to generate.');
+    // Carries the trigger's token so surfaces that map trainer_slot_overlap show the
+    // translated message; friendlyError suppresses the raw text everywhere else.
+    throw new SlotGeneratorError(
+      'trainer_slot_overlap: every planned session overlaps an existing session for this trainer — nothing to generate.',
+    );
   }
 
   const pricesIncludeVat = input.pricesIncludeVat ?? true;

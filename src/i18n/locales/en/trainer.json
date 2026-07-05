@@ -986,6 +986,7 @@
     "noNewSlotsDescription": "All slots already exist or are in the past",
     "slotsGenerated": "Cyclus generated!",
     "slotsGeneratedDescription": "Created {{count}} recurring slots ({{total}} total sessions)",
+    "slotsGeneratedWithSkips": "Created {{count}} sessions; {{skipped}} skipped — the trainer already has a session at those times",
     "bookingScope": "Booking Scope",
     "session": "session",
     "entireCyclus": "Entire training cyclus",

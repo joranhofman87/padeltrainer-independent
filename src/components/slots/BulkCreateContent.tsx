@@ -613,16 +613,22 @@ export function BulkCreateContent({
         ? availableTrainers.map(t => t.id)
         : (trainerId ? [trainerId] : []);
 
-      const latestEndMs = bulkSlots.reduce((max, config) => {
+      // The read window spans the CANDIDATES (the date picker allows past dates, so
+      // starting the window at "today" would let a past-dated session slip past the
+      // client skip and have the DB trigger abort the whole batch instead).
+      let earliestStartMs = today.getTime();
+      let latestEndMs = today.getTime();
+      for (const config of bulkSlots) {
         const [h, m] = config.startTime.split(":").map(Number);
         const start = setMinutes(setHours(config.startDate, h), m);
         const end = addMinutes(addWeeks(start, Math.max(config.recurrenceWeeks - 1, 0)), config.durationMinutes);
-        return Math.max(max, end.getTime());
-      }, today.getTime());
+        earliestStartMs = Math.min(earliestStartMs, start.getTime());
+        latestEndMs = Math.max(latestEndMs, end.getTime());
+      }
 
       const { byTrainer: existingRangesByTrainer, error: existingReadErr } = await fetchTrainerSlotRanges(
         trainerIdsToCheck,
-        today.toISOString(),
+        new Date(earliestStartMs).toISOString(),
         new Date(latestEndMs).toISOString(),
       );
       // A failed read must not silently disable the dedup (the old code ignored it).
@@ -630,6 +636,7 @@ export function BulkCreateContent({
 
       // Map to track which cyclus_id belongs to which config index
       const configCyclusMap = new Map<number, string>();
+      let skippedOverlapCount = 0;
 
       for (let configIndex = 0; configIndex < bulkSlots.length; configIndex++) {
         const config = bulkSlots[configIndex];
@@ -659,6 +666,7 @@ export function BulkCreateContent({
           const range = epochRange(session.start, session.end);
           // Skip if this session would overlap any slot the trainer already has
           if (trainerExistingRanges.some((e) => rangesOverlap(e, range))) {
+            skippedOverlapCount++;
             continue;
           }
 
@@ -888,10 +896,16 @@ export function BulkCreateContent({
 
       toast({
         title: t("calendar.slotsGenerated"),
-        description: t("calendar.slotsGeneratedDescription", {
-          count: slotsToInsert.length,
-          total: slotsToInsert.length,
-        }),
+        description:
+          skippedOverlapCount > 0
+            ? t("calendar.slotsGeneratedWithSkips", {
+                count: slotsToInsert.length,
+                skipped: skippedOverlapCount,
+              })
+            : t("calendar.slotsGeneratedDescription", {
+                count: slotsToInsert.length,
+                total: slotsToInsert.length,
+              }),
       });
 
       setBulkSlots([]);

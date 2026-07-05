@@ -61,6 +61,10 @@ beforeAll(async () => {
       cyclus_id uuid
     );
     CREATE INDEX idx_availability_slots_trainer_start ON availability_slots (trainer_id, start_time);
+    -- Stubs for the swap_slots dependencies (auth + ownership; both out of scope here).
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT '90000000-0000-0000-0000-000000000001'::uuid $$;
+    CREATE FUNCTION public.can_manage_slot(_user_id uuid, _slot_id uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
   `);
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260708100000_trainer_slot_overlap_guard.sql'), 'utf8'));
 });
@@ -132,6 +136,55 @@ describe('check_trainer_slot_overlap (real migration SQL)', () => {
     expect(await count(`start_time = $1`, [S(10, 0, 3)])).toBe(1);
     expect(await count(`start_time = $1`, [S(10, 0, 17)])).toBe(1);
     expect(await count(`start_time = $1`, [S(10, 0, 24)])).toBe(0);
+  });
+
+  it('swap_slots exchanges two same-trainer windows in one call (single-statement swap passes the trigger)', async () => {
+    const A = '20000000-0000-0000-0000-00000000000a';
+    const B = '20000000-0000-0000-0000-00000000000b';
+    await insertSlot(T1, S(10), S(11), A);
+    await insertSlot(T1, S(14), S(15), B);
+    // The proposal-grid drag-swap shape: A takes B's window and vice versa.
+    await db.query(`SELECT public.swap_slots($1, $2, $3, $4, $5, $6, $7, $8)`, [
+      A, T1, S(14), S(15),
+      B, T1, S(10), S(11),
+    ]);
+    expect(await count(`id = $1 AND start_time = $2`, [A, S(14)])).toBe(1);
+    expect(await count(`id = $1 AND start_time = $2`, [B, S(10)])).toBe(1);
+  });
+
+  it('grandfather rule: a whole-cycle shift of a PRE-EXISTING duplicate pair still works (no new overlap created)', async () => {
+    // Seed an exact duplicate pair inside one cycle with the trigger disabled
+    // (models prod rows created by the broken dedups before this migration).
+    const CY = '30000000-0000-0000-0000-000000000002';
+    await db.exec(`ALTER TABLE availability_slots DISABLE TRIGGER trg_trainer_slot_overlap_ins;`);
+    for (let i = 0; i < 2; i++) {
+      await db.query(
+        `INSERT INTO availability_slots (trainer_id, start_time, end_time, cyclus_id) VALUES ($1, $2, $3, $4)`,
+        [T1, S(10), S(11), CY],
+      );
+    }
+    await db.exec(`ALTER TABLE availability_slots ENABLE TRIGGER trg_trainer_slot_overlap_ins;`);
+
+    // The apply_slot_edit_to_cycle shape: shift the whole cycle +30min in ONE statement.
+    // Both twins move in lockstep and still only overlap EACH OTHER (an overlap their
+    // old ranges already had) → allowed. The guard refuses new double-bookings, it
+    // does not trap tenants whose data already had one.
+    await db.query(
+      `UPDATE availability_slots
+         SET start_time = start_time + interval '30 minutes', end_time = end_time + interval '30 minutes'
+       WHERE cyclus_id = $1`,
+      [CY],
+    );
+    expect(await count(`cyclus_id = $1 AND start_time = $2`, [CY, S(10, 30)])).toBe(2);
+
+    // But shifting one twin onto a THIRD slot it never overlapped is still refused.
+    await insertSlot(T1, S(16), S(17));
+    await expectOverlapRefusal(
+      db.query(
+        `UPDATE availability_slots SET start_time = $2, end_time = $3 WHERE cyclus_id = $1 AND id = (SELECT id FROM availability_slots WHERE cyclus_id = $1 LIMIT 1)`,
+        [CY, S(16, 30), S(17, 30)],
+      ),
+    );
   });
 
   it('does not fire on non-time updates, and lets a pre-existing overlapping row be moved AWAY', async () => {

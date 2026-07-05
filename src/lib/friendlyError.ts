@@ -31,6 +31,9 @@ const TECHNICAL_PATTERNS: RegExp[] = [
   // Surfaces that want the specific message check isTrainerSlotOverlapError first;
   // everywhere else falls back rather than leaking the token.
   /\btrainer_slot_overlap\b/i,
+  // Two overlap-guard batches racing can be resolved by Postgres aborting one —
+  // a retryable condition, never something to show raw.
+  /deadlock detected/i,
 ];
 
 export function extractRawMessage(error: unknown): string {

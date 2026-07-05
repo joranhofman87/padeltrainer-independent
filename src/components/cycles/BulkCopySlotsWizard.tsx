@@ -14,6 +14,7 @@ import { ArrowLeft, Copy, ChevronDown, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { isTrainerSlotOverlapError } from '@/lib/slotConflicts';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { getCycles, getCycle, createCycle, updateCycleSettings, type Cycle } from '@/lib/cycles';
 import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/lib/cyclusLabel';
@@ -210,7 +211,11 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
       toast.success(parts.join(' · '));
       navigate(backHref);
     } catch (e) {
-      toast.error(getFriendlyErrorMessage(e, t('bulkCopy.errSubmit', 'Could not copy the cycle. Please try again.')));
+      toast.error(
+        isTrainerSlotOverlapError(e)
+          ? t('slotConflict.trainerOverlap', { ns: 'common' })
+          : getFriendlyErrorMessage(e, t('bulkCopy.errSubmit', 'Could not copy the cycle. Please try again.')),
+      );
     } finally {
       setSubmitting(false);
     }
