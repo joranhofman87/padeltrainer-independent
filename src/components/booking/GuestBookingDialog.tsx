@@ -110,7 +110,13 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   if (!slot) return null;
 
   const isCyclusSlot = !!cyclusId;
-  const effectiveMode: 'single' | 'cyclus' = isCyclusSlot ? mode : 'single';
+  // Respect the owner's allow_single_booking flag: only offer "just this session" when individual-
+  // session booking is enabled. When it's false the cyclus can only be booked as the WHOLE series —
+  // which also keeps a split_payment session (per-seat, priced total÷N via the cyclus path) from
+  // being booked one-off at the full whole-slot price. Standalone (non-cyclus) slots are single by
+  // nature and unaffected.
+  const canBookSingle = slot.allow_single_booking === true;
+  const effectiveMode: 'single' | 'cyclus' = isCyclusSlot ? (canBookSingle ? mode : 'cyclus') : 'single';
   const extrasTotal = slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
   const singlePrice =
     slot.price_per_session != null && slot.price_per_session > 0 ? slot.price_per_session + extrasTotal : null;
@@ -193,8 +199,9 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
           </DialogDescription>
         </DialogHeader>
 
-        {/* This-session vs whole-cyclus choice (only when the slot is part of a cyclus). */}
-        {isCyclusSlot && (
+        {/* This-session vs whole-cyclus choice — only when the slot is part of a cyclus AND the owner
+            allows individual-session booking. */}
+        {isCyclusSlot && canBookSingle && (
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
