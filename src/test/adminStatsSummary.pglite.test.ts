@@ -111,10 +111,14 @@ beforeAll(async () => {
   `);
 });
 
-async function summary(caller = ADMIN): Promise<Record<string, unknown>> {
+// dynamic JSON stats blob; nested property access in the assertions below relies on `any`
+// (typing it as Record<string,unknown> makes every `.field` access a TS2339).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function summary(caller = ADMIN): Promise<any> {
   // Impersonate the caller for auth.uid() inside the SECURITY DEFINER fn.
   await db.exec(`SELECT set_config('app.test_uid', '${caller}', false);`);
-  const rows = (await db.query<{ admin_stats_summary: Record<string, unknown> }>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same dynamic JSON blob
+  const rows = (await db.query<{ admin_stats_summary: any }>(
     `SELECT public.admin_stats_summary() AS admin_stats_summary`,
   )).rows;
   return rows[0].admin_stats_summary;
