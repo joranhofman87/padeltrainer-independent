@@ -100,6 +100,8 @@ you ever turn the AI features on.
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
+- [ ] **create-guest-cart-payment** (cart booking PR 2) — NEW public fn (verify_jwt=false): guest multi-session cart pay-first. **Apply migration `20260707100000` (cart PR 1) FIRST** — the fn calls the new `book_guest_cart_for_payment` RPC. Inert until the cart UI ships (cart PR 6).
+
 - [x] **update-user** — IDOR fix (#77). *Security — do this one first.*
 - [x] **stripe-subscription-webhook**, **og-image**, **rating-og-image**, **get-public-rating**, **health-check** — redeploy so prod matches the new `config.toml` `verify_jwt=false` (#78). Prevents a future deploy from 401-ing them.
 - [x] **send-email** — HTML-injection escaping for registrant text (#80). *Security — closes the public submit-guest-intake → cross-tenant admin email injection vector.*

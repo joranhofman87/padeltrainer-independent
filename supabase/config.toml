@@ -199,6 +199,9 @@ verify_jwt = false
 [functions.create-guest-cyclus-payment]
 verify_jwt = false
 
+[functions.create-guest-cart-payment]
+verify_jwt = false
+
 [functions.get-guest-booking]
 verify_jwt = false
 
