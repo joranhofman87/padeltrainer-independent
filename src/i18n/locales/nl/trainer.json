@@ -57,6 +57,7 @@
     "referral": "Verwijs een vriend door"
   },
   "scheduleOverview": {
+    "selectCycle": "Cyclus selecteren",
     "title": "Rooster overzicht",
     "description": "Al je sessies gegroepeerd per cyclus met betalingsstatus.",
     "current": "Huidig",
@@ -1387,6 +1388,7 @@
     "levelRange": "Niveaubereik:"
   },
   "cyclesTab": {
+    "clearSelection": "Selectie wissen",
     "noSlotsFound": "Geen slots gevonden voor geselecteerde cycli",
     "visibilityUpdated": "{{count}} slots {{state}} gemaakt",
     "visible": "zichtbaar",

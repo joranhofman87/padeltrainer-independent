@@ -57,6 +57,7 @@
     "referral": "Refer a friend"
   },
   "scheduleOverview": {
+    "selectCycle": "Select cycle",
     "title": "Schedule Overview",
     "description": "All your sessions grouped by cycle with payment status.",
     "current": "Current",
@@ -1384,6 +1385,7 @@
     "levelRange": "Level range:"
   },
   "cyclesTab": {
+    "clearSelection": "Clear selection",
     "noSlotsFound": "No slots found for selected cycles",
     "visibilityUpdated": "{{count}} slots made {{state}}",
     "visible": "visible",
