@@ -57,7 +57,20 @@ export async function insertAvailabilitySlots(
   client: SupabaseClient<Database> = supabase,
   returning?: string,
 ): Promise<{ data: unknown; error: unknown }> {
-  const query = client.from('availability_slots').insert(rows as never);
+  // Canonical (trainer_id, start_time) insert order: the overlap-guard trigger
+  // (20260708100000) takes a per-trainer advisory lock per row, so two concurrent
+  // multi-trainer batches inserting in OPPOSITE trainer orders could AB/BA-deadlock.
+  // A deterministic order makes concurrent batches acquire locks in the same
+  // sequence. No caller depends on the returned row order (verified: they match by
+  // cyclus_id or consume the set wholesale).
+  const sorted = Array.isArray(rows)
+    ? [...rows].sort(
+        (a, b) =>
+          String(a.trainer_id).localeCompare(String(b.trainer_id)) ||
+          String(a.start_time).localeCompare(String(b.start_time)),
+      )
+    : rows;
+  const query = client.from('availability_slots').insert(sorted as never);
   if (returning) {
     const { data, error } = await query.select(returning);
     return { data, error: error ?? null };

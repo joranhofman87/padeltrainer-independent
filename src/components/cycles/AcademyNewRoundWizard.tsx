@@ -194,6 +194,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         toast.error(t('newRound.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'));
         return;
       }
+      if (data?.ok === false && data?.reason === 'slot_overlap') {
+        toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
+        return;
+      }
       toast.success(
         t('newRound.success', '{{groups}} groep(en) · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
           groups: Number(data?.groups ?? 0),

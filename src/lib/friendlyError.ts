@@ -27,6 +27,13 @@ const TECHNICAL_PATTERNS: RegExp[] = [
   // Raw booking-enforcement RAISE codes from enforce_booking_slot_tier /
   // book_slot_for_payment — show the caller's translated fallback, never the token.
   /\b(slot_full|slot_not_released|priority_restricted|members_only)\b/i,
+  // Raw RAISE code from check_trainer_slot_overlap (trainer double-booking guard).
+  // Surfaces that want the specific message check isTrainerSlotOverlapError first;
+  // everywhere else falls back rather than leaking the token.
+  /\btrainer_slot_overlap\b/i,
+  // Two overlap-guard batches racing can be resolved by Postgres aborting one —
+  // a retryable condition, never something to show raw.
+  /deadlock detected/i,
 ];
 
 export function extractRawMessage(error: unknown): string {

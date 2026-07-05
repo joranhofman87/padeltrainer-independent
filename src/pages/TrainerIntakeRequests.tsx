@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { isTrainerSlotOverlapError } from '@/lib/slotConflicts';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -225,7 +226,11 @@ export default function TrainerIntakeRequests() {
       setShowWizard(false);
       if (trainerId) invalidateAll('trainer', trainerId, selectedCycleId);
     } catch (error: any) {
-      toast.error(getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })));
+      toast.error(
+                isTrainerSlotOverlapError(error)
+                  ? t('slotConflict.trainerOverlap', { ns: 'common' })
+                  : getFriendlyErrorMessage(error, t('proposals.genericError', { defaultValue: 'Something went wrong. Please try again.' })),
+              );
     } finally {
       setIsGenerating(false);
     }

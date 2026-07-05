@@ -579,13 +579,15 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Fetch existing non-cycle slots for conflict checking
+      // Fetch ALL existing slots for conflict checking — cyclus sessions included.
+      // (This used to filter .is("cyclus_id", null); with the trainer_slot_overlap DB
+      // trigger, a candidate grid overlapping ANY same-trainer slot would abort the
+      // whole proposal insert, so the pre-check must see everything the trigger sees.)
       const trainerIds = trainerAvailability.map(ta => ta.trainerId);
       const { data: existingSlots } = await supabase
         .from("availability_slots")
         .select("id, trainer_id, start_time, end_time")
         .in("trainer_id", trainerIds)
-        .is("cyclus_id", null)
         .gte("start_time", effectiveStartDate)
         .lte("start_time", cycle.end_date);
 

@@ -35,6 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import { createCycle } from "@/lib/cycles";
 import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
+import { isTrainerSlotOverlapError } from "@/lib/slotConflicts";
 import { getUserClubProfiles } from "@/lib/club";
 import { formatDate } from "@/lib/format";
 
@@ -125,7 +126,9 @@ export function ClubAddSlotDialog({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: getFriendlyErrorMessage(error, t("calendar.slotCreateError", "Could not create the slot. Please try again.")),
+        description: isTrainerSlotOverlapError(error)
+          ? t("slotConflict.trainerOverlap", { ns: "common" })
+          : getFriendlyErrorMessage(error, t("calendar.slotCreateError", "Could not create the slot. Please try again.")),
         variant: "destructive",
       });
     } finally {
@@ -455,7 +458,9 @@ export function ClubBulkCreateSheet({
       }
       toast({
         title: "Error",
-        description: getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
+        description: isTrainerSlotOverlapError(error)
+          ? t("slotConflict.trainerOverlap", { ns: "common" })
+          : getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
         variant: "destructive",
       });
     } finally {

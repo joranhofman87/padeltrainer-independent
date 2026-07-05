@@ -4,6 +4,7 @@ import { format, addWeeks, parseISO } from "date-fns";
 import { Clock } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
+import { isTrainerSlotOverlapError } from "@/lib/slotConflicts";
 import { Copy, Repeat, Users } from "lucide-react";
 import {
   Dialog,
@@ -320,7 +321,11 @@ export function DuplicateCyclusDialog({
         await supabase.from("cycles").delete().eq("id", createdCycleId);
       }
       logger.error("Error duplicating cyclus", error instanceof Error ? error : new Error(String(error)), { component: 'DuplicateCyclusDialog' });
-      toast.error("Failed to duplicate cycle");
+      toast.error(
+        isTrainerSlotOverlapError(error)
+          ? t("slotConflict.trainerOverlap", { ns: "common" })
+          : "Failed to duplicate cycle",
+      );
     } finally {
       setIsLoading(false);
     }

@@ -485,6 +485,13 @@ serve(async (req) => {
       const publicReleaseStatus = requireAdminReview ? "pending_admin_review" : "auto_release_scheduled";
 
       let slotsCopied = 0;
+      // Within-run overlap dedup: a source cyclus whose series was split mid-term
+      // (e.g. a location change → two series at the same trainer+weekday+time) would
+      // clone BOTH series onto the same new weekly grid — double-booking the trainer
+      // and, since the trainer_slot_overlap trigger, aborting the whole run. Track the
+      // ranges this run has claimed per trainer and skip a start that overlaps one.
+      const claimedByTrainer = new Map<string, { s: number; e: number }[]>();
+      let skippedOverlapSlots = 0;
       let claimsCreated = 0;
       const representativeClaimIds: string[] = [];
 
@@ -509,7 +516,20 @@ serve(async (req) => {
         }
         if (cohort.size === 0) continue;
 
-        const starts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz);
+        const allStarts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz);
+        const trainerKey = tmpl.trainer_id ?? ""; // NOT NULL in the DB; local type is looser
+        let claimed = claimedByTrainer.get(trainerKey);
+        if (!claimed) { claimed = []; claimedByTrainer.set(trainerKey, claimed); }
+        const starts = allStarts.filter((startIso) => {
+          const sMs = new Date(startIso).getTime();
+          const eMs = sMs + durationMs;
+          if (claimed!.some((r) => r.s < eMs && r.e > sMs)) {
+            skippedOverlapSlots++;
+            return false;
+          }
+          claimed!.push({ s: sMs, e: eMs });
+          return true;
+        });
         if (starts.length === 0) continue;
 
         // 5a. Batch-insert this series' weekly slots in ONE round-trip.
@@ -623,7 +643,7 @@ serve(async (req) => {
         }
       }
 
-      logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length });
+      logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, skippedOverlapSlots });
       // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
       if (failedClaimIds.length > 0) {
         await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targetCycle.id, invitesSent, failedClaimIds });
@@ -648,6 +668,15 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    // The trainer_slot_overlap trigger refusing a replica means the NEW term collides
+    // with slots the trainer already has (a data conflict the academy must resolve by
+    // picking another start date/time — the draft was already cleaned up). 200 +
+    // reason so functions.invoke surfaces it as data, mirroring already_exists.
+    if (message.includes("trainer_slot_overlap")) {
+      return new Response(JSON.stringify({ ok: false, reason: "slot_overlap" }), {
+        status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
     // Alert on a genuine run failure (never in dryRun/preview — that path does no writes).
     if (!dryRun) await notifySlackEdgeError("bulk-rebook-cycle", message);
     return new Response(JSON.stringify({ error: message }), {

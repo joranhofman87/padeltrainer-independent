@@ -11,6 +11,7 @@ import { calculateSlotPrice, formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { createCycle, type CycleSettings, type ExtraCost } from "@/lib/cycles";
 import { expandWeeklySessions, insertAvailabilitySlots } from "@/lib/slots";
+import { epochRange, fetchTrainerSlotRanges, isTrainerSlotOverlapError, rangesOverlap } from "@/lib/slotConflicts";
 import { insertBookings } from "@/lib/bookings";
 import { formatDate } from "@/lib/format";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
@@ -601,27 +602,41 @@ export function BulkCreateContent({
         extra_costs: Json;
       }[] = [];
 
-      // Get existing slots to avoid duplicates per trainer
-      const trainerIdsToCheck = availableTrainers 
-        ? availableTrainers.map(t => t.id) 
+      // Skip sessions that would double-book a trainer: fetch each trainer's existing
+      // slot RANGES in the batch window and compare as EPOCHS via the slotConflicts
+      // helpers — string comparison of PostgREST '+00:00' timestamps against
+      // toISOString() '.000Z' never matches, which made the old dedup a silent no-op
+      // across runs. Overlap-based, not exact-start: a shifted re-run must not put the
+      // trainer on court twice. Best-effort UX; the DB trigger (20260708100000) is the
+      // race-proof, RLS-blind backstop.
+      const trainerIdsToCheck = availableTrainers
+        ? availableTrainers.map(t => t.id)
         : (trainerId ? [trainerId] : []);
-      
-      const { data: existingSlots } = await supabase
-        .from("availability_slots")
-        .select("start_time, trainer_id")
-        .in("trainer_id", trainerIdsToCheck)
-        .gte("start_time", today.toISOString());
 
-      const existingTimesByTrainer = new Map<string, Set<string>>();
-      (existingSlots || []).forEach(s => {
-        if (!existingTimesByTrainer.has(s.trainer_id)) {
-          existingTimesByTrainer.set(s.trainer_id, new Set());
-        }
-        existingTimesByTrainer.get(s.trainer_id)!.add(s.start_time);
-      });
+      // The read window spans the CANDIDATES (the date picker allows past dates, so
+      // starting the window at "today" would let a past-dated session slip past the
+      // client skip and have the DB trigger abort the whole batch instead).
+      let earliestStartMs = today.getTime();
+      let latestEndMs = today.getTime();
+      for (const config of bulkSlots) {
+        const [h, m] = config.startTime.split(":").map(Number);
+        const start = setMinutes(setHours(config.startDate, h), m);
+        const end = addMinutes(addWeeks(start, Math.max(config.recurrenceWeeks - 1, 0)), config.durationMinutes);
+        earliestStartMs = Math.min(earliestStartMs, start.getTime());
+        latestEndMs = Math.max(latestEndMs, end.getTime());
+      }
+
+      const { byTrainer: existingRangesByTrainer, error: existingReadErr } = await fetchTrainerSlotRanges(
+        trainerIdsToCheck,
+        new Date(earliestStartMs).toISOString(),
+        new Date(latestEndMs).toISOString(),
+      );
+      // A failed read must not silently disable the dedup (the old code ignored it).
+      if (existingReadErr) throw existingReadErr;
 
       // Map to track which cyclus_id belongs to which config index
       const configCyclusMap = new Map<number, string>();
+      let skippedOverlapCount = 0;
 
       for (let configIndex = 0; configIndex < bulkSlots.length; configIndex++) {
         const config = bulkSlots[configIndex];
@@ -631,9 +646,16 @@ export function BulkCreateContent({
         const [startH, startM] = config.startTime.split(":").map(Number);
         const slotStart = setMinutes(setHours(config.startDate, startH), startM);
 
-        const trainerExistingTimes = existingTimesByTrainer.get(slotTrainerId) || new Set();
+        // Shared per-trainer range list: stored back into the map so a later config
+        // for the SAME trainer also sees this config's accepted sessions (the old
+        // `|| new Set()` fresh-set fallback broke within-batch dedup across configs).
+        let trainerExistingRanges = existingRangesByTrainer.get(slotTrainerId);
+        if (!trainerExistingRanges) {
+          trainerExistingRanges = [];
+          existingRangesByTrainer.set(slotTrainerId, trainerExistingRanges);
+        }
 
-        // Collect this config's session times first (skipping duplicates), so the
+        // Collect this config's session times first (skipping overlaps), so the
         // cycles row below can use the real first/last generated session dates.
         const configSessions: { start: Date; end: Date }[] = [];
         for (const session of expandWeeklySessions(
@@ -641,15 +663,17 @@ export function BulkCreateContent({
           config.durationMinutes,
           config.recurrenceWeeks,
         )) {
-          // Skip if this exact time already exists for this trainer
-          if (trainerExistingTimes.has(session.start.toISOString())) {
+          const range = epochRange(session.start, session.end);
+          // Skip if this session would overlap any slot the trainer already has
+          if (trainerExistingRanges.some((e) => rangesOverlap(e, range))) {
+            skippedOverlapCount++;
             continue;
           }
 
           configSessions.push(session);
 
-          // Add to existing times to prevent duplicates within same batch
-          trainerExistingTimes.add(session.start.toISOString());
+          // Track accepted sessions to prevent overlaps within the same batch
+          trainerExistingRanges.push(range);
         }
 
         if (configSessions.length === 0) continue;
@@ -872,10 +896,16 @@ export function BulkCreateContent({
 
       toast({
         title: t("calendar.slotsGenerated"),
-        description: t("calendar.slotsGeneratedDescription", {
-          count: slotsToInsert.length,
-          total: slotsToInsert.length,
-        }),
+        description:
+          skippedOverlapCount > 0
+            ? t("calendar.slotsGeneratedWithSkips", {
+                count: slotsToInsert.length,
+                skipped: skippedOverlapCount,
+              })
+            : t("calendar.slotsGeneratedDescription", {
+                count: slotsToInsert.length,
+                total: slotsToInsert.length,
+              }),
       });
 
       setBulkSlots([]);
@@ -889,7 +919,9 @@ export function BulkCreateContent({
       }
       toast({
         title: "Error",
-        description: getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
+        description: isTrainerSlotOverlapError(error)
+          ? t("slotConflict.trainerOverlap", { ns: "common" })
+          : getFriendlyErrorMessage(error, t("calendar.slotsGenerateError", "Could not create the slots. Please try again.")),
         variant: "destructive",
       });
     } finally {

@@ -255,6 +255,10 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         );
         return;
       }
+      if (data?.ok === false && data?.reason === 'slot_overlap') {
+        toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
+        return;
+      }
       toast.success(
         t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
           groups: Number(data?.groups ?? 0),

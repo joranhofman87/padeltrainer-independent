@@ -14,6 +14,7 @@ import { syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } from "@/lib/bookings";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { insertAvailabilitySlots, setSlotVisibility } from "@/lib/slots";
+import { isTrainerSlotOverlapError } from "@/lib/slotConflicts";
 import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
 import { mergeNewBookingIdsIntoCycleInvoices, syncInvoicesAfterCycleEdit } from "@/lib/cycleEditInvoiceSync";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
@@ -815,7 +816,13 @@ export default function TrainerScheduleOverview() {
       setEditDialogOpen(false);
       invalidate();
     } catch (err: any) {
-      toast({ title: "Error", description: getFriendlyErrorMessage(err, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
+      toast({
+        title: "Error",
+        description: isTrainerSlotOverlapError(err)
+          ? t("slotConflict.trainerOverlap", { ns: "common" })
+          : getFriendlyErrorMessage(err, t("scheduleOverview.genericError", "Something went wrong. Please try again.")),
+        variant: "destructive",
+      });
     } finally {
       setSavingEdit(false);
     }

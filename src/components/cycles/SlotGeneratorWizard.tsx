@@ -13,6 +13,7 @@ import { TimeSelect } from '@/components/ui/time-select';
 import { DateInputField } from '@/components/ui/date-input-field';
 import { buildHalfHourOptions } from '@/lib/timeOptions';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { isTrainerSlotOverlapError } from '@/lib/slotConflicts';
 import { WeekdayToggle } from './WeekdayToggle';
 import { HolidayRangeEditor, type HolidayRange } from './HolidayRangeEditor';
 import { SlotLocationPicker, type SlotLocation } from '@/components/slots/SlotLocationPicker';
@@ -151,12 +152,25 @@ export function SlotGeneratorWizard({
         locale: i18n.language,
       };
       const res = await generate(input);
+      // The generator silently drops planned sessions that would double-book the
+      // trainer — say so, or a re-run looks like it generated the full preview.
+      if (res.skippedOverlaps > 0) {
+        toast.info(
+          t('slotGenerator.skippedOverlaps', '{{count}} sessie(s) overgeslagen — de trainer heeft op die tijden al een sessie.', {
+            count: res.skippedOverlaps,
+          }),
+        );
+      }
       // Land on a result step that offers a one-click "publish all" — per-series generation makes
       // many draft cycli, and publishing them one-by-one would undo the "quick" of quick-generate.
       setCreatedCycleIds(res.cycleIds);
       setStep('done');
     } catch (e) {
-      toast.error(getFriendlyErrorMessage(e, t('slotGenerator.errGeneric', 'Er ging iets mis. Probeer het opnieuw.')));
+      toast.error(
+        isTrainerSlotOverlapError(e)
+          ? t('slotConflict.trainerOverlap', { ns: 'common' })
+          : getFriendlyErrorMessage(e, t('slotGenerator.errGeneric', 'Er ging iets mis. Probeer het opnieuw.')),
+      );
     } finally {
       setSubmitting(false);
     }

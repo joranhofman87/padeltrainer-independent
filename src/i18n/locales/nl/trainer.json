@@ -989,6 +989,7 @@
     "noNewSlotsDescription": "Alle slots bestaan al of zijn in het verleden",
     "slotsGenerated": "Cyclus gegenereerd!",
     "slotsGeneratedDescription": "{{count}} terugkerende slots aangemaakt ({{total}} totale sessies)",
+    "slotsGeneratedWithSkips": "{{count}} sessies aangemaakt; {{skipped}} overgeslagen — de trainer heeft op die tijden al een sessie",
     "bookingScope": "Boekingsomvang",
     "session": "sessie",
     "entireCyclus": "Gehele trainingscyclus",
