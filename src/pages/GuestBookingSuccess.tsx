@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, AlertCircle, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 import { nl, enUS, de, fr, es, it } from "date-fns/locale";
+import { useCartOptional } from "@/contexts/CartContext";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };
@@ -54,6 +55,17 @@ export default function GuestBookingSuccess() {
   const [notFound, setNotFound] = useState(false);
   const [booking, setBooking] = useState<GuestBookingState | null>(null);
   const pollCount = useRef(0);
+  const cart = useCartOptional();
+
+  // A confirmed landing means the payment committed — the cart selection is spent.
+  // (Cancel/failure returns land here as "pending" and never clear, so a retry keeps
+  // the selection intact.)
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const confirmed = booking?.status === 'confirmed';
+  useEffect(() => {
+    if (confirmed) cartRef.current?.clearCart();
+  }, [confirmed]);
 
   useEffect(() => {
     if (!token) {

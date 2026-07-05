@@ -423,6 +423,28 @@
       "paymentTemporarilyUnavailable": "Online betalen is tijdelijk niet beschikbaar. Probeer het later opnieuw.",
       "notBookable": "Deze training kan niet meer geboekt worden.",
       "failed": "Er ging iets mis. Probeer het opnieuw."
+    },
+    "cart": {
+      "title": "Jouw selectie",
+      "subtitle": "Losse sessies, één betaling. Je plekken zijn pas geboekt na betaling.",
+      "openCart": "Open je selectie ({{count}})",
+      "addToCart": "Voeg toe aan selectie",
+      "removeFromCart": "Verwijder uit selectie",
+      "added": "Toegevoegd aan je selectie.",
+      "alreadyInCart": "Deze sessie zit al in je selectie.",
+      "differentOrg": "Je kunt per bestelling maar bij één aanbieder boeken. Reken eerst je huidige selectie af.",
+      "cartFull": "Je selectie is vol (max. 20 sessies). Reken eerst af.",
+      "notCartable": "Deze sessie kan niet los geboekt worden.",
+      "empty": "Je selectie is leeg.",
+      "total": "Totaal",
+      "indicativeNote": "Definitieve prijs wordt bevestigd bij het afrekenen.",
+      "checkout": "Afrekenen",
+      "checkoutTitle": "Boek {{count}} sessies",
+      "clear": "Selectie leegmaken",
+      "itemUnavailable": "Niet meer beschikbaar",
+      "unavailableTitle": "Niet alle sessies zijn nog beschikbaar",
+      "unavailableBody": "Er is nog niets betaald. Verwijder de onderstaande sessies en probeer het opnieuw.",
+      "unavailableRemove": "Verwijder en ga verder"
     }
   },
   "availableSlots": "Beschikbare plekken",
