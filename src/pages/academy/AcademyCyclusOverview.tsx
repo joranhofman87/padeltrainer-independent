@@ -984,6 +984,23 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     }
   };
 
+  // is_public = "any slot in this group is public" (shown/bookable on the profile page).
+  // Groups without sessions have nothing to show publicly — render a dash, not "private".
+  const getVisibilityBadge = (group: CyclusGroup) => {
+    if (!group.has_slots) return <span className="text-muted-foreground">—</span>;
+    return group.is_public ? (
+      <Badge variant="outline" className="gap-1 text-xs font-normal">
+        <Eye className="h-3 w-3" aria-hidden />
+        {t('cyclesTab.visibilityPublic')}
+      </Badge>
+    ) : (
+      <Badge variant="secondary" className="gap-1 text-xs font-normal text-muted-foreground">
+        <EyeOff className="h-3 w-3" aria-hidden />
+        {t('cyclesTab.visibilityPrivate')}
+      </Badge>
+    );
+  };
+
   if (loading) {
     return <Skeleton className="h-[400px] w-full" />;
   }
@@ -1141,13 +1158,14 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <SortableTableHead sortKey="payment_status_summary" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.paymentStatus')}</SortableTableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.price')}</TableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.occupancy')}</TableHead>
+                <SortableTableHead sortKey="is_public" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.visibilityColumn')}</SortableTableHead>
                 <TableHead className="w-[44px]" aria-label={t('editEndDate.title', 'Einddatum aanpassen')} />
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={13} className="text-center text-muted-foreground py-12">
                     {t('cyclesTab.noCyclesFound')}
                   </TableCell>
                 </TableRow>
@@ -1201,6 +1219,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                       {group.price_per_session != null ? formatPrice(group.price_per_session) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{getStatusBadge(group)}</TableCell>
+                    <TableCell className="whitespace-nowrap">{getVisibilityBadge(group)}</TableCell>
                     <TableCell className="w-[44px]" onClick={(e) => e.stopPropagation()}>
                       {group.cyclus_id && group.has_slots && (
                         <Button
@@ -1250,6 +1269,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                   <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                     {getPaymentBadge(group)}
                     {getStatusBadge(group)}
+                    {getVisibilityBadge(group)}
                     {getTypeBadge(group.type)}
                     {group.cyclus_id && group.has_slots && (
                       <Button
