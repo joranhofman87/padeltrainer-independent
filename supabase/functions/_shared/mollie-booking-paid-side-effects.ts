@@ -43,9 +43,12 @@ export async function runBookingPaidSideEffects(opts: {
   // the PAID seat to the public tier (overbook). Non-fatal by design.
   await finalizePriorityClaims(supabase, bookingIds, logStep);
 
-  // Auto-create invoice (auto-create-invoice dedupes internally)
+  // Auto-create invoice (auto-create-invoice dedupes internally). Capture the minted
+  // invoice id — the guest confirmation below emails the INVOICE (send-invoice-email),
+  // because a guest has no profile email for the player template.
+  let invoiceId: string | null = null;
   try {
-    const { error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {
+    const { data: invoiceRes, error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {
       body: { bookingIds },
     });
     if (invoiceError) {
@@ -58,6 +61,7 @@ export async function runBookingPaidSideEffects(opts: {
       });
     } else {
       logStep("Auto-create invoice triggered");
+      invoiceId = (invoiceRes as { invoiceId?: string } | null)?.invoiceId ?? null;
     }
   } catch (invoiceErr) {
     logStep("Auto-create invoice error (non-fatal)", { error: String(invoiceErr) });
@@ -68,7 +72,7 @@ export async function runBookingPaidSideEffects(opts: {
   }
 
   try {
-    // Fetch booking details for email (use first booking)
+    // Fetch booking details for the confirmation email + Slack (use first booking)
     const bookingId = bookingIds[0];
     const { data: booking } = await supabase
       .from("bookings")
@@ -83,13 +87,16 @@ export async function runBookingPaidSideEffects(opts: {
         profiles!bookings_player_id_fkey(
           full_name,
           email
+        ),
+        guest_players(
+          full_name
         )
       `)
       .eq("id", bookingId)
       .single();
 
     if (booking?.profiles?.email) {
-      // Trigger confirmation email via send-email function
+      // Player booking: the player confirmation email via send-email.
       await supabase.functions.invoke("send-email", {
         body: {
           to: booking.profiles.email,
@@ -103,8 +110,51 @@ export async function runBookingPaidSideEffects(opts: {
         },
       });
       logStep("Confirmation email sent");
+    } else if (booking?.guest_player_id) {
+      // GUEST booking (player_id NULL → the profiles join above is empty): send the
+      // INVOICE email — the attached PDF itemizes every paid session and
+      // send-invoice-email resolves the guest's address itself
+      // (get_invoice_recipient_identity). Before this branch existed, guests got NO
+      // post-payment email at all (public-booking audit P1-5): only the player_id
+      // profile was consulted, so the guard silently skipped them. Duplicate
+      // deliveries are already double-guarded (the caller's atomic paid claim +
+      // send-invoice-email's own recent-send window).
+      let targetInvoiceId = invoiceId;
+      if (!targetInvoiceId) {
+        // Invoke response carried no id (transient, or the invoice pre-existed via
+        // dedup) — fall back to the invoice overlapping these bookings.
+        const { data: inv } = await supabase
+          .from("invoices")
+          .select("id")
+          .overlaps("booking_ids", bookingIds)
+          .neq("status", "cancelled")
+          .limit(1)
+          .maybeSingle();
+        targetInvoiceId = (inv as { id?: string } | null)?.id ?? null;
+      }
+      if (targetInvoiceId) {
+        // send-invoice-email is verify_jwt-gated → pass explicit service auth (the
+        // create-rebook-invoice pattern). Deno.env via globalThis so this helper
+        // stays importable in the Node test runner.
+        const serviceKey = (globalThis as { Deno?: { env?: { get?: (k: string) => string | undefined } } })
+          .Deno?.env?.get?.("SUPABASE_SERVICE_ROLE_KEY");
+        await supabase.functions.invoke("send-invoice-email", {
+          body: { invoiceId: targetInvoiceId },
+          ...(serviceKey ? { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } } : {}),
+        });
+        logStep("Guest confirmation email sent (invoice email)", { invoiceId: targetInvoiceId });
+      } else {
+        // Non-fatal, but alert: money landed and the guest heard nothing.
+        logStep("Guest confirmation email skipped — no invoice id resolved");
+        await notifySlackError(source, "guest paid but no invoice found for the confirmation email", {
+          bookingIds,
+        });
+      }
+    }
 
-      // Slack notification for payment received
+    // Slack payment_received — for player AND guest bookings alike. (This used to be
+    // nested inside the player-email guard above, so guest payments never pinged.)
+    if (booking) {
       const trainerProfileId = booking.availability_slots.trainer_id;
       let trainerName = "Unknown";
       if (trainerProfileId) {
@@ -128,7 +178,7 @@ export async function runBookingPaidSideEffects(opts: {
           body: {
             event: "payment_received",
             data: {
-              player: booking.profiles.full_name,
+              player: booking.profiles?.full_name ?? booking.guest_players?.full_name ?? "Guest",
               trainer: trainerName,
               amount: `€${paymentAmountValue || "?"}`,
               bookings: bookingIds.length,

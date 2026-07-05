@@ -101,7 +101,7 @@ you ever turn the AI features on.
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
 - [ ] **create-guest-cart-payment** (cart booking PR 2) — NEW public fn (verify_jwt=false): guest multi-session cart pay-first. **Apply migration `20260707100000` (cart PR 1) FIRST** — the fn calls the new `book_guest_cart_for_payment` RPC. Inert until the cart UI ships (cart PR 6).
-
+- [ ] **mollie-webhook**, **verify-mollie-payment** (cart booking PR 3) — guest confirmation email fix (public-booking audit P1-5): the shared paid-side-effects helper now sends GUESTS the invoice email on the paid transition (players unchanged) and pings Slack `payment_received` for guest payments too (was silently skipped). *Behavior change: ALL guest pay-first flows (single-slot, cyclus, future cart) start emailing guests.* Both fns bundle `_shared/mollie-booking-paid-side-effects.ts` — redeploy both together.
 - [x] **update-user** — IDOR fix (#77). *Security — do this one first.*
 - [x] **stripe-subscription-webhook**, **og-image**, **rating-og-image**, **get-public-rating**, **health-check** — redeploy so prod matches the new `config.toml` `verify_jwt=false` (#78). Prevents a future deploy from 401-ing them.
 - [x] **send-email** — HTML-injection escaping for registrant text (#80). *Security — closes the public submit-guest-intake → cross-tenant admin email injection vector.*
