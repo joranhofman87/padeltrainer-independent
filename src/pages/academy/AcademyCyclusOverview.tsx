@@ -29,7 +29,7 @@ import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
 import { setCycleBookingMode, setTargetedCyclePrice, type CycleBookingMode } from '@/lib/cycleBookingMode';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { BulkBookingModeDialog } from '@/components/cycles/BulkBookingModeDialog';
 import { deleteCycle } from '@/lib/cycleWrites';
 import {
   computeCyclusGroupPaymentStatus,
@@ -112,8 +112,6 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [priceDialogOpen, setPriceDialogOpen] = useState(false);
   const [bulkPrice, setBulkPrice] = useState('');
   const [bookingModeDialogOpen, setBookingModeDialogOpen] = useState(false);
-  // Deliberately NO preselection — a mixed selection has no single "current" mode.
-  const [bulkBookingMode, setBulkBookingMode] = useState<CycleBookingMode | ''>('');
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
@@ -886,8 +884,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   // cycle, so a per-group flip would leave one cycle half-switched (the guest dialog's documented
   // misconfiguration state). Registration series and events are excluded — a registration cycle spans
   // MANY series/groups, so a cycle-level write would leak far beyond the selected row.
-  const handleBulkBookingMode = async () => {
-    if (!bulkBookingMode) return;
+  const handleBulkBookingMode = async (mode: CycleBookingMode) => {
     const groups = sortedData.filter((g) => selectedIds.has(g.group_key) && g.cyclus_id);
     const eligible = groups.filter((g) => g.type === 'cyclus' && !g.is_registration && g.has_slots);
     const skippedIneligible = groups.length - eligible.length;
@@ -899,7 +896,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     try {
       const result = await setCycleBookingMode(
         eligible.map((g) => ({ cyclusId: g.cyclus_id, hasCycleRow: g.has_cycle_row, name: g.cyclus_name })),
-        bulkBookingMode,
+        mode,
       );
       const skippedNotes: string[] = [];
       if (result.skippedBookedSlots > 0) {
@@ -921,7 +918,6 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         });
       }
       setBookingModeDialogOpen(false);
-      setBulkBookingMode('');
       setSelectedIds(new Set());
       fetchCyclusData();
     } catch (error) {
@@ -1118,7 +1114,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               variant="outline"
               size="sm"
               disabled={bulkUpdating}
-              onClick={() => { setBulkBookingMode(''); setBookingModeDialogOpen(true); }}
+              onClick={() => setBookingModeDialogOpen(true)}
             >
               <Ticket className="h-3.5 w-3.5 mr-1.5" />
               {t('cyclesTab.bulkBooking.button')}
@@ -1353,46 +1349,13 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         </DialogContent>
       </Dialog>
 
-      <Dialog open={bookingModeDialogOpen} onOpenChange={(o) => { if (!bulkUpdating) { setBookingModeDialogOpen(o); if (!o) setBulkBookingMode(''); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('cyclesTab.bulkBooking.title', { count: selectedIds.size })}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <RadioGroup value={bulkBookingMode} onValueChange={(v) => setBulkBookingMode(v as CycleBookingMode)}>
-              {([
-                ['both', t('cyclesTab.bulkBooking.modeBoth'), t('cyclesTab.bulkBooking.modeBothHelp')],
-                ['single_only', t('cyclesTab.bulkBooking.modeSingleOnly'), t('cyclesTab.bulkBooking.modeSingleOnlyHelp')],
-                ['single_only_whole_slot', t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlot'), t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlotHelp')],
-                ['cyclus_only', t('cyclesTab.bulkBooking.modeCyclusOnly'), t('cyclesTab.bulkBooking.modeCyclusOnlyHelp')],
-              ] as const).map(([value, label, help]) => (
-                <label
-                  key={value}
-                  className={cn(
-                    'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
-                    bulkBookingMode === value ? 'border-primary bg-primary/5' : 'hover:bg-muted',
-                  )}
-                >
-                  <RadioGroupItem value={value} className="mt-0.5" />
-                  <span className="space-y-0.5">
-                    <span className="block text-sm font-medium">{label}</span>
-                    <span className="block text-xs text-muted-foreground">{help}</span>
-                  </span>
-                </label>
-              ))}
-            </RadioGroup>
-            <p className="text-xs text-muted-foreground">{t('cyclesTab.bulkBooking.scopeNote')}</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBookingModeDialogOpen(false)} disabled={bulkUpdating}>
-              {t('cyclesTab.cancel')}
-            </Button>
-            <Button onClick={handleBulkBookingMode} disabled={bulkUpdating || !bulkBookingMode}>
-              {bulkUpdating ? t('cyclesTab.saving') : t('cyclesTab.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <BulkBookingModeDialog
+        open={bookingModeDialogOpen}
+        onOpenChange={setBookingModeDialogOpen}
+        selectedCount={selectedIds.size}
+        busy={bulkUpdating}
+        onApply={handleBulkBookingMode}
+      />
 
       <Dialog open={deleteDialogOpen} onOpenChange={(o) => { if (!bulkUpdating) { setDeleteDialogOpen(o); if (!o) setForceDeleteBooked(false); } }}>
         <DialogContent>

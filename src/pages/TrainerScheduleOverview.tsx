@@ -68,6 +68,9 @@ import {
 import { cn } from "@/lib/utils";
 import { TrainerAttendanceForm } from "@/components/attendance/TrainerAttendanceForm";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import { setCycleBookingMode, type CycleBookingMode } from "@/lib/cycleBookingMode";
+import { BulkBookingModeDialog } from "@/components/cycles/BulkBookingModeDialog";
 import { ExtraCostPresetPicker } from "@/components/settings/ExtraCostPresetPicker";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 
@@ -149,6 +152,11 @@ export default function TrainerScheduleOverview() {
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterTime, setFilterTime] = useState("all");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["__individual__"]));
+  // Bulk booking-mode selection: cyclus_ids of selected cycle groups (the "__individual__"
+  // pseudo-group has no cycle to configure and is not selectable).
+  const [selectedCycleIds, setSelectedCycleIds] = useState<Set<string>>(new Set());
+  const [bookingModeDialogOpen, setBookingModeDialogOpen] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
 
   // Edit cycle dialog
@@ -345,6 +353,63 @@ export default function TrainerScheduleOverview() {
 
     return result;
   }, [grouped, tab, search, filterDay, filterLocation, filterTime]);
+
+  // Bulk booking-mode ("Boekbaarheid") for the selected cycle groups. The overview fetches
+  // only slots, so cycle TYPE is resolved here: registration/event cycles are excluded (a
+  // cycle-wide write on a registration cycle would leak across all its series); a cyclus_id
+  // without a cycles row is an orphan (hasCycleRow=false — the facade skips it for the
+  // sessions-only modes). The facade handles everything else (direction-aware skip-booked,
+  // settings + future-slot stamping) and is RLS-safe for trainer-owned cycli.
+  const handleBulkBookingMode = async (mode: CycleBookingMode) => {
+    const ids = [...selectedCycleIds];
+    if (ids.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      const { data: cycleRows, error: cycleErr } = await supabase
+        .from("cycles")
+        .select("id, type")
+        .in("id", ids);
+      if (cycleErr) throw cycleErr;
+      const typeById = new Map((cycleRows ?? []).map((c: { id: string; type: string | null }) => [c.id, c.type]));
+      const eligible = ids.filter((id) => !typeById.has(id) || typeById.get(id) === "cyclus");
+      const skippedIneligible = ids.length - eligible.length;
+      if (eligible.length === 0) {
+        toast({ title: t("cyclesTab.bulkBooking.noneEligible", { ns: "trainer" }), variant: "destructive" });
+        return;
+      }
+      const groupNameOf = (id: string) => grouped.get(id)?.name ?? id;
+      const result = await setCycleBookingMode(
+        eligible.map((id) => ({ cyclusId: id, hasCycleRow: typeById.has(id), name: groupNameOf(id) })),
+        mode,
+      );
+      const skippedNotes: string[] = [];
+      if (result.skippedBookedSlots > 0) {
+        skippedNotes.push(t("cyclesTab.bulkBooking.skippedBooked", { ns: "trainer", count: result.skippedBookedSlots }));
+      }
+      if (result.skippedOrphans > 0 || skippedIneligible > 0) {
+        skippedNotes.push(t("cyclesTab.bulkBooking.skippedCycles", { ns: "trainer", count: result.skippedOrphans + skippedIneligible }));
+      }
+      if (result.failed.length > 0) {
+        toast({
+          title: t("cyclesTab.bulkBooking.partial", { ns: "trainer", ok: result.succeeded, failed: result.failed.length }),
+          description: `${result.failed.map((f) => f.name).join(", ")} — ${result.failed[0].reason}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: t("cyclesTab.bulkBooking.done", { ns: "trainer", count: result.succeeded }),
+          description: skippedNotes.length > 0 ? skippedNotes.join(" · ") : undefined,
+        });
+      }
+      setBookingModeDialogOpen(false);
+      setSelectedCycleIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["trainer-schedule-overview"] });
+    } catch {
+      toast({ title: t("cyclesTab.error", { ns: "trainer" }), variant: "destructive" });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => {
@@ -1058,6 +1123,34 @@ export default function TrainerScheduleOverview() {
         )}
       </div>
 
+      {selectedCycleIds.size > 0 && (
+        <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border bg-background p-2 shadow-sm">
+          <span className="px-1 text-sm font-medium">
+            {selectedCycleIds.size} {t("cyclesTab.selected", { ns: "trainer" })}
+          </span>
+          <div className="flex-1" />
+          <Button variant="outline" size="sm" disabled={bulkUpdating} onClick={() => setBookingModeDialogOpen(true)}>
+            {t("cyclesTab.bulkBooking.button", { ns: "trainer" })}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t("cyclesTab.clearSelection", { ns: "trainer" })}
+            onClick={() => setSelectedCycleIds(new Set())}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
+      <BulkBookingModeDialog
+        open={bookingModeDialogOpen}
+        onOpenChange={setBookingModeDialogOpen}
+        selectedCount={selectedCycleIds.size}
+        busy={bulkUpdating}
+        onApply={handleBulkBookingMode}
+      />
+
       {filtered.size === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           <Calendar className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -1076,6 +1169,21 @@ export default function TrainerScheduleOverview() {
             <div key={key} className="border rounded-lg bg-card">
               {/* Group header */}
               <div className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 transition-colors rounded-t-lg">
+                {key !== "__individual__" && (
+                  <Checkbox
+                    checked={selectedCycleIds.has(key)}
+                    onCheckedChange={() =>
+                      setSelectedCycleIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={t("scheduleOverview.selectCycle", "Select cycle")}
+                  />
+                )}
                 <button
                   onClick={() => toggleGroup(key)}
                   className="flex items-center gap-2 flex-1 min-w-0 text-left"
