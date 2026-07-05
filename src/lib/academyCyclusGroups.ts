@@ -35,6 +35,11 @@ export interface CyclusGroup {
   /** True when a real `cycles` row backs this group — false for orphan cyclus_id groups (slots only,
    * no cycles row). Drives row-click: real cycle → cycle-detail view; orphan → its first session. */
   has_cycle_row: boolean;
+  /** True when this group is one SERIES of a registration cycle (4-part group_key). Registration
+   * groups render as type 'cyclus' but must be EXCLUDED from cycle-wide bulk actions (booking
+   * mode): one registration cycle spans many series, so a cycle-level write would leak far beyond
+   * the selected row. */
+  is_registration: boolean;
   payment_status_summary: CyclusGroupPaymentStatus;
 }
 
@@ -143,6 +148,7 @@ export function mapCyclusGroupRow(
     type: row.group_type,
     has_slots: hasSlots,
     has_cycle_row: row.has_cycle_row,
+    is_registration: row.is_registration,
     payment_status_summary: row.payment_status_summary as CyclusGroupPaymentStatus,
   };
 }

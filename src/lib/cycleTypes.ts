@@ -76,6 +76,8 @@ export interface CycleSettings {
   max_rating_spread?: number;
   rating_spread_system?: string;
   allow_single_booking?: boolean;
+  /** Whole-series checkout allowed? Absent/true = bookable (PR #360); false = individual sessions only. */
+  allow_cyclus_booking?: boolean;
   extra_costs?: ExtraCost[];
   mark_as_paid?: boolean;
   payment_timing?: 'upfront' | 'invoice_after_weeks' | 'manual';

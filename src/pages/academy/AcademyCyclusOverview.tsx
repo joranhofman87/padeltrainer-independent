@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock } from 'lucide-react';
+import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock, Ticket } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
@@ -27,8 +27,9 @@ import { useTableSort } from '@/hooks/useTableSort';
 import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
-import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
+import { setCycleBookingMode, setTargetedCyclePrice, type CycleBookingMode } from '@/lib/cycleBookingMode';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { deleteCycle } from '@/lib/cycleWrites';
 import {
   computeCyclusGroupPaymentStatus,
@@ -110,6 +111,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [priceDialogOpen, setPriceDialogOpen] = useState(false);
   const [bulkPrice, setBulkPrice] = useState('');
+  const [bookingModeDialogOpen, setBookingModeDialogOpen] = useState(false);
+  // Deliberately NO preselection — a mixed selection has no single "current" mode.
+  const [bulkBookingMode, setBulkBookingMode] = useState<CycleBookingMode | ''>('');
 
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
 
@@ -465,6 +469,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             type: cycle.type || 'cyclus',
             has_slots: false,
             has_cycle_row: true,
+            is_registration: false,
             payment_status_summary: 'no_players',
           });
         } else {
@@ -560,6 +565,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
               has_slots: true,
               has_cycle_row: true,
+              is_registration: isRegistration,
               payment_status_summary: paymentSummaryForSlots(seriesSlots.map((s: { id: string }) => s.id)),
             });
           });
@@ -620,6 +626,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             type: 'cyclus',
             has_slots: true,
             has_cycle_row: false,
+            is_registration: false,
             payment_status_summary: paymentSummaryForSlots(trainerSlots.map((s: { id: string }) => s.id)),
           });
         });
@@ -859,20 +866,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         toast({ title: t('cyclesTab.noSlotsFound') });
         return;
       }
-      // 1. Push the new price onto the selected slots (the billing source of truth).
-      for (let i = 0; i < slotIds.length; i += 500) {
-        const chunk = slotIds.slice(i, i + 500);
-        await supabase.from('availability_slots').update({ price_per_session: price }).in('id', chunk);
-      }
-      // 2. Keep each real cycle row's stored price in sync so the cycle display + future re-bookings
-      //    don't drift from the slots. Only price_per_session is written — extra_costs / VAT / split
-      //    are preserved. (NOT updateCyclePricing: that re-pushes to the WHOLE cyclus, but the overview
-      //    groups by (cyclus_id, trainer_id); a targeted price write respects the selected granularity.)
-      for (const cyclusId of realCycleIds) {
-        await supabase.from('cycles').update({ price_per_session: price }).eq('id', cyclusId);
-      }
-      // 3. Rebuild affected unpaid invoices.
-      await syncInvoicesAfterPriceChange(slotIds);
+      // Facade bundles: slot price writes (billing source of truth) + per-cycle stored-price sync +
+      // the unpaid-invoice rebuild — so the resync can never be forgotten (mutation-boundary P1-b).
+      await setTargetedCyclePrice(slotIds, [...realCycleIds], price);
       toast({ title: t('cyclesTab.priceUpdated', { count: slotIds.length }) });
       setPriceDialogOpen(false);
       setBulkPrice('');
@@ -880,6 +876,56 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       fetchCyclusData();
     } catch (error) {
       logger.error('Bulk price update failed', error as Error);
+      toast({ title: t('cyclesTab.error'), variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  // Bulk booking mode ("buy slot vs cycle"). CYCLE-WIDE by design: allow_cyclus_booking lives on the
+  // cycle, so a per-group flip would leave one cycle half-switched (the guest dialog's documented
+  // misconfiguration state). Registration series and events are excluded — a registration cycle spans
+  // MANY series/groups, so a cycle-level write would leak far beyond the selected row.
+  const handleBulkBookingMode = async () => {
+    if (!bulkBookingMode) return;
+    const groups = sortedData.filter((g) => selectedIds.has(g.group_key) && g.cyclus_id);
+    const eligible = groups.filter((g) => g.type === 'cyclus' && !g.is_registration && g.has_slots);
+    const skippedIneligible = groups.length - eligible.length;
+    if (eligible.length === 0) {
+      toast({ title: t('cyclesTab.bulkBooking.noneEligible'), variant: 'destructive' });
+      return;
+    }
+    setBulkUpdating(true);
+    try {
+      const result = await setCycleBookingMode(
+        eligible.map((g) => ({ cyclusId: g.cyclus_id, hasCycleRow: g.has_cycle_row, name: g.cyclus_name })),
+        bulkBookingMode,
+      );
+      const skippedNotes: string[] = [];
+      if (result.skippedBookedSlots > 0) {
+        skippedNotes.push(t('cyclesTab.bulkBooking.skippedBooked', { count: result.skippedBookedSlots }));
+      }
+      if (result.skippedOrphans > 0 || skippedIneligible > 0) {
+        skippedNotes.push(t('cyclesTab.bulkBooking.skippedCycles', { count: result.skippedOrphans + skippedIneligible }));
+      }
+      if (result.failed.length > 0) {
+        toast({
+          title: t('cyclesTab.bulkBooking.partial', { ok: result.succeeded, failed: result.failed.length }),
+          description: `${result.failed.map((f) => f.name).join(', ')} — ${result.failed[0].reason}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: t('cyclesTab.bulkBooking.done', { count: result.succeeded }),
+          description: skippedNotes.length > 0 ? skippedNotes.join(' · ') : undefined,
+        });
+      }
+      setBookingModeDialogOpen(false);
+      setBulkBookingMode('');
+      setSelectedIds(new Set());
+      fetchCyclusData();
+    } catch (error) {
+      logger.error('Bulk booking-mode update failed', error as Error);
       toast({ title: t('cyclesTab.error'), variant: 'destructive' });
     } finally {
       setBulkUpdating(false);
@@ -1050,6 +1096,15 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             >
               <Euro className="h-3.5 w-3.5 mr-1.5" />
               {t('cyclesTab.changePrice')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkUpdating}
+              onClick={() => { setBulkBookingMode(''); setBookingModeDialogOpen(true); }}
+            >
+              <Ticket className="h-3.5 w-3.5 mr-1.5" />
+              {t('cyclesTab.bulkBooking.button')}
             </Button>
             <Button
               variant="destructive"
@@ -1272,6 +1327,46 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               {t('cyclesTab.cancel')}
             </Button>
             <Button onClick={handleBulkPriceUpdate} disabled={bulkUpdating}>
+              {bulkUpdating ? t('cyclesTab.saving') : t('cyclesTab.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bookingModeDialogOpen} onOpenChange={(o) => { if (!bulkUpdating) { setBookingModeDialogOpen(o); if (!o) setBulkBookingMode(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('cyclesTab.bulkBooking.title', { count: selectedIds.size })}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <RadioGroup value={bulkBookingMode} onValueChange={(v) => setBulkBookingMode(v as CycleBookingMode)}>
+              {([
+                ['both', t('cyclesTab.bulkBooking.modeBoth'), t('cyclesTab.bulkBooking.modeBothHelp')],
+                ['single_only', t('cyclesTab.bulkBooking.modeSingleOnly'), t('cyclesTab.bulkBooking.modeSingleOnlyHelp')],
+                ['cyclus_only', t('cyclesTab.bulkBooking.modeCyclusOnly'), t('cyclesTab.bulkBooking.modeCyclusOnlyHelp')],
+              ] as const).map(([value, label, help]) => (
+                <label
+                  key={value}
+                  className={cn(
+                    'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                    bulkBookingMode === value ? 'border-primary bg-primary/5' : 'hover:bg-muted',
+                  )}
+                >
+                  <RadioGroupItem value={value} className="mt-0.5" />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-medium">{label}</span>
+                    <span className="block text-xs text-muted-foreground">{help}</span>
+                  </span>
+                </label>
+              ))}
+            </RadioGroup>
+            <p className="text-xs text-muted-foreground">{t('cyclesTab.bulkBooking.scopeNote')}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBookingModeDialogOpen(false)} disabled={bulkUpdating}>
+              {t('cyclesTab.cancel')}
+            </Button>
+            <Button onClick={handleBulkBookingMode} disabled={bulkUpdating || !bulkBookingMode}>
               {bulkUpdating ? t('cyclesTab.saving') : t('cyclesTab.save')}
             </Button>
           </DialogFooter>
