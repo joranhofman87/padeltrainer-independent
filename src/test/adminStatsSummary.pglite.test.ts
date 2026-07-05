@@ -111,10 +111,10 @@ beforeAll(async () => {
   `);
 });
 
-async function summary(caller = ADMIN): Promise<any> {
+async function summary(caller = ADMIN): Promise<Record<string, unknown>> {
   // Impersonate the caller for auth.uid() inside the SECURITY DEFINER fn.
   await db.exec(`SELECT set_config('app.test_uid', '${caller}', false);`);
-  const rows = (await db.query<{ admin_stats_summary: any }>(
+  const rows = (await db.query<{ admin_stats_summary: Record<string, unknown> }>(
     `SELECT public.admin_stats_summary() AS admin_stats_summary`,
   )).rows;
   return rows[0].admin_stats_summary;

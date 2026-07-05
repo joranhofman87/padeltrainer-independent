@@ -301,6 +301,9 @@
   "src/components/invoices/EditInvoiceDialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
     }
   },
   "src/components/invoices/InvoiceSettingsCardBase.tsx": {
@@ -1419,7 +1422,7 @@
   },
   "supabase/functions/send-schedule-notifications/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 13
+      "count": 10
     }
   },
   "supabase/functions/signup-user/index.ts": {
