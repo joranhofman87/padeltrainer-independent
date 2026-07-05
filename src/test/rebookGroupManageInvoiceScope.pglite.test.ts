@@ -57,7 +57,7 @@ beforeAll(async () => {
   `);
   // Base RPC definition, then the NEW scope-fix migration on top (LATEST wins).
   await db.exec(readMigration('20260705100000_rebook_group_count_live_holds.sql'));
-  await db.exec(readMigration('20260706130000_p2_3_rebook_group_manage_scope.sql')); // orchestrator: replace with assigned filename
+  await db.exec(readMigration('20260706170000_p2_3_rebook_group_manage_scope.sql'));
 });
 
 beforeEach(async () => {
