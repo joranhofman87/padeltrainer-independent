@@ -105,10 +105,10 @@ Real failure classes reachable under realistic load, and boundary/reliability ga
 - **Detail:** [`technical-debt/QUALITY_GATES_BACKLOG.md`](technical-debt/QUALITY_GATES_BACKLOG.md) P1-1, P1-2.
 
 ### T2-5 · Remaining money-path page writes behind facades
-- **Problem:** the largest open page-write cluster is `TrainerScheduleOverview.handleSaveCycleEdit` (slot/booking/cycle edits in-page, re-implementing whole-cycle-edit semantics `applySlotEditToCycle`/`updateCyclePricing` own — P1-a); and `AcademyCyclusOverview` targeted bulk price writes the price source-of-truth then relies on a *separate* resync that a future edit could drop (P1-b).
-- **Impact:** These are the last money-adjacent writes not owned by a `src/lib/*` facade; divergence = silent under/over-billing.
-- **Fix:** a `saveCycleEdit`/`setTargetedCyclePrice` facade that bundles the slot/booking edit + invoice resync atomically. Characterize (PGlite) → extract verbatim → wire (ADR 0003).
-- **Owner area:** cycles / mutation boundary · **Risk:** medium (money) · **PR size:** Large (P1-a), Medium (P1-b) · **Tests:** PGlite reschedule + co-occupant rebalance before extracting.
+- **Problem:** the largest open page-write cluster is `TrainerScheduleOverview.handleSaveCycleEdit` (slot/booking/cycle edits in-page, re-implementing whole-cycle-edit semantics `applySlotEditToCycle`/`updateCyclePricing` own — P1-a). ~~P1-b (`AcademyCyclusOverview` targeted bulk price)~~ **DONE**: extracted to `setTargetedCyclePrice` in `src/lib/cycleBookingMode.ts` (writes + invoice resync bundled, characterization-tested; allowlist entry removed).
+- **Impact:** P1-a is the last money-adjacent write cluster not owned by a `src/lib/*` facade; divergence = silent under/over-billing.
+- **Fix:** a `saveCycleEdit` facade that bundles the slot/booking edit + invoice resync atomically. Characterize (PGlite) → extract verbatim → wire (ADR 0003).
+- **Owner area:** cycles / mutation boundary · **Risk:** medium (money) · **PR size:** Large (P1-a) · **Tests:** PGlite reschedule + co-occupant rebalance before extracting.
 - **Detail:** [`technical-debt/MUTATION_BOUNDARY_BACKLOG.md`](technical-debt/MUTATION_BOUNDARY_BACKLOG.md) P1-a, P1-b.
 
 ### T2-6 · Unbounded per-owner display lists

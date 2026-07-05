@@ -19,7 +19,6 @@
   "src/pages/TrainerScheduleOverview.tsx": 2,
   "src/pages/academy/AcademyCalendar.tsx": 1,
   "src/pages/academy/AcademyCreateInvoice.tsx": 1,
-  "src/pages/academy/AcademyCyclusOverview.tsx": 2,
   "src/pages/academy/AcademyEditInvoice.tsx": 1,
   "src/pages/academy/AcademySlotDetail.tsx": 1,
   "src/pages/trainer/TrainerCreateInvoice.tsx": 1,
