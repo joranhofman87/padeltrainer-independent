@@ -143,6 +143,30 @@ describe('GuestBookingDialog', () => {
     });
   });
 
+  it('hides the "This session only" option when the owner disabled individual-session booking', async () => {
+    // allow_single_booking=false (e.g. a split_payment whole-series cyclus): the single-session
+    // toggle must NOT be offered — booking is forced to the whole cyclus.
+    cyclusSessions.current = twoSessions;
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/split' }, error: null });
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+
+    const wholeSeriesSlot: PublicSlot = { ...cyclusSlot, allow_single_booking: false, split_payment: true };
+    render(<GuestBookingDialog slot={wholeSeriesSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+
+    // No single-session toggle rendered.
+    expect(screen.queryByRole('button', { name: /Alleen deze sessie/ })).toBeNull();
+
+    // Submitting books the WHOLE cyclus (single path is unreachable).
+    fillValid();
+    const payBtn = screen.getByRole('button', { name: /Afrekenen/ });
+    await waitFor(() => expect(payBtn).toBeEnabled());
+    fireEvent.click(payBtn);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
+      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+    });
+  });
+
   it('shows a toast (no redirect) when the slot is full', async () => {
     invokeMock.mockResolvedValue({
       data: null,

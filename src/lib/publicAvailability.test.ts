@@ -82,6 +82,37 @@ describe('mapAndGroupPublicSlots', () => {
     expect(groups[0].slots[0].spots_left).toBe(1); // capacity 1, not max_participants
   });
 
+  it('split_payment slot is per-seat: capacity max_participants even when allow_single_booking=false', () => {
+    // A split cyclus session is booked by N guests who each pay total÷N, so it must show N spots and
+    // stay visible until N are booked — NOT vanish after one (the P1-2 read-side bug).
+    const slots = [
+      row({
+        id: 'split-open',
+        start_time: '2026-09-01T12:00:00Z',
+        allow_single_booking: false,
+        split_payment: true,
+        max_participants: 4,
+      }),
+      row({
+        id: 'split-partial',
+        start_time: '2026-09-01T13:00:00Z',
+        allow_single_booking: false,
+        split_payment: true,
+        max_participants: 4,
+      }),
+    ];
+    const groups = mapAndGroupPublicSlots(
+      slots,
+      // split-partial has ONE of its four seats booked → still bookable (would be "full" under the
+      // old whole-slot=1 rule).
+      ctx({ visibleIds: new Set(['split-open', 'split-partial']), bookingCounts: { 'split-partial': 1 } }),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].slots.map((s) => s.id)).toEqual(['split-open', 'split-partial']);
+    expect(groups[0].slots[0].spots_left).toBe(4); // capacity max_participants, not 1
+    expect(groups[0].slots[1].spots_left).toBe(3); // 4 - 1 booked
+  });
+
   it('dedupes by id', () => {
     const slots = [
       row({ id: 'dup', start_time: '2026-09-01T12:00:00Z' }),
