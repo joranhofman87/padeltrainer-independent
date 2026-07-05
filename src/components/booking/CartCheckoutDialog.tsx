@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabaseClient';
 import { formatPrice } from '@/lib/pricing';
 import { extractCartFnError } from '@/components/booking/cartErrors';
-import { cartIndicativeTotal } from '@/components/booking/BookingCartSummary';
+import { cartIndicativeTotal } from '@/contexts/cartStore';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

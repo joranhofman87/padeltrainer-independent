@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, AlertCircle, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 import { nl, enUS, de, fr, es, it } from "date-fns/locale";
-import { useCartOptional } from "@/contexts/CartContext";
+import { useCartOptional } from "@/contexts/cartStore";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dateLocales: Record<string, any> = { nl, en: enUS, de, fr, es, it };

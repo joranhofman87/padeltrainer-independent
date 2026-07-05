@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { formatPrice } from '@/lib/pricing';
 import { formatZonedTime } from '@/lib/zonedFormat';
 import { GUEST_PAYFIRST_ENABLED } from '@/lib/bookingFlags';
-import { isCartableSlot, useCartOptional, type CartAddRefusal } from '@/contexts/CartContext';
+import { isCartableSlot, useCartOptional, type CartAddRefusal } from '@/contexts/cartStore';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 /**
