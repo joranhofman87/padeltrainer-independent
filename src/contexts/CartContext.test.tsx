@@ -4,15 +4,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { CartProvider } from './CartContext';
 import {
   CART_MAX_ITEMS,
-  CartProvider,
   addSlotToItems,
   cartOrgKey,
   isCartableSlot,
   sanitizeStoredItems,
   useCart,
-} from './CartContext';
+} from './cartStore';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 let seq = 0;

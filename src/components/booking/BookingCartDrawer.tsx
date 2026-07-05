@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { useCartOptional } from '@/contexts/CartContext';
+import { useCartOptional } from '@/contexts/cartStore';
 import { BookingCartSummary } from '@/components/booking/BookingCartSummary';
 import { CartCheckoutDialog } from '@/components/booking/CartCheckoutDialog';
 import { CartUnavailableSlotsWarning } from '@/components/booking/CartUnavailableSlotsWarning';

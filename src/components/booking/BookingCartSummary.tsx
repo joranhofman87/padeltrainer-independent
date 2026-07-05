@@ -3,22 +3,8 @@ import { CalendarClock, MapPin, X } from 'lucide-react';
 import { formatPrice } from '@/lib/pricing';
 import { formatZonedDayLabel, formatZonedTime } from '@/lib/zonedFormat';
 import { cn } from '@/lib/utils';
+import { cartItemIndicativePrice, cartIndicativeTotal } from '@/contexts/cartStore';
 import type { PublicSlot } from '@/lib/publicAvailability';
-
-/**
- * Indicative per-item price — the SAME formula the slot row and booking dialog display
- * (price_per_session + extras), so the cart never shows a different number than the page
- * the guest just tapped. The server reprices authoritatively at checkout.
- */
-export function cartItemIndicativePrice(item: PublicSlot): number | null {
-  const extras = item.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
-  return item.price_per_session != null && item.price_per_session > 0 ? item.price_per_session + extras : null;
-}
-
-/** Indicative cart total (null-priced items count as 0 — the server total decides). */
-export function cartIndicativeTotal(items: PublicSlot[]): number {
-  return items.reduce((sum, i) => sum + (cartItemIndicativePrice(i) ?? 0), 0);
-}
 
 /**
  * The cart's line-item list: per selected session — date, time, trainer, location,
