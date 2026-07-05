@@ -148,6 +148,23 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           });
         }
 
+        // Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
+        // so a guest never fills the whole form only to dead-end (create-*-payment refuses /
+        // Mollie 422). Anon-safe RPC (booleans only, no account data). Deploy-window fallback:
+        // RPC not live → don't filter (show all, no worse than today).
+        let paymentReadyIds: Set<string> | null = null;
+        const { data: pr, error: prErr } = await supabase.rpc(
+          'get_public_slot_payment_ready' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        if (!prErr && pr) {
+          paymentReadyIds = new Set(
+            (pr as unknown as { slot_id: string; payment_ready: boolean }[])
+              .filter((r) => r.payment_ready)
+              .map((r) => r.slot_id),
+          );
+        }
+
         // Tier-aware visibility (priority/member windows, public_release_status) — anon-safe.
         const visibleIds = await filterVisibleSlotIds(
           slots.map((s) => ({
@@ -159,9 +176,14 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           })),
         );
 
+        // Bookable = tier-visible AND payment-ready (when the readiness RPC answered).
+        const bookableIds = paymentReadyIds
+          ? new Set([...visibleIds].filter((id) => paymentReadyIds!.has(id)))
+          : visibleIds;
+
         const groups = mapAndGroupPublicSlots(slots as unknown as RawPublicSlotRow[], {
           bookingCounts,
-          visibleIds,
+          visibleIds: bookableIds,
           trainerMap,
           nameMap,
         });
