@@ -140,6 +140,9 @@ Deno.serve(async (req) => {
       return json(refusal, refusalStatus(refusal.error));
     }
 
+    // validateCartSlots guarantees ONE payment recipient: either one academy (whose member
+    // trainers may mix in the cart) or one trainer-own account. slots[0] therefore carries
+    // the recipient; its trainer doubles as the membership check inside resolveSlotRecipient.
     const trainerId = slots[0].trainer_id as string;
     const academyProfileId = slots[0].academy_profile_id ?? null;
 
@@ -154,9 +157,17 @@ Deno.serve(async (req) => {
     }
 
     // 5. Server-authoritative pricing: Σ per-item single-slot price + extras. NO split.
-    const { data: tp } = await supabase.from("trainer_profiles").select("hourly_rate").eq("id", trainerId).maybeSingle();
-    const hourlyRate = tp?.hourly_rate != null ? Number(tp.hourly_rate) : null;
-    const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRate);
+    // Hourly fallback rates are PER TRAINER — an academy cart may mix its trainers.
+    const cartTrainerIds = [...new Set(slots.map((s) => s.trainer_id).filter(Boolean))] as string[];
+    const { data: tps } = await supabase
+      .from("trainer_profiles")
+      .select("id, hourly_rate")
+      .in("id", cartTrainerIds);
+    const hourlyRateByTrainer: Record<string, number | null> = {};
+    (tps ?? []).forEach((tp: { id: string; hourly_rate: number | null }) => {
+      hourlyRateByTrainer[tp.id] = tp.hourly_rate != null ? Number(tp.hourly_rate) : null;
+    });
+    const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRateByTrainer);
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
     // 6. Guest identity — always a guest_players row, owned by the cart's single org.

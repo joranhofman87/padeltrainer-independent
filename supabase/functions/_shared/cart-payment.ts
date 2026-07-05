@@ -64,9 +64,15 @@ export function normalizeCartSlotIds(input: unknown): { slotIds: string[] } | Ca
  *  - every slot public (is_public + tier === 'public')     → slot_not_bookable
  *  - no split-payment sessions in v1                       → split_not_supported
  *  - no cyclus session without allow_single_booking        → single_booking_not_allowed
- *  - one recipient org: single trainer AND single academy  → mixed_recipient
- *    (charge-org == confirm-org, invariant #6; null academy is its own bucket)
+ *  - ONE PAYMENT RECIPIENT: academy-stamped slots route to the ACADEMY's Mollie
+ *    (any of its trainers may mix in one cart); slots without an academy route to the
+ *    trainer's OWN account (single trainer only). Mixing recipients → mixed_recipient
+ *    (charge-org == confirm-org, invariant #6). Mirrors resolveSlotRecipient exactly.
  */
+export function cartRecipientKey(slot: Pick<CartSlotRow, 'trainer_id' | 'academy_profile_id'>): string {
+  return slot.academy_profile_id ? `academy:${slot.academy_profile_id}` : `trainer:${slot.trainer_id ?? ''}`;
+}
+
 export function validateCartSlots(requestedIds: string[], slots: CartSlotRow[], now = new Date()): CartRefusal | null {
   const byId = new Map(slots.map((s) => [s.id, s]));
   const missing = requestedIds.filter((id) => !byId.has(id));
@@ -91,10 +97,12 @@ export function validateCartSlots(requestedIds: string[], slots: CartSlotRow[], 
   const cyclusLocked = slots.filter((s) => s.cyclus_id != null && s.allow_single_booking !== true);
   if (cyclusLocked.length > 0) return { error: "single_booking_not_allowed", slotIds: cyclusLocked.map((s) => s.id) };
 
-  const trainerId = slots[0]?.trainer_id ?? null;
-  if (!trainerId) return { error: "no_mollie_account" };
-  const academyId = slots[0]?.academy_profile_id ?? null;
-  const mixed = slots.filter((s) => s.trainer_id !== trainerId || (s.academy_profile_id ?? null) !== academyId);
+  // Payment routing needs a trainer on every slot (the recipient resolver's membership
+  // check for academy slots, the account owner for trainer-own slots).
+  const orphaned = slots.filter((s) => !s.trainer_id);
+  if (orphaned.length > 0) return { error: "no_mollie_account" };
+  const firstKey = cartRecipientKey(slots[0]);
+  const mixed = slots.filter((s) => cartRecipientKey(s) !== firstKey);
   if (mixed.length > 0) return { error: "mixed_recipient", slotIds: mixed.map((s) => s.id) };
 
   return null;
@@ -106,16 +114,22 @@ export function validateCartSlots(requestedIds: string[], slots: CartSlotRow[], 
  * (per-seat when allow_single_booking && max_participants>1, else the whole session)
  * plus that slot's extra costs — identical to create-guest-slot-payment, so a cart of
  * one prices exactly like the existing single-slot flow. Cent-rounded per item.
+ *
+ * `hourlyRateByTrainer` maps trainer_id → hourly_rate: an academy cart may mix that
+ * academy's trainers, and the hourly fallback (used when a slot has no explicit
+ * price_per_session) is a PER-TRAINER rate — a single shared rate would misprice the
+ * other trainers' unpriced slots.
  */
 export function priceCartItems(
   requestedIds: string[],
   slots: CartSlotRow[],
-  hourlyRate: number | null,
+  hourlyRateByTrainer: Record<string, number | null>,
 ): { itemAmounts: number[]; total: number } {
   const byId = new Map(slots.map((s) => [s.id, s]));
   const itemAmounts = requestedIds.map((id) => {
     const slot = byId.get(id);
     if (!slot) return 0;
+    const hourlyRate = slot.trainer_id ? (hourlyRateByTrainer[slot.trainer_id] ?? null) : null;
     const raw = computeSingleSlotPaymentAmount(slot as unknown as SlotPricingInput, hourlyRate, 1) +
       sumSlotExtraCosts(slot.extra_costs);
     return Math.round(raw * 100) / 100;

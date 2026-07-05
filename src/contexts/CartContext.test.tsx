@@ -44,11 +44,16 @@ function slot(overrides: Partial<PublicSlot> = {}): PublicSlot {
 }
 
 describe('cart rules (mirror of the server validateCartSlots)', () => {
-  it('org key: null academy is the trainer-own bucket, distinct from any academy', () => {
+  it('org key follows the PAYMENT RECIPIENT: academy slots share a key across trainers', () => {
     const own = slot({ academy_profile_id: null });
     const acad = slot();
+    // trainer-own is its own bucket, distinct from any academy
     expect(cartOrgKey(own)).not.toBe(cartOrgKey(acad));
     expect(cartOrgKey(own)).toBe(cartOrgKey(slot({ academy_profile_id: null })));
+    // two trainers of ONE academy: same recipient (the academy's Mollie) → same key
+    expect(cartOrgKey(acad)).toBe(cartOrgKey(slot({ trainer_id: 'trainer-2' })));
+    // trainer-own buckets are per trainer
+    expect(cartOrgKey(own)).not.toBe(cartOrgKey(slot({ trainer_id: 'trainer-2', academy_profile_id: null })));
   });
 
   it('eligibility: split sessions and locked cyclus sessions are not cartable', () => {
@@ -61,10 +66,14 @@ describe('cart rules (mirror of the server validateCartSlots)', () => {
     expect(isCartableSlot(slot({ trainer_id: null }))).toBe(false);
   });
 
-  it('add: dedupes, blocks a second org, caps at CART_MAX_ITEMS', () => {
+  it('add: dedupes, blocks a different RECIPIENT, caps at CART_MAX_ITEMS', () => {
     const a = slot();
     expect(addSlotToItems([a], a)).toEqual({ reason: 'already_in_cart' });
-    expect(addSlotToItems([a], slot({ trainer_id: 'trainer-2' }))).toEqual({ reason: 'different_org' });
+    // another trainer of the SAME academy: same recipient → allowed
+    const sameAcademy = addSlotToItems([a], slot({ trainer_id: 'trainer-2' }));
+    expect('items' in sameAcademy && sameAcademy.items).toHaveLength(2);
+    // a different academy, or a trainer-own slot: different Mollie/invoicing → blocked
+    expect(addSlotToItems([a], slot({ academy_profile_id: 'academy-2' }))).toEqual({ reason: 'different_org' });
     expect(addSlotToItems([a], slot({ academy_profile_id: null }))).toEqual({ reason: 'different_org' });
     const full = Array.from({ length: CART_MAX_ITEMS }, () => slot());
     expect(addSlotToItems(full, slot())).toEqual({ reason: 'cart_full' });
@@ -111,12 +120,15 @@ describe('CartProvider', () => {
     const { result } = renderHook(() => useCart(), { wrapper });
     act(() => {
       expect(result.current.addItem(slot())).toEqual({ ok: true });
-      expect(result.current.addItem(slot({ trainer_id: 'trainer-2' }))).toEqual({
+      // a different ACADEMY = a different payment recipient → refused
+      expect(result.current.addItem(slot({ academy_profile_id: 'academy-2' }))).toEqual({
         ok: false,
         reason: 'different_org',
       });
+      // another trainer of the SAME academy = same recipient → allowed
+      expect(result.current.addItem(slot({ trainer_id: 'trainer-2' }))).toEqual({ ok: true });
     });
-    expect(result.current.count).toBe(1);
+    expect(result.current.count).toBe(2);
   });
 
   it('clearCart empties state and storage (the success-page hook)', () => {

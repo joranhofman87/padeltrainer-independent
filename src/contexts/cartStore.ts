@@ -19,12 +19,15 @@ export type CartAddRefusal = 'already_in_cart' | 'not_cartable' | 'different_org
 export type CartAddResult = { ok: true } | { ok: false; reason: CartAddRefusal };
 
 /**
- * The single-recipient-org bucket a slot pays into. All cart items must share one key so
- * the one Mollie charge routes to one org (charge-org == confirm-org). A null academy is
- * the trainer-own bucket — deliberately distinct from any academy.
+ * The PAYMENT RECIPIENT bucket a slot pays into — mirrors resolveSlotRecipient's routing:
+ * an academy-stamped slot is charged to the ACADEMY's Mollie account (whichever of its
+ * trainers gives the session), a slot without an academy to the trainer's own account.
+ * All cart items must share one key so the one Mollie charge routes to one org
+ * (charge-org == confirm-org). Different trainers within ONE academy may therefore mix;
+ * unrelated trainers/academies (different Mollie/invoicing) may not.
  */
 export function cartOrgKey(slot: Pick<PublicSlot, 'trainer_id' | 'academy_profile_id'>): string {
-  return `${slot.trainer_id ?? ''}|${slot.academy_profile_id ?? ''}`;
+  return slot.academy_profile_id ? `academy:${slot.academy_profile_id}` : `trainer:${slot.trainer_id ?? ''}`;
 }
 
 /**
