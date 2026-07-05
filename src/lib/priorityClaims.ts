@@ -350,6 +350,7 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
       price_per_session: src.price_per_session,
       total_price: src.total_price,
       allow_single_booking: src.allow_single_booking,
+      whole_slot_booking: (src as { whole_slot_booking?: boolean | null }).whole_slot_booking ?? false,
       min_participants: src.min_participants,
       max_participants: src.max_participants,
       extra_costs: src.extra_costs,

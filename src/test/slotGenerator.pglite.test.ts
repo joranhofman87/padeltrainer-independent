@@ -66,7 +66,7 @@ beforeAll(async () => {
       start_time timestamptz NOT NULL, end_time timestamptz,
       price_per_session numeric, total_price numeric,
       max_participants integer CHECK (max_participants IS NULL OR max_participants <= 8),
-      allow_single_booking boolean, is_public boolean, prices_include_vat boolean,
+      allow_single_booking boolean, whole_slot_booking boolean DEFAULT false, is_public boolean, prices_include_vat boolean,
       cyclus_id uuid, cyclus_name text, rating_system text, min_rating numeric, max_rating numeric,
       extra_costs jsonb, created_at timestamptz DEFAULT now()
     );

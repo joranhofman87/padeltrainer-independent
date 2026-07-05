@@ -119,11 +119,11 @@ describe('setCycleBookingMode', () => {
     // settings: existing keys preserved, both flags written
     const settingsWrite = updates('cycles')[0];
     expect(settingsWrite.payload).toEqual({
-      settings: { split_payment: true, allow_single_booking: true, allow_cyclus_booking: false },
+      settings: { split_payment: true, allow_single_booking: true, allow_cyclus_booking: false, whole_slot_booking: false },
     });
     // slots: the booked one excluded (phantom-seat guard), future-only select
     const slotWrite = updates('availability_slots')[0];
-    expect(slotWrite.payload).toEqual({ allow_single_booking: true });
+    expect(slotWrite.payload).toEqual({ allow_single_booking: true, whole_slot_booking: false });
     expect(slotWrite.filters['in:id']).toEqual(['cy1-s1', 'cy1-s3']);
     expect(selects('availability_slots')[0].filters['gte:start_time']).toBeDefined();
   });
@@ -139,7 +139,7 @@ describe('setCycleBookingMode', () => {
     expect(selects('bookings')).toHaveLength(0);
     expect(updates('availability_slots')[0].filters['in:id']).toEqual(['cy1-s1', 'cy1-s2']);
     expect(updates('cycles')[0].payload).toEqual({
-      settings: { allow_single_booking: false, allow_cyclus_booking: true },
+      settings: { allow_single_booking: false, allow_cyclus_booking: true, whole_slot_booking: false },
     });
   });
 
@@ -152,7 +152,7 @@ describe('setCycleBookingMode', () => {
 
     expect(res.skippedBookedSlots).toBe(1);
     expect(updates('cycles')[0].payload).toEqual({
-      settings: { allow_single_booking: true, allow_cyclus_booking: true },
+      settings: { allow_single_booking: true, allow_cyclus_booking: true, whole_slot_booking: false },
     });
     expect(updates('availability_slots')[0].filters['in:id']).toEqual(['cy1-s2']);
   });
@@ -174,7 +174,7 @@ describe('setCycleBookingMode', () => {
 
     expect(res.succeeded).toBe(1);
     expect(updates('cycles')).toHaveLength(0);
-    expect(updates('availability_slots')[0].payload).toEqual({ allow_single_booking: false });
+    expect(updates('availability_slots')[0].payload).toEqual({ allow_single_booking: false, whole_slot_booking: false });
   });
 
   it('dedupes multi-trainer groups of one cycle into ONE cycle-wide application', async () => {
@@ -219,11 +219,11 @@ describe('applyBookingModeToFutureSlots (the slot half — shared with CycleForm
     fixtures.slotsByCyclus = { cy1: [{ id: 'cy1-s1' }, { id: 'cy1-s2' }, { id: 'cy1-s3' }] };
     fixtures.occupiedSlotIds = ['cy1-s3'];
 
-    const res = await applyBookingModeToFutureSlots('cy1', true);
+    const res = await applyBookingModeToFutureSlots('cy1', { allowSingle: true, wholeSlot: false });
 
     expect(res).toEqual({ flipped: 2, skippedBooked: 1 });
     const write = updates('availability_slots')[0];
-    expect(write.payload).toEqual({ allow_single_booking: true });
+    expect(write.payload).toEqual({ allow_single_booking: true, whole_slot_booking: false });
     expect(write.filters['in:id']).toEqual(['cy1-s1', 'cy1-s2']);
     expect(selects('availability_slots')[0].filters['gte:start_time']).toBeDefined();
   });
@@ -232,7 +232,7 @@ describe('applyBookingModeToFutureSlots (the slot half — shared with CycleForm
     fixtures.slotsByCyclus = { cy1: [{ id: 'cy1-s1' }, { id: 'cy1-s2' }] };
     fixtures.occupiedSlotIds = ['cy1-s1'];
 
-    const res = await applyBookingModeToFutureSlots('cy1', false);
+    const res = await applyBookingModeToFutureSlots('cy1', { allowSingle: false, wholeSlot: false });
 
     expect(res).toEqual({ flipped: 2, skippedBooked: 0 });
     expect(selects('bookings')).toHaveLength(0);
@@ -241,8 +241,40 @@ describe('applyBookingModeToFutureSlots (the slot half — shared with CycleForm
 
   it('no future slots → no writes, zero counts', async () => {
     fixtures.slotsByCyclus = { cy1: [] };
-    const res = await applyBookingModeToFutureSlots('cy1', true);
+    const res = await applyBookingModeToFutureSlots('cy1', { allowSingle: true, wholeSlot: false });
     expect(res).toEqual({ flipped: 0, skippedBooked: 0 });
+    expect(updates('availability_slots')).toHaveLength(0);
+  });
+});
+
+describe('single_only_whole_slot (whole court per booking)', () => {
+  it('writes settings {single:false, cyclus:false, whole_slot:true} and stamps both slot flags', async () => {
+    fixtures.cycles = [{ id: 'cy1', settings: { split_payment: false } }];
+    fixtures.slotsByCyclus = { cy1: [{ id: 'cy1-s1' }, { id: 'cy1-s2' }] };
+    fixtures.occupiedSlotIds = ['cy1-s1']; // must be IGNORED: allow_single stays false (safe direction)
+
+    const res = await setCycleBookingMode(
+      [{ cyclusId: 'cy1', hasCycleRow: true, name: 'Zomertraining' }],
+      'single_only_whole_slot',
+    );
+
+    expect(res).toMatchObject({ succeeded: 1, skippedBookedSlots: 0 });
+    expect(selects('bookings')).toHaveLength(0); // never treated as per-seat enable
+    expect(updates('cycles')[0].payload).toEqual({
+      settings: { split_payment: false, allow_single_booking: false, allow_cyclus_booking: false, whole_slot_booking: true },
+    });
+    const slotWrite = updates('availability_slots')[0];
+    expect(slotWrite.payload).toEqual({ allow_single_booking: false, whole_slot_booking: true });
+    expect(slotWrite.filters['in:id']).toEqual(['cy1-s1', 'cy1-s2']);
+  });
+
+  it('orphan groups are skipped for the whole-slot mode too (series checkout cannot be blocked)', async () => {
+    fixtures.slotsByCyclus = { orphan1: [{ id: 'orphan1-s1' }] };
+    const res = await setCycleBookingMode(
+      [{ cyclusId: 'orphan1', hasCycleRow: false, name: 'Wees' }],
+      'single_only_whole_slot',
+    );
+    expect(res).toMatchObject({ succeeded: 0, skippedOrphans: 1 });
     expect(updates('availability_slots')).toHaveLength(0);
   });
 });

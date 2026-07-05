@@ -63,6 +63,7 @@ interface BulkSlotConfig {
   pricePerSession: number | null;
   totalPrice: number | null;
   allowSingleBooking: boolean;
+  wholeSlotBooking?: boolean;
   minParticipants: number | null;
   maxParticipants: number | null;
   priceManuallyEdited: boolean;
@@ -418,6 +419,7 @@ export function BulkCreateContent({
           pricePerSession: firstSlot.price_per_session,
           totalPrice: firstSlot.total_price,
           allowSingleBooking: firstSlot.allow_single_booking ?? false,
+          wholeSlotBooking: (firstSlot as { whole_slot_booking?: boolean | null }).whole_slot_booking ?? false,
           minParticipants: firstSlot.min_participants,
           maxParticipants: firstSlot.max_participants,
           priceManuallyEdited: true, // Keep the original pricing
@@ -477,6 +479,7 @@ export function BulkCreateContent({
           pricePerSession: pricing.pricePerSession,
           totalPrice: pricing.totalPrice,
           allowSingleBooking: lastSlot.allowSingleBooking,
+          wholeSlotBooking: lastSlot.wholeSlotBooking ?? false,
           minParticipants: lastSlot.minParticipants,
           maxParticipants: lastSlot.maxParticipants,
           priceManuallyEdited: lastSlot.priceManuallyEdited,
@@ -697,6 +700,7 @@ export function BulkCreateContent({
             price_per_session: config.pricePerSession,
             total_price: config.totalPrice,
             allow_single_booking: config.allowSingleBooking,
+            whole_slot_booking: config.wholeSlotBooking ?? false,
             min_participants: config.minParticipants,
             max_participants: config.maxParticipants,
             extra_costs: (config.hasExtraCosts && config.extraCosts.length > 0 

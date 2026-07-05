@@ -36,6 +36,7 @@ const slot: PublicSlot = {
   extra_costs: [],
   max_participants: 4,
   allow_single_booking: true,
+  whole_slot_booking: false,
   spots_left: 3,
   split_payment: false,
 };

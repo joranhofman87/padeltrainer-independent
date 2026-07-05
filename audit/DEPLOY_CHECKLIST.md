@@ -100,6 +100,8 @@ you ever turn the AI features on.
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
+- [ ] **whole_slot_booking (STRICT ORDER — the PR merges LAST):** 1) apply migration `20260707140000_whole_slot_booking.sql` (adds `availability_slots.whole_slot_booking` + loosens the `single_booking_not_allowed` guard in `book_guest_slot_for_payment` and `book_guest_cart_for_payment`; capacity/pricing untouched; split sessions stay locked — #352). 2) `supabase functions deploy create-guest-slot-payment create-guest-cart-payment bulk-rebook-cycle` (early-guard + selects + slot-replication carry the column). 3) ONLY THEN merge the PR — the new frontend selects the column; pre-migration it would blank ALL public availability (PostgREST 42703 swallowed by the hook).
+
 - [ ] **create-guest-cart-payment** (cart recipient-key loosening) — the cart's one-recipient rule is now the PAYMENT recipient: different trainers of ONE academy may share a cart (money routes to the academy's Mollie); unrelated trainers/academies (different Mollie/invoicing) stay blocked. Bundles the updated `_shared/cart-payment.ts` (recipient key + per-trainer hourly fallback rates). *Grace window:* until this redeploys, a same-academy multi-trainer cart passes the CLIENT rule but gets `mixed_recipient` at checkout (graceful toast, guest can split) — deploy promptly after merge.
 
 - [ ] **create-guest-cyclus-payment** (cyclus-booking toggle) — new server guard: a cycle with `settings.allow_cyclus_booking=false` refuses the whole-series checkout (`cyclus_not_bookable`). Deploy BEFORE running the RL Padel data flip below (the dialog hides the option, but this endpoint is verify_jwt=false — the guard is the authoritative rule). No migration.

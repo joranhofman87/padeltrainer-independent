@@ -48,6 +48,8 @@ export interface GenerateCycleInput {
   maxParticipants?: number | null;
   /** true → players may book a single session; false → whole cycle only. */
   allowSingleBooking: boolean;
+  /** Whole-slot selling: sessions bookable individually as the ENTIRE slot at full price. */
+  wholeSlotBooking?: boolean;
   pricesIncludeVat?: boolean;
   /** Stored intent; applied to slots on publish (draft slots stay private). */
   publishVisibility: 'public' | 'private';
@@ -117,6 +119,7 @@ export async function generateCycleWithSlots(
   const settings: CycleSettings = {
     generated_by: 'slot_generator',
     allow_single_booking: input.allowSingleBooking,
+    whole_slot_booking: input.wholeSlotBooking ?? false,
     publish_visibility: input.publishVisibility,
     prices_include_vat: pricesIncludeVat,
     ...(hasExtraCosts ? { extra_costs: input.extraCosts } : {}),
@@ -165,6 +168,7 @@ export async function generateCycleWithSlots(
           total_price: input.pricePerSession,
           max_participants: input.maxParticipants ?? null,
           allow_single_booking: input.allowSingleBooking,
+    whole_slot_booking: input.wholeSlotBooking ?? false,
           is_public: false, // DRAFT — not bookable until published
           prices_include_vat: pricesIncludeVat,
           cyclus_id: cycle.id,

@@ -568,6 +568,7 @@ export default function TrainerScheduleOverview() {
                 extra_costs: cycleEditData.extraCosts.length > 0 ? cycleEditData.extraCosts : lastSlot.extra_costs,
                 academy_profile_id: lastSlot.academy_profile_id,
                 allow_single_booking: lastSlot.allow_single_booking,
+                whole_slot_booking: (lastSlot as { whole_slot_booking?: boolean | null }).whole_slot_booking ?? false,
                 court_type: lastSlot.court_type,
                 min_participants: lastSlot.min_participants,
                 min_rating: lastSlot.min_rating,

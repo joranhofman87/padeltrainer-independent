@@ -36,11 +36,11 @@ export function cartOrgKey(slot: Pick<PublicSlot, 'trainer_id' | 'academy_profil
  * enabled individual booking. Standalone whole-court slots ARE cartable (one whole-slot item).
  */
 export function isCartableSlot(
-  slot: Pick<PublicSlot, 'split_payment' | 'cyclus_id' | 'allow_single_booking' | 'trainer_id'>,
+  slot: Pick<PublicSlot, 'split_payment' | 'cyclus_id' | 'allow_single_booking' | 'whole_slot_booking' | 'trainer_id'>,
 ): boolean {
   if (!slot.trainer_id) return false;
-  if (slot.split_payment) return false;
-  if (slot.cyclus_id != null && !slot.allow_single_booking) return false;
+  if (slot.split_payment) return false; // split stays first — the whole-slot unlock never touches per-seat split sessions
+  if (slot.cyclus_id != null && !slot.allow_single_booking && !slot.whole_slot_booking) return false;
   return true;
 }
 

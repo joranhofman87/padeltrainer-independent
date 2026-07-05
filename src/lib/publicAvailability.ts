@@ -29,6 +29,8 @@ export interface PublicSlot {
   extra_costs: { description: string; price: number }[];
   max_participants: number;
   allow_single_booking: boolean;
+  /** Whole-slot selling: this cyclus session is bookable individually as the ENTIRE slot at full price. */
+  whole_slot_booking: boolean;
   spots_left: number;
   split_payment: boolean;
 }
@@ -51,6 +53,7 @@ export interface RawPublicSlotRow {
   total_price: number | null;
   max_participants: number | null;
   allow_single_booking: boolean | null;
+  whole_slot_booking?: boolean | null;
   extra_costs: unknown;
   split_payment?: boolean | null;
   trainer_id: string | null;
@@ -130,6 +133,7 @@ export function mapAndGroupPublicSlots(rawSlots: RawPublicSlotRow[], ctx: ShapeC
         extra_costs: parseExtraCosts(s.extra_costs),
         max_participants: maxP,
         allow_single_booking: s.allow_single_booking || false,
+        whole_slot_booking: s.whole_slot_booking || false,
         spots_left: bookingCapacity(maxP, s.allow_single_booking, s.split_payment) - booked,
         split_payment: s.split_payment || false,
       };

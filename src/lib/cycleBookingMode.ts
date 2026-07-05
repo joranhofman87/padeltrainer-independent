@@ -22,7 +22,7 @@ import { updateCycleSettings } from '@/lib/cycleWrites';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import type { CycleSettings } from '@/lib/cycleTypes';
 
-export type CycleBookingMode = 'both' | 'single_only' | 'cyclus_only';
+export type CycleBookingMode = 'both' | 'single_only' | 'single_only_whole_slot' | 'cyclus_only';
 
 export interface BookingModeTarget {
   /** The group's cyclus_id (slots' grouping key — always present). */
@@ -91,8 +91,12 @@ export async function setCycleBookingMode(
   const byCycle = new Map<string, BookingModeTarget>();
   for (const t of targets) if (!byCycle.has(t.cyclusId)) byCycle.set(t.cyclusId, t);
 
-  const allowSingle = mode !== 'cyclus_only';
-  const allowCyclus = mode !== 'single_only';
+  // single_only_whole_slot sells individual sessions as the ENTIRE slot at full price:
+  // allow_single stays FALSE (that's what makes pricing full + capacity 1 everywhere) and
+  // the whole_slot_booking flag unlocks the permission gates instead.
+  const allowSingle = mode === 'both' || mode === 'single_only';
+  const allowCyclus = mode === 'both' || mode === 'cyclus_only';
+  const wholeSlot = mode === 'single_only_whole_slot';
   const nowIso = new Date().toISOString();
 
   // Batch-read every real cycle's settings up front (one round trip).
@@ -110,9 +114,9 @@ export async function setCycleBookingMode(
   for (const target of byCycle.values()) {
     try {
       // An orphan group has no cycles row: the whole-series checkout can't be blocked
-      // (the dialog + edge guard default to bookable when settings are absent), so
-      // single_only cannot be honored — skip it entirely rather than half-apply.
-      if (!target.hasCycleRow && mode === 'single_only') {
+      // (the dialog + edge guard default to bookable when settings are absent), so the
+      // sessions-only modes cannot be honored — skip entirely rather than half-apply.
+      if (!target.hasCycleRow && (mode === 'single_only' || mode === 'single_only_whole_slot')) {
         result.skippedOrphans += 1;
         continue;
       }
@@ -122,11 +126,16 @@ export async function setCycleBookingMode(
           ...(settingsById.get(target.cyclusId) ?? {}),
           allow_single_booking: allowSingle,
           allow_cyclus_booking: allowCyclus,
+          whole_slot_booking: wholeSlot,
         };
         await updateCycleSettings(target.cyclusId, merged);
       }
 
-      const { skippedBooked } = await applyBookingModeToFutureSlots(target.cyclusId, allowSingle, nowIso);
+      const { skippedBooked } = await applyBookingModeToFutureSlots(
+        target.cyclusId,
+        { allowSingle, wholeSlot },
+        nowIso,
+      );
       result.skippedBookedSlots += skippedBooked;
 
       result.succeeded += 1;
@@ -137,21 +146,29 @@ export async function setCycleBookingMode(
   return result;
 }
 
+export interface SlotBookingModeFlags {
+  /** Per-seat selling (price ÷ max_participants, capacity max_participants). */
+  allowSingle: boolean;
+  /** Whole-slot selling (full price, capacity 1) — only meaningful when allowSingle=false. */
+  wholeSlot: boolean;
+}
+
 /**
- * Flip `allow_single_booking` on a cycle's FUTURE slots — the slot half of a booking-mode
- * change, shared by the bulk action above and CycleForm's booking switches (which write
- * cycle settings themselves but must not leave existing slots behind — the slot column is
+ * Stamp the booking-mode flags on a cycle's FUTURE slots — the slot half of a booking-mode
+ * change, shared by the bulk action above and CycleForm's booking controls (which write
+ * cycle settings themselves but must not leave existing slots behind — the slot columns are
  * what the public page/cart/booking RPCs actually read).
  *
  * Direction-aware: ENABLING per-seat skips slots holding an active booking (a whole-court
- * booking would otherwise open `max_participants − 1` phantom seats); DISABLING flips
- * booked slots too (capacity becomes 1 → the slot simply shows full).
+ * booking would otherwise open `max_participants − 1` phantom seats); every other change
+ * flips booked slots too (capacity collapses to 1 → the slot simply shows full).
  */
 export async function applyBookingModeToFutureSlots(
   cyclusId: string,
-  allowSingle: boolean,
+  flags: SlotBookingModeFlags,
   nowIso = new Date().toISOString(),
 ): Promise<{ flipped: number; skippedBooked: number }> {
+  const { allowSingle, wholeSlot } = flags;
   // Future slots only: past sessions' booking mode is meaningless, and the guest
   // flows only sell future sessions anyway.
   const { data: slotRows, error: slotErr } = await supabase
@@ -172,7 +189,9 @@ export async function applyBookingModeToFutureSlots(
   for (const chunk of chunked(flipIds)) {
     const { error } = await supabase
       .from('availability_slots')
-      .update({ allow_single_booking: allowSingle })
+      // whole_slot_booking is newer than the committed generated types (stale-since-#273
+      // convention: no full regen for one column) — cast like insertAvailabilitySlots does.
+      .update({ allow_single_booking: allowSingle, whole_slot_booking: wholeSlot } as never)
       .in('id', chunk);
     if (error) throw error;
   }

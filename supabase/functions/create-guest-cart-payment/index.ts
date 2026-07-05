@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     const { data: slotRows } = await supabase
       .from("availability_slots")
       .select(
-        "id, trainer_id, academy_profile_id, cyclus_id, cyclus_name, price_per_session, start_time, end_time, max_participants, allow_single_booking, split_payment, extra_costs, is_public, priority_window_ends_at, member_window_ends_at, public_release_status",
+        "id, trainer_id, academy_profile_id, cyclus_id, cyclus_name, price_per_session, start_time, end_time, max_participants, allow_single_booking, whole_slot_booking, split_payment, extra_costs, is_public, priority_window_ends_at, member_window_ends_at, public_release_status",
       )
       .in("id", slotIds)
       .gt("start_time", nowIso);

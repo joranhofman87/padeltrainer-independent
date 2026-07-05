@@ -78,6 +78,9 @@ export interface CycleSettings {
   allow_single_booking?: boolean;
   /** Whole-series checkout allowed? Absent/true = bookable (PR #360); false = individual sessions only. */
   allow_cyclus_booking?: boolean;
+  /** Whole-slot selling: sessions bookable individually as the ENTIRE slot at full price
+   * (one booking claims the session; max_participants stays the attendee count for staff). */
+  whole_slot_booking?: boolean;
   extra_costs?: ExtraCost[];
   mark_as_paid?: boolean;
   payment_timing?: 'upfront' | 'invoice_after_weeks' | 'manual';
