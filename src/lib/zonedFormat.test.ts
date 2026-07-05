@@ -30,6 +30,7 @@ describe('groupSlotsByZonedDay', () => {
     court_type: null,
     location_name: null,
     trainer_id: null,
+    academy_profile_id: null,
     trainer_name: null,
     trainer_slug: null,
     price_per_session: 10,

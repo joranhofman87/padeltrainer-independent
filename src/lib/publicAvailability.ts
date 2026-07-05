@@ -20,6 +20,8 @@ export interface PublicSlot {
   court_type: string | null;
   location_name: string | null;
   trainer_id: string | null;
+  /** Payment-owning academy (null = trainer-own). With trainer_id this keys the cart's single-recipient-org rule. */
+  academy_profile_id: string | null;
   trainer_name: string | null;
   trainer_slug: string | null;
   price_per_session: number | null;
@@ -52,6 +54,7 @@ export interface RawPublicSlotRow {
   extra_costs: unknown;
   split_payment?: boolean | null;
   trainer_id: string | null;
+  academy_profile_id?: string | null;
   locations?: { name: string | null } | null;
 }
 
@@ -119,6 +122,7 @@ export function mapAndGroupPublicSlots(rawSlots: RawPublicSlotRow[], ctx: ShapeC
         court_type: s.court_type,
         location_name: s.locations?.name || null,
         trainer_id: s.trainer_id,
+        academy_profile_id: s.academy_profile_id ?? null,
         trainer_name: trainerName,
         trainer_slug: trainer.slug,
         price_per_session: s.price_per_session || null,

@@ -21,6 +21,7 @@ const slot = (id: string, start: string, over: Partial<PublicSlot> = {}): Public
   court_type: null,
   location_name: null,
   trainer_id: null,
+  academy_profile_id: null,
   trainer_name: 'Coach Jansen',
   trainer_slug: 'coach',
   price_per_session: 20,

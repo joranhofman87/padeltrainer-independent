@@ -42,6 +42,7 @@ const slot: PublicSlot = {
   court_type: null,
   location_name: 'Court 1',
   trainer_id: 'tr-1',
+  academy_profile_id: null,
   trainer_name: 'Coach Bo',
   trainer_slug: 'coach-bo',
   price_per_session: 20,
