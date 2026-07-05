@@ -76,6 +76,8 @@
     "saveAndOpen": "Save & Open Enrollment",
     "allowSingleBooking": "Allow individual lesson booking",
     "allowSingleBookingHelp": "When off, players must book the entire cycle",
+    "allowCyclusBooking": "Entire cycle bookable",
+    "allowCyclusBookingHelp": "When off, players can only book individual sessions (not the entire cycle)",
     "extraCosts": "Extra Costs",
     "extraCostsHelp": "Add costs like court rental that appear as separate invoice lines",
     "perSession": "Per session",

@@ -100,6 +100,29 @@ you ever turn the AI features on.
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
+- [ ] **create-guest-cyclus-payment** (cyclus-booking toggle) — new server guard: a cycle with `settings.allow_cyclus_booking=false` refuses the whole-series checkout (`cyclus_not_bookable`). Deploy BEFORE running the RL Padel data flip below (the dialog hides the option, but this endpoint is verify_jwt=false — the guard is the authoritative rule). No migration.
+- [ ] **RL Padel Performance data flip (owner SQL, run AFTER the fn deploy + frontend deploy)** — Yari de Jong + Tygho Schoonus: individual sessions ON, whole-cyclus OFF. Verified pre-flight: all 116 affected future slots have ZERO bookings/holds; per-seat price becomes `price_per_session ÷ max_participants` (€76.50 ÷ 4 = **€19.13/seat/session**).
+  ```sql
+  -- 1) individual booking ON for their future cyclus sessions
+  UPDATE public.availability_slots
+  SET allow_single_booking = true
+  WHERE trainer_id IN ('6c78e40a-24fc-4b93-bc92-bf42559a0cb6',  -- yari-de-jong
+                       'e59582d7-f07a-4864-9e6d-5e1cd47871c5')  -- tygho-schoonus
+    AND cyclus_id IS NOT NULL
+    AND start_time > now();
+  -- 2) their cycles: individual ON + whole-cyclus OFF (drives the dialog, the edge-fn
+  --    guard, and any future slots generated from these cycles)
+  UPDATE public.cycles
+  SET settings = COALESCE(settings, '{}'::jsonb)
+             || '{"allow_single_booking": true, "allow_cyclus_booking": false}'::jsonb
+  WHERE id IN (
+    SELECT DISTINCT cyclus_id FROM public.availability_slots
+    WHERE trainer_id IN ('6c78e40a-24fc-4b93-bc92-bf42559a0cb6',
+                         'e59582d7-f07a-4864-9e6d-5e1cd47871c5')
+      AND cyclus_id IS NOT NULL
+  );
+  ```
+
 - [x] **create-guest-cart-payment** (cart booking PR 2) — **DEPLOYED 2026-07-05** (after the PR-1 migration). Anon-probed live: `{}` → 400 `slots_required`; unknown slot id → 409 `slot_unavailable` **with `slotIds`** (the cart prune contract works in prod; validation refuses before any hold). NEW public fn (verify_jwt=false): guest multi-session cart pay-first, calls `book_guest_cart_for_payment`.
 - [x] **mollie-webhook**, **verify-mollie-payment** (cart booking PR 3) — **DEPLOYED together 2026-07-05**; both upload manifests included `_shared/mollie-booking-paid-side-effects.ts` (proof the fix shipped, per the #188 manifest check). Guest confirmation email fix (public-booking audit P1-5): guests get the invoice email on the paid transition (players unchanged) + Slack `payment_received` now fires for guest payments. *Behavior change live: ALL guest pay-first flows (single-slot, cyclus, cart) email guests.*
 - [x] **update-user** — IDOR fix (#77). *Security — do this one first.*
