@@ -1,0 +1,173 @@
+# Foundation Roadmap — what to fix before scaling
+
+Purpose: the single clean, forward-looking priority list of foundation work — grouped by when it must land — so an AI agent or human can pick the next-highest-leverage item without re-reading every audit.
+Audience / AI-read: yes
+Status: canonical (source of truth) | last updated 2026-07-02
+
+## How to use this
+
+- This is the **roadmap** (what/when/why). Each item links to the **detailed backlog** that owns the fix mechanics; do not duplicate that detail here. Backlogs live under [`technical-debt/`](technical-debt/); the grounding audit is [`audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md`](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) (its remediation Slices G–K map 1:1 onto the Tier-1 items below).
+- **Before touching money/scheduling code, read the contract:** [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md) → [`MUTATION_BOUNDARIES.md`](MUTATION_BOUNDARIES.md) → [`INVARIANTS.md`](INVARIANTS.md) → the relevant [`adr/`](adr/README.md) (ADR 0009 makes this the contract). Never fix-as-you-go in a boundary move (ADR 0003): characterize behavior in a PGlite test, extract verbatim, then wire.
+- **Deploy reality:** edge functions + migrations do **not** auto-deploy — the owner applies them manually after merge; CI only validates. "Merged" ≠ "live." Frontend auto-deploys via Vercel.
+- **Every fix ships with its test.** Money/data-integrity items require a PGlite (`*.pglite.test.ts`) or `db:rehearse:*` proof, not a mock, per [`TESTING_STRATEGY.md`](TESTING_STRATEGY.md).
+
+## Already fixed + deployed (do NOT re-open)
+
+The 2026-07-02 fresh-eyes audit's P0 and 7 of its P1s are **fixed and live in prod**: forged service-role-JWT bypass (P0), `swap_slots` ownership guard (P1-2), `merge_guest_players` cascade repoint (P1-3), M-17 webhook 23505 tolerance (P1-4), extras charge==invoice (P1-5/P2-7), `create_invoice_deduped` dedup RPC (P1-6), `invoiceSync` paging via new [`src/lib/supabasePaging.ts`](../src/lib/supabasePaging.ts) (P1-7), academy-Mollie charge==confirm routing (P1-9). Do not describe these as open. **Parked/disputed:** P1-1 (Google-Calendar OAuth `state` CSRF, parked), P1-8 (Stripe basil `invoice.subscription`, DISPUTED — endpoint API-version dependent, not source-observable).
+
+---
+
+## Tier 1 — Critical before inviting many academies
+
+Silent money loss/corruption or a CI gap that lets money-path bugs ship green. These are the remaining P2 cluster from the fresh-eyes audit plus the two highest-leverage foundation gaps. Land these before onboarding materially more paying tenants or larger cycles.
+
+### T1-1 · Record refund / chargeback reversals (currently silent money loss)
+- **Problem:** `mollie-webhook` has no `charged_back` / `refunded` / `amountRefunded` case; the no-downgrade guard silences the reversal → a reversed payment stays paid/confirmed forever, seat stays occupied, **no `payment_audit_log` row, no alert**. A full refund is even logged as `duplicate_webhook_ignored`. (Audit P2-5, Slice H.)
+- **Impact:** Money is gone with no durable record — the observability layer's core promise broken. Highest-severity open item.
+- **Fix:** explicit `charged_back` / non-zero `amountRefunded`/`amountChargedBack` handling that does **not** resurrect state, writes `payment_audit_log`, fires `notifySlackEdge`; add a `reconcile_payments` check for reversed-but-still-paid.
+- **Owner area:** payments / observability · **Risk:** high (money path) · **PR size:** Medium · **Tests:** PGlite webhook test asserting reversal → audit row + no state resurrection.
+- **Detail:** [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md) OBS-P0-2 + [`technical-debt/INVARIANT_BACKLOG.md`](technical-debt/INVARIANT_BACKLOG.md) B-3.
+
+### T1-2 · `recalculate-invoices` status guard (paid-invoice overwrite race)
+- **Problem:** `recalculate-invoices/index.ts:276` UPDATEs with no `status` guard; if the Mollie webhook flips an invoice to `paid` mid-loop, recalc overwrites the paid total/VAT and wipes `pdf_url`. (Audit P2-6, Slice G.)
+- **Impact:** A customer's paid invoice silently shows a different amount than was charged.
+- **Fix:** `.neq('status','paid')` (or `updated_at` optimistic guard) on the recalc UPDATE; pairs with the paid-invoice-DELETE guard.
+- **Owner area:** invoices · **Risk:** high (money) · **PR size:** Small · **Tests:** PGlite: recalc skips a row that flipped to paid mid-batch.
+- **Detail:** [`technical-debt/INVARIANT_BACKLOG.md`](technical-debt/INVARIANT_BACKLOG.md) B-2 (bundle with the "can't overwrite/delete paid invoice" trigger + facade).
+
+### T1-3 · Invoice concurrency / mid-flight overwrite races (Slice G rest)
+- **Problem:** `auto-create-invoice` TOCTOU overlap-dedup can double-bill on concurrent overlapping booking sets (audit P1-6 core is fixed via `create_invoice_deduped`; the remaining re-pay probe race P2-4 leaves two payable checkouts) and the deduped-invoice paid-match tolerance scales unbounded with booking count (P3-5).
+- **Impact:** Double-charge / two open checkouts on retry.
+- **Fix:** cancel-before-mint on the re-pay probe path; cap the dedup tolerance (`min(N*0.01, 0.05)`).
+- **Owner area:** payments · **Risk:** high (money) · **PR size:** Medium · **Tests:** concurrency PGlite test (blocked today — see T1 dependency on the fixture adapter, T3-2).
+- **Detail:** [`technical-debt/INVARIANT_BACKLOG.md`](technical-debt/INVARIANT_BACKLOG.md) B-9, B-11 + audit Slice G.
+
+### T1-4 · Edge-function `deno check` CI gate (the money path is untyped in CI)
+- **Problem:** `edge-tests` runs `deno test --no-check` on `_shared/` **only**. None of the 96 function `index.ts` (incl. the 813-line `mollie-webhook`) are type/`deno check`ed anywhere. A mistyped/un-imported symbol ships green and fails at runtime on the payment path. (Audit P2-9, Slice I.)
+- **Impact:** The single most load-bearing CI hardening item — protects every future money-path edge edit; pure workflow change, no runtime risk.
+- **Fix:** add a `deno check` step scoped first to the money-critical set (`mollie-webhook`, `create-mollie-payment`, `auto-create-invoice`, `stripe-subscription-webhook`), ratchet like the tsc baseline. Verify red/green locally before wiring — do not block merges on a perma-red new gate.
+- **Owner area:** CI / quality gates · **Risk:** low · **PR size:** Small · **Tests:** the gate itself; confirm it catches a deliberately un-imported symbol.
+- **Detail:** [`technical-debt/QUALITY_GATES_BACKLOG.md`](technical-debt/QUALITY_GATES_BACKLOG.md) P0-1 + [`technical-debt/INVARIANT_BACKLOG.md`](technical-debt/INVARIANT_BACKLOG.md) B-6.
+
+### T1-5 · Anon RLS / settings PII leaks (Slice K)
+- **Problem:** the anon "view open cycles" policy leaks `settings.notify_admin_emails` (staff list) + full settings/terms (P2-1); academy managers can read a shared trainer's entire `guest_players` roster (P2-2); `get_player_locations`/`registrations` trust a client `guest_player_id` (P3-2/P3-3).
+- **Impact:** Cross-tenant PII exposure on public/anon surfaces — reputational + compliance risk as tenant count grows.
+- **Fix:** serve public forms via a postgres-owned `_public`/`_safe` view whitelisting form-safe columns; scope academy-manager guest visibility to associated guests; derive `guest_player_id` server-side. **Confirm product intent** on the shared-trainer guest sharing before narrowing.
+- **Owner area:** RLS / tenancy · **Risk:** medium (each is a policy/SECURITY DEFINER migration) · **PR size:** Medium (one focused migration per leak) · **Tests:** anon-probe PGlite/RLS rehearsal per leaked column.
+- **Detail:** [`technical-debt/INVARIANT_BACKLOG.md`](technical-debt/INVARIANT_BACKLOG.md) B-4, B-5, B-10.
+
+### T1-6 · `get-admin-stats` GMV truncation (Slice J tail)
+- **Problem:** six uncapped selects summed in JS over PostgREST-capped (1000-row) arrays → GMV/fees/trends **materially understated past 1,000 total bookings** with no error; OOM risk if the cap is naively removed. (Audit P2-16.)
+- **Impact:** Admin financial dashboard silently wrong — you can't trust your own GMV number as the platform grows. Admin-only blast radius, but it's the number you'll steer by.
+- **Fix:** move aggregation into COUNT/SUM RPCs; return summary rows.
+- **Owner area:** admin / scale · **Risk:** low (admin-only) · **PR size:** Medium · **Tests:** seed 2k bookings, assert GMV RPC is not truncated.
+- **Detail:** [`technical-debt/PERFORMANCE_BACKLOG.md`](technical-debt/PERFORMANCE_BACKLOG.md) P1-a.
+
+### T1-7 · Deploy-gated fallbacks silently revert to unbounded scans
+- **Problem:** `AcademyCyclusOverview.buildGroupsClientSide`, `cycles.ts`, `priorityClaims.ts`, `TrainerEarnings.tsx` all fall back to the legacy unbounded path on `PGRST202`/`42883` if their aggregation RPC migration isn't live → the app streams a whole owner's dataset to the browser (OOM at 10k+ slots) invisibly.
+- **Impact:** A missed migration on an env bump degrades to a silent full-table scan with zero signal — exactly the failure the deploy-does-not-auto-apply reality makes likely.
+- **Fix (operational + telemetry):** verify the RPCs are live after every env bump; emit a `notifySlackEdge`/PostHog ping when any fallback branch fires so a missing migration is loud.
+- **Owner area:** scale / observability · **Risk:** low (add-only telemetry) · **PR size:** Small · **Tests:** unit-assert the fallback branch fires the ping.
+- **Detail:** [`technical-debt/PERFORMANCE_BACKLOG.md`](technical-debt/PERFORMANCE_BACKLOG.md) P1-d.
+
+---
+
+## Tier 2 — Important before heavy scale
+
+Real failure classes reachable under realistic load, and boundary/reliability gaps that don't lose money today but will bite as volume and contributor count grow.
+
+### T2-1 · Capacity locks on the cyclus + partial-failure booking rollback
+- **Problem:** the logged-in **cyclus** insert is not capacity-locked (single-slot is); a fresh single-slot booking orphans a capacity-occupying pending row when Mollie creation fails before a payment id exists (P2-10). (Slice G/J.)
+- **Impact:** Overbook under concurrency; starved capacity from orphaned holds.
+- **Fix:** route cyclus insert through a capacity-locked SECURITY DEFINER RPC (advisory lock + `FOR UPDATE`) mirroring `book_slot_for_payment`; soft-cancel or TTL-hold the orphaned booking on the Mollie-error branch.
+- **Owner area:** booking / capacity · **Risk:** medium · **PR size:** B-11 Small (contained rollback) → B-1 Medium (locked RPC) · **Tests:** concurrency PGlite (blocked on adapter, T3-2).
+- **Detail:** [`technical-debt/INVARIANT_BACKLOG.md`](technical-debt/INVARIANT_BACKLOG.md) B-1, B-11.
+
+### T2-2 · Silent-failure alerting on the mid-flow money/email paths
+- **Problem:** several edge fns return 200 while a mid-flow step failed with only `console.error`: `finalize-proposals` (booked-but-unbilled), `submit-guest-intake` (enrolled-but-uninvoiced), `resend-webhook` (silent deliverability blackout), `send-auth-email` (auth-critical), `sync-invoice-to-bookings` (price divergence).
+- **Impact:** Real failure classes reach no proactive channel — a registrant is enrolled but never invoiced, and no one knows.
+- **Fix:** promote the specific mid-flow catches to `notifySlackEdge`/`notifySlackEdgeError` (helper + service key already present in these fns).
+- **Owner area:** observability · **Risk:** low (add-only) · **PR size:** Small each · **Tests:** unit-assert the alert fires on the error branch.
+- **Detail:** [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md) OBS-P1-1..6.
+
+### T2-3 · Missed-cron heartbeat + Slack dead-man's-switch
+- **Problem:** Vercel doesn't page on a cron that never fires (`alertCronFailure` only fires on a non-2xx of a run that *happened*); and if `SLACK_WEBHOOK_URL` is unset, every proactive alert goes silent with zero signal.
+- **Impact:** The alerting layer can fail silently — the worst failure mode for observability.
+- **Fix:** last-success timestamp per cron (extend the single-flight lock rows) + a daily freshness check that pages if stale; an external uptime monitor on a "last Slack OK" endpoint.
+- **Owner area:** observability (structural) · **Risk:** low · **PR size:** Medium · **Tests:** rehearsal that a stale last-success pages.
+- **Detail:** [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md) OBS-P0-1, OBS-P1-2.
+
+### T2-4 · Mutation-boundary lint gate + cycle-resync rehearsal
+- **Problem:** nothing prevents a component from calling `supabase.from('bookings'|'invoices'|'availability_slots').insert/update/delete` directly, bypassing the boundary libs; and nothing enforces the F2 cycle-RPC resync contract (`syncSplitCountForCycle`/`syncInvoicesAfterPriceChange`) — both live in docs/reviewer memory only.
+- **Impact:** A new contributor (or AI agent) silently skips invoice/split resync → money drift, with lint+tsc+tests all green.
+- **Fix:** `eslint no-restricted-syntax` flagging the raw high-risk writes outside `src/lib/**` boundary modules, baselined shrink-only like the role-isolation rule; a `rehearse-cycle-resync-contract` script auto-joined to `db:rehearse:all`.
+- **Owner area:** quality gates · **Risk:** low · **PR size:** Small (lint) + Medium (rehearsal) · **Tests:** the gate itself.
+- **Detail:** [`technical-debt/QUALITY_GATES_BACKLOG.md`](technical-debt/QUALITY_GATES_BACKLOG.md) P1-1, P1-2.
+
+### T2-5 · Remaining money-path page writes behind facades
+- **Problem:** the largest open page-write cluster is `TrainerScheduleOverview.handleSaveCycleEdit` (slot/booking/cycle edits in-page, re-implementing whole-cycle-edit semantics `applySlotEditToCycle`/`updateCyclePricing` own — P1-a); and `AcademyCyclusOverview` targeted bulk price writes the price source-of-truth then relies on a *separate* resync that a future edit could drop (P1-b).
+- **Impact:** These are the last money-adjacent writes not owned by a `src/lib/*` facade; divergence = silent under/over-billing.
+- **Fix:** a `saveCycleEdit`/`setTargetedCyclePrice` facade that bundles the slot/booking edit + invoice resync atomically. Characterize (PGlite) → extract verbatim → wire (ADR 0003).
+- **Owner area:** cycles / mutation boundary · **Risk:** medium (money) · **PR size:** Large (P1-a), Medium (P1-b) · **Tests:** PGlite reschedule + co-occupant rebalance before extracting.
+- **Detail:** [`technical-debt/MUTATION_BOUNDARY_BACKLOG.md`](technical-debt/MUTATION_BOUNDARY_BACKLOG.md) P1-a, P1-b.
+
+### T2-6 · Unbounded per-owner display lists
+- **Problem:** `TrainerBookings` (all-time), trainer `InvoiceList` (`select('*')`, no pagination), public `Trainers.tsx` directory — each silently truncates at 1,000 rows for a power user / large directory.
+- **Impact:** Older bookings/invoices vanish from a heavy trainer's list; public SEO directory truncates.
+- **Fix:** server-side `.range` pagination reusing the paginated RPC path (`playerBookings.ts`, `get_trainer_invoices`); paginate the directory.
+- **Owner area:** scale · **Risk:** low · **PR size:** Small each · **Tests:** seed >1k rows for one entity, assert no truncation.
+- **Detail:** [`technical-debt/PERFORMANCE_BACKLOG.md`](technical-debt/PERFORMANCE_BACKLOG.md) P1-b, P1-c, P2-a.
+
+### T2-7 · Other confirmed P2 correctness fixes (Slice G/H tail)
+- **Problem:** `send-schedule-notifications` double-sends on concurrent invocation (P2-11); `rebook_group_manage` appends onto a client-supplied `_invoice_id` with no ownership scope (P2-3); paid strict-hold confirmed without finalizing its claim (P2-12); `EditInvoiceDialog` detects price changes by array index (P2-13); cycle price/roster mutations don't invalidate invoice/player caches (P2-14); account-deletion deletes guests before invoices under a RESTRICT FK (P2-15).
+- **Impact:** Duplicate emails, cross-tenant invoice append, stale UI after a price change, a blocked account deletion.
+- **Fix:** per finding — atomic per-row claim / single-flight before emailing; `AND rebook_group_id = v_group` scope; finalize-claim on strict-hold confirm; content-based diff; cache invalidation; reorder the deletion cascade.
+- **Owner area:** mixed (email / rebooking / invoices / account) · **Risk:** low-medium · **PR size:** Small each · **Tests:** targeted per fix.
+- **Detail:** audit [`audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md`](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) §P2-3, P2-11..15; INVARIANT_BACKLOG B-5.
+
+---
+
+## Tier 3 — Nice-to-have maintainability
+
+No correctness/scale risk today; these lower the cost of every future change and make the codebase safer for an AI agent to extend. Do opportunistically or when touching the area.
+
+### T3-1 · Component reuse waves (biggest LOC lever first)
+- **Problem:** 49 files still hand-roll `AlertDialogContent` vs 12 on the shared `ConfirmDialog` (P0-1, on money flows — voids/deletes); `FullPageLoader` sweep ~3/26 done; no `SelectFilter` (30 sites), `CycleStatusBadge` (raw color literals), `DatePickerPopover` (24 sites), `TIME_OPTIONS` helper.
+- **Impact:** Hundreds of duplicated LOC; hand-mixed destructive markup on money flows is a divergence hazard.
+- **Fix:** extend the existing primitive; share the presentational leaf, keep business rules at the call site. **Pin a contract test before the `ConfirmDialog` sweep** (a mis-wired `onConfirm` silently breaks a delete/void). Avoid the over-abstraction traps (`FormField`, `EntityCombobox`, `FormDialog`, `TrainerPageHeader`↔`PageHeader` merge).
+- **Owner area:** frontend · **Risk:** low (P0-1 medium on money flows) · **PR size:** Small-safe per file, Large in aggregate · **Tests:** contract test for the dialog handler contract.
+- **Detail:** [`technical-debt/COMPONENT_REUSE_BACKLOG.md`](technical-debt/COMPONENT_REUSE_BACKLOG.md) (registry: [`COMPONENT_PATTERN_REGISTRY.md`](COMPONENT_PATTERN_REGISTRY.md), ADR 0008).
+
+### T3-2 · Shared PGlite schema/seed fixture layer
+- **Problem:** every `*.pglite.test.ts` hand-rolls its own `CREATE TABLE` + literal seed → schema drift between tests and from the real migrations; `factory.ts` (JS) and the PGlite tests (SQL) don't meet; the adapter can't model concurrency (blocks the T1-3/T2-1 race tests) or de-dup the Deno `_shared` auth helpers.
+- **Impact:** Test-writing is slow and drift-prone; the concurrency gap blocks proving the highest-severity money-race fixes.
+- **Fix:** a canonical PGlite schema loader (ideally derived from migrations) + typed seed helpers (whole-cycle, pending/paid/cancelled booking trio, Mollie payment metadata); extract the Deno `_shared` `makeReq`/`withEnv`/`forgedJwt` helpers into one module; add multi-connection concurrency to the adapter.
+- **Owner area:** test infra · **Risk:** low · **PR size:** Medium (loader) · **Tests:** the fixture is the deliverable.
+- **Detail:** [`technical-debt/TEST_FIXTURE_BACKLOG.md`](technical-debt/TEST_FIXTURE_BACKLOG.md).
+
+### T3-3 · Deferred-until-measured scale work
+- **Problem:** missing `availability_slots(academy_profile_id, start_time)` composite index (P2-b); AcademyDashboard recent-bookings probe-and-discard (P2-c); Players list offset→keyset pagination (P2-d).
+- **Impact:** Potential slow academy calendar / deep planner scans only at 100k+ slots/bookings — not reached today.
+- **Fix:** add the composite index / denormalize `trainer_id` onto `bookings` / switch to keyset **only if measured slow** — each is a migration; do not pre-optimize.
+- **Owner area:** scale · **Risk:** low · **PR size:** Small · **Tests:** measure first.
+- **Detail:** [`technical-debt/PERFORMANCE_BACKLOG.md`](technical-debt/PERFORMANCE_BACKLOG.md) P2-b, P2-c, P2-d.
+
+### T3-4 · Lower-risk mutation-boundary sweeps + CI polish
+- **Problem:** residual low-risk raw writes (invoice create line-item math duplicated per screen, `is_public` toggles, slot-create scatter — MUTATION_BOUNDARY P2-a..g); `check:edge-config` allowlist is hand-maintained; no money-path coverage floor; no dead-baseline pruning.
+- **Impact:** Duplicated math can drift; blind spots in the config guard.
+- **Fix:** `createInvoice(input)` facade reusing `invoiceCalc`; route residual writes through their facades; derive `MUST_BE_PUBLIC` from a marker; scoped coverage floor on `src/lib/{bookings,invoiceSync,cycleWrites,slotBookingWrite}.ts`.
+- **Owner area:** mutation boundary / CI · **Risk:** low · **PR size:** Small each · **Tests:** characterize totals before extracting.
+- **Detail:** [`technical-debt/MUTATION_BOUNDARY_BACKLOG.md`](technical-debt/MUTATION_BOUNDARY_BACKLOG.md) P2-a..g + [`technical-debt/QUALITY_GATES_BACKLOG.md`](technical-debt/QUALITY_GATES_BACKLOG.md) P2-1..3.
+
+### T3-5 · Structural observability + DR runbook
+- **Problem:** no server-side error aggregator (an un-instrumented edge fn's failure is captured nowhere durable); no Slack rate-limit/dedup; no tested restore runbook for the `backup-database` logical export.
+- **Impact:** Blind spots and channel-flood risk at 1k-academy scale; unrehearsed DR.
+- **Fix:** add a server-side error sink (Sentry/Logflare-style) as the durable backstop; per-event throttling on the `slack-notify` path; write + rehearse a restore runbook.
+- **Owner area:** observability (structural) · **Risk:** low · **PR size:** Medium · **Tests:** rehearse the restore.
+- **Detail:** [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md) OBS-P2-2, P2-3, P2-5.
+
+---
+
+## Owner deploy backlog (already-merged, not yet live)
+
+Independent of the above: these are **merged in code but await the owner's manual prod apply** — track separately so they don't read as "done." The `reconcile_payments` RPC + `mollie-webhook` audit writes need migration `20260705140000` applied + the `mollie-webhook` redeployed (see [`OBSERVABILITY_AND_RECOVERY.md`](OBSERVABILITY_AND_RECOVERY.md)). Confirm against the deploy checklist before assuming any edge-fn/migration fix is active in prod.
