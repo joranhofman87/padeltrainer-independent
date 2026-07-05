@@ -144,24 +144,57 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
   });
 
   it('dedups: a planned start the trainer already has is skipped (never double-created)', async () => {
-    const firstStart = planSlots(plan)[0].startISO;
+    const first = planSlots(plan)[0];
     await db.query(
-      `INSERT INTO availability_slots (trainer_id, start_time, is_public) VALUES ($1, $2, false)`,
-      [TRAINER, firstStart],
+      `INSERT INTO availability_slots (trainer_id, start_time, end_time, is_public) VALUES ($1, $2, $3, false)`,
+      [TRAINER, first.startISO, first.endISO],
     );
     const res = await generateCycleWithSlots(input(), supa);
     expect(res.skippedOverlaps).toBe(1);
     expect(res.slotsCreated).toBe(5);
     // exactly one slot at the colliding start (the pre-existing one), not duplicated
-    expect(await count('availability_slots WHERE trainer_id = $1 AND start_time = $2', [TRAINER, firstStart])).toBe(1);
+    expect(await count('availability_slots WHERE trainer_id = $1 AND start_time = $2', [TRAINER, first.startISO])).toBe(1);
+  });
+
+  it('dedups by OVERLAP, not exact start: a half-shifted existing slot blocks both planned slots it straddles', async () => {
+    // Existing 15:30–16:30 slot straddles the planned 15:00–16:00 AND 16:00–17:00 → both skipped.
+    const first = planSlots(plan)[0];
+    const shiftedStart = new Date(new Date(first.startISO).getTime() + 30 * 60_000).toISOString();
+    const shiftedEnd = new Date(new Date(first.startISO).getTime() + 90 * 60_000).toISOString();
+    await db.query(
+      `INSERT INTO availability_slots (trainer_id, start_time, end_time, is_public) VALUES ($1, $2, $3, false)`,
+      [TRAINER, shiftedStart, shiftedEnd],
+    );
+    const res = await generateCycleWithSlots(input(), supa);
+    expect(res.skippedOverlaps).toBe(2);
+    expect(res.slotsCreated).toBe(4);
+  });
+
+  it('does NOT dedup against another trainer or a back-to-back slot', async () => {
+    const OTHER = '10000000-0000-0000-0000-000000000099';
+    const first = planSlots(plan)[0];
+    // Other trainer at the exact same time — no conflict for OUR trainer.
+    await db.query(
+      `INSERT INTO availability_slots (trainer_id, start_time, end_time, is_public) VALUES ($1, $2, $3, false)`,
+      [OTHER, first.startISO, first.endISO],
+    );
+    // Our trainer, ending exactly when the first planned slot begins (half-open ranges touch, no overlap).
+    const backToBackStart = new Date(new Date(first.startISO).getTime() - 60 * 60_000).toISOString();
+    await db.query(
+      `INSERT INTO availability_slots (trainer_id, start_time, end_time, is_public) VALUES ($1, $2, $3, false)`,
+      [TRAINER, backToBackStart, first.startISO],
+    );
+    const res = await generateCycleWithSlots(input(), supa);
+    expect(res.skippedOverlaps).toBe(0);
+    expect(res.slotsCreated).toBe(6);
   });
 
   it('throws and creates NO cycle when every planned start already exists', async () => {
     for (const d of planSlots(plan)) {
-      await db.query(`INSERT INTO availability_slots (trainer_id, start_time, is_public) VALUES ($1, $2, false)`, [
-        TRAINER,
-        d.startISO,
-      ]);
+      await db.query(
+        `INSERT INTO availability_slots (trainer_id, start_time, end_time, is_public) VALUES ($1, $2, $3, false)`,
+        [TRAINER, d.startISO, d.endISO],
+      );
     }
     await expect(generateCycleWithSlots(input(), supa)).rejects.toThrow(SlotGeneratorError);
     expect(await count('cycles')).toBe(0);

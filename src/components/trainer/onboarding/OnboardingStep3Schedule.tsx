@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { createCycle } from '@/lib/cycles';
 import { expandWeeklySessions, insertAvailabilitySlots } from '@/lib/slots';
+import { isTrainerSlotOverlapError } from '@/lib/slotConflicts';
 
 import { toast } from 'sonner';
 
@@ -140,7 +141,11 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
       setSlotDate(undefined);
     } catch (error: any) {
       logger.error('Error adding slot', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
-      toast.error('Failed to add slot');
+      toast.error(
+        isTrainerSlotOverlapError(error)
+          ? 'You already have a session overlapping this time.'
+          : 'Failed to add slot',
+      );
     } finally {
       setAddingSlot(false);
     }
@@ -218,7 +223,11 @@ export function OnboardingStep3Schedule({ onNext, onBack }: OnboardingStep3Sched
         await supabase.from('cycles').delete().eq('id', createdCycleId);
       }
       logger.error('Error creating cyclus', error instanceof Error ? error : new Error(String(error)), { component: 'OnboardingStep3Schedule' });
-      toast.error('Failed to create training cycle');
+      toast.error(
+        isTrainerSlotOverlapError(error)
+          ? 'You already have a session overlapping one of these times.'
+          : 'Failed to create training cycle',
+      );
     } finally {
       setCreatingCyclus(false);
     }

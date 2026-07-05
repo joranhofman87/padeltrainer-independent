@@ -851,5 +851,8 @@
   "emailBounce": {
     "badge": "E-mail komt niet aan",
     "tooltip": "We kunnen geen e-mails bezorgen op dit adres — herinneringen bereiken deze speler niet."
+  },
+  "slotConflict": {
+    "trainerOverlap": "Deze trainer heeft al een sessie die overlapt met de gekozen tijd. Een trainer kan maar één sessie tegelijk geven — kies een andere tijd of verwijder eerst de bestaande sessie."
   }
 }

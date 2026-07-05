@@ -30,6 +30,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { createCycle } from '@/lib/cycleWrites';
 import { insertAvailabilitySlots } from '@/lib/slots';
 import { planSlots, groupSlotsBySeries, type SlotPlanConfig } from '@/lib/slotPlan';
+import { epochRange, fetchTrainerSlotRanges, splitByOverlap } from '@/lib/slotConflicts';
 import type { CycleSettings, ExtraCost } from '@/lib/cycleTypes';
 
 export interface GenerateCycleInput {
@@ -70,7 +71,7 @@ export interface GenerateCycleResult {
   cycleIds: string[];
   cyclesCreated: number;
   slotsCreated: number;
-  /** Planned slots dropped because the trainer already has a slot at that start. */
+  /** Planned slots dropped because their time range overlaps a slot the trainer already has. */
   skippedOverlaps: number;
 }
 
@@ -96,19 +97,22 @@ export async function generateCycleWithSlots(
     );
   }
 
-  // Overlap dedup: skip any planned start the trainer already has a slot at.
+  // Overlap dedup: skip any planned slot whose TIME RANGE overlaps a slot the trainer
+  // already has (not just exact-start matches — a shifted re-run must not double-book
+  // the court). Best-effort UX layer: the DB trigger (20260708100000) is the
+  // authoritative, race-proof backstop. Read is paginated + bounded to the batch window.
   const earliest = drafts[0].startISO;
-  const { data: existing, error: readErr } = await client
-    .from('availability_slots')
-    .select('start_time')
-    .eq('trainer_id', input.trainerId)
-    .gte('start_time', earliest);
-  if (readErr) throw new SlotGeneratorError(`Failed to check existing slots: ${msgOf(readErr)}`);
-  const taken = new Set(
-    ((existing as { start_time: string }[] | null) ?? []).map((r) => new Date(r.start_time).toISOString()),
+  const latestEnd = drafts.reduce((max, d) => (d.endISO > max ? d.endISO : max), drafts[0].endISO);
+  const { byTrainer, error: readErr } = await fetchTrainerSlotRanges(
+    [input.trainerId],
+    earliest,
+    latestEnd,
+    client,
   );
-  const fresh = drafts.filter((d) => !taken.has(d.startISO));
-  const skippedOverlaps = drafts.length - fresh.length;
+  if (readErr) throw new SlotGeneratorError(`Failed to check existing slots: ${msgOf(readErr)}`);
+  const existing = byTrainer.get(input.trainerId) ?? [];
+  const { fresh, skipped } = splitByOverlap(drafts, (d) => epochRange(d.startISO, d.endISO), existing);
+  const skippedOverlaps = skipped.length;
   if (fresh.length === 0) {
     throw new SlotGeneratorError('All planned slots already exist for this trainer — nothing to generate.');
   }

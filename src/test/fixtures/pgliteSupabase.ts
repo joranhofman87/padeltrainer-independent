@@ -3,7 +3,7 @@
  * vitest can run the ACTUAL app lib (invoiceSync, bookings, …) against real SQL — not a JS mock.
  *
  * It supports ONLY the query surface those money-path functions use (verified by grepping their
- * `.from/.select/.eq/.in/.overlaps/.order/.range/.maybeSingle/.update/.rpc` calls): no `.delete/
+ * `.from/.select/.eq/.in/.gt/.lt/.overlaps/.order/.range/.maybeSingle/.update/.rpc` calls): no `.delete/
  * .contains/.single` beyond what is implemented here. `.range()` maps to LIMIT/OFFSET and an
  * opt-in `maxRows` models PostgREST's per-response cap. The one embedded-resource select (bookings → availability_slots →
  * locations) is special-cased to the exact shape the recalc expects. Keep this adapter narrow: add
@@ -12,7 +12,7 @@
  */
 import type { PGlite } from '@electric-sql/pglite';
 
-type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps' | 'gte';
+type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps' | 'gte' | 'gt' | 'lt';
 interface Filter { kind: FilterKind; col: string; val: unknown; }
 interface SupaResult<T> { data: T; error: { message: string; code?: string } | null; }
 
@@ -58,6 +58,8 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
   eq(col: string, val: unknown) { this.filters.push({ kind: 'eq', col, val }); return this; }
   neq(col: string, val: unknown) { this.filters.push({ kind: 'neq', col, val }); return this; }
   gte(col: string, val: unknown) { this.filters.push({ kind: 'gte', col, val }); return this; }
+  gt(col: string, val: unknown) { this.filters.push({ kind: 'gt', col, val }); return this; }
+  lt(col: string, val: unknown) { this.filters.push({ kind: 'lt', col, val }); return this; }
   in(col: string, val: unknown[]) { this.filters.push({ kind: 'in', col, val }); return this; }
   overlaps(col: string, val: unknown[]) { this.filters.push({ kind: 'overlaps', col, val }); return this; }
   order(col: string, opts?: { ascending?: boolean }) { this.orderBy = { col, ascending: opts?.ascending !== false }; return this; }
@@ -84,6 +86,8 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
       // `<>` matches PostgREST .neq(): NULL-unsafe, so a NULL column does NOT pass the filter.
       if (f.kind === 'neq') return `${f.col} <> ${p}`;
       if (f.kind === 'gte') return `${f.col} >= ${p}`;
+      if (f.kind === 'gt') return `${f.col} > ${p}`;
+      if (f.kind === 'lt') return `${f.col} < ${p}`;
       if (f.kind === 'in') return `${f.col} = ANY(${p})`;
       return `${f.col} && ${p}`; // overlaps
     });
