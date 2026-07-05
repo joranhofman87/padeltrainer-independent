@@ -41,6 +41,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/format';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
+import { applyBookingModeToFutureSlots } from '@/lib/cycleBookingMode';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
@@ -655,6 +656,27 @@ export default function CycleForm({
         }
       } else {
         result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
+      }
+
+      // The switches above write cycle SETTINGS; the flag the public page/cart/booking RPCs
+      // actually read lives on the SLOTS. When the individual-booking switch changed on an
+      // existing training cyclus, propagate it to the future slots via the same direction-aware
+      // helper the bulk action uses (slots with active bookings are kept when enabling per-seat).
+      // Non-fatal: the cycle save itself already succeeded. Registrations are excluded (one
+      // registration cycle spans many series); new cycles have no slots yet (the generator
+      // stamps the flag at creation).
+      const initialAllowSingle =
+        ((cycle?.settings as { allow_single_booking?: boolean } | undefined)?.allow_single_booking ?? false);
+      if (isEdit && cycle?.id && !isEvent && effectiveTarget === 'cycle' && allowSingleBooking !== initialAllowSingle) {
+        try {
+          const { skippedBooked } = await applyBookingModeToFutureSlots(cycle.id, allowSingleBooking);
+          if (skippedBooked > 0) {
+            toast.info(t('form.bookingModeSkippedBooked', { count: skippedBooked }));
+          }
+        } catch (propagationError) {
+          logger.error('Failed to propagate allow_single_booking to slots', propagationError as Error, { component: 'CycleForm' });
+          toast.error(t('form.bookingModePropagationFailed'));
+        }
       }
 
       clearDraft();

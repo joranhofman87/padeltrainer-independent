@@ -78,6 +78,8 @@
     "allowSingleBookingHelp": "When off, players must book the entire cycle",
     "allowCyclusBooking": "Entire cycle bookable",
     "allowCyclusBookingHelp": "When off, players can only book individual sessions (not the entire cycle)",
+    "bookingModeSkippedBooked": "{{count}} sessions with bookings kept their current bookability",
+    "bookingModePropagationFailed": "Sessions could not be updated — use the bulk action on the cycles overview",
     "extraCosts": "Extra Costs",
     "extraCostsHelp": "Add costs like court rental that appear as separate invoice lines",
     "perSession": "Per session",
