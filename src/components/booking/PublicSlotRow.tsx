@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import { formatPrice } from '@/lib/pricing';
 import { formatZonedTime } from '@/lib/zonedFormat';
 import { GUEST_PAYFIRST_ENABLED } from '@/lib/bookingFlags';
-import { isCartableSlot, useCartOptional, type CartAddRefusal } from '@/contexts/cartStore';
+import { isCartableSlot, useCartOptional } from '@/contexts/cartStore';
+import { cartRefusalMessage } from '@/components/booking/cartMessages';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 /**
@@ -38,19 +39,6 @@ export function PublicSlotRow({
   const cartable = GUEST_PAYFIRST_ENABLED && cart != null && isCartableSlot(slot);
   const inCart = cartable && cart.isInCart(slot.id);
 
-  const refusalMessage = (reason: CartAddRefusal): string => {
-    switch (reason) {
-      case 'different_org':
-        return t('booking.cart.differentOrg', 'Je kunt per bestelling maar bij één aanbieder boeken. Reken eerst je huidige selectie af.');
-      case 'cart_full':
-        return t('booking.cart.cartFull', 'Je selectie is vol (max. 20 sessies). Reken eerst af.');
-      case 'already_in_cart':
-        return t('booking.cart.alreadyInCart', 'Deze sessie zit al in je selectie.');
-      default:
-        return t('booking.cart.notCartable', 'Deze sessie kan niet los geboekt worden.');
-    }
-  };
-
   const handleCartToggle = () => {
     if (!cart || !cartable) return;
     if (inCart) {
@@ -60,7 +48,7 @@ export function PublicSlotRow({
     const result = cart.addItem(slot);
     // 'in' narrowing — the tsconfig runs strict:false, where !result.ok doesn't narrow the union.
     if ('reason' in result) {
-      toast.error(refusalMessage(result.reason));
+      toast.error(cartRefusalMessage(t, result.reason));
       return;
     }
     toast.success(t('booking.cart.added', 'Toegevoegd aan je selectie.'));

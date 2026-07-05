@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { GuestBookingDialog } from './GuestBookingDialog';
+import { CartProvider } from '@/contexts/CartContext';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 const invokeMock = vi.fn();
@@ -27,7 +28,13 @@ vi.mock('@/lib/supabaseClient', () => ({
   },
 }));
 
-vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastErrorMock(...a) } }));
+const toastSuccessMock = vi.fn();
+vi.mock('sonner', () => ({
+  toast: {
+    error: (...a: unknown[]) => toastErrorMock(...a),
+    success: (...a: unknown[]) => toastSuccessMock(...a),
+  },
+}));
 
 // Return the inline default (2nd arg), interpolating {{amount}} from the 3rd arg.
 vi.mock('react-i18next', () => ({
@@ -80,8 +87,10 @@ const twoSessions = [
 beforeEach(() => {
   invokeMock.mockReset();
   toastErrorMock.mockReset();
+  toastSuccessMock.mockReset();
   cyclusSessions.current = [];
   cyclusPublicRow.current = null;
+  localStorage.clear();
 });
 
 describe('GuestBookingDialog', () => {
@@ -217,6 +226,43 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', expect.anything()));
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('Deze training kan niet meer geboekt worden.'));
+  });
+
+  it('offers "add another session" inside a CartProvider: click parks the slot in the cart and closes', async () => {
+    const onOpenChange = vi.fn();
+    // future slot so the cart's hydration guard keeps it
+    const futureSlot: PublicSlot = { ...slot, start_time: '2027-09-01T10:00:00Z', end_time: '2027-09-01T11:00:00Z' };
+    render(
+      <CartProvider>
+        <GuestBookingDialog slot={futureSlot} open onOpenChange={onOpenChange} timezone="Europe/Amsterdam" />
+      </CartProvider>,
+    );
+
+    const addBtn = screen.getByRole('button', { name: /Meerdere sessies boeken/ });
+    fireEvent.click(addBtn);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(toastSuccessMock).toHaveBeenCalledTimes(1);
+    const stored = JSON.parse(localStorage.getItem('bookingCart:v1') ?? '[]') as { id: string }[];
+    expect(stored.map((s) => s.id)).toEqual(['slot-1']);
+    // no payment call — checkout happens later via the cart flow
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('hides "add another session" for non-cartable slots and without a CartProvider', async () => {
+    // split slot inside a provider → not cartable
+    const splitSlot: PublicSlot = { ...slot, split_payment: true };
+    const { unmount } = render(
+      <CartProvider>
+        <GuestBookingDialog slot={splitSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />
+      </CartProvider>,
+    );
+    expect(screen.queryByRole('button', { name: /Meerdere sessies boeken/ })).toBeNull();
+    unmount();
+
+    // cartable slot but NO provider (embed/test contexts) → affordance simply absent
+    render(<GuestBookingDialog slot={slot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    expect(screen.queryByRole('button', { name: /Meerdere sessies boeken/ })).toBeNull();
   });
 
   it('shows a toast (no redirect) when the slot is full', async () => {

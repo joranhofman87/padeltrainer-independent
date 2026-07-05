@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CalendarClock, Loader2, MapPin } from 'lucide-react';
+import { CalendarClock, Loader2, MapPin, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { formatPrice } from '@/lib/pricing';
 import { formatZonedDayLabel, formatZonedTime } from '@/lib/zonedFormat';
+import { isCartableSlot, useCartOptional } from '@/contexts/cartStore';
+import { cartRefusalMessage } from '@/components/booking/cartMessages';
 import type { PublicSlot } from '@/lib/publicAvailability';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,6 +56,7 @@ interface GuestBookingDialogProps {
  */
 export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: GuestBookingDialogProps) {
   const { t, i18n } = useTranslation('common');
+  const cart = useCartOptional();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -157,6 +160,23 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
     phone.trim().length > 0 &&
     !submitting &&
     !(effectiveMode === 'cyclus' && loadingSessions);
+
+  // "Add another session": nudge multi-slot booking. Only for cartable slots in
+  // single-session mode — adds THIS slot to the selection and hands over to the cart
+  // flow (floating button → drawer → one payment). already_in_cart counts as success:
+  // the guest's intent (this session + more) is already satisfied.
+  const cartable = cart != null && isCartableSlot(slot);
+  const handleAddAnotherSession = () => {
+    if (!cart) return;
+    const result = cart.addItem(slot);
+    const refusal = 'reason' in result ? result.reason : null;
+    if (refusal && refusal !== 'already_in_cart') {
+      toast.error(cartRefusalMessage(t, refusal));
+      return;
+    }
+    toast.success(t('booking.cart.addedKeepBrowsing', 'Toegevoegd! Kies nog een sessie — afrekenen doe je via je selectie.'));
+    onOpenChange(false);
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -299,6 +319,21 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             </p>
           )}
         </div>
+
+        {/* Multi-session nudge: park this session in the selection and pick more — one payment
+            at the end via the cart drawer. Hidden in whole-cyclus mode and for non-cartable slots. */}
+        {effectiveMode === 'single' && cartable && (
+          <button
+            type="button"
+            onClick={handleAddAnotherSession}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed p-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ShoppingCart className="h-4 w-4" aria-hidden />
+            {cart && cart.count > 0
+              ? t('booking.cart.addAnotherWithCount', 'Voeg toe aan selectie ({{count}} gekozen)', { count: cart.count })
+              : t('booking.cart.addAnother', 'Meerdere sessies boeken? Voeg toe en kies er nog een')}
+          </button>
+        )}
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">

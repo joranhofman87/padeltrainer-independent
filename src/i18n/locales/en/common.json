@@ -444,7 +444,10 @@
       "itemUnavailable": "No longer available",
       "unavailableTitle": "Not all sessions are still available",
       "unavailableBody": "Nothing has been charged. Remove the sessions below and try again.",
-      "unavailableRemove": "Remove and continue"
+      "unavailableRemove": "Remove and continue",
+      "addAnother": "Booking multiple sessions? Add this one and pick another",
+      "addAnotherWithCount": "Add to selection ({{count}} chosen)",
+      "addedKeepBrowsing": "Added! Pick another session — you'll check out via your selection."
     }
   },
   "availableSlots": "Available Slots",

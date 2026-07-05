@@ -444,7 +444,10 @@
       "itemUnavailable": "Niet meer beschikbaar",
       "unavailableTitle": "Niet alle sessies zijn nog beschikbaar",
       "unavailableBody": "Er is nog niets betaald. Verwijder de onderstaande sessies en probeer het opnieuw.",
-      "unavailableRemove": "Verwijder en ga verder"
+      "unavailableRemove": "Verwijder en ga verder",
+      "addAnother": "Meerdere sessies boeken? Voeg toe en kies er nog een",
+      "addAnotherWithCount": "Voeg toe aan selectie ({{count}} gekozen)",
+      "addedKeepBrowsing": "Toegevoegd! Kies nog een sessie — afrekenen doe je via je selectie."
     }
   },
   "availableSlots": "Beschikbare plekken",
