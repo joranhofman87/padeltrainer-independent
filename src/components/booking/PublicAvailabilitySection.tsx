@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 import { AvailabilityCalendar } from '@/components/booking/AvailabilityCalendar';
+import { BookingCartDrawer } from '@/components/booking/BookingCartDrawer';
 import { GuestBookingDialog } from '@/components/booking/GuestBookingDialog';
 import { GUEST_PAYFIRST_ENABLED } from '@/lib/bookingFlags';
 import type { AvailabilityOwner } from '@/hooks/usePublicAvailability';
@@ -61,6 +62,9 @@ export function PublicAvailabilitySection({ owner, timezone, academySlug, always
         }}
         timezone={timezone ?? 'Europe/Amsterdam'}
       />
+      {/* The multi-session cart surface (floating button + sheet). Renders nothing until
+          a cartable slot is added via the PublicSlotRow toggle. */}
+      {GUEST_PAYFIRST_ENABLED && <BookingCartDrawer timezone={timezone ?? 'Europe/Amsterdam'} />}
     </>
   );
 }

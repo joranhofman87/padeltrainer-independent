@@ -423,6 +423,28 @@
       "paymentTemporarilyUnavailable": "Online payment is temporarily unavailable. Please try again later.",
       "notBookable": "This training can no longer be booked.",
       "failed": "Something went wrong. Please try again."
+    },
+    "cart": {
+      "title": "Your selection",
+      "subtitle": "Separate sessions, one payment. Your spots are only booked once payment completes.",
+      "openCart": "Open your selection ({{count}})",
+      "addToCart": "Add to selection",
+      "removeFromCart": "Remove from selection",
+      "added": "Added to your selection.",
+      "alreadyInCart": "This session is already in your selection.",
+      "differentOrg": "You can only book with one provider per order. Check out your current selection first.",
+      "cartFull": "Your selection is full (max. 20 sessions). Please check out first.",
+      "notCartable": "This session can't be booked individually.",
+      "empty": "Your selection is empty.",
+      "total": "Total",
+      "indicativeNote": "The final price is confirmed at checkout.",
+      "checkout": "Check out",
+      "checkoutTitle": "Book {{count}} sessions",
+      "clear": "Clear selection",
+      "itemUnavailable": "No longer available",
+      "unavailableTitle": "Not all sessions are still available",
+      "unavailableBody": "Nothing has been charged. Remove the sessions below and try again.",
+      "unavailableRemove": "Remove and continue"
     }
   },
   "availableSlots": "Available Slots",

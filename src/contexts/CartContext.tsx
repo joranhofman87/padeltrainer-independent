@@ -155,3 +155,11 @@ export function useCart(): CartContextValue {
   if (!ctx) throw new Error('useCart must be used within a CartProvider');
   return ctx;
 }
+
+/**
+ * Provider-optional variant for shared components that also render in cartless contexts
+ * (tests, embeds): null means "no cart here" and the affordance simply doesn't render.
+ */
+export function useCartOptional(): CartContextValue | null {
+  return useContext(CartContext);
+}
