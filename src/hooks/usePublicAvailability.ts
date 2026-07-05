@@ -30,8 +30,8 @@ type RawSlotSelect = RawPublicSlotRow & {
 const SLOT_SELECT = `
   id, start_time, end_time, cyclus_id, cyclus_name, court_type, is_public,
   price_per_session, total_price, max_participants, allow_single_booking, extra_costs,
-  split_payment, location_id, trainer_id, priority_window_ends_at, member_window_ends_at,
-  public_release_status, source_cycle_id, locations:location_id(name)
+  split_payment, location_id, trainer_id, academy_profile_id, priority_window_ends_at,
+  member_window_ends_at, public_release_status, source_cycle_id, locations:location_id(name)
 `;
 
 /** Build the availability_slots `.or()` filter for an owner (academy = its own + its trainers'). */

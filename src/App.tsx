@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { CartProvider } from "@/contexts/CartContext";
 import { AppBootstrapGate } from "@/components/AppBootstrapGate";
 import { DomainRouter } from "@/components/DomainRouter";
 import { ScrollToTop } from "@/components/ScrollToTop";
@@ -35,11 +36,14 @@ const App = () => (
       <BrowserRouter>
         <ScrollToTop />
         <PageTracker />
-        <AuthProvider>
-          <AppBootstrapGate>
-            <DomainRouter />
-          </AppBootstrapGate>
-        </AuthProvider>
+        {/* Cart wraps AuthProvider: the guest cart lives on the PUBLIC (marketing) pages too. */}
+        <CartProvider>
+          <AuthProvider>
+            <AppBootstrapGate>
+              <DomainRouter />
+            </AppBootstrapGate>
+          </AuthProvider>
+        </CartProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
