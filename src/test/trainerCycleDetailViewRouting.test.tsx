@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 vi.mock('@/lib/supabaseClient', () => ({
@@ -15,13 +16,16 @@ const TrainerCycleDetailView = (await import('@/pages/trainer/TrainerCycleDetail
 
 function renderAt(type: string | undefined) {
   mockUseCycleDetail.mockReturnValue({ data: type === undefined ? undefined : { cycle: { type } } });
+  const qc = new QueryClient();
   return render(
-    <MemoryRouter initialEntries={['/app/trainer/cycles/cy1']}>
-      <Routes>
-        <Route path="/app/trainer/cycles/:cycleId" element={<TrainerCycleDetailView />} />
-        <Route path="/app/trainer/cycles" element={<div data-testid="cycles-list" />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/app/trainer/cycles/cy1']}>
+        <Routes>
+          <Route path="/app/trainer/cycles/:cycleId" element={<TrainerCycleDetailView />} />
+          <Route path="/app/trainer/cycles" element={<div data-testid="cycles-list" />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

@@ -64,8 +64,23 @@ const fromMock = vi.fn((table: string) => {
   return thenableBuilder({ data: null, error: null });
 });
 
+// P2-2: the academy email-dedup branch now routes through the SECURITY DEFINER RPC
+// find_guest_players_by_email_for_academy. Mock it to return the next queued
+// email-lookup result (the dedup candidates), mirroring the prod RPC shape.
+const rpcMock = vi.fn((fn: string) => {
+  if (fn === 'find_guest_players_by_email_for_academy') {
+    emailLookupMock();
+    const next = emailLookupResults.length > 0 ? emailLookupResults.shift()! : [];
+    return Promise.resolve({ data: next, error: null });
+  }
+  return Promise.resolve({ data: null, error: null });
+});
+
 vi.mock('@/lib/supabaseClient', () => ({
-  supabase: { from: (...args: unknown[]) => fromMock(...(args as [string])) },
+  supabase: {
+    from: (...args: unknown[]) => fromMock(...(args as [string])),
+    rpc: (...args: unknown[]) => rpcMock(...(args as [string])),
+  },
 }));
 
 beforeEach(() => {

@@ -12,6 +12,7 @@ import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from ".
 import {
   applyBookingPaymentWriteback,
   bookingSumTolerance,
+  detectPaymentReversal,
   evaluateInvoicePayment,
   findCancelledPaidBookings,
   shouldRunBookingPaidSideEffects,
@@ -362,6 +363,56 @@ serve(async (req) => {
 
     if (hasNoRoutableMetadata(invoiceIdFromMetadata, bookingIds)) {
       logStep("No booking IDs or invoice ID in payment metadata");
+      return new Response("OK", { status: 200 });
+    }
+
+    // P2-5: a settled payment can be REVERSED (full chargeback flips status to
+    // "charged_back"; a partial chargeback / refund keeps status "paid" but sets a
+    // non-zero amountChargedBack / amountRefunded). None of the branches below act on
+    // that: the invoice branch is status==="paid" only, and the booking writeback's
+    // payment_status!="paid" guard leaves an already-paid booking untouched — so the
+    // money is gone but the seat stays paid/confirmed with no alert. Do NOT auto-resurrect
+    // or downgrade state (risks clobbering a re-payment / manual fix); surface it for
+    // manual reconciliation only, mirroring the cancelled-invoice/cancelled-booking
+    // manual-refund alerts, then 200 (a retry can never change a reversal).
+    const reversal = detectPaymentReversal(payment);
+    if (reversal.isReversal) {
+      logStep("Payment REVERSED — manual reconciliation needed", {
+        paymentId,
+        kind: reversal.kind,
+        chargedBackValue: reversal.chargedBackValue,
+        refundedValue: reversal.refundedValue,
+        invoiceId: invoiceIdFromMetadata,
+        bookingIds,
+      });
+      await notifySlackError(
+        "mollie-webhook",
+        `Mollie payment REVERSED (${reversal.kind}) — money reversed but booking/invoice still marked paid. Manual refund/reconciliation needed.`,
+        {
+          paymentId,
+          kind: reversal.kind,
+          chargedBackValue: reversal.chargedBackValue,
+          refundedValue: reversal.refundedValue,
+          invoiceId: invoiceIdFromMetadata,
+          bookingIds,
+        },
+      );
+      await auditLog(supabase, {
+        function_name: "mollie-webhook",
+        status: reversal.kind === "refunded" ? AUDIT.paymentRefunded : AUDIT.paymentChargedBack,
+        mollie_payment_id: paymentId,
+        invoice_id: invoiceIdFromMetadata,
+        booking_id: bookingIds[0] ?? null,
+        amount: reversal.kind === "refunded" ? reversal.refundedValue : reversal.chargedBackValue,
+        metadata: {
+          kind: reversal.kind,
+          chargedBackValue: reversal.chargedBackValue,
+          refundedValue: reversal.refundedValue,
+          bookingIds,
+        },
+      });
+      // Deliberate refusal (M-25): a retry cannot un-reverse the payment. Returning here
+      // guarantees NO automatic state change (no resurrection / no downgrade).
       return new Response("OK", { status: 200 });
     }
 
@@ -770,29 +821,9 @@ serve(async (req) => {
       }
     }
 
-    // If payment is paid, mark any matching priority claim as 'claimed'
-    if (payment.status === "paid") {
-      try {
-        const { data: paidBookings } = await supabase
-          .from("bookings")
-          .select("id, slot_id, player_id, guest_player_id")
-          .in("id", bookingIds);
-        for (const b of paidBookings || []) {
-          const orParts: string[] = [];
-          if (b.player_id) orParts.push(`player_id.eq.${b.player_id}`);
-          if (b.guest_player_id) orParts.push(`guest_player_id.eq.${b.guest_player_id}`);
-          if (orParts.length === 0) continue;
-          await supabase
-            .from("slot_priority_claims")
-            .update({ status: "claimed", responded_at: new Date().toISOString(), booking_id: b.id })
-            .eq("slot_id", b.slot_id)
-            .eq("status", "pending")
-            .or(orParts.join(","));
-        }
-      } catch (e) {
-        logStep("Failed to mark priority claim claimed (non-fatal)", { error: String(e) });
-      }
-    }
+    // P2-12: claim finalization moved into runBookingPaidSideEffects (below) so
+    // verify-mollie-payment settles the claim too, not just the webhook. Keyed off
+    // the SURVIVOR/transitioned ids there — do NOT re-run it here (would double-run).
 
     // If payment is successful, auto-create invoice and send confirmation
     // email. E-15: gated on the atomic claim above — zero transitioned rows

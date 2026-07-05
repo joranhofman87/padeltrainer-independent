@@ -12,6 +12,7 @@ import {
   type SlotPricingInput,
 } from "../_shared/booking-pricing.ts";
 import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
+import { decideRepayAction } from "../_shared/mollie-repay-decision.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,6 +141,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // P2-10: id of a booking WE freshly inserted on the single-slot path. Declared
+  // in the outer scope so the catch handler below can also soft-cancel it (the
+  // helper closure lives inside the try and is not visible in the catch).
+  let freshBookingId: string | null = null;
 
   try {
     const mollieApiKey = Deno.env.get("MOLLIE_API_KEY");
@@ -506,6 +512,27 @@ serve(async (req) => {
 
     let bookingId: string;
     const allBookingIds: string[] = [...preExistingBookingIds];
+    // P2-10: id of a booking WE freshly inserted on the single-slot path (below).
+    // book_slot_for_payment writes status/payment_status='pending' with no
+    // mollie_payment_id and no hold_expires_at, so if this request then fails
+    // (missing Mollie profile / Mollie API error) the booking is orphaned: no
+    // webhook fires and no sweep matches, and it holds slot capacity forever.
+    // Set ONLY on the fresh insert (never on the re-pay / pre-existing path,
+    // which is P2-4) and soft-cancel it in both failure branches. Mirrors the
+    // cyclePayment A3 rollback (status='cancelled'). freshBookingId is declared
+    // in the outer scope (above the try) so the catch handler can free it too.
+    const softCancelFreshBooking = async () => {
+      if (!freshBookingId) return;
+      const { error: cancelErr } = await supabase
+        .from("bookings")
+        .update({ status: "cancelled" })
+        .eq("id", freshBookingId);
+      if (cancelErr) {
+        logStep("P2-10: failed to soft-cancel orphan fresh booking", { bookingId: freshBookingId, error: cancelErr.message });
+      } else {
+        logStep("P2-10: soft-cancelled orphan fresh booking", { bookingId: freshBookingId });
+      }
+    };
     // If we supersede a prior payment below (drift-cancel / non-open fall-through), its
     // id salts the idempotency key so a re-price-back-to-original within Mollie's 1h
     // window can't replay the now-dead checkout. Unset on the plain timeout-retry path
@@ -541,44 +568,73 @@ serve(async (req) => {
         // Consumed only if we fall through to create a fresh payment (the reuse-open and
         // already-paid branches return early); marks the payment this request supersedes.
         recreatedAfterPaymentId = priorState.mollie_payment_id;
+        // Fail CLOSED: only mint a fresh payment for these bookings once the prior
+        // payment's state is POSITIVELY confirmed no-longer-payable. A transient probe
+        // failure (throw / non-2xx) or a failed drift-cancel must NOT fall through to a
+        // second salted checkout — that double-charges and orphans the first payment
+        // from the webhook (DB keeps only the newest id). See decideRepayAction.
+        let probeOk = false;
+        let priorStatus: string | undefined;
+        let priorValueEuros: number | undefined;
+        let priorCheckoutUrl: string | undefined;
+        let priorPaymentIdSeen: string | undefined;
+        let cancelFailed = false;
         try {
           const probe = await fetch(
             `https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`,
             { headers: { Authorization: `Bearer ${recipientAccessToken}` } }
           );
           if (probe.ok) {
+            probeOk = true;
             const prior = await probe.json();
-            const priorValue = Number(prior.amount?.value);
-            if (prior.status === "paid") {
-              logStep("Prior payment already paid — refusing new payment", { paymentId: prior.id });
-              return new Response(
-                JSON.stringify({ error: "already_paid", message: "Deze boeking is al betaald." }),
-                { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
-            if (prior.status === "open" && Number.isFinite(priorValue) && Math.abs(priorValue - expectedAmount) <= 0.01) {
-              logStep("Reusing existing open payment for bookings", { paymentId: prior.id });
-              return new Response(
-                JSON.stringify({ paymentId: prior.id, bookingId, checkoutUrl: prior._links?.checkout?.href, existing: true }),
-                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
-            if (prior.status === "open") {
+            priorStatus = prior.status;
+            priorValueEuros = Number(prior.amount?.value);
+            priorCheckoutUrl = prior._links?.checkout?.href;
+            priorPaymentIdSeen = prior.id;
+            if (prior.status === "open" && !(Number.isFinite(priorValueEuros) && Math.abs(priorValueEuros - expectedAmount) <= 0.01)) {
               // Amount drifted — cancel the stale checkout before issuing a fresh one.
               try {
-                await fetch(`https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`, {
+                const del = await fetch(`https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`, {
                   method: "DELETE",
                   headers: { Authorization: `Bearer ${recipientAccessToken}` },
                 });
+                if (!del.ok) throw new Error(`cancel status ${del.status}`);
                 logStep("Cancelled stale open payment (amount drift)", { paymentId: prior.id });
               } catch (cancelErr) {
+                cancelFailed = true;
                 logStep("Failed to cancel stale payment", { error: String(cancelErr) });
               }
             }
+          } else {
+            logStep("Prior-payment probe returned non-ok", { status: probe.status });
           }
         } catch (probeErr) {
-          logStep("Error probing prior payment, will create new", { error: String(probeErr) });
+          logStep("Error probing prior payment", { error: String(probeErr) });
         }
+
+        const repay = decideRepayAction({ probeOk, priorStatus, priorValueEuros, expectedAmount, cancelFailed });
+        if (repay.kind === "already_paid") {
+          logStep("Prior payment already paid — refusing new payment", { paymentId: priorPaymentIdSeen });
+          return new Response(
+            JSON.stringify({ error: "already_paid", message: "Deze boeking is al betaald." }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (repay.kind === "reuse") {
+          logStep("Reusing existing open payment for bookings", { paymentId: priorPaymentIdSeen });
+          return new Response(
+            JSON.stringify({ paymentId: priorPaymentIdSeen, bookingId, checkoutUrl: priorCheckoutUrl, existing: true }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (repay.kind === "retry") {
+          logStep("Could not confirm prior payment — refusing to mint a second checkout", { paymentId: priorState.mollie_payment_id, probeOk, priorStatus, cancelFailed });
+          return new Response(
+            JSON.stringify({ error: "payment_probe_failed", message: "We konden je vorige betaling niet controleren. Probeer het over een moment opnieuw." }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        // repay.kind === "recreate": prior is confirmed dead/cancelled — fall through to mint fresh.
       }
 
       // Distribute the charged total across the bookings to the cent so their
@@ -637,6 +693,7 @@ serve(async (req) => {
       }
       bookingId = newBookingId as string;
       allBookingIds.push(bookingId);
+      freshBookingId = bookingId; // P2-10: mark for soft-cancel if payment creation fails below
       logStep("Booking created", { bookingId, payment_amount: expectedAmount });
 
       // Stamp that payment_amount already includes the slot extra_costs so
@@ -713,6 +770,10 @@ serve(async (req) => {
         status: "blocked_no_profile",
         error_message: errorMsg,
       });
+
+      // P2-10: no Mollie payment will exist for the fresh booking we just inserted;
+      // free its slot capacity before returning so it can't orphan (whole-slot => slot_full).
+      await softCancelFreshBooking();
 
       return new Response(
         JSON.stringify({ error: "missing_mollie_profile", message: "Betaalprofiel niet geconfigureerd." }),
@@ -828,6 +889,29 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
+    // P2-10: covers the Mollie API-error `throw` (and any other failure after the
+    // fresh single-slot insert). The softCancelFreshBooking closure lives inside
+    // the try (out of scope here), so free the orphan inline with a fresh
+    // service-role client. No-op unless this request inserted a fresh booking.
+    if (freshBookingId) {
+      try {
+        const rollbackClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+        const { error: cancelErr } = await rollbackClient
+          .from("bookings")
+          .update({ status: "cancelled" })
+          .eq("id", freshBookingId);
+        if (cancelErr) {
+          logStep("P2-10: failed to soft-cancel orphan fresh booking (catch)", { bookingId: freshBookingId, error: cancelErr.message });
+        } else {
+          logStep("P2-10: soft-cancelled orphan fresh booking (catch)", { bookingId: freshBookingId });
+        }
+      } catch (_) {
+        // never let rollback mask the original error
+      }
+    }
     await notifySlack(
       createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
       "edge_function_error",

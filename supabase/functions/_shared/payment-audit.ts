@@ -36,6 +36,8 @@ export const PaymentAuditStatus = {
   paymentForCancelledBooking: "payment_for_cancelled_booking",
   paymentForUnknownInvoice: "payment_for_unknown_invoice",
   noConnectedMollieAccount: "no_connected_mollie_account",
+  paymentChargedBack: "payment_charged_back",
+  paymentRefunded: "payment_refunded",
 } as const;
 
 export async function writePaymentAuditLog(

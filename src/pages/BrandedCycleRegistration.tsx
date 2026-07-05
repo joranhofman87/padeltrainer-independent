@@ -18,7 +18,7 @@ import { Calendar, Clock, AlertCircle, MapPin } from 'lucide-react';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { ProfileLayout } from '@/components/profiles/ProfileLayout';
-import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { getPublicCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getRegistration, registrationToCycle } from '@/lib/registrations';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { logger } from '@/lib/logger';
@@ -113,7 +113,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
         });
         return;
       }
-      const cyclePromise = reg ? Promise.resolve(registrationToCycle(reg)) : getCycle(cycleId);
+      const cyclePromise = reg ? Promise.resolve(registrationToCycle(reg)) : getPublicCycle(cycleId);
 
       const [ownerData, cycleData] = await Promise.all([ownerPromise, cyclePromise]);
 

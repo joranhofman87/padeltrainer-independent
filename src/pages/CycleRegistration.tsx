@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 import { Calendar, Clock, AlertCircle, MapPin, Building2, User } from 'lucide-react';
 import MarketingLayout from '@/components/marketing/MarketingLayout';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
-import { getCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
+import { getPublicCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getRegistration, registrationToCycle } from '@/lib/registrations';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { formatCurrency } from '@/lib/format';
@@ -80,7 +80,7 @@ export default function CycleRegistration() {
       }
       // getCycle resolves null only on a definitive "no such row"; failed requests
       // (network/5xx) throw and surface the retry state.
-      const cycleData = reg ? registrationToCycle(reg) : await getCycle(cycleId);
+      const cycleData = reg ? registrationToCycle(reg) : await getPublicCycle(cycleId);
       if (!cycleData) {
         setCycle(null);
         return;

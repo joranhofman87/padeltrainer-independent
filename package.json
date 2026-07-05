@@ -9,6 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "check:edge-config": "node scripts/check-edge-fn-config.mjs",
+    "check:edge-types": "node scripts/check-edge-deno.mjs",
+    "check:edge-types:update": "node scripts/check-edge-deno.mjs --update",
     "lint:fix": "eslint . --fix",
     "lint:prune": "eslint . --prune-suppressions",
     "lint:baseline": "eslint . --suppress-all",

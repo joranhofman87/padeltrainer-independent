@@ -65,18 +65,39 @@ export async function findExistingGuestPlayerIdByEmail(
     .eq('academy_profile_id', scope.academyProfileId)
     .eq('status', 'active');
 
-  const trainerIds = (academyTrainers || []).map((t) => t.trainer_profile_id).filter(Boolean);
+  const trainerIds = (academyTrainers || [])
+    .map((t) => t.trainer_profile_id)
+    .filter((id): id is string => Boolean(id));
 
-  let query = supabase.from('guest_players').select('id, full_name').eq('email', trimmed);
-  if (trainerIds.length > 0) {
-    query = query.or(
-      `academy_profile_id.eq.${scope.academyProfileId},trainer_id.in.(${trainerIds.join(',')})`,
+  // Dedup must see trainer-owned guests (a trainer may have created this person
+  // before the academy did). The academy guest_players SELECT policy is scoped to
+  // guests already RELATED to the academy (P2-2), so a direct SELECT can no longer
+  // see a not-yet-related trainer-owned guest — that would create a DUPLICATE
+  // identity. Route the lookup through a SECURITY DEFINER RPC that still returns the
+  // candidate ids. Falls back to the narrowed direct query if the RPC is not yet
+  // deployed (graceful vs un-migrated prod).
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(
+    'find_guest_players_by_email_for_academy' as never,
+    {
+      _email: trimmed,
+      _academy_profile_id: scope.academyProfileId,
+      _trainer_ids: trainerIds,
+    } as never,
+  );
+  if (!rpcError) {
+    return pickGuestIdByName(
+      (rpcRows as Array<{ id: string; full_name: string | null }> | null) ?? [],
+      fullName,
     );
-  } else {
-    query = query.eq('academy_profile_id', scope.academyProfileId);
   }
 
-  const { data } = await query.order('created_at').limit(10);
+  const { data } = await supabase
+    .from('guest_players')
+    .select('id, full_name')
+    .eq('email', trimmed)
+    .eq('academy_profile_id', scope.academyProfileId)
+    .order('created_at')
+    .limit(10);
   return pickGuestIdByName(data ?? [], fullName);
 }
 

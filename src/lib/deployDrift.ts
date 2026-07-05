@@ -22,7 +22,8 @@ export type DeployDriftFeature =
   | 'count_cycles_intakes'
   | 'get_trainer_earnings_summary'
   | 'registration_write_rpc'
-  | 'create_rebook_invoice';
+  | 'create_rebook_invoice'
+  | 'cycles_public';
 
 type DriftDetail = Record<string, string | number | boolean | null | undefined>;
 
@@ -34,6 +35,20 @@ type DriftDetail = Record<string, string | number | boolean | null | undefined>;
 export function isMissingRpc(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   return code === 'PGRST202' || code === '42883';
+}
+
+/**
+ * True when an error means a table/view isn't live yet: PostgREST `PGRST205`
+ * (relation not found in the schema cache), `PGRST200` (schema-cache miss), or
+ * Postgres `42P01` (undefined table/view). Used by graceful fallbacks that read a
+ * not-yet-deployed `_public` view and drop back to the base table. NOTE: the
+ * cycles_public view must expose PLAIN columns only — a PostgREST embed on a plain
+ * view raises PGRST200 too, so an embedded read would be indistinguishable from a
+ * genuinely missing view and would fall back forever. Do NOT embed on _public views.
+ */
+export function isMissingRelation(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return code === 'PGRST205' || code === 'PGRST200' || code === '42P01';
 }
 
 /**

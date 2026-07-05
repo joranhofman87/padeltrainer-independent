@@ -117,3 +117,34 @@ jobs:
       # of the edge functions against npm types in Deno is a separate, harder effort.)
       - name: Edge-function unit tests (deno)
         run: deno test --no-check --allow-env --allow-net supabase/functions/_shared/
+
+  # Type-checks the ~96 edge-function index.ts files with a REAL `deno check` (NOT --no-check),
+  # ratcheted vs scripts/edge-deno.baseline.json (shrink-only, like the tsc + eslint gates). The
+  # edge-tests job above is deno-only and runs --no-check, so a mistyped / un-imported name in an
+  # edge fn — incl. money-critical mollie-webhook — used to ship as a runtime ReferenceError with a
+  # green build (e.g. backfill-invoices references undefined supabaseUrl/supabaseServiceKey). This
+  # job needs BOTH `npm ci` (so the 14 functions importing `npm:` specifiers resolve against
+  # node_modules) AND Deno; the script passes --node-modules-dir=auto. NEW errors fail; the known
+  # perma-red set does not block. Regenerate: npm run check:edge-types:update.
+  edge-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Edge-function type-check (ratcheted vs baseline)
+        run: npm run check:edge-types

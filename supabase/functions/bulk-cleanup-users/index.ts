@@ -141,9 +141,28 @@ Deno.serve(async (req) => {
           await supabaseAdmin.from("trainer_locations").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("trainer_followers").delete().eq("trainer_id", trainerProfile.id);
           await supabaseAdmin.from("trainer_profile_views").delete().eq("trainer_id", trainerProfile.id);
-          await supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id);
-          await supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id);
-          await supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id);
+          // FK-ordered (P2-15): availability_slots first (cascades bookings), then the
+          // NO ACTION references to guest_players (intake_requests + invoices), then
+          // guest_players. Error-check each so an FK rejection surfaces via the per-user
+          // try/catch (results.errors) instead of silently self-healing on the later
+          // trainer_profiles cascade.
+          const delSlots = await supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id);
+          if (delSlots.error) throw new Error(`availability_slots: ${delSlots.error.message}`);
+
+          const { data: trainerGuests } = await supabaseAdmin
+            .from("guest_players").select("id").eq("trainer_id", trainerProfile.id);
+          const guestIds = (trainerGuests ?? []).map((g: { id: string }) => g.id);
+          if (guestIds.length > 0) {
+            const delIntake = await supabaseAdmin.from("intake_requests").delete().in("guest_player_id", guestIds);
+            if (delIntake.error) throw new Error(`intake_requests: ${delIntake.error.message}`);
+          }
+
+          const delInvoices = await supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id);
+          if (delInvoices.error) throw new Error(`invoices: ${delInvoices.error.message}`);
+
+          const delGuests = await supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id);
+          if (delGuests.error) throw new Error(`guest_players: ${delGuests.error.message}`);
+
           await supabaseAdmin.from("trainer_profiles").delete().eq("user_id", userId);
         }
 

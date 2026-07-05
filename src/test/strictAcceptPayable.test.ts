@@ -46,7 +46,10 @@ const h = vi.hoisted(() => {
     rpc,
     functions: { invoke },
     from: (table: string) => {
-      if (table === 'cycles') return builder(() => [{ id: 'cy1', settings: { rebook_payment_mode: 'upfront', rebook_strict_mollie: true } }]);
+      // P2-1: priorityClaims reads cyclus settings through the sanitized cycles_public
+      // view first (falling back to base cycles). The view exposes the same settings
+      // (minus the private notify keys), so stub both relations identically.
+      if (table === 'cycles' || table === 'cycles_public') return builder(() => [{ id: 'cy1', settings: { rebook_payment_mode: 'upfront', rebook_strict_mollie: true } }]);
       if (table === 'availability_slots') return builder(() => [{ id: 's1', price_per_session: 10, trainer_id: 'tr1' }]);
       if (table === 'slot_priority_claims') return builder(() => []);
       if (table === 'bookings') return builder(() => state.bookingRows);
@@ -58,7 +61,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('@/lib/supabaseClient', () => ({ supabase: h.supabase }));
 vi.mock('@/lib/academyTrainerPayments', () => ({ hasValidPaymentSetup: vi.fn(() => Promise.resolve({ valid: true })) }));
-vi.mock('@/lib/deployDrift', () => ({ reportDeployDriftFallback: vi.fn() }));
+vi.mock('@/lib/deployDrift', () => ({ reportDeployDriftFallback: vi.fn(), isMissingRelation: vi.fn(() => false) }));
 
 import { acceptClaimAndStartPayment } from '@/lib/priorityClaims';
 

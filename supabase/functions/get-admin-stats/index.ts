@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { restrictedCors } from "../_shared/cors.ts";
 
-const logStep = (step: string, details?: any) => {
+const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[ADMIN-STATS] ${step}${detailsStr}`);
 };
@@ -64,6 +64,124 @@ serve(async (req) => {
 
     const now = new Date();
 
+    // Fast path: aggregate server-side (SUM/COUNT/date_trunc) so we never pull whole tables through
+    // PostgREST's 1000-row cap. The RPC takes NO args and gates on has_role(auth.uid(),'admin'), so we
+    // call it on the USER-scoped client (auth.uid() must resolve to the caller). If the RPC is not yet
+    // deployed (or errors) we fall back to the legacy whole-table JS aggregation below so nothing breaks.
+    let agg: any = null;
+    try {
+      const { data: aggData, error: aggError } = await supabaseUser.rpc("admin_stats_summary");
+      if (aggError) {
+        logStep("admin_stats_summary RPC unavailable — falling back", { message: aggError.message });
+      } else {
+        agg = aggData;
+      }
+    } catch (e) {
+      logStep("admin_stats_summary RPC threw — falling back", {
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    if (agg) {
+      // ---- SQL-aggregated path (unbounded, correct past 1000 rows) ----
+      const o = agg.overview || {};
+      const tiers = agg.trainersByTier || {};
+      const trends = agg.signupTrends || {};
+      const reg = agg.registrations || {};
+      const monthly: Record<string, { gmv: number; bookings: number }> = agg.monthly || {};
+
+      const trainerTiers = {
+        starter: Number(tiers.starter || 0),
+        professional: Number(tiers.professional || 0),
+        academy: Number(tiers.academy || 0),
+      };
+      const totalTrainers = Number(o.activeTrainers || 0) || 1;
+      const totalPaidBookings = Number(o.paidBookings || 0);
+      const avgFeeFlat = totalPaidBookings > 0
+        ? (
+            ((trainerTiers.starter / totalTrainers) * TIER_FLAT_FEES.starter) +
+            ((trainerTiers.professional / totalTrainers) * TIER_FLAT_FEES.professional) +
+            ((trainerTiers.academy / totalTrainers) * TIER_FLAT_FEES.academy)
+          )
+        : TIER_FLAT_FEES.starter;
+      const estimatedTotalFees = totalPaidBookings * avgFeeFlat;
+
+      const trainerTrend = Number(trends.trainersLastMonth || 0) > 0
+        ? ((Number(trends.trainersThisMonth || 0) - Number(trends.trainersLastMonth || 0)) / Number(trends.trainersLastMonth)) * 100
+        : Number(trends.trainersThisMonth || 0) > 0 ? 100 : 0;
+      const playerTrend = Number(trends.playersLastMonth || 0) > 0
+        ? ((Number(trends.playersThisMonth || 0) - Number(trends.playersLastMonth || 0)) / Number(trends.playersLastMonth)) * 100
+        : Number(trends.playersThisMonth || 0) > 0 ? 100 : 0;
+
+      // Build the same 6-month label loop as the legacy path, reading gmv/bookings from the RPC map.
+      const monthlyStats: Array<{ month: string; gmv: number; fees: number; bookings: number }> = [];
+      for (let i = 5; i >= 0; i--) {
+        const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        const key = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, "0")}`;
+        const monthName = monthDate.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
+        const bucket = monthly[key] || { gmv: 0, bookings: 0 };
+        const monthBookingsCount = Number(bucket.bookings || 0);
+        monthlyStats.push({
+          month: monthName,
+          gmv: Number(bucket.gmv || 0),
+          fees: monthBookingsCount * avgFeeFlat,
+          bookings: monthBookingsCount,
+        });
+      }
+
+      const clubStats = {
+        total: Number(o.totalClubs || 0),
+        verified: Number(o.verifiedClubs || 0),
+        subscribed: Number(o.subscribedClubs || 0),
+        trialing: Number(o.trialingClubs || 0),
+        expired: Number(o.expiredTrialClubs || 0),
+      };
+
+      const response = {
+        overview: {
+          totalGMV: Number(o.totalGMV || 0),
+          platformFees: estimatedTotalFees,
+          avgFeeFlat,
+          totalBookings: Number(o.totalBookings || 0),
+          paidBookings: totalPaidBookings,
+          activeTrainers: Number(o.activeTrainers || 0),
+          activePlayers: Number(o.activePlayers || 0),
+          connectedAccounts: Number(o.connectedAccounts || 0),
+          pendingAccounts: Number(o.pendingAccounts || 0),
+          totalClubs: clubStats.total,
+          verifiedClubs: clubStats.verified,
+          subscribedClubs: clubStats.subscribed,
+          trialingClubs: clubStats.trialing,
+          expiredTrialClubs: clubStats.expired,
+        },
+        signupTrends: {
+          trainersThisMonth: Number(trends.trainersThisMonth || 0),
+          trainersLastMonth: Number(trends.trainersLastMonth || 0),
+          trainerTrend,
+          playersThisMonth: Number(trends.playersThisMonth || 0),
+          playersLastMonth: Number(trends.playersLastMonth || 0),
+          playerTrend,
+        },
+        trainersByTier: trainerTiers,
+        clubStats,
+        monthlyStats,
+        registrations: {
+          totalGuests: Number(reg.totalGuests || 0),
+          convertedToAccount: Number(reg.convertedToAccount || 0),
+          hasTrained: Number(reg.hasTrained || 0),
+          thisMonth: Number(reg.thisMonth || 0),
+          lastMonth: Number(reg.lastMonth || 0),
+        },
+      };
+
+      logStep("Response prepared (sql-agg)", { totalGMV: response.overview.totalGMV, platformFees: estimatedTotalFees });
+
+      return new Response(JSON.stringify(response), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ---- Legacy fallback path (RPC not deployed): whole-table fetch + JS aggregation ----
     // Fetch all required data in parallel
     const [
       bookingsResult,

@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import {
+  claimIntakeForNotification,
+  releaseIntakeAfterFailedSend,
+} from "../_shared/schedule-notification-claim.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -173,7 +177,17 @@ serve(async (req: Request) => {
 
     for (const ir of intakeRequests) {
       try {
+        // P2-11: atomic per-row claim BEFORE any work. Flip this intake 'booked'→'notified' and
+        // only proceed if THIS call won the row. A concurrent invocation (double-click / retry /
+        // manual re-run) that SELECTed the same booked set will find status no longer 'booked' and
+        // claim nothing → it does not send. This is what stops the double email; the old post-loop
+        // bulk status update is gone (rows are flipped here, at claim time).
+        const claimed = await claimIntakeForNotification(supabaseAdmin, ir.id);
+        if (!claimed) continue; // already claimed by another run, or claim errored → don't send.
+
         const playerAssignments = assignmentsByIntake.get(ir.id) || [];
+        // No confirmed assignment → nothing to email. Row stays 'notified' (matches prior behavior,
+        // where such rows were also flipped by the post-loop bulk update) and won't be re-picked.
         if (playerAssignments.length === 0) continue;
 
         // Build schedule entries
@@ -221,26 +235,23 @@ serve(async (req: Request) => {
         if (emailError) {
           console.error(`Error sending email for intake request ${ir.id}:`, emailError);
           errors.push(`Failed to send to ${ir.email}: ${emailError.message}`);
+          // Send failed AFTER we claimed the row → release it back to 'booked' so a later run
+          // retries. Otherwise the player would be stuck 'notified' with no email ever sent.
+          await releaseIntakeAfterFailedSend(supabaseAdmin, ir.id);
           continue;
         }
 
         sent++;
       } catch (err: any) {
         errors.push(`Error sending to ${ir.email}: ${err.message}`);
+        // Same as above: an exception after the claim must release the row for retry.
+        await releaseIntakeAfterFailedSend(supabaseAdmin, ir.id);
       }
     }
 
-    // 7. Update intake_requests status to 'notified'
-    const successIds = intakeRequests
-      .filter((ir: any) => !errors.some(e => e.includes(ir.email)))
-      .map((ir: any) => ir.id);
-
-    if (successIds.length > 0) {
-      await supabaseAdmin
-        .from("intake_requests")
-        .update({ status: "notified" as any })
-        .in("id", successIds);
-    }
+    // 7. Status is now flipped to 'notified' atomically per-row at claim time (P2-11), and reverted
+    //    to 'booked' on a failed send. No post-loop bulk update — that was the source of the
+    //    select-then-flip-later race that let overlapping invocations double-email every player.
 
     console.log(`Sent ${sent} schedule notifications, ${errors.length} errors`);
 

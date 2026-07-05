@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
+import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { insertBookings, insertBookingSingle } from '@/lib/bookings';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
@@ -252,7 +253,24 @@ export default function BookLesson() {
 
       const newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean }> = {};
       if (cyclusIds.length > 0) {
-        const { data: cyclesData } = await supabase.from('cycles').select('id, settings').in('id', cyclusIds);
+        // Read cyclus settings through the sanitized cycles_public view (P2-1) so an
+        // anonymous booker never receives settings.notify_admin_emails. Published cyclus
+        // cycles are status='open', which the view exposes; the denylist keeps every key
+        // this page reads (min_group_size / payment_timing / invoice_delay_weeks /
+        // mark_as_paid / split_payment). Graceful fallback to the base table while the view
+        // migration is not yet applied (frontend deploys first).
+        const readCyclusSettings = (relation: 'cycles_public' | 'cycles') =>
+          supabase.from(relation as never).select('id, settings').in('id', cyclusIds);
+        let cyclesData: Array<{ id: string; settings: Record<string, unknown> | null }> | null = null;
+        const { data: viewData, error: viewErr } = await readCyclusSettings('cycles_public');
+        if (viewErr) {
+          if (!isMissingRelation(viewErr)) throw viewErr;
+          reportDeployDriftFallback('cycles_public', { path: 'BookLesson' });
+          const { data: baseData } = await readCyclusSettings('cycles');
+          cyclesData = (baseData as typeof cyclesData) ?? null;
+        } else {
+          cyclesData = (viewData as typeof cyclesData) ?? null;
+        }
         if (cyclesData) {
           for (const c of cyclesData) {
             const settings = c.settings as Record<string, unknown> | null;

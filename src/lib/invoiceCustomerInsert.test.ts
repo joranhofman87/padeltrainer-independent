@@ -44,8 +44,22 @@ const fromMock = vi.fn((table: string) => {
   return chainable();
 });
 
+// P2-2: the academy email-dedup branch now routes through the SECURITY DEFINER RPC
+// find_guest_players_by_email_for_academy (so dedup still sees trainer-owned candidates
+// even though the direct academy SELECT is now relationship-scoped). Return the same
+// candidate list the direct email query would, driven by guestLookupResult.
+const rpcMock = vi.fn((fn: string) => {
+  if (fn === 'find_guest_players_by_email_for_academy') {
+    return Promise.resolve({ data: guestLookupResult ? [guestLookupResult] : [], error: null });
+  }
+  return Promise.resolve({ data: null, error: null });
+});
+
 vi.mock('@/lib/supabaseClient', () => ({
-  supabase: { from: (...args: unknown[]) => fromMock(...args) },
+  supabase: {
+    from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...(args as [string])),
+  },
 }));
 
 describe('buildInvoicePlayerAddress', () => {

@@ -69,3 +69,17 @@ export function splitAmongPlayersForInvoiceCreate(
   if (bookingsUseSplitShareAmounts(bookings, requestedSplit)) return null;
   return requestedSplit;
 }
+
+// P2-8: an invoice whose OWN bookings already carry per-recipient split shares
+// (uniform payment_amount whose amount×N ≈ slot price) must NOT be split again —
+// its total already equals the sum of the per-player shares, so dividing by N a
+// second time under-bills. Reachable via backfill-invoices (auto-create-invoice
+// asDraft, no splitAmongPlayers) building a draft from mid-Mollie bookings: that
+// draft carries neither split_count>1 nor a "(1/N)" marker, so split-invoice's
+// structural guards miss it. This is the value-level guard for that case.
+export function invoiceOriginalBookingsAreSplitShares(
+  originalBookings: BookingWithSlotPrice[],
+  totalPlayers: number | null | undefined,
+): boolean {
+  return bookingsUseSplitShareAmounts(originalBookings, totalPlayers);
+}

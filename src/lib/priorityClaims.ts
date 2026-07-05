@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { resolveSplitDivisor } from '@/lib/splitDivisor';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
-import { reportDeployDriftFallback } from '@/lib/deployDrift';
+import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { logger } from '@/lib/logger';
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
@@ -15,15 +15,34 @@ export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'rele
  */
 export type RebookPaymentMode = 'deferred_split' | 'upfront';
 
-/** Read a cycle's settings JSON. Returns null when unavailable (e.g. RLS). */
+/**
+ * Read a cycle's settings JSON. Returns null when unavailable (e.g. RLS).
+ *
+ * P2-1: this runs on the public token-gated rebook claim/pay page (anon). Read
+ * through the sanitized cycles_public view so an unauthenticated caller never
+ * receives settings.notify_admin_emails; the denylist preserves rebook_payment_mode
+ * (the only key this reader needs). On a missing view (frontend deployed before the
+ * migration) fall back to the base cycles table — NOT null — so an 'upfront' cycle is
+ * not silently misread as 'deferred_split' during that window.
+ */
 async function fetchCycleSettings(cyclusId: string): Promise<Record<string, unknown> | null> {
   const { data, error } = await supabase
-    .from('cycles')
+    .from('cycles_public' as never)
     .select('settings')
     .eq('id', cyclusId)
     .maybeSingle();
+  if (error && isMissingRelation(error)) {
+    reportDeployDriftFallback('cycles_public', { path: 'priorityClaims.fetchCycleSettings' });
+    const { data: baseData, error: baseErr } = await supabase
+      .from('cycles')
+      .select('settings')
+      .eq('id', cyclusId)
+      .maybeSingle();
+    if (baseErr || !baseData) return null;
+    return ((baseData as { settings: unknown }).settings ?? {}) as Record<string, unknown>;
+  }
   if (error || !data) return null;
-  return (data.settings ?? {}) as Record<string, unknown>;
+  return ((data as { settings: unknown }).settings ?? {}) as Record<string, unknown>;
 }
 
 /**
@@ -81,13 +100,25 @@ export async function getCycleStartDate(
 ): Promise<string | null> {
   if (!cyclusId) return null;
   try {
+    // P2-1: anon public claim page — read through cycles_public (sanitized), with a
+    // graceful fallback to the base cycles table before the view migration is applied.
     const { data, error } = await supabase
-      .from('cycles')
+      .from('cycles_public' as never)
       .select('start_date')
       .eq('id', cyclusId)
       .maybeSingle();
+    if (error && isMissingRelation(error)) {
+      reportDeployDriftFallback('cycles_public', { path: 'priorityClaims.getCycleStartDate' });
+      const { data: baseData, error: baseErr } = await supabase
+        .from('cycles')
+        .select('start_date')
+        .eq('id', cyclusId)
+        .maybeSingle();
+      if (baseErr || !baseData) return null;
+      return ((baseData as { start_date: string | null }).start_date) ?? null;
+    }
     if (error || !data) return null;
-    return (data.start_date as string | null) ?? null;
+    return ((data as { start_date: string | null }).start_date) ?? null;
   } catch {
     return null;
   }
