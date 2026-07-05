@@ -134,7 +134,11 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   // which also keeps a split_payment session (per-seat, priced total÷N via the cyclus path) from
   // being booked one-off at the full whole-slot price. Standalone (non-cyclus) slots are single by
   // nature and unaffected.
-  const canBookSingle = slot.allow_single_booking === true;
+  const canBookSingle =
+    slot.allow_single_booking === true ||
+    // whole-slot selling: one booking claims the ENTIRE session at full price (capacity 1).
+    // Never for split sessions — those are per-seat total÷N via the cyclus path (#352).
+    (slot.whole_slot_booking === true && slot.split_payment !== true);
   // Owner switch inverse: allow_cyclus_booking=false sells individual sessions ONLY. When the
   // owner disabled BOTH (misconfiguration), fall back to the whole-cyclus path and let the
   // server guard answer — never silently offer a mode the server would refuse cheaper.

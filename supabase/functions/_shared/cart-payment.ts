@@ -33,6 +33,8 @@ export type CartSlotRow = {
   end_time: string;
   max_participants: number | null;
   allow_single_booking: boolean | null;
+  /** Whole-slot selling: a cyclus session bookable individually as the ENTIRE slot at full price. */
+  whole_slot_booking: boolean | null;
   split_payment: boolean | null;
   extra_costs: ExtraCost[] | null;
   is_public: boolean | null;
@@ -94,7 +96,12 @@ export function validateCartSlots(requestedIds: string[], slots: CartSlotRow[], 
   const split = slots.filter((s) => s.split_payment === true);
   if (split.length > 0) return { error: "split_not_supported", slotIds: split.map((s) => s.id) };
 
-  const cyclusLocked = slots.filter((s) => s.cyclus_id != null && s.allow_single_booking !== true);
+  // A cyclus session is cartable per-seat (allow_single_booking) OR as a whole slot at full
+  // price (whole_slot_booking — split slots were already refused above, so the whole-slot
+  // unlock can never touch a per-seat split session).
+  const cyclusLocked = slots.filter(
+    (s) => s.cyclus_id != null && s.allow_single_booking !== true && s.whole_slot_booking !== true,
+  );
   if (cyclusLocked.length > 0) return { error: "single_booking_not_allowed", slotIds: cyclusLocked.map((s) => s.id) };
 
   // Payment routing needs a trainer on every slot (the recipient resolver's membership

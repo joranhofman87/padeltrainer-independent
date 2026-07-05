@@ -33,6 +33,7 @@ type Slot = {
   price_per_session: number | null;
   total_price: number | null;
   allow_single_booking: boolean | null;
+  whole_slot_booking: boolean | null;
   min_participants: number | null;
   max_participants: number | null;
   extra_costs: unknown;
@@ -223,7 +224,7 @@ serve(async (req) => {
 
     // 1. Gather candidate slots: the whole source cyclus, or the academy's slots
     //    at the chosen location(s) up to the term end.
-    const SLOT_COLUMNS = "id, trainer_id, location_id, academy_profile_id, start_time, end_time, court_type, training_level, price_per_session, total_price, allow_single_booking, min_participants, max_participants, extra_costs, rating_system, min_rating, max_rating, prices_include_vat, split_payment, cyclus_id";
+    const SLOT_COLUMNS = "id, trainer_id, location_id, academy_profile_id, start_time, end_time, court_type, training_level, price_per_session, total_price, allow_single_booking, whole_slot_booking, min_participants, max_participants, extra_costs, rating_system, min_rating, max_rating, prices_include_vat, split_payment, cyclus_id";
     let slots: Slot[] = [];
     let termEndMs = 0;
     if (sourceCyclusId) {
@@ -527,6 +528,7 @@ serve(async (req) => {
           price_per_session: effPrice,
           total_price: tmpl.total_price,
           allow_single_booking: tmpl.allow_single_booking,
+          whole_slot_booking: tmpl.whole_slot_booking,
           min_participants: tmpl.min_participants,
           max_participants: tmpl.max_participants,
           extra_costs: tmpl.extra_costs,

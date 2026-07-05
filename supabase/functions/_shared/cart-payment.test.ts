@@ -27,6 +27,7 @@ function slot(overrides: Partial<CartSlotRow> = {}): CartSlotRow {
     end_time: "2027-01-01T11:00:00Z",
     max_participants: 1,
     allow_single_booking: true,
+    whole_slot_booking: false,
     split_payment: false,
     extra_costs: null,
     is_public: true,
@@ -99,6 +100,22 @@ Deno.test("validate: a cyclus session without allow_single_booking must go whole
 Deno.test("validate: a cyclus session WITH allow_single_booking is cartable", () => {
   const open = slot({ cyclus_id: "cyc-1", allow_single_booking: true, max_participants: 4 });
   assertEquals(validateCartSlots([open.id], [open]), null);
+});
+
+Deno.test("validate: a WHOLE-SLOT cyclus session (allow_single=false, whole_slot=true) is cartable", () => {
+  const whole = slot({ cyclus_id: "cyc-1", allow_single_booking: false, whole_slot_booking: true, max_participants: 4 });
+  assertEquals(validateCartSlots([whole.id], [whole]), null);
+});
+
+Deno.test("validate: split beats whole-slot — a split+whole_slot session is refused as split (#352 stays closed)", () => {
+  const bad = slot({ cyclus_id: "cyc-1", allow_single_booking: false, whole_slot_booking: true, split_payment: true, max_participants: 4 });
+  const r = validateCartSlots([bad.id], [bad]);
+  assertEquals(r, { error: "split_not_supported", slotIds: [bad.id] });
+});
+
+Deno.test("pricing: a whole-slot cyclus session charges the FULL session price (never /max_participants)", () => {
+  const whole = slot({ cyclus_id: "cyc-1", allow_single_booking: false, whole_slot_booking: true, max_participants: 4, price_per_session: 76.5 });
+  assertEquals(priceCartItems([whole.id], [whole], {}).total, 76.5);
 });
 
 Deno.test("validate: different trainers of ONE academy may mix (the money routes to the academy)", () => {

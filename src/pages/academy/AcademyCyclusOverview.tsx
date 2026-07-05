@@ -1363,6 +1363,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               {([
                 ['both', t('cyclesTab.bulkBooking.modeBoth'), t('cyclesTab.bulkBooking.modeBothHelp')],
                 ['single_only', t('cyclesTab.bulkBooking.modeSingleOnly'), t('cyclesTab.bulkBooking.modeSingleOnlyHelp')],
+                ['single_only_whole_slot', t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlot'), t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlotHelp')],
                 ['cyclus_only', t('cyclesTab.bulkBooking.modeCyclusOnly'), t('cyclesTab.bulkBooking.modeCyclusOnlyHelp')],
               ] as const).map(([value, label, help]) => (
                 <label

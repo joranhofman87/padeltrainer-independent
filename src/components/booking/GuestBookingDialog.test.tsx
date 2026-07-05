@@ -64,6 +64,7 @@ const slot: PublicSlot = {
   extra_costs: [],
   max_participants: 4,
   allow_single_booking: true,
+  whole_slot_booking: false,
   spots_left: 3,
   split_payment: false,
 };
@@ -263,6 +264,34 @@ describe('GuestBookingDialog', () => {
     // cartable slot but NO provider (embed/test contexts) → affordance simply absent
     render(<GuestBookingDialog slot={slot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
     expect(screen.queryByRole('button', { name: /Meerdere sessies boeken/ })).toBeNull();
+  });
+
+  it('whole-slot cyclus session (allow_single=false, whole_slot=true): single option offered at FULL price', async () => {
+    cyclusSessions.current = twoSessions;
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/ws' }, error: null });
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+
+    const wholeSlot: PublicSlot = { ...cyclusSlot, allow_single_booking: false, whole_slot_booking: true, price_per_session: 76.5, max_participants: 4 };
+    render(<GuestBookingDialog slot={wholeSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+
+    // the single-session mode is offered (whole-slot unlock) …
+    fireEvent.click(await screen.findByRole('button', { name: /Alleen deze sessie/ }));
+    // … at the FULL session price (€76.50 — never ÷ max_participants)
+    expect(screen.getByText(/Prijs:/).textContent).toMatch(/76[.,]50/);
+
+    fillValid();
+    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', expect.anything()));
+  });
+
+  it('whole-slot unlock NEVER applies to split sessions (#352 stays closed)', async () => {
+    cyclusSessions.current = twoSessions;
+    invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/x' }, error: null });
+    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+
+    const splitWhole: PublicSlot = { ...cyclusSlot, allow_single_booking: false, whole_slot_booking: true, split_payment: true };
+    render(<GuestBookingDialog slot={splitWhole} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+    expect(screen.queryByRole('button', { name: /Alleen deze sessie/ })).toBeNull();
   });
 
   it('shows a toast (no redirect) when the slot is full', async () => {

@@ -112,9 +112,17 @@ export default function CycleForm({
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
-  const [allowSingleBooking, setAllowSingleBooking] = useState<boolean>(
-    (cycle?.settings as any)?.allow_single_booking ?? false
+  // How individual sessions are sold: off (whole cyclus only), per seat (price ÷ spots),
+  // or as the WHOLE slot at full price (one booking claims the session; max_participants
+  // stays the attendee count). Persisted as the two settings flags.
+  const singleSaleModeFromSettings = (
+    s: { allow_single_booking?: boolean; whole_slot_booking?: boolean } | null | undefined,
+  ): 'off' | 'per_seat' | 'whole_slot' =>
+    s?.allow_single_booking ? 'per_seat' : s?.whole_slot_booking ? 'whole_slot' : 'off';
+  const [singleSaleMode, setSingleSaleMode] = useState<'off' | 'per_seat' | 'whole_slot'>(
+    singleSaleModeFromSettings(cycle?.settings as { allow_single_booking?: boolean; whole_slot_booking?: boolean } | null),
   );
+  const allowSingleBooking = singleSaleMode === 'per_seat';
   // Whole-series bookable? Default true (long-standing behavior); off = the cyclus sells
   // individual sessions only (guests see no "whole cyclus" option; the guest-cyclus edge fn refuses).
   const [allowCyclusBooking, setAllowCyclusBooking] = useState<boolean>(
@@ -303,7 +311,9 @@ export default function CycleForm({
         notify_admin_on_submission: (cycle?.settings as any)?.notify_admin_on_submission ?? true,
         notify_admin_emails: (cycle?.settings as any)?.notify_admin_emails || '',
       });
-      setAllowSingleBooking((cycle?.settings as any)?.allow_single_booking ?? false);
+      setSingleSaleMode(
+        singleSaleModeFromSettings(cycle?.settings as { allow_single_booking?: boolean; whole_slot_booking?: boolean } | null),
+      );
       setAllowCyclusBooking(
         (cycle?.settings as { allow_cyclus_booking?: boolean } | null | undefined)?.allow_cyclus_booking !== false,
       );
@@ -558,6 +568,9 @@ export default function CycleForm({
         start_time: isEvent ? undefined : values.start_time,
         end_time: isEvent ? undefined : values.end_time,
         allow_single_booking: isEvent ? undefined : allowSingleBooking,
+        // Whole-slot never combines with split (per-seat total÷N — the unlock would over-collect);
+        // normalize the combo away at persist so no writer ever produces it.
+        whole_slot_booking: isEvent ? undefined : (singleSaleMode === 'whole_slot' && !splitPayment),
         allow_cyclus_booking: isEvent ? undefined : allowCyclusBooking,
         mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
         payment_timing: isEvent ? undefined : paymentTiming,
@@ -658,23 +671,31 @@ export default function CycleForm({
         result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
       }
 
-      // The switches above write cycle SETTINGS; the flag the public page/cart/booking RPCs
-      // actually read lives on the SLOTS. When the individual-booking switch changed on an
-      // existing training cyclus, propagate it to the future slots via the same direction-aware
-      // helper the bulk action uses (slots with active bookings are kept when enabling per-seat).
-      // Non-fatal: the cycle save itself already succeeded. Registrations are excluded (one
-      // registration cycle spans many series); new cycles have no slots yet (the generator
-      // stamps the flag at creation).
-      const initialAllowSingle =
-        ((cycle?.settings as { allow_single_booking?: boolean } | undefined)?.allow_single_booking ?? false);
-      if (isEdit && cycle?.id && !isEvent && effectiveTarget === 'cycle' && allowSingleBooking !== initialAllowSingle) {
+      // The controls above write cycle SETTINGS; the flags the public page/cart/booking RPCs
+      // actually read live on the SLOTS. When the sale mode changed on an existing training
+      // cyclus (EITHER flag — Uit→Hele-baan changes only whole_slot_booking), propagate to the
+      // future slots via the same direction-aware helper the bulk action uses (slots with
+      // active bookings are kept when enabling per-seat). Non-fatal: the cycle save itself
+      // already succeeded. Registrations are excluded (one registration cycle spans many
+      // series); new cycles have no slots yet (the generator stamps the flags at creation).
+      const initialFlags = cycle?.settings as { allow_single_booking?: boolean; whole_slot_booking?: boolean } | undefined;
+      const initialAllowSingle = initialFlags?.allow_single_booking ?? false;
+      const initialWholeSlot = initialFlags?.whole_slot_booking ?? false;
+      const nextWholeSlot = singleSaleMode === 'whole_slot' && !splitPayment;
+      if (
+        isEdit && cycle?.id && !isEvent && effectiveTarget === 'cycle' &&
+        (allowSingleBooking !== initialAllowSingle || nextWholeSlot !== initialWholeSlot)
+      ) {
         try {
-          const { skippedBooked } = await applyBookingModeToFutureSlots(cycle.id, allowSingleBooking);
+          const { skippedBooked } = await applyBookingModeToFutureSlots(cycle.id, {
+            allowSingle: allowSingleBooking,
+            wholeSlot: nextWholeSlot,
+          });
           if (skippedBooked > 0) {
             toast.info(t('form.bookingModeSkippedBooked', { count: skippedBooked }));
           }
         } catch (propagationError) {
-          logger.error('Failed to propagate allow_single_booking to slots', propagationError as Error, { component: 'CycleForm' });
+          logger.error('Failed to propagate booking mode to slots', propagationError as Error, { component: 'CycleForm' });
           toast.error(t('form.bookingModePropagationFailed'));
         }
       }
@@ -1953,16 +1974,28 @@ export default function CycleForm({
                 );
               })()}
 
-              {/* Allow single booking toggle */}
-              <div className="flex flex-row items-center justify-between rounded-lg border p-3">
+              {/* How individual sessions are sold: off / per seat / whole slot at full price */}
+              <div className="space-y-2 rounded-lg border p-3">
                 <div className="space-y-0.5">
-                  <Label className="text-sm">{t('form.allowSingleBooking')}</Label>
-                  <p className="text-xs text-muted-foreground">{t('form.allowSingleBookingHelp')}</p>
+                  <Label className="text-sm">{t('form.singleSaleMode')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('form.singleSaleModeHelp')}</p>
                 </div>
-                <Switch
-                  checked={allowSingleBooking}
-                  onCheckedChange={setAllowSingleBooking}
-                />
+                <Select
+                  value={singleSaleMode === 'whole_slot' && splitPayment ? 'off' : singleSaleMode}
+                  onValueChange={(v) => setSingleSaleMode(v as 'off' | 'per_seat' | 'whole_slot')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="off">{t('form.singleSaleModeOff')}</SelectItem>
+                    <SelectItem value="per_seat">{t('form.singleSaleModePerSeat')}</SelectItem>
+                    {/* Whole-slot never combines with split payment (per-seat total÷N). */}
+                    {!splitPayment && (
+                      <SelectItem value="whole_slot">{t('form.singleSaleModeWholeSlot')}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Whole-cyclus bookable toggle (off = individual sessions only) */}

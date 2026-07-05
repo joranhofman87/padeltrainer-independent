@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     const { data: slot } = await supabase
       .from("availability_slots")
       .select(
-        "id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs, is_public, cyclus_id, cyclus_name, priority_window_ends_at, member_window_ends_at, public_release_status",
+        "id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, whole_slot_booking, split_payment, extra_costs, is_public, cyclus_id, cyclus_name, priority_window_ends_at, member_window_ends_at, public_release_status",
       )
       .eq("id", slotId)
       .maybeSingle();
@@ -149,12 +149,17 @@ Deno.serve(async (req) => {
       return json({ error: "slot_in_past" }, 400);
     }
     // Single-session booking of a CYCLUS session is only offered when the owner enabled
-    // allow_single_booking (GuestBookingDialog hides the "just this session" option otherwise). Mirror
-    // that here — this endpoint is public (verify_jwt=false), so a crafted call must not bypass it.
-    // Critically, a split_payment session (allow_single_booking=false) is per-seat and priced total÷N
-    // via the cyclus path; a full-price single hold on it would over-collect. The RPC enforces the
+    // allow_single_booking (per-seat) OR whole_slot_booking (one booking claims the ENTIRE session
+    // at full price — capacity stays 1). Mirror the dialog here — this endpoint is public
+    // (verify_jwt=false), so a crafted call must not bypass it. Critically, a split_payment
+    // session is per-seat and priced total÷N via the cyclus path; the whole-slot unlock NEVER
+    // applies to it — a full-price single hold would over-collect (#352). The RPC enforces the
     // same at the mutation boundary (single_booking_not_allowed); this is the clean early refusal.
-    if (slot.cyclus_id && slot.allow_single_booking !== true) {
+    if (
+      slot.cyclus_id &&
+      slot.allow_single_booking !== true &&
+      !(slot.whole_slot_booking === true && slot.split_payment !== true)
+    ) {
       logStep("Refused — single-session booking not allowed for this cyclus session", { slotId });
       return json({ error: "slot_not_bookable" }, 403);
     }

@@ -56,6 +56,7 @@ function slot(overrides: Partial<PublicSlot> = {}): PublicSlot {
     extra_costs: [],
     max_participants: 4,
     allow_single_booking: true,
+    whole_slot_booking: false,
     spots_left: 4,
     split_payment: false,
     ...overrides,
@@ -93,6 +94,14 @@ describe('PublicSlotRow cart affordance', () => {
   it('shows the add-to-cart toggle only for cartable slots', () => {
     renderFlow([slot(), slot({ split_payment: true }), slot({ cyclus_id: 'cyc-1', allow_single_booking: false })]);
     // 1 cartable slot → exactly one add button; split + locked-cyclus rows get none
+    expect(screen.getAllByLabelText('Voeg toe aan selectie')).toHaveLength(1);
+  });
+
+  it('whole-slot cyclus sessions are cartable; split+whole-slot are not', () => {
+    renderFlow([
+      slot({ cyclus_id: 'cyc-1', allow_single_booking: false, whole_slot_booking: true }),
+      slot({ cyclus_id: 'cyc-1', allow_single_booking: false, whole_slot_booking: true, split_payment: true }),
+    ]);
     expect(screen.getAllByLabelText('Voeg toe aan selectie')).toHaveLength(1);
   });
 

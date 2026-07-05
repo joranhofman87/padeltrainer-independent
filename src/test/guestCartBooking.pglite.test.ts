@@ -33,12 +33,12 @@ const G2 = '20000000-0000-0000-0000-000000000002';
 const CYCLUS = '30000000-0000-0000-0000-000000000001';
 
 function readCartMigration(): string {
-  const sql = readFileSync(
-    join(process.cwd(), 'supabase', 'migrations', '20260707100000_book_guest_cart_for_payment.sql'),
-    'utf8',
-  );
-  // service_role doesn't exist in PGlite — strip the grant block, keep the function byte-identical.
-  return sql
+  // Apply the base definition AND its whole_slot_booking successor (20260707140000 recreates the
+  // function with the loosened guard + ALTERs the column on) so this suite always exercises the
+  // SQL that is actually deployed. service_role doesn't exist in PGlite — strip the grant lines.
+  return ['20260707100000_book_guest_cart_for_payment.sql', '20260707140000_whole_slot_booking.sql']
+    .map((f) => readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'))
+    .join('\n')
     .split('\n')
     .filter((l) => !/^(REVOKE|GRANT)\b/.test(l))
     .join('\n');
