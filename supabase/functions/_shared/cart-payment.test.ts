@@ -101,8 +101,13 @@ Deno.test("validate: a cyclus session WITH allow_single_booking is cartable", ()
   assertEquals(validateCartSlots([open.id], [open]), null);
 });
 
-Deno.test("validate: mixed trainers -> mixed_recipient (charge-org == confirm-org)", () => {
-  const a = slot(), b = slot({ trainer_id: "trainer-2" });
+Deno.test("validate: different trainers of ONE academy may mix (the money routes to the academy)", () => {
+  const a = slot(), b = slot({ trainer_id: "trainer-2" }); // both academy-1
+  assertEquals(validateCartSlots([a.id, b.id], [a, b]), null);
+});
+
+Deno.test("validate: trainer-OWN slots (no academy) allow only that single trainer", () => {
+  const a = slot({ academy_profile_id: null }), b = slot({ trainer_id: "trainer-2", academy_profile_id: null });
   const r = validateCartSlots([a.id, b.id], [a, b]);
   assertEquals(r, { error: "mixed_recipient", slotIds: [b.id] });
 });
@@ -139,38 +144,46 @@ Deno.test("pricing: per-seat slot charges price/max_participants + extras (singl
     allow_single_booking: true,
     extra_costs: [{ description: "balls", price: 2.5 }],
   });
-  const { itemAmounts, total } = priceCartItems([perSeat.id], [perSeat], null);
+  const { itemAmounts, total } = priceCartItems([perSeat.id], [perSeat], {});
   assertEquals(itemAmounts, [12.5]);
   assertEquals(total, 12.5);
 });
 
 Deno.test("pricing: whole-slot item (allow_single_booking=false) charges the FULL session price", () => {
   const whole = slot({ price_per_session: 40, max_participants: 4, allow_single_booking: false });
-  assertEquals(priceCartItems([whole.id], [whole], null).total, 40);
+  assertEquals(priceCartItems([whole.id], [whole], {}).total, 40);
 });
 
 Deno.test("pricing: falls back to hourly_rate x duration when price_per_session is absent", () => {
   const hourly = slot({ price_per_session: null }); // 60-minute slot
-  assertEquals(priceCartItems([hourly.id], [hourly], 50).total, 50);
+  assertEquals(priceCartItems([hourly.id], [hourly], { [T1]: 50 }).total, 50);
+});
+
+Deno.test("pricing: an academy cart uses EACH trainer's own hourly fallback rate", () => {
+  const a = slot({ price_per_session: null }); // T1, 60 min
+  const b = slot({ price_per_session: null, trainer_id: "trainer-2" }); // 60 min
+  const { itemAmounts, total } = priceCartItems([a.id, b.id], [a, b], { [T1]: 50, "trainer-2": 80 });
+  assertEquals(itemAmounts, [50, 80]);
+  assertEquals(total, 130);
 });
 
 Deno.test("pricing: total is the exact sum, amounts aligned to REQUESTED order", () => {
   const a = slot({ price_per_session: 15 });
   const b = slot({ price_per_session: 12.5, extra_costs: [{ description: "hal", price: 1.25 }] });
-  const { itemAmounts, total } = priceCartItems([b.id, a.id], [a, b], null);
+  const { itemAmounts, total } = priceCartItems([b.id, a.id], [a, b], {});
   assertEquals(itemAmounts, [13.75, 15]);
   assertEquals(total, 28.75);
 });
 
 Deno.test("pricing: negative/junk extra costs are ignored (never a discount vector)", () => {
   const s = slot({ price_per_session: 20, extra_costs: [{ description: "x", price: -5 }, { price: undefined }] });
-  assertEquals(priceCartItems([s.id], [s], null).total, 20);
+  assertEquals(priceCartItems([s.id], [s], {}).total, 20);
 });
 
 Deno.test("pricing: fractional-cent hourly prices are cent-rounded per item", () => {
   // 50/hr over 40 min = 33.333… → 33.33
   const s = slot({ price_per_session: null, end_time: "2027-01-01T10:40:00Z" });
-  const { total } = priceCartItems([s.id], [s], 50);
+  const { total } = priceCartItems([s.id], [s], { [T1]: 50 });
   assertEquals(total, 33.33);
   assertNotEquals(total, 33.333333333333336);
 });

@@ -100,6 +100,8 @@ you ever turn the AI features on.
 ## Edge functions to (re)deploy
 `supabase functions deploy <name> --project-ref ficwbdrzefmblkbkomzw`
 
+- [ ] **create-guest-cart-payment** (cart recipient-key loosening) — the cart's one-recipient rule is now the PAYMENT recipient: different trainers of ONE academy may share a cart (money routes to the academy's Mollie); unrelated trainers/academies (different Mollie/invoicing) stay blocked. Bundles the updated `_shared/cart-payment.ts` (recipient key + per-trainer hourly fallback rates). *Grace window:* until this redeploys, a same-academy multi-trainer cart passes the CLIENT rule but gets `mixed_recipient` at checkout (graceful toast, guest can split) — deploy promptly after merge.
+
 - [ ] **create-guest-cyclus-payment** (cyclus-booking toggle) — new server guard: a cycle with `settings.allow_cyclus_booking=false` refuses the whole-series checkout (`cyclus_not_bookable`). Deploy BEFORE running the RL Padel data flip below (the dialog hides the option, but this endpoint is verify_jwt=false — the guard is the authoritative rule). No migration.
 - [ ] **RL Padel Performance data flip (owner SQL, run AFTER the fn deploy + frontend deploy)** — Yari de Jong + Tygho Schoonus: individual sessions ON, whole-cyclus OFF. Verified pre-flight: all 116 affected future slots have ZERO bookings/holds; per-seat price becomes `price_per_session ÷ max_participants` (€76.50 ÷ 4 = **€19.13/seat/session**).
   ```sql
