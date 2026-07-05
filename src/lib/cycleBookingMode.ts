@@ -126,29 +126,8 @@ export async function setCycleBookingMode(
         await updateCycleSettings(target.cyclusId, merged);
       }
 
-      // Future slots only: past sessions' booking mode is meaningless, and the guest
-      // flows only sell future sessions anyway.
-      const { data: slotRows, error: slotErr } = await supabase
-        .from('availability_slots')
-        .select('id')
-        .eq('cyclus_id', target.cyclusId)
-        .gte('start_time', nowIso);
-      if (slotErr) throw slotErr;
-      let flipIds = (slotRows ?? []).map((s: { id: string }) => s.id);
-
-      if (allowSingle && flipIds.length > 0) {
-        const occupied = await occupiedSlotIds(flipIds, nowIso);
-        result.skippedBookedSlots += flipIds.filter((id) => occupied.has(id)).length;
-        flipIds = flipIds.filter((id) => !occupied.has(id));
-      }
-
-      for (const chunk of chunked(flipIds)) {
-        const { error } = await supabase
-          .from('availability_slots')
-          .update({ allow_single_booking: allowSingle })
-          .in('id', chunk);
-        if (error) throw error;
-      }
+      const { skippedBooked } = await applyBookingModeToFutureSlots(target.cyclusId, allowSingle, nowIso);
+      result.skippedBookedSlots += skippedBooked;
 
       result.succeeded += 1;
     } catch (e) {
@@ -156,6 +135,48 @@ export async function setCycleBookingMode(
     }
   }
   return result;
+}
+
+/**
+ * Flip `allow_single_booking` on a cycle's FUTURE slots — the slot half of a booking-mode
+ * change, shared by the bulk action above and CycleForm's booking switches (which write
+ * cycle settings themselves but must not leave existing slots behind — the slot column is
+ * what the public page/cart/booking RPCs actually read).
+ *
+ * Direction-aware: ENABLING per-seat skips slots holding an active booking (a whole-court
+ * booking would otherwise open `max_participants − 1` phantom seats); DISABLING flips
+ * booked slots too (capacity becomes 1 → the slot simply shows full).
+ */
+export async function applyBookingModeToFutureSlots(
+  cyclusId: string,
+  allowSingle: boolean,
+  nowIso = new Date().toISOString(),
+): Promise<{ flipped: number; skippedBooked: number }> {
+  // Future slots only: past sessions' booking mode is meaningless, and the guest
+  // flows only sell future sessions anyway.
+  const { data: slotRows, error: slotErr } = await supabase
+    .from('availability_slots')
+    .select('id')
+    .eq('cyclus_id', cyclusId)
+    .gte('start_time', nowIso);
+  if (slotErr) throw slotErr;
+  let flipIds = (slotRows ?? []).map((s: { id: string }) => s.id);
+  let skippedBooked = 0;
+
+  if (allowSingle && flipIds.length > 0) {
+    const occupied = await occupiedSlotIds(flipIds, nowIso);
+    skippedBooked = flipIds.filter((id) => occupied.has(id)).length;
+    flipIds = flipIds.filter((id) => !occupied.has(id));
+  }
+
+  for (const chunk of chunked(flipIds)) {
+    const { error } = await supabase
+      .from('availability_slots')
+      .update({ allow_single_booking: allowSingle })
+      .in('id', chunk);
+    if (error) throw error;
+  }
+  return { flipped: flipIds.length, skippedBooked };
 }
 
 /**

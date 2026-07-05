@@ -93,7 +93,7 @@ vi.mock('@/lib/invoiceSync', () => ({
   syncInvoicesAfterPriceChange: (...args: unknown[]) => syncMock(...args),
 }));
 
-import { setCycleBookingMode, setTargetedCyclePrice } from '@/lib/cycleBookingMode';
+import { applyBookingModeToFutureSlots, setCycleBookingMode, setTargetedCyclePrice } from '@/lib/cycleBookingMode';
 
 const updates = (table: string) => calls.filter((c) => c.table === table && c.op === 'update');
 const selects = (table: string) => calls.filter((c) => c.table === table && c.op === 'select');
@@ -211,6 +211,39 @@ describe('setCycleBookingMode', () => {
 
     expect(res.succeeded).toBe(1);
     expect(res.failed).toEqual([{ name: 'Kapot', reason: 'update blew up' }]);
+  });
+});
+
+describe('applyBookingModeToFutureSlots (the slot half — shared with CycleForm saves)', () => {
+  it('enable: skips actively-booked future slots, flips the rest, reports both counts', async () => {
+    fixtures.slotsByCyclus = { cy1: [{ id: 'cy1-s1' }, { id: 'cy1-s2' }, { id: 'cy1-s3' }] };
+    fixtures.occupiedSlotIds = ['cy1-s3'];
+
+    const res = await applyBookingModeToFutureSlots('cy1', true);
+
+    expect(res).toEqual({ flipped: 2, skippedBooked: 1 });
+    const write = updates('availability_slots')[0];
+    expect(write.payload).toEqual({ allow_single_booking: true });
+    expect(write.filters['in:id']).toEqual(['cy1-s1', 'cy1-s2']);
+    expect(selects('availability_slots')[0].filters['gte:start_time']).toBeDefined();
+  });
+
+  it('disable: flips booked slots too and never queries bookings (safe direction)', async () => {
+    fixtures.slotsByCyclus = { cy1: [{ id: 'cy1-s1' }, { id: 'cy1-s2' }] };
+    fixtures.occupiedSlotIds = ['cy1-s1'];
+
+    const res = await applyBookingModeToFutureSlots('cy1', false);
+
+    expect(res).toEqual({ flipped: 2, skippedBooked: 0 });
+    expect(selects('bookings')).toHaveLength(0);
+    expect(updates('availability_slots')[0].filters['in:id']).toEqual(['cy1-s1', 'cy1-s2']);
+  });
+
+  it('no future slots → no writes, zero counts', async () => {
+    fixtures.slotsByCyclus = { cy1: [] };
+    const res = await applyBookingModeToFutureSlots('cy1', true);
+    expect(res).toEqual({ flipped: 0, skippedBooked: 0 });
+    expect(updates('availability_slots')).toHaveLength(0);
   });
 });
 

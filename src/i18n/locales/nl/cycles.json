@@ -78,6 +78,8 @@
     "allowSingleBookingHelp": "Indien uit, moeten spelers de hele cyclus boeken",
     "allowCyclusBooking": "Hele cyclus boekbaar",
     "allowCyclusBookingHelp": "Indien uit, kunnen spelers alleen losse sessies boeken (geen hele cyclus)",
+    "bookingModeSkippedBooked": "{{count}} sessies met boekingen behielden hun huidige boekbaarheid",
+    "bookingModePropagationFailed": "Sessies konden niet worden bijgewerkt — gebruik de bulkactie op het cyclusoverzicht",
     "extraCosts": "Extra kosten",
     "extraCostsHelp": "Voeg kosten toe zoals baanhuur die als aparte factuurregel verschijnen",
     "perSession": "Per sessie",
