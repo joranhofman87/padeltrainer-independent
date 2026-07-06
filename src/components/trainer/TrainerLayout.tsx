@@ -8,7 +8,7 @@ import { AppMobileHeader } from '@/components/ui/app-mobile-header';
 import { TrainerSidebar } from '@/components/trainer/TrainerSidebar';
 import { ReferralWidget } from '@/components/ReferralWidget';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
-import { getTrainerAcademy } from '@/lib/academy';
+import { useTrainerHasAcademy } from '@/hooks/useTrainerHasAcademy';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
 import { PageContentSkeleton } from '@/components/AppShellSkeleton';
@@ -43,24 +43,8 @@ export default function TrainerLayout() {
   const { user, roles, loading, profileReady, profileFetchFailed, refreshAuth, subscription, refreshSubscription } = useAuth();
   const authResolving = loading || (!!user && !profileReady);
 
-  // Check academy membership with caching
-  const { data: hasAcademy = false } = useQuery({
-    queryKey: ['trainer-has-academy', user?.id],
-    queryFn: async () => {
-      if (!user) return false;
-      const { data: trainerProfile } = await supabase
-        .from('trainer_profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!trainerProfile) return false;
-      const academy = await getTrainerAcademy(trainerProfile.id);
-      return !!academy;
-    },
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  // Check academy membership with caching (shared hook/cache with TrainerSessions)
+  const { data: hasAcademy = false } = useTrainerHasAcademy();
 
   // Trigger subscription fetch when entering trainer layout (if not yet loaded)
   useEffect(() => {
@@ -146,9 +130,13 @@ export default function TrainerLayout() {
     navigate,
   ]);
 
-  // Redirect academy trainers away from restricted pages
+  // Redirect academy trainers away from restricted pages.
+  // NOTE: settings ROOT + settings/notifications are deliberately reachable —
+  // language/timezone/player-mode and email-notification prefs are per-user, and
+  // the new-booking emails footer-link straight to settings/notifications. Only
+  // the trainer BOOKING settings stay academy-managed.
   const RESTRICTED_PATHS_FOR_ACADEMY = [
-    '/app/trainer/settings',
+    '/app/trainer/settings/bookings',
     '/app/trainer/subscription',
     '/app/trainer/earnings',
     '/app/trainer/cycles',
