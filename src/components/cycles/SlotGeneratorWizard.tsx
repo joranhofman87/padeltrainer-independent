@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TimeSelect } from '@/components/ui/time-select';
 import { DateInputField } from '@/components/ui/date-input-field';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { buildHalfHourOptions } from '@/lib/timeOptions';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { isTrainerSlotOverlapError } from '@/lib/slotConflicts';
@@ -19,6 +21,7 @@ import { HolidayRangeEditor, type HolidayRange } from './HolidayRangeEditor';
 import { SlotLocationPicker, type SlotLocation } from '@/components/slots/SlotLocationPicker';
 import { planSlots, groupSlotsBySeries, type SlotDraft, type SlotPlanConfig, type Weekday } from '@/lib/slotPlan';
 import { generateCycleWithSlots, type GenerateCycleInput } from '@/lib/slotGenerator';
+import type { CycleBookingMode } from '@/lib/cycleBookingMode';
 import { publishCycles } from '@/lib/cycleWrites';
 
 export interface SlotGeneratorTrainer {
@@ -65,7 +68,7 @@ export function SlotGeneratorWizard({
   const [price, setPrice] = useState('');
   const [maxParticipants, setMaxParticipants] = useState('4');
   const [startDate, setStartDate] = useState('');
-  const [weeks, setWeeks] = useState('5');
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [weekdays, setWeekdays] = useState<Weekday[]>([]);
   const [windowStart, setWindowStart] = useState('15:00');
   const [windowEnd, setWindowEnd] = useState('20:00');
@@ -74,10 +77,10 @@ export function SlotGeneratorWizard({
   const [breakStart, setBreakStart] = useState('17:00');
   const [breakEnd, setBreakEnd] = useState('18:00');
   const [holidays, setHolidays] = useState<HolidayRange[]>([]);
-  // 'cycle' = whole cycle only (allow_single_booking=false). 'both' = whole cycle OR single sessions
-  // (allow_single_booking=true → BookLesson always shows the cycle bundle AND offers each session
-  // individually). There is no single-only mode — the cycle bundle is always shown for a full cycle.
-  const [bookingMode, setBookingMode] = useState<'both' | 'cycle'>('cycle');
+  // The full 4-mode booking taxonomy, identical to the bulk "Boekbaarheid" action
+  // (cycleBookingMode): whole cycle only / cycle or sessions / sessions per seat /
+  // sessions as the whole court. Same trainer-ns copy as the bulk dialog.
+  const [bookingMode, setBookingMode] = useState<CycleBookingMode>('cyclus_only');
   const [visibility, setVisibility] = useState<'public' | 'private'>('private');
   const [requiresUpfront, setRequiresUpfront] = useState(false);
 
@@ -110,7 +113,7 @@ export function SlotGeneratorWizard({
     slotDurationMin: durationMin,
     ...(hasBreak ? { breakStart, breakEnd } : {}),
     startDate,
-    weeks: Number(weeks),
+    endDate: endDate ? format(endDate, 'yyyy-MM-dd') : '',
     holidayRanges: holidays.filter((h) => h.from && h.to),
     timezone,
   });
@@ -119,6 +122,10 @@ export function SlotGeneratorWizard({
     if (!cycleName.trim()) return toast.error(t('slotGenerator.errNoName', 'Geef de cyclus een naam.'));
     if (!trainerId) return toast.error(t('slotGenerator.errNoTrainer', 'Kies een trainer.'));
     if (!startDate) return toast.error(t('slotGenerator.errNoStart', 'Kies een startdatum.'));
+    if (!endDate) return toast.error(t('slotGenerator.errNoEnd', 'Kies een einddatum.'));
+    if (format(endDate, 'yyyy-MM-dd') < startDate) {
+      return toast.error(t('slotGenerator.errEndBeforeStart', 'De einddatum moet op of na de startdatum liggen.'));
+    }
     if (weekdays.length === 0) return toast.error(t('slotGenerator.errNoDays', 'Kies minstens één dag.'));
     if (!(Number(price) > 0)) return toast.error(t('slotGenerator.errNoPrice', 'Vul een prijs per sessie in.'));
     try {
@@ -145,7 +152,9 @@ export function SlotGeneratorWizard({
         locationId,
         pricePerSession: Number(price),
         maxParticipants: maxParticipants ? Number(maxParticipants) : null,
-        allowSingleBooking: bookingMode === 'both',
+        allowSingleBooking: bookingMode === 'both' || bookingMode === 'single_only',
+        wholeSlotBooking: bookingMode === 'single_only_whole_slot',
+        allowCyclusBooking: bookingMode === 'both' || bookingMode === 'cyclus_only',
         publishVisibility: visibility,
         requiresUpfrontPayment: visibility === 'public' && requiresUpfront,
         plan: buildPlan(),
@@ -265,8 +274,16 @@ export function SlotGeneratorWizard({
                 <DateInputField id="sg-start" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sg-weeks">{t('slotGenerator.weeks', 'Aantal weken')}</Label>
-                <Input id="sg-weeks" type="number" min="1" max="52" value={weeks} onChange={(e) => setWeeks(e.target.value)} />
+                <Label htmlFor="sg-end">{t('slotGenerator.endDate', 'Einddatum')}</Label>
+                <DatePickerPopover
+                  id="sg-end"
+                  value={endDate}
+                  onChange={setEndDate}
+                  ariaLabel={t('slotGenerator.endDate', 'Einddatum')}
+                  placeholder={t('slotGenerator.endDatePlaceholder', 'Kies einddatum')}
+                  className="w-full"
+                  disabled={(d) => (startDate ? format(d, 'yyyy-MM-dd') < startDate : false)}
+                />
               </div>
             </div>
 
@@ -317,15 +334,27 @@ export function SlotGeneratorWizard({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>{t('slotGenerator.bookingMode', 'Boeken')}</Label>
-                <Select value={bookingMode} onValueChange={(v) => setBookingMode(v as 'both' | 'cycle')}>
+                <Select value={bookingMode} onValueChange={(v) => setBookingMode(v as CycleBookingMode)}>
                   <SelectTrigger aria-label={t('slotGenerator.bookingMode', 'Boeken')}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cycle">{t('slotGenerator.bookingCycle', 'Alleen hele cyclus')}</SelectItem>
-                    <SelectItem value="both">{t('slotGenerator.bookingBoth', 'Hele cyclus óf losse sessies')}</SelectItem>
+                    {([
+                      ['cyclus_only', t('cyclesTab.bulkBooking.modeCyclusOnly', { ns: 'trainer' }), t('cyclesTab.bulkBooking.modeCyclusOnlyHelp', { ns: 'trainer' })],
+                      ['both', t('cyclesTab.bulkBooking.modeBoth', { ns: 'trainer' }), t('cyclesTab.bulkBooking.modeBothHelp', { ns: 'trainer' })],
+                      ['single_only', t('cyclesTab.bulkBooking.modeSingleOnly', { ns: 'trainer' }), t('cyclesTab.bulkBooking.modeSingleOnlyHelp', { ns: 'trainer' })],
+                      ['single_only_whole_slot', t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlot', { ns: 'trainer' }), t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlotHelp', { ns: 'trainer' })],
+                    ] as const).map(([value, label, help]) => (
+                      <SelectItem key={value} value={value}>
+                        <span className="block">{label}</span>
+                        <span className="block text-xs text-muted-foreground">{help}</span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {t('slotGenerator.bookingModeHelp', 'Bij “óf losse sessies” kiest de speler zelf bij het boeken: de hele cyclus of losse sessies.')}
+                  {bookingMode === 'cyclus_only' && t('cyclesTab.bulkBooking.modeCyclusOnlyHelp', { ns: 'trainer' })}
+                  {bookingMode === 'both' && t('cyclesTab.bulkBooking.modeBothHelp', { ns: 'trainer' })}
+                  {bookingMode === 'single_only' && t('cyclesTab.bulkBooking.modeSingleOnlyHelp', { ns: 'trainer' })}
+                  {bookingMode === 'single_only_whole_slot' && t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlotHelp', { ns: 'trainer' })}
                 </p>
               </div>
               <div className="space-y-1.5">

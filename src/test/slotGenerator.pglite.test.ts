@@ -106,6 +106,8 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
       expect(cycle.settings.generated_by).toBe('slot_generator');
       expect(cycle.settings.publish_visibility).toBe('public');
       expect(cycle.settings.allow_single_booking).toBe(true);
+      expect(cycle.settings.allow_cyclus_booking).toBe(true); // default: series stays bookable
+      expect(cycle.settings.whole_slot_booking).toBe(false);
       expect(cycle.name.startsWith('Summer training – ')).toBe(true); // base name + "ma 15:00" series suffix
       names.push(cycle.name);
       // each series = its own 2 private (draft) slots
@@ -141,6 +143,24 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
     expect(settings.publish_visibility).toBe('private');
     // still draft + private regardless of intent
     expect(await count('availability_slots WHERE is_public = true')).toBe(0);
+  });
+
+  it('whole-slot sessions-only mode: flags land on settings AND slots', async () => {
+    const res = await generateCycleWithSlots(
+      input({ allowSingleBooking: false, wholeSlotBooking: true, allowCyclusBooking: false }),
+      supa,
+    );
+    const settings = (
+      await db.query<{ settings: Record<string, unknown> }>(`SELECT settings FROM cycles WHERE id = $1`, [
+        res.cycleIds[0],
+      ])
+    ).rows[0].settings;
+    expect(settings.allow_single_booking).toBe(false);
+    expect(settings.whole_slot_booking).toBe(true);
+    expect(settings.allow_cyclus_booking).toBe(false);
+    expect(
+      await count(`availability_slots WHERE whole_slot_booking = true AND allow_single_booking = false`),
+    ).toBe(res.slotsCreated);
   });
 
   it('dedups: a planned start the trainer already has is skipped (never double-created)', async () => {

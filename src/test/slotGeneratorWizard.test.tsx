@@ -60,6 +60,10 @@ describe('SlotGeneratorWizard', () => {
     fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Summer training' } });
     fireEvent.change(screen.getByLabelText('Prijs per sessie (€)'), { target: { value: '20' } });
     fireEvent.change(screen.getByLabelText('Startdatum'), { target: { value: '2026-06-01' } });
+    // End date via the shared calendar popover: pick day 28 of the shown (current) month —
+    // always after the fixed 2026-06-01 start in this suite's unfrozen clock.
+    fireEvent.click(screen.getByRole('button', { name: 'Einddatum' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: '28' }));
     fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Voorbeeld' }));
@@ -76,9 +80,15 @@ describe('SlotGeneratorWizard', () => {
       trainerId: 'tr1',
       cycleName: 'Summer training',
       pricePerSession: 20,
-      allowSingleBooking: false, // default booking mode = whole cycle
+      allowSingleBooking: false, // default booking mode = whole cycle only
+      wholeSlotBooking: false,
+      allowCyclusBooking: true,
       publishVisibility: 'private', // default
     });
+    // Start/end dates drive the plan now — no week count anywhere.
+    expect(input.plan.weeks).toBeUndefined();
+    expect(input.plan.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(input.plan.endDate.endsWith('-28')).toBe(true);
     expect(input.plan.weekdays).toEqual(['monday']);
     expect(input.plan.windowStart).toBe('15:00');
     expect(input.plan.timezone).toBe('Europe/Amsterdam');

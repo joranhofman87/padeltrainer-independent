@@ -51,6 +51,8 @@ export interface GenerateCycleInput {
   allowSingleBooking: boolean;
   /** Whole-slot selling: sessions bookable individually as the ENTIRE slot at full price. */
   wholeSlotBooking?: boolean;
+  /** false → whole-series checkout refused (settings.allow_cyclus_booking; default true). */
+  allowCyclusBooking?: boolean;
   pricesIncludeVat?: boolean;
   /** Stored intent; applied to slots on publish (draft slots stay private). */
   publishVisibility: 'public' | 'private';
@@ -128,6 +130,7 @@ export async function generateCycleWithSlots(
     generated_by: 'slot_generator',
     allow_single_booking: input.allowSingleBooking,
     whole_slot_booking: input.wholeSlotBooking ?? false,
+    allow_cyclus_booking: input.allowCyclusBooking ?? true,
     publish_visibility: input.publishVisibility,
     prices_include_vat: pricesIncludeVat,
     ...(hasExtraCosts ? { extra_costs: input.extraCosts } : {}),
