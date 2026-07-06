@@ -4,10 +4,12 @@
 // total ÷ N. Before 20260706160000 the capacity keyed off allow_single_booking only, so a
 // split_payment + allow_single_booking=false cyclus capped at 1 — only the first guest could book.
 //
-// Function body copied verbatim from migration 20260706160000 (sans GRANT/REVOKE — service_role
-// absent in PGlite); `supabase db reset` validates the migration itself.
+// Runs the REAL deployed SQL: migration 20260706160000 (the latest CREATE OR REPLACE of
+// book_guest_cyclus_for_payment) loaded verbatim, sans GRANT/REVOKE — service_role absent in PGlite.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 let db: PGlite;
 
@@ -18,6 +20,15 @@ const PRIVATE = '10000000-0000-0000-0000-000000000004'; // split_payment=true bu
 const G1 = '20000000-0000-0000-0000-000000000001';
 const G2 = '20000000-0000-0000-0000-000000000002';
 const G3 = '20000000-0000-0000-0000-000000000003';
+
+function readMigrations(): string {
+  return ['20260706160000_split_payment_cyclus_capacity.sql']
+    .map((f) => readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'))
+    .join('\n')
+    .split('\n')
+    .filter((l) => !/^(REVOKE|GRANT)\b/.test(l))
+    .join('\n');
+}
 
 const bookCyclus = async (guest: string, slots: string[], amounts: number[]): Promise<string[]> => {
   const res = await db.query<{ book_guest_cyclus_for_payment: string[] }>(
@@ -45,50 +56,9 @@ beforeAll(async () => {
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
     );
   `);
-  // Verbatim from 20260706160000 (the ONLY change vs 20260704210000 is the capacity CASE).
-  await db.exec(`
-    CREATE OR REPLACE FUNCTION public.book_guest_cyclus_for_payment(
-      _guest_player_id uuid, _slot_ids uuid[], _amounts numeric[],
-      _hold_minutes integer DEFAULT 20, _notes text DEFAULT NULL
-    ) RETURNS uuid[] LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-    DECLARE
-      v_hold_min integer := GREATEST(5, LEAST(60, COALESCE(_hold_minutes, 20)));
-      v_n integer := array_length(_slot_ids, 1);
-      v_sorted uuid[]; v_slot uuid; v_idx integer; v_max integer; v_taken integer;
-      v_existing uuid; v_live uuid[]; v_ids uuid[] := ARRAY[]::uuid[]; v_id uuid; v_is_public boolean;
-    BEGIN
-      IF v_n IS NULL OR v_n = 0 OR v_n <> array_length(_amounts, 1) THEN RAISE EXCEPTION 'invalid_input'; END IF;
-      SELECT array_agg(s ORDER BY s) INTO v_sorted FROM unnest(_slot_ids) AS s;
-      FOREACH v_slot IN ARRAY v_sorted LOOP PERFORM pg_advisory_xact_lock(hashtextextended(v_slot::text, 0)); END LOOP;
-      SELECT array_agg(id) INTO v_live FROM public.bookings
-       WHERE slot_id = ANY(_slot_ids) AND guest_player_id = _guest_player_id
-         AND status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now();
-      IF v_live IS NOT NULL AND array_length(v_live, 1) = v_n THEN RETURN v_live; END IF;
-      FOR v_idx IN 1 .. v_n LOOP
-        v_slot := _slot_ids[v_idx];
-        SELECT id INTO v_existing FROM public.bookings
-         WHERE slot_id = v_slot AND guest_player_id = _guest_player_id
-           AND status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now() LIMIT 1;
-        IF v_existing IS NOT NULL THEN v_ids := array_append(v_ids, v_existing); CONTINUE; END IF;
-        SELECT
-          CASE WHEN COALESCE(split_payment, false) OR COALESCE(allow_single_booking, false)
-               THEN COALESCE(max_participants, 1) ELSE 1 END,
-          COALESCE(is_public, false)
-          INTO v_max, v_is_public FROM public.availability_slots WHERE id = v_slot;
-        IF NOT v_is_public THEN RAISE EXCEPTION 'slot_not_public' USING ERRCODE = 'check_violation'; END IF;
-        SELECT count(*) INTO v_taken FROM public.bookings
-         WHERE slot_id = v_slot AND (
-           COALESCE(status, 'confirmed') IN ('confirmed', 'pending', 'pending_approval')
-           OR (status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now()));
-        IF v_taken >= COALESCE(v_max, 1) THEN RAISE EXCEPTION 'slot_full' USING ERRCODE = 'check_violation'; END IF;
-        INSERT INTO public.bookings (slot_id, guest_player_id, payment_status, status, payment_amount, hold_expires_at, notes)
-        VALUES (v_slot, _guest_player_id, 'pending', 'payment_pending', _amounts[v_idx],
-                now() + make_interval(mins => v_hold_min), NULLIF(btrim(_notes), '')) RETURNING id INTO v_id;
-        v_ids := array_append(v_ids, v_id);
-      END LOOP;
-      RETURN v_ids;
-    END; $$;
-  `);
+  // The real migration file. It also redefines book_guest_slot_for_payment (part B) — unused here,
+  // and plpgsql bodies are not column-resolved at CREATE time, so it loads against this harness.
+  await db.exec(readMigrations());
 });
 
 beforeEach(async () => {

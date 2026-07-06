@@ -2,11 +2,22 @@
 // Public-booking audit P1-7: get_public_slot_payment_ready is the anon-safe "is this priced slot
 // actually bookable" source for the public availability pages — the FE drops priced slots whose
 // payment owner has no working Mollie so a guest never dead-ends. Exercised against real Postgres.
-// Function body copied verbatim from migration 20260706150000.
+// The function is loaded from the REAL migration file(s) so a hotfix to the live SQL fails here.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 let db: PGlite;
+
+function readMigrations(): string {
+  return ['20260706150000_public_slot_payment_ready_rpc.sql']
+    .map((f) => readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'))
+    .join('\n')
+    .split('\n')
+    .filter((l) => !/^(REVOKE|GRANT)\b/.test(l)) // anon/authenticated roles don't exist in PGlite
+    .join('\n');
+}
 
 const A = (n: string) => `10000000-0000-0000-0000-0000000000${n}`; // slots
 const ACA = '20000000-0000-0000-0000-00000000000a'; // academy (ready)
@@ -55,28 +66,7 @@ beforeAll(async () => {
       ('${A('06')}', true, '${TRR}', NULL, NULL, 200),         -- priced via total_price, trainer ready → ready
       ('${A('07')}', false, '${TRR}', NULL, 25, NULL);         -- private slot → excluded from results
   `);
-  await db.exec(`
-    CREATE OR REPLACE FUNCTION public.get_public_slot_payment_ready(_slot_ids uuid[])
-    RETURNS TABLE (slot_id uuid, payment_ready boolean)
-    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-      SELECT s.id AS slot_id,
-        CASE
-          WHEN COALESCE(s.price_per_session, 0) <= 0 AND COALESCE(s.total_price, 0) <= 0 THEN true
-          WHEN s.academy_profile_id IS NOT NULL THEN EXISTS (
-            SELECT 1 FROM public.academy_mollie_accounts a
-            WHERE a.academy_profile_id = s.academy_profile_id
-              AND a.onboarding_complete = true AND a.charges_enabled = true AND a.access_token IS NOT NULL
-          )
-          ELSE EXISTS (
-            SELECT 1 FROM public.trainer_mollie_accounts t
-            WHERE t.trainer_id = s.trainer_id
-              AND t.onboarding_complete = true AND t.charges_enabled = true AND t.access_token IS NOT NULL
-          )
-        END AS payment_ready
-      FROM public.availability_slots s
-      WHERE s.id = ANY(_slot_ids) AND s.is_public = true;
-    $$;
-  `);
+  await db.exec(readMigrations());
 });
 
 describe('get_public_slot_payment_ready', () => {

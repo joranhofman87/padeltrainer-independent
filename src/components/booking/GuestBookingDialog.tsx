@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, Loader2, MapPin, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
@@ -216,6 +217,18 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       }
 
       const code = error ? await extractFnErrorCode(error) : null;
+      // Checkout failures must leave a remote trace (PostHog via logger) — a guest
+      // sees only a toast, so without this the owner never learns checkout is
+      // failing. IDs + codes only, never contact details (privacy posture).
+      if (error || !result?.checkoutUrl) {
+        logger.warn('Guest checkout refused/failed', {
+          component: 'GuestBookingDialog',
+          mode: effectiveMode,
+          slotId: slot.id,
+          cyclusId: cyclusId ?? undefined,
+          code: code ?? 'no_checkout_url',
+        });
+      }
       if (code === 'slot_full') {
         toast.error(t('booking.guest.slotFull', 'Deze plek is net volgeboekt. Kies een ander moment.'));
       } else if (code === 'already_booked' && result?.token) {
@@ -233,7 +246,12 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
         toast.error(t('booking.guest.failed', 'Er ging iets mis. Probeer het opnieuw.'));
       }
       setSubmitting(false);
-    } catch {
+    } catch (err) {
+      logger.error('Guest checkout threw', err instanceof Error ? err : new Error(String(err)), {
+        component: 'GuestBookingDialog',
+        mode: effectiveMode,
+        slotId: slot.id,
+      });
       toast.error(t('booking.guest.failed', 'Er ging iets mis. Probeer het opnieuw.'));
       setSubmitting(false);
     }
