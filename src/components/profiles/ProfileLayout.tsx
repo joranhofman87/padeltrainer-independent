@@ -32,7 +32,7 @@ interface ProfileLayoutProps {
 // so an SVG banner shows up blank in an <img>. For SVG banners we fetch the
 // markup and re-wrap it as a correctly-typed blob URL so it renders regardless
 // of the stored content-type. Raster banners pass straight through.
-function BannerImage({ url }: { url: string }) {
+export function BannerImage({ url }: { url: string }) {
   const [src, setSrc] = useState(url);
 
   useEffect(() => {

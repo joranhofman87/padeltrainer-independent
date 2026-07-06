@@ -1071,7 +1071,7 @@
   },
   "src/pages/academy/AcademyTrainerDetail.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 4
+      "count": 3
     },
     "react-hooks/exhaustive-deps": {
       "count": 1

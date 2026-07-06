@@ -61,6 +61,7 @@ interface TrainerData {
   user_id: string;
   slug: string | null;
   hourly_rate: number | null;
+  banner_url?: string | null;
   experience_years: number | null;
   certifications: string[] | null;
   specializations: string[] | null;
@@ -400,8 +401,10 @@ export default function TrainerProfile() {
         })}
         structuredData={[structuredData, breadcrumbData].filter(Boolean) as object[]}
       />
+      {/* Trainer's own banner wins; the academy banner stays the fallback, so
+          pages look identical until a trainer banner is uploaded. */}
       <ProfileLayout
-        bannerUrl={trainerAcademy?.banner_url}
+        bannerUrl={trainer.banner_url || trainerAcademy?.banner_url}
         headerAction={
           !user ? (
             <Button onClick={() => navigate(getAppUrl(`/signup/player?redirect=${encodeURIComponent(window.location.pathname)}`))}>{t('common:signUpToBook', 'Sign Up to Book')}</Button>

@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
@@ -23,6 +24,7 @@ import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratin
 import { getTrainerCountry } from '@/lib/certifications';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { removeAcademyTrainer, getAcademyLocations } from '@/lib/academy';
+import { BannerImage } from '@/components/profiles/ProfileLayout';
 import { toast as sonnerToast } from 'sonner';
 
 interface TrainerProfileData {
@@ -33,9 +35,15 @@ interface TrainerProfileData {
   coaching_method: string;
   favourite_quote: string;
   video_url: string;
+  website_url: string;
   social_instagram: string;
+  social_tiktok: string;
   social_youtube: string;
   social_linkedin: string;
+  preferred_min_rating: number | null;
+  preferred_max_rating: number | null;
+  preferred_rating_system: string | null;
+  is_public: boolean;
 }
 
 interface ProfileData {
@@ -43,6 +51,7 @@ interface ProfileData {
   phone: string;
   email: string;
   bio: string;
+  location: string;
   avatar_url: string | null;
   skill_rating: number | null;
   rating_system: string | null;
@@ -73,6 +82,7 @@ export default function AcademyTrainerDetail() {
     phone: '',
     email: '',
     bio: '',
+    location: '',
     avatar_url: null,
     skill_rating: null,
     rating_system: null,
@@ -87,10 +97,21 @@ export default function AcademyTrainerDetail() {
     coaching_method: '',
     favourite_quote: '',
     video_url: '',
+    website_url: '',
     social_instagram: '',
+    social_tiktok: '',
     social_youtube: '',
     social_linkedin: '',
+    preferred_min_rating: null,
+    preferred_max_rating: null,
+    preferred_rating_system: null,
+    is_public: false,
   });
+  // Banner is fetched/written separately: the column ships in migration 20260709100000,
+  // so bundling it into the main select/save would break this page on a pre-migration DB.
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const [assignedLocationIds, setAssignedLocationIds] = useState<Set<string>>(new Set());
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
@@ -124,7 +145,7 @@ export default function AcademyTrainerDetail() {
       // Get trainer_profile to find user_id
       const { data: trainerProfile } = await supabase
         .from('trainer_profiles')
-        .select('user_id, hourly_rate, coaching_since_year, certifications, specializations, coaching_method, favourite_quote, video_url, social_instagram, social_youtube, social_linkedin')
+        .select('user_id, hourly_rate, coaching_since_year, certifications, specializations, coaching_method, favourite_quote, video_url, website_url, social_instagram, social_tiktok, social_youtube, social_linkedin, preferred_min_rating, preferred_max_rating, preferred_rating_system, is_public')
         .eq('id', tpId)
         .single();
 
@@ -140,7 +161,7 @@ export default function AcademyTrainerDetail() {
       const [systems, country, profileResult, locationsData, trainerLocsResult] = await Promise.all([
         getRatingSystems(),
         getTrainerCountry(uid),
-        supabase.from('profiles').select('full_name, phone, email, bio, avatar_url, skill_rating, rating_system, rating_member_id').eq('user_id', uid).single(),
+        supabase.from('profiles').select('full_name, phone, email, bio, location, avatar_url, skill_rating, rating_system, rating_member_id').eq('user_id', uid).single(),
         getAcademyLocations(activeAcademy.id),
         supabase.from('trainer_locations').select('location_id').eq('trainer_id', tpId),
       ]);
@@ -156,6 +177,7 @@ export default function AcademyTrainerDetail() {
           phone: p.phone || '',
           email: p.email || '',
           bio: p.bio || '',
+          location: p.location || '',
           avatar_url: p.avatar_url,
           skill_rating: p.skill_rating,
           rating_system: p.rating_system,
@@ -163,18 +185,42 @@ export default function AcademyTrainerDetail() {
         });
       }
 
+      // Single typed view over the row for columns the stale generated types miss.
+      const tpRow = trainerProfile as unknown as {
+        coaching_since_year: number | null;
+        social_tiktok: string | null;
+        preferred_min_rating: number | null;
+        preferred_max_rating: number | null;
+        preferred_rating_system: string | null;
+        is_public: boolean | null;
+      };
       setTrainerData({
         hourly_rate: trainerProfile.hourly_rate,
-        coaching_since_year: (trainerProfile as any).coaching_since_year,
+        coaching_since_year: tpRow.coaching_since_year,
         certifications: trainerProfile.certifications || [],
         specializations: trainerProfile.specializations || [],
         coaching_method: trainerProfile.coaching_method || '',
         favourite_quote: trainerProfile.favourite_quote || '',
         video_url: trainerProfile.video_url || '',
+        website_url: trainerProfile.website_url || '',
         social_instagram: trainerProfile.social_instagram || '',
+        social_tiktok: tpRow.social_tiktok || '',
         social_youtube: trainerProfile.social_youtube || '',
         social_linkedin: trainerProfile.social_linkedin || '',
+        preferred_min_rating: tpRow.preferred_min_rating ?? null,
+        preferred_max_rating: tpRow.preferred_max_rating ?? null,
+        preferred_rating_system: tpRow.preferred_rating_system ?? null,
+        is_public: tpRow.is_public === true,
       });
+
+      // Best-effort banner read, separate from the main select: on a DB without
+      // migration 20260709100000 this fails with 42703 and the page still works.
+      const { data: bannerRow } = await supabase
+        .from('trainer_profiles')
+        .select('banner_url' as never)
+        .eq('id', tpId)
+        .maybeSingle();
+      setBannerUrl(((bannerRow as { banner_url?: string | null } | null)?.banner_url) ?? null);
 
       if (trainerLocsResult.data) {
         setAssignedLocationIds(new Set(trainerLocsResult.data.map((tl) => tl.location_id)));
@@ -223,6 +269,70 @@ export default function AcademyTrainerDetail() {
     }
   };
 
+  // Mirrors the academy's own banner upload (AcademyProfile): same bucket, the
+  // trainer's user-id folder (covered by the academy-managers storage policy),
+  // written immediately like the avatar — deliberately NOT part of the save
+  // payload so the rest of the page keeps working on a pre-migration DB.
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !userId || !trainerProfileId) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({ title: t('common.error'), description: t('trainers.selectImageFile', 'Please select an image file'), variant: 'destructive' });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: t('common.error'), description: t('trainers.selectBannerSizeLimit', 'Please select an image smaller than 10MB'), variant: 'destructive' });
+      return;
+    }
+
+    setUploadingBanner(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${userId}/banner.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const urlWithTimestamp = `${publicUrl}?t=${Date.now()}`;
+
+      const { error: updateError } = await supabase
+        .from('trainer_profiles')
+        .update({ banner_url: urlWithTimestamp } as never)
+        .eq('id', trainerProfileId);
+      if (updateError) throw updateError;
+
+      setBannerUrl(urlWithTimestamp);
+      toast({ title: t('trainers.bannerUpdated', 'Banner updated'), description: t('trainers.bannerUpdatedDescription', "The trainer's public page banner has been updated.") });
+    } catch (error) {
+      logger.error('Banner upload error', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('trainers.failedUploadBanner', 'Failed to upload banner')), variant: 'destructive' });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  // Clearing restores the documented fallback (the academy banner on the public page).
+  const handleBannerRemove = async () => {
+    if (!trainerProfileId) return;
+    setUploadingBanner(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ banner_url: null } as never)
+        .eq('id', trainerProfileId);
+      if (error) throw error;
+      setBannerUrl(null);
+      toast({ title: t('trainers.bannerRemoved', 'Banner removed'), description: t('trainers.bannerRemovedDescription', 'The academy banner is used again on the public page.') });
+    } catch (error) {
+      logger.error('Banner remove error', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('trainers.failedUploadBanner', 'Failed to upload banner')), variant: 'destructive' });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
   const handleLocationToggle = (locationId: string, checked: boolean) => {
     setAssignedLocationIds((prev) => {
       const next = new Set(prev);
@@ -255,6 +365,14 @@ export default function AcademyTrainerDetail() {
       if (updateError) throw updateError;
       if (updateResult?.error) throw new Error(updateResult.error);
 
+      // City lives on profiles but update-user doesn't accept it; the academy-managers
+      // profiles UPDATE policy (20260404145156) covers this direct write.
+      const { error: locationError } = await supabase
+        .from('profiles')
+        .update({ location: profileData.location || null })
+        .eq('user_id', userId);
+      if (locationError) throw locationError;
+
       // Update trainer profile
       const { error: trainerError } = await supabase
         .from('trainer_profiles')
@@ -266,10 +384,16 @@ export default function AcademyTrainerDetail() {
           coaching_method: trainerData.coaching_method || null,
           favourite_quote: trainerData.favourite_quote || null,
           video_url: trainerData.video_url || null,
+          website_url: trainerData.website_url || null,
           social_instagram: trainerData.social_instagram || null,
+          social_tiktok: trainerData.social_tiktok || null,
           social_youtube: trainerData.social_youtube || null,
           social_linkedin: trainerData.social_linkedin || null,
-        })
+          preferred_min_rating: trainerData.preferred_min_rating,
+          preferred_max_rating: trainerData.preferred_max_rating,
+          preferred_rating_system: trainerData.preferred_rating_system,
+          is_public: trainerData.is_public,
+        } as never)
         .eq('id', trainerProfileId);
 
       if (trainerError) throw trainerError;
@@ -418,6 +542,58 @@ export default function AcademyTrainerDetail() {
           </CardContent>
         </Card>
 
+        {/* Public page banner */}
+        <Card className={flushOnMobileCardClass()}>
+          <CardHeader>
+            <CardTitle className="text-base">{t('trainers.banner', 'Public page banner')}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {t('trainers.bannerDescription', "Shown across the top of the trainer's public page. Without one, your academy banner is used.")}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {bannerUrl ? (
+              // BannerImage (not a bare <img>): the avatars bucket serves octet-stream,
+              // so an SVG banner would preview blank here while rendering fine publicly.
+              <div className="w-full h-32 rounded-md border overflow-hidden">
+                <BannerImage url={bannerUrl} />
+              </div>
+            ) : (
+              <div className="w-full h-32 rounded-md border border-dashed flex items-center justify-center text-sm text-muted-foreground">
+                {t('trainers.noBanner', 'No banner uploaded yet')}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploadingBanner}
+                onClick={() => bannerInputRef.current?.click()}
+              >
+                {uploadingBanner ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4 mr-2" />
+                )}
+                {bannerUrl ? t('trainers.changeBanner', 'Change banner') : t('trainers.uploadBanner', 'Upload banner')}
+              </Button>
+              {bannerUrl && (
+                <Button type="button" variant="ghost" size="sm" disabled={uploadingBanner} onClick={handleBannerRemove}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('trainers.removeBanner', 'Remove banner')}
+                </Button>
+              )}
+            </div>
+            <input
+              ref={bannerInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleBannerUpload}
+              className="hidden"
+            />
+          </CardContent>
+        </Card>
+
         {/* Basic Info */}
         <Card className={flushOnMobileCardClass()}>
           <CardHeader>
@@ -445,9 +621,20 @@ export default function AcademyTrainerDetail() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">{t('trainers.email', 'Email')}</Label>
-              <Input id="email" type="email" value={profileData.email} disabled className="bg-muted" />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">{t('trainers.email', 'Email')}</Label>
+                <Input id="email" type="email" value={profileData.email} disabled className="bg-muted" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="location">{t('trainers.location', 'City')}</Label>
+                <Input
+                  id="location"
+                  value={profileData.location}
+                  onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
+                  placeholder={t('trainers.locationPlaceholder', 'Amsterdam')}
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="bio">{t('trainers.bio', 'Bio')}</Label>
@@ -550,6 +737,54 @@ export default function AcademyTrainerDetail() {
                 onChange={(specs) => setTrainerData({ ...trainerData, specializations: specs })}
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>{t('trainers.preferredLevels', 'Preferred player level range')}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t('trainers.preferredLevelsDescription', 'Shown on the public page as the level range this trainer coaches.')}
+              </p>
+              <div className="grid sm:grid-cols-3 gap-4">
+                <Select
+                  value={trainerData.preferred_rating_system || '__none__'}
+                  onValueChange={(value) => setTrainerData({ ...trainerData, preferred_rating_system: value === '__none__' ? null : value })}
+                >
+                  <SelectTrigger aria-label={t('trainers.ratingSystem', 'Rating System')}>
+                    <SelectValue placeholder={t('trainers.selectRatingSystem', 'Select rating system')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{t('trainers.noRatingSystem', 'None')}</SelectItem>
+                    {Object.entries(groupedSystems).map(([country, systems]) => (
+                      <div key={country}>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          {COUNTRY_NAMES[country] || country}
+                        </div>
+                        {systems.map((system) => (
+                          <SelectItem key={system.code} value={system.code}>
+                            {system.name}
+                          </SelectItem>
+                        ))}
+                      </div>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={trainerData.preferred_min_rating ?? ''}
+                  onChange={(e) => setTrainerData({ ...trainerData, preferred_min_rating: e.target.value ? parseFloat(e.target.value) : null })}
+                  placeholder={t('trainers.minRating', 'Min')}
+                  aria-label={t('trainers.minRating', 'Min')}
+                />
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={trainerData.preferred_max_rating ?? ''}
+                  onChange={(e) => setTrainerData({ ...trainerData, preferred_max_rating: e.target.value ? parseFloat(e.target.value) : null })}
+                  placeholder={t('trainers.maxRating', 'Max')}
+                  aria-label={t('trainers.maxRating', 'Max')}
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -625,7 +860,17 @@ export default function AcademyTrainerDetail() {
               />
             </div>
 
-            <div className="grid sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="website_url">{t('trainers.websiteUrl', 'Website')}</Label>
+              <Input
+                id="website_url"
+                value={trainerData.website_url}
+                onChange={(e) => setTrainerData({ ...trainerData, website_url: e.target.value })}
+                placeholder="https://..."
+              />
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="social_instagram">Instagram</Label>
                 <Input
@@ -633,6 +878,15 @@ export default function AcademyTrainerDetail() {
                   value={trainerData.social_instagram}
                   onChange={(e) => setTrainerData({ ...trainerData, social_instagram: e.target.value })}
                   placeholder={t('trainers.instagramPlaceholder', '@username')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="social_tiktok">TikTok</Label>
+                <Input
+                  id="social_tiktok"
+                  value={trainerData.social_tiktok}
+                  onChange={(e) => setTrainerData({ ...trainerData, social_tiktok: e.target.value })}
+                  placeholder={t('trainers.tiktokPlaceholder', '@username')}
                 />
               </div>
               <div className="space-y-2">
@@ -653,6 +907,25 @@ export default function AcademyTrainerDetail() {
                   placeholder={t('trainers.linkedinPlaceholder', 'Profile URL')}
                 />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Public visibility */}
+        <Card className={flushOnMobileCardClass()}>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">{t('trainers.publicProfile', 'Public profile')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('trainers.publicProfileDescription', "Controls whether this trainer's public page is visible. The page only goes live while a subscription (yours or the trainer's) covers it.")}
+                </p>
+              </div>
+              <Switch
+                checked={trainerData.is_public}
+                onCheckedChange={(checked) => setTrainerData({ ...trainerData, is_public: checked === true })}
+                aria-label={t('trainers.publicProfile', 'Public profile')}
+              />
             </div>
           </CardContent>
         </Card>
