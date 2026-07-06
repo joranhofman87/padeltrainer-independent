@@ -17,6 +17,8 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
+import { logger } from '@/lib/logger';
 
 export async function upsertSessionReport(payload: {
   slot_id: string;
@@ -40,6 +42,66 @@ export async function upsertSessionReport(payload: {
   return supabase.from('session_reports').insert(payload);
 }
 
+interface TrainerSummaryRow {
+  slot_id: string;
+  public_notes: string | null;
+  created_at: string | null;
+}
+
+/**
+ * The trainer's player-visible session summaries for a set of slots, keyed by slot id.
+ *
+ * Reads the player-safe `session_reports_player_summaries` view (migration 20260713100000)
+ * — the base-table player policy no longer exposes trainer rows, because the row carried the
+ * PRIVATE `notes` column too. Until the migration is applied in prod the view is missing and
+ * this falls back to the legacy base-table read (which the old policy still allows), with
+ * deploy-drift telemetry so the unapplied migration is visible.
+ *
+ * A slot can hold reports from two different trainers (slot reassigned between trainers —
+ * UNIQUE is (slot_id, reporter_id)); the newest report wins instead of erroring the way the
+ * old `.maybeSingle()` did.
+ *
+ * Never throws: the summary is decorative next to the player's own attendance answer, so a
+ * failed read degrades to "no summary" instead of erroring the whole widget/list.
+ */
+export async function fetchTrainerSlotSummaries(slotIds: string[]): Promise<Map<string, string>> {
+  const summaries = new Map<string, string>();
+  if (slotIds.length === 0) return summaries;
+
+  let rows: TrainerSummaryRow[] | null = null;
+  const { data, error } = await supabase
+    .from('session_reports_player_summaries' as never)
+    .select('slot_id, public_notes, created_at')
+    .in('slot_id', slotIds)
+    .order('created_at', { ascending: false });
+  if (error) {
+    if (!isMissingRelation(error)) {
+      logger.warn('Trainer summary read failed', { code: error.code, slotCount: slotIds.length });
+      return summaries;
+    }
+    reportDeployDriftFallback('session_reports_player_summaries', { slotCount: slotIds.length });
+    const { data: legacy, error: legacyError } = await supabase
+      .from('session_reports')
+      .select('slot_id, public_notes, created_at')
+      .in('slot_id', slotIds)
+      .eq('reporter_role', 'trainer')
+      .order('created_at', { ascending: false });
+    if (legacyError) {
+      logger.warn('Trainer summary fallback read failed', { code: legacyError.code, slotCount: slotIds.length });
+      return summaries;
+    }
+    rows = legacy as TrainerSummaryRow[] | null;
+  } else {
+    rows = data as unknown as TrainerSummaryRow[] | null;
+  }
+
+  // Rows are newest-first; first non-empty summary per slot wins.
+  for (const row of rows ?? []) {
+    if (row.public_notes && !summaries.has(row.slot_id)) summaries.set(row.slot_id, row.public_notes);
+  }
+  return summaries;
+}
+
 export interface SlotPlayerReport {
   /** id of the player's own session_reports row, null if not yet reported */
   reportId: string | null;
@@ -56,7 +118,7 @@ export function useSlotPlayerReport(slotId: string, profileId?: string | null) {
     enabled: Boolean(profileId),
     staleTime: 60_000,
     queryFn: async (): Promise<SlotPlayerReport> => {
-      const [{ data: own }, { data: trainer }] = await Promise.all([
+      const [{ data: own }, summaries] = await Promise.all([
         supabase
           .from('session_reports')
           .select('id, session_happened')
@@ -64,17 +126,12 @@ export function useSlotPlayerReport(slotId: string, profileId?: string | null) {
           .eq('reporter_id', profileId!)
           .eq('reporter_role', 'player')
           .maybeSingle(),
-        supabase
-          .from('session_reports')
-          .select('public_notes')
-          .eq('slot_id', slotId)
-          .eq('reporter_role', 'trainer')
-          .maybeSingle(),
+        fetchTrainerSlotSummaries([slotId]),
       ]);
       return {
         reportId: own?.id ?? null,
         sessionHappened: own ? own.session_happened : null,
-        trainerSummary: trainer?.public_notes ?? null,
+        trainerSummary: summaries.get(slotId) ?? null,
       };
     },
   });

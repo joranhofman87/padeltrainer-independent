@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Save, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { upsertSessionReport } from '@/lib/sessionReports';
+import { fetchTrainerSlotSummaries, upsertSessionReport } from '@/lib/sessionReports';
 import { PlayerSessionReport } from '@/components/attendance/PlayerSessionReport';
 
 interface PendingSlot {
@@ -141,19 +141,9 @@ async function fetchPendingPlayerSlots(profileId: string): Promise<PendingSlot[]
 
   const reportedSlotIds = new Set(reports?.map(r => r.slot_id) || []);
 
-  // Fetch trainer summaries for unreported slots
+  // Fetch trainer summaries for unreported slots (player-safe view, see sessionReports)
   const unreportedSlotIds = slotIds.filter(id => !reportedSlotIds.has(id));
-  const trainerSummaryMap = new Map<string, string>();
-  if (unreportedSlotIds.length > 0) {
-    const { data: trainerReports } = await supabase
-      .from('session_reports')
-      .select('slot_id, public_notes')
-      .in('slot_id', unreportedSlotIds)
-      .eq('reporter_role', 'trainer');
-    trainerReports?.forEach(r => {
-      if (r.public_notes) trainerSummaryMap.set(r.slot_id, r.public_notes);
-    });
-  }
+  const trainerSummaryMap = await fetchTrainerSlotSummaries(unreportedSlotIds);
 
   return bookings
     .filter(b => !reportedSlotIds.has(b.slot_id))

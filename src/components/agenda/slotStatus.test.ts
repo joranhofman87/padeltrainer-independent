@@ -46,10 +46,10 @@ describe("getSlotStatus", () => {
     expect(getSlotStatus(makeSlot({ active_bookings: 5 }))).toBe("full");
   });
 
-  it("uses the hardcoded 4-player capacity, not max_participants", () => {
-    // Pre-extraction behavior in both cards: capacity is a literal 4.
-    expect(getSlotStatus(makeSlot({ max_participants: 2, active_bookings: 2 }))).toBe("partial");
-    expect(getSlotStatus(makeSlot({ max_participants: 8, active_bookings: 4 }))).toBe("full");
+  it("follows the slot's real max_participants (trainer-audit fix, was a literal 4)", () => {
+    // A 2-person slot with 2 booked IS full; an 8-person slot with 4 booked is NOT.
+    expect(getSlotStatus(makeSlot({ max_participants: 2, active_bookings: 2 }))).toBe("full");
+    expect(getSlotStatus(makeSlot({ max_participants: 8, active_bookings: 4 }))).toBe("partial");
   });
 
   it("returns private (marked full) when not public, regardless of bookings", () => {

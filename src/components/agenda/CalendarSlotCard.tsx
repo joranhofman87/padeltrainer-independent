@@ -26,7 +26,7 @@ import { useTranslation } from "react-i18next";
 // See docs/FRONTEND_ARCHITECTURE.md.
 export type { BookedPlayer, SlotWithBookings };
 
-import { getSlotStatus, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
+import { getSlotStatus, slotDisplayCapacity, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
 
 interface CalendarSlotCardProps {
   slot: SlotWithBookings;
@@ -65,7 +65,8 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");
-  const spotsLeft = 4 - slot.active_bookings;
+  const capacity = slotDisplayCapacity(slot);
+  const spotsLeft = capacity - slot.active_bookings;
   const hasSpots = spotsLeft > 0;
 
   // State for apply to cyclus checkbox
@@ -119,7 +120,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
         <div className={cn("flex items-center gap-1 mt-1", slotStatusTextClasses(status))}>
           <Users className="h-3 w-3" />
           <span>
-            {slot.active_bookings}/4
+            {slot.active_bookings}/{capacity}
           </span>
         </div>
       )}
@@ -199,7 +200,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
             </div>
             <div className="text-sm text-muted-foreground">
               <Users className="h-3 w-3 inline mr-1" />
-              {slot.active_bookings}/4 {t("calendar.booked").toLowerCase()}
+              {slot.active_bookings}/{capacity} {t("calendar.booked").toLowerCase()}
             </div>
           </div>
 
@@ -220,7 +221,8 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
           <div className="space-y-2">
             <div className="text-sm font-medium">{t("calendar.players")}</div>
             <div className="space-y-1">
-              {Array.from({ length: 4 }).map((_, index) => {
+              {/* One row per seat; overbooked slots still show every player. */}
+              {Array.from({ length: Math.max(capacity, slot.booked_players?.length ?? 0) }).map((_, index) => {
                 const player = slot.booked_players?.[index];
                 
                 if (player) {
@@ -248,10 +250,14 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
                         )}>
                           {player.name}
                         </span>
-                        {player.paymentStatus === "paid" ? (
-                          <Euro className="h-3 w-3 text-green-600 dark:text-green-400" />
-                        ) : (
-                          <Euro className="h-3 w-3 text-orange-500 dark:text-orange-400" />
+                        {/* Only claim a payment state when the feeder actually fetched one —
+                            undefined used to render as unpaid-orange for every player. */}
+                        {player.paymentStatus != null && (
+                          player.paymentStatus === "paid" ? (
+                            <Euro className="h-3 w-3 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <Euro className="h-3 w-3 text-orange-500 dark:text-orange-400" />
+                          )
                         )}
                         {player.isGuest && (
                           <span className="text-xs text-muted-foreground">

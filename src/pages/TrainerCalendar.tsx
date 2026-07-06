@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { logger } from '@/lib/logger';
 import { useTranslation } from "react-i18next";
 import {
   format,
+  isValid,
   startOfWeek,
   endOfWeek,
   addWeeks,
@@ -62,8 +63,15 @@ export default function TrainerCalendar() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  const [view, setView] = useState<View>("week");
-  const [currentDate, setCurrentDate] = useState(new Date());
+  // ?date=YYYY-MM-DD deep link (schedule-overview's per-slot pencil): open the DAY
+  // view on that date instead of silently landing on today's week.
+  const [searchParams] = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const paramDate = dateParam ? parseISO(dateParam) : null;
+  const hasValidDateParam = paramDate != null && isValid(paramDate);
+
+  const [view, setView] = useState<View>(hasValidDateParam ? "day" : "week");
+  const [currentDate, setCurrentDate] = useState(hasValidDateParam ? paramDate! : new Date());
   const [slots, setSlots] = useState<SlotWithBookings[]>([]);
   const [loading, setLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
@@ -157,7 +165,7 @@ export default function TrainerCalendar() {
         const { data: bookingsData, error: bookingsError } = await supabase
           .from("bookings")
           .select(`
-            id, slot_id, status, player_id, guest_player_id,
+            id, slot_id, status, player_id, guest_player_id, payment_status, paid_externally,
             profiles:player_id (full_name, skill_rating, rating_system),
             guest_players:guest_player_id (full_name, skill_rating, rating_system)
           `)
@@ -185,6 +193,8 @@ export default function TrainerCalendar() {
             isGuest: !!b.guest_player_id,
             skillRating,
             ratingSystem,
+            paymentStatus: b.payment_status ?? undefined,
+            paidExternally: Boolean(b.paid_externally),
           });
         }
       });
