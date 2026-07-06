@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation" | "schedule_notification" | "new_intake_registration_admin";
+  type: "booking_confirmation" | "booking_reminder" | "booking_cancelled" | "review_received" | "payment_confirmed_player" | "payment_confirmed_trainer" | "new_booking_trainer" | "new_availability" | "manual_booking_confirmation" | "slot_reopened" | "booking_request" | "booking_approved_payment" | "booking_approved_invoice" | "booking_rejected" | "club_claim_approved" | "club_claim_rejected" | "club_trainer_invitation" | "club_trainer_invitation_accepted" | "partner_inquiry" | "location_request" | "password_reset_admin" | "payment_reminder" | "intake_registration_confirmation" | "schedule_notification" | "new_intake_registration_admin" | "new_public_booking_admin";
   to: string;
   userId?: string;
   language?: string;
@@ -18,6 +18,19 @@ interface EmailRequest {
     playerName?: string;
     playerEmail?: string;
     playerPhone?: string;
+    recipientName?: string;
+    sessions?: Array<{ date?: string; time?: string; location?: string; name?: string }>;
+    amount?: string;
+    // Fields the intake/registration templates already interpolated but never declared
+    // (previously baselined type errors; declared when new_public_booking_admin landed).
+    birthDate?: string;
+    detailUrl?: string;
+    playerRating?: number | string;
+    preferredDays?: string[];
+    preferredTimeWindows?: Array<string | { start?: string; end?: string }>;
+    priceLines?: Array<{ label?: string; amount?: string }>;
+    selectedDurationWeeks?: number | string;
+    selectedPackageLabel?: string;
     trainerName?: string;
     trainerEmail?: string;
     trainerPhone?: string;
@@ -358,7 +371,6 @@ const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?:
               <p><strong>Date:</strong> ${data.lessonDate}</p>
               <p><strong>Time:</strong> ${data.lessonTime}</p>
               ${data.location ? `<p><strong>Location:</strong> ${data.location}</p>` : ''}
-              <p><strong>Price:</strong> €${data.price}</p>
             </div>
             <p>Please review this request in your dashboard and approve or decline it.</p>
             <p style="margin-top: 24px;">
@@ -932,6 +944,40 @@ const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?:
       };
     }
 
+    case "new_public_booking_admin": {
+      // Staff notification for a PAID public booking. Sent to the slot's trainer
+      // (data.amount ABSENT — owner decision: trainer emails carry the booking(s)
+      // only, never the price) and to academy managers (data.amount present).
+      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+      const sessionRows = sessions
+        .map((sess: { date?: string; time?: string; location?: string; name?: string }) => `
+              <tr>
+                <td style="padding: 6px 12px 6px 0; white-space: nowrap;"><strong>${sess.date || ""}</strong></td>
+                <td style="padding: 6px 12px 6px 0; white-space: nowrap;">${sess.time || ""}</td>
+                <td style="padding: 6px 12px 6px 0;">${[sess.name, sess.location].filter(Boolean).join(" · ")}</td>
+              </tr>`)
+        .join("");
+      const count = sessions.length;
+      return {
+        subject: `New booking: ${data.playerName}${count > 1 ? ` (${count} sessions)` : ""} 🎾`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            ${EMAIL_LOGO}
+            <h1 style="color: ${BRAND_ORANGE};">New booking 🎾</h1>
+            <p>Hi ${data.recipientName || ""},</p>
+            <p><strong>${data.playerName}</strong> just booked ${count === 1 ? "a session" : `${count} sessions`} and paid online.</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <table style="border-collapse: collapse; width: 100%;">${sessionRows}
+              </table>
+              ${data.amount ? `<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 12px 0;" /><p style="margin: 4px 0;"><strong>Amount paid:</strong> ${data.amount}</p>` : ""}
+            </div>
+            <p>The booking is confirmed and visible in your agenda.</p>
+            <p>Best regards,<br>PadelTrainer.ai Team</p>
+          </div>
+        `,
+      };
+    }
+
     case "new_intake_registration_admin": {
       const detailUrl = data.detailUrl?.startsWith('http')
         ? data.detailUrl
@@ -1315,6 +1361,7 @@ const handler = async (req: Request): Promise<Response> => {
       payment_confirmed_player: "payment_receipt",
       payment_confirmed_trainer: "payment_received",
       new_booking_trainer: "new_booking",
+      new_public_booking_admin: "new_booking",
       booking_request: "new_booking",
       new_availability: "open_slots_digest",
       slot_reopened: "open_slots_digest",
@@ -1397,7 +1444,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Add manage notifications footer (except for system emails)
     let finalHtml = emailHtml;
     if (!isSystemEmail) {
-      const notifPath = type.startsWith("new_booking") || type === "booking_request" || type === "review_received" || type === "payment_confirmed_trainer"
+      const notifPath = type.startsWith("new_booking") || type === "new_public_booking_admin" || type === "booking_request" || type === "review_received" || type === "payment_confirmed_trainer"
         ? "/app/trainer/settings/notifications"
         : "/app/player/settings/notifications";
 
