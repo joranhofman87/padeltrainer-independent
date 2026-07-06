@@ -189,6 +189,27 @@ export async function publishCycle(
  * batch (the generator's run shares a single visibility intent). `publishOne` is an injectable seam
  * for tests; production uses the real {@link publishCycle}.
  */
+/**
+ * Status-only heal for a draft cycle that is ALREADY live in practice: slots were
+ * made public (bulk visibility / per-slot toggles) — and possibly booked & paid —
+ * while the cycle row stayed 'draft'. Unlike `publishCycle` this NEVER touches slot
+ * visibility (publishCycle applies the stored publish intent to every slot, which
+ * for a private-intent cycle would UNPUBLISH live booked sessions). Only rows still
+ * 'draft' are flipped, so re-running or racing a real publish is a no-op.
+ */
+export async function openDraftCycles(
+  cycleIds: string[],
+  client: SupabaseClient<Database> = supabase,
+): Promise<void> {
+  if (cycleIds.length === 0) return;
+  const { error } = await client
+    .from('cycles')
+    .update({ status: 'open', updated_at: new Date().toISOString() })
+    .in('id', cycleIds)
+    .eq('status', 'draft');
+  if (error) throw error;
+}
+
 export async function publishCycles(
   cycleIds: string[],
   makePublic: boolean,

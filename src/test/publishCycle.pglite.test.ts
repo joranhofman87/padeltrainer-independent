@@ -8,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { createPgliteSupabase } from '@/test/fixtures/pgliteSupabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
-import { publishCycle } from '@/lib/cycleWrites';
+import { publishCycle, openDraftCycles } from '@/lib/cycleWrites';
 
 let db: PGlite;
 let supa: SupabaseClient<Database>;
@@ -71,5 +71,29 @@ describe('publishCycle (against real Postgres)', () => {
     await db.exec(`INSERT INTO cycles (id, status) VALUES ('C3','draft');`);
     await expect(publishCycle('C3', true, supa)).resolves.toBeUndefined();
     expect((await cycleRow('C3')).status).toBe('open');
+  });
+});
+
+describe('openDraftCycles (status-only heal)', () => {
+  it('opens draft cycles WITHOUT touching slot visibility (the unpublish trap)', async () => {
+    await db.query(`INSERT INTO cycles (id, status) VALUES ('cd1', 'draft')`);
+    await db.query(`INSERT INTO availability_slots (id, cyclus_id, is_public) VALUES ('sd1', 'cd1', true), ('sd2', 'cd1', false)`);
+    await openDraftCycles(['cd1'], supa);
+    expect((await cycleRow('cd1')).status).toBe('open');
+    // slots untouched: the already-public booked one stays public, the private one stays private
+    expect(await slotPublic('sd1')).toBe(true);
+    expect(await slotPublic('sd2')).toBe(false);
+  });
+
+  it('only flips rows still in draft — open/closed cycles are left alone', async () => {
+    await db.query(`INSERT INTO cycles (id, status) VALUES ('co1', 'open'), ('cc1', 'closed'), ('cd2', 'draft')`);
+    await openDraftCycles(['co1', 'cc1', 'cd2'], supa);
+    expect((await cycleRow('co1')).status).toBe('open');
+    expect((await cycleRow('cc1')).status).toBe('closed');
+    expect((await cycleRow('cd2')).status).toBe('open');
+  });
+
+  it('empty input is a no-op', async () => {
+    await openDraftCycles([], supa);
   });
 });
