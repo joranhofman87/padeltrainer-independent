@@ -24,6 +24,7 @@ import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from '@/lib/ratin
 import { getTrainerCountry } from '@/lib/certifications';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { removeAcademyTrainer, getAcademyLocations } from '@/lib/academy';
+import { BannerImage } from '@/components/profiles/ProfileLayout';
 import { toast as sonnerToast } from 'sonner';
 
 interface TrainerProfileData {
@@ -312,6 +313,26 @@ export default function AcademyTrainerDetail() {
     }
   };
 
+  // Clearing restores the documented fallback (the academy banner on the public page).
+  const handleBannerRemove = async () => {
+    if (!trainerProfileId) return;
+    setUploadingBanner(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ banner_url: null } as never)
+        .eq('id', trainerProfileId);
+      if (error) throw error;
+      setBannerUrl(null);
+      toast({ title: t('trainers.bannerRemoved', 'Banner removed'), description: t('trainers.bannerRemovedDescription', 'The academy banner is used again on the public page.') });
+    } catch (error) {
+      logger.error('Banner remove error', error instanceof Error ? error : new Error(String(error)), { component: 'AcademyTrainerDetail' });
+      toast({ title: t('common.error'), description: getFriendlyErrorMessage(error, t('trainers.failedUploadBanner', 'Failed to upload banner')), variant: 'destructive' });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
   const handleLocationToggle = (locationId: string, checked: boolean) => {
     setAssignedLocationIds((prev) => {
       const next = new Set(prev);
@@ -531,30 +552,38 @@ export default function AcademyTrainerDetail() {
           </CardHeader>
           <CardContent className="space-y-3">
             {bannerUrl ? (
-              <img
-                src={bannerUrl}
-                alt={t('trainers.banner', 'Public page banner')}
-                className="w-full h-32 object-cover rounded-md border"
-              />
+              // BannerImage (not a bare <img>): the avatars bucket serves octet-stream,
+              // so an SVG banner would preview blank here while rendering fine publicly.
+              <div className="w-full h-32 rounded-md border overflow-hidden">
+                <BannerImage url={bannerUrl} />
+              </div>
             ) : (
               <div className="w-full h-32 rounded-md border border-dashed flex items-center justify-center text-sm text-muted-foreground">
                 {t('trainers.noBanner', 'No banner uploaded yet')}
               </div>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={uploadingBanner}
-              onClick={() => bannerInputRef.current?.click()}
-            >
-              {uploadingBanner ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Camera className="h-4 w-4 mr-2" />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploadingBanner}
+                onClick={() => bannerInputRef.current?.click()}
+              >
+                {uploadingBanner ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4 mr-2" />
+                )}
+                {bannerUrl ? t('trainers.changeBanner', 'Change banner') : t('trainers.uploadBanner', 'Upload banner')}
+              </Button>
+              {bannerUrl && (
+                <Button type="button" variant="ghost" size="sm" disabled={uploadingBanner} onClick={handleBannerRemove}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('trainers.removeBanner', 'Remove banner')}
+                </Button>
               )}
-              {bannerUrl ? t('trainers.changeBanner', 'Change banner') : t('trainers.uploadBanner', 'Upload banner')}
-            </Button>
+            </div>
             <input
               ref={bannerInputRef}
               type="file"
@@ -716,13 +745,14 @@ export default function AcademyTrainerDetail() {
               </p>
               <div className="grid sm:grid-cols-3 gap-4">
                 <Select
-                  value={trainerData.preferred_rating_system || ''}
-                  onValueChange={(value) => setTrainerData({ ...trainerData, preferred_rating_system: value })}
+                  value={trainerData.preferred_rating_system || '__none__'}
+                  onValueChange={(value) => setTrainerData({ ...trainerData, preferred_rating_system: value === '__none__' ? null : value })}
                 >
                   <SelectTrigger aria-label={t('trainers.ratingSystem', 'Rating System')}>
                     <SelectValue placeholder={t('trainers.selectRatingSystem', 'Select rating system')} />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">{t('trainers.noRatingSystem', 'None')}</SelectItem>
                     {Object.entries(groupedSystems).map(([country, systems]) => (
                       <div key={country}>
                         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
@@ -888,7 +918,7 @@ export default function AcademyTrainerDetail() {
               <div>
                 <p className="text-sm font-medium">{t('trainers.publicProfile', 'Public profile')}</p>
                 <p className="text-xs text-muted-foreground">
-                  {t('trainers.publicProfileDescription', "Controls whether this trainer's public page is visible. Your academy subscription covers the trainer's page.")}
+                  {t('trainers.publicProfileDescription', "Controls whether this trainer's public page is visible. The page only goes live while a subscription (yours or the trainer's) covers it.")}
                 </p>
               </div>
               <Switch

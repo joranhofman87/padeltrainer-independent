@@ -77,7 +77,10 @@
     "bannerUpdated": "Banner bijgewerkt",
     "bannerUpdatedDescription": "De banner van je openbare pagina is bijgewerkt.",
     "bannerTooLargeDescription": "Kies een afbeelding kleiner dan 10MB",
-    "bannerUploadFailedDescription": "Kon de banner niet uploaden. Probeer het opnieuw."
+    "bannerUploadFailedDescription": "Kon de banner niet uploaden. Probeer het opnieuw.",
+    "removeBanner": "Banner verwijderen",
+    "bannerRemoved": "Banner verwijderd",
+    "bannerRemovedDescription": "De banner van je academy wordt weer gebruikt op je openbare pagina."
   },
   "ratingSystem": {
     "label": "Beoordelingssysteem",

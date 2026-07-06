@@ -31,6 +31,7 @@ import { logger } from '@/lib/logger';
 import { VideoManager } from '@/components/profiles/VideoManager';
 import { canBeVisible } from '@/lib/subscription';
 import { isTrainerInPaidAcademy } from '@/lib/academy';
+import { BannerImage } from '@/components/profiles/ProfileLayout';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
 interface TrainerProfileData {
@@ -419,6 +420,32 @@ export default function EditProfile() {
     }
   };
 
+  const handleBannerRemove = async () => {
+    if (!trainerProfileId) return;
+    setUploadingBanner(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ banner_url: null } as never)
+        .eq('id', trainerProfileId);
+      if (error) throw error;
+      setBannerUrl(null);
+      toast({
+        title: t('editProfile.bannerRemoved', 'Banner removed'),
+        description: t('editProfile.bannerRemovedDescription', 'Your academy banner is used again on your public page.'),
+      });
+    } catch (error) {
+      logger.error('Banner remove error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
+      toast({
+        title: t('editProfile.uploadFailed', 'Upload failed'),
+        description: getFriendlyErrorMessage(error, t('editProfile.bannerUploadFailedDescription', 'Could not upload the banner. Please try again.')),
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -643,30 +670,37 @@ export default function EditProfile() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {bannerUrl ? (
-                  <img
-                    src={bannerUrl}
-                    alt={t('editProfile.banner', 'Public page banner')}
-                    className="w-full h-32 object-cover rounded-md border"
-                  />
+                  // BannerImage (not a bare <img>): the avatars bucket serves octet-stream,
+                  // so an SVG banner would preview blank here while rendering fine publicly.
+                  <div className="w-full h-32 rounded-md border overflow-hidden">
+                    <BannerImage url={bannerUrl} />
+                  </div>
                 ) : (
                   <div className="w-full h-32 rounded-md border border-dashed flex items-center justify-center text-sm text-muted-foreground">
                     {t('editProfile.noBanner', 'No banner uploaded yet')}
                   </div>
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={uploadingBanner}
-                  onClick={() => bannerInputRef.current?.click()}
-                >
-                  {uploadingBanner ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Camera className="h-4 w-4 mr-2" />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadingBanner}
+                    onClick={() => bannerInputRef.current?.click()}
+                  >
+                    {uploadingBanner ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Camera className="h-4 w-4 mr-2" />
+                    )}
+                    {bannerUrl ? t('editProfile.changeBanner', 'Change banner') : t('editProfile.uploadBanner', 'Upload banner')}
+                  </Button>
+                  {bannerUrl && (
+                    <Button type="button" variant="ghost" size="sm" disabled={uploadingBanner} onClick={handleBannerRemove}>
+                      {t('editProfile.removeBanner', 'Remove banner')}
+                    </Button>
                   )}
-                  {bannerUrl ? t('editProfile.changeBanner', 'Change banner') : t('editProfile.uploadBanner', 'Upload banner')}
-                </Button>
+                </div>
                 <input
                   ref={bannerInputRef}
                   type="file"

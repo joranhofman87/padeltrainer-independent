@@ -165,7 +165,11 @@
     "minRating": "Min",
     "maxRating": "Max",
     "publicProfile": "Public profile",
-    "publicProfileDescription": "Controls whether this trainer's public page is visible. Your academy subscription covers the trainer's page."
+    "publicProfileDescription": "Controls whether this trainer's public page is visible. The page only goes live while a subscription (yours or the trainer's) covers it.",
+    "removeBanner": "Remove banner",
+    "bannerRemoved": "Banner removed",
+    "bannerRemovedDescription": "The academy banner is used again on the public page.",
+    "noRatingSystem": "None"
   },
   "trainerInvitation": {
     "title": "Academy Invitation",

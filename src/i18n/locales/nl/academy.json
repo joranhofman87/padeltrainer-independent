@@ -293,7 +293,11 @@
     "minRating": "Min",
     "maxRating": "Max",
     "publicProfile": "Openbaar profiel",
-    "publicProfileDescription": "Bepaalt of de openbare pagina van deze trainer zichtbaar is. Jullie academy-abonnement dekt de pagina van de trainer."
+    "publicProfileDescription": "Bepaalt of de openbare pagina van deze trainer zichtbaar is. De pagina is alleen live zolang een abonnement (van jullie of de trainer) die dekt.",
+    "removeBanner": "Banner verwijderen",
+    "bannerRemoved": "Banner verwijderd",
+    "bannerRemovedDescription": "De academy-banner wordt weer gebruikt op de openbare pagina.",
+    "noRatingSystem": "Geen"
   },
   "trainerInvitation": {
     "title": "Academy uitnodiging",
