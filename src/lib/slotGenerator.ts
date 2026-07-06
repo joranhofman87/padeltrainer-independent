@@ -17,8 +17,8 @@
  * bookable immediately, private stays staff-only. The old draft-then-publish
  * flow left "concept" cycli that were made live via slot visibility instead of
  * publish (booked + paid sessions on cycles cycles_public couldn't see — the
- * series-option and status-label incidents). `publishCycle`/`openDraftCycles`
- * remain only as heal paths for pre-existing drafts. The visibility +
+ * series-option and status-label incidents). Historical drafts were promoted by
+ * migration 20260711100000; the heal code was removed with it. The visibility +
  * upfront-payment intent is still recorded in `cycle.settings`
  * (`publish_visibility`, `payment_timing`, `requires_upfront_payment`).
  *

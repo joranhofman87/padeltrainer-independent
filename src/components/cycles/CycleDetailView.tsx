@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Rocket, Save, Euro, UserPlus } from 'lucide-react';
+import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Save, Euro, UserPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -36,10 +36,10 @@ import { applyAddPlayerInvoiceChoice } from '@/lib/invoiceAfterAddPlayer';
 import type { InvoiceUpdateChoice } from '@/lib/invoiceUpdateChoice';
 import { paymentStatusBadgeVariant, type CyclusGroupPaymentStatus } from '@/lib/cyclusGroupPayment';
 import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
-import { deleteCycle, openDraftCycles } from '@/lib/cycleWrites';
+import { deleteCycle } from '@/lib/cycleWrites';
 import { syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import { applyCycleEndDate } from '@/lib/cycleExtension';
-import { updateCyclePricing, applySlotEditToCycle, publishCycle, type ExtraCost } from '@/lib/cycles';
+import { updateCyclePricing, applySlotEditToCycle, type ExtraCost } from '@/lib/cycles';
 import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPatch';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
@@ -56,8 +56,6 @@ export interface CycleDetailViewProps {
   canEdit?: boolean;
   /** Cycle-pricing capability — gates the inline pricing card. */
   canEditPrice?: boolean;
-  /** Publish capability — gates the draft "Publish" banner for slot-generator cycles. */
-  canPublish?: boolean;
   /** Academy profile id for the pricing card's extra-cost preset picker (null/omit for trainer). */
   academyProfileId?: string | null;
   /** Trainer options for the session-defaults form (academy passes; trainer omits → self only). */
@@ -107,7 +105,6 @@ export function CycleDetailView({
   onOpenSlot,
   canEdit = false,
   canEditPrice = false,
-  canPublish = false,
   academyProfileId,
   trainers,
   locations = [],
@@ -124,7 +121,6 @@ export function CycleDetailView({
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [publishing, setPublishing] = useState(false);
   // Page-level "Don't update invoices" toggle (checked = SKIP invoice resync). Sticky across the
   // page session; threaded into the roster remove + the cycle delete + the per-session delete.
   const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
@@ -586,40 +582,6 @@ export function CycleDetailView({
     }
   };
 
-  // Publish a draft (slot-generator) cycle: open it + apply the stored public/private intent to its
-  // slots. makePublic comes from the generator's settings.publish_visibility (false = stays private).
-  const handlePublish = async () => {
-    setPublishing(true);
-    try {
-      const makePublic = cycle?.settings?.publish_visibility === 'public';
-      await publishCycle(cycleId, makePublic);
-      toast.success(t('detail.publish.done', 'Cyclus gepubliceerd.'));
-      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
-      onMutated?.();
-    } catch (err) {
-      toast.error(getFriendlyErrorMessage(err, t('detail.publish.error', 'Publiceren mislukt.')));
-    } finally {
-      setPublishing(false);
-    }
-  };
-
-  // Status-only heal for "draft but already live": never touches slot visibility
-  // (handlePublish would apply the stored intent — for a private-intent cycle that
-  // UNPUBLISHES live booked sessions).
-  const handleMarkOpen = async () => {
-    setPublishing(true);
-    try {
-      await openDraftCycles([cycleId]);
-      toast.success(t('detail.publish.markedOpen', 'Cyclus gemarkeerd als gepubliceerd.'));
-      void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
-      onMutated?.();
-    } catch (err) {
-      toast.error(getFriendlyErrorMessage(err, t('detail.publish.error', 'Publiceren mislukt.')));
-    } finally {
-      setPublishing(false);
-    }
-  };
-
   const fmtDayTime = (slot: CycleDetailSlot) => {
     const start = parseISO(slot.start_time);
     const end = parseISO(slot.end_time);
@@ -673,47 +635,6 @@ export function CycleDetailView({
           </div>
         </CardContent>
       </Card>
-
-      {canPublish && statusKey === 'draft' && (slots.some((sl) => sl.bookedCount > 0) || slots.some((sl) => sl.is_public) ? (
-        // Draft-on-paper only: sessions were made public via visibility actions (and may
-        // already be booked & PAID) while the cycle row stayed 'draft'. Saying "not
-        // bookable" here is false and alarming — offer the status-only heal instead.
-        <Card className="border-emerald-500/40 bg-emerald-500/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div className="text-sm">
-              <p className="font-medium">
-                {slots.some((sl) => sl.bookedCount > 0)
-                  ? t('detail.publish.liveBookedTitle', 'Al geboekt — status klopt niet meer')
-                  : t('detail.publish.liveTitle', 'Sessies staan al openbaar')}
-              </p>
-              <p className="text-muted-foreground">
-                {slots.some((sl) => sl.bookedCount > 0)
-                  ? t('detail.publish.liveBookedBody', 'Deze cyclus staat nog als concept, maar er zijn al openbare sessies met (betaalde) boekingen. Markeer hem als gepubliceerd — sessies en boekingen blijven ongewijzigd.')
-                  : t('detail.publish.liveBody', 'Deze cyclus staat nog als concept, maar de sessies zijn al openbaar en boekbaar. Markeer hem als gepubliceerd — sessies blijven ongewijzigd.')}
-              </p>
-            </div>
-            <Button size="sm" onClick={() => void handleMarkOpen()} disabled={publishing}>
-              {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Rocket className="h-4 w-4 mr-1.5" />}
-              {t('detail.publish.markOpenCta', 'Markeer als gepubliceerd')}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-primary/40 bg-primary/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div className="text-sm">
-              <p className="font-medium">{t('detail.publish.title', 'Dit is een concept')}</p>
-              <p className="text-muted-foreground">
-                {t('detail.publish.body', 'De sessies zijn nog niet boekbaar. Publiceer ze om ze open te zetten.')}
-              </p>
-            </div>
-            <Button size="sm" onClick={() => void handlePublish()} disabled={publishing}>
-              {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Rocket className="h-4 w-4 mr-1.5" />}
-              {t('detail.publish.cta', 'Publiceren')}
-            </Button>
-          </CardContent>
-        </Card>
-      ))}
 
       {/* Page-level "Don't update invoices" toggle — governs the structural/destructive actions
           (cycle delete + per-session delete + roster remove). Price changes always update invoices. */}
