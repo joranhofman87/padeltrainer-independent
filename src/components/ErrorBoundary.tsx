@@ -56,12 +56,14 @@ const FALLBACK_COPY = {
     description: "An unexpected error occurred. Please try again or refresh the page.",
     retry: "Try again",
     refresh: "Refresh page",
+    updating: "Loading the new version…",
   },
   nl: {
     title: "Er is iets misgegaan",
     description: "Er is een onverwachte fout opgetreden. Probeer het opnieuw of vernieuw de pagina.",
     retry: "Probeer opnieuw",
     refresh: "Pagina vernieuwen",
+    updating: "Nieuwe versie laden…",
   },
 } as const;
 
@@ -80,12 +82,15 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  /** A stale-chunk auto-reload is pending — render the quiet updating state,
+   *  not the alarming error card (the reload lands within ~500ms). */
+  reloadingChunk: boolean;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, reloadingChunk: false };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -95,9 +100,14 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Auto-recover from stale lazy chunks after a deploy / 524 timeouts.
+    // Auto-recover from stale lazy chunks after a deploy / 524 timeouts. While the
+    // reload is pending (~500ms) show the quiet "updating" state — flashing the red
+    // error card here made every routine post-deploy navigation look like a crash.
     if (isChunkLoadError(error?.message || "") && typeof window !== "undefined") {
-      if (tryChunkReload()) return;
+      if (tryChunkReload()) {
+        this.setState({ reloadingChunk: true });
+        return;
+      }
     }
 
     // Log error to centralized logger
@@ -110,7 +120,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null, errorInfo: null, reloadingChunk: false });
   };
 
   handleReload = () => {
@@ -119,6 +129,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      if (this.state.reloadingChunk) {
+        // New deploy invalidated this tab's lazy chunks; the auto-reload is already
+        // scheduled. A quiet spinner — this is an update, not a failure.
+        const copy = getFallbackCopy();
+        return (
+          <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 p-4" data-testid="chunk-reload-fallback">
+            <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">{copy.updating}</p>
+          </div>
+        );
+      }
       if (this.props.fallback) {
         return this.props.fallback;
       }
