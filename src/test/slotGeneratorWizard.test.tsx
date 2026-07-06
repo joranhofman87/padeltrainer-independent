@@ -42,9 +42,8 @@ describe('SlotGeneratorWizard', () => {
     expect(screen.getByLabelText('Trainer')).toBeInTheDocument();
   });
 
-  it('configure → preview → generate → done step → publish all', async () => {
+  it('configure → preview → generate → done step (live immediately, no publish step)', async () => {
     const generate = vi.fn().mockResolvedValue({ cycleIds: ['c1'], cyclesCreated: 1, slotsCreated: 25, skippedOverlaps: 0 });
-    const publishAll = vi.fn().mockResolvedValue({ published: 1, failed: 0 });
     renderWithCycles(
       <SlotGeneratorWizard
         ownerType="trainer"
@@ -53,7 +52,6 @@ describe('SlotGeneratorWizard', () => {
         trainerSelection={{ mode: 'self', trainerId: 'tr1' }}
         availableLocations={locations}
         generate={generate}
-        publishAll={publishAll}
       />,
     );
 
@@ -68,9 +66,9 @@ describe('SlotGeneratorWizard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Voorbeeld' }));
     // preview step renders the planned-session list
-    expect(await screen.findByRole('button', { name: 'Genereer als concept' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Sessies aanmaken' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Genereer als concept' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sessies aanmaken' }));
 
     await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
     const input = generate.mock.calls[0][0];
@@ -93,11 +91,11 @@ describe('SlotGeneratorWizard', () => {
     expect(input.plan.windowStart).toBe('15:00');
     expect(input.plan.timezone).toBe('Europe/Amsterdam');
 
-    // After generate we land on the 'done' step (no auto-navigate); publish-all then ships + returns.
-    const publishBtn = await screen.findByRole('button', { name: /Publiceer alle/ });
-    fireEvent.click(publishBtn);
-    // default visibility = private → makePublic = false
-    await waitFor(() => expect(publishAll).toHaveBeenCalledWith(['c1'], false));
+    // After generate we land on the 'done' step — cycles are already live; no publish
+    // step exists anymore. The single button returns to the overview.
+    expect(await screen.findByText(/cycli aangemaakt/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Publiceer/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Naar overzicht' }));
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/app/trainer/cycles'));
   });
 
