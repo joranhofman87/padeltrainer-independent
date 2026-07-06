@@ -500,7 +500,9 @@ export default function TrainerSlotDetail() {
             </div>
           )}
 
-          {/* Invoices */}
+          {/* Invoices — academy-managed money, hidden for view-only trainers
+              (the /app/trainer/invoices routes are restricted for them). */}
+          {canEdit && (
           <Card className={flushOnMobileCardClass()}>
             <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />{t('calendar.invoices', 'Facturen')}</CardTitle></CardHeader>
             <CardContent>
@@ -528,6 +530,7 @@ export default function TrainerSlotDetail() {
               )}
             </CardContent>
           </Card>
+          )}
         </div>
       </main>
 

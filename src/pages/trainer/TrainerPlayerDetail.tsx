@@ -486,7 +486,7 @@ export default function TrainerPlayerDetail() {
                 {t('players.detail.addedOn', 'Added')} {format(new Date(player.created_at), 'dd-MM-yyyy')}
               </span>
             </div>
-            {trainerId && (
+            {trainerId && canEdit && (
               <div className="pt-2">
                 <TagPicker
                   trainerId={trainerId}
@@ -602,6 +602,9 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
+      {/* Invoices are academy-managed money — hidden for view-only trainers
+          (the /app/trainer/invoices routes are restricted for them too). */}
+      {canEdit && (
       <Card data-testid="trainer-player-section-invoices" className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -661,6 +664,7 @@ export default function TrainerPlayerDetail() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <Card data-testid="trainer-player-section-rating">
         <CardHeader>

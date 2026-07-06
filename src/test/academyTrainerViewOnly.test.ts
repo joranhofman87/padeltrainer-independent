@@ -36,9 +36,9 @@ describe('useTrainerCanEdit', () => {
 });
 
 describe('academy trainer view-only wiring', () => {
-  it('route guard blocks the session CREATE surfaces + Sessions hub (but not slot detail)', () => {
+  it('route guard blocks the session CREATE surfaces, Sessions hub + invoices money surface (but not slot detail)', () => {
     const layout = readSrc('components/trainer/TrainerLayout.tsx');
-    for (const path of ['/app/trainer/slot/new', '/app/trainer/slot/generate', '/app/trainer/sessions']) {
+    for (const path of ['/app/trainer/slot/new', '/app/trainer/slot/generate', '/app/trainer/sessions', '/app/trainer/invoices']) {
       expect(layout).toContain(`'${path}'`);
     }
     // Slot DETAIL must stay reachable (attendance + coaching notes live there).
@@ -65,24 +65,40 @@ describe('academy trainer view-only wiring', () => {
   it('slot detail is read-only for academy trainers but keeps attendance + coaching notes', () => {
     const detail = readSrc('pages/trainer/TrainerSlotDetail.tsx');
     expect(detail).toContain('useTrainerCanEdit');
-    // No auto-open edit form; edit/delete/add-player/booking-edit gated.
+    // No auto-open edit form; edit/delete/add-player/booking-edit/invoices gated.
     expect(detail).toContain('detail && canEdit && !autoEditTriggered.current');
     expect(detail).toContain('canEdit && editingBookingId === player.bookingId && editingBookingData');
     expect(detail).toContain('canEdit && showBookPlayer');
     expect(detail).toContain('detail && canEdit && <PriorityClaimsSection');
     // Coaching notes stay reachable (not gated on canEdit).
     expect(detail).toContain('editingBookingId === player.bookingId && user?.id');
+    // Attendance WRITE form must be reachable (the must-keep capability).
+    expect(detail).toContain('TrainerAttendanceForm');
+    expect(detail).toContain('isPast(new Date(detail.end_time))');
   });
 
-  it('players + player detail gate create/edit/remove/merge on canEdit', () => {
+  it('players + player detail gate create/edit/remove/merge/tags/notes/campaign on canEdit', () => {
     const players = readSrc('pages/TrainerPlayers.tsx');
     expect(players).toContain('useTrainerCanEdit');
     expect(players).toContain('primaryAction={canEdit ?');
     expect(players).toContain('moreMenuItems={canEdit ?');
+    // Inline tag/notes editors render read-only for academy trainers.
+    expect(players).toContain('readOnly={!canEdit}');
+    // Email-campaign tab (outbound blast) gated.
+    expect(players).toMatch(/\{canEdit && \(\s*<TabsContent value="email-campaign"/);
 
     const detail = readSrc('pages/trainer/TrainerPlayerDetail.tsx');
     expect(detail).toContain('useTrainerCanEdit');
     expect(detail).toContain('canEdit && detailsValues && trainerId');
     expect(detail).toContain('canEdit && trainerId && player && parsed.kind');
+    // TagPicker + invoices card gated.
+    expect(detail).toContain('trainerId && canEdit && (');
+  });
+
+  it('EditProfile hides public-visibility + banner for academy trainers (academy owns them)', () => {
+    const profile = readSrc('pages/EditProfile.tsx');
+    expect(profile).toContain('useTrainerCanEdit');
+    expect(profile).toContain("role === 'trainer' && canEdit &&");
+    expect(profile).toContain("role === 'trainer' && trainerProfileId && canEdit &&");
   });
 });

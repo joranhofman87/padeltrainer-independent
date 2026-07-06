@@ -414,6 +414,7 @@ export default function TrainerPlayers() {
             selectedTagIds={player.tag_ids || []}
             onTagsChange={setTags}
             onSelectedTagIdsChange={() => handlePlayerDataChanged()}
+            readOnly={!canEdit}
           />
         ) : null,
     },
@@ -429,6 +430,7 @@ export default function TrainerPlayers() {
             playerKey={{ guest_player_id: player.guest_player_id || null, profile_id: player.profile_id || null }}
             notes={player.internal_notes || ''}
             onChanged={handlePlayerDataChanged}
+            readOnly={!canEdit}
           />
         ) : null,
     },
@@ -472,10 +474,12 @@ export default function TrainerPlayers() {
               <span className="hidden sm:inline">{t('players.create', 'Create')}</span>
             </TabsTrigger>
           )}
+          {canEdit && (
           <TabsTrigger value="email-campaign" className="gap-2">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">{t('players.emailCampaign', 'Email Campaign')}</span>
           </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="all-players" className="space-y-3 mt-3">
@@ -571,7 +575,7 @@ export default function TrainerPlayers() {
                 title={searchQuery ? t('players.noPlayersFound') : t('players.empty', 'No players yet')}
                 description={searchQuery ? t('players.tryDifferentSearch') : t('players.emptyDescription', 'Players will appear here once they book with you.')}
               />
-              {!searchQuery && (
+              {!searchQuery && canEdit && (
                 <div className="flex justify-center border-t border-border/60 px-4 pb-8 pt-2">
                   <Button
                     className="bg-[hsl(var(--brand-500))] hover:bg-[hsl(var(--brand-600))]"
@@ -689,7 +693,8 @@ export default function TrainerPlayers() {
         </TabsContent>
         )}
 
-        {/* Email Campaign Tab */}
+        {/* Email Campaign Tab — outbound blast is not a view-only action */}
+        {canEdit && (
         <TabsContent value="email-campaign" className="mt-4">
           {trainerId && (
             <Suspense
@@ -721,6 +726,7 @@ export default function TrainerPlayers() {
             </Suspense>
           )}
         </TabsContent>
+        )}
       </Tabs>
 
       {/* Add Player Dialog */}

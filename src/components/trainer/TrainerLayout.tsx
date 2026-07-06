@@ -154,6 +154,7 @@ export default function TrainerLayout() {
     '/app/trainer/slot/new',
     '/app/trainer/slot/generate',
     '/app/trainer/sessions',
+    '/app/trainer/invoices',
   ];
 
   useEffect(() => {
