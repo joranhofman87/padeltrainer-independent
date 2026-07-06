@@ -16,7 +16,8 @@ import { FullPageLoader } from '@/components/ui/page-spinner';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 import { canBeVisible } from '@/lib/subscription';
-import { isTrainerInPaidAcademy, getTrainerAcademy } from '@/lib/academy';
+import { isTrainerInPaidAcademy } from '@/lib/academy';
+import { useTrainerHasAcademy } from '@/hooks/useTrainerHasAcademy';
 import { logger } from '@/lib/logger';
 import { useLocalizedPathFn } from '@/hooks/useLocalizedPath';
 
@@ -28,7 +29,9 @@ export default function TrainerSettings() {
   const [isPublic, setIsPublic] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
   const [inPaidAcademy, setInPaidAcademy] = useState(false);
-  const [hasAcademy, setHasAcademy] = useState(false);
+  // Shared hook/cache with TrainerLayout — fail-closed while loading so academy
+  // trainers never see (and click) money cards that bounce to the calendar.
+  const { data: hasAcademy = false, isLoading: academyLoading } = useTrainerHasAcademy();
   const [playerModeEnabled, setPlayerModeEnabled] = useState(false);
   const [updatingPlayerMode, setUpdatingPlayerMode] = useState(false);
   const [trainerSlug, setTrainerSlug] = useState<string | null>(null);
@@ -61,8 +64,6 @@ export default function TrainerSettings() {
         if (trainerProfile) {
           setTrainerSlug(trainerProfile.slug);
           if ((trainerProfile as any).timezone) setTimezone((trainerProfile as any).timezone);
-          const academy = await getTrainerAcademy(trainerProfile.id);
-          setHasAcademy(!!academy);
           if (!subscription?.isSubscribed) {
             const result = await isTrainerInPaidAcademy(trainerProfile.id);
             setInPaidAcademy(result);
@@ -208,8 +209,12 @@ export default function TrainerSettings() {
 
   const visibilityStatus = getVisibilityStatus();
 
+  // Academy-managed pages are restricted in TrainerLayout — hide their cards for
+  // academy trainers (fail-closed while membership loads) instead of letting a
+  // tap silently bounce to the calendar.
+  const showIndependentCards = !academyLoading && !hasAcademy;
   const settingsItems = [
-    ...(!hasAcademy ? [{
+    ...(showIndependentCards ? [{
       title: t('settings.subscription'),
       description: t('settings.subscriptionDescription'),
       icon: Crown,
@@ -221,12 +226,12 @@ export default function TrainerSettings() {
       icon: User,
       route: '/trainer/profile',
     },
-    {
+    ...(showIndependentCards ? [{
       title: t('bookingSettings.title'),
       description: t('bookingSettings.settingsDescription'),
       icon: ClipboardCheck,
       route: '/trainer/settings/bookings',
-    },
+    }] : []),
     {
       title: t('settings.notifications'),
       description: t('settings.notificationsDescription'),
@@ -305,12 +310,15 @@ export default function TrainerSettings() {
                   {visibilityStatus.type === 'warning' && <AlertTriangle className="h-4 w-4" />}
                   <AlertDescription className="flex items-center justify-between">
                     <span>{visibilityStatus.message}</span>
-                    {!canToggleVisibility && !isTrialActive && (
+                    {/* Subscription is academy-managed for academy trainers — the
+                        subscription page is restricted for them, so these CTAs
+                        would silently bounce to the calendar. */}
+                    {!hasAcademy && !canToggleVisibility && !isTrialActive && (
                       <Button size="sm" onClick={() => navigate('/trainer/subscription')}>
                         {t('settings.subscribe', 'Subscribe')}
                       </Button>
                     )}
-                    {isTrialActive && !inPaidAcademy && (
+                    {!hasAcademy && isTrialActive && !inPaidAcademy && (
                       <Button size="sm" onClick={() => navigate('/trainer/subscription')}>
                         {t('settings.upgrade', 'Upgrade')}
                       </Button>

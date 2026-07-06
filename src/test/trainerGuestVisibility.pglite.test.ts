@@ -122,6 +122,18 @@ describe('trainer guest visibility (real migration SQL)', () => {
     expect(ids).toEqual([GUEST_ELSEWHERE]);
   });
 
+  it('the predicate fn is NOT a cross-tenant oracle: probing with another user_id returns false', async () => {
+    // Caller is TRAINER_USER but asks about OTHER trainer's relationship — the fn
+    // pins _user_id to auth.uid(), so the probe learns nothing.
+    const probe = await asUser(TRAINER_USER, () =>
+      db.query<{ r: boolean }>(`SELECT public.guest_booked_with_trainer($1, $2) AS r`, [
+        GUEST_ELSEWHERE,
+        OTHER_USER,
+      ]),
+    );
+    expect(probe.rows[0].r).toBe(false);
+  });
+
   it('cancelled_swap grants no visibility either', async () => {
     await db.query(`UPDATE bookings SET status = 'cancelled_swap' WHERE guest_player_id = $1`, [
       GUEST_ELSEWHERE,

@@ -15,7 +15,11 @@ import { useTrainerHasAcademy } from '@/hooks/useTrainerHasAcademy';
  */
 export default function TrainerSessions() {
   const { t } = useTranslation('trainer');
-  const { data: hasAcademy = false } = useTrainerHasAcademy();
+  const { data: hasAcademy = false, isLoading: academyLoading } = useTrainerHasAcademy();
+  // Fail-closed while membership loads: on a cold cache an academy trainer must
+  // not see (and click) cards that bounce; independent trainers get the two
+  // extra cards a beat later instead.
+  const hideCycleCards = academyLoading || hasAcademy;
 
   const options: SetupOption[] = [
     {
@@ -46,7 +50,7 @@ export default function TrainerSessions() {
       to: '/app/trainer/slot/generate',
       testId: 'sessions-generate',
     },
-    ...(hasAcademy ? [] : [{
+    ...(hideCycleCards ? [] : [{
       id: 'next-round',
       icon: RefreshCw,
       iconBg: 'bg-emerald-500/10',

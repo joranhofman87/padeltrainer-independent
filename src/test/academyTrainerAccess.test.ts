@@ -31,12 +31,28 @@ describe('academy trainer access rules', () => {
     expect(sidebar).toContain('nav-academy-trainer-settings');
   });
 
-  it('the Sessions hub hides the restricted cycle cards for academy trainers', () => {
+  it('the Sessions hub hides the restricted cycle cards for academy trainers (fail-closed while loading)', () => {
     const hub = readSrc('pages/trainer/TrainerSessions.tsx');
     expect(hub).toContain('useTrainerHasAcademy');
-    expect(hub).toMatch(/hasAcademy \? \[\] : \[\{/);
+    expect(hub).toContain('academyLoading || hasAcademy');
+    expect(hub).toMatch(/hideCycleCards \? \[\] : \[\{/);
     // The two cards that used to silently bounce academy trainers to the calendar.
     expect(hub).toContain("to: '/app/trainer/cycles/bulk-copy'");
     expect(hub).toContain("to: '/app/trainer/cycles/new'");
+  });
+
+  it('TrainerSettings hides academy-managed cards + subscribe CTAs for academy trainers', () => {
+    const settings = readSrc('pages/TrainerSettings.tsx');
+    expect(settings).toContain('useTrainerHasAcademy');
+    expect(settings).toContain('showIndependentCards');
+    expect(settings).toMatch(/!hasAcademy && !canToggleVisibility/);
+  });
+
+  it('guest_booked_with_trainer pins the probed user to the caller (no cross-tenant oracle)', () => {
+    const migration = readFileSync(
+      resolve(ROOT, '..', 'supabase', 'migrations', '20260713110000_trainer_guest_visibility.sql'),
+      'utf8',
+    );
+    expect(migration).toContain('_user_id = auth.uid()');
   });
 });

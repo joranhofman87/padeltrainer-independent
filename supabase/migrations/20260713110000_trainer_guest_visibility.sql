@@ -28,6 +28,11 @@ AS $$
     JOIN public.trainer_profiles tp ON tp.id = s.trainer_id
     WHERE b.guest_player_id = _guest_id
       AND tp.user_id = _user_id
+      -- The fn is EXECUTE-granted to all of `authenticated` (PostgREST rpc), so the
+      -- caller-supplied _user_id must be pinned to the CALLER — otherwise it is a
+      -- cross-tenant oracle ("does guest X train with trainer Y?") for anyone
+      -- holding a guest UUID. The RLS policy always passes auth.uid() anyway.
+      AND _user_id = auth.uid()
       -- Canonical inactive-booking predicate: cancelled / swapped-away seats
       -- grant no visibility.
       AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
