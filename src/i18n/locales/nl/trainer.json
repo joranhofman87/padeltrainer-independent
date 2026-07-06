@@ -1468,7 +1468,11 @@
       "partial": "{{deleted}} verwijderd, {{skipped}} overgeslagen, {{failed}} mislukt",
       "forceBooked": "Ook cycli met boekingen verwijderen (annuleert hun boekingen)",
       "forceWarning": "{{count}} geselecteerde cyclus/cycli met boekingen: die boekingen worden geannuleerd. Dit kan niet ongedaan worden gemaakt."
-    }
+    },
+    "day": "Dag",
+    "time": "Tijd",
+    "dayFilterAll": "Alle dagen",
+    "bookingModeNone": "Niet boekbaar (losse sessies én cyclus uit)"
   },
   "pendingAttendance": {
     "title": "Actie vereist",

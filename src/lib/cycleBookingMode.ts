@@ -24,6 +24,26 @@ import type { CycleSettings } from '@/lib/cycleTypes';
 
 export type CycleBookingMode = 'both' | 'single_only' | 'single_only_whole_slot' | 'cyclus_only';
 
+/** `deriveCycleBookingMode` result: the four selling modes, or 'none' when nothing is bookable. */
+export type CycleBookingModeOrNone = CycleBookingMode | 'none';
+
+/**
+ * Classify a cycle's CURRENT selling mode from its authoritative flags (slot
+ * columns allow_single_booking/whole_slot_booking + settings.allow_cyclus_booking).
+ * The read-side mirror of setCycleBookingMode's write mapping — used by the list
+ * overview's Boekbaarheid column so admins can verify what players can book.
+ * 'none' = misconfigured/deliberately closed: neither sessions nor the series sell.
+ */
+export function deriveCycleBookingMode(flags: {
+  allowSingle: boolean;
+  wholeSlot: boolean;
+  allowCyclus: boolean;
+}): CycleBookingModeOrNone {
+  if (flags.allowSingle) return flags.allowCyclus ? 'both' : 'single_only';
+  if (flags.wholeSlot) return 'single_only_whole_slot';
+  return flags.allowCyclus ? 'cyclus_only' : 'none';
+}
+
 export interface BookingModeTarget {
   /** The group's cyclus_id (slots' grouping key — always present). */
   cyclusId: string;

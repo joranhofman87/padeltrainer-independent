@@ -306,3 +306,25 @@ describe('setTargetedCyclePrice (characterization of the previous inline page ha
     expect(syncMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// deriveCycleBookingMode — the read-side mirror of the write mapping above.
+// ---------------------------------------------------------------------------
+import { deriveCycleBookingMode } from '@/lib/cycleBookingMode';
+
+describe('deriveCycleBookingMode', () => {
+  it('round-trips all four write modes', () => {
+    expect(deriveCycleBookingMode({ allowSingle: true, wholeSlot: false, allowCyclus: true })).toBe('both');
+    expect(deriveCycleBookingMode({ allowSingle: true, wholeSlot: false, allowCyclus: false })).toBe('single_only');
+    expect(deriveCycleBookingMode({ allowSingle: false, wholeSlot: true, allowCyclus: false })).toBe('single_only_whole_slot');
+    expect(deriveCycleBookingMode({ allowSingle: false, wholeSlot: false, allowCyclus: true })).toBe('cyclus_only');
+  });
+
+  it("classifies the fully-closed combination as 'none'", () => {
+    expect(deriveCycleBookingMode({ allowSingle: false, wholeSlot: false, allowCyclus: false })).toBe('none');
+  });
+
+  it('allowSingle wins over a stray wholeSlot flag (per-seat sale is what players get)', () => {
+    expect(deriveCycleBookingMode({ allowSingle: true, wholeSlot: true, allowCyclus: false })).toBe('single_only');
+  });
+});

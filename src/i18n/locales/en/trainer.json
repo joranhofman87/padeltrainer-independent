@@ -1465,7 +1465,11 @@
       "partial": "{{deleted}} deleted, {{skipped}} skipped, {{failed}} failed",
       "forceBooked": "Also delete cycles with bookings (cancels their bookings)",
       "forceWarning": "{{count}} selected cycle(s) have bookings: those bookings will be cancelled. This cannot be undone."
-    }
+    },
+    "day": "Day",
+    "time": "Time",
+    "dayFilterAll": "All days",
+    "bookingModeNone": "Not bookable (single sessions and cycle both off)"
   },
   "pendingAttendance": {
     "title": "Action Required",
