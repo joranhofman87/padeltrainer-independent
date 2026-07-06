@@ -18,6 +18,7 @@ import { isTrainerSlotOverlapError } from "@/lib/slotConflicts";
 import { updateCycleSettings, type CycleSettings } from "@/lib/cycles";
 import { mergeNewBookingIdsIntoCycleInvoices, syncInvoicesAfterCycleEdit } from "@/lib/cycleEditInvoiceSync";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
+import { AppPage } from "@/components/ui/app-page";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { TimeSelect } from "@/components/ui/time-select";
@@ -1043,7 +1044,9 @@ export default function TrainerScheduleOverview() {
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6 max-w-4xl">
+    // AppPage: no own padding — TrainerLayout's main already pads p-4 md:p-6.
+    // The page used to double-pad, costing 32px of width on a 375px phone.
+    <AppPage width="form" className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold">
           {t("scheduleOverview.title", "Schedule Overview")}
@@ -1254,7 +1257,11 @@ export default function TrainerScheduleOverview() {
 
                     return (
                       <div key={slot.id} className={isPastSlot ? "opacity-60" : ""}>
-                        <div className="flex items-center gap-2 px-3 py-2.5 text-sm">
+                        {/* flex-wrap: on phones the payment badges drop to a second
+                            line (basis-full) so the action buttons never get pushed
+                            off-screen; from sm the badges sit inline as the flexible
+                            middle column exactly as before. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2.5 text-sm">
                           {/* Date & time */}
                           <div className="min-w-[140px] shrink-0">
                             <span className="font-medium">
@@ -1283,7 +1290,7 @@ export default function TrainerScheduleOverview() {
                           </div>
 
                           {/* Payment badges */}
-                          <div className="flex items-center gap-1 flex-1">
+                          <div className="order-last flex basis-full flex-wrap items-center gap-1 empty:hidden sm:order-none sm:basis-auto sm:flex-1">
                             {paid > 0 && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                                 {paid} {t("scheduleOverview.paid", "paid")}
@@ -1302,7 +1309,7 @@ export default function TrainerScheduleOverview() {
                           </div>
 
                           {/* Actions */}
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="ml-auto flex items-center gap-1 shrink-0">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1395,10 +1402,12 @@ export default function TrainerScheduleOverview() {
                                         )}
                                       </Badge>
                                     </button>
+                                    {/* Always visible + bigger hit area on touch; the
+                                        hover-reveal aesthetic only from sm up (no hover on phones). */}
                                     <Button
                                       variant="ghost"
                                       size="icon" aria-label="Close"
-                                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                      className="h-8 w-8 sm:h-5 sm:w-5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                                       onClick={() => setRemoveBookingId(b.id)}
                                       title={t("scheduleOverview.removePlayer", "Remove player")}
                                     >
@@ -1735,7 +1744,7 @@ export default function TrainerScheduleOverview() {
                       <Button
                         variant="ghost"
                         size="icon" aria-label="Close"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                        className="h-8 w-8 sm:h-6 sm:w-6 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
                         onClick={() => setConfirmRemoveCyclePlayer(player)}
                         disabled={removingPlayerFromCycle === player.id}
                         title={t("scheduleOverview.removeFromCycle", "Remove from all sessions")}
@@ -1852,6 +1861,6 @@ export default function TrainerScheduleOverview() {
         variant="default"
         onConfirm={handleRemovePlayerFromCycle}
       />
-    </div>
+    </AppPage>
   );
 }

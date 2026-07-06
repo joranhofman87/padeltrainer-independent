@@ -639,7 +639,38 @@ export default function IntakeRequestsTable({
 
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          {/* Mobile cards — the ~10-column table below is unreadable at phone
+              width; each card taps through to the same detail sheet as a row.
+              Inner link/proposal popovers already stopPropagation. */}
+          <div className="md:hidden divide-y">
+            {displayedRequests.map((request) => (
+              <div
+                key={request.id}
+                className="cursor-pointer px-4 py-3 transition-colors hover:bg-muted/50"
+                onClick={() => onRowClick(request)}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{request.full_name}</div>
+                    <div className="truncate text-sm text-muted-foreground">{request.email}</div>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                    {format(new Date(request.created_at), 'MMM d')}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" className={getStatusColor(request.status)}>
+                    {t(`intakeRequests.filters.${request.status}`)}
+                  </Badge>
+                  {renderPaymentBadge(request)}
+                  {renderProposalIndicator(request)}
+                  {renderLinkedColumn(request)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>

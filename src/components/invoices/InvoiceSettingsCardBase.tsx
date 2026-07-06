@@ -427,11 +427,12 @@ export function InvoiceSettingsCardBase({
                     alt="Invoice logo"
                     className="h-14 max-w-[200px] object-contain rounded border p-1 bg-background"
                   />
+                  {/* Visible on touch (no hover on phones); hover-reveal from sm up. */}
                   <Button
                     type="button"
                     variant="destructive"
                     size="icon" aria-label="Delete"
-                    className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 h-6 w-6 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 transition-opacity"
                     onClick={handleRemoveLogo}
                   >
                     <Trash2 className="h-3 w-3" />
