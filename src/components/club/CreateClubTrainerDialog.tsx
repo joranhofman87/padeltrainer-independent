@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
@@ -149,12 +150,11 @@ export function CreateClubTrainerDialog({
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="phone">{t('createTrainer.phone', 'Phone (optional)')}</Label>
-                <Input
+                <PhoneInput
                   id="phone"
-                  type="tel"
                   placeholder={t('createTrainer.phonePlaceholder', '+31 6 12345678')}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={setPhone}
                 />
               </div>
             </div>

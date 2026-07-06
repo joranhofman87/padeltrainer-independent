@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -393,12 +394,10 @@ export function EditClubTrainerDialog({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-phone">{t('createTrainer.phone')}</Label>
-                  <Input
+                  <PhoneInput
                     id="edit-phone"
-                    type="tel"
                     value={profileData.phone}
-                    onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                    placeholder="+31 6 12345678"
+                    onChange={(v) => setProfileData({ ...profileData, phone: v })}
                   />
                 </div>
               </div>

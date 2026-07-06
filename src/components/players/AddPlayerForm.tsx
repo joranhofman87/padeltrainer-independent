@@ -7,6 +7,7 @@ import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { buildGuestPlayerDbFields } from "@/lib/profileName";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -351,11 +352,10 @@ export function AddPlayerForm({
 
       <div className="space-y-2">
         <Label htmlFor="phone">{t("players.phone")}</Label>
-        <Input
+        <PhoneInput
           id="phone"
-          type="tel"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={setPhone}
           placeholder={t("players.phonePlaceholder")}
         />
       </div>

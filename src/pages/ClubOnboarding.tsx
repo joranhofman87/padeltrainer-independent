@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +17,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { FullPageLoader } from '@/components/ui/page-spinner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
-import { validatePhone } from '@/lib/validation';
 import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 
@@ -27,7 +27,6 @@ export default function ClubOnboarding() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isAlreadyClaimed, setIsAlreadyClaimed] = useState(false);
   const { toast } = useToast();
@@ -284,24 +283,12 @@ export default function ClubOnboarding() {
                   <Label htmlFor="contact-phone">
                     {t('claim.contactPhone', 'Contact Phone')}
                   </Label>
-                  <Input
+                  <PhoneInput
                     id="contact-phone"
-                    type="tel"
                     value={contactPhone}
-                    onChange={(e) => {
-                      setContactPhone(e.target.value);
-                      setPhoneError(null);
-                    }}
-                    onBlur={() => {
-                      const error = validatePhone(contactPhone);
-                      setPhoneError(error ? t(`auth:${error}`) : null);
-                    }}
+                    onChange={setContactPhone}
                     placeholder={t('claim.phonePlaceholder', '+31 6 12345678')}
-                    className={phoneError ? 'border-destructive' : ''}
                   />
-                  {phoneError && (
-                    <p className="text-xs text-destructive">{phoneError}</p>
-                  )}
                 </div>
 
                 {/* Description */}

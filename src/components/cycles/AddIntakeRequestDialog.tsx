@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { createOptionalPhoneSchema } from '@/lib/validation';
 import { createManualIntakeRequest, type Cycle, type TimeWindow } from '@/lib/cycles';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 
@@ -46,23 +47,6 @@ interface AddIntakeRequestDialogProps {
   cycles: Cycle[];
   onSuccess: () => void;
 }
-
-const formSchema = z.object({
-  cycle_id: z.string().min(1, 'Please select a cycle'),
-  first_name: z.string().trim().min(1, 'First name is required').max(50),
-  last_name: z.string().trim().max(50).optional().default(''),
-  email: z.string().trim().email('Invalid email').max(255),
-  phone: z.string().optional(),
-  rating_system: z.string().default('knltb'),
-  rating: z.coerce.number().optional(),
-  lesson_types: z.array(z.string()).min(1, 'Select at least one lesson type'),
-  preferred_duration_minutes: z.coerce.number().default(60),
-  sessions_per_week: z.coerce.number().min(1).max(7).default(1),
-  preferred_trainer_id: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-type FormData = z.infer<typeof formSchema>;
 
 // Convert DayAvailability to TimeWindow array
 function dayAvailabilityToTimeWindows(dayAvailability: DayAvailability): TimeWindow[] {
@@ -93,6 +77,25 @@ export default function AddIntakeRequestDialog({
   }>>([]);
   const [trainers, setTrainers] = useState<Array<{ id: string; name: string }>>([]);
   const [dayAvailability, setDayAvailability] = useState<DayAvailability>({});
+
+  // Built inside the component (mirroring CycleApplicationForm) so the phone
+  // validation message can be translated via t().
+  const formSchema = z.object({
+    cycle_id: z.string().min(1, 'Please select a cycle'),
+    first_name: z.string().trim().min(1, 'First name is required').max(50),
+    last_name: z.string().trim().max(50).optional().default(''),
+    email: z.string().trim().email('Invalid email').max(255),
+    phone: createOptionalPhoneSchema(t('application.form.validation.phoneInvalid')),
+    rating_system: z.string().default('knltb'),
+    rating: z.coerce.number().optional(),
+    lesson_types: z.array(z.string()).min(1, 'Select at least one lesson type'),
+    preferred_duration_minutes: z.coerce.number().default(60),
+    sessions_per_week: z.coerce.number().min(1).max(7).default(1),
+    preferred_trainer_id: z.string().optional(),
+    notes: z.string().optional(),
+  });
+
+  type FormData = z.infer<typeof formSchema>;
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -405,7 +408,7 @@ export default function AddIntakeRequestDialog({
                     <FormItem>
                       <FormLabel>{t('application.form.phone')}</FormLabel>
                       <FormControl>
-                        <Input type="tel" {...field} />
+                        <Input type="tel" inputMode="tel" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

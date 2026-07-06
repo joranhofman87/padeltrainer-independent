@@ -4,13 +4,23 @@ import { z } from 'zod';
 // +31 6 12345678, 06-12345678, 0612345678, +31612345678, 0031 6 12345678
 const dutchPhoneRegex = /^(\+31|0031|0)[\s.-]?[1-9][\s.-]?(\d[\s.-]?){7,8}$/;
 
+// International E.164-ish: +<country code starting 1-9> then 7-14 further digits
+// (separators already stripped by callers). Local (0-prefixed) numbers can only be
+// validated as Dutch — foreign players must use their +CC form, which the shared
+// PhoneInput placeholder nudges toward.
+const intlPhoneRegex = /^\+[1-9]\d{7,14}$/;
+
+/** Dutch formats OR an international +CC number (post separator-strip). */
+const isPlausiblePhone = (normalized: string): boolean =>
+  dutchPhoneRegex.test(normalized) || intlPhoneRegex.test(normalized);
+
 /**
  * Phone validation schema - optional
  * Accepts empty strings and valid Dutch phone numbers
  */
 export const phoneSchema = z.string()
   .transform(val => val.trim())
-  .refine(val => val === '' || dutchPhoneRegex.test(val.replace(/[\s.-]/g, '')), {
+  .refine(val => val === '' || isPlausiblePhone(val.replace(/[\s.-]/g, '')), {
     message: 'validation.phoneInvalid',
   });
 
@@ -19,7 +29,7 @@ export function createOptionalPhoneSchema(invalidMessage: string) {
   return z
     .string()
     .transform((val) => val.trim())
-    .refine((val) => val === '' || dutchPhoneRegex.test(val.replace(/[\s.-]/g, '')), {
+    .refine((val) => val === '' || isPlausiblePhone(val.replace(/[\s.-]/g, '')), {
       message: invalidMessage,
     });
 }
@@ -32,7 +42,7 @@ export function createRequiredPhoneSchema(invalidMessage: string, requiredMessag
     .refine((val) => val !== '', { message: requiredMessage })
     // Empty already flagged above; only validate the format of a non-empty value
     // so an empty input shows just the "required" message, not both.
-    .refine((val) => val === '' || dutchPhoneRegex.test(val.replace(/[\s.-]/g, '')), {
+    .refine((val) => val === '' || isPlausiblePhone(val.replace(/[\s.-]/g, '')), {
       message: invalidMessage,
     });
 }
@@ -44,7 +54,7 @@ export function createRequiredPhoneSchema(invalidMessage: string, requiredMessag
 export const phoneSchemaRequired = z.string()
   .min(1, 'validation.phoneRequired')
   .transform(val => val.trim())
-  .refine(val => dutchPhoneRegex.test(val.replace(/[\s.-]/g, '')), {
+  .refine(val => isPlausiblePhone(val.replace(/[\s.-]/g, '')), {
     message: 'validation.phoneInvalid',
   });
 
@@ -59,7 +69,7 @@ export function validatePhone(phone: string, required = false): string | null {
   }
   
   const normalized = trimmed.replace(/[\s.-]/g, '');
-  if (!dutchPhoneRegex.test(normalized)) {
+  if (!isPlausiblePhone(normalized)) {
     return 'validation.phoneInvalid';
   }
   

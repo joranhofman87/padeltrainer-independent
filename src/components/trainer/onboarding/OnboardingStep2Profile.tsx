@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -242,11 +243,10 @@ export function OnboardingStep2Profile({ onNext, onBack }: OnboardingStep2Profil
             <Phone className="h-4 w-4" />
             Phone number <span className="text-muted-foreground text-xs">(optional)</span>
           </Label>
-          <Input
+          <PhoneInput
             id="phone"
-            type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={setPhone}
             placeholder="+31 6 12345678"
           />
           <p className="text-xs text-muted-foreground">For booking updates</p>

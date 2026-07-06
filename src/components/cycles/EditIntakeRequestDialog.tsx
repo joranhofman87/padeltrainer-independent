@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { updateIntakeRequest, type IntakeRequestWithProposal, type TimeWindow } from '@/lib/cycles';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { createOptionalPhoneSchema } from '@/lib/validation';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
 
 interface EditIntakeRequestDialogProps {
@@ -40,19 +41,6 @@ interface EditIntakeRequestDialogProps {
   request: IntakeRequestWithProposal;
   onSuccess: () => void;
 }
-
-const formSchema = z.object({
-  full_name: z.string().trim().min(1).max(100),
-  email: z.string().email(),
-  phone: z.string().optional(),
-  rating: z.coerce.number().min(0).max(12).optional().or(z.literal('')),
-  rating_system: z.string(),
-  preferred_duration_minutes: z.coerce.number().min(30).max(180),
-  sessions_per_week: z.coerce.number().min(1).max(7),
-  notes: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof formSchema>;
 
 const LESSON_TYPES = ['private', 'duo', 'group3', 'group4', 'kids'] as const;
 
@@ -66,6 +54,21 @@ export default function EditIntakeRequestDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLessonTypes, setSelectedLessonTypes] = useState<string[]>([]);
   const [dayAvailability, setDayAvailability] = useState<DayAvailability>({});
+
+  // Built inside the component (mirroring CycleApplicationForm) so the phone
+  // validation message can be translated via t().
+  const formSchema = z.object({
+    full_name: z.string().trim().min(1).max(100),
+    email: z.string().email(),
+    phone: createOptionalPhoneSchema(t('application.form.validation.phoneInvalid')),
+    rating: z.coerce.number().min(0).max(12).optional().or(z.literal('')),
+    rating_system: z.string(),
+    preferred_duration_minutes: z.coerce.number().min(30).max(180),
+    sessions_per_week: z.coerce.number().min(1).max(7),
+    notes: z.string().optional(),
+  });
+
+  type FormValues = z.infer<typeof formSchema>;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -195,7 +198,7 @@ export default function EditIntakeRequestDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('application.form.phone', { defaultValue: 'Telefoon' })}</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
+                    <FormControl><Input type="tel" inputMode="tel" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
@@ -242,12 +243,10 @@ export function CreateAcademyTrainerDialog({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">{t('trainers.phoneOptional', 'Phone (optional)')}</Label>
-                <Input
+                <PhoneInput
                   id="phone"
-                  type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+31 6 12345678"
+                  onChange={setPhone}
                 />
               </div>
             </div>

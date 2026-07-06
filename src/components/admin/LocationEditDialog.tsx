@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { DateInputField } from '@/components/ui/date-input-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -458,10 +459,10 @@ export function LocationEditDialog({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input
+                <PhoneInput
                   id="phone"
                   value={formData.phone}
-                  onChange={e => updateField('phone', e.target.value)}
+                  onChange={v => updateField('phone', v)}
                   placeholder="+31 6 12345678"
                 />
               </div>
@@ -703,11 +704,11 @@ export function LocationEditDialog({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="club_phone">Phone</Label>
-                    <Input
+                    <PhoneInput
                       id="club_phone"
                       value={clubFormData.phone || ''}
-                      onChange={e =>
-                        setClubFormData(prev => prev ? { ...prev, phone: e.target.value || null } : prev)
+                      onChange={v =>
+                        setClubFormData(prev => prev ? { ...prev, phone: v || null } : prev)
                       }
                       placeholder="+31 6 12345678"
                     />

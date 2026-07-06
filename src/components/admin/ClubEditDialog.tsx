@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -232,11 +233,10 @@ export function ClubEditDialog({
 
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input
-                type="tel"
+              <PhoneInput
                 placeholder="+31 6 12345678"
                 value={formData.phone || ""}
-                onChange={(e) => updateField("phone", e.target.value || null)}
+                onChange={(v) => updateField("phone", v || null)}
               />
             </div>
           </TabsContent>
