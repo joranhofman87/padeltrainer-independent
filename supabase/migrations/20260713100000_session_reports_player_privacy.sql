@@ -32,7 +32,9 @@ WHERE sr.reporter_role = 'trainer'
     FROM public.bookings b
     WHERE b.slot_id = sr.slot_id
       AND b.player_id = public.get_profile_id_for_user(auth.uid())
-      AND b.status <> 'cancelled'
+      -- Canonical inactive-booking predicate (matches the capacity/visibility
+      -- checks): swapped-away players (cancelled_swap) lose access too.
+      AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
   );
 
 REVOKE ALL ON public.session_reports_player_summaries FROM anon;
@@ -83,5 +85,14 @@ BEGIN
       AND qual::text NOT ILIKE '%reporter_role%'
   ) THEN
     RAISE EXCEPTION 'narrowed player SELECT policy missing or still role-widened on session_reports';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_views
+    WHERE schemaname = 'public'
+      AND viewname = 'session_reports_player_summaries'
+      AND definition ILIKE '%cancelled_swap%'
+  ) THEN
+    RAISE EXCEPTION 'session_reports_player_summaries must exclude cancelled_swap bookings';
   END IF;
 END $$;

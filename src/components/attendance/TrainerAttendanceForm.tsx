@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,6 +17,9 @@ interface TrainerAttendanceFormProps {
   onSaved?: () => void;
 }
 
+const attendeeId = (p: { id: string; profileId?: string; playerId?: string }) =>
+  p.playerId || p.profileId || p.id;
+
 export function TrainerAttendanceForm({ slotId, players, onSaved }: TrainerAttendanceFormProps) {
   const { t } = useTranslation('trainer');
   const { profile } = useAuth();
@@ -29,6 +32,10 @@ export function TrainerAttendanceForm({ slotId, players, onSaved }: TrainerAtten
   const [saving, setSaving] = useState(false);
   const [existingReport, setExistingReport] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [touched, setTouched] = useState(false);
+  // Player ids the form has already seen — lets the roster-sync effect tell a
+  // freshly ADDED player apart from one the trainer manually unchecked.
+  const knownIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -52,12 +59,33 @@ export function TrainerAttendanceForm({ slotId, players, onSaved }: TrainerAtten
       setPrivateNotes(data.notes || '');
     } else {
       // Default: all players attended
-      setAttendees(players.map(p => p.playerId || p.profileId || p.id));
+      setAttendees(players.map(attendeeId));
     }
+    knownIdsRef.current = new Set(players.map(attendeeId));
     setLoading(false);
   };
 
+  // The host page can edit the roster while the form is mounted (slot detail's
+  // add/remove player). The one-shot default above would then record a freshly
+  // added player as ABSENT (their checkbox appears unchecked) and keep ghost ids
+  // for removed players. Keep membership in sync: prune removed ids, check newly
+  // added ones (they were just added because they were there), and never override
+  // a manual uncheck (a fresh id is one the form has never seen).
+  useEffect(() => {
+    if (loading) return;
+    const ids = players.map(attendeeId);
+    const fresh = ids.filter(id => !knownIdsRef.current.has(id));
+    setAttendees(prev => {
+      const next = !existingReport && !touched
+        ? ids
+        : [...prev.filter(id => ids.includes(id)), ...fresh.filter(id => !prev.includes(id))];
+      return next.length === prev.length && next.every((v, i) => v === prev[i]) ? prev : next;
+    });
+    if (fresh.length > 0) knownIdsRef.current = new Set([...knownIdsRef.current, ...fresh]);
+  }, [players, existingReport, touched, loading]);
+
   const toggleAttendee = (playerId: string) => {
+    setTouched(true);
     setAttendees(prev =>
       prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]
     );

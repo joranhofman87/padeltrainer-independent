@@ -23,6 +23,8 @@ const PLAYER_USER = '20000000-0000-0000-0000-0000000000b1';
 const PLAYER_PROFILE = '20000000-0000-0000-0000-0000000000b2';
 const CANCELLED_USER = '30000000-0000-0000-0000-0000000000c1';
 const CANCELLED_PROFILE = '30000000-0000-0000-0000-0000000000c2';
+const SWAPPED_USER = '60000000-0000-0000-0000-0000000000f1';
+const SWAPPED_PROFILE = '60000000-0000-0000-0000-0000000000f2';
 const STRANGER_USER = '40000000-0000-0000-0000-0000000000d1';
 const STRANGER_PROFILE = '40000000-0000-0000-0000-0000000000d2';
 const SLOT = '50000000-0000-0000-0000-0000000000e1';
@@ -126,13 +128,15 @@ beforeAll(async () => {
       ('${TRAINER_PROFILE}', '${TRAINER_USER}', 'Trainer'),
       ('${PLAYER_PROFILE}', '${PLAYER_USER}', 'Booked Player'),
       ('${CANCELLED_PROFILE}', '${CANCELLED_USER}', 'Cancelled Player'),
+      ('${SWAPPED_PROFILE}', '${SWAPPED_USER}', 'Swapped-away Player'),
       ('${STRANGER_PROFILE}', '${STRANGER_USER}', 'Stranger');
     INSERT INTO trainer_profiles (id, user_id) VALUES ('${TRAINER_TP}', '${TRAINER_USER}');
     INSERT INTO availability_slots (id, trainer_id, start_time, end_time)
       VALUES ('${SLOT}', '${TRAINER_TP}', now() - interval '2 days', now() - interval '2 days' + interval '1 hour');
     INSERT INTO bookings (slot_id, player_id, status) VALUES
       ('${SLOT}', '${PLAYER_PROFILE}', 'confirmed'),
-      ('${SLOT}', '${CANCELLED_PROFILE}', 'cancelled');
+      ('${SLOT}', '${CANCELLED_PROFILE}', 'cancelled'),
+      ('${SLOT}', '${SWAPPED_PROFILE}', 'cancelled_swap');
     INSERT INTO session_reports (slot_id, reporter_id, reporter_role, session_happened, attendees, notes, public_notes)
       VALUES ('${SLOT}', '${TRAINER_PROFILE}', 'trainer', true,
               ARRAY['${PLAYER_PROFILE}'], 'PRIVATE: struggles with backhand', 'Great session, practiced volleys');
@@ -187,6 +191,13 @@ describe('session_reports player privacy (real migration SQL)', () => {
 
   it('a cancelled-booking player gets nothing from the view (old policy let them read)', async () => {
     const rows = await asUser(CANCELLED_USER, () =>
+      db.query(`SELECT id FROM session_reports_player_summaries WHERE slot_id = $1`, [SLOT]),
+    );
+    expect(rows.rows).toHaveLength(0);
+  });
+
+  it('a swapped-away player (cancelled_swap) gets nothing from the view either', async () => {
+    const rows = await asUser(SWAPPED_USER, () =>
       db.query(`SELECT id FROM session_reports_player_summaries WHERE slot_id = $1`, [SLOT]),
     );
     expect(rows.rows).toHaveLength(0);

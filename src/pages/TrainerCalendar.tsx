@@ -65,13 +65,20 @@ export default function TrainerCalendar() {
 
   // ?date=YYYY-MM-DD deep link (schedule-overview's per-slot pencil): open the DAY
   // view on that date instead of silently landing on today's week.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get("date");
   const paramDate = dateParam ? parseISO(dateParam) : null;
   const hasValidDateParam = paramDate != null && isValid(paramDate);
 
   const [view, setView] = useState<View>(hasValidDateParam ? "day" : "week");
   const [currentDate, setCurrentDate] = useState(hasValidDateParam ? paramDate! : new Date());
+
+  // Consume the deep link once it has seeded the state — leaving it in the URL
+  // makes every remount (back-nav from a slot, refresh) snap back to the stale
+  // deep-linked day instead of where the trainer navigated to.
+  useEffect(() => {
+    if (searchParams.has("date")) setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [slots, setSlots] = useState<SlotWithBookings[]>([]);
   const [loading, setLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
