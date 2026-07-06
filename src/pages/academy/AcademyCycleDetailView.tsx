@@ -79,7 +79,6 @@ export default function AcademyCycleDetailView() {
         cycleId={cycleId}
         canEdit
         canEditPrice
-        canPublish
         canRemoveFromCycle
         canManageRoster
         academyProfileId={activeAcademy?.id ?? null}

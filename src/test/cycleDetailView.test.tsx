@@ -18,8 +18,6 @@ const {
   mockUpdatePricing,
   mockApplyEdit,
   mockApplyEndDate,
-  mockPublish,
-  mockOpenDraftCycles,
   editOverride,
   mockToast,
 } = vi.hoisted(() => ({
@@ -32,8 +30,6 @@ const {
   mockUpdatePricing: vi.fn(() => Promise.resolve()),
   mockApplyEdit: vi.fn(),
   mockApplyEndDate: vi.fn((..._a: unknown[]) => Promise.resolve({ added: 0, removed: 0 })),
-  mockPublish: vi.fn(),
-  mockOpenDraftCycles: vi.fn((..._a: unknown[]) => Promise.resolve()),
   editOverride: { current: {} as Partial<SlotEditFormValues> },
   mockToast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
@@ -43,10 +39,7 @@ vi.mock('@/lib/slotDeleteGuard', () => ({
   applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a),
   cancelBookingsAndDeleteSlots: (...a: unknown[]) => mockCancelDelete(...a),
 }));
-vi.mock('@/lib/cycleWrites', () => ({
-  deleteCycle: (...a: unknown[]) => mockDeleteCycle(...a),
-  openDraftCycles: (...a: unknown[]) => mockOpenDraftCycles(...a),
-}));
+vi.mock('@/lib/cycleWrites', () => ({ deleteCycle: (...a: unknown[]) => mockDeleteCycle(...a) }));
 vi.mock('@/lib/invoiceSync', () => ({
   syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
   syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
@@ -55,7 +48,6 @@ vi.mock('@/lib/cycleExtension', () => ({ applyCycleEndDate: (...a: unknown[]) =>
 vi.mock('@/lib/cycles', () => ({
   updateCyclePricing: (...a: unknown[]) => mockUpdatePricing(...a),
   applySlotEditToCycle: (...a: unknown[]) => mockApplyEdit(...a),
-  publishCycle: (...a: unknown[]) => mockPublish(...a),
 }));
 // Derive a full SlotEditFormValues from a slot exactly like SlotEditForm's init, so the stub emits
 // the rep slot's baseline + the test's override → the component's buildCycleEditPatch is deterministic.
@@ -195,8 +187,6 @@ beforeEach(() => {
   mockApplyEdit.mockReset();
   mockApplyEndDate.mockReset();
   mockApplyEndDate.mockResolvedValue({ added: 0, removed: 0 });
-  mockPublish.mockReset();
-  mockPublish.mockResolvedValue(undefined);
   editOverride.current = {};
   mockToast.mockReset();
   mockToast.success.mockReset();
@@ -450,88 +440,5 @@ describe('CycleDetailView (inline edit)', () => {
     expect(screen.getByText(/could not be loaded/)).toBeInTheDocument();
   });
 
-  // --- Slot-generator publish lifecycle ---
-  // A REAL draft: slots private, nothing booked (the generator's actual output).
-  // Public or booked slots on a draft trigger the "already live" heal banner instead.
-  const draftDetail = (visibility: 'public' | 'private'): CycleDetail => ({
-    ...sampleDetail,
-    slots: (sampleDetail.slots as unknown as Array<Record<string, unknown>>).map((sl) => ({
-      ...sl,
-      is_public: false,
-      bookedCount: 0,
-      playerNames: [],
-      paymentStatus: 'no_players',
-    })) as CycleDetail['slots'],
-    cycle: {
-      ...(sampleDetail.cycle as object),
-      status: 'draft',
-      settings: { publish_visibility: visibility },
-    } as unknown as CycleDetail['cycle'],
-  });
 
-  // Draft-on-paper with LIVE data: public slots and (optionally) paid bookings —
-  // the reported state (booked+paid session on a cycle still shown as concept).
-  const liveDraftDetail = (booked: boolean): CycleDetail => ({
-    ...sampleDetail,
-    slots: (sampleDetail.slots as unknown as Array<Record<string, unknown>>).map((sl, i) => ({
-      ...sl,
-      is_public: true,
-      bookedCount: booked && i === 0 ? 1 : 0,
-      playerNames: booked && i === 0 ? ['Kim de Kort'] : [],
-      paymentStatus: booked && i === 0 ? 'all_paid' : 'no_players',
-    })) as CycleDetail['slots'],
-    cycle: {
-      ...(sampleDetail.cycle as object),
-      status: 'draft',
-      settings: { publish_visibility: 'private' },
-    } as unknown as CycleDetail['cycle'],
-  });
-
-  it('draft with PAID bookings: shows the already-booked heal banner; CTA flips status only (never slot visibility)', async () => {
-    mockUseCycleDetail.mockReturnValue({ data: liveDraftDetail(true), isLoading: false, isError: false });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish onMutated={() => {}} />);
-    // No false "not bookable" concept banner…
-    expect(screen.queryByText('Dit is een concept')).not.toBeInTheDocument();
-    expect(screen.getByText('Al geboekt — status klopt niet meer')).toBeInTheDocument();
-    // …and the heal is status-only: openDraftCycles, NOT publishCycle (which would
-    // apply the stored private intent and unpublish the live booked slots).
-    fireEvent.click(screen.getByRole('button', { name: 'Markeer als gepubliceerd' }));
-    await waitFor(() => expect(mockOpenDraftCycles).toHaveBeenCalledWith(['cy1']));
-    expect(mockPublish).not.toHaveBeenCalled();
-  });
-
-  it('draft with public (unbooked) slots: shows the already-public variant of the heal banner', () => {
-    mockUseCycleDetail.mockReturnValue({ data: liveDraftDetail(false), isLoading: false, isError: false });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish onMutated={() => {}} />);
-    expect(screen.getByText('Sessies staan al openbaar')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Publiceren' })).not.toBeInTheDocument();
-  });
-
-  it('publish: a PUBLIC-intent draft + canPublish shows the banner; publishing calls publishCycle(id,true) + onMutated', async () => {
-    mockUseCycleDetail.mockReturnValue({ data: draftDetail('public'), isLoading: false, isError: false });
-    const onMutated = vi.fn();
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish onMutated={onMutated} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Publiceren' }));
-    await waitFor(() => expect(mockPublish).toHaveBeenCalledWith('cy1', true));
-    await waitFor(() => expect(onMutated).toHaveBeenCalled());
-  });
-
-  it('publish: a PRIVATE-intent draft publishes with makePublic=false (cycle opens, slots stay private)', async () => {
-    mockUseCycleDetail.mockReturnValue({ data: draftDetail('private'), isLoading: false, isError: false });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish />);
-    fireEvent.click(screen.getByRole('button', { name: 'Publiceren' }));
-    await waitFor(() => expect(mockPublish).toHaveBeenCalledWith('cy1', false));
-  });
-
-  it('publish: no banner when the cycle is already open', () => {
-    mockUseCycleDetail.mockReturnValue(loaded); // status 'open'
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish />);
-    expect(screen.queryByRole('button', { name: 'Publiceren' })).not.toBeInTheDocument();
-  });
-
-  it('publish: no banner on a draft when canPublish is false (read-only roles)', () => {
-    mockUseCycleDetail.mockReturnValue({ data: draftDetail('public'), isLoading: false, isError: false });
-    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
-    expect(screen.queryByRole('button', { name: 'Publiceren' })).not.toBeInTheDocument();
-  });
 });

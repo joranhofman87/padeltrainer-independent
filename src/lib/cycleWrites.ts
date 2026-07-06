@@ -8,7 +8,6 @@ import type { Json, Database } from '@/integrations/supabase/types';
 import type { Cycle, CycleInput, CycleSettings, SlotEditPatch, SlotEditResult } from './cycleTypes';
 import { toCycle } from './cycleMappers';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
-import { setSlotVisibility } from '@/lib/slots';
 
 /**
  * Atomic, set-based slot edit / apply-to-cycle via the `apply_slot_edit_to_cycle` RPC (Phase 4 F2).
@@ -146,88 +145,6 @@ export async function updateCycle(cycleId: string, updates: Partial<CycleInput>)
   return toCycle(data);
 }
 
-/**
- * Publish a DRAFT cycle created by the slot generator: open it for booking and
- * apply the stored public/private intent to its slots.
- *
- * The generator inserts slots `is_public:false` (draft = not bookable) and the
- * cycle `status:'draft'`. Publishing flips the cycle to `open` and sets every
- * slot's visibility to `makePublic` (the owner's `settings.publish_visibility`
- * choice; `false` keeps a private cycle that staff can still book).
- *
- * Two non-atomic writes: if the visibility write fails the cycle is already
- * `open` but its slots stay private — safe (nothing is publicly visible until
- * `is_public` flips) and the owner can simply retry. (A future atomic RPC could
- * fuse the two if needed.)
- */
-export async function publishCycle(
-  cycleId: string,
-  makePublic: boolean,
-  client: SupabaseClient<Database> = supabase,
-): Promise<void> {
-  const { error: openErr } = await client
-    .from('cycles')
-    .update({ status: 'open', updated_at: new Date().toISOString() })
-    .eq('id', cycleId);
-  if (openErr) throw openErr;
-
-  const { data, error: readErr } = await client
-    .from('availability_slots')
-    .select('id')
-    .eq('cyclus_id', cycleId);
-  if (readErr) throw readErr;
-
-  const ids = ((data as { id: string }[] | null) ?? []).map((s) => s.id);
-  const { error: visErr } = await setSlotVisibility(ids, makePublic, client);
-  if (visErr) throw visErr;
-}
-
-/**
- * Publish a batch of cycli at once — e.g. all the per-series draft cycli the slot generator just
- * created. Resilient: one cyclus failing to publish never aborts the rest; returns how many
- * published / failed so the caller can report partial success. `makePublic` applies to the whole
- * batch (the generator's run shares a single visibility intent). `publishOne` is an injectable seam
- * for tests; production uses the real {@link publishCycle}.
- */
-/**
- * Status-only heal for a draft cycle that is ALREADY live in practice: slots were
- * made public (bulk visibility / per-slot toggles) — and possibly booked & paid —
- * while the cycle row stayed 'draft'. Unlike `publishCycle` this NEVER touches slot
- * visibility (publishCycle applies the stored publish intent to every slot, which
- * for a private-intent cycle would UNPUBLISH live booked sessions). Only rows still
- * 'draft' are flipped, so re-running or racing a real publish is a no-op.
- */
-export async function openDraftCycles(
-  cycleIds: string[],
-  client: SupabaseClient<Database> = supabase,
-): Promise<void> {
-  if (cycleIds.length === 0) return;
-  const { error } = await client
-    .from('cycles')
-    .update({ status: 'open', updated_at: new Date().toISOString() })
-    .in('id', cycleIds)
-    .eq('status', 'draft');
-  if (error) throw error;
-}
-
-export async function publishCycles(
-  cycleIds: string[],
-  makePublic: boolean,
-  client: SupabaseClient<Database> = supabase,
-  publishOne: typeof publishCycle = publishCycle,
-): Promise<{ published: number; failed: number }> {
-  let published = 0;
-  let failed = 0;
-  for (const id of cycleIds) {
-    try {
-      await publishOne(id, makePublic, client);
-      published += 1;
-    } catch {
-      failed += 1;
-    }
-  }
-  return { published, failed };
-}
 
 /** Delete the given sessions, re-verifying right before deletion that none gained an
  *  occupying booking since the preview (a player booking is never silently cancelled).
