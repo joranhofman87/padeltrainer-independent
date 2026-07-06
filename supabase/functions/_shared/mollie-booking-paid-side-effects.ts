@@ -82,6 +82,8 @@ export async function runBookingPaidSideEffects(opts: {
           start_time,
           end_time,
           trainer_id,
+          academy_profile_id,
+          cyclus_name,
           locations(name, city)
         ),
         profiles!bookings_player_id_fkey(
@@ -95,17 +97,41 @@ export async function runBookingPaidSideEffects(opts: {
       .eq("id", bookingId)
       .single();
 
+    // Trainer display name — used by the player confirmation, the staff
+    // notifications and the Slack ping below.
+    let trainerName = "Unknown";
+    if (booking?.availability_slots?.trainer_id) {
+      const { data: tp } = await supabase
+        .from("trainer_profiles")
+        .select("user_id")
+        .eq("id", booking.availability_slots.trainer_id)
+        .single();
+      if (tp?.user_id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("user_id", tp.user_id)
+          .single();
+        trainerName = prof?.full_name || "Unknown";
+      }
+    }
+
     if (booking?.profiles?.email) {
-      // Player booking: the player confirmation email via send-email.
+      // Player booking: the confirmation email. send-email keys on `type` (a
+      // `template:` body 400s at its required-fields check) — this invoke was
+      // silently broken from day one, so no player ever received it until now.
       await supabase.functions.invoke("send-email", {
         body: {
           to: booking.profiles.email,
-          subject: "Booking Confirmed",
-          template: "booking_confirmation",
+          type: "booking_confirmation",
           data: {
             playerName: booking.profiles.full_name,
-            startTime: booking.availability_slots.start_time,
+            lessonTitle: booking.availability_slots.cyclus_name || "Training session",
+            trainerName,
+            lessonDate: formatAmsterdam(booking.availability_slots.start_time, "date"),
+            lessonTime: formatAmsterdam(booking.availability_slots.start_time, "time"),
             location: booking.availability_slots.locations?.name,
+            price: paymentAmountValue,
           },
         },
       });
@@ -155,24 +181,6 @@ export async function runBookingPaidSideEffects(opts: {
     // Slack payment_received — for player AND guest bookings alike. (This used to be
     // nested inside the player-email guard above, so guest payments never pinged.)
     if (booking) {
-      const trainerProfileId = booking.availability_slots.trainer_id;
-      let trainerName = "Unknown";
-      if (trainerProfileId) {
-        const { data: tp } = await supabase
-          .from("trainer_profiles")
-          .select("user_id")
-          .eq("id", trainerProfileId)
-          .single();
-        if (tp?.user_id) {
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("user_id", tp.user_id)
-            .single();
-          trainerName = prof?.full_name || "Unknown";
-        }
-      }
-
       try {
         await supabase.functions.invoke("slack-notify", {
           body: {
@@ -188,12 +196,194 @@ export async function runBookingPaidSideEffects(opts: {
       } catch (slackErr) {
         logStep("Slack notification failed (non-fatal)", { error: String(slackErr) });
       }
+
+      // Staff notifications: the trainer(s) and the academy managers hear about
+      // every paid public booking. Trainer emails deliberately carry NO amount
+      // (owner decision 2026-07-06: "purely the booking(s) made"); academy
+      // manager emails include what was paid. Non-fatal like everything here.
+      await sendStaffBookingNotifications({
+        supabase,
+        bookingIds,
+        playerName: booking.profiles?.full_name ?? booking.guest_players?.full_name ?? "Guest",
+        paymentAmountValue,
+        source,
+        logStep,
+        notifySlackError,
+      });
     }
   } catch (emailError) {
     logStep("Failed to send confirmation email", {
       error: emailError instanceof Error ? emailError.message : String(emailError),
     });
     // Don't throw — email failure must not fail the caller (claim already consumed)
+  }
+}
+
+/** Format a timestamptz for staff/player emails in the platform's home timezone. */
+function formatAmsterdam(iso: string, kind: "date" | "time"): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return kind === "date"
+    ? new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(d)
+    : new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit" }).format(d);
+}
+
+type StaffSession = { date: string; time: string; location: string; name: string };
+
+/**
+ * Email the slot owners about a paid public booking: one email per TRAINER
+ * (their sessions only, NO amount) and one per ACADEMY MANAGER (all sessions +
+ * the paid amount). A trainer whose address is already among the academy
+ * recipients gets only the academy version (solo academies would otherwise see
+ * every booking twice). Recipients route through send-email's `new_booking`
+ * preference, so staff can mute or digest these per user.
+ *
+ * Non-fatal by design; a failure alerts Slack (the paid claim is consumed, so
+ * nothing retries this).
+ */
+export async function sendStaffBookingNotifications(opts: {
+  supabase: SupabaseClient;
+  bookingIds: string[];
+  playerName: string;
+  paymentAmountValue?: string;
+  source: string;
+  logStep: LogStep;
+  notifySlackError: NotifySlackError;
+}): Promise<void> {
+  const { supabase, bookingIds, playerName, paymentAmountValue, source, logStep, notifySlackError } = opts;
+  try {
+    const { data: rows } = await supabase
+      .from("bookings")
+      .select(`
+        id,
+        availability_slots!inner(
+          start_time,
+          end_time,
+          trainer_id,
+          academy_profile_id,
+          cyclus_name,
+          locations(name)
+        )
+      `)
+      .in("id", bookingIds);
+    const bookings = (rows ?? []) as unknown as Array<{
+      id: string;
+      availability_slots: {
+        start_time: string;
+        end_time: string;
+        trainer_id: string | null;
+        academy_profile_id: string | null;
+        cyclus_name: string | null;
+        locations: { name: string | null } | null;
+      };
+    }>;
+    if (bookings.length === 0) return;
+
+    const toSession = (b: (typeof bookings)[number]): StaffSession => ({
+      date: formatAmsterdam(b.availability_slots.start_time, "date"),
+      time: `${formatAmsterdam(b.availability_slots.start_time, "time")}–${formatAmsterdam(b.availability_slots.end_time, "time")}`,
+      location: b.availability_slots.locations?.name ?? "",
+      name: b.availability_slots.cyclus_name ?? "",
+    });
+
+    // Academy recipients first (they win the dedupe): every manager of every
+    // academy involved, all sessions, amount included.
+    const academyIds = [...new Set(bookings.map((b) => b.availability_slots.academy_profile_id).filter(Boolean))] as string[];
+    const academyEmails = new Set<string>();
+    const academyRecipients: Array<{ email: string; name: string }> = [];
+    if (academyIds.length > 0) {
+      const { data: managers } = await supabase
+        .from("academy_managers")
+        .select("user_id")
+        .in("academy_profile_id", academyIds);
+      const managerUserIds = [...new Set(((managers ?? []) as Array<{ user_id: string }>).map((m) => m.user_id))];
+      if (managerUserIds.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("user_id, email, full_name")
+          .in("user_id", managerUserIds);
+        for (const prof of (profs ?? []) as Array<{ user_id: string; email: string | null; full_name: string | null }>) {
+          if (!prof.email || academyEmails.has(prof.email)) continue;
+          academyEmails.add(prof.email);
+          academyRecipients.push({ email: prof.email, name: prof.full_name ?? "" });
+        }
+      }
+    }
+
+    // Trainer recipients: per trainer, their own sessions, NO amount.
+    const trainerIds = [...new Set(bookings.map((b) => b.availability_slots.trainer_id).filter(Boolean))] as string[];
+    const trainerRecipients: Array<{ email: string; name: string; sessions: StaffSession[] }> = [];
+    if (trainerIds.length > 0) {
+      const { data: tps } = await supabase
+        .from("trainer_profiles")
+        .select("id, user_id")
+        .in("id", trainerIds);
+      const tpList = (tps ?? []) as Array<{ id: string; user_id: string | null }>;
+      const userIds = [...new Set(tpList.map((t) => t.user_id).filter(Boolean))] as string[];
+      const emailByUser = new Map<string, { email: string | null; full_name: string | null }>();
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("user_id, email, full_name")
+          .in("user_id", userIds);
+        for (const prof of (profs ?? []) as Array<{ user_id: string; email: string | null; full_name: string | null }>) {
+          emailByUser.set(prof.user_id, prof);
+        }
+      }
+      for (const tp of tpList) {
+        const prof = tp.user_id ? emailByUser.get(tp.user_id) : undefined;
+        if (!prof?.email) continue;
+        if (academyEmails.has(prof.email)) continue; // gets the academy version instead
+        trainerRecipients.push({
+          email: prof.email,
+          name: prof.full_name ?? "",
+          sessions: bookings.filter((b) => b.availability_slots.trainer_id === tp.id).map(toSession),
+        });
+      }
+    }
+
+    const allSessions = bookings.map(toSession);
+    const sends: Array<Promise<unknown>> = [];
+    for (const r of trainerRecipients) {
+      sends.push(
+        supabase.functions.invoke("send-email", {
+          body: {
+            to: r.email,
+            type: "new_public_booking_admin",
+            data: { recipientName: r.name, playerName, sessions: r.sessions },
+          },
+        }),
+      );
+    }
+    for (const r of academyRecipients) {
+      sends.push(
+        supabase.functions.invoke("send-email", {
+          body: {
+            to: r.email,
+            type: "new_public_booking_admin",
+            data: {
+              recipientName: r.name,
+              playerName,
+              sessions: allSessions,
+              ...(paymentAmountValue ? { amount: `€${paymentAmountValue}` } : {}),
+            },
+          },
+        }),
+      );
+    }
+    await Promise.all(sends);
+    if (sends.length > 0) {
+      logStep("Staff booking notifications sent", {
+        trainers: trainerRecipients.length,
+        academyManagers: academyRecipients.length,
+      });
+    }
+  } catch (staffErr) {
+    logStep("Staff booking notification failed (non-fatal)", { error: String(staffErr) });
+    await notifySlackError(source, "staff booking notification failed after paid transition", {
+      bookingIds,
+      error: String(staffErr),
+    });
   }
 }
 
