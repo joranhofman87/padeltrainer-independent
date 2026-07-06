@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, getDay, addDays, startOfWeek } from 'date-fns';
 import { nl, enUS } from 'date-fns/locale';
-import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock, Ticket } from 'lucide-react';
+import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock, Ticket, Layers, User, RectangleHorizontal, Ban } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
@@ -28,7 +28,7 @@ import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { formatPrice } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
-import { setCycleBookingMode, setTargetedCyclePrice, type CycleBookingMode } from '@/lib/cycleBookingMode';
+import { setCycleBookingMode, setTargetedCyclePrice, deriveCycleBookingMode, type CycleBookingMode, type CycleBookingModeOrNone } from '@/lib/cycleBookingMode';
 import { BulkBookingModeDialog } from '@/components/cycles/BulkBookingModeDialog';
 import { deleteCycle } from '@/lib/cycleWrites';
 import {
@@ -73,6 +73,10 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [forceDeleteBooked, setForceDeleteBooked] = useState(false);
   const [editEndDateGroup, setEditEndDateGroup] = useState<CyclusGroup | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('current');
+  const [filterDay, setFilterDay] = useState('all'); // 'all' | '0'(Mon) … '6'(Sun)
+  // Boekbaarheid per group_key, resolved from a supplemental first-slot + settings
+  // fetch after the groups load (neither group builder carries the flags).
+  const [bookingModeByGroup, setBookingModeByGroup] = useState<Record<string, CycleBookingModeOrNone>>({});
 
   // Persist the active filters so opening a cycle and clicking back keeps them (this page unmounts on
   // navigation, resetting useState). Keyed by academy so a stale trainer/location can't leak across
@@ -92,6 +96,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         if (['all', 'paid', 'unpaid', 'no_players'].includes(s.filterPaid)) setFilterPaid(s.filterPaid);
         if (['all', 'public', 'private'].includes(s.filterVisibility)) setFilterVisibility(s.filterVisibility);
         if (['current', 'future', 'past', 'all'].includes(s.timeFilter)) setTimeFilter(s.timeFilter);
+        if (typeof s.filterDay === 'string' && ['all', '0', '1', '2', '3', '4', '5', '6'].includes(s.filterDay)) setFilterDay(s.filterDay);
       }
     } catch { /* ignore malformed stored filters */ }
     setFiltersRestored(true);
@@ -101,10 +106,10 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     try {
       sessionStorage.setItem(
         filterStorageKey,
-        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter }),
+        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter, filterDay }),
       );
     } catch { /* ignore quota/serialization errors */ }
-  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter]);
+  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter, filterDay]);
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -138,11 +143,59 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     try {
       const viaRpc = await fetchGroupsViaRpc(activeAcademy.id);
       const built = viaRpc ?? (await buildGroupsClientSide());
-      setGroups(await hideSplitParentShells(built, activeAcademy.id));
+      const visible = await hideSplitParentShells(built, activeAcademy.id);
+      setGroups(visible);
+      void loadBookingModes(visible);
     } catch (error) {
       logger.error('Error fetching cyclus overview', error as Error, { component: 'AcademyCyclusOverview' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Resolve each group's Boekbaarheid for the icon column: the authoritative flags live
+  // on the SLOTS (allow_single_booking / whole_slot_booking — representative first slot,
+  // same readout the guest dialog uses) and on cycles.settings.allow_cyclus_booking
+  // (absent = true). Registration series and events are not sold via booking modes → no entry.
+  // Non-fatal: on any error the column shows "—" rather than blocking the list.
+  const loadBookingModes = async (gs: CyclusGroup[]) => {
+    try {
+      const eligible = gs.filter((g) => g.type === 'cyclus' && !g.is_registration && g.has_slots && g.first_slot_id);
+      if (eligible.length === 0) {
+        setBookingModeByGroup({});
+        return;
+      }
+      const slotIds = [...new Set(eligible.map((g) => g.first_slot_id as string))];
+      const cycleIds = [...new Set(eligible.filter((g) => g.has_cycle_row).map((g) => g.cyclus_id))];
+      const [slotRes, cycleRes] = await Promise.all([
+        supabase.from('availability_slots').select('id, allow_single_booking, whole_slot_booking' as never).in('id', slotIds),
+        cycleIds.length > 0
+          ? supabase.from('cycles').select('id, settings').in('id', cycleIds)
+          : Promise.resolve({ data: [] as { id: string; settings: unknown }[] }),
+      ]);
+      const flagsBySlot = new Map(
+        ((slotRes.data ?? []) as unknown as { id: string; allow_single_booking: boolean | null; whole_slot_booking: boolean | null }[])
+          .map((r) => [r.id, r]),
+      );
+      const cyclusAllowedByCycle = new Map(
+        ((cycleRes.data ?? []) as { id: string; settings: unknown }[]).map((c) => [
+          c.id,
+          (c.settings as { allow_cyclus_booking?: boolean } | null)?.allow_cyclus_booking !== false,
+        ]),
+      );
+      const next: Record<string, CycleBookingModeOrNone> = {};
+      for (const g of eligible) {
+        const f = flagsBySlot.get(g.first_slot_id as string);
+        if (!f) continue;
+        next[g.group_key] = deriveCycleBookingMode({
+          allowSingle: f.allow_single_booking === true,
+          wholeSlot: f.whole_slot_booking === true,
+          allowCyclus: g.has_cycle_row ? (cyclusAllowedByCycle.get(g.cyclus_id) ?? true) : true,
+        });
+      }
+      setBookingModeByGroup(next);
+    } catch (e) {
+      logger.error('Failed to resolve booking modes for the list (non-fatal)', e as Error, { component: 'AcademyCyclusOverview' });
     }
   };
 
@@ -638,9 +691,43 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   };
 
   // Time-based filtering
+  // Monday-first weekday options for the day filter, labeled in the viewer's locale.
+  const weekdayOptions = useMemo(() => {
+    const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
+    return Array.from({ length: 7 }, (_, i) => ({
+      value: String(i),
+      label: format(addDays(monday, i), 'EEEE', { locale: dateLocale }),
+    }));
+  }, [dateLocale]);
+
+  // Split day_time into standalone, sortable/filterable parts. day_name/time_range
+  // reuse the exact locale string the combined column showed (single source: day_time);
+  // day_index is Monday-first (0..6) for the day filter; time_key sorts lexicographically.
+  const enrichedGroups = useMemo(
+    () =>
+      groups.map((g) => {
+        let day_name = '—';
+        let time_range = '—';
+        let time_key = '';
+        let day_index = -1;
+        if (g.has_slots && g.day_time !== '—') {
+          const sp = g.day_time.indexOf(' ');
+          day_name = sp > 0 ? g.day_time.slice(0, sp) : g.day_time;
+          time_range = sp > 0 ? g.day_time.slice(sp + 1) : '—';
+          try {
+            const start = parseISO(g.period_start);
+            day_index = (getDay(start) + 6) % 7; // 0 = Monday … 6 = Sunday
+            time_key = format(start, 'HH:mm');
+          } catch { /* keep defaults */ }
+        }
+        return { ...g, day_name, day_index, time_range, time_key, booking_mode: bookingModeByGroup[g.group_key] ?? null };
+      }),
+    [groups, bookingModeByGroup],
+  );
+
   const timeFiltered = useMemo(() => {
     const now = new Date();
-    return groups.filter(g => {
+    return enrichedGroups.filter(g => {
       if (!g.period_start || !g.period_end) return timeFilter === 'all';
       try {
         const start = parseISO(g.period_start);
@@ -656,12 +743,13 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         return timeFilter === 'all';
       }
     });
-  }, [groups, timeFilter]);
+  }, [enrichedGroups, timeFilter]);
 
   // Apply filters
   const filtered = useMemo(() => {
     return timeFiltered.filter(g => {
       if (filterTrainer !== 'all' && g.trainer_id !== filterTrainer) return false;
+      if (filterDay !== 'all' && String(g.day_index) !== filterDay) return false;
       if (filterLocation !== 'all' && g.location_name !== filterLocation) return false;
       if (filterVisibility === 'public' && !g.is_public) return false;
       if (filterVisibility === 'private' && g.is_public) return false;
@@ -676,7 +764,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
       return true;
     });
-  }, [timeFiltered, filterTrainer, filterLocation, filterVisibility, filterPaid, search]);
+  }, [timeFiltered, filterTrainer, filterDay, filterLocation, filterVisibility, filterPaid, search]);
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
@@ -982,6 +1070,34 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
 
   // is_public = "any slot in this group is public" (shown/bookable on the profile page).
   // Groups without sessions have nothing to show publicly — render a dash, not "private".
+  // Boekbaarheid icon (narrow column): one glyph per selling mode, full label in the
+  // native tooltip. Registrations/events/no-data rows show a muted dash.
+  const getBookingModeCell = (mode: CycleBookingModeOrNone | null) => {
+    if (!mode) return <span className="text-muted-foreground">—</span>;
+    const meta: Record<CycleBookingModeOrNone, { label: string; icons: ReactNode }> = {
+      cyclus_only: { label: t('cyclesTab.bulkBooking.modeCyclusOnly'), icons: <Layers className="h-4 w-4" /> },
+      both: {
+        label: t('cyclesTab.bulkBooking.modeBoth'),
+        icons: (
+          <span className="flex items-center gap-0.5">
+            <Layers className="h-4 w-4" />
+            <User className="h-3.5 w-3.5" />
+          </span>
+        ),
+      },
+      single_only: { label: t('cyclesTab.bulkBooking.modeSingleOnly'), icons: <User className="h-4 w-4" /> },
+      single_only_whole_slot: { label: t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlot'), icons: <RectangleHorizontal className="h-4 w-4" /> },
+      none: { label: t('cyclesTab.bookingModeNone', { defaultValue: 'Niet boekbaar (losse sessies én cyclus uit)' }), icons: <Ban className="h-4 w-4 text-destructive" /> },
+    };
+    const m = meta[mode];
+    return (
+      <span title={m.label} aria-label={m.label} className="inline-flex items-center text-muted-foreground">
+        {m.icons}
+        <span className="sr-only">{m.label}</span>
+      </span>
+    );
+  };
+
   const getVisibilityBadge = (group: CyclusGroup) => {
     if (!group.has_slots) return <span className="text-muted-foreground">—</span>;
     return group.is_public ? (
@@ -1029,6 +1145,14 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <SelectItem value="all">{t('cyclesTab.all')}</SelectItem>
               </SelectContent>
             </Select>
+
+            <SelectFilter
+              value={filterDay}
+              onValueChange={setFilterDay}
+              allLabel={t('cyclesTab.dayFilterAll', { defaultValue: 'Alle dagen' })}
+              options={weekdayOptions}
+              triggerClassName="w-full sm:w-[140px] h-9"
+            />
 
             {trainers.length > 1 && (
               <SelectFilter
@@ -1147,7 +1271,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.name')}</SortableTableHead>
                 <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.trainer')}</SortableTableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.location')}</TableHead>
-                <TableHead className="whitespace-nowrap">{t('cyclesTab.dayTime')}</TableHead>
+                <SortableTableHead sortKey="day_index" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.day', { defaultValue: 'Dag' })}</SortableTableHead>
+                <SortableTableHead sortKey="time_key" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.time', { defaultValue: 'Tijd' })}</SortableTableHead>
                 <SortableTableHead sortKey="period_start" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.period')}</SortableTableHead>
                 <SortableTableHead sortKey="sessions" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.sessions')}</SortableTableHead>
                 <SortableTableHead sortKey="player_count" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.players')}</SortableTableHead>
@@ -1155,6 +1280,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.price')}</TableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.occupancy')}</TableHead>
                 <SortableTableHead sortKey="is_public" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.visibilityColumn')}</SortableTableHead>
+                <SortableTableHead sortKey="booking_mode" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap w-[70px]">{t('cyclesTab.bulkBooking.button')}</SortableTableHead>
                 <TableHead className="w-[44px]" aria-label={t('editEndDate.title', 'Einddatum aanpassen')} />
               </TableRow>
             </TableHeader>
@@ -1193,7 +1319,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                     </TableCell>
                     <TableCell className="whitespace-nowrap max-w-[160px] truncate" title={group.trainer_name}>{group.trainer_name}</TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={group.location_name || ''}>{group.location_name || '—'}</TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{group.day_time}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{group.day_name}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{group.time_range}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
                       {format(parseISO(group.period_start), 'd MMM', { locale: dateLocale })}
                       {' → '}
@@ -1216,6 +1343,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{getStatusBadge(group)}</TableCell>
                     <TableCell className="whitespace-nowrap">{getVisibilityBadge(group)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-center">{getBookingModeCell(group.booking_mode)}</TableCell>
                     <TableCell className="w-[44px]" onClick={(e) => e.stopPropagation()}>
                       {group.cyclus_id && group.has_slots && (
                         <Button
