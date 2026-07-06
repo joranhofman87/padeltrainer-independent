@@ -74,6 +74,7 @@ export default function AcademyTrainerDetail() {
 
   // The trainerId param is the academy_trainers.id
   const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
+  const [originalEmail, setOriginalEmail] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [academyLocations, setAcademyLocations] = useState<any[]>([]);
 
@@ -172,6 +173,7 @@ export default function AcademyTrainerDetail() {
 
       if (profileResult.data) {
         const p = profileResult.data;
+        setOriginalEmail(p.email || '');
         setProfileData({
           full_name: p.full_name || '',
           phone: p.phone || '',
@@ -352,6 +354,11 @@ export default function AcademyTrainerDetail() {
         body: {
           target_user_id: userId,
           trainer_profile_id: trainerProfileId,
+          // Only when actually changed: this rotates the trainer's LOGIN email
+          // (the fn notifies the old address and audit-logs the change).
+          ...(profileData.email.trim() && profileData.email.trim() !== originalEmail
+            ? { email: profileData.email.trim() }
+            : {}),
           full_name: profileData.full_name,
           phone: profileData.phone,
           bio: profileData.bio,
@@ -624,7 +631,16 @@ export default function AcademyTrainerDetail() {
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="email">{t('trainers.email', 'Email')}</Label>
-                <Input id="email" type="email" value={profileData.email} disabled className="bg-muted" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={profileData.email}
+                  onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                  placeholder="trainer@example.com"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('trainers.emailChangeHint', 'This is also the trainer\u2019s login email. The previous address gets a notification when you change it.')}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="location">{t('trainers.location', 'City')}</Label>

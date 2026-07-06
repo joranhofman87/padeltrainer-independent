@@ -297,7 +297,8 @@
     "removeBanner": "Banner verwijderen",
     "bannerRemoved": "Banner verwijderd",
     "bannerRemovedDescription": "De academy-banner wordt weer gebruikt op de openbare pagina.",
-    "noRatingSystem": "Geen"
+    "noRatingSystem": "Geen",
+    "emailChangeHint": "Dit is ook het inlog-e-mailadres van de trainer. Het vorige adres krijgt een melding wanneer je dit wijzigt."
   },
   "trainerInvitation": {
     "title": "Academy uitnodiging",

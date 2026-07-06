@@ -169,7 +169,8 @@
     "removeBanner": "Remove banner",
     "bannerRemoved": "Banner removed",
     "bannerRemovedDescription": "The academy banner is used again on the public page.",
-    "noRatingSystem": "None"
+    "noRatingSystem": "None",
+    "emailChangeHint": "This is also the trainer’s login email. The previous address gets a notification when you change it."
   },
   "trainerInvitation": {
     "title": "Academy Invitation",
