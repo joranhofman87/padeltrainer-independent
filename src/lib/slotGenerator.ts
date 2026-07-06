@@ -1,22 +1,26 @@
 /**
  * Quick slot/cycle generator — create lib.
  *
- * `generateCycleWithSlots(input)` turns one weekly rule into DRAFT cycli plus
+ * `generateCycleWithSlots(input)` turns one weekly rule into LIVE cycli plus
  * their availability slots in a single flow:
  *   plan (pure `planSlots`) → overlap-dedup vs the trainer's existing slots →
- *   group into per-(weekday + start-time) series → create ONE `status:'draft'
+ *   group into per-(weekday + start-time) series → create ONE `status:'open'
  *   type:'cyclus'` cycle PER series → batch-insert all slots (each carrying its
- *   series' `cyclus_id`) with `is_public:false` (not bookable until published).
+ *   series' `cyclus_id`) with `is_public` per the wizard's visibility choice.
  *
  * Per-series, not one mega-cyclus: "every Monday 18:00" and "every Wednesday
  * 19:00" become separate cycli, each independently bookable/payable as a unit —
  * a flat batch of mixed days/times was never a meaningful "pay for the cyclus".
  *
- * Slots are born private (`is_public:false`) and the cycle is `draft`; the
- * owner reviews them in the agenda and publishes (see `publishCycle`). The
- * public/private + upfront-payment intent is recorded in `cycle.settings`
- * (`publish_visibility`, `payment_timing`, `requires_upfront_payment`) so the
- * later public-booking flow (Phase B) attaches without touching generation.
+ * NO draft stage (owner decision 2026-07-06): the wizard's preview step is the
+ * review, so generation goes straight to `status:'open'` — public visibility is
+ * bookable immediately, private stays staff-only. The old draft-then-publish
+ * flow left "concept" cycli that were made live via slot visibility instead of
+ * publish (booked + paid sessions on cycles cycles_public couldn't see — the
+ * series-option and status-label incidents). `publishCycle`/`openDraftCycles`
+ * remain only as heal paths for pre-existing drafts. The visibility +
+ * upfront-payment intent is still recorded in `cycle.settings`
+ * (`publish_visibility`, `payment_timing`, `requires_upfront_payment`).
  *
  * Atomicity: the slot insert is one statement; on ANY failure (a mid-loop
  * createCycle throw OR the slot insert) every already-created per-series draft
@@ -158,7 +162,7 @@ export async function generateCycleWithSlots(
           owner_id: input.ownerId,
           name,
           type: 'cyclus',
-          status: 'draft',
+          status: 'open',
           location_id: input.locationId ?? null,
           price_per_session: input.pricePerSession,
           total_price: Math.round(input.pricePerSession * s.slots.length * 100) / 100,
@@ -180,7 +184,7 @@ export async function generateCycleWithSlots(
           max_participants: input.maxParticipants ?? null,
           allow_single_booking: input.allowSingleBooking,
     whole_slot_booking: input.wholeSlotBooking ?? false,
-          is_public: false, // DRAFT — not bookable until published
+          is_public: input.publishVisibility === 'public', // live immediately per the wizard's choice
           prices_include_vat: pricesIncludeVat,
           cyclus_id: cycle.id,
           cyclus_name: name,
@@ -202,14 +206,14 @@ export async function generateCycleWithSlots(
       skippedOverlaps,
     };
   } catch (e) {
-    // Abort cleanup — never leave slot-less draft cycli behind (covers a mid-loop createCycle
+    // Abort cleanup — never leave slot-less cycli behind (covers a mid-loop createCycle
     // failure as well as a failed slot insert). Surface (don't swallow) a failed cleanup, so N
     // leaked empty cycli can't go unnoticed in the cyclus overview.
     let cleanupNote = '';
     if (createdCycleIds.length > 0) {
       const { error: delErr } = await client.from('cycles').delete().in('id', createdCycleIds);
       if (delErr) {
-        cleanupNote = ` (cleanup of ${createdCycleIds.length} draft cyclus/cycli ALSO failed: ${msgOf(delErr)})`;
+        cleanupNote = ` (cleanup of ${createdCycleIds.length} just-created cyclus/cycli ALSO failed: ${msgOf(delErr)})`;
       }
     }
     const base = e instanceof SlotGeneratorError ? e.message : msgOf(e);

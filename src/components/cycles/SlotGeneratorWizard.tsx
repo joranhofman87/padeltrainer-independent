@@ -22,7 +22,6 @@ import { SlotLocationPicker, type SlotLocation } from '@/components/slots/SlotLo
 import { planSlots, groupSlotsBySeries, type SlotDraft, type SlotPlanConfig, type Weekday } from '@/lib/slotPlan';
 import { generateCycleWithSlots, type GenerateCycleInput } from '@/lib/slotGenerator';
 import type { CycleBookingMode } from '@/lib/cycleBookingMode';
-import { publishCycles } from '@/lib/cycleWrites';
 
 export interface SlotGeneratorTrainer {
   id: string;
@@ -39,8 +38,6 @@ export interface SlotGeneratorWizardProps {
   timezone?: string;
   /** Test/override seam for the create-lib (defaults to the real one). */
   generate?: typeof generateCycleWithSlots;
-  /** Test/override seam for the batch publish (defaults to the real one). */
-  publishAll?: typeof publishCycles;
 }
 
 const TIME_OPTIONS = buildHalfHourOptions(6, 23);
@@ -54,14 +51,12 @@ export function SlotGeneratorWizard({
   availableLocations,
   timezone = 'Europe/Amsterdam',
   generate = generateCycleWithSlots,
-  publishAll = publishCycles,
 }: SlotGeneratorWizardProps) {
   const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
 
   const [step, setStep] = useState<'configure' | 'preview' | 'done'>('configure');
   const [createdCycleIds, setCreatedCycleIds] = useState<string[]>([]);
-  const [publishing, setPublishing] = useState(false);
   const [cycleName, setCycleName] = useState('');
   const [pickedTrainerId, setPickedTrainerId] = useState('');
   const [locationId, setLocationId] = useState<string | null>(null);
@@ -170,8 +165,6 @@ export function SlotGeneratorWizard({
           }),
         );
       }
-      // Land on a result step that offers a one-click "publish all" — per-series generation makes
-      // many draft cycli, and publishing them one-by-one would undo the "quick" of quick-generate.
       setCreatedCycleIds(res.cycleIds);
       setStep('done');
     } catch (e) {
@@ -182,31 +175,6 @@ export function SlotGeneratorWizard({
       );
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handlePublishAll = async () => {
-    setPublishing(true);
-    try {
-      const { published, failed } = await publishAll(createdCycleIds, visibility === 'public');
-      if (failed > 0) {
-        toast.warning(
-          t('slotGenerator.publishedSome', '{{published}} van {{total}} cycli gepubliceerd; {{failed}} mislukt.', {
-            published,
-            total: createdCycleIds.length,
-            failed,
-          }),
-        );
-      } else {
-        toast.success(
-          t('slotGenerator.publishedAll', '{{count}} cycli gepubliceerd.', { count: published }),
-        );
-      }
-      navigate(backHref);
-    } catch (e) {
-      toast.error(getFriendlyErrorMessage(e, t('slotGenerator.errGeneric', 'Er ging iets mis. Probeer het opnieuw.')));
-    } finally {
-      setPublishing(false);
     }
   };
 
@@ -398,7 +366,9 @@ export function SlotGeneratorWizard({
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {t('slotGenerator.reviewHintCycles', 'Elke dag + tijd wordt een aparte cyclus. Deze worden als CONCEPT aangemaakt (nog niet boekbaar); je publiceert ze daarna per cyclus.')}
+              {visibility === 'public'
+                ? t('slotGenerator.reviewHintPublic', 'Elke dag + tijd wordt een aparte cyclus. Na aanmaken staan de sessies DIRECT openbaar en boekbaar.')
+                : t('slotGenerator.reviewHintPrivate', 'Elke dag + tijd wordt een aparte cyclus. De sessies worden privé aangemaakt (alleen intern te boeken); je kunt ze later openbaar maken.')}
             </p>
             <div className="max-h-80 overflow-y-auto rounded-md border divide-y">
               {previewSeries.map((series) => (
@@ -426,7 +396,7 @@ export function SlotGeneratorWizard({
               </Button>
               <Button onClick={handleGenerate} disabled={submitting}>
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-2 h-4 w-4" />}
-                {t('slotGenerator.generate', 'Genereer als concept')}
+                {t('slotGenerator.generateLive', 'Sessies aanmaken')}
               </Button>
             </div>
           </CardContent>
@@ -435,20 +405,18 @@ export function SlotGeneratorWizard({
         <Card>
           <CardHeader>
             <CardTitle>
-              {t('slotGenerator.doneTitle', '{{count}} cycli aangemaakt als concept', { count: createdCycleIds.length })}
+              {t('slotGenerator.doneLiveTitle', '{{count}} cycli aangemaakt', { count: createdCycleIds.length })}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {t('slotGenerator.doneHint', 'Ze staan nu als CONCEPT in je agenda. Publiceer ze om ze boekbaar te maken — in één keer hieronder, of later per cyclus.')}
+              {visibility === 'public'
+                ? t('slotGenerator.doneHintPublic', 'De sessies staan in je agenda en zijn direct openbaar boekbaar.')
+                : t('slotGenerator.doneHintPrivate', 'De sessies staan privé in je agenda (alleen intern te boeken). Openbaar maken kan later per cyclus of in bulk.')}
             </p>
-            <div className="flex flex-col sm:flex-row justify-end gap-2">
-              <Button variant="outline" onClick={() => navigate(backHref)} disabled={publishing}>
-                {t('slotGenerator.doneLater', 'Later, naar overzicht')}
-              </Button>
-              <Button onClick={handlePublishAll} disabled={publishing}>
-                {publishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-2 h-4 w-4" />}
-                {t('slotGenerator.publishAll', 'Publiceer alle {{count}} cycli', { count: createdCycleIds.length })}
+            <div className="flex justify-end">
+              <Button onClick={() => navigate(backHref)}>
+                {t('slotGenerator.doneToOverview', 'Naar overzicht')}
               </Button>
             </div>
           </CardContent>

@@ -3,9 +3,10 @@
 //
 // Integration test for generateCycleWithSlots (the quick slot/cycle generator create-lib): runs the
 // REAL lib (createCycle + insertAvailabilitySlots + planSlots) against real Postgres (PGlite). Asserts
-// it creates exactly one DRAFT cycle + N private slots, that drafts are excluded by the public
-// booking query, that overlapping starts are deduped, and that a failed slot insert deletes the
-// just-created cycle (abort cleanup).
+// it creates LIVE (status 'open') cycles whose slots follow the wizard's visibility choice —
+// public visibility is bookable immediately, private stays staff-only (no draft stage since the
+// owner decision 2026-07-06) — that overlaps are deduped, and that a failed slot insert deletes
+// the just-created cycle (abort cleanup).
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { createPgliteSupabase } from '@/test/fixtures/pgliteSupabase';
@@ -78,7 +79,7 @@ beforeEach(async () => {
 });
 
 describe('generateCycleWithSlots (against real Postgres)', () => {
-  it('creates one DRAFT cyclus PER (weekday+time) series, each priced for its own sessions', async () => {
+  it('creates one LIVE cyclus PER (weekday+time) series, slots public per the visibility choice', async () => {
     // Mondays 15:00–18:00 @60 over 2 weeks → 3 series (Mon 15:00 / 16:00 / 17:00), 2 sessions each.
     const res = await generateCycleWithSlots(input(), supa);
     expect(res.slotsCreated).toBe(6);
@@ -99,7 +100,7 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
           settings: Record<string, unknown>;
         }>(`SELECT name, status, type, price_per_session, total_price, settings FROM cycles WHERE id = $1`, [cid])
       ).rows[0];
-      expect(cycle.status).toBe('draft');
+      expect(cycle.status).toBe('open'); // live immediately — no draft stage
       expect(cycle.type).toBe('cyclus');
       expect(Number(cycle.price_per_session)).toBe(20);
       expect(Number(cycle.total_price)).toBe(40); // 20 × 2 weekly sessions in THIS series (not the whole batch)
@@ -110,9 +111,9 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
       expect(cycle.settings.whole_slot_booking).toBe(false);
       expect(cycle.name.startsWith('Summer training – ')).toBe(true); // base name + "ma 15:00" series suffix
       names.push(cycle.name);
-      // each series = its own 2 private (draft) slots
+      // each series = its own 2 slots — PUBLIC (this input's publishVisibility is 'public')
       expect(await count('availability_slots WHERE cyclus_id = $1', [cid])).toBe(2);
-      expect(await count('availability_slots WHERE cyclus_id = $1 AND is_public = true', [cid])).toBe(0);
+      expect(await count('availability_slots WHERE cyclus_id = $1 AND is_public = true', [cid])).toBe(2);
     }
     // the three cycli are the three distinct start times
     expect(names.some((n) => n.includes('15:00'))).toBe(true);
@@ -133,7 +134,7 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
     expect(slot.trainer_id).toBe(TRAINER);
   });
 
-  it('stores the public/private intent so publish can apply it (private cycle)', async () => {
+  it('private visibility: cycle opens but slots stay staff-only (intent recorded in settings)', async () => {
     const res = await generateCycleWithSlots(input({ publishVisibility: 'private' }), supa);
     const settings = (
       await db.query<{ settings: Record<string, unknown> }>(`SELECT settings FROM cycles WHERE id = $1`, [
@@ -141,7 +142,8 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
       ])
     ).rows[0].settings;
     expect(settings.publish_visibility).toBe('private');
-    // still draft + private regardless of intent
+    // private visibility: cycle is LIVE (open) but every slot stays staff-only
+    expect((await db.query<{ status: string }>(`SELECT status FROM cycles WHERE id = $1`, [res.cycleIds[0]])).rows[0].status).toBe('open');
     expect(await count('availability_slots WHERE is_public = true')).toBe(0);
   });
 
@@ -220,7 +222,7 @@ describe('generateCycleWithSlots (against real Postgres)', () => {
     expect(await count('cycles')).toBe(0);
   });
 
-  it('abort cleanup: a failing slot insert deletes ALL the just-created draft cycli', async () => {
+  it('abort cleanup: a failing slot insert deletes ALL the just-created cycli', async () => {
     // max_participants 99 violates the table CHECK (<= 8) → the single slot insert fails after all 3
     // per-series cycle rows exist → cleanup must delete every one of them.
     await expect(generateCycleWithSlots(input({ maxParticipants: 99 }), supa)).rejects.toThrow(SlotGeneratorError);
