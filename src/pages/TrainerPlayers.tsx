@@ -11,6 +11,7 @@ import { SelectFilter } from '@/components/ui/select-filter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { useAuth } from '@/hooks/useAuth';
+import { useTrainerCanEdit } from '@/hooks/useTrainerHasAcademy';
 import { supabase } from '@/lib/supabaseClient';
 import {
   usePlayersOverview,
@@ -64,6 +65,7 @@ function getLevelLabel(band: string): string {
 export default function TrainerPlayers() {
   const { t } = useTranslation('trainer');
   const { user } = useAuth();
+  const { canEdit } = useTrainerCanEdit();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') || 'all-players';
@@ -438,12 +440,13 @@ export default function TrainerPlayers() {
         title={t('players.title')}
         description={t('players.subtitleShort', 'Manage your players and contacts')}
         countText={`${activePlayerCount} ${activePlayerCount === 1 ? t('players.playerSingular', 'player') : t('players.playerPlural', 'players')}`}
-        primaryAction={{
+        // View-only academy trainers get no add/import/manage actions.
+        primaryAction={canEdit ? {
           label: t('players.addPlayer'),
           onClick: () => setShowAddPlayer(true),
           icon: UserPlus,
-        }}
-        moreMenuItems={[
+        } : undefined}
+        moreMenuItems={canEdit ? [
           {
             label: t('players.import.button'),
             onClick: () => setShowImportPlayers(true),
@@ -454,7 +457,7 @@ export default function TrainerPlayers() {
             onClick: () => setShowManageTags(true),
             icon: Tags,
           },
-        ]}
+        ] : undefined}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -463,10 +466,12 @@ export default function TrainerPlayers() {
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">{t('players.allPlayers', 'All Players')}</span>
           </TabsTrigger>
-          <TabsTrigger value="create" className="gap-2">
-            <UserPlus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('players.create', 'Create')}</span>
-          </TabsTrigger>
+          {canEdit && (
+            <TabsTrigger value="create" className="gap-2">
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('players.create', 'Create')}</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="email-campaign" className="gap-2">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">{t('players.emailCampaign', 'Email Campaign')}</span>
@@ -641,7 +646,8 @@ export default function TrainerPlayers() {
           <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
         </TabsContent>
 
-        {/* Create Tab */}
+        {/* Create Tab — view-only academy trainers can't create players */}
+        {canEdit && (
         <TabsContent value="create" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
@@ -681,6 +687,7 @@ export default function TrainerPlayers() {
             </Card>
           </div>
         </TabsContent>
+        )}
 
         {/* Email Campaign Tab */}
         <TabsContent value="email-campaign" className="mt-4">

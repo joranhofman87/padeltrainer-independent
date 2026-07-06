@@ -47,6 +47,7 @@ import { setSlotVisibility } from "@/lib/slots";
 import { getSlotCapacity } from "@/lib/lessons";
 import { getDateFnsLocale } from "@/lib/dateFnsLocale";
 import { useAuth } from "@/hooks/useAuth";
+import { useTrainerCanEdit } from "@/hooks/useTrainerHasAcademy";
 import { useToast } from "@/hooks/use-toast";
 
 interface ScheduleSettings {
@@ -63,6 +64,7 @@ export default function TrainerCalendar() {
   const dfLocale = getDateFnsLocale(i18n.language);
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const { canEdit } = useTrainerCanEdit();
   const { toast } = useToast();
 
   // ?date=YYYY-MM-DD deep link (schedule-overview's per-slot pencil): open the DAY
@@ -364,12 +366,13 @@ export default function TrainerCalendar() {
         <TrainerPageHeader
           title={t("calendar.title")}
           description={t("calendar.subtitleShort", "View and manage your schedule")}
-          primaryAction={{
+          // View-only academy trainers get no create actions.
+          primaryAction={canEdit ? {
             label: t("calendar.addSlot"),
             onClick: () => navigate("/app/trainer/slot/new"),
             icon: Plus,
-          }}
-          trailing={
+          } : undefined}
+          trailing={canEdit ? (
             <Button
               variant="outline"
               className="w-full shrink-0 gap-1.5 sm:w-auto"
@@ -378,7 +381,7 @@ export default function TrainerCalendar() {
               <CalendarPlus className="h-4 w-4" />
               {t("slotGenerator.cta", "Snel sessies genereren")}
             </Button>
-          }
+          ) : undefined}
         />
 
         <Tabs value={view} onValueChange={(v) => setView(v as View)}>
@@ -493,12 +496,15 @@ export default function TrainerCalendar() {
                     slots={slots}
                     currentDate={currentDate}
                     view="day"
-                    onCellClick={handleCellClick}
-                    onBookForPlayer={handleBookForPlayer}
-                    onDuplicateCyclus={handleDuplicateCyclus}
-                    onDeleteSlot={handleDeleteSlot}
+                    // Mutating handlers omitted for view-only academy trainers;
+                    // the cards hide each action when its handler is undefined.
+                    // onEditBooking stays — it only navigates to (read-only) slot detail.
+                    onCellClick={canEdit ? handleCellClick : undefined}
+                    onBookForPlayer={canEdit ? handleBookForPlayer : undefined}
+                    onDuplicateCyclus={canEdit ? handleDuplicateCyclus : undefined}
+                    onDeleteSlot={canEdit ? handleDeleteSlot : undefined}
                     onEditBooking={handleEditBooking}
-                    onToggleMarkedFull={handleToggleMarkedFull}
+                    onToggleMarkedFull={canEdit ? handleToggleMarkedFull : undefined}
                     onNavigatePrevious={navigatePrevious}
                     onNavigateNext={navigateNext}
                   />

@@ -6,7 +6,7 @@ import { nl, enUS, es, de, fr } from 'date-fns/locale';
 import {
   ArrowLeft, Calendar, Lock, MapPin, Users, Pencil,
   Trash2, UserPlus, DollarSign, Check,
-  FileText, CheckCircle2,
+  FileText, CheckCircle2, StickyNote,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { setSlotVisibility } from '@/lib/slots';
@@ -17,6 +17,7 @@ import { syncInvoicesAfterPriceChange, syncSplitCountForCycle } from '@/lib/invo
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useTrainerCanEdit } from '@/hooks/useTrainerHasAcademy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
@@ -70,6 +71,7 @@ export default function TrainerSlotDetail() {
   const { t: tCommon } = useTranslation('common');
   const { toast } = useToast();
   const { user } = useAuth();
+  const { canEdit } = useTrainerCanEdit();
   const dateLocale = dateFnsLocales[i18n.language] || dateFnsLocales[i18n.language?.split('-')[0]] || enUS;
 
   const { data: coachingNotes = [] } = usePlayerCoachingNotes(slotId);
@@ -170,14 +172,16 @@ export default function TrainerSlotDetail() {
     })();
   }, [user?.id]);
 
-  // Auto-open edit mode. SlotEditForm initialises its own fields from the slot (key={slot.id}).
+  // Auto-open edit mode for trainers who can edit. View-only academy trainers stay
+  // on the read-only summary (they view the roster, mark attendance, write coaching
+  // notes — but can't change the slot).
   const autoEditTriggered = useRef(false);
   useEffect(() => {
-    if (detail && !autoEditTriggered.current) {
+    if (detail && canEdit && !autoEditTriggered.current) {
       autoEditTriggered.current = true;
       setIsEditing(true);
     }
-  }, [detail]);
+  }, [detail, canEdit]);
 
   const handleSave = async (values: SlotEditFormValues, applyToCyclus: boolean) => {
     if (!detail) return;
@@ -277,6 +281,14 @@ export default function TrainerSlotDetail() {
       setEditingBookingData(null);
       return;
     }
+    // View-only academy trainers: tapping a player opens ONLY the coaching-notes
+    // editor (no booking fetch, no InlineEditBooking) — notes stay reachable while
+    // booking editing is removed.
+    if (!canEdit) {
+      setEditingBookingData(null);
+      setEditingBookingId(bookingId);
+      return;
+    }
     try {
       const { data, error } = await supabase.from('bookings')
         .select('id, status, notes, payment_status, payment_amount, guest_player_id, paid_externally, availability_slots (id, start_time, end_time, price_per_session, cyclus_name), profiles:player_id (id, full_name, email)')
@@ -335,11 +347,13 @@ export default function TrainerSlotDetail() {
       </div>
 
       <main className="container mx-auto px-0 py-6 sm:px-4">
-        <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
-          <Button variant="outline" aria-label={t('calendar.deleteSlot', 'Sessie verwijderen')} className="gap-1.5 text-destructive hover:text-destructive" onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex items-center justify-end gap-2 max-w-4xl mb-4">
+            <Button variant="outline" aria-label={t('calendar.deleteSlot', 'Sessie verwijderen')} className="gap-1.5 text-destructive hover:text-destructive" onClick={() => { setDeleteCyclus(false); setDeleteOpen(true); }}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
           {/* Details card */}
           <Card className={flushOnMobileCardClass()}>
@@ -366,15 +380,19 @@ export default function TrainerSlotDetail() {
                     {!detail.is_public && <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300"><Lock className="h-3 w-3" />{t('calendar.private', 'Privé')}</Badge>}
                     {detail.price_per_session != null && <Badge variant="outline" className="gap-1"><DollarSign className="h-3 w-3" />{formatCurrency(detail.price_per_session)} / sessie</Badge>}
                   </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{t('calendar.markPrivate', 'Privé')}</span></div>
-                    <Switch checked={!detail.is_public} onCheckedChange={async () => {
-                      const newVal = !detail.is_public;
-                      await setSlotVisibility(detail.id, newVal);
-                      setDetail({ ...detail, is_public: newVal });
-                    }} />
-                  </div>
+                  {canEdit && (
+                    <>
+                      <Separator />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{t('calendar.markPrivate', 'Privé')}</span></div>
+                        <Switch checked={!detail.is_public} onCheckedChange={async () => {
+                          const newVal = !detail.is_public;
+                          await setSlotVisibility(detail.id, newVal);
+                          setDetail({ ...detail, is_public: newVal });
+                        }} />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -385,7 +403,9 @@ export default function TrainerSlotDetail() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" />{t('calendar.players', 'Spelers')} ({bookedCount}/{detail.max_participants})</CardTitle>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowBookPlayer(!showBookPlayer)}><UserPlus className="h-3.5 w-3.5" />{t('calendar.addPlayer', 'Speler toevoegen')}</Button>
+                {canEdit && (
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowBookPlayer(!showBookPlayer)}><UserPlus className="h-3.5 w-3.5" />{t('calendar.addPlayer', 'Speler toevoegen')}</Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -407,9 +427,13 @@ export default function TrainerSlotDetail() {
                         {player.status === 'confirmed' ? (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300"><Check className="h-2.5 w-2.5 mr-0.5" />{tCommon('confirmed', 'Bevestigd')}</Badge>
                         ) : (<Badge variant="outline" className="text-[10px] h-5 px-1.5 text-amber-600 border-amber-300">{tCommon('pending', 'Wachtend')}</Badge>)}
-                        <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        {/* Pencil = edit booking (full trainers); notes icon = view-only trainers,
+                            whose tap opens the coaching-notes editor only. */}
+                        {canEdit
+                          ? <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          : <StickyNote className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                       </button>
-                      {editingBookingId === player.bookingId && editingBookingData && (
+                      {canEdit && editingBookingId === player.bookingId && editingBookingData && (
                         <InlineEditBooking
                           booking={editingBookingData}
                           trainerId={detail.trainer_id}
@@ -436,7 +460,7 @@ export default function TrainerSlotDetail() {
                   ))}
                 </div>
               )}
-              {showBookPlayer && (
+              {canEdit && showBookPlayer && (
                 <InlineBookPlayer
                   trainerId={detail.trainer_id}
                   slot={{
@@ -456,9 +480,10 @@ export default function TrainerSlotDetail() {
             </CardContent>
           </Card>
 
-          {/* Priority rebooking claims */}
-          {detail && <PriorityClaimsSection slotId={detail.id} />}
-          {detail && <SlotTierControlCard slotId={detail.id} />}
+          {/* Priority rebooking claims + tier controls are session-management
+              tools — academy-managed, hidden for view-only trainers. */}
+          {detail && canEdit && <PriorityClaimsSection slotId={detail.id} />}
+          {detail && canEdit && <SlotTierControlCard slotId={detail.id} />}
 
           {/* Attendance — the write form first (the agenda "Report needed" badge deep-links
               here; this page used to be read-only, a dead end on the app's own nudge), then

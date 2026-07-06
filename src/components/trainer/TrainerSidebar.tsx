@@ -270,21 +270,9 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 
-                  {/* Sessies - setup hub (how to add sessions/registrations) */}
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild tooltip={t("nav.sessions")}>
-                      <NavLink
-                        to="/app/trainer/sessions"
-                        className={cn(appNavLinkBase, appNavLinkInactive)}
-                        activeClassName={appNavLinkActive}
-                        onClick={closeMobileDrawer}
-                        data-testid="nav-trainer-sessions"
-                      >
-                        <CalendarPlus className="h-4 w-4" />
-                        {!collapsed && <span>{t("nav.sessions")}</span>}
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  {/* Sessions hub is create-only (add session / generate / next
+                      round / registration) — omitted for view-only academy
+                      trainers, who can't create sessions. */}
 
                   {/* Agenda - day/week list */}
                   <SidebarMenuItem>

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { ArrowLeft, Mail, Phone, MapPin, Calendar, Cake, BarChart3, FileText, RefreshCw, Send, ExternalLink, Download, Merge } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useTrainerCanEdit } from '@/hooks/useTrainerHasAcademy';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -75,6 +76,7 @@ export default function TrainerPlayerDetail() {
   const { t } = useTranslation('trainer');
   const { playerId } = useParams<{ playerId: string }>();
   const { user } = useAuth();
+  const { canEdit } = useTrainerCanEdit();
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -504,24 +506,28 @@ export default function TrainerPlayerDetail() {
               </div>
             )}
           </div>
-          <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
-            <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
-              <Link to={getTrainerCreateInvoiceUrl(playerId)}>
-                <FileText className="h-4 w-4 mr-2" />
-                {t('players.detail.createInvoice', 'Create invoice')}
-              </Link>
-            </Button>
-            {player.type === 'guest' && player.guest_player_id && (
-              <Button
-                variant="outline"
-                data-testid="trainer-player-merge-button"
-                onClick={() => setMergeOpen(true)}
-              >
-                <Merge className="h-4 w-4 mr-2" />
-                {t('players.merge.action', 'Merge with another player…')}
+          {/* Create-invoice + merge are editing/money actions — hidden for
+              view-only academy trainers. */}
+          {canEdit && (
+            <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
+              <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
+                <Link to={getTrainerCreateInvoiceUrl(playerId)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  {t('players.detail.createInvoice', 'Create invoice')}
+                </Link>
               </Button>
-            )}
-          </div>
+              {player.type === 'guest' && player.guest_player_id && (
+                <Button
+                  variant="outline"
+                  data-testid="trainer-player-merge-button"
+                  onClick={() => setMergeOpen(true)}
+                >
+                  <Merge className="h-4 w-4 mr-2" />
+                  {t('players.merge.action', 'Merge with another player…')}
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -545,7 +551,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      {detailsValues && trainerId && (
+      {canEdit && detailsValues && trainerId && (
         <TrainerPlayerDetailsCard
           kind={player.type}
           trainerProfileId={trainerId}
@@ -744,7 +750,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      {trainerId && player && parsed.kind && (
+      {canEdit && trainerId && player && parsed.kind && (
         <TrainerPlayerRemoveCard
           kind={parsed.kind === 'guest' ? 'guest' : 'registered'}
           trainerProfileId={trainerId}
@@ -755,7 +761,7 @@ export default function TrainerPlayerDetail() {
         />
       )}
 
-      {trainerId && player.guest_player_id && (
+      {canEdit && trainerId && player.guest_player_id && (
         <MergePlayersDialog
           open={mergeOpen}
           onOpenChange={setMergeOpen}

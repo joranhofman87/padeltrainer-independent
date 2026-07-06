@@ -135,6 +135,12 @@ export default function TrainerLayout() {
   // language/timezone/player-mode and email-notification prefs are per-user, and
   // the new-booking emails footer-link straight to settings/notifications. Only
   // the trainer BOOKING settings stay academy-managed.
+  //
+  // Academy trainers are VIEW-ONLY: the session CREATE surfaces (slot/new,
+  // slot/generate) and the Sessions hub (which is entirely create actions) are
+  // blocked too. `/app/trainer/slot/:id` (slot DETAIL) stays reachable — they
+  // view rosters, mark attendance and write coaching notes there; slot ids are
+  // UUIDs so they never collide with the /slot/new or /slot/generate prefixes.
   const RESTRICTED_PATHS_FOR_ACADEMY = [
     '/app/trainer/settings/bookings',
     '/app/trainer/subscription',
@@ -145,6 +151,9 @@ export default function TrainerLayout() {
     '/app/trainer/schedule-overview',
     '/app/trainer/open-slots',
     '/app/trainer/get-started',
+    '/app/trainer/slot/new',
+    '/app/trainer/slot/generate',
+    '/app/trainer/sessions',
   ];
 
   useEffect(() => {
