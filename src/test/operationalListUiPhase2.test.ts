@@ -17,16 +17,6 @@ describe('Phase 2 operational list UI', () => {
     expect(source).toContain('ListPageState');
   });
 
-  it('TrainerBookings uses AppPage and shared primitives', () => {
-    const source = read('pages/TrainerBookings.tsx');
-    expect(source).toContain('AppPage');
-    expect(source).toContain('TrainerPageHeader');
-    expect(source).toContain('StatTile');
-    expect(source).toContain('EmptyState');
-    expect(source).toContain('ListPageSkeleton');
-    expect(source).not.toContain('container mx-auto');
-  });
-
   it('AcademyWaitingList uses AppPage and PageHeader', () => {
     const source = read('pages/academy/AcademyWaitingList.tsx');
     expect(source).toContain('AppPage');

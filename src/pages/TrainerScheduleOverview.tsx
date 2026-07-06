@@ -33,6 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SelectFilter } from "@/components/ui/select-filter";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -44,17 +46,10 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import {
   Search,
   ChevronDown,
   ChevronRight,
   Calendar,
-  CalendarIcon,
   Users,
   Pencil,
   MapPin,
@@ -1159,10 +1154,7 @@ export default function TrainerScheduleOverview() {
       />
 
       {filtered.size === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <Calendar className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p>{t("scheduleOverview.noResults", "No sessions found.")}</p>
-        </div>
+        <EmptyState icon={Calendar} title={t("scheduleOverview.noResults", "No sessions found.")} />
       )}
 
       <div className="space-y-3">
@@ -1472,31 +1464,12 @@ export default function TrainerScheduleOverview() {
             {/* Start date */}
             <div className="space-y-2">
               <Label>{t("scheduleOverview.startDate", "Start date")}</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !cycleEditData.startDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {cycleEditData.startDate
-                      ? format(cycleEditData.startDate, "PPP", { locale: dateFnsLocale })
-                      : t("scheduleOverview.startDate", "Start date")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={cycleEditData.startDate}
-                    onSelect={(date) => setCycleEditData((prev) => ({ ...prev, startDate: date || undefined }))}
-                    initialFocus
-                    className={cn("p-3 pointer-events-auto")}
-                  />
-                </PopoverContent>
-              </Popover>
+              <DatePickerPopover
+                value={cycleEditData.startDate}
+                onChange={(date) => setCycleEditData((prev) => ({ ...prev, startDate: date || undefined }))}
+                placeholder={t("scheduleOverview.startDate", "Start date")}
+                className="w-full"
+              />
             </div>
 
             {/* Time */}

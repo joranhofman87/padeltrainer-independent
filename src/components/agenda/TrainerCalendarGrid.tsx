@@ -329,6 +329,7 @@ function MobileDayView({
   showTrainerInfo,
   onSlotClick,
 }: MobileDayViewProps) {
+  const { t } = useTranslation("trainer");
   return (
     <div className="space-y-4">
       {/* Day Navigation Header */}
@@ -402,7 +403,7 @@ function MobileDayView({
                   </div>
                   <div className="flex-1 flex items-center justify-center text-muted-foreground">
                     <Plus className="h-4 w-4 mr-1" />
-                    <span className="text-sm">Add slot</span>
+                    <span className="text-sm">{t("calendar.addSlot", "Add slot")}</span>
                   </div>
                 </div>
               );

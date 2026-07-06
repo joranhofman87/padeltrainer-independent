@@ -843,5 +843,6 @@
   },
   "slotConflict": {
     "trainerOverlap": "This trainer already has a session overlapping the chosen time. A trainer can only give one session at a time — pick a different time or remove the existing session first."
-  }
+  },
+  "goBack": "Go back"
 }

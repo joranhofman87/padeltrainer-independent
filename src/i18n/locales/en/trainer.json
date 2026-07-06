@@ -165,7 +165,17 @@
     "allLevels": "All levels welcome",
     "academy": "Academy",
     "branding": "Profile Branding",
-    "brandingDescription": "Make your profile stand out"
+    "brandingDescription": "Make your profile stand out",
+    "copyLinkFailed": "Failed to copy link",
+    "preview": {
+      "title": "Preview mode",
+      "message": "Players can't see this yet. This is how your profile will look when you publish.",
+      "editProfile": "Edit profile",
+      "addAvailability": "Add availability",
+      "published": "Profile published!",
+      "publish": "Publish profile",
+      "upgradeToPublish": "Upgrade to publish"
+    }
   },
   "dashboard": {
     "greeting": "Good to see you, {{name}}",
@@ -1132,7 +1142,8 @@
     "recurringSummary_one": "Creates {{count}} session on {{day}} {{startDate}} at {{time}}",
     "recurringSummary_other": "Creates {{count}} sessions every {{day}} at {{time}}, from {{startDate}} to {{endDate}}",
     "generateCycleDescription_one": "This will create {{count}} recurring slot with {{sessionCount}} total sessions",
-    "generateCycleDescription_other": "This will create {{count}} recurring slots with {{sessionCount}} total sessions"
+    "generateCycleDescription_other": "This will create {{count}} recurring slots with {{sessionCount}} total sessions",
+    "editCyclePricing": "Edit cycle pricing →"
   },
   "openSlots": {
     "title": "Open Training Slots",
@@ -1201,7 +1212,8 @@
     "vatBulkUpdateCancel": "No, only new sessions",
     "vatBulkUpdateSuccess": "Updated {{slots}} sessions and {{invoices}} invoices",
     "vatBulkUpdateError": "Failed to update existing sessions and invoices",
-    "genericError": "Failed to save the setting. Please try again."
+    "genericError": "Failed to save the setting. Please try again.",
+    "updateFailed": "Failed to update setting"
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",
@@ -1324,7 +1336,10 @@
       "unknownUser": "a user",
       "loading": "Loading…",
       "none": "No status changes recorded"
-    }
+    },
+    "selectAll": "Select all",
+    "selectRow": "Select {{name}}",
+    "forwardedOn": "Forwarded on {{date}}"
   },
   "profileVisibility": {
     "title": "Marketplace visibility",
@@ -1579,7 +1594,8 @@
     "paymentRecordedDescription": "The booking has been marked as paid",
     "invoiceSyncFailed": "Payment recorded, but a linked invoice could not be updated. Please check the invoice.",
     "markPaidError": "Could not record the payment. Please try again.",
-    "settingsUpdateError": "Could not update your payment settings. Please try again."
+    "settingsUpdateError": "Could not update your payment settings. Please try again.",
+    "mollieConnectFailed": "Failed to connect Mollie"
   },
   "analyticsPage": {
     "title": "Analytics",
@@ -1877,5 +1893,10 @@
   "invoiceEdit": {
     "lockedCancelled": "Cancelled invoices can no longer be changed.",
     "lockedPaid": "Paid invoices can no longer be changed. Create a credit invoice."
+  },
+  "invoiceList": {
+    "emptyTitle": "No invoices yet",
+    "emptyFilteredTitle": "No {{status}} invoices",
+    "emptyDescription": "Create your first invoice from the pending payments tab."
   }
 }

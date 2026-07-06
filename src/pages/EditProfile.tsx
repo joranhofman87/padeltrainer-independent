@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
@@ -1084,7 +1085,7 @@ export default function EditProfile() {
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="hourly_rate">{tTrainer('editProfile.hourlyRate')}</Label>
-                      <Input
+                      <MoneyInput
                         id="hourly_rate"
                         type="number"
                         step="0.01"

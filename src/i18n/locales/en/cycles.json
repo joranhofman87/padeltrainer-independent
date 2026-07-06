@@ -1292,5 +1292,10 @@
       "loadError": "Could not load the session. Please try again.",
       "error": "Could not update. Please try again."
     }
+  },
+  "cycleForm": {
+    "minMaxGroupSize": "Min group size must be ≤ max group size",
+    "startDateRequired": "Start date is required",
+    "noDeadline": "No deadline"
   }
 }

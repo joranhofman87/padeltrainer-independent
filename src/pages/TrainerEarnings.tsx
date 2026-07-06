@@ -31,6 +31,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { EarningsBookingRow } from '@/components/trainer/earnings/EarningsBookingRow';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { bookingReceivedAmount, computeEarningsSummary, type EarningsSummary } from '@/lib/trainerEarnings';
 
 // Bounded recent window loaded for the displayed pending/history lists (the headline tiles are
@@ -121,7 +122,8 @@ export default function TrainerEarnings() {
   const [showSettings, setShowSettings] = useState(false);
   const [academyPaymentInfo, setAcademyPaymentInfo] = useState<AcademyPaymentInfo | null>(null);
   const [connectStatusLoading, setConnectStatusLoading] = useState(true);
-  const { t } = useTranslation('trainer');
+  const { t, i18n } = useTranslation('trainer');
+  const dfLocale = getDateFnsLocale(i18n.language);
 
   useEffect(() => {
     if (!loading) {
@@ -317,8 +319,8 @@ export default function TrainerEarnings() {
       }
     } catch (err: any) {
       toast({
-        title: 'Error',
-        description: getFriendlyErrorMessage(err, 'Failed to connect Mollie'),
+        title: t('common:error', 'Error'),
+        description: getFriendlyErrorMessage(err, t('earningsPage.mollieConnectFailed', 'Failed to connect Mollie')),
         variant: 'destructive',
       });
       setConnectLoading(false);
@@ -774,7 +776,7 @@ export default function TrainerEarnings() {
                     <div className="flex flex-wrap items-center gap-4">
                       <span className="inline-flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        {format(parseISO(booking.availability_slots.start_time), 'MMM d, yyyy')}
+                        {format(parseISO(booking.availability_slots.start_time), 'd MMM yyyy', { locale: dfLocale })}
                       </span>
                       <span className="inline-flex items-center gap-1">
                         <Clock className="h-4 w-4" />
@@ -846,11 +848,11 @@ export default function TrainerEarnings() {
                       <div className="flex flex-wrap items-center gap-4">
                         <span className="inline-flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
-                          {format(parseISO(booking.availability_slots.start_time), 'MMM d, yyyy')}
+                          {format(parseISO(booking.availability_slots.start_time), 'd MMM yyyy', { locale: dfLocale })}
                         </span>
                         {booking.paid_at && (
                           <span>
-                            {t('earningsPage.paidOn', { date: format(parseISO(booking.paid_at), 'MMM d') })}
+                            {t('earningsPage.paidOn', { date: format(parseISO(booking.paid_at), 'd MMM', { locale: dfLocale }) })}
                           </span>
                         )}
                       </div>

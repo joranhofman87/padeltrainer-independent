@@ -44,6 +44,7 @@ import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 import { supabase } from "@/lib/supabaseClient";
 import { setSlotVisibility } from "@/lib/slots";
 import { getSlotCapacity } from "@/lib/lessons";
+import { getDateFnsLocale } from "@/lib/dateFnsLocale";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -57,7 +58,8 @@ type View = "day" | "week" | "month";
 const VIEWS: View[] = ["week", "day", "month"];
 
 export default function TrainerCalendar() {
-  const { t } = useTranslation("trainer");
+  const { t, i18n } = useTranslation("trainer");
+  const dfLocale = getDateFnsLocale(i18n.language);
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -235,13 +237,13 @@ export default function TrainerCalendar() {
   const goToToday = () => setCurrentDate(new Date());
 
   const getDateRangeLabel = () => {
-    if (view === "day") return format(currentDate, "EEEE, MMMM d, yyyy");
+    if (view === "day") return format(currentDate, "EEEE d MMMM yyyy", { locale: dfLocale });
     if (view === "week") {
       const start = startOfWeek(currentDate, { weekStartsOn: 1 });
       const end = endOfWeek(currentDate, { weekStartsOn: 1 });
-      return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
+      return `${format(start, "d MMM", { locale: dfLocale })} - ${format(end, "d MMM yyyy", { locale: dfLocale })}`;
     }
-    return format(currentDate, "MMMM yyyy");
+    return format(currentDate, "MMMM yyyy", { locale: dfLocale });
   };
 
   // Build agenda slots (single trainer)

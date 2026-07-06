@@ -130,7 +130,7 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
     const { error } = await signOut();
     if (error) {
       toast({
-        title: "Error",
+        title: t("common:error", "Error"),
         description: getFriendlyErrorMessage(error, t("logoutError", "Could not sign out. Please try again.")),
         variant: "destructive",
       });

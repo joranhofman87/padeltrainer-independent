@@ -38,7 +38,7 @@ import ProposalScheduleGrid from '@/components/cycles/ProposalScheduleGrid';
 import IntakeRequestDetailSheet from '@/components/cycles/IntakeRequestDetailSheet';
 import { GenerateProposalsWizard, type GenerateProposalsConfig } from '@/components/cycles/GenerateProposalsWizard';
 import AddIntakeRequestDialog from '@/components/cycles/AddIntakeRequestDialog';
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { logger } from '@/lib/logger';
 import {
   useCyclesQuery,
@@ -204,7 +204,7 @@ export default function TrainerIntakeRequests() {
 
   const handleGenerateProposals = async (config: GenerateProposalsConfig) => {
     if (selectedCycleId === 'all') {
-      toast.error('Please select a specific cycle first');
+      toast.error(t('proposals.selectCycleFirst', { defaultValue: 'Please select a specific cycle first' }));
       return;
     }
     setIsGenerating(true);
@@ -619,22 +619,16 @@ export default function TrainerIntakeRequests() {
       />
 
       {/* Reset Proposals Confirmation */}
-      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('proposals.resetTitle', { defaultValue: 'Reset all proposals?' })}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('proposals.resetDescription', { defaultValue: 'This will remove all generated proposals and set the registrations back to "new". You can then regenerate proposals with different settings.' })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isResetting}>{t('common:cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
-            <Button onClick={handleResetProposals} disabled={isResetting} variant="destructive">
-              {isResetting ? t('proposals.resetting', { defaultValue: 'Resetting...' }) : t('proposals.resetConfirm', { defaultValue: 'Reset proposals' })}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showResetConfirm}
+        onOpenChange={setShowResetConfirm}
+        title={t('proposals.resetTitle', { defaultValue: 'Reset all proposals?' })}
+        description={t('proposals.resetDescription', { defaultValue: 'This will remove all generated proposals and set the registrations back to "new". You can then regenerate proposals with different settings.' })}
+        confirmLabel={t('proposals.resetConfirm', { defaultValue: 'Reset proposals' })}
+        cancelLabel={t('common:cancel', { defaultValue: 'Cancel' })}
+        loading={isResetting}
+        onConfirm={handleResetProposals}
+      />
     </div>
   );
 }
