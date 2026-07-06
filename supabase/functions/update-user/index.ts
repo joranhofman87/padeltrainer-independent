@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendResendEmail } from "../_shared/resend-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +52,10 @@ Deno.serve(async (req) => {
       rating_system, 
       rating_member_id 
     } = await req.json();
+
+    // GoTrue stores emails lowercased; normalize once so the auth update, the
+    // profiles write, the change-detection and the notification all agree.
+    const normalizedEmail = typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null;
 
     if (!target_user_id) {
       return new Response(
@@ -160,14 +165,26 @@ Deno.serve(async (req) => {
     }
 
     // Update email in auth if provided
-    // Admins can change any user's email directly; regular users changing their own email
-    // triggers Supabase's built-in email change verification flow
-    if (email) {
-      if (isAdmin) {
-        // Admin: directly update via admin API (no verification needed)
+    // Admins and academy/club managers change the email directly via the admin API;
+    // regular users changing their own email go through Supabase's verification flow.
+    // Manager changes are a deliberate capability (academies fully manage their
+    // trainers' accounts, which they often created themselves) — the trade-off is that
+    // this rotates the trainer's LOGIN. Safeguards: the change is audit-logged below
+    // and a notification is sent to the OLD address so a real account owner notices.
+    let emailChanged = false;
+    let previousEmail: string | null = null;
+    if (normalizedEmail) {
+      if (isAdmin || isAuthorizedManager) {
+        if (isAuthorizedManager) {
+          const { data: oldUser, error: lookupError } = await supabaseAdmin.auth.admin.getUserById(target_user_id);
+          if (lookupError) console.error("Old-email lookup failed (notification may be skipped):", lookupError);
+          previousEmail = oldUser?.user?.email?.toLowerCase() ?? null;
+          if (previousEmail === normalizedEmail) previousEmail = null; // no-op change → no notice
+        }
+        // Directly update via admin API (no verification needed)
         const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
           target_user_id,
-          { email }
+          { email: normalizedEmail }
         );
 
         if (updateAuthError) {
@@ -177,11 +194,12 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+        emailChanged = true;
       } else if (isSelf) {
         // Self: use admin API with email_confirm=false to trigger verification email
         const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
           target_user_id,
-          { email, email_confirm: false }
+          { email: normalizedEmail, email_confirm: false }
         );
 
         if (updateAuthError) {
@@ -191,13 +209,13 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+        emailChanged = true;
       }
-      // Managers cannot change email
     }
 
     // Update profile - support all profile fields
     const updates: Record<string, string | number | null> = {};
-    if (email !== undefined && (isAdmin || isSelf)) updates.email = email;
+    if (normalizedEmail && (isAdmin || isSelf || isAuthorizedManager)) updates.email = normalizedEmail;
     if (full_name !== undefined) updates.full_name = full_name;
     if (phone !== undefined) updates.phone = phone;
     if (bio !== undefined) updates.bio = bio;
@@ -221,13 +239,34 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Best-effort heads-up to the OLD address on a manager-initiated change: a real
+    // account owner must be able to notice a takeover. Sent only after BOTH the auth
+    // and profiles writes landed; never blocks the update. The address is HTML-escaped
+    // as defense-in-depth (GoTrue already rejects addresses with markup characters).
+    if (emailChanged && isAuthorizedManager && previousEmail && normalizedEmail) {
+      const escapedEmail = normalizedEmail
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      if (resendKey) {
+        const outcome = await sendResendEmail(resendKey, {
+          from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+          to: [previousEmail],
+          subject: "Your PadelTrainer.ai login email was changed",
+          html: `<p>The login email of your PadelTrainer.ai account was changed to <strong>${escapedEmail}</strong> by a manager of your academy or club.</p><p>If this was expected, no action is needed. If you did not expect this, contact your academy or reply to this email immediately.</p>`,
+        });
+        if (!outcome.ok) console.error("Old-address notification failed:", outcome.error);
+      } else {
+        console.error("RESEND_API_KEY not configured — old-address notification skipped");
+      }
+    }
+
     // Log the action
     await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: callerUser.id,
       target_user_id: target_user_id,
       action: 'update_user',
       details: { 
-        email_changed: !!email && isAdmin, 
+        email_changed: emailChanged, 
         name_changed: full_name !== undefined,
         caller_type: isAdmin ? 'admin' : (isSelf ? 'self' : 'manager'),
       },
