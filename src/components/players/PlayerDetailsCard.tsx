@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -257,12 +258,11 @@ export function PlayerDetailsCard({
             {showPhone && (
               <div className="space-y-2">
                 <Label htmlFor={`${fieldIdBase}-phone`}>{t('players.phone', 'Phone')}</Label>
-                <Input
+                <PhoneInput
                   id={`${fieldIdBase}-phone`}
                   data-testid={`${rolePrefix}-player-details-phone`}
-                  type="tel"
                   value={form.phone}
-                  onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  onChange={(v) => setForm((prev) => ({ ...prev, phone: v }))}
                   placeholder={t('players.phonePlaceholder', 'e.g. +31 6 12345678')}
                 />
               </div>

@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Camera, Save, Trash2 } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -619,11 +620,10 @@ export default function AcademyTrainerDetail() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">{t('trainers.phone', 'Phone')}</Label>
-                <Input
+                <PhoneInput
                   id="phone"
-                  type="tel"
                   value={profileData.phone}
-                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                  onChange={(v) => setProfileData({ ...profileData, phone: v })}
                   placeholder="+31 6 12345678"
                 />
               </div>

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
+import { validatePhone } from '@/lib/validation';
 import { Label } from '@/components/ui/label';
 
 export interface NewGroupMember {
@@ -46,6 +48,7 @@ export function AddGroupMemberFields({ disabled, onAdd }: Props) {
     if (!ln) { setError(t('rebookGroup.addLastNameRequired', 'Vul een achternaam in.')); return; }
     if (!em || !EMAIL_RE.test(em)) { setError(t('rebookGroup.addEmailInvalid', 'Vul een geldig e-mailadres in.')); return; }
     if (!ph) { setError(t('rebookGroup.addPhoneRequired', 'Vul een telefoonnummer in.')); return; }
+    if (validatePhone(ph, true) !== null) { setError(t('auth:validation.phoneInvalid')); return; }
     onAdd({ firstName: fn, lastName: ln, email: em, phone: ph });
     reset();
   };
@@ -67,7 +70,7 @@ export function AddGroupMemberFields({ disabled, onAdd }: Props) {
         </div>
         <div className="space-y-1">
           <Label htmlFor="ngm-phone" className="text-xs">{t('rebookGroup.phone', 'Telefoon')} <span className="text-rose-500">*</span></Label>
-          <Input id="ngm-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={disabled} />
+          <PhoneInput id="ngm-phone" value={phone} onChange={setPhone} disabled={disabled} required />
         </div>
       </div>
       {error && <p className="text-xs text-rose-600">{error}</p>}

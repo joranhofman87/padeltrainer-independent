@@ -21,12 +21,25 @@ describe('validatePhone', () => {
     expect(validatePhone(phone)).toBeNull();
   });
 
+  // International numbers (E.164-ish +CC) are accepted — booking players are
+  // not all Dutch; only 0-prefixed local numbers must look Dutch.
+  it.each([
+    '+1 555 1234567',
+    '+49 170 1234567',
+    '+34612345678',
+    '+44 7911 123456',
+  ])('accepts international number: %s', (phone) => {
+    expect(validatePhone(phone)).toBeNull();
+  });
+
   // Invalid numbers
   it.each([
     '123',
-    '+1 555 1234567',
     'not-a-phone',
     '00000000000',
+    '+1 23',            // too short after country code
+    '+1234567890123456', // too long (>15 digits)
+    '0123',              // 0-prefixed must be a full Dutch number
   ])('rejects invalid number: %s', (phone) => {
     expect(validatePhone(phone)).toBe('validation.phoneInvalid');
   });

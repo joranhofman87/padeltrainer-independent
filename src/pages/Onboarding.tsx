@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,7 +14,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import { Phone, User, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { validatePhone } from '@/lib/validation';
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES, validateRating } from '@/lib/ratingSystems';
 import { trackEvent } from '@/lib/tracking';
 import {
@@ -26,8 +26,7 @@ export default function Onboarding() {
   const { role: urlRole } = useParams<{ role: string }>();
   const [isLoading, setIsLoading] = useState(false);
   const [phone, setPhone] = useState('');
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-  
+
   // Rating system state
   const [ratingSystems, setRatingSystems] = useState<RatingSystemConfig[]>([]);
   const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
@@ -329,28 +328,15 @@ export default function Onboarding() {
                 {t('onboarding.phoneLabel', 'Phone Number')}
                 <span className="text-xs text-muted-foreground">({t('onboarding.optional', 'optional')})</span>
               </Label>
-              <Input
+              <PhoneInput
                 id="phone"
-                type="tel"
                 placeholder="+31 6 12345678"
                 value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value);
-                  setPhoneError(null);
-                }}
-                onBlur={() => {
-                  const error = validatePhone(phone);
-                  setPhoneError(error ? t(`auth:${error}`) : null);
-                }}
-                className={phoneError ? 'border-destructive' : ''}
+                onChange={setPhone}
               />
-              {phoneError ? (
-                <p className="text-xs text-destructive">{phoneError}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {t('onboarding.phoneDescription', "We'll send you updates about cancelled lessons, new availability from trainers you follow, and important booking reminders.")}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {t('onboarding.phoneDescription', "We'll send you updates about cancelled lessons, new availability from trainers you follow, and important booking reminders.")}
+              </p>
             </div>
 
             {/* Benefits reminder */}

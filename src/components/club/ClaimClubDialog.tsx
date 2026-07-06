@@ -12,13 +12,13 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { claimClub } from '@/lib/club';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { Loader2, Building2 } from 'lucide-react';
-import { validatePhone } from '@/lib/validation';
 
 interface ClaimClubDialogProps {
   open: boolean;
@@ -40,7 +40,6 @@ export function ClaimClubDialog({
   const { t } = useTranslation('club');
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     contactEmail: userEmail || '',
     phone: '',
@@ -121,24 +120,12 @@ export function ClaimClubDialog({
 
           <div className="space-y-2">
             <Label htmlFor="phone">{t('claim.phone')}</Label>
-            <Input
+            <PhoneInput
               id="phone"
-              type="tel"
               value={formData.phone}
-              onChange={(e) => {
-                setFormData({ ...formData, phone: e.target.value });
-                setPhoneError(null);
-              }}
-              onBlur={() => {
-                const error = validatePhone(formData.phone);
-                setPhoneError(error ? t(`auth:${error}`) : null);
-              }}
+              onChange={(v) => setFormData({ ...formData, phone: v })}
               placeholder={t('claim.phonePlaceholder')}
-              className={phoneError ? 'border-destructive' : ''}
             />
-            {phoneError && (
-              <p className="text-xs text-destructive">{phoneError}</p>
-            )}
           </div>
 
           <div className="space-y-2">

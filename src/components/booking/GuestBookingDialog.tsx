@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
+import { validatePhone } from '@/lib/validation';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -161,7 +163,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
     firstName.trim().length > 0 &&
     lastName.trim().length > 0 &&
     EMAIL_RE.test(email.trim()) &&
-    phone.trim().length > 0 &&
+    validatePhone(phone, true) === null &&
     !submitting &&
     !(effectiveMode === 'cyclus' && loadingSessions);
 
@@ -374,14 +376,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
           </div>
           <div className="space-y-1">
             <Label htmlFor="guest-phone">{t('booking.guest.phone', 'Telefoon')}</Label>
-            <Input
-              id="guest-phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              autoComplete="tel"
-              inputMode="tel"
-            />
+            <PhoneInput id="guest-phone" value={phone} onChange={setPhone} required />
           </div>
           <div className="space-y-1">
             <Label htmlFor="guest-notes">

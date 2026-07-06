@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -185,11 +186,10 @@ export function EditPlayerDialog({
 
           <div className="space-y-2">
             <Label htmlFor="edit-phone">{t("players.phone")}</Label>
-            <Input
+            <PhoneInput
               id="edit-phone"
-              type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={setPhone}
               placeholder={t("players.phonePlaceholder")}
             />
           </div>
