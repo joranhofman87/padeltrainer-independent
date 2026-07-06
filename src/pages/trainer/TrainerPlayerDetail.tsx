@@ -29,6 +29,8 @@ import { PlayerTag } from '@/components/players/playerTagColors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { getTagColorClass } from '@/components/players/playerTagColors';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -505,6 +507,16 @@ export default function TrainerPlayerDetail() {
                 />
               </div>
             )}
+            {/* View-only trainers still SEE the tags, as static chips. */}
+            {trainerId && !canEdit && tags.some((tag) => tagIds.includes(tag.id)) && (
+              <div className="flex flex-wrap gap-1 pt-2">
+                {tags.filter((tag) => tagIds.includes(tag.id)).map((tag) => (
+                  <Badge key={tag.id} variant="secondary" className={cn('text-[10px]', getTagColorClass(tag.color))}>
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
           {/* Create-invoice + merge are editing/money actions — hidden for
               view-only academy trainers. */}
@@ -562,6 +574,18 @@ export default function TrainerPlayerDetail() {
           tagIds={tagIds}
           onSaved={handleDetailsSaved}
         />
+      )}
+      {/* View-only trainers still SEE their internal note (read-only), since the
+          editable details card above is hidden for them. */}
+      {!canEdit && detailsValues?.notes?.trim() && (
+        <Card data-testid="trainer-player-notes-readonly" className={flushOnMobileCardClass()}>
+          <CardHeader>
+            <CardTitle className="text-base">{t('players.notesLabel', 'Internal notes')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{detailsValues.notes}</p>
+          </CardContent>
+        </Card>
       )}
 
       <Card data-testid="trainer-player-section-cycles" className={flushOnMobileCardClass()}>

@@ -238,12 +238,14 @@ export default function TrainerSettings() {
       icon: Bell,
       route: '/trainer/settings/notifications',
     },
-    {
+    // General terms are the trainer's public terms & conditions — academy-managed
+    // for academy trainers (the /terms route is restricted for them).
+    ...(showIndependentCards ? [{
       title: t('terms.title', 'General Terms'),
       description: t('terms.settingsDescription', 'Manage your general terms and conditions'),
       icon: FileText,
       route: '/app/trainer/terms',
-    },
+    }] : []),
   ];
 
   return (

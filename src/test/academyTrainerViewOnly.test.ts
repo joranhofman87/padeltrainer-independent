@@ -36,13 +36,34 @@ describe('useTrainerCanEdit', () => {
 });
 
 describe('academy trainer view-only wiring', () => {
-  it('route guard blocks the session CREATE surfaces, Sessions hub + invoices money surface (but not slot detail)', () => {
+  it('route guard blocks CREATE surfaces, Sessions hub, invoices, legacy cyclus + terms (but not slot detail)', () => {
     const layout = readSrc('components/trainer/TrainerLayout.tsx');
-    for (const path of ['/app/trainer/slot/new', '/app/trainer/slot/generate', '/app/trainer/sessions', '/app/trainer/invoices']) {
+    for (const path of [
+      '/app/trainer/slot/new',
+      '/app/trainer/slot/generate',
+      '/app/trainer/sessions',
+      '/app/trainer/invoices',
+      '/app/trainer/cyclus',
+      '/app/trainer/terms',
+    ]) {
       expect(layout).toContain(`'${path}'`);
     }
     // Slot DETAIL must stay reachable (attendance + coaching notes live there).
     expect(layout).not.toContain("'/app/trainer/slot',");
+  });
+
+  it('player detail keeps a READ-ONLY tags + internal-notes display for academy trainers', () => {
+    const detail = readSrc('pages/trainer/TrainerPlayerDetail.tsx');
+    // Static tag chips when !canEdit (still SEE the tags, cannot edit).
+    expect(detail).toContain('trainerId && !canEdit && tags.some');
+    // Read-only internal-note display when the editable card is hidden.
+    expect(detail).toContain('trainer-player-notes-readonly');
+    expect(detail).toContain('!canEdit && detailsValues?.notes');
+  });
+
+  it('the General Terms card is hidden for academy trainers (academy owns terms)', () => {
+    const settings = readSrc('pages/TrainerSettings.tsx');
+    expect(settings).toMatch(/showIndependentCards \? \[\{\s*title: t\('terms\.title'/);
   });
 
   it('the Sessions hub link is removed from the academy-trainer sidebar', () => {
