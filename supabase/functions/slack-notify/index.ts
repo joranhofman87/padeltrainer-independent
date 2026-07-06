@@ -25,6 +25,7 @@ const EVENT_CONFIG: Record<string, { emoji: string; title: string }> = {
   edge_function_error: { emoji: "🚨", title: "Edge Function Error" },
   new_registration: { emoji: "📝", title: "New Cycle Registration" },
   registration_error: { emoji: "⚠️", title: "Registration Form Error" },
+  cron_heartbeat: { emoji: "💓", title: "Daily Heartbeat" },
 };
 
 function formatMessage(event: string, data: Record<string, unknown>): object {

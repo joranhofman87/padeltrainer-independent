@@ -7,6 +7,8 @@ import {
   pushAnomaly,
   type InvoiceAnomaly,
 } from "../_shared/invoice-health-checks.ts";
+import { collectStuckCandidates, isPaidAtMollie, type StuckCandidateRow } from "../_shared/stuck-payments.ts";
+import { resolveAccessToken } from "../_shared/mollie-token-resolution.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,6 +157,89 @@ serve(async (req) => {
       }
     }
     pushAnomaly(anomalies, "bookings_paid_invoice_unpaid", bookingsPaidMismatch);
+
+    // F. LOST-WEBHOOK detector for DIRECT booking payments (guest slot/cart/cyclus +
+    // BookLesson): a payment that Mollie says is PAID while NO local booking is.
+    // Locally this state is indistinguishable from an abandoned checkout (the hold
+    // sweep cancels both), so we ask Mollie — bounded to 25 payments/run, using the
+    // SAME org-token resolution the webhook uses. Isolated: a failure here must not
+    // kill the invoice checks above.
+    try {
+      log("Checking paid_at_mollie_not_locally");
+      const fortyFiveMinAgo = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const { data: recent } = await supabase
+        .from("bookings")
+        .select("id, mollie_payment_id, payment_status, status, slot_id")
+        .not("mollie_payment_id", "is", null)
+        .gte("created_at", twoDaysAgo)
+        .lt("created_at", fortyFiveMinAgo)
+        .limit(1000);
+      const candidates = collectStuckCandidates((recent ?? []) as StuckCandidateRow[], 25);
+      const lostPaid: { id: string; detail: string }[] = [];
+      let fetchFailures = 0;
+      for (const cand of candidates) {
+        // Resolve the org token off the first booking's slot (charge-org == confirm-org).
+        if (!cand.slotId) continue;
+        const { data: slot } = await supabase
+          .from("availability_slots")
+          .select("trainer_id, academy_profile_id")
+          .eq("id", cand.slotId)
+          .maybeSingle();
+        if (!slot?.trainer_id) continue;
+        const token = await resolveAccessToken(supabase, slot.trainer_id, slot.academy_profile_id);
+        if (!token) continue;
+        try {
+          const resp = await fetch(`https://api.mollie.com/v2/payments/${cand.molliePaymentId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!resp.ok) {
+            fetchFailures++;
+            continue;
+          }
+          const payment = await resp.json();
+          if (isPaidAtMollie(payment?.status)) {
+            lostPaid.push({
+              id: cand.molliePaymentId,
+              detail: `bookings ${cand.bookingIds.join(", ")} — Mollie says ${payment.status}, no local booking paid`,
+            });
+          }
+        } catch (_) {
+          fetchFailures++;
+        }
+      }
+      if (fetchFailures > 0) log("Mollie fetches failed (skipped candidates)", { fetchFailures });
+      // deliberately reuses the anomaly pipe: any hit is a P0 "money captured, guest
+      // has nothing" — the alert names the payment ids for a manual verify/refund.
+      pushAnomaly(anomalies, "paid_at_mollie_not_locally", lostPaid);
+    } catch (stuckErr) {
+      log("paid_at_mollie_not_locally check failed (non-fatal)", { error: String(stuckErr) });
+    }
+
+    // G. Fold in the payment reconciler (read-only report RPC, service-role callable
+    // since 20260712100000). Graceful pre-migration: gate refusal / missing fn → skip.
+    try {
+      log("Running reconcile_payments");
+      const { data: findings, error: reconcileErr } = await supabase.rpc("reconcile_payments", {
+        _since: "7 days",
+      });
+      if (reconcileErr) {
+        log("reconcile_payments unavailable (non-fatal)", { error: reconcileErr.message });
+      } else {
+        const rows = (findings ?? []) as Array<{ check_name: string; severity: string; entity_kind: string; entity_id: string; detail: unknown }>;
+        const byCheck = new Map<string, { id: string; detail: string }[]>();
+        for (const f of rows) {
+          const list = byCheck.get(f.check_name) ?? [];
+          list.push({ id: f.entity_id, detail: `${f.severity} ${f.entity_kind}: ${JSON.stringify(f.detail)}` });
+          byCheck.set(f.check_name, list);
+        }
+        for (const [check, list] of byCheck) {
+          pushAnomaly(anomalies, `reconcile:${check}`, list.slice(0, 50));
+        }
+      }
+    } catch (reconcileErr) {
+      log("reconcile_payments check failed (non-fatal)", { error: String(reconcileErr) });
+    }
 
     log("Health check complete", {
       totalAnomalyChecks: anomalies.length,

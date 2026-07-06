@@ -78,6 +78,33 @@ export async function alertCronFailure(
   }
 }
 
+/**
+ * Daily heartbeat (dead-man's switch): ALWAYS post a one-line run summary to Slack,
+ * success or not. The signal is its ABSENCE — no morning heartbeat means the cron,
+ * the edge-fn invoker, or the Slack pipe itself is broken, which alertCronFailure
+ * (failure-only) can never tell you. Never throws.
+ */
+export async function sendCronHeartbeat(
+  cronName: string,
+  results: Record<string, unknown>,
+): Promise<void> {
+  const entries = Object.entries(results);
+  const failed = entries.filter(([, r]) => (r as { ok?: boolean }).ok === false).map(([slug]) => slug);
+  try {
+    await invokeEdgeFunction('slack-notify', {
+      event: 'cron_heartbeat',
+      data: {
+        cron: cronName,
+        jobs: `${entries.length - failed.length}/${entries.length} ok`,
+        ...(failed.length > 0 ? { failed: failed.join(', ') } : {}),
+        date: new Date().toISOString().slice(0, 10),
+      },
+    });
+  } catch {
+    // Heartbeat must never break the cron response.
+  }
+}
+
 export async function runCronHandler(
   req: VercelRequest,
   res: VercelResponse,

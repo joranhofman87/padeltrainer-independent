@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 // @vercel/node emits ESM and Node's ESM loader does not extension-complete relative
 // imports. Without it the function crashes at import with ERR_MODULE_NOT_FOUND and
 // the whole daily-maintenance cron (incl. deferred-rebook invoicing) never runs.
-import { alertCronFailure, invokeEdgeFunction, rejectUnauthorizedCron, verifyCronSecret } from '../_lib/cron.js';
+import { alertCronFailure, invokeEdgeFunction, rejectUnauthorizedCron, sendCronHeartbeat, verifyCronSecret } from '../_lib/cron.js';
 
 /** Daily: backups, invoice health, enrichment, and logo batch jobs. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -44,5 +44,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const allOk = Object.values(results).every((r) => (r as { ok?: boolean }).ok !== false);
   if (!allOk) await alertCronFailure('daily-maintenance', results);
+  // Dead-man's switch: this ping goes out EVERY day — a silent morning means the
+  // cron/alerting pipeline itself is down, which no failure-only alert can report.
+  await sendCronHeartbeat('daily-maintenance', results);
   res.status(allOk ? 200 : 207).json({ jobs: results });
 }
