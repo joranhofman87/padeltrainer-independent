@@ -19,6 +19,7 @@ const {
   mockApplyEdit,
   mockApplyEndDate,
   mockPublish,
+  mockOpenDraftCycles,
   editOverride,
   mockToast,
 } = vi.hoisted(() => ({
@@ -32,6 +33,7 @@ const {
   mockApplyEdit: vi.fn(),
   mockApplyEndDate: vi.fn((..._a: unknown[]) => Promise.resolve({ added: 0, removed: 0 })),
   mockPublish: vi.fn(),
+  mockOpenDraftCycles: vi.fn((..._a: unknown[]) => Promise.resolve()),
   editOverride: { current: {} as Partial<SlotEditFormValues> },
   mockToast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
@@ -41,7 +43,10 @@ vi.mock('@/lib/slotDeleteGuard', () => ({
   applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a),
   cancelBookingsAndDeleteSlots: (...a: unknown[]) => mockCancelDelete(...a),
 }));
-vi.mock('@/lib/cycleWrites', () => ({ deleteCycle: (...a: unknown[]) => mockDeleteCycle(...a) }));
+vi.mock('@/lib/cycleWrites', () => ({
+  deleteCycle: (...a: unknown[]) => mockDeleteCycle(...a),
+  openDraftCycles: (...a: unknown[]) => mockOpenDraftCycles(...a),
+}));
 vi.mock('@/lib/invoiceSync', () => ({
   syncSplitCountForCycle: (...a: unknown[]) => mockSyncSplit(...a),
   syncInvoicesAfterPriceChange: (...a: unknown[]) => mockSyncPrice(...a),
@@ -446,13 +451,60 @@ describe('CycleDetailView (inline edit)', () => {
   });
 
   // --- Slot-generator publish lifecycle ---
+  // A REAL draft: slots private, nothing booked (the generator's actual output).
+  // Public or booked slots on a draft trigger the "already live" heal banner instead.
   const draftDetail = (visibility: 'public' | 'private'): CycleDetail => ({
     ...sampleDetail,
+    slots: (sampleDetail.slots as unknown as Array<Record<string, unknown>>).map((sl) => ({
+      ...sl,
+      is_public: false,
+      bookedCount: 0,
+      playerNames: [],
+      paymentStatus: 'no_players',
+    })) as CycleDetail['slots'],
     cycle: {
       ...(sampleDetail.cycle as object),
       status: 'draft',
       settings: { publish_visibility: visibility },
     } as unknown as CycleDetail['cycle'],
+  });
+
+  // Draft-on-paper with LIVE data: public slots and (optionally) paid bookings —
+  // the reported state (booked+paid session on a cycle still shown as concept).
+  const liveDraftDetail = (booked: boolean): CycleDetail => ({
+    ...sampleDetail,
+    slots: (sampleDetail.slots as unknown as Array<Record<string, unknown>>).map((sl, i) => ({
+      ...sl,
+      is_public: true,
+      bookedCount: booked && i === 0 ? 1 : 0,
+      playerNames: booked && i === 0 ? ['Kim de Kort'] : [],
+      paymentStatus: booked && i === 0 ? 'all_paid' : 'no_players',
+    })) as CycleDetail['slots'],
+    cycle: {
+      ...(sampleDetail.cycle as object),
+      status: 'draft',
+      settings: { publish_visibility: 'private' },
+    } as unknown as CycleDetail['cycle'],
+  });
+
+  it('draft with PAID bookings: shows the already-booked heal banner; CTA flips status only (never slot visibility)', async () => {
+    mockUseCycleDetail.mockReturnValue({ data: liveDraftDetail(true), isLoading: false, isError: false });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish onMutated={() => {}} />);
+    // No false "not bookable" concept banner…
+    expect(screen.queryByText('Dit is een concept')).not.toBeInTheDocument();
+    expect(screen.getByText('Al geboekt — status klopt niet meer')).toBeInTheDocument();
+    // …and the heal is status-only: openDraftCycles, NOT publishCycle (which would
+    // apply the stored private intent and unpublish the live booked slots).
+    fireEvent.click(screen.getByRole('button', { name: 'Markeer als gepubliceerd' }));
+    await waitFor(() => expect(mockOpenDraftCycles).toHaveBeenCalledWith(['cy1']));
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('draft with public (unbooked) slots: shows the already-public variant of the heal banner', () => {
+    mockUseCycleDetail.mockReturnValue({ data: liveDraftDetail(false), isLoading: false, isError: false });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canPublish onMutated={() => {}} />);
+    expect(screen.getByText('Sessies staan al openbaar')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Publiceren' })).not.toBeInTheDocument();
   });
 
   it('publish: a PUBLIC-intent draft + canPublish shows the banner; publishing calls publishCycle(id,true) + onMutated', async () => {

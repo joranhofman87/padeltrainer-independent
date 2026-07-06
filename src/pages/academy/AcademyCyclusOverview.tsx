@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils';
 import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
 import { setCycleBookingMode, setTargetedCyclePrice, deriveCycleBookingMode, type CycleBookingMode, type CycleBookingModeOrNone } from '@/lib/cycleBookingMode';
 import { BulkBookingModeDialog } from '@/components/cycles/BulkBookingModeDialog';
-import { deleteCycle } from '@/lib/cycleWrites';
+import { deleteCycle, openDraftCycles } from '@/lib/cycleWrites';
 import {
   computeCyclusGroupPaymentStatus,
   matchesPaidFilter,
@@ -840,6 +840,20 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       for (let i = 0; i < slotIds.length; i += 500) {
         const chunk = slotIds.slice(i, i + 500);
         await setSlotVisibility(chunk, makePublic);
+      }
+      if (makePublic) {
+        // Making slots public IS publishing: promote affected draft cycli to 'open' so
+        // the detail page can never say "concept — not bookable" about live (booked,
+        // paid) sessions. Registrations excluded (their draft/open is the FORM's
+        // lifecycle, not slot visibility); openDraftCycles only touches status='draft'.
+        const draftableCycleIds = [
+          ...new Set(
+            sortedData
+              .filter((g) => selectedIds.has(g.group_key) && g.has_cycle_row && g.type === 'cyclus' && !g.is_registration)
+              .map((g) => g.cyclus_id),
+          ),
+        ];
+        await openDraftCycles(draftableCycleIds);
       }
       toast({ title: t('cyclesTab.visibilityUpdated', { count: slotIds.length, state: makePublic ? t('cyclesTab.visible') : t('cyclesTab.hidden') }) });
       setSelectedIds(new Set());
