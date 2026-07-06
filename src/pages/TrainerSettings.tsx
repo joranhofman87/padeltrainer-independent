@@ -260,7 +260,9 @@ export default function TrainerSettings() {
             icon: Pencil,
           }}
         />
-        {/* Profile Visibility Section */}
+        {/* Profile Visibility Section — publishing to the marketplace is
+            academy-managed for academy trainers (they can't toggle is_public). */}
+        {showIndependentCards && (
         <div className="max-w-4xl">
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
@@ -331,6 +333,7 @@ export default function TrainerSettings() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* Academy Info */}
         {hasAcademy && (

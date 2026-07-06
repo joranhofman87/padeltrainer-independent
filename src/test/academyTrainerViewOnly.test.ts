@@ -66,6 +66,12 @@ describe('academy trainer view-only wiring', () => {
     expect(settings).toMatch(/showIndependentCards \? \[\{\s*title: t\('terms\.title'/);
   });
 
+  it('the marketplace-visibility (is_public) toggle is hidden for academy trainers', () => {
+    const settings = readSrc('pages/TrainerSettings.tsx');
+    // The whole visibility card is gated — academy trainers cannot flip is_public.
+    expect(settings).toMatch(/\{showIndependentCards && \(\s*<div className="max-w-4xl">\s*<Card className="border-border\/80/);
+  });
+
   it('the Sessions hub link is removed from the academy-trainer sidebar', () => {
     const sidebar = readSrc('components/trainer/TrainerSidebar.tsx');
     // The academy branch no longer renders the sessions nav item.
