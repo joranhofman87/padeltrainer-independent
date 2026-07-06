@@ -259,6 +259,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedRef.current = nextSession.user.id;
         setProfileReady(false);
         setProfileFetchFailed(false);
+        // Different user in this same provider instance — drop the previous user's
+        // subscription so the fetchSubscription fail-open (prev-keep) can never hand
+        // it to the new user before their own check resolves.
+        setSubscription(null);
 
         await Promise.race([
           fetchUserData(nextSession.user.id),
