@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -95,6 +96,16 @@ export function CartCheckoutDialog({
 
       const body = error ? await extractCartFnError(error) : null;
       const code = body?.error ?? null;
+      // Remote trace for every non-checkout outcome (PostHog via logger): the guest
+      // only sees a toast. IDs + codes only, never contact details.
+      if (error || !result?.checkoutUrl) {
+        logger.warn('Cart checkout refused/failed', {
+          component: 'CartCheckoutDialog',
+          items: items.length,
+          slotIds: items.map((i) => i.id).join(','),
+          code: code ?? 'no_checkout_url',
+        });
+      }
       if (code === 'slot_unavailable' || code === 'slot_full') {
         toast.error(t('booking.cart.unavailableTitle', 'Niet alle sessies zijn nog beschikbaar'));
         onStaleSlots(body?.slotIds ?? []);
@@ -120,7 +131,11 @@ export function CartCheckoutDialog({
         toast.error(t('booking.guest.failed', 'Er ging iets mis. Probeer het opnieuw.'));
       }
       setSubmitting(false);
-    } catch {
+    } catch (err) {
+      logger.error('Cart checkout threw', err instanceof Error ? err : new Error(String(err)), {
+        component: 'CartCheckoutDialog',
+        items: items.length,
+      });
       toast.error(t('booking.guest.failed', 'Er ging iets mis. Probeer het opnieuw.'));
       setSubmitting(false);
     }

@@ -1,10 +1,23 @@
 // @vitest-environment node
-// Integration test for the guest single-slot pay-first RPCs (migration 20260704150000) against real
-// Postgres via PGlite. The function bodies below are copied verbatim from the migration (sans the
-// GRANT/REVOKE/cron, whose roles + pg_cron don't exist in PGlite); `supabase db reset` in CI
-// validates the migration itself applies. This test exercises the capacity/hold/sweep LOGIC.
+// Integration test for the guest single-slot pay-first RPCs against real Postgres via PGlite.
+// Runs the REAL deployed SQL: 20260704150000_guest_slot_booking.sql (release_expired_guest_slot_holds —
+// its only/current definition) then 20260707140000_whole_slot_booking.sql (the CURRENT
+// book_guest_slot_for_payment, superseding 20260704150000/190000/210000/20260706160000). Only
+// REVOKE/GRANT lines are stripped (roles don't exist in PGlite); the pg_cron schedule block
+// self-guards on pg_extension and no-ops here. This test exercises the capacity/hold/sweep LOGIC.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+function readMigrations(): string {
+  return ['20260704150000_guest_slot_booking.sql', '20260707140000_whole_slot_booking.sql']
+    .map((f) => readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'))
+    .join('\n')
+    .split('\n')
+    .filter((l) => !/^(REVOKE|GRANT)\b/.test(l))
+    .join('\n');
+}
 
 let db: PGlite;
 
@@ -27,7 +40,7 @@ const count = async (sql: string): Promise<number> =>
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
-    CREATE TABLE availability_slots (id uuid PRIMARY KEY, max_participants integer, allow_single_booking boolean, is_public boolean, cyclus_id uuid);
+    CREATE TABLE availability_slots (id uuid PRIMARY KEY, max_participants integer, allow_single_booking boolean, is_public boolean, cyclus_id uuid, split_payment boolean);
     CREATE TABLE bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       slot_id uuid, player_id uuid, guest_player_id uuid,
@@ -36,47 +49,7 @@ beforeAll(async () => {
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
     );
   `);
-  await db.exec(`
-    CREATE OR REPLACE FUNCTION public.book_guest_slot_for_payment(
-      _slot_id uuid, _guest_player_id uuid, _payment_amount numeric,
-      _hold_minutes integer DEFAULT 20, _notes text DEFAULT NULL
-    ) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-    DECLARE
-      v_max integer; v_taken integer; v_is_public boolean; v_cyclus_id uuid; v_allow_single boolean;
-      v_hold_min integer := GREATEST(5, LEAST(60, COALESCE(_hold_minutes, 20)));
-      v_existing uuid; v_id uuid;
-    BEGIN
-      PERFORM pg_advisory_xact_lock(hashtextextended(_slot_id::text, 0));
-      SELECT id INTO v_existing FROM public.bookings
-       WHERE slot_id = _slot_id AND guest_player_id = _guest_player_id
-         AND status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now() LIMIT 1;
-      IF v_existing IS NOT NULL THEN RETURN v_existing; END IF;
-      SELECT CASE WHEN COALESCE(allow_single_booking, false) THEN COALESCE(max_participants, 1) ELSE 1 END,
-             COALESCE(is_public, false), cyclus_id, COALESCE(allow_single_booking, false)
-        INTO v_max, v_is_public, v_cyclus_id, v_allow_single FROM public.availability_slots WHERE id = _slot_id;
-      IF NOT v_is_public THEN RAISE EXCEPTION 'slot_not_public' USING ERRCODE = 'check_violation'; END IF;
-      IF v_cyclus_id IS NOT NULL AND NOT v_allow_single THEN
-        RAISE EXCEPTION 'single_booking_not_allowed' USING ERRCODE = 'check_violation'; END IF;
-      SELECT count(*) INTO v_taken FROM public.bookings
-       WHERE slot_id = _slot_id AND (
-         COALESCE(status, 'confirmed') IN ('confirmed', 'pending', 'pending_approval')
-         OR (status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now()));
-      IF v_taken >= COALESCE(v_max, 1) THEN RAISE EXCEPTION 'slot_full' USING ERRCODE = 'check_violation'; END IF;
-      INSERT INTO public.bookings (slot_id, guest_player_id, payment_status, status, payment_amount, hold_expires_at, notes)
-      VALUES (_slot_id, _guest_player_id, 'pending', 'payment_pending', _payment_amount,
-              now() + make_interval(mins => v_hold_min), NULLIF(btrim(_notes), '')) RETURNING id INTO v_id;
-      RETURN v_id;
-    END; $$;
-    CREATE OR REPLACE FUNCTION public.release_expired_guest_slot_holds()
-    RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-    DECLARE v_n integer;
-    BEGIN
-      UPDATE public.bookings SET status = 'cancelled', updated_at = now()
-       WHERE status = 'payment_pending' AND guest_player_id IS NOT NULL AND payment_status = 'pending'
-         AND hold_expires_at IS NOT NULL AND hold_expires_at < now();
-      GET DIAGNOSTICS v_n = ROW_COUNT; RETURN v_n;
-    END; $$;
-  `);
+  await db.exec(readMigrations()); // 20260707140000 ALTERs whole_slot_booking onto the table itself
 });
 
 beforeEach(async () => {
