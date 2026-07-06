@@ -68,7 +68,16 @@
     "fileTooLargeDescription": "Please select an image smaller than 5MB",
     "profileUpdated": "Profile updated",
     "profileUpdatedDescription": "Your changes have been saved.",
-    "error": "Error"
+    "error": "Error",
+    "banner": "Public page banner",
+    "bannerDescription": "Shown across the top of your public page. Without one, your academy banner is used.",
+    "noBanner": "No banner uploaded yet",
+    "changeBanner": "Change banner",
+    "uploadBanner": "Upload banner",
+    "bannerUpdated": "Banner updated",
+    "bannerUpdatedDescription": "Your public page banner has been updated.",
+    "bannerTooLargeDescription": "Please select an image smaller than 10MB",
+    "bannerUploadFailedDescription": "Could not upload the banner. Please try again."
   },
   "ratingSystem": {
     "label": "Rating System",

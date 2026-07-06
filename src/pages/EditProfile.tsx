@@ -63,6 +63,11 @@ export default function EditProfile() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // Trainer public-page banner (migration 20260709100000). Read/written separately
+  // from the main trainer select/save so the page keeps working pre-migration.
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     full_name: '',
@@ -217,6 +222,14 @@ export default function EditProfile() {
     if (data) {
       setTrainerProfileId(data.id);
       setIsPublic(data.is_public ?? false);
+      supabase
+        .from('trainer_profiles')
+        .select('banner_url' as never)
+        .eq('id', data.id)
+        .maybeSingle()
+        .then(({ data: bannerRow }) =>
+          setBannerUrl(((bannerRow as { banner_url?: string | null } | null)?.banner_url) ?? null),
+        );
       setTrainerData({
         hourly_rate: data.hourly_rate,
         coaching_since_year: (data as any).coaching_since_year,
@@ -348,6 +361,61 @@ export default function EditProfile() {
       });
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user || !trainerProfileId) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: t('editProfile.invalidFileType'),
+        description: t('editProfile.invalidFileTypeDescription'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: t('editProfile.fileTooLarge'),
+        description: t('editProfile.bannerTooLargeDescription', 'Please select an image smaller than 10MB'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploadingBanner(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/banner.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const urlWithTimestamp = `${publicUrl}?t=${Date.now()}`;
+
+      const { error: updateError } = await supabase
+        .from('trainer_profiles')
+        .update({ banner_url: urlWithTimestamp } as never)
+        .eq('id', trainerProfileId);
+      if (updateError) throw updateError;
+
+      setBannerUrl(urlWithTimestamp);
+      toast({
+        title: t('editProfile.bannerUpdated', 'Banner updated'),
+        description: t('editProfile.bannerUpdatedDescription', 'Your public page banner has been updated.'),
+      });
+    } catch (error) {
+      logger.error('Banner upload error', error instanceof Error ? error : new Error(String(error)), { component: 'EditProfile' });
+      toast({
+        title: t('editProfile.uploadFailed', 'Upload failed'),
+        description: getFriendlyErrorMessage(error, t('editProfile.bannerUploadFailedDescription', 'Could not upload the banner. Please try again.')),
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingBanner(false);
     }
   };
 
@@ -563,6 +631,52 @@ export default function EditProfile() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Trainer public-page banner */}
+          {role === 'trainer' && trainerProfileId && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{t('editProfile.banner', 'Public page banner')}</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {t('editProfile.bannerDescription', 'Shown across the top of your public page. Without one, your academy banner is used.')}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {bannerUrl ? (
+                  <img
+                    src={bannerUrl}
+                    alt={t('editProfile.banner', 'Public page banner')}
+                    className="w-full h-32 object-cover rounded-md border"
+                  />
+                ) : (
+                  <div className="w-full h-32 rounded-md border border-dashed flex items-center justify-center text-sm text-muted-foreground">
+                    {t('editProfile.noBanner', 'No banner uploaded yet')}
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploadingBanner}
+                  onClick={() => bannerInputRef.current?.click()}
+                >
+                  {uploadingBanner ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4 mr-2" />
+                  )}
+                  {bannerUrl ? t('editProfile.changeBanner', 'Change banner') : t('editProfile.uploadBanner', 'Upload banner')}
+                </Button>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBannerUpload}
+                  className="hidden"
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Basic Info */}
           <Card>

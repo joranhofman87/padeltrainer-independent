@@ -68,7 +68,16 @@
     "fileTooLargeDescription": "Selecteer een afbeelding kleiner dan 5MB",
     "profileUpdated": "Profiel bijgewerkt",
     "profileUpdatedDescription": "Je wijzigingen zijn opgeslagen.",
-    "error": "Fout"
+    "error": "Fout",
+    "banner": "Banner openbare pagina",
+    "bannerDescription": "Wordt bovenaan je openbare pagina getoond. Zonder eigen banner wordt de banner van je academy gebruikt.",
+    "noBanner": "Nog geen banner geüpload",
+    "changeBanner": "Banner wijzigen",
+    "uploadBanner": "Banner uploaden",
+    "bannerUpdated": "Banner bijgewerkt",
+    "bannerUpdatedDescription": "De banner van je openbare pagina is bijgewerkt.",
+    "bannerTooLargeDescription": "Kies een afbeelding kleiner dan 10MB",
+    "bannerUploadFailedDescription": "Kon de banner niet uploaden. Probeer het opnieuw."
   },
   "ratingSystem": {
     "label": "Beoordelingssysteem",
