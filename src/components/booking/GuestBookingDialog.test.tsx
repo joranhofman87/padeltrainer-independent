@@ -90,7 +90,9 @@ beforeEach(() => {
   toastErrorMock.mockReset();
   toastSuccessMock.mockReset();
   cyclusSessions.current = [];
-  cyclusPublicRow.current = null;
+  // Default: a normal OPEN cycle visible via cycles_public (series sellable).
+  // null models a cycle OUTSIDE the view (draft/closed) — series must not be offered.
+  cyclusPublicRow.current = { settings: {} };
   localStorage.clear();
 });
 
@@ -184,6 +186,23 @@ describe('GuestBookingDialog', () => {
     expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
       body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
     });
+  });
+
+  it('cycle invisible in cycles_public (draft/closed): fails CLOSED — no whole-series option', async () => {
+    // The RL Padel report: DRAFT cycles with public whole-slot sessions. The cycle is
+    // not in cycles_public (status='open' only), so the series option must be hidden —
+    // the old fail-open default showed AND preselected it, then checkout 403'd
+    // cyclus_not_bookable at payment.
+    cyclusSessions.current = twoSessions;
+    cyclusPublicRow.current = null;
+    const rlPadelSlot: PublicSlot = { ...cyclusSlot, allow_single_booking: false, whole_slot_booking: true, price_per_session: 76.5 };
+    render(<GuestBookingDialog slot={rlPadelSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Hele cyclus/ })).toBeNull());
+    expect(screen.queryByRole('button', { name: /Alleen deze sessie/ })).toBeNull();
+    // Single-session (whole-court) booking stays available at the session price.
+    expect(screen.getByRole('button', { name: /Afrekenen/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/76[.,]50/).length).toBeGreaterThan(0);
   });
 
   it('slots-only cyclus (allow_cyclus_booking=false): hides the whole-series option and books the single slot', async () => {

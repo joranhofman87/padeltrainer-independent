@@ -99,6 +99,9 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
     }
     let cancelled = false;
     setLoadingSessions(true);
+    // Fail-closed while loading: never flash (or preselect) a series option we may
+    // have to withdraw once the cycle's real state arrives.
+    setCyclusBookable(false);
     void (async () => {
       const [{ data }, { data: cyc }] = await Promise.all([
         supabase
@@ -108,8 +111,11 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
           .eq('is_public', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time', { ascending: true }),
-        // Sanitized anon view; a cycle outside it (not status=open) keeps the default
-        // (bookable) and the create-guest-cyclus-payment guard stays authoritative.
+        // Sanitized anon view (status='open' only). A cycle we cannot see there is
+        // NOT sellable as a series — draft/closed cycles and slots-only cycli must not
+        // offer whole-series checkout the server (create-guest-cyclus-payment,
+        // cyclus_not_bookable) will refuse anyway. This used to fail OPEN, which
+        // showed — and preselected — a series option that died at payment.
         supabase
           .from('cycles_public' as never)
           .select('settings')
@@ -118,8 +124,8 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       ]);
       if (!cancelled) {
         setSessions((data ?? []) as CyclusSession[]);
-        const settings = (cyc as { settings?: Record<string, unknown> } | null)?.settings;
-        setCyclusBookable(settings?.allow_cyclus_booking !== false);
+        const row = cyc as { settings?: Record<string, unknown> } | null;
+        setCyclusBookable(row != null && row.settings?.allow_cyclus_booking !== false);
         setLoadingSessions(false);
       }
     })();
