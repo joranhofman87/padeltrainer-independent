@@ -134,9 +134,11 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const body = await req.json();
-    const { claimIds, slotId, testEmail, resend, customMessage, customSubject } = body as {
+    const { claimIds, slotId, cycleId, limit, testEmail, resend, customMessage, customSubject } = body as {
       claimIds?: string[];
       slotId?: string;
+      cycleId?: string;
+      limit?: number;
       testEmail?: string;
       resend?: boolean;
       customMessage?: string;
@@ -144,15 +146,97 @@ const handler = async (req: Request): Promise<Response> => {
     };
     const isTest = !!testEmail;
     // Optional academy-authored intro injected at the top of every invite (escaped + tokenized).
-    const inviteMessage = typeof customMessage === "string" ? customMessage.trim().slice(0, 2000) : "";
+    let inviteMessage = typeof customMessage === "string" ? customMessage.trim().slice(0, 2000) : "";
     // Optional academy-authored subject line; empty ⇒ the default below. Sanitized (no CR/LF).
-    const inviteSubject = sanitizeEmailSubject(customSubject);
+    let inviteSubject = sanitizeEmailSubject(customSubject);
 
-    if (!(claimIds && claimIds.length) && !slotId) {
-      return new Response(JSON.stringify({ error: "claimIds or slotId required" }), {
+    if (!(claimIds && claimIds.length) && !slotId && !cycleId) {
+      return new Response(JSON.stringify({ error: "claimIds, slotId or cycleId required" }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
+    }
+
+    // cycleId mode (resumable bulk drain): the caller sends invites in bounded
+    // chunks for a whole round instead of one giant blocking invocation that risks
+    // the edge wall-clock. We pick the REPRESENTATIVE claim per (series, player)
+    // — one email per weekly series, mirroring bulk-rebook-cycle — that is still
+    // pending AND not yet invited, cap it at `limit`, and report `remaining` so the
+    // client can loop until drained. invited_at stamping (below) keeps it idempotent,
+    // so re-runs never double-send.
+    let cycleCandidateIds: string[] | null = null;
+    let cycleRemaining = 0;
+    if (cycleId) {
+      const chunkLimit = Math.max(1, Math.min(Number(limit) || 40, 100));
+      // Authorize by slot ownership: under the caller's JWT, RLS on
+      // availability_slots restricts to slots they own/manage. Service callers
+      // (e.g. an internal retry) skip the JWT gate.
+      let ownedSlotIds: string[];
+      if (isService) {
+        const { data: s, error: sErr } = await supabase
+          .from("availability_slots").select("id").eq("cyclus_id", cycleId);
+        if (sErr) throw sErr;
+        ownedSlotIds = (s || []).map((r: { id: string }) => r.id);
+      } else {
+        const userClient = createClient(supabaseUrl, anonKey, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: s, error: sErr } = await userClient
+          .from("availability_slots").select("id").eq("cyclus_id", cycleId);
+        if (sErr) throw sErr;
+        ownedSlotIds = (s || []).map((r: { id: string }) => r.id);
+        if (ownedSlotIds.length === 0) {
+          return new Response(JSON.stringify({ error: "Forbidden", sent: 0, remaining: 0 }), {
+            status: 403,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+      }
+      // All pending claims on the round's slots, with their slot start_time, so we
+      // can pick each (series, player)'s earliest-week claim as the representative.
+      const repClaims: Array<{ id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null }> = [];
+      for (let i = 0; i < ownedSlotIds.length; i += 200) {
+        const { data: rc, error: rcErr } = await supabase
+          .from("slot_priority_claims")
+          .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time)")
+          .in("slot_id", ownedSlotIds.slice(i, i + 200))
+          .eq("status", "pending");
+        if (rcErr) throw rcErr;
+        // PostgREST types the to-one `availability_slots` embed as an array; the
+        // runtime value is a single object. Cast through unknown (same idiom as the
+        // ClaimRow cast below) to reconcile.
+        repClaims.push(...((rc || []) as unknown as typeof repClaims));
+      }
+      const repByKey = new Map<string, { id: string; start: string; invited: boolean }>();
+      for (const c of repClaims) {
+        const pkey = c.player_id ?? `g:${c.guest_player_id}`;
+        const gkey = c.rebook_group_id ?? c.slot_id;
+        const start = c.availability_slots?.start_time ?? "";
+        const k = `${gkey}|${pkey}`;
+        const cur = repByKey.get(k);
+        if (!cur || start < cur.start) repByKey.set(k, { id: c.id, start, invited: !!c.invited_at });
+      }
+      const eligibleReps = [...repByKey.values()].filter((r) => !r.invited).map((r) => r.id);
+      cycleCandidateIds = eligibleReps.slice(0, chunkLimit);
+      cycleRemaining = Math.max(0, eligibleReps.length - cycleCandidateIds.length);
+      if (cycleCandidateIds.length === 0) {
+        return new Response(JSON.stringify({ sent: 0, skipped: 0, remaining: 0 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+      // Consistent copy on resume: fall back to the message/subject stored on the
+      // cycle at creation when the caller didn't pass them (e.g. the recovery button).
+      if (!inviteMessage || !inviteSubject) {
+        const { data: cy } = await supabase.from("cycles").select("settings").eq("id", cycleId).maybeSingle();
+        const st = (cy?.settings || {}) as Record<string, unknown>;
+        if (!inviteMessage && typeof st.rebook_invitation_message === "string") {
+          inviteMessage = (st.rebook_invitation_message as string).trim().slice(0, 2000);
+        }
+        if (!inviteSubject && typeof st.rebook_invitation_subject === "string") {
+          inviteSubject = sanitizeEmailSubject(st.rebook_invitation_subject as string);
+        }
+      }
     }
 
     // Authorization: for non-service callers, resolve which claims they are
@@ -161,8 +245,9 @@ const handler = async (req: Request): Promise<Response> => {
     // slots they own. We then load full details via the service client for
     // ONLY those authorized ids. This prevents a logged-in user from inviting
     // (and, via testEmail, harvesting tokens for) claims on slots they don't own.
+    // cycleId mode did its own slot-ownership authorization above.
     let authorizedIds: string[] | null = null;
-    if (!isService) {
+    if (!isService && !cycleId) {
       const userClient = createClient(supabaseUrl, anonKey, {
         global: { headers: { Authorization: authHeader } },
       });
@@ -185,14 +270,15 @@ const handler = async (req: Request): Promise<Response> => {
       .select(
         "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
       );
-    if (authorizedIds) query = query.in("id", authorizedIds);
+    if (cycleCandidateIds) query = query.in("id", cycleCandidateIds);
+    else if (authorizedIds) query = query.in("id", authorizedIds);
     else if (claimIds && claimIds.length) query = query.in("id", claimIds);
     else if (slotId) query = query.eq("slot_id", slotId);
 
     const { data: claims, error: cErr } = await query;
     if (cErr) throw cErr;
     if (!claims || claims.length === 0)
-      return new Response(JSON.stringify({ sent: 0, skipped: 0 }), {
+      return new Response(JSON.stringify({ sent: 0, skipped: 0, remaining: cycleRemaining }), {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
@@ -208,7 +294,7 @@ const handler = async (req: Request): Promise<Response> => {
     );
     let skipped = allClaims.length - eligible.length;
     if (eligible.length === 0)
-      return new Response(JSON.stringify({ sent: 0, skipped }), {
+      return new Response(JSON.stringify({ sent: 0, skipped, remaining: cycleRemaining }), {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
@@ -447,7 +533,11 @@ const handler = async (req: Request): Promise<Response> => {
         { sent, skipped, failed, failedClaimIds, isTest, resend: resend === true },
       );
     }
-    return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds }), {
+    // `remaining` (cycleId mode only): representative invites still un-sent for this
+    // round AFTER this chunk, so the client can loop until drained. Failures rolled
+    // invited_at back to NULL, so they reappear as eligible on the next call (transient
+    // 429s get retried); the client stops on no-progress to avoid an endless loop.
+    return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds, remaining: cycleRemaining }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });

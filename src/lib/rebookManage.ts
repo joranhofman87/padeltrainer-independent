@@ -122,6 +122,8 @@ export interface RebookManageData {
   summary: RebookOutcomeSummary;
   paidCount: number;
   unpaidCount: number;
+  /** Representative invites still un-sent (awaiting + never emailed) — for "resume sending". */
+  uninvitedCount: number;
 }
 
 interface SlotRow {
@@ -224,6 +226,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     summary: { invited: 0, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 },
     paidCount: 0,
     unpaidCount: 0,
+    uninvitedCount: 0,
   };
   if (slotRows.length === 0) return empty;
   const slotById = new Map(slotRows.map((s) => [s.id, s]));
@@ -238,11 +241,12 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     guest_player_id: string | null;
     status: string;
     rebook_group_id: string | null;
+    invited_at?: string | null;
     reminded_at?: string | null;
     response_intent?: string | null;
     response_intent_at?: string | null;
   };
-  const claimCols = 'id, slot_id, player_id, guest_player_id, status, rebook_group_id';
+  const claimCols = 'id, slot_id, player_id, guest_player_id, status, rebook_group_id, invited_at';
   // reminded_at + response_intent were both added by owner-deployed migrations; if either isn't
   // live yet the select 400s and the whole management view would blank. Fall back to the base
   // columns (optional fields → undefined), mirroring getMyPendingPriorityClaims's tolerance.
@@ -301,6 +305,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // claim per slot; collapse to claimed > pending > declined.
   const rank = { claimed: 3, pending: 2, declined: 1, expired: 0 } as const;
 
+  // Per (group, player): did ANY of their claims get an invite email? The sender
+  // stamps exactly one representative per (group, player), so a single invited_at
+  // means that invitee was emailed. Used to count how many invites are still un-sent.
+  const invitedKeys = new Set<string>();
   const groupsMap = new Map<string, { slotIds: Set<string>; players: Map<string, RebookManagePlayer> }>();
   for (const c of claimRows) {
     const groupKey = c.rebook_group_id ?? c.slot_id;
@@ -308,6 +316,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     if (!g) { g = { slotIds: new Set(), players: new Map() }; groupsMap.set(groupKey, g); }
     g.slotIds.add(c.slot_id);
     const pk = keyOf(c);
+    if (c.invited_at) invitedKeys.add(`${groupKey}|${pk}`);
     const resp: ClaimResponse =
       c.status === 'claimed' || c.status === 'pending' || c.status === 'declined' || c.status === 'expired'
         ? c.status
@@ -392,8 +401,18 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const paidCount = allPlayers.filter((p) => p.response === 'claimed' && p.paid).length;
   const unpaidCount = allPlayers.filter((p) => p.response === 'claimed' && !p.paid).length;
   const summary = summariseRebookOutcomes(allPlayers);
+  // Invites still to send: (group, player) representatives who are still awaiting a
+  // response AND never received an invite email. Drives the "resume sending" control
+  // — an estimate; the resumable drain (send-priority-claim-invitation cycleId mode)
+  // is the source of truth for exactly which invites go out.
+  let uninvitedCount = 0;
+  for (const g of groups) {
+    for (const p of g.players) {
+      if (p.response === 'pending' && !invitedKeys.has(`${g.groupId}|${p.key}`)) uninvitedCount += 1;
+    }
+  }
 
-  return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, summary, paidCount, unpaidCount };
+  return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, summary, paidCount, unpaidCount, uninvitedCount };
 }
 
 // ===== Bulk levers (resilient, per-slot) =====

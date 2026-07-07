@@ -956,7 +956,7 @@
     "errPreview": "Could not load the preview. Please try again.",
     "alreadyExists": "A round with this name and start date already exists. Give the new round a different name or date.",
     "success": "{{groups}} group(s) · {{players}} players invited · {{invites}} emails",
-    "invitesPartial": "{{count}} invitation(s) could not be sent. The round was created; those players can also respond from their dashboard.",
+    "invitesPartial": "{{sent}} of {{total}} invitations sent. The round was created — send the rest from the round page.",
     "errSubmit": "Could not create the round. Please try again.",
     "title": "Set up the next round",
     "subtitle": "Pick a cycle, a start date and the number of weeks. We create one new round and give your current players first chance to keep their spot.",
@@ -1007,7 +1007,9 @@
     "inviteMessagePlaceholder": "E.g. Great to have you back! Confirm your regular spot for the next round below.",
     "inviteVariablesHelp": "Insert variable:",
     "backToConfigure": "Edit",
-    "confirmSend": "Create & invite players"
+    "confirmSend": "Create & invite players",
+    "sending": "Sending invitations… {{sent}}/{{total}}",
+    "invitesPartialLegacy": "{{count}} invitation(s) could not be sent. The round was created; those players can also respond from their dashboard."
   },
   "editEndDate": {
     "title": "Edit end date",
@@ -1136,7 +1138,13 @@
     "clickedYesShort": "clicked Yes",
     "saidNoShort": "said no",
     "expiredShort": "expired",
-    "alreadyRebookedWarning": "{{n}} of these players have already rebooked — they will also get this reminder."
+    "alreadyRebookedWarning": "{{n}} of these players have already rebooked — they will also get this reminder.",
+    "uninvited": "{{count}} invitation(s) have not been sent yet.",
+    "sendInvites": "Send invitations",
+    "sendingInvites": "Sending… {{sent}}/{{total}}",
+    "resumeFailed": "Could not send the invitations. Please try again later.",
+    "resumePartial": "{{sent}} invitation(s) sent, {{left}} still pending. Try the rest again shortly.",
+    "resumeDone": "{{sent}} invitation(s) sent"
   },
   "rebookShared": {
     "paymentTitle": "Payment",
