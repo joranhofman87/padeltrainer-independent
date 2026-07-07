@@ -130,6 +130,11 @@ describe('rebookPlayerOutcome — the owner\'s "who said no"', () => {
   it('a paid, claimed player is not "clicked-yes-unpaid"', () => {
     expect(clickedYesUnpaid(mkPlayer({ response: 'claimed', responseIntent: 'accept', paid: true }))).toBe(false);
   });
+  it('an EXPIRED accept-intent claim is NOT clicked-yes-unpaid (can no longer be completed)', () => {
+    // Cron expires the pending claim but leaves response_intent='accept'. It must not be counted as
+    // an actionable "started but didn't pay", and must not collide with the "verlopen" chip.
+    expect(clickedYesUnpaid(mkPlayer({ response: 'expired', responseIntent: 'accept' }))).toBe(false);
+  });
 });
 
 describe('summariseRebookOutcomes — the assembled headline', () => {
@@ -144,5 +149,32 @@ describe('summariseRebookOutcomes — the assembled headline', () => {
       mkPlayer({ key: 'g', response: 'pending', responseIntent: 'accept' }),  // clicked yes, unpaid
     ]);
     expect(s).toEqual({ invited: 7, rebooked: 2, declined: 2, noResponse: 3, clickedYesUnpaid: 1 });
+  });
+
+  it('counts DISTINCT invitees — a player in two weekly series is one person, not two', () => {
+    // Same identity ('key: a') appears in two groups (Mon + Wed of one round).
+    const s = summariseRebookOutcomes([
+      mkPlayer({ key: 'a', response: 'claimed' }),   // Monday series: rebooked
+      mkPlayer({ key: 'a', response: 'pending' }),    // Wednesday series: still silent
+      mkPlayer({ key: 'b', response: 'declined' }),
+    ]);
+    // 'a' collapses to the strongest outcome (rebooked); not double-counted.
+    expect(s).toEqual({ invited: 2, rebooked: 1, declined: 1, noResponse: 0, clickedYesUnpaid: 0 });
+  });
+
+  it('collapses strongest outcome: rebooked one series beats a decline in another', () => {
+    const s = summariseRebookOutcomes([
+      mkPlayer({ key: 'a', response: 'claimed' }),
+      mkPlayer({ key: 'a', response: 'declined' }),
+    ]);
+    expect(s).toEqual({ invited: 1, rebooked: 1, declined: 0, noResponse: 0, clickedYesUnpaid: 0 });
+  });
+
+  it('clicked-yes-unpaid is dropped once the invitee rebooked any of their series', () => {
+    const s = summariseRebookOutcomes([
+      mkPlayer({ key: 'a', response: 'pending', responseIntent: 'accept' }), // clicked yes, unpaid here
+      mkPlayer({ key: 'a', response: 'claimed' }),                            // but completed elsewhere
+    ]);
+    expect(s).toEqual({ invited: 1, rebooked: 1, declined: 0, noResponse: 0, clickedYesUnpaid: 0 });
   });
 });

@@ -147,10 +147,13 @@ export default function AcademyRebookManage() {
     }
     return n;
   });
-  const pendingInFilter = useMemo(
-    () => filtered.reduce((sum, g) => sum + g.players.filter(isNonResponder).length, 0),
-    [filtered],
-  );
+  // Count DISTINCT non-responders (by identity), matching what selectNonResponders actually adds:
+  // a player enrolled in two weekly series appears in two groups but is one selection.
+  const pendingInFilter = useMemo(() => {
+    const keys = new Set<string>();
+    for (const g of filtered) for (const p of g.players) if (isNonResponder(p)) keys.add(p.key);
+    return keys.size;
+  }, [filtered]);
 
   // Awareness for "don't double-nudge": how many selected were already reminded, and how many
   // have ALREADY REBOOKED (sending them a "please confirm" nudge on a mass send reads badly).

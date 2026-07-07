@@ -44,9 +44,14 @@ export function rebookPlayerOutcome(p: Pick<RebookManagePlayer, 'response' | 're
   return 'noResponse';
 }
 
-/** Clicked "Yes" on the invite but never completed (no booking yet) — worth a nudge, not a rebook. */
+/**
+ * Clicked "Yes" on the invite but never completed (no booking yet) AND can still act — i.e. the
+ * claim is still pending. Gated on 'pending' (not merely !== 'claimed') so an EXPIRED accept-intent
+ * claim, which can no longer be completed, is not counted as an actionable "started but didn't pay"
+ * (and doesn't collide with the "verlopen" chip).
+ */
 export function clickedYesUnpaid(p: Pick<RebookManagePlayer, 'response' | 'responseIntent'>): boolean {
-  return p.responseIntent === 'accept' && p.response !== 'claimed';
+  return p.responseIntent === 'accept' && p.response === 'pending';
 }
 
 export interface RebookOutcomeSummary {
@@ -57,12 +62,37 @@ export interface RebookOutcomeSummary {
   clickedYesUnpaid: number;
 }
 
-/** Assemble the headline "X invited · Y rebooked · Z declined · W no response" totals. */
+/**
+ * Assemble the headline "X invited · Y rebooked · Z declined · W no response" totals.
+ *
+ * Counts DISTINCT invitees, not group-memberships: one round has many weekly series (one group
+ * per series), and a player enrolled in two series (e.g. Mon 18:00 AND Wed 20:00) appears once per
+ * group. Without dedup, `invited` and every bucket inflate. We collapse each identity (`p.key`) to
+ * its strongest outcome across all their series — rebooked > declined > noResponse — so someone who
+ * rebooked one slot but let another lapse reads as "rebooked", matching what the owner intuitively
+ * expects from "who rebooked / who said no".
+ */
+const OUTCOME_RANK: Record<RebookOutcome, number> = { rebooked: 3, declined: 2, noResponse: 1 };
 export function summariseRebookOutcomes(players: RebookManagePlayer[]): RebookOutcomeSummary {
-  const s: RebookOutcomeSummary = { invited: players.length, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 };
+  const byKey = new Map<string, { outcome: RebookOutcome; clickedYes: boolean }>();
   for (const p of players) {
-    s[rebookPlayerOutcome(p)] += 1;
-    if (clickedYesUnpaid(p)) s.clickedYesUnpaid += 1;
+    const outcome = rebookPlayerOutcome(p);
+    const clickedYes = clickedYesUnpaid(p);
+    const prev = byKey.get(p.key);
+    if (!prev) {
+      byKey.set(p.key, { outcome, clickedYes });
+    } else {
+      byKey.set(p.key, {
+        outcome: OUTCOME_RANK[outcome] > OUTCOME_RANK[prev.outcome] ? outcome : prev.outcome,
+        clickedYes: prev.clickedYes || clickedYes,
+      });
+    }
+  }
+  const s: RebookOutcomeSummary = { invited: byKey.size, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 };
+  for (const { outcome, clickedYes } of byKey.values()) {
+    s[outcome] += 1;
+    // "clicked Yes, unpaid" is a sub-note of not-yet-rebooked; if they completed any series, drop it.
+    if (clickedYes && outcome !== 'rebooked') s.clickedYesUnpaid += 1;
   }
   return s;
 }
