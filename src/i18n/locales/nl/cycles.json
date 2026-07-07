@@ -1250,7 +1250,18 @@
     "selectNonResponders": "Selecteer wachtenden ({{n}})",
     "alreadyReminded": "{{n}} van deze spelers zijn al eerder herinnerd.",
     "lastReminded": "Laatst herinnerd op {{date}}",
-    "remindedShort": "herinnerd"
+    "remindedShort": "herinnerd",
+    "summary": {
+      "invited": "uitgenodigd",
+      "rebooked": "geherboekt",
+      "declined": "geweigerd",
+      "noResponse": "geen reactie",
+      "clickedYesUnpaid": "klikte Ja, niet afgerond"
+    },
+    "clickedYesShort": "klikte Ja",
+    "saidNoShort": "zei nee",
+    "expiredShort": "verlopen",
+    "alreadyRebookedWarning": "{{n}} van deze spelers hebben al geherboekt — zij krijgen ook deze herinnering."
   },
   "rebookShared": {
     "paymentTitle": "Betaling",

@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   getCycleRebookStatus, bulkReleaseToPublic, bulkHoldSlots, sendRebookReminder,
+  rebookPlayerOutcome, clickedYesUnpaid,
   type GroupStatus, type RebookManageGroup, type RebookReminderTarget,
 } from '@/lib/rebookManage';
 
@@ -132,29 +133,44 @@ export default function AcademyRebookManage() {
 
   const clearSelection = () => { setSelectedGroups(new Set()); setSelectedPlayers(new Map()); };
 
+  // A genuine non-responder: still pending AND has not clicked "No" on the invite. Someone who
+  // clicked No (decline intent) or already rebooked must not be swept into a "please confirm" blast.
+  const isNonResponder = (p: RebookManageGroup['players'][number]) =>
+    p.response === 'pending' && p.responseIntent !== 'decline';
+
   // Select every still-awaiting (non-responder) player within the current filters — the
   // common reminder case; individual chip selection keeps it fully flexible for other cases.
   const selectNonResponders = () => setSelectedPlayers((prev) => {
     const n = new Map(prev);
     for (const g of filtered) for (const p of g.players) {
-      if (p.response === 'pending') n.set(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId });
+      if (isNonResponder(p)) n.set(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId });
     }
     return n;
   });
   const pendingInFilter = useMemo(
-    () => filtered.reduce((sum, g) => sum + g.players.filter((p) => p.response === 'pending').length, 0),
+    () => filtered.reduce((sum, g) => sum + g.players.filter(isNonResponder).length, 0),
     [filtered],
   );
 
-  // Awareness for "don't double-nudge": how many of the selected players were already reminded.
+  // Awareness for "don't double-nudge": how many selected were already reminded, and how many
+  // have ALREADY REBOOKED (sending them a "please confirm" nudge on a mass send reads badly).
   const remindedKeys = useMemo(() => {
     const s = new Set<string>();
     for (const g of groups) for (const p of g.players) if (p.lastRemindedAt) s.add(p.key);
     return s;
   }, [groups]);
+  const rebookedKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const g of groups) for (const p of g.players) if (rebookPlayerOutcome(p) === 'rebooked') s.add(p.key);
+    return s;
+  }, [groups]);
   const selectedAlreadyReminded = useMemo(
     () => [...selectedPlayers.keys()].filter((k) => remindedKeys.has(k)).length,
     [selectedPlayers, remindedKeys],
+  );
+  const selectedAlreadyRebooked = useMemo(
+    () => [...selectedPlayers.keys()].filter((k) => rebookedKeys.has(k)).length,
+    [selectedPlayers, rebookedKeys],
   );
 
   const runBulk = async (fn: (ids: string[]) => ReturnType<typeof bulkReleaseToPublic>, doneKey: string, fallback: string) => {
@@ -209,7 +225,24 @@ export default function AcademyRebookManage() {
         </h1>
       </div>
 
-      {/* Summary */}
+      {/* Per-invitee headline — the owner's "who rebooked / who said no / who's silent". */}
+      {data && data.summary.invited > 0 && (
+        <p className="text-sm text-muted-foreground" data-testid="rebook-outcome-summary">
+          <span className="font-semibold text-foreground">{data.summary.invited}</span> {t('rebookManage.summary.invited', 'uitgenodigd')}
+          {' · '}<span className="font-semibold text-emerald-700">{data.summary.rebooked}</span> {t('rebookManage.summary.rebooked', 'geherboekt')}
+          {' · '}<span className="font-semibold text-rose-700">{data.summary.declined}</span> {t('rebookManage.summary.declined', 'geweigerd')}
+          {' · '}<span className="font-semibold text-amber-700">{data.summary.noResponse}</span> {t('rebookManage.summary.noResponse', 'geen reactie')}
+          {data.summary.clickedYesUnpaid > 0 && (
+            <>
+              {' · '}
+              <span className="font-semibold">{data.summary.clickedYesUnpaid}</span>{' '}
+              {t('rebookManage.summary.clickedYesUnpaid', 'klikte Ja, niet afgerond')}
+            </>
+          )}
+        </p>
+      )}
+
+      {/* Group lifecycle counts (per weekly series) */}
       <div className="flex flex-wrap gap-2">
         {STATUS_ORDER.map((s) => (
           <button key={s} type="button" aria-label={statusLabel(s)} onClick={() => setStatusFilter((cur) => (cur === s ? 'all' : s))}>
@@ -384,6 +417,11 @@ export default function AcademyRebookManage() {
                   {t('rebookManage.alreadyReminded', '{{n}} van deze spelers zijn al eerder herinnerd.', { n: selectedAlreadyReminded })}
                 </p>
               )}
+              {selectedAlreadyRebooked > 0 && (
+                <p className="text-xs text-rose-600" data-testid="reminder-rebooked-warning">
+                  {t('rebookManage.alreadyRebookedWarning', '{{n}} van deze spelers hebben al geherboekt — zij krijgen ook deze herinnering.', { n: selectedAlreadyRebooked })}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -444,8 +482,11 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
               <div className="flex flex-wrap gap-1.5 py-1">
                 {g.players.map((p) => {
                   const sel = selectedPlayers.has(p.key);
-                  const Icon = p.response === 'claimed' ? CheckCircle2 : p.response === 'declined' ? XCircle : Clock;
-                  const tone = p.response === 'claimed' ? 'text-emerald-600' : p.response === 'declined' ? 'text-rose-600' : 'text-amber-600';
+                  // Outcome (not raw status) drives the icon so a "clicked No" that is still
+                  // technically a pending claim reads as a decline, and expired ≠ declined.
+                  const outcome = rebookPlayerOutcome(p);
+                  const Icon = outcome === 'rebooked' ? CheckCircle2 : outcome === 'declined' ? XCircle : Clock;
+                  const tone = outcome === 'rebooked' ? 'text-emerald-600' : outcome === 'declined' ? 'text-rose-600' : 'text-amber-600';
                   return (
                     <button
                       key={p.key}
@@ -460,6 +501,16 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                         <span className={p.paid ? 'text-emerald-600' : 'text-rose-600'}>
                           · {p.paid ? t('rebookManage.paidShort', 'betaald') : t('rebookManage.unpaidShort', 'open')}
                         </span>
+                      )}
+                      {/* Distinguish the ambiguous "awaiting" states the owner asked about. */}
+                      {clickedYesUnpaid(p) && (
+                        <span className="text-amber-700">· {t('rebookManage.clickedYesShort', 'klikte Ja')}</span>
+                      )}
+                      {p.response !== 'claimed' && p.responseIntent === 'decline' && (
+                        <span className="text-rose-600">· {t('rebookManage.saidNoShort', 'zei nee')}</span>
+                      )}
+                      {p.response === 'expired' && p.responseIntent !== 'decline' && (
+                        <span className="text-muted-foreground">· {t('rebookManage.expiredShort', 'verlopen')}</span>
                       )}
                       {p.lastRemindedAt && (
                         <span

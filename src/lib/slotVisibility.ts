@@ -10,6 +10,25 @@ export interface RawSlotForVisibility {
 }
 
 /**
+ * True while a slot is inside a live priority window. Used to hide reserved
+ * rebook slots from the PUBLIC listing conservatively — matching the server
+ * booking guard (create-guest-*-payment / cart-payment all pass
+ * `hasPendingClaim: true`). The client cannot rely on reading slot_priority_claims
+ * to learn a slot is held: that table's SELECT RLS is `TO authenticated` only, so
+ * an anonymous visitor (or a logged-in non-claim-holder) reads ZERO rows and would
+ * otherwise see the held slot resolve to 'public'. Treating any live priority
+ * window as "held" closes that leak; a matching claim-token in the URL still
+ * bypasses the hide (see getSlotVisibility).
+ */
+export function isPriorityWindowActive(
+  priorityWindowEndsAt: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!priorityWindowEndsAt) return false;
+  return new Date(priorityWindowEndsAt).getTime() > now.getTime();
+}
+
+/**
  * Slot ids whose seat has genuinely freed up for the public: at least one claim
  * declined/released/expired AND no claim still pending/claimed. A rebooked slot is
  * SHARED by its whole group (one claim per co-occupant); one person declining does
@@ -91,7 +110,11 @@ export async function filterVisibleSlotIds(slots: RawSlotForVisibility[]): Promi
     const tier = getSlotVisibility({
       slotId: s.id,
       priorityWindowEndsAt: s.priority_window_ends_at,
-      hasPendingPriority: !!slotPendingPriority.get(s.id),
+      // Conservative: a live priority window means "held" even when the
+      // RLS-blind claims read returned nothing (anon / non-claim-holder), so a
+      // reserved rebook slot is never leaked to the public. A matching claim
+      // token still bypasses this inside getSlotVisibility.
+      hasPendingPriority: !!slotPendingPriority.get(s.id) || isPriorityWindowActive(s.priority_window_ends_at, now),
       hasReleasedSeat: slotHasReleased.has(s.id),
       memberWindowEndsAt: s.member_window_ends_at ?? null,
       publicReleaseStatus: s.public_release_status ?? 'auto_release_scheduled',

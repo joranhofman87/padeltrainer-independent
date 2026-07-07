@@ -1125,7 +1125,18 @@
     "selectNonResponders": "Select awaiting ({{n}})",
     "alreadyReminded": "{{n}} of these players were already reminded.",
     "lastReminded": "Last reminded on {{date}}",
-    "remindedShort": "reminded"
+    "remindedShort": "reminded",
+    "summary": {
+      "invited": "invited",
+      "rebooked": "rebooked",
+      "declined": "declined",
+      "noResponse": "no response",
+      "clickedYesUnpaid": "clicked Yes, not finished"
+    },
+    "clickedYesShort": "clicked Yes",
+    "saidNoShort": "said no",
+    "expiredShort": "expired",
+    "alreadyRebookedWarning": "{{n}} of these players have already rebooked — they will also get this reminder."
   },
   "rebookShared": {
     "paymentTitle": "Payment",

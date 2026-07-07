@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildRebookPaidResolver, deriveGroupStatus, slotPhase } from './rebookManage';
+import {
+  buildRebookPaidResolver, deriveGroupStatus, slotPhase,
+  rebookPlayerOutcome, clickedYesUnpaid, summariseRebookOutcomes,
+  type RebookManagePlayer,
+} from './rebookManage';
 
 const future = new Date(Date.now() + 5 * 86400000).toISOString();
 const past = new Date(Date.now() - 5 * 86400000).toISOString();
@@ -93,5 +97,52 @@ describe('buildRebookPaidResolver (P1-1: rebook invoices are tagged rebook_cyclu
     const r = buildRebookPaidResolver([], []);
     expect(r.isPaid('p1', 'grpA')).toBe(false);
     expect(r.hasInvoice('p1', null)).toBe(false);
+  });
+});
+
+const mkPlayer = (over: Partial<RebookManagePlayer>): RebookManagePlayer => ({
+  key: 'k', playerId: 'p', guestPlayerId: null, name: 'X',
+  response: 'pending', responseIntent: null, paid: false, hasInvoice: false, lastRemindedAt: null,
+  ...over,
+});
+
+describe('rebookPlayerOutcome — the owner\'s "who said no"', () => {
+  it('claimed ⇒ rebooked', () => {
+    expect(rebookPlayerOutcome(mkPlayer({ response: 'claimed' }))).toBe('rebooked');
+  });
+  it('explicit declined status ⇒ declined', () => {
+    expect(rebookPlayerOutcome(mkPlayer({ response: 'declined' }))).toBe('declined');
+  });
+  it('clicked "No" on the email but claim still pending ⇒ declined (not silence)', () => {
+    expect(rebookPlayerOutcome(mkPlayer({ response: 'pending', responseIntent: 'decline' }))).toBe('declined');
+  });
+  it('never responded (pending, no intent) ⇒ noResponse', () => {
+    expect(rebookPlayerOutcome(mkPlayer({ response: 'pending' }))).toBe('noResponse');
+  });
+  it('expired without a decline ⇒ noResponse, NOT a decline', () => {
+    expect(rebookPlayerOutcome(mkPlayer({ response: 'expired' }))).toBe('noResponse');
+  });
+  it('clicked "Yes" but never paid ⇒ noResponse for the headline, flagged via clickedYesUnpaid', () => {
+    const p = mkPlayer({ response: 'pending', responseIntent: 'accept' });
+    expect(rebookPlayerOutcome(p)).toBe('noResponse');
+    expect(clickedYesUnpaid(p)).toBe(true);
+  });
+  it('a paid, claimed player is not "clicked-yes-unpaid"', () => {
+    expect(clickedYesUnpaid(mkPlayer({ response: 'claimed', responseIntent: 'accept', paid: true }))).toBe(false);
+  });
+});
+
+describe('summariseRebookOutcomes — the assembled headline', () => {
+  it('counts invited / rebooked / declined / no-response distinctly', () => {
+    const s = summariseRebookOutcomes([
+      mkPlayer({ key: 'a', response: 'claimed' }),
+      mkPlayer({ key: 'b', response: 'claimed' }),
+      mkPlayer({ key: 'c', response: 'declined' }),
+      mkPlayer({ key: 'd', response: 'pending', responseIntent: 'decline' }), // clicked No
+      mkPlayer({ key: 'e', response: 'pending' }),                             // silent
+      mkPlayer({ key: 'f', response: 'expired' }),                            // silent
+      mkPlayer({ key: 'g', response: 'pending', responseIntent: 'accept' }),  // clicked yes, unpaid
+    ]);
+    expect(s).toEqual({ invited: 7, rebooked: 2, declined: 2, noResponse: 3, clickedYesUnpaid: 1 });
   });
 });
