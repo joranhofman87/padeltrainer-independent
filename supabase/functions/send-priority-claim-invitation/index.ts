@@ -231,6 +231,21 @@ const handler = async (req: Request): Promise<Response> => {
         const cur = repByKey.get(k);
         if (!cur || start < cur.start) repByKey.set(k, { id: c.id, start, invited: !!c.invited_at, sendable: hasEmail(c) });
       }
+      // Reps with no email can never be sent. Mark their invite step RESOLVED
+      // (stamp invited_at) so they drop out of `remaining` AND the owner's
+      // uninvitedCount/"resume" banner — otherwise the banner could never clear and
+      // a resume click would loop on a false "0 sent" success. No email is sent. The
+      // only reader of invited_at (send-rebook-group-confirmation) never emails an
+      // emailless member, so this is safe. The owner already acknowledged the
+      // no-email count in the wizard.
+      const emaillessRepIds = [...repByKey.values()].filter((r) => !r.invited && !r.sendable).map((r) => r.id);
+      for (let i = 0; i < emaillessRepIds.length; i += 200) {
+        await supabase
+          .from("slot_priority_claims")
+          .update({ invited_at: new Date().toISOString() })
+          .in("id", emaillessRepIds.slice(i, i + 200))
+          .is("invited_at", null);
+      }
       // Only un-invited AND sendable (has email) reps are drainable.
       const eligibleReps = [...repByKey.values()].filter((r) => !r.invited && r.sendable).map((r) => r.id);
       cycleCandidateIds = eligibleReps.slice(0, chunkLimit);
