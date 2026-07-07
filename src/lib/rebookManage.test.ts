@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildRebookPaidResolver, deriveGroupStatus, slotPhase,
   rebookPlayerOutcome, clickedYesUnpaid, summariseRebookOutcomes,
+  sumRebookInvoiceAmounts,
   type RebookManagePlayer,
 } from './rebookManage';
 
@@ -102,9 +103,30 @@ describe('buildRebookPaidResolver (P1-1: rebook invoices are tagged rebook_cyclu
 
 const mkPlayer = (over: Partial<RebookManagePlayer>): RebookManagePlayer => ({
   key: 'k', playerId: 'p', guestPlayerId: null, name: 'X',
-  response: 'pending', responseIntent: null, paid: false, hasInvoice: false, lastRemindedAt: null,
+  response: 'pending', responseIntent: null, paid: false, hasInvoice: false, invited: false,
+  claimIds: [], lastRemindedAt: null,
   hasEmail: true, claimToken: null,
   ...over,
+});
+
+describe('sumRebookInvoiceAmounts — € paid vs outstanding', () => {
+  it('sums paid vs outstanding across single + group invoices, excluding cancelled', () => {
+    const single = [
+      { player_id: 'a', guest_player_id: null, status: 'paid', total: 30 },
+      { player_id: 'b', guest_player_id: null, status: 'sent', total: 20 },
+      { player_id: 'c', guest_player_id: null, status: 'cancelled', total: 99 }, // excluded
+    ];
+    const group = [
+      { rebook_group_id: 'g1', status: 'paid', total: 100 },
+      { rebook_group_id: 'g2', status: 'overdue', total: 40 },
+    ];
+    expect(sumRebookInvoiceAmounts(single, group)).toEqual({ paidAmount: 130, outstandingAmount: 60 });
+  });
+
+  it('treats missing/null totals as 0 and returns zeros for no invoices', () => {
+    expect(sumRebookInvoiceAmounts([{ player_id: 'a', guest_player_id: null, status: 'paid', total: null }], [])).toEqual({ paidAmount: 0, outstandingAmount: 0 });
+    expect(sumRebookInvoiceAmounts([], [])).toEqual({ paidAmount: 0, outstandingAmount: 0 });
+  });
 });
 
 describe('rebookPlayerOutcome — the owner\'s "who said no"', () => {

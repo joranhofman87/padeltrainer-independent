@@ -99,6 +99,9 @@ export interface CycleSettings {
   rebook_priority_people?: string[];
   rebook_member_open_message?: string | null;
   rebook_member_open_notified_at?: string | null;
+  // Owner archived this rebook round → hidden from the "Herboekingen" rounds list
+  // (purely a UI/list flag; touches no bookings, sessions or invoices).
+  rebook_archived?: boolean;
   // Event-specific settings
   payment_methods?: EventPaymentMethod;
   event_dates?: string[];
