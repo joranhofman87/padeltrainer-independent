@@ -31,6 +31,22 @@
       "other": "Overig"
     }
   },
+  "dashboard": {
+    "vsLastMonth": "vs vorige maand",
+    "money": {
+      "title": "Inkomsten & uitgaven",
+      "revenue": "Inkomsten",
+      "expenses": "Uitgaven",
+      "profit": "Winst",
+      "empty": "Nog geen inkomsten of uitgaven om te tonen."
+    },
+    "players": {
+      "title": "Nieuwe spelers",
+      "registered": "Geregistreerd",
+      "guest": "Gast",
+      "empty": "Nog geen nieuwe spelers om te tonen."
+    }
+  },
   "datePicker": {
     "pickDate": "Kies een datum"
   },

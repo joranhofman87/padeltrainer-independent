@@ -31,6 +31,22 @@
       "other": "Other"
     }
   },
+  "dashboard": {
+    "vsLastMonth": "vs last month",
+    "money": {
+      "title": "Income & expenses",
+      "revenue": "Income",
+      "expenses": "Expenses",
+      "profit": "Profit",
+      "empty": "No income or expenses to show yet."
+    },
+    "players": {
+      "title": "New players",
+      "registered": "Registered",
+      "guest": "Guest",
+      "empty": "No new players to show yet."
+    }
+  },
   "datePicker": {
     "pickDate": "Pick a date"
   },
