@@ -24,7 +24,6 @@ import { useTranslation } from 'react-i18next';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { getTrainerShortUrl } from '@/lib/domains';
 import { formatCurrency } from '@/lib/format';
-import { UnpaidBookingsCard } from '@/components/dashboard/UnpaidBookingsCard';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
 import { useQuery } from '@tanstack/react-query';
@@ -411,8 +410,6 @@ export default function TrainerDashboard() {
           onClick={() => navigate('/app/trainer/analytics')}
         />
       </section>
-
-      <UnpaidBookingsCard trainerId={trainerId} />
 
       {/* Analytics charts */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

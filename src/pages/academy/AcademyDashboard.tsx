@@ -21,7 +21,6 @@ import { getAcademyTrainers, getAcademyLocations, getAcademyViewStats } from '@/
 import { supabase } from '@/lib/supabaseClient';
 import { getMarketingUrl } from '@/lib/domains';
 import { formatCurrency } from '@/lib/format';
-import { UnpaidBookingsCard } from '@/components/dashboard/UnpaidBookingsCard';
 import { useAcademyUndeliverableRecipients } from '@/lib/emailBounce';
 import { AcademyPublicLinkCard } from '@/components/academy/AcademyPublicLinkCard';
 import { useQuery } from '@tanstack/react-query';
@@ -216,11 +215,6 @@ export default function AcademyDashboard() {
           }}
         />
       </section>
-
-      {/* Unpaid Bookings */}
-      {activeAcademy && (
-        <UnpaidBookingsCard academyId={activeAcademy.id} />
-      )}
 
       {/* Analytics charts */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
