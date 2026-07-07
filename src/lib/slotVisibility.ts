@@ -88,8 +88,10 @@ export async function filterVisibleSlotIds(slots: RawSlotForVisibility[]): Promi
         // tier trigger, so what a viewer can SEE matches what they can BOOK.
         const results = await Promise.all(
           sourceCycleIds.map(async (cycleId) => {
-            const { data, error } = await supabase.rpc('can_book_member_window' as never, {
-              _user_id: user.id, _cycle_id: cycleId,
+            // auth.uid()-based wrapper — the raw can_book_member_window(_user_id, _cycle_id)
+            // is now service_role-only (it took an arbitrary _user_id and leaked membership).
+            const { data, error } = await supabase.rpc('can_current_user_book_member_window' as never, {
+              _cycle_id: cycleId,
             } as never);
             if (error) throw error;
             return { cycleId, ok: data === true };
