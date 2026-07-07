@@ -77,6 +77,11 @@ beforeAll(async () => {
     CREATE ROLE anon;
     CREATE ROLE authenticated;
     CREATE ROLE service_role;
+    -- Replicate Supabase's default privilege: newly-created public functions are
+    -- auto-granted EXECUTE to anon/authenticated BY NAME. This is what made
+    -- 20260715100000's "REVOKE ... FROM PUBLIC" insufficient in production — the grants
+    -- assertion below only passes because 20260715110000 revokes the named grants.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
     CREATE SCHEMA IF NOT EXISTS auth;
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
       SELECT nullif(current_setting('test.uid', true), '')::uuid
@@ -122,6 +127,7 @@ beforeAll(async () => {
   `);
   await db.exec(migration('20260714100000_member_window_cohort_and_priority_list.sql'));
   await db.exec(migration('20260715100000_slot_tier_single_source_and_payment_gate.sql'));
+  await db.exec(migration('20260715110000_restrict_slot_tier_helper_grants.sql'));
 });
 
 beforeEach(async () => {
