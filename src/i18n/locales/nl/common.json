@@ -1,4 +1,36 @@
 {
+  "expenses": {
+    "title": "Uitgaven",
+    "subtitle": "Houd je uitgaven bij om je winst te zien op het dashboard.",
+    "add": "Uitgave toevoegen",
+    "editTitle": "Uitgave bewerken",
+    "empty": "Nog geen uitgaven. Voeg je eerste uitgave toe om je winst bij te houden.",
+    "totalThisMonth": "Deze maand uitgegeven",
+    "colDate": "Datum",
+    "colCategory": "Categorie",
+    "colDescription": "Omschrijving",
+    "colAmount": "Bedrag",
+    "edit": "Bewerken",
+    "delete": "Verwijderen",
+    "deleteConfirmTitle": "Uitgave verwijderen?",
+    "deleteConfirmBody": "Deze uitgave wordt definitief verwijderd.",
+    "formDate": "Datum",
+    "formAmount": "Bedrag (€)",
+    "formCategory": "Categorie",
+    "formDescription": "Omschrijving (optioneel)",
+    "save": "Opslaan",
+    "saved": "Uitgave opgeslagen",
+    "deleted": "Uitgave verwijderd",
+    "category": {
+      "court_rental": "Baanhuur",
+      "trainer_payout": "Trainersvergoeding",
+      "salaries": "Salarissen",
+      "marketing": "Marketing",
+      "equipment": "Materiaal",
+      "software": "Software",
+      "other": "Overig"
+    }
+  },
   "datePicker": {
     "pickDate": "Kies een datum"
   },

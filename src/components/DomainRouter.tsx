@@ -106,6 +106,7 @@ const TrainerBookingSettings = lazy(() => import('@/pages/TrainerBookingSettings
 const TrainerTerms = lazy(() => import('@/pages/TrainerTerms'));
 
 const TrainerEarnings = lazy(() => import('@/pages/TrainerEarnings'));
+const TrainerExpenses = lazy(() => import('@/pages/TrainerExpenses'));
 const TrainerSubscription = lazy(() => import('@/pages/TrainerSubscription'));
 const TrainerAnalytics = lazy(() => import('@/pages/TrainerAnalytics'));
 const TrainerCalendar = lazy(() => import('@/pages/TrainerCalendar'));
@@ -195,6 +196,7 @@ const AcademyPlayers = lazy(() => import('@/pages/academy/AcademyPlayers'));
 const AcademyPlayerDetail = lazy(() => import('@/pages/academy/AcademyPlayerDetail'));
 
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
+const AcademyExpenses = lazy(() => import('@/pages/academy/AcademyExpenses'));
 const AcademyCreateInvoice = lazy(() => import('@/pages/academy/AcademyCreateInvoice'));
 const AcademyEditInvoice = lazy(() => import('@/pages/academy/AcademyEditInvoice'));
 
@@ -287,6 +289,7 @@ export function DomainRouter() {
           <Route path="profile" element={<EditProfile />} />
           <Route path="subscription" element={<TrainerSubscription />} />
           <Route path="earnings" element={<TrainerEarnings />} />
+          <Route path="expenses" element={<TrainerExpenses />} />
           <Route path="analytics" element={<TrainerAnalytics />} />
           
           <Route path="invoices" element={<TrainerInvoices />} />
@@ -384,6 +387,7 @@ export function DomainRouter() {
           <Route path="subscription" element={<AcademySubscription />} />
           
           <Route path="invoices" element={<AcademyInvoices />} />
+          <Route path="expenses" element={<AcademyExpenses />} />
           <Route path="invoices/new" element={<AcademyCreateInvoice />} />
           <Route path="invoices/:invoiceId/edit" element={<AcademyEditInvoice />} />
         </Route>

@@ -7,6 +7,7 @@ import {
   UserRoundCog,
   CalendarDays,
   FileText,
+  Wallet,
   Settings,
 } from 'lucide-react';
 
@@ -18,6 +19,7 @@ export type AcademyNavItemId =
   | 'trainers'
   | 'registrations'
   | 'invoices'
+  | 'expenses'
   | 'settings';
 
 export interface AcademyNavItem {
@@ -88,6 +90,14 @@ export const ACADEMY_PRIMARY_NAV: AcademyNavItem[] = [
     defaultLabel: 'Invoices',
     icon: FileText,
     testId: 'nav-academy-invoices',
+  },
+  {
+    id: 'expenses',
+    to: '/app/academy/expenses',
+    labelKey: 'nav.expenses',
+    defaultLabel: 'Expenses',
+    icon: Wallet,
+    testId: 'nav-academy-expenses',
   },
   {
     id: 'settings',

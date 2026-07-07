@@ -11,6 +11,7 @@ describe('academySidebarNav', () => {
       'trainers',
       'registrations',
       'invoices',
+      'expenses',
       'settings',
     ]);
   });
@@ -24,6 +25,7 @@ describe('academySidebarNav', () => {
       '/app/academy/trainers',
       '/app/academy/registrations',
       '/app/academy/invoices',
+      '/app/academy/expenses',
       '/app/academy/settings',
     ]);
   });
