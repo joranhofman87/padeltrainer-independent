@@ -1,4 +1,52 @@
 {
+  "expenses": {
+    "title": "Expenses",
+    "subtitle": "Track what you spend to see your profit on the dashboard.",
+    "add": "Add expense",
+    "editTitle": "Edit expense",
+    "empty": "No expenses yet. Add your first one to start tracking profit.",
+    "totalThisMonth": "Spent this month",
+    "colDate": "Date",
+    "colCategory": "Category",
+    "colDescription": "Description",
+    "colAmount": "Amount",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete this expense?",
+    "deleteConfirmBody": "This expense will be permanently removed.",
+    "formDate": "Date",
+    "formAmount": "Amount (€)",
+    "formCategory": "Category",
+    "formDescription": "Description (optional)",
+    "save": "Save",
+    "saved": "Expense saved",
+    "deleted": "Expense deleted",
+    "category": {
+      "court_rental": "Court rental",
+      "trainer_payout": "Trainer payout",
+      "salaries": "Salaries",
+      "marketing": "Marketing",
+      "equipment": "Equipment",
+      "software": "Software",
+      "other": "Other"
+    }
+  },
+  "dashboard": {
+    "vsLastMonth": "vs last month",
+    "money": {
+      "title": "Income & expenses",
+      "revenue": "Income",
+      "expenses": "Expenses",
+      "profit": "Profit",
+      "empty": "No income or expenses to show yet."
+    },
+    "players": {
+      "title": "New players",
+      "registered": "Registered",
+      "guest": "Guest",
+      "empty": "No new players to show yet."
+    }
+  },
   "datePicker": {
     "pickDate": "Pick a date"
   },

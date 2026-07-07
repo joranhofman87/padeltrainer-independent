@@ -581,6 +581,18 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                               </NavLink>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild>
+                              <NavLink
+                                to="/app/trainer/expenses"
+                                className={cn(appNavLinkBase, appNavLinkInactive)}
+                                activeClassName={appNavLinkActive}
+                                onClick={closeMobileDrawer}
+                              >
+                                {t("nav.expenses")}
+                              </NavLink>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
                         </SidebarMenuSub>
                       </CollapsibleContent>
                     </SidebarMenuItem>
