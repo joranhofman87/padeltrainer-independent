@@ -282,6 +282,37 @@ serve(async (req) => {
         );
       }
 
+      // RB-P1-01: never mint a Mollie payment for bookings already covered by an ACTIVE
+      // (payable, unpaid) invoice — the player must pay via that invoice's pay-link. Minting a
+      // second payment here double-CHARGES: the webhook's idempotency stops a double-booking,
+      // but both Mollie payments still capture money (the second orphaned → manual refund). An
+      // active invoice = status not in (paid, cancelled, draft) — draft has no pay-link so it
+      // can't be paid concurrently. Fail CLOSED on a check error (retryable) rather than risk it.
+      {
+        const { data: overlapInv, error: invErr } = await supabase
+          .from("invoices")
+          .select("id, status")
+          .overlaps("booking_ids", requestedBookingIds);
+        if (invErr) {
+          logStep("Active-invoice check failed — refusing to mint (fail closed)", { error: invErr.message });
+          return new Response(
+            JSON.stringify({ error: "invoice_check_failed", message: "Kon de betaalstatus niet controleren. Probeer het zo opnieuw." }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const activeInv = ((overlapInv ?? []) as Array<{ id: string; status: string }>)
+          .filter((i) => i.status !== "paid" && i.status !== "cancelled" && i.status !== "draft");
+        if (activeInv.length > 0) {
+          logStep("Refusing — bookings already on an active invoice; pay via the invoice link", {
+            invoiceIds: activeInv.map((i) => i.id),
+          });
+          return new Response(
+            JSON.stringify({ error: "booking_on_active_invoice", invoiceId: activeInv[0].id }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
       const slots = existingBookings.map((b) => b.availability_slots as SlotPricingInput & { cyclus_id: string | null; academy_profile_id: string | null });
       // All slots in a cyclus share one academy; use it to disambiguate a multi-academy trainer.
       recipientAcademyProfileId = slots[0]?.academy_profile_id ?? null;
