@@ -26,15 +26,22 @@ export interface MemberOpenRecipient {
   guest_player_id: string | null;
 }
 
-const keyOf = (r: { player_id: string | null; guest_player_id: string | null }): string | null =>
+/** Stable per-person key: a registered profile by its id, a guest as `g:<id>`. The
+ *  notifier uses this to record which recipients have already been emailed (RB03). */
+export const recipientKey = (r: { player_id: string | null; guest_player_id: string | null }): string | null =>
   r.player_id ?? (r.guest_player_id ? `g:${r.guest_player_id}` : null);
+
+const keyOf = recipientKey;
 
 export function computeMemberOpenAudience(
   claims: MemberOpenClaim[],
   priorityProfileIds: string[],
-  opts: { excludeDecliners?: boolean } = {},
+  opts: { excludeDecliners?: boolean; alreadyNotifiedKeys?: string[] } = {},
 ): MemberOpenRecipient[] {
   const excludeDecliners = opts.excludeDecliners ?? true;
+  // RB03: recipients already emailed in a prior (partial) run are skipped, so a retry
+  // only re-sends to the ones that failed — never a duplicate, never a silent drop.
+  const alreadyNotified = new Set(opts.alreadyNotifiedKeys ?? []);
 
   // Collapse each cohort person to their round-level state.
   const byKey = new Map<string, { ref: MemberOpenRecipient; hasClaimed: boolean; hasDeclined: boolean }>();
@@ -57,6 +64,7 @@ export function computeMemberOpenAudience(
   for (const [k, v] of byKey) {
     if (v.hasClaimed) continue; // already has a seat
     if (excludeDecliners && v.hasDeclined) continue; // said no
+    if (alreadyNotified.has(k)) continue; // RB03: emailed in a prior run
     out.set(k, v.ref);
   }
 
@@ -66,6 +74,7 @@ export function computeMemberOpenAudience(
   for (const pid of priorityProfileIds) {
     if (!pid) continue;
     if (byKey.get(pid)?.hasClaimed) continue;
+    if (alreadyNotified.has(pid)) continue; // RB03: emailed in a prior run
     if (!out.has(pid)) out.set(pid, { player_id: pid, guest_player_id: null });
   }
 

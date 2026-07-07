@@ -103,6 +103,7 @@ describe('buildRebookPaidResolver (P1-1: rebook invoices are tagged rebook_cyclu
 const mkPlayer = (over: Partial<RebookManagePlayer>): RebookManagePlayer => ({
   key: 'k', playerId: 'p', guestPlayerId: null, name: 'X',
   response: 'pending', responseIntent: null, paid: false, hasInvoice: false, lastRemindedAt: null,
+  hasEmail: true, claimToken: null,
   ...over,
 });
 

@@ -29,6 +29,13 @@ export interface RebookManagePlayer {
   hasInvoice: boolean;
   /** When this invitee was last sent a rebook reminder (max across their claims). */
   lastRemindedAt: string | null;
+  /** False only for a GUEST with no email on file — a registered player always has an
+   *  auth email. These invitees were never actually emailed (RB05); the owner can copy
+   *  their claim link and share it manually. */
+  hasEmail: boolean;
+  /** A representative claim_token so the owner can copy this invitee's claim link
+   *  (`/nl/claim/:token`) — used only for the emailless-recovery copy-link (RB05). */
+  claimToken: string | null;
 }
 
 /**
@@ -242,11 +249,12 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     status: string;
     rebook_group_id: string | null;
     invited_at?: string | null;
+    claim_token?: string | null;
     reminded_at?: string | null;
     response_intent?: string | null;
     response_intent_at?: string | null;
   };
-  const claimCols = 'id, slot_id, player_id, guest_player_id, status, rebook_group_id, invited_at';
+  const claimCols = 'id, slot_id, player_id, guest_player_id, status, rebook_group_id, invited_at, claim_token';
   // reminded_at + response_intent were both added by owner-deployed migrations; if either isn't
   // live yet the select 400s and the whole management view would blank. Fall back to the base
   // columns (optional fields → undefined), mirroring getMyPendingPriorityClaims's tolerance.
@@ -290,11 +298,17 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const guestIds = [...new Set(claimRows.map((c) => c.guest_player_id).filter(Boolean))] as string[];
   const [{ data: profiles }, { data: guests }] = await Promise.all([
     playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from('guest_players').select('id, full_name').in('id', guestIds) : Promise.resolve({ data: [] }),
+    guestIds.length ? supabase.from('guest_players').select('id, full_name, email').in('id', guestIds) : Promise.resolve({ data: [] }),
   ]);
   const nameByKey = new Map<string, string>();
+  // RB05: which invitees have NO email. Only guests can be emailless — a registered player
+  // always has an auth email — so a guest key not in this set is the emailless case.
+  const guestHasEmail = new Set<string>();
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(p.id, (p.full_name ?? '').trim() || '—');
-  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
+  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
+    nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
+    if (g.email?.trim()) guestHasEmail.add(`g:${g.id}`);
+  }
 
   // Single-claim invoices → per identity; group invoices → per group (propagated to members).
   const { isPaid, hasInvoice: hasInvoiceFor } = buildRebookPaidResolver(singleInvoices, groupInvoices);
@@ -333,6 +347,8 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         paid: isPaid(pk, c.rebook_group_id),
         hasInvoice: hasInvoiceFor(pk, c.rebook_group_id),
         lastRemindedAt: existing?.lastRemindedAt ?? null,
+        hasEmail: c.player_id ? true : guestHasEmail.has(pk),
+        claimToken: c.claim_token ?? existing?.claimToken ?? null,
       });
     }
     // Accumulate the most-recent reminder + the recorded intent across this player's claims,
@@ -342,6 +358,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     if (c.reminded_at && (!cur.lastRemindedAt || new Date(c.reminded_at) > new Date(cur.lastRemindedAt))) {
       cur.lastRemindedAt = c.reminded_at;
     }
+    if (!cur.claimToken && c.claim_token) cur.claimToken = c.claim_token; // capture a token from any claim (RB05)
     if (c.response_intent === 'decline') cur.responseIntent = 'decline';
     else if (c.response_intent === 'accept' && cur.responseIntent !== 'decline') cur.responseIntent = 'accept';
   }

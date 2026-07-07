@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -495,6 +495,17 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const claimedCount = g.players.filter((p) => p.response === 'claimed').length;
+  // RB05: emailless invitees (guests with no email) were never actually emailed — let the
+  // owner copy their claim link and share it manually (WhatsApp, etc.). Clipboard only:
+  // the token is sensitive, so it is never logged or sent to analytics.
+  const copyClaimLink = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/nl/claim/${token}`);
+      toast.success(t('rebookManage.linkCopied', 'Uitnodigingslink gekopieerd'));
+    } catch {
+      toast.error(t('rebookManage.linkCopyFailed', 'Kopiëren mislukt'));
+    }
+  };
   return (
     <>
       <TableRow className="cursor-pointer" onClick={onToggleExpand}>
@@ -532,12 +543,13 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                   const outcome = rebookPlayerOutcome(p);
                   const Icon = outcome === 'rebooked' ? CheckCircle2 : outcome === 'declined' ? XCircle : Clock;
                   const tone = outcome === 'rebooked' ? 'text-emerald-600' : outcome === 'declined' ? 'text-rose-600' : 'text-amber-600';
+                  const emailless = !p.hasEmail;
                   return (
+                    <span key={p.key} className="inline-flex items-center gap-0.5">
                     <button
-                      key={p.key}
                       type="button"
                       onClick={() => onTogglePlayer(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId })}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${sel ? 'border-primary bg-primary/10' : 'border-slate-200 bg-background'}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${sel ? 'border-primary bg-primary/10' : emailless ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-background'}`}
                       title={t('rebookManage.selectForReminder', 'Selecteer voor herinnering')}
                     >
                       <Icon className={`h-3.5 w-3.5 ${tone}`} />
@@ -565,7 +577,24 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                           · {t('rebookManage.remindedShort', 'herinnerd')} {fmtReminded(p.lastRemindedAt)}
                         </span>
                       )}
+                      {emailless && (
+                        <span className="inline-flex items-center gap-0.5 text-rose-600">
+                          <MailX className="h-3 w-3" /> {t('rebookManage.noEmailShort', 'geen e-mail')}
+                        </span>
+                      )}
                     </button>
+                    {emailless && p.claimToken && (
+                      <button
+                        type="button"
+                        onClick={() => copyClaimLink(p.claimToken!)}
+                        className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-foreground"
+                        title={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
+                        aria-label={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    )}
+                    </span>
                   );
                 })}
               </div>

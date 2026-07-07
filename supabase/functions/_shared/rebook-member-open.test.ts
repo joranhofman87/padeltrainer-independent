@@ -72,3 +72,29 @@ Deno.test("returns empty for a fully-rebooked round with no priority list", () =
   );
   assertEquals(audience, []);
 });
+
+Deno.test("RB03: alreadyNotifiedKeys excludes recipients emailed in a prior run (cohort + guest + priority)", () => {
+  const audience = computeMemberOpenAudience(
+    [
+      claim({ player_id: "p2", status: "pending" }),
+      claim({ player_id: "p3", status: "expired" }),
+      claim({ guest_player_id: "g1", status: "pending" }),
+    ],
+    ["p9"],
+    { alreadyNotifiedKeys: ["p2", "g:g1"] },
+  );
+  // p2 (cohort) and g1 (guest) already emailed ⇒ retry only re-sends p3 + the priority p9.
+  assertEquals(keys(audience), ["p3", "p9"]);
+});
+
+Deno.test("RB03: a priority-list person already emailed is not re-added", () => {
+  const audience = computeMemberOpenAudience([], ["p9", "p8"], { alreadyNotifiedKeys: ["p9"] });
+  assertEquals(keys(audience), ["p8"]);
+});
+
+Deno.test("RB03: empty alreadyNotifiedKeys is a no-op", () => {
+  const audience = computeMemberOpenAudience([claim({ player_id: "p2", status: "pending" })], [], {
+    alreadyNotifiedKeys: [],
+  });
+  assertEquals(keys(audience), ["p2"]);
+});
