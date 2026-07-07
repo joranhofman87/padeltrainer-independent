@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Clock, X, Globe, Loader2, Mail, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
@@ -223,16 +227,34 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
               {extending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               + 7 {t('priorityClaims.days', 'days')}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                try { await endPriorityWindowNow(slotId); toast.success(t('priorityClaims.openedToPublic', 'Opened to public')); onChange?.(); }
-                catch (e) { toast.error((e as Error).message); }
-              }}
-            >
-              <Globe className="h-4 w-4 mr-1" /> {t('priorityClaims.openNow', 'Open to public now')}
-            </Button>
+            {/* R16: ending the priority window here jumps straight to public and skips the
+                member/second-bucket tier — confirm first. */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Globe className="h-4 w-4 mr-1" /> {t('priorityClaims.openNow', 'Open to public now')}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('tierControl.openPublicConfirmTitle', 'Direct voor iedereen openzetten?')}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('tierControl.openPublicConfirmBody', 'Hiermee sla je het venster voor vaste spelers over — spelers die al een sessie hadden en je voorrangslijst krijgen géén eerste keus.')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
+                      try { await endPriorityWindowNow(slotId); toast.success(t('priorityClaims.openedToPublic', 'Opened to public')); onChange?.(); }
+                      catch (e) { toast.error((e as Error).message); }
+                    }}
+                  >
+                    {t('tierControl.openPublicConfirmAction', 'Ja, voor iedereen openzetten')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         )}
       </CardContent>
