@@ -946,7 +946,12 @@
     "inviteSubjectPlaceholder": "Reserve your spot for the next cycle",
     "inviteMessageLabel": "Personal message in the invitation (optional)",
     "inviteMessagePlaceholder": "E.g. Great to have you back! Confirm your regular spot for the next round below.",
-    "inviteVariablesHelp": "Insert variable:"
+    "inviteVariablesHelp": "Insert variable:",
+    "trainersTitle": "Which trainers are continuing?",
+    "trainersHint": "Uncheck trainers who aren't continuing. Their sessions won't be rebooked; on the next step you choose whether their players may book other freed seats.",
+    "trainerGroups": "{{n}} group(s)",
+    "unknownTrainer": "Unknown trainer",
+    "secondBucketNote": "{{n}} players from removed sessions will be able to book other freed seats (+ an email when those open)."
   },
   "newRound": {
     "defaultCycleName": "Next round {{year}}",
@@ -1193,7 +1198,9 @@
     "totals": "{{groups}} groups · {{players}} players · {{sessions}} sessions",
     "grandTotal": "Total if everyone accepts: {{amount}}",
     "noEmailTitle": "{{n}} players have no email address and will NOT get an invitation:",
-    "noEmailAck": "I understand {{n}} players will not be emailed"
+    "noEmailAck": "I understand {{n}} players will not be emailed",
+    "keep": "Keep",
+    "moveToSecondBucket": "These players may book other freed seats"
   },
   "tentativeRoster": {
     "title": "Tentative players (rebooking)",

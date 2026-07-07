@@ -1071,7 +1071,12 @@
     "inviteSubjectPlaceholder": "Reserveer je plek voor de volgende cyclus",
     "inviteMessageLabel": "Persoonlijk bericht in de uitnodiging (optioneel)",
     "inviteMessagePlaceholder": "Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.",
-    "inviteVariablesHelp": "Voeg variabele toe:"
+    "inviteVariablesHelp": "Voeg variabele toe:",
+    "trainersTitle": "Welke trainers gaan door?",
+    "trainersHint": "Vink trainers uit die niet doorgaan. Hun sessies worden niet opnieuw geboekt; in de volgende stap kies je of hun spelers andere vrijgekomen plekken mogen boeken.",
+    "trainerGroups": "{{n}} groep(en)",
+    "unknownTrainer": "Onbekende trainer",
+    "secondBucketNote": "{{n}} spelers uit weggelaten sessies mogen straks andere vrijgekomen plekken boeken (+ een e-mail zodra die opengaan)."
   },
   "newRound": {
     "defaultCycleName": "Volgende ronde {{year}}",
@@ -1319,7 +1324,9 @@
     "totals": "{{groups}} groepen · {{players}} spelers · {{sessions}} sessies",
     "grandTotal": "Totaal indien iedereen accepteert: {{amount}}",
     "noEmailTitle": "{{n}} spelers hebben geen e-mailadres en krijgen GEEN uitnodiging:",
-    "noEmailAck": "Ik begrijp dat {{n}} spelers geen e-mail krijgen"
+    "noEmailAck": "Ik begrijp dat {{n}} spelers geen e-mail krijgen",
+    "keep": "Mee",
+    "moveToSecondBucket": "Deze spelers mogen andere vrijgekomen plekken boeken"
   },
   "tentativeRoster": {
     "title": "Voorlopige spelers (herboeking)",

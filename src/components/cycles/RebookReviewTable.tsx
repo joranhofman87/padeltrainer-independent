@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/pricing';
 
 export interface RebookRosterEntry {
@@ -15,6 +16,11 @@ export interface RebookGroupDetail {
   players: number;
   sessions: number;
   locationId?: string | null;
+  /** Trainer identity + display name (added by the redeployed edge fn). */
+  trainerId?: string | null;
+  trainerName?: string | null;
+  /** Stable per-series key — the include/exclude toggle identity. */
+  sourceSeriesKey?: string;
   pricePerSession?: number | null;
   splitPayment?: boolean;
   invoiceTotal?: number | null;
@@ -30,13 +36,27 @@ interface Props {
   locationName?: (id: string | null | undefined) => string | undefined;
   ackNoEmail: boolean;
   onAckChange: (v: boolean) => void;
+  /**
+   * Interactive mode (cohort wizard): render a keep/remove toggle per session + a
+   * per-removal "let these players rebook other freed seats" toggle. Omit the
+   * callbacks to keep the table READ-ONLY (new-round wizard).
+   */
+  interactive?: boolean;
+  excludedKeys?: Set<string>;
+  secondBucketKeys?: Set<string>;
+  onToggleExcluded?: (seriesKey: string) => void;
+  onToggleSecondBucket?: (seriesKey: string) => void;
+  /** Server-authoritative totals (interactive mode) — the distinct player count can't be
+   *  re-summed client-side (a player in two series must count once). */
+  summary?: { groups: number; players: number; sessions: number };
 }
 
 /**
- * Step-2 review table for the rebook wizards: per group the weekday/time + roster
- * (names, with a warning on anyone missing an email), the holiday-adjusted session
- * count, and the projected invoice total. Falls back to plain counts when the
- * (not-yet-redeployed) edge function omits the rich fields.
+ * Step-2 review table for the rebook wizards: per group the weekday/time (+ trainer)
+ * + roster (names, with a warning on anyone missing an email), the holiday-adjusted
+ * session count, and the projected invoice total. Falls back to plain counts when the
+ * (not-yet-redeployed) edge function omits the rich fields. In interactive mode the
+ * owner can drop sessions and choose whether the dropped players keep early-booking access.
  */
 export function RebookReviewTable({
   groups,
@@ -45,14 +65,22 @@ export function RebookReviewTable({
   locationName,
   ackNoEmail,
   onAckChange,
+  interactive = false,
+  excludedKeys,
+  secondBucketKeys,
+  onToggleExcluded,
+  onToggleSecondBucket,
+  summary,
 }: Props) {
   const { t } = useTranslation('cycles');
   // Detailed = the redeployed edge fn returned the rich fields. Otherwise degrade
   // to the basic weekday/time + player/session counts shown before this change.
   const detailed = groups.some((g) => Array.isArray(g.roster) || g.invoiceTotal != null);
-  const totalPlayers = groups.reduce((s, g) => s + g.players, 0);
-  const totalSessions = groups.reduce((s, g) => s + g.sessions, 0);
-  const noEmailPlayers = groups.flatMap((g) =>
+  const isExcluded = (g: RebookGroupDetail) => !!(interactive && g.sourceSeriesKey && excludedKeys?.has(g.sourceSeriesKey));
+  const included = groups.filter((g) => !isExcluded(g));
+  const totalPlayers = included.reduce((s, g) => s + g.players, 0);
+  const totalSessions = included.reduce((s, g) => s + g.sessions, 0);
+  const noEmailPlayers = included.flatMap((g) =>
     (g.roster ?? [])
       .filter((r) => !r.hasEmail)
       .map((r) => ({ name: r.name, group: `${g.weekday} ${g.time}` })),
@@ -64,6 +92,7 @@ export function RebookReviewTable({
         <Table>
           <TableHeader>
             <TableRow>
+              {interactive && <TableHead className="w-10">{t('rebookReview.keep', 'Mee')}</TableHead>}
               <TableHead>{t('rebookReview.group', 'Groep & spelers')}</TableHead>
               <TableHead className="text-center whitespace-nowrap">{t('rebookReview.sessions', 'Sessies')}</TableHead>
               {detailed && (
@@ -74,10 +103,25 @@ export function RebookReviewTable({
           <TableBody>
             {groups.map((g, i) => {
               const loc = locationName?.(g.locationId);
+              const excluded = isExcluded(g);
+              const key = g.sourceSeriesKey;
+              const moved = !!(key && secondBucketKeys?.has(key));
               return (
-                <TableRow key={i}>
+                <TableRow key={key ?? i} className={excluded ? 'opacity-50' : ''}>
+                  {interactive && (
+                    <TableCell className="align-top">
+                      {key && (
+                        <Checkbox
+                          checked={!excluded}
+                          aria-label={t('rebookReview.keep', 'Mee')}
+                          onCheckedChange={() => onToggleExcluded?.(key)}
+                        />
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell className="align-top">
-                    <div className="font-medium capitalize">
+                    <div className={cn('font-medium capitalize', excluded && 'line-through')}>
+                      {g.trainerName ? `${g.trainerName} · ` : ''}
                       {g.weekday} {g.time}
                       {loc ? ` · ${loc}` : ''}
                     </div>
@@ -95,6 +139,12 @@ export function RebookReviewTable({
                       <div className="mt-1 text-xs text-muted-foreground">
                         {t('rebookReview.playersCount', '{{n}} spelers', { n: g.players })}
                       </div>
+                    )}
+                    {interactive && excluded && key && (
+                      <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs">
+                        <Checkbox checked={moved} onCheckedChange={() => onToggleSecondBucket?.(key)} />
+                        <span>{t('rebookReview.moveToSecondBucket', 'Deze spelers mogen andere vrijgekomen plekken boeken')}</span>
+                      </label>
                     )}
                   </TableCell>
                   <TableCell className="text-center align-top tabular-nums">{g.sessions}</TableCell>
@@ -127,9 +177,9 @@ export function RebookReviewTable({
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="text-muted-foreground">
           {t('rebookReview.totals', '{{groups}} groepen · {{players}} spelers · {{sessions}} sessies', {
-            groups: groups.length,
-            players: totalPlayers,
-            sessions: totalSessions,
+            groups: summary?.groups ?? included.length,
+            players: summary?.players ?? totalPlayers,
+            sessions: summary?.sessions ?? totalSessions,
           })}
         </span>
         {detailed && grandInvoiceTotal > 0 && (

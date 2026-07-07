@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parse } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -105,6 +105,13 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [invitationMessage, setInvitationMessage] = useState('');
   const [invitationSubject, setInvitationSubject] = useState('');
   const [rebookRules, setRebookRules] = useState('');
+  // Trainer/session exclusion: the auto-preview's series (for the trainer checklist),
+  // the excluded series (by sourceSeriesKey), and the subset whose players move to the
+  // second bucket (member window). secondBucketAdded = server count for the note.
+  const [previewGroups, setPreviewGroups] = useState<RebookGroupDetail[]>([]);
+  const [excludedSeriesKeys, setExcludedSeriesKeys] = useState<Set<string>>(new Set());
+  const [secondBucketSeriesKeys, setSecondBucketSeriesKeys] = useState<Set<string>>(new Set());
+  const [secondBucketAdded, setSecondBucketAdded] = useState(0);
 
   useEffect(() => {
     getAcademyLocationsWithDetails(academyProfileId)
@@ -150,6 +157,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       invitationMessage: invitationMessage.trim() || null,
       invitationSubject: invitationSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
+      excludedSeriesKeys: [...excludedSeriesKeys],
+      secondBucketSeriesKeys: [...secondBucketSeriesKeys],
     }),
     [
       academyProfileId,
@@ -169,6 +178,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       invitationMessage,
       invitationSubject,
       rebookRules,
+      excludedSeriesKeys,
+      secondBucketSeriesKeys,
     ],
   );
 
@@ -179,9 +190,12 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   // (location + dates), so re-run only when those change (not on weeks/price typing).
   const locKey = useMemo(() => [...selectedLocationIds].sort().join(','), [selectedLocationIds]);
   useEffect(() => {
-    if (!(selectedLocationIds.size > 0 && termEndDate && newStartDate)) { setPreview(null); return; }
+    if (!(selectedLocationIds.size > 0 && termEndDate && newStartDate)) { setPreview(null); setPreviewGroups([]); return; }
     let cancelled = false;
     setPreviewing(true);
+    // The cohort changed → any trainer/session exclusions were keyed on the old series.
+    setExcludedSeriesKeys(new Set());
+    setSecondBucketSeriesKeys(new Set());
     const handle = setTimeout(async () => {
       try {
         const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
@@ -197,6 +211,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           pricesIncludeVat: data?.pricesIncludeVat == null ? null : Boolean(data.pricesIncludeVat),
         };
         setPreview(result);
+        setPreviewGroups(Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : []);
         // Pre-fill weeks + price from the previous term when the user hasn't set them.
         setWeeks((w) => (w ? w : (result.suggestedWeeks > 0 ? String(result.suggestedWeeks) : w)));
         setSessionPrice((p) => (p !== '' ? p : (result.suggestedPrice != null ? String(result.suggestedPrice) : p)));
@@ -213,6 +228,82 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [academyProfileId, locKey, termEndDate, newStartDate, paymentMode, requireAdminReview]);
 
+  // Trainer checklist (built from the auto-preview's series) + exclusion handlers.
+  const previewTrainers = useMemo(() => {
+    const m = new Map<string, { name: string; keys: string[] }>();
+    for (const g of previewGroups) {
+      if (!g.sourceSeriesKey) continue;
+      const tid = g.trainerId ?? '_';
+      const cur = m.get(tid) ?? { name: g.trainerName || t('rebookCohort.unknownTrainer', 'Onbekende trainer'), keys: [] as string[] };
+      cur.keys.push(g.sourceSeriesKey);
+      m.set(tid, cur);
+    }
+    return [...m.entries()].map(([id, v]) => ({ id, name: v.name, keys: v.keys }));
+  }, [previewGroups, t]);
+
+  const trainerIncluded = (keys: string[]) => keys.some((k) => !excludedSeriesKeys.has(k));
+
+  // Excluding a series (via trainer or session) defaults to "move their players to the
+  // second bucket" (owner can flip it per removal in the review table).
+  const toggleTrainer = (keys: string[], include: boolean) => {
+    const apply = (prev: Set<string>) => {
+      const next = new Set(prev);
+      keys.forEach((k) => (include ? next.delete(k) : next.add(k)));
+      return next;
+    };
+    setExcludedSeriesKeys(apply);
+    setSecondBucketSeriesKeys(apply);
+  };
+  const toggleExcludedKey = (key: string) => {
+    const wasExcluded = excludedSeriesKeys.has(key);
+    const apply = (prev: Set<string>) => {
+      const next = new Set(prev);
+      if (wasExcluded) next.delete(key); else next.add(key);
+      return next;
+    };
+    setExcludedSeriesKeys(apply);
+    setSecondBucketSeriesKeys(apply);
+  };
+  const toggleSecondBucketKey = (key: string) => {
+    setSecondBucketSeriesKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Re-run the review dryRun (debounced) as exclusions change while the review is open,
+  // so the distinct-player headline + totals + second-bucket count stay server-accurate.
+  const baseBodyRef = useRef(baseBody);
+  useEffect(() => { baseBodyRef.current = baseBody; }, [baseBody]);
+  const refreshReview = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', { body: { ...baseBodyRef.current, dryRun: true } });
+      if (error) throw error;
+      setSecondBucketAdded(Number(data?.secondBucketAddedCount ?? 0));
+      setConfirmData((prev) => (prev ? {
+        groups: Number(data?.groups ?? 0),
+        players: Number(data?.players ?? 0),
+        totalSessions: Number(data?.totalSessions ?? 0),
+        effWeeks: Number(data?.effWeeks ?? 0),
+        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : prev.groupsDetail,
+        noEmailTotal: Number(data?.noEmailTotal ?? 0),
+        grandInvoiceTotal: Number(data?.grandInvoiceTotal ?? 0),
+      } : prev));
+    } catch { /* keep the previous review on a transient error */ }
+  }, []);
+  const exclusionSig = useMemo(
+    () => [...excludedSeriesKeys].sort().join(',') + '|' + [...secondBucketSeriesKeys].sort().join(','),
+    [excludedSeriesKeys, secondBucketSeriesKeys],
+  );
+  const reviewOpenRef = useRef(false);
+  useEffect(() => { reviewOpenRef.current = confirmData !== null; }, [confirmData]);
+  useEffect(() => {
+    if (!reviewOpenRef.current) return;
+    const h = setTimeout(() => { refreshReview(); }, 500);
+    return () => clearTimeout(h);
+  }, [exclusionSig, refreshReview]);
+
   // Build the review summary (what will be created + emailed) BEFORE sending — a fresh
   // dryRun that reflects the chosen weeks + holidays. Opens the full-page review.
   const prepareConfirm = async () => {
@@ -224,6 +315,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       });
       if (error) throw error;
       setAckNoEmail(false);
+      setSecondBucketAdded(Number(data?.secondBucketAddedCount ?? 0));
       setConfirmData({
         groups: Number(data?.groups ?? 0),
         players: Number(data?.players ?? 0),
@@ -311,10 +403,21 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           locationName={(id) => locations.find((l) => l.id === id)?.name}
           ackNoEmail={ackNoEmail}
           onAckChange={setAckNoEmail}
+          interactive
+          excludedKeys={excludedSeriesKeys}
+          secondBucketKeys={secondBucketSeriesKeys}
+          onToggleExcluded={toggleExcludedKey}
+          onToggleSecondBucket={toggleSecondBucketKey}
+          summary={{ groups: confirmData.groups, players: confirmData.players, sessions: confirmData.totalSessions }}
         />
         <p className="text-sm font-medium">
           {t('rebookCohort.confirmEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', { players: emailCount })}
         </p>
+        {secondBucketAdded > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {t('rebookCohort.secondBucketNote', '{{n}} spelers uit weggelaten sessies mogen straks andere vrijgekomen plekken boeken (+ een e-mail zodra die opengaan).', { n: secondBucketAdded })}
+          </p>
+        )}
         <div className="space-y-3 rounded-md border p-3">
           <EmailSubjectField
             id="rebook-invite-subject"
@@ -443,6 +546,28 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           </div>
         </CardContent>
       </Card>
+
+      {previewTrainers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('rebookCohort.trainersTitle', 'Welke trainers gaan door?')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <p className="pb-1 text-sm text-muted-foreground">
+              {t('rebookCohort.trainersHint', 'Vink trainers uit die niet doorgaan. Hun sessies worden niet opnieuw geboekt; in de volgende stap kies je of hun spelers andere vrijgekomen plekken mogen boeken.')}
+            </p>
+            {previewTrainers.map((tr) => (
+              <label key={tr.id} className="flex items-center gap-3 rounded p-2 hover:bg-muted cursor-pointer">
+                <Checkbox checked={trainerIncluded(tr.keys)} onCheckedChange={(v) => toggleTrainer(tr.keys, Boolean(v))} />
+                <span className="text-sm font-medium">{tr.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('rebookCohort.trainerGroups', '{{n}} groep(en)', { n: tr.keys.length })}
+                </span>
+              </label>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
