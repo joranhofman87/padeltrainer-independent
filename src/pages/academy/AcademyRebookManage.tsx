@@ -17,6 +17,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import {
   getCycleRebookStatus, bulkReleaseToPublic, bulkHoldSlots, sendRebookReminder,
   rebookPlayerOutcome, clickedYesUnpaid,
   type GroupStatus, type RebookManageGroup, type RebookReminderTarget,
@@ -368,10 +372,29 @@ export default function AcademyRebookManage() {
           <span className="text-sm text-muted-foreground">
             {t('rebookManage.selected', '{{g}} sessies · {{p}} spelers', { g: selectedGroups.size, p: selectedPlayers.size })}
           </span>
-          <Button size="sm" variant="outline" disabled={busy || selectedSlotIds.length === 0}
-            onClick={() => runBulk(bulkReleaseToPublic, 'rebookManage.openedPublic', '{{count}} sessies opengezet')}>
-            <Globe className="h-4 w-4 mr-1" /> {t('rebookManage.openToPublic', 'Open voor iedereen')}
-          </Button>
+          {/* R16: bulk release skips the member/second-bucket tier — confirm first (same
+              consequence as the single-slot control). */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" disabled={busy || selectedSlotIds.length === 0}>
+                <Globe className="h-4 w-4 mr-1" /> {t('rebookManage.openToPublic', 'Open voor iedereen')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('tierControl.openPublicConfirmTitle', 'Direct voor iedereen openzetten?')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('tierControl.openPublicConfirmBody', 'Hiermee sla je het venster voor vaste spelers over — spelers die al een sessie hadden en je voorrangslijst krijgen géén eerste keus.')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => runBulk(bulkReleaseToPublic, 'rebookManage.openedPublic', '{{count}} sessies opengezet')}>
+                  {t('tierControl.openPublicConfirmAction', 'Ja, voor iedereen openzetten')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button size="sm" variant="outline" disabled={busy || selectedSlotIds.length === 0}
             onClick={() => runBulk(bulkHoldSlots, 'rebookManage.madePrivate', '{{count}} sessies verborgen')}>
             <EyeOff className="h-4 w-4 mr-1" /> {t('rebookManage.makePrivate', 'Verbergen')}
