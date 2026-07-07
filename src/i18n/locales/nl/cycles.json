@@ -1148,6 +1148,8 @@
     "priorityListTitle": "Voorrangslijst",
     "priorityListHint": "Kies spelers die als eerste mogen boeken zodra er plekken vrijkomen — naast de spelers die al een sessie hadden.",
     "priorityListSearch": "Zoek een speler",
+    "priorityListSelectTrigger": "Zoek en selecteer spelers",
+    "priorityListSelected": "{{count}} geselecteerd — zoek en voeg meer toe",
     "priorityListEmpty": "Geen spelers gevonden.",
     "priorityListRemove": "Verwijderen",
     "priorityListMessageLabel": "Bericht bij de melding (optioneel)",

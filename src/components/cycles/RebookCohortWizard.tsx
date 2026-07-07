@@ -23,6 +23,7 @@ import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
+import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
 
 interface Props {
   academyProfileId: string;
@@ -87,6 +88,10 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [priorityWindowDays, setPriorityWindowDays] = useState(7);
   const [memberWindowDays, setMemberWindowDays] = useState(7);
   const [enableMemberWindow, setEnableMemberWindow] = useState(true);
+  // Priority list: registered players the academy manually grants early access to
+  // freed seats (member window), on top of the returning cohort.
+  const [priorityPeople, setPriorityPeople] = useState<PriorityPerson[]>([]);
+  const [priorityMessage, setPriorityMessage] = useState('');
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [strictMollie, setStrictMollie] = useState(false);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
@@ -139,6 +144,12 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     });
   };
 
+  // The priority list rides on the member window; selecting anyone forces it on
+  // (mirrors AcademyNewRoundWizard).
+  useEffect(() => {
+    if (priorityPeople.length > 0 && !enableMemberWindow) setEnableMemberWindow(true);
+  }, [priorityPeople, enableMemberWindow]);
+
   const baseBody = useMemo(
     () => ({
       academyProfileId,
@@ -159,6 +170,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       rebookRules: normalizeRichTextHtml(rebookRules),
       excludedSeriesKeys: [...excludedSeriesKeys],
       secondBucketSeriesKeys: [...secondBucketSeriesKeys],
+      priorityPeople: priorityPeople.map((p) => p.player_id),
+      memberOpenMessage: priorityMessage.trim() || null,
     }),
     [
       academyProfileId,
@@ -180,6 +193,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       rebookRules,
       excludedSeriesKeys,
       secondBucketSeriesKeys,
+      priorityPeople,
+      priorityMessage,
     ],
   );
 
@@ -643,7 +658,23 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
             setEnableMemberWindow={setEnableMemberWindow}
             memberWindowDays={memberWindowDays}
             setMemberWindowDays={setMemberWindowDays}
+            lockMemberWindow={priorityPeople.length > 0}
+            lockMemberWindowHint={t('newRound.priorityRequiresMember', 'De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan.')}
           />
+
+          <Card>
+            <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
+            <CardContent>
+              <RebookPriorityListField
+                academyProfileId={academyProfileId}
+                value={priorityPeople}
+                onChange={setPriorityPeople}
+                message={priorityMessage}
+                onMessageChange={setPriorityMessage}
+                disabled={submitting}
+              />
+            </CardContent>
+          </Card>
 
           <RebookPaymentModeField
             academyProfileId={academyProfileId}
