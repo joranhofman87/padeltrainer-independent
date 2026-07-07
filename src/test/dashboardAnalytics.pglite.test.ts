@@ -37,6 +37,9 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+    -- Replicate Supabase's default privilege (auto-grants EXECUTE on new functions to
+    -- anon/authenticated) so the anon-lockdown assertion below is meaningful.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
     CREATE SCHEMA IF NOT EXISTS auth;
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
       SELECT nullif(current_setting('test.uid', true), '')::uuid $fn$;
@@ -86,6 +89,7 @@ beforeAll(async () => {
     INSERT INTO public.invoices (trainer_id, status) VALUES ('${T_A}','sent');
   `);
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260719100000_dashboard_analytics.sql'), 'utf8'));
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260720100000_lock_dashboard_analytics_anon.sql'), 'utf8'));
 });
 
 describe('get_academy_dashboard_analytics', () => {
@@ -144,5 +148,29 @@ describe('get_trainer_dashboard_analytics', () => {
   it('returns NULL when the caller has no trainer profile', async () => {
     const r = await asUser(NOUSER, () => trainerAnalytics(12));
     expect(r).toBeNull();
+  });
+});
+
+describe('grants — analytics RPCs not anon-callable (20260720100000 lockdown)', () => {
+  it('are executable by authenticated + service_role but NOT anon', async () => {
+    const { rows } = await db.query<{
+      acad_anon: boolean; acad_auth: boolean; acad_svc: boolean;
+      tr_anon: boolean; tr_auth: boolean; tr_svc: boolean;
+    }>(`
+      SELECT
+        has_function_privilege('anon',          'public.get_academy_dashboard_analytics(uuid,int)', 'EXECUTE') AS acad_anon,
+        has_function_privilege('authenticated', 'public.get_academy_dashboard_analytics(uuid,int)', 'EXECUTE') AS acad_auth,
+        has_function_privilege('service_role',  'public.get_academy_dashboard_analytics(uuid,int)', 'EXECUTE') AS acad_svc,
+        has_function_privilege('anon',          'public.get_trainer_dashboard_analytics(int)', 'EXECUTE') AS tr_anon,
+        has_function_privilege('authenticated', 'public.get_trainer_dashboard_analytics(int)', 'EXECUTE') AS tr_auth,
+        has_function_privilege('service_role',  'public.get_trainer_dashboard_analytics(int)', 'EXECUTE') AS tr_svc
+    `);
+    const r = rows[0];
+    expect(r.acad_anon).toBe(false);
+    expect(r.acad_auth).toBe(true);
+    expect(r.acad_svc).toBe(true);
+    expect(r.tr_anon).toBe(false);
+    expect(r.tr_auth).toBe(true);
+    expect(r.tr_svc).toBe(true);
   });
 });
