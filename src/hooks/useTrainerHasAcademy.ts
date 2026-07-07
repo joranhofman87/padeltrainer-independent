@@ -30,3 +30,19 @@ export function useTrainerHasAcademy() {
     gcTime: 10 * 60 * 1000,
   });
 }
+
+/**
+ * Whether the signed-in trainer may EDIT their sessions/slots/cycles/bookings/
+ * players. Academy-employed trainers are VIEW-ONLY — the academy manages the
+ * schedule, roster, cycles and money on their behalf; the trainer only views,
+ * marks attendance, and writes coaching notes. Independent trainers keep full
+ * editing.
+ *
+ * Fails CLOSED while membership is loading (`canEdit === false`) so an academy
+ * trainer never flashes an editing control on a cold cache; an independent
+ * trainer's controls appear a beat after the (cached, shared) query resolves.
+ */
+export function useTrainerCanEdit(): { canEdit: boolean; isLoading: boolean } {
+  const { data: hasAcademy = false, isLoading } = useTrainerHasAcademy();
+  return { canEdit: !isLoading && !hasAcademy, isLoading };
+}

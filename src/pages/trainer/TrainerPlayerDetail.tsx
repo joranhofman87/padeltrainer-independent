@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { ArrowLeft, Mail, Phone, MapPin, Calendar, Cake, BarChart3, FileText, RefreshCw, Send, ExternalLink, Download, Merge } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useTrainerCanEdit } from '@/hooks/useTrainerHasAcademy';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
@@ -28,6 +29,8 @@ import { PlayerTag } from '@/components/players/playerTagColors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { getTagColorClass } from '@/components/players/playerTagColors';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -75,6 +78,7 @@ export default function TrainerPlayerDetail() {
   const { t } = useTranslation('trainer');
   const { playerId } = useParams<{ playerId: string }>();
   const { user } = useAuth();
+  const { canEdit } = useTrainerCanEdit();
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -484,7 +488,7 @@ export default function TrainerPlayerDetail() {
                 {t('players.detail.addedOn', 'Added')} {format(new Date(player.created_at), 'dd-MM-yyyy')}
               </span>
             </div>
-            {trainerId && (
+            {trainerId && canEdit && (
               <div className="pt-2">
                 <TagPicker
                   trainerId={trainerId}
@@ -503,25 +507,39 @@ export default function TrainerPlayerDetail() {
                 />
               </div>
             )}
-          </div>
-          <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
-            <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
-              <Link to={getTrainerCreateInvoiceUrl(playerId)}>
-                <FileText className="h-4 w-4 mr-2" />
-                {t('players.detail.createInvoice', 'Create invoice')}
-              </Link>
-            </Button>
-            {player.type === 'guest' && player.guest_player_id && (
-              <Button
-                variant="outline"
-                data-testid="trainer-player-merge-button"
-                onClick={() => setMergeOpen(true)}
-              >
-                <Merge className="h-4 w-4 mr-2" />
-                {t('players.merge.action', 'Merge with another player…')}
-              </Button>
+            {/* View-only trainers still SEE the tags, as static chips. */}
+            {trainerId && !canEdit && tags.some((tag) => tagIds.includes(tag.id)) && (
+              <div className="flex flex-wrap gap-1 pt-2">
+                {tags.filter((tag) => tagIds.includes(tag.id)).map((tag) => (
+                  <Badge key={tag.id} variant="secondary" className={cn('text-[10px]', getTagColorClass(tag.color))}>
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
             )}
           </div>
+          {/* Create-invoice + merge are editing/money actions — hidden for
+              view-only academy trainers. */}
+          {canEdit && (
+            <div className="shrink-0 md:self-start flex flex-col items-stretch gap-2">
+              <Button asChild data-testid="trainer-player-create-invoice" aria-label={t('players.detail.createInvoice', 'Create invoice')}>
+                <Link to={getTrainerCreateInvoiceUrl(playerId)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  {t('players.detail.createInvoice', 'Create invoice')}
+                </Link>
+              </Button>
+              {player.type === 'guest' && player.guest_player_id && (
+                <Button
+                  variant="outline"
+                  data-testid="trainer-player-merge-button"
+                  onClick={() => setMergeOpen(true)}
+                >
+                  <Merge className="h-4 w-4 mr-2" />
+                  {t('players.merge.action', 'Merge with another player…')}
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -545,7 +563,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      {detailsValues && trainerId && (
+      {canEdit && detailsValues && trainerId && (
         <TrainerPlayerDetailsCard
           kind={player.type}
           trainerProfileId={trainerId}
@@ -556,6 +574,18 @@ export default function TrainerPlayerDetail() {
           tagIds={tagIds}
           onSaved={handleDetailsSaved}
         />
+      )}
+      {/* View-only trainers still SEE their internal note (read-only), since the
+          editable details card above is hidden for them. */}
+      {!canEdit && detailsValues?.notes?.trim() && (
+        <Card data-testid="trainer-player-notes-readonly" className={flushOnMobileCardClass()}>
+          <CardHeader>
+            <CardTitle className="text-base">{t('players.notesLabel', 'Internal notes')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{detailsValues.notes}</p>
+          </CardContent>
+        </Card>
       )}
 
       <Card data-testid="trainer-player-section-cycles" className={flushOnMobileCardClass()}>
@@ -596,6 +626,9 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
+      {/* Invoices are academy-managed money — hidden for view-only trainers
+          (the /app/trainer/invoices routes are restricted for them too). */}
+      {canEdit && (
       <Card data-testid="trainer-player-section-invoices" className={flushOnMobileCardClass()}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -655,6 +688,7 @@ export default function TrainerPlayerDetail() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <Card data-testid="trainer-player-section-rating">
         <CardHeader>
@@ -744,7 +778,7 @@ export default function TrainerPlayerDetail() {
         </CardContent>
       </Card>
 
-      {trainerId && player && parsed.kind && (
+      {canEdit && trainerId && player && parsed.kind && (
         <TrainerPlayerRemoveCard
           kind={parsed.kind === 'guest' ? 'guest' : 'registered'}
           trainerProfileId={trainerId}
@@ -755,7 +789,7 @@ export default function TrainerPlayerDetail() {
         />
       )}
 
-      {trainerId && player.guest_player_id && (
+      {canEdit && trainerId && player.guest_player_id && (
         <MergePlayersDialog
           open={mergeOpen}
           onOpenChange={setMergeOpen}

@@ -238,12 +238,14 @@ export default function TrainerSettings() {
       icon: Bell,
       route: '/trainer/settings/notifications',
     },
-    {
+    // General terms are the trainer's public terms & conditions — academy-managed
+    // for academy trainers (the /terms route is restricted for them).
+    ...(showIndependentCards ? [{
       title: t('terms.title', 'General Terms'),
       description: t('terms.settingsDescription', 'Manage your general terms and conditions'),
       icon: FileText,
       route: '/app/trainer/terms',
-    },
+    }] : []),
   ];
 
   return (
@@ -258,7 +260,9 @@ export default function TrainerSettings() {
             icon: Pencil,
           }}
         />
-        {/* Profile Visibility Section */}
+        {/* Profile Visibility Section — publishing to the marketplace is
+            academy-managed for academy trainers (they can't toggle is_public). */}
+        {showIndependentCards && (
         <div className="max-w-4xl">
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
@@ -329,6 +333,7 @@ export default function TrainerSettings() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* Academy Info */}
         {hasAcademy && (

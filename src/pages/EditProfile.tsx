@@ -4,6 +4,7 @@ import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { useTrainerCanEdit } from '@/hooks/useTrainerHasAcademy';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,6 +63,9 @@ export default function EditProfile() {
   const { toast } = useToast();
   const { t } = useTranslation('player');
   const { t: tTrainer } = useTranslation('trainer');
+  // Public-page visibility + banner are academy-owned for academy trainers (#369) —
+  // hidden for them; personal fields (name/bio/avatar/socials) stay editable.
+  const { canEdit } = useTrainerCanEdit();
   const getLocalizedPath = useLocalizedPathFn();
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -586,8 +590,8 @@ export default function EditProfile() {
 
   const profileForm = (
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Visibility Toggle (trainers only) */}
-          {role === 'trainer' && (
+          {/* Visibility Toggle (independent trainers only — academy owns publish) */}
+          {role === 'trainer' && canEdit && (
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -661,8 +665,8 @@ export default function EditProfile() {
             </CardContent>
           </Card>
 
-          {/* Trainer public-page banner */}
-          {role === 'trainer' && trainerProfileId && (
+          {/* Trainer public-page banner (independent trainers only — academy owns it, #369) */}
+          {role === 'trainer' && trainerProfileId && canEdit && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">{t('editProfile.banner', 'Public page banner')}</CardTitle>

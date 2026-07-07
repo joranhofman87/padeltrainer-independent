@@ -17,9 +17,11 @@ interface PlayerNotesCellProps {
   playerKey: { guest_player_id: string | null; profile_id: string | null };
   notes: string;
   onChanged: () => void;
+  /** View-only: render the note text without the edit popover. */
+  readOnly?: boolean;
 }
 
-export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChanged }: PlayerNotesCellProps) {
+export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChanged, readOnly }: PlayerNotesCellProps) {
   const { t } = useTranslation('trainer');
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -75,6 +77,15 @@ export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChan
   };
 
   const preview = (notes || '').trim();
+
+  if (readOnly) {
+    return (
+      <span className="flex h-8 min-w-0 items-center gap-1 overflow-hidden text-xs text-muted-foreground" title={preview || undefined}>
+        <StickyNote className="h-3 w-3 shrink-0" />
+        <span className="min-w-0 truncate">{preview || '—'}</span>
+      </span>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) persist(); }}>
