@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,6 +21,7 @@ import {
   rebookPlayerOutcome, clickedYesUnpaid,
   type GroupStatus, type RebookManageGroup, type RebookReminderTarget,
 } from '@/lib/rebookManage';
+import { drainRebookInvites } from '@/lib/rebookInviteSend';
 
 const STATUS_STYLE: Record<GroupStatus, string> = {
   rebooked: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -62,6 +63,8 @@ export default function AcademyRebookManage() {
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [selectedPlayers, setSelectedPlayers] = useState<Map<string, RebookReminderTarget>>(new Map());
   const [busy, setBusy] = useState(false);
+  // Resumable invite drain ({ sent, total }) for the "send un-sent invitations" recovery.
+  const [sendProgress, setSendProgress] = useState<{ sent: number; total: number } | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -213,6 +216,29 @@ export default function AcademyRebookManage() {
     } finally { setBusy(false); }
   };
 
+  // Finish sending the round's INITIAL invites (recovery for a first blast that was
+  // interrupted / partially sent). Idempotent + resumable: only un-invited players
+  // are emailed, so this never double-sends. NOT a reminder — it's the first invite.
+  const onResumeInvites = async () => {
+    if (!cycleId || busy || sendProgress) return;
+    const total = data?.uninvitedCount ?? 0;
+    if (total <= 0) return;
+    setSendProgress({ sent: 0, total });
+    try {
+      const res = await drainRebookInvites(cycleId, {
+        onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
+      });
+      if (res.stoppedReason === 'error' && res.totalSent === 0) {
+        toast.error(t('rebookManage.resumeFailed', 'Kon de uitnodigingen niet versturen. Probeer het later opnieuw.'));
+      } else if (res.leftover > 0) {
+        toast.warning(t('rebookManage.resumePartial', '{{sent}} uitnodiging(en) verstuurd, {{left}} nog open. Probeer de rest zo opnieuw.', { sent: res.totalSent, left: res.leftover }));
+      } else {
+        toast.success(t('rebookManage.resumeDone', '{{sent}} uitnodiging(en) verstuurd', { sent: res.totalSent }));
+      }
+      refetch();
+    } finally { setSendProgress(null); }
+  };
+
   if (isLoading) {
     return <div className="p-4 space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /></div>;
   }
@@ -243,6 +269,22 @@ export default function AcademyRebookManage() {
             </>
           )}
         </p>
+      )}
+
+      {/* Un-sent invites recovery: finish a first blast that was interrupted or
+          partially sent. Idempotent drain — never re-emails an already-invited player. */}
+      {data && (data.uninvitedCount > 0 || sendProgress) && (
+        <div className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between" data-testid="rebook-resume-invites">
+          <p className="text-sm text-amber-900">
+            {t('rebookManage.uninvited', '{{count}} uitnodiging(en) zijn nog niet verstuurd.', { count: data.uninvitedCount })}
+          </p>
+          <Button size="sm" onClick={onResumeInvites} disabled={busy || !!sendProgress}>
+            <Send className="h-4 w-4 mr-1" />
+            {sendProgress
+              ? t('rebookManage.sendingInvites', 'Versturen… {{sent}}/{{total}}', { sent: sendProgress.sent, total: sendProgress.total })
+              : t('rebookManage.sendInvites', 'Uitnodigingen versturen')}
+          </Button>
+        </div>
       )}
 
       {/* Group lifecycle counts (per weekly series) */}

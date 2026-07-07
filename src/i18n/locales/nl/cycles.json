@@ -1081,7 +1081,7 @@
     "errPreview": "Kon de preview niet ophalen. Probeer het opnieuw.",
     "alreadyExists": "Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.",
     "success": "{{groups}} groep(en) · {{players}} spelers uitgenodigd · {{invites}} e-mails",
-    "invitesPartial": "{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.",
+    "invitesPartial": "{{sent}} van {{total}} uitnodigingen verstuurd. De ronde is aangemaakt — verstuur de rest via de ronde-pagina.",
     "errSubmit": "Kon de ronde niet aanmaken. Probeer het opnieuw.",
     "title": "Volgende ronde opzetten",
     "subtitle": "Kies een cyclus, een startdatum en het aantal weken. We maken één nieuwe ronde aan en geven je huidige spelers als eerste de kans hun vaste plek te houden.",
@@ -1132,7 +1132,9 @@
     "inviteMessagePlaceholder": "Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.",
     "inviteVariablesHelp": "Voeg variabele toe:",
     "backToConfigure": "Aanpassen",
-    "confirmSend": "Aanmaken & spelers uitnodigen"
+    "confirmSend": "Aanmaken & spelers uitnodigen",
+    "sending": "Uitnodigingen versturen… {{sent}}/{{total}}",
+    "invitesPartialLegacy": "{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren."
   },
   "editEndDate": {
     "title": "Einddatum aanpassen",
@@ -1261,7 +1263,13 @@
     "clickedYesShort": "klikte Ja",
     "saidNoShort": "zei nee",
     "expiredShort": "verlopen",
-    "alreadyRebookedWarning": "{{n}} van deze spelers hebben al geherboekt — zij krijgen ook deze herinnering."
+    "alreadyRebookedWarning": "{{n}} van deze spelers hebben al geherboekt — zij krijgen ook deze herinnering.",
+    "uninvited": "{{count}} uitnodiging(en) zijn nog niet verstuurd.",
+    "sendInvites": "Uitnodigingen versturen",
+    "sendingInvites": "Versturen… {{sent}}/{{total}}",
+    "resumeFailed": "Kon de uitnodigingen niet versturen. Probeer het later opnieuw.",
+    "resumePartial": "{{sent}} uitnodiging(en) verstuurd, {{left}} nog open. Probeer de rest zo opnieuw.",
+    "resumeDone": "{{sent}} uitnodiging(en) verstuurd"
   },
   "rebookShared": {
     "paymentTitle": "Betaling",

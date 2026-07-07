@@ -143,6 +143,11 @@ serve(async (req) => {
     const requireAdminReview: boolean = body?.requireAdminReview === true;
     const targetCycleName: string | null = body?.targetCycleName ?? null;
     dryRun = body?.dryRun === true;
+    // Defer the invite blast to the CLIENT (resumable, bounded chunks via
+    // send-priority-claim-invitation cycleId mode) so a large round can't blow the
+    // edge wall-clock and silently partial-send. When set, we create the round +
+    // claims and return representativeCount; the wizard then drains the invites.
+    const skipInvites: boolean = body?.skipInvites === true;
     // New term shape (see generateWeeklyStarts): number of weeks, named holiday
     // ranges to skip, and the session price to apply to every new session.
     const weeks: number = Math.min(52, Math.max(0, Math.floor(Number(body?.weeks ?? 0)))); // hard cap at the source-form max
@@ -625,25 +630,29 @@ serve(async (req) => {
       // 7. One invite per (player, series): email only the representative claims.
       //    Track failed batches so the admin can be told / a resend is possible —
       //    the cycle is already committed, so a partial send is recoverable.
+      //    When skipInvites is set the CLIENT drains the invites (resumable, with
+      //    progress) — we return representativeCount and send nothing here.
       let invitesSent = 0;
       const failedClaimIds: string[] = [];
-      for (let i = 0; i < representativeClaimIds.length; i += 50) {
-        const batch = representativeClaimIds.slice(i, i + 50);
-        const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
-          body: { claimIds: batch, customMessage: invitationMessage || undefined, customSubject: invitationSubject || undefined },
-        });
-        if (error || !data) {
-          // The whole invocation failed — none of this batch was emailed.
-          failedClaimIds.push(...batch);
-        } else {
-          // Count only what actually went out (the fn over-reported before: a
-          // partial send inside a batch was logged as the full batch length).
-          invitesSent += Number(data.sent ?? 0);
-          if (Array.isArray(data.failedClaimIds)) failedClaimIds.push(...data.failedClaimIds);
+      if (!skipInvites) {
+        for (let i = 0; i < representativeClaimIds.length; i += 50) {
+          const batch = representativeClaimIds.slice(i, i + 50);
+          const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
+            body: { claimIds: batch, customMessage: invitationMessage || undefined, customSubject: invitationSubject || undefined },
+          });
+          if (error || !data) {
+            // The whole invocation failed — none of this batch was emailed.
+            failedClaimIds.push(...batch);
+          } else {
+            // Count only what actually went out (the fn over-reported before: a
+            // partial send inside a batch was logged as the full batch length).
+            invitesSent += Number(data.sent ?? 0);
+            if (Array.isArray(data.failedClaimIds)) failedClaimIds.push(...data.failedClaimIds);
+          }
         }
       }
 
-      logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, skippedOverlapSlots });
+      logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
       // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
       if (failedClaimIds.length > 0) {
         await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targetCycle.id, invitesSent, failedClaimIds });
@@ -657,6 +666,10 @@ serve(async (req) => {
         claimsCreated,
         invitesSent,
         failedClaimIds,
+        // Total invites the client should drain (skipInvites mode); also lets the
+        // caller show an accurate "X of Y" even on the inline path.
+        representativeCount: representativeClaimIds.length,
+        invitesDeferred: skipInvites,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     } catch (buildErr) {
       // Roll back the half-built draft (only if not yet committed) so a retry is clean.
