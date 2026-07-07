@@ -14,6 +14,9 @@ interface Props {
   setEnableMemberWindow: (b: boolean) => void;
   memberWindowDays: number;
   setMemberWindowDays: (n: number) => void;
+  /** When true the member window can't be switched off (e.g. a priority list needs it). */
+  lockMemberWindow?: boolean;
+  lockMemberWindowHint?: string;
 }
 
 /**
@@ -28,6 +31,8 @@ export function RebookAccessWindows({
   setEnableMemberWindow,
   memberWindowDays,
   setMemberWindowDays,
+  lockMemberWindow = false,
+  lockMemberWindowHint,
 }: Props) {
   const { t } = useTranslation('cycles');
   const daysUnit = t('rebookShared.daysUnit', 'dagen');
@@ -99,14 +104,18 @@ export function RebookAccessWindows({
             </p>
           </div>
 
-          <label className="flex items-start gap-3 cursor-pointer max-w-md">
+          <label className={cn('flex items-start gap-3 max-w-md', lockMemberWindow ? 'cursor-not-allowed opacity-70' : 'cursor-pointer')}>
             <Checkbox
               className="mt-0.5"
               checked={enableMemberWindow}
+              disabled={lockMemberWindow}
               onCheckedChange={(v) => setEnableMemberWindow(Boolean(v))}
             />
             <span className="text-sm">
               {t('rebookShared.enableMemberWindow', 'Geef vaste spelers daarna eerst keuze uit vrije plekken, vóór het publiek')}
+              {lockMemberWindow && lockMemberWindowHint && (
+                <span className="block text-xs text-muted-foreground mt-1">{lockMemberWindowHint}</span>
+              )}
             </span>
           </label>
 

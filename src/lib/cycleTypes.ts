@@ -93,6 +93,12 @@ export interface CycleSettings {
   publish_visibility?: 'public' | 'private';
   /** Phase-B-inert: a public cycle that requires upfront payment before a slot is reserved. */
   requires_upfront_payment?: boolean;
+  // Rebook priority list (new-round wizard): registered profile ids granted member-window
+  // access + a "sessions opened" email; the optional message for that email; and the
+  // idempotency marker stamped once the notifier has emailed the second bucket.
+  rebook_priority_people?: string[];
+  rebook_member_open_message?: string | null;
+  rebook_member_open_notified_at?: string | null;
   // Event-specific settings
   payment_methods?: EventPaymentMethod;
   event_dates?: string[];

@@ -1009,7 +1009,14 @@
     "backToConfigure": "Edit",
     "confirmSend": "Create & invite players",
     "sending": "Sending invitations… {{sent}}/{{total}}",
-    "invitesPartialLegacy": "{{count}} invitation(s) could not be sent. The round was created; those players can also respond from their dashboard."
+    "invitesPartialLegacy": "{{count}} invitation(s) could not be sent. The round was created; those players can also respond from their dashboard.",
+    "priorityListTitle": "Priority list",
+    "priorityListHint": "Pick players who may book first when seats open up — alongside the players who already had a session.",
+    "priorityListSearch": "Search a player",
+    "priorityListEmpty": "No players found.",
+    "priorityListRemove": "Remove",
+    "priorityListMessageLabel": "Message with the notification (optional)",
+    "priorityRequiresMember": "The priority list uses the member window, so it is enabled."
   },
   "editEndDate": {
     "title": "Edit end date",

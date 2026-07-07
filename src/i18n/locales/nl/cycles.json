@@ -1134,7 +1134,14 @@
     "backToConfigure": "Aanpassen",
     "confirmSend": "Aanmaken & spelers uitnodigen",
     "sending": "Uitnodigingen versturen… {{sent}}/{{total}}",
-    "invitesPartialLegacy": "{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren."
+    "invitesPartialLegacy": "{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.",
+    "priorityListTitle": "Voorrangslijst",
+    "priorityListHint": "Kies spelers die als eerste mogen boeken zodra er plekken vrijkomen — naast de spelers die al een sessie hadden.",
+    "priorityListSearch": "Zoek een speler",
+    "priorityListEmpty": "Geen spelers gevonden.",
+    "priorityListRemove": "Verwijderen",
+    "priorityListMessageLabel": "Bericht bij de melding (optioneel)",
+    "priorityRequiresMember": "De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan."
   },
   "editEndDate": {
     "title": "Einddatum aanpassen",
