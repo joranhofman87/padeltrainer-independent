@@ -219,7 +219,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         const result = await drainRebookInvites(newCycleId, {
           customMessage: baseBody.invitationMessage,
           customSubject: baseBody.invitationSubject,
-          onProgress: ({ totalSent }) => setSendProgress({ sent: totalSent, total }),
+          // Prefer the drain's sendable total (excludes emailless reps) once known.
+          onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
         });
         if (result.leftover > 0 || result.stoppedReason === 'error') {
           // Round is created; some invites still need sending — the owner can finish

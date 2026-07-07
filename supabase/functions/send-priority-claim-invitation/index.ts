@@ -122,6 +122,7 @@ const handler = async (req: Request): Promise<Response> => {
     const token = authHeader.replace("Bearer ", "");
     const isService = token === serviceKey;
     let callerEmail: string | null = null;
+    let callerUserId: string | null = null;
     if (!isService) {
       const { data, error } = await supabase.auth.getUser(token);
       if (error || !data.user) {
@@ -131,6 +132,7 @@ const handler = async (req: Request): Promise<Response> => {
         });
       }
       callerEmail = data.user.email ?? null;
+      callerUserId = data.user.id;
     }
 
     const body = await req.json();
@@ -168,55 +170,69 @@ const handler = async (req: Request): Promise<Response> => {
     let cycleRemaining = 0;
     if (cycleId) {
       const chunkLimit = Math.max(1, Math.min(Number(limit) || 40, 100));
-      // Authorize by slot ownership: under the caller's JWT, RLS on
-      // availability_slots restricts to slots they own/manage. Service callers
-      // (e.g. an internal retry) skip the JWT gate.
-      let ownedSlotIds: string[];
-      if (isService) {
-        const { data: s, error: sErr } = await supabase
-          .from("availability_slots").select("id").eq("cyclus_id", cycleId);
-        if (sErr) throw sErr;
-        ownedSlotIds = (s || []).map((r: { id: string }) => r.id);
-      } else {
-        const userClient = createClient(supabaseUrl, anonKey, {
-          global: { headers: { Authorization: authHeader } },
-        });
-        const { data: s, error: sErr } = await userClient
-          .from("availability_slots").select("id").eq("cyclus_id", cycleId);
-        if (sErr) throw sErr;
-        ownedSlotIds = (s || []).map((r: { id: string }) => r.id);
-        if (ownedSlotIds.length === 0) {
+      // Authorize: the caller must MANAGE the cycle's academy — mirrors
+      // bulk-rebook-cycle's academy_managers gate. Do NOT infer ownership from
+      // availability_slots (rebook slots are is_public:true → world-readable) nor
+      // from slot_priority_claims (a player can read their OWN claim). Both would let
+      // a non-owner trigger a live invite blast on another tenant's round. Service
+      // callers (internal retry) skip the JWT gate.
+      if (!isService) {
+        const { data: cyc } = await supabase
+          .from("cycles").select("owner_id, owner_type").eq("id", cycleId).maybeSingle();
+        const ownerId = (cyc as { owner_id: string | null; owner_type: string | null } | null)?.owner_id ?? null;
+        const ownerType = (cyc as { owner_id: string | null; owner_type: string | null } | null)?.owner_type ?? null;
+        let allowed = false;
+        if (ownerId && ownerType === "academy" && callerUserId) {
+          const { data: mgr } = await supabase
+            .from("academy_managers").select("user_id")
+            .eq("academy_profile_id", ownerId).eq("user_id", callerUserId).maybeSingle();
+          allowed = !!mgr;
+        }
+        if (!allowed) {
           return new Response(JSON.stringify({ error: "Forbidden", sent: 0, remaining: 0 }), {
             status: 403,
             headers: { "Content-Type": "application/json", ...corsHeaders },
           });
         }
       }
-      // All pending claims on the round's slots, with their slot start_time, so we
-      // can pick each (series, player)'s earliest-week claim as the representative.
-      const repClaims: Array<{ id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null }> = [];
-      for (let i = 0; i < ownedSlotIds.length; i += 200) {
+      // The cycle's slots (SERVICE client — trusted + complete; authorization is the
+      // academy_managers gate above, not a per-row read).
+      const cycleSlotIds: string[] = [];
+      {
+        const { data: s, error: sErr } = await supabase
+          .from("availability_slots").select("id").eq("cyclus_id", cycleId);
+        if (sErr) throw sErr;
+        for (const r of (s || []) as Array<{ id: string }>) cycleSlotIds.push(r.id);
+      }
+      // All pending claims on the round's slots, with slot start_time + recipient
+      // email presence, so we can pick each (series, player)'s earliest-week claim as
+      // the representative AND skip claims with no email (which can never be sent, so
+      // must not be counted as "remaining" or the drain would never converge).
+      const repClaims: Array<{ id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null } | null }> = [];
+      for (let i = 0; i < cycleSlotIds.length; i += 200) {
         const { data: rc, error: rcErr } = await supabase
           .from("slot_priority_claims")
-          .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time)")
-          .in("slot_id", ownedSlotIds.slice(i, i + 200))
+          .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email)")
+          .in("slot_id", cycleSlotIds.slice(i, i + 200))
           .eq("status", "pending");
         if (rcErr) throw rcErr;
-        // PostgREST types the to-one `availability_slots` embed as an array; the
-        // runtime value is a single object. Cast through unknown (same idiom as the
-        // ClaimRow cast below) to reconcile.
+        // PostgREST types the to-one embeds as arrays; the runtime values are single
+        // objects. Cast through unknown (same idiom as the ClaimRow cast below).
         repClaims.push(...((rc || []) as unknown as typeof repClaims));
       }
-      const repByKey = new Map<string, { id: string; start: string; invited: boolean }>();
+      const hasEmail = (c: { profiles: { email: string | null } | null; guest_players: { email: string | null } | null }) =>
+        !!(c.profiles?.email?.trim() || c.guest_players?.email?.trim());
+      const repByKey = new Map<string, { id: string; start: string; invited: boolean; sendable: boolean }>();
       for (const c of repClaims) {
         const pkey = c.player_id ?? `g:${c.guest_player_id}`;
         const gkey = c.rebook_group_id ?? c.slot_id;
         const start = c.availability_slots?.start_time ?? "";
         const k = `${gkey}|${pkey}`;
         const cur = repByKey.get(k);
-        if (!cur || start < cur.start) repByKey.set(k, { id: c.id, start, invited: !!c.invited_at });
+        if (!cur || start < cur.start) repByKey.set(k, { id: c.id, start, invited: !!c.invited_at, sendable: hasEmail(c) });
       }
-      const eligibleReps = [...repByKey.values()].filter((r) => !r.invited).map((r) => r.id);
+      // Only un-invited AND sendable (has email) reps are drainable.
+      const eligibleReps = [...repByKey.values()].filter((r) => !r.invited && r.sendable).map((r) => r.id);
       cycleCandidateIds = eligibleReps.slice(0, chunkLimit);
       cycleRemaining = Math.max(0, eligibleReps.length - cycleCandidateIds.length);
       if (cycleCandidateIds.length === 0) {

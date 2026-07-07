@@ -35,6 +35,9 @@ export interface DrainProgress {
   totalSent: number;
   /** Best-estimate invites still to send (untouched + this-chunk failures). */
   stillToSend: number;
+  /** Sendable total for this drain, learned from the first chunk (sent+failed+remaining).
+   *  Excludes emailless reps, so it can be < the round's representativeCount. */
+  total: number;
 }
 
 export interface DrainResult {
@@ -83,6 +86,7 @@ export async function drainRebookInvites(
   let totalSent = 0;
   let remaining = 0;
   let lastFailed = 0;
+  let total = 0; // sendable total, learned from the first chunk
   const failedClaimIds = new Set<string>();
   let stoppedReason: DrainResult['stoppedReason'] = 'drained';
 
@@ -97,8 +101,11 @@ export async function drainRebookInvites(
     totalSent += chunk.sent;
     remaining = chunk.remaining;
     lastFailed = chunk.failed;
+    // The first chunk reveals the full sendable set (this chunk's attempts + what's
+    // left); pin it so a progress bar has a stable, emailless-excluded denominator.
+    if (i === 0) total = chunk.sent + chunk.failed + chunk.remaining;
     for (const id of chunk.failedClaimIds) failedClaimIds.add(id);
-    opts.onProgress?.({ totalSent, stillToSend: remaining + chunk.failed });
+    opts.onProgress?.({ totalSent, stillToSend: remaining + chunk.failed, total });
 
     // Fully drained: nothing left and this chunk had no failures.
     if (chunk.remaining === 0 && chunk.failed === 0) { stoppedReason = 'drained'; break; }

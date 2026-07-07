@@ -31,6 +31,18 @@ describe('drainRebookInvites', () => {
     expect(progress).toEqual([40, 80]);
   });
 
+  it('pins a stable sendable total from the first chunk (excludes emailless)', async () => {
+    // First chunk: 40 sent + 0 failed + 40 remaining ⇒ sendable total = 80, even
+    // though the round may have more (emailless) representatives.
+    const sender = scripted([
+      { sent: 40, failed: 0, remaining: 40, failedClaimIds: [] },
+      { sent: 40, failed: 0, remaining: 0, failedClaimIds: [] },
+    ]);
+    const totals: number[] = [];
+    await drainRebookInvites('cyc', { sender, onProgress: (p) => totals.push(p.total) });
+    expect(totals).toEqual([80, 80]);
+  });
+
   it('stops on no-progress (a whole chunk failed) and reports the leftover', async () => {
     const sender = scripted([
       { sent: 40, failed: 0, remaining: 40, failedClaimIds: [] },

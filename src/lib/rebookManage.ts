@@ -290,8 +290,16 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const guestIds = [...new Set(claimRows.map((c) => c.guest_player_id).filter(Boolean))] as string[];
   const [{ data: profiles }, { data: guests }] = await Promise.all([
     playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from('guest_players').select('id, full_name').in('id', guestIds) : Promise.resolve({ data: [] }),
+    guestIds.length ? supabase.from('guest_players').select('id, full_name, email').in('id', guestIds) : Promise.resolve({ data: [] }),
   ]);
+  // Guests with no email on file can never receive an invite, so the sender skips
+  // them (send-priority-claim-invitation cycleId mode) and they must NOT count as
+  // "un-sent" — else the resume banner could never clear. Registered players are
+  // assumed emailable (they have an auth email). Keyed like RebookManagePlayer.key.
+  const guestNoEmail = new Set<string>();
+  for (const g of (guests ?? []) as Array<{ id: string; email: string | null }>) {
+    if (!(g.email ?? '').trim()) guestNoEmail.add(`g:${g.id}`);
+  }
   const nameByKey = new Map<string, string>();
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(p.id, (p.full_name ?? '').trim() || '—');
   for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
@@ -408,7 +416,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   let uninvitedCount = 0;
   for (const g of groups) {
     for (const p of g.players) {
-      if (p.response === 'pending' && !invitedKeys.has(`${g.groupId}|${p.key}`)) uninvitedCount += 1;
+      if (p.response === 'pending' && !invitedKeys.has(`${g.groupId}|${p.key}`) && !guestNoEmail.has(p.key)) {
+        uninvitedCount += 1;
+      }
     }
   }
 

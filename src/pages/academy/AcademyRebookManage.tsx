@@ -226,7 +226,7 @@ export default function AcademyRebookManage() {
     setSendProgress({ sent: 0, total });
     try {
       const res = await drainRebookInvites(cycleId, {
-        onProgress: ({ totalSent }) => setSendProgress({ sent: totalSent, total }),
+        onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
       });
       if (res.stoppedReason === 'error' && res.totalSent === 0) {
         toast.error(t('rebookManage.resumeFailed', 'Kon de uitnodigingen niet versturen. Probeer het later opnieuw.'));
