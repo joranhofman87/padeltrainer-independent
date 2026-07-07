@@ -79,25 +79,45 @@ export async function filterVisibleSlotIds(slots: RawSlotForVisibility[]): Promi
   const memberCycles = new Set<string>();
   if (sourceCycleIds.length > 0) {
     const { data: { user } } = await supabase.auth.getUser();
+    // Anon viewers are never members: leave memberCycles empty so member-windowed
+    // slots stay hidden (identical to the pre-change behaviour).
     if (user) {
-      // Single batch query: cycles where this user has a non-cancelled booking
-      const { data: profile } = await supabase
-        .from('profiles').select('id').eq('user_id', user.id).maybeSingle();
-      if (profile?.id) {
-        const { data: bookings } = await supabase
-          .from('bookings')
-          .select('slot_id, status')
-          .eq('player_id', profile.id);
-        const myActiveSlotIds = (bookings || [])
-          .filter(b => !['cancelled', 'cancelled_swap'].includes(String(b.status || 'confirmed')))
-          .map(b => b.slot_id);
-        if (myActiveSlotIds.length > 0) {
-          const { data: cycleSlots } = await supabase
-            .from('availability_slots')
-            .select('cyclus_id')
-            .in('id', myActiveSlotIds)
-            .in('cyclus_id', sourceCycleIds);
-          (cycleSlots || []).forEach(cs => { if (cs.cyclus_id) memberCycles.add(cs.cyclus_id); });
+      try {
+        // Second-bucket eligibility via the shared grant (rebooker OR original
+        // cohort OR registered priority list) — one source of truth with the server
+        // tier trigger, so what a viewer can SEE matches what they can BOOK.
+        const results = await Promise.all(
+          sourceCycleIds.map(async (cycleId) => {
+            const { data, error } = await supabase.rpc('can_book_member_window' as never, {
+              _user_id: user.id, _cycle_id: cycleId,
+            } as never);
+            if (error) throw error;
+            return { cycleId, ok: data === true };
+          }),
+        );
+        results.forEach(({ cycleId, ok }) => { if (ok) memberCycles.add(cycleId); });
+      } catch {
+        // Graceful fallback (e.g. frontend deployed before the migration): the
+        // legacy own-bookings derivation grants member visibility to rebookers only.
+        // Strictly narrower than the RPC, so it can never over-reveal.
+        const { data: profile } = await supabase
+          .from('profiles').select('id').eq('user_id', user.id).maybeSingle();
+        if (profile?.id) {
+          const { data: bookings } = await supabase
+            .from('bookings')
+            .select('slot_id, status')
+            .eq('player_id', profile.id);
+          const myActiveSlotIds = (bookings || [])
+            .filter(b => !['cancelled', 'cancelled_swap'].includes(String(b.status || 'confirmed')))
+            .map(b => b.slot_id);
+          if (myActiveSlotIds.length > 0) {
+            const { data: cycleSlots } = await supabase
+              .from('availability_slots')
+              .select('cyclus_id')
+              .in('id', myActiveSlotIds)
+              .in('cyclus_id', sourceCycleIds);
+            (cycleSlots || []).forEach(cs => { if (cs.cyclus_id) memberCycles.add(cs.cyclus_id); });
+          }
         }
       }
     }
