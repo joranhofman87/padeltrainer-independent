@@ -1,15 +1,25 @@
 import { CalendarPlus, Sparkles, RefreshCw, ClipboardList } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SetupHub, type SetupOption } from '@/components/setup/SetupHub';
+import { useTrainerHasAcademy } from '@/hooks/useTrainerHasAcademy';
 
 /**
  * Trainer "Sessions" hub — the trainer-side counterpart to the academy hub. Same idea
  * (explain each way to add sessions + link to it) but wired to the /app/trainer/* routes.
  * "Next round" is the trainer's bulk-copy flow (the whole-group rebook wizard is
  * academy-only).
+ *
+ * Academy-employed trainers only get the two slot cards: /app/trainer/cycles/* is in
+ * TrainerLayout's RESTRICTED_PATHS_FOR_ACADEMY, so the next-round and registration
+ * cards used to silently bounce them to the calendar.
  */
 export default function TrainerSessions() {
   const { t } = useTranslation('trainer');
+  const { data: hasAcademy = false, isLoading: academyLoading } = useTrainerHasAcademy();
+  // Fail-closed while membership loads: on a cold cache an academy trainer must
+  // not see (and click) cards that bounce; independent trainers get the two
+  // extra cards a beat later instead.
+  const hideCycleCards = academyLoading || hasAcademy;
 
   const options: SetupOption[] = [
     {
@@ -40,7 +50,7 @@ export default function TrainerSessions() {
       to: '/app/trainer/slot/generate',
       testId: 'sessions-generate',
     },
-    {
+    ...(hideCycleCards ? [] : [{
       id: 'next-round',
       icon: RefreshCw,
       iconBg: 'bg-emerald-500/10',
@@ -67,7 +77,7 @@ export default function TrainerSessions() {
       cta: t('sessions.registration.cta', 'Inschrijving maken'),
       to: '/app/trainer/cycles/new',
       testId: 'sessions-registration',
-    },
+    }]),
   ];
 
   return (

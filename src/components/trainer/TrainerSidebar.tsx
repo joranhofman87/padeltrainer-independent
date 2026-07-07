@@ -315,6 +315,24 @@ export function TrainerSidebar({ isExpired = false }: TrainerSidebarProps) {
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+
+                  {/* Settings — personal prefs (language/timezone/notifications).
+                      Booking settings & business pages stay academy-managed
+                      (TrainerLayout RESTRICTED_PATHS_FOR_ACADEMY). */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip={t("nav.settings")}>
+                      <NavLink
+                        to="/app/trainer/settings"
+                        className={cn(appNavLinkBase, appNavLinkInactive)}
+                        activeClassName={appNavLinkActive}
+                        onClick={closeMobileDrawer}
+                        data-testid="nav-academy-trainer-settings"
+                      >
+                        <Settings className="h-4 w-4" />
+                        {!collapsed && <span>{t("nav.settings")}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </>
               ) : (
                 <>
