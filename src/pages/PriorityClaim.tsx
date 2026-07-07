@@ -132,6 +132,11 @@ export default function PriorityClaimPage() {
       if (rebookRules) await recordRebookRulesConsent(token);
       const res = await acceptClaimAndStartPayment(token);
       if (res?.ok) {
+        // RB-P2-05: some sessions were full at accept time — tell the player instead of a silent
+        // partial booking. (On a redirect branch the pay page also shows the actual set booked.)
+        if ((res.skippedFull ?? 0) > 0) {
+          toast.warning(t('rebooking.someSessionsFull', '{{n}} sessie(s) waren vol en zijn niet geboekt.', { n: res.skippedFull }));
+        }
         if (res.mode === 'upfront' && res.checkoutUrl) {
           toast.success(t('rebooking.redirectingToPayment', 'Taking you to the payment page…'));
           window.location.href = res.checkoutUrl;

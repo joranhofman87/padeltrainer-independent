@@ -902,6 +902,7 @@
     "cardTitle": "Hou je je vaste plek?",
     "cardDescription": "Je hebt voorrang om je plek voor de volgende cyclus te houden. Je betaalt pas wanneer de cyclus start; de prijs wordt verdeeld over de spelers die meedoen.",
     "toastReserved": "Top! Je plek is gereserveerd voor de volgende cyclus.",
+    "someSessionsFull": "{{n}} sessie(s) waren vol en zijn niet geboekt.",
     "toastReleased": "Je plek is vrijgegeven. Bedankt voor je reactie.",
     "errorFull": "Deze plek is helaas net volgeboekt.",
     "errorExpired": "De reserveringsperiode is verlopen.",

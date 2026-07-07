@@ -41,6 +41,10 @@ export function PlayerRebookCard({ profileId }: { profileId?: string }) {
     try {
       const res = await acceptClaimAndStartPayment(token);
       if (res?.ok) {
+        // RB-P2-05: surface any sessions that were full at accept time (else silent partial booking).
+        if ((res.skippedFull ?? 0) > 0) {
+          toast.warning(t('rebooking.someSessionsFull', '{{n}} sessie(s) waren vol en zijn niet geboekt.', { n: res.skippedFull }));
+        }
         if (res.mode === 'upfront' && res.checkoutUrl) {
           toast.success(t('rebooking.redirectingToPayment', 'Taking you to the payment page…'));
           window.location.href = res.checkoutUrl;
