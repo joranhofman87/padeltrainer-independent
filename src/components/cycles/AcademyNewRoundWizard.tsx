@@ -27,6 +27,7 @@ import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
+import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
 
 interface Props {
   academyProfileId: string;
@@ -98,6 +99,16 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [invitationMessage, setInvitationMessage] = useState('');
   const [invitationSubject, setInvitationSubject] = useState('');
   const [rebookRules, setRebookRules] = useState('');
+  // Priority list: registered players who also get first dibs (+ an email) when the
+  // member window opens, plus the optional message for that "sessions opened" email.
+  const [priorityPeople, setPriorityPeople] = useState<PriorityPerson[]>([]);
+  const [priorityMessage, setPriorityMessage] = useState('');
+
+  // The priority list is only honoured during the member window, so selecting anyone
+  // force-enables it (and the toggle is disabled while the list is non-empty).
+  useEffect(() => {
+    if (priorityPeople.length > 0 && !enableMemberWindow) setEnableMemberWindow(true);
+  }, [priorityPeople, enableMemberWindow]);
 
   useEffect(() => {
     getCycles('academy', academyProfileId)
@@ -141,8 +152,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       invitationMessage: invitationMessage.trim() || null,
       invitationSubject: invitationSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
+      priorityPeople: priorityPeople.map((p) => p.player_id),
+      memberOpenMessage: priorityMessage.trim() || null,
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, rebookRules],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, rebookRules, priorityPeople, priorityMessage],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -385,7 +398,23 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 setEnableMemberWindow={setEnableMemberWindow}
                 memberWindowDays={memberWindowDays}
                 setMemberWindowDays={setMemberWindowDays}
+                lockMemberWindow={priorityPeople.length > 0}
+                lockMemberWindowHint={t('newRound.priorityRequiresMember', 'De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan.')}
               />
+
+              <Card>
+                <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
+                <CardContent>
+                  <RebookPriorityListField
+                    academyProfileId={academyProfileId}
+                    value={priorityPeople}
+                    onChange={setPriorityPeople}
+                    message={priorityMessage}
+                    onMessageChange={setPriorityMessage}
+                    disabled={submitting}
+                  />
+                </CardContent>
+              </Card>
 
               <RebookPaymentModeField
                 academyProfileId={academyProfileId}

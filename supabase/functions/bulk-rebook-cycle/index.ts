@@ -170,6 +170,18 @@ serve(async (req) => {
     const rebookRules: string = typeof body?.rebookRules === "string"
       ? body.rebookRules.trim().slice(0, 8000)
       : "";
+    // Priority list: registered profile ids who also get member-window access + a
+    // "sessions opened" email. Deduped + capped here; validated against the academy's
+    // players below (only after the academy is derived/authorized).
+    const priorityPeopleRaw: string[] = Array.isArray(body?.priorityPeople)
+      ? ([...new Set(body.priorityPeople)] as unknown[])
+          .filter((x): x is string => typeof x === "string" && x.length > 0)
+          .slice(0, 200)
+      : [];
+    // Optional academy message for that email (empty ⇒ default copy in the notifier).
+    const memberOpenMessage: string = typeof body?.memberOpenMessage === "string"
+      ? body.memberOpenMessage.trim().slice(0, 2000)
+      : "";
 
     if (!newStartDate || (!sourceCyclusId && (!academyProfileId || locationIds.length === 0 || !termEndDate))) {
       return new Response(JSON.stringify({ error: "newStartDate plus either sourceCyclusId, or academyProfileId + locationIds + termEndDate, are required" }), {
@@ -456,6 +468,25 @@ serve(async (req) => {
     const singleLocation = locationIds.length === 1
       ? locationIds[0]
       : (sourceCyclusId ? repTemplate.location_id : null); // cyclus mode: inherit the source venue
+
+    // Validate the priority list against THIS academy's registered players, so a
+    // client can't grant an arbitrary profile member-window access to freed seats.
+    let priorityPeople: string[] = [];
+    if (priorityPeopleRaw.length > 0) {
+      const { data: overview } = await supabase.rpc("get_players_overview", {
+        p_scope: "academy", p_scope_id: academyProfileId, p_limit: 5000, p_offset: 0,
+      });
+      const registered = new Set(
+        ((overview ?? []) as Array<{ profile_id: string | null; player_type: string | null }>)
+          .filter((r) => r.player_type === "registered" && r.profile_id)
+          .map((r) => r.profile_id as string),
+      );
+      priorityPeople = priorityPeopleRaw.filter((id) => registered.has(id));
+      if (priorityPeople.length !== priorityPeopleRaw.length) {
+        logStep("priority_people_filtered", { submitted: priorityPeopleRaw.length, kept: priorityPeople.length });
+      }
+    }
+
     const { data: targetCycle, error: tcErr } = await supabase
       .from("cycles")
       .insert({
@@ -468,7 +499,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null },
+        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null },
       })
       .select("id, name")
       .single();
