@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders, requireUser, jsonForbidden } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
+import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -182,6 +183,14 @@ serve(async (req) => {
     const memberOpenMessage: string = typeof body?.memberOpenMessage === "string"
       ? body.memberOpenMessage.trim().slice(0, 2000)
       : "";
+    // Trainer/session exclusion (cohort wizard): series to NOT rebook (by seriesKey),
+    // and the subset whose registered players move to the second bucket (member window).
+    const excludedSeriesKeys: string[] = Array.isArray(body?.excludedSeriesKeys)
+      ? (body.excludedSeriesKeys as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    const secondBucketSeriesKeys: string[] = Array.isArray(body?.secondBucketSeriesKeys)
+      ? (body.secondBucketSeriesKeys as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
 
     if (!newStartDate || (!sourceCyclusId && (!academyProfileId || locationIds.length === 0 || !termEndDate))) {
       return new Response(JSON.stringify({ error: "newStartDate plus either sourceCyclusId, or academyProfileId + locationIds + termEndDate, are required" }), {
@@ -296,9 +305,10 @@ serve(async (req) => {
       });
     }
 
-    // 3. Bookings on the qualifying source slots → cohort membership.
+    // 3. Bookings on the qualifying source slots → cohort membership. Gather ALL
+    //    qualifying series' bookings (not just the included ones) so excluded series'
+    //    players can be resolved for the second bucket.
     const bookingsBySlot = new Map<string, { player_id: string | null; guest_player_id: string | null }[]>();
-    const playerSet = new Set<string>();
     for (let i = 0; i < allQualifyingSlotIds.length; i += 200) {
       const batch = allQualifyingSlotIds.slice(i, i + 200);
       const { data: bks } = await supabase
@@ -311,11 +321,41 @@ serve(async (req) => {
         const arr = bookingsBySlot.get(b.slot_id) ?? [];
         arr.push({ player_id: b.player_id, guest_player_id: b.guest_player_id });
         bookingsBySlot.set(b.slot_id, arr);
-        playerSet.add(b.player_id ?? `g:${b.guest_player_id}`);
       }
     }
 
+    // Trainer/session exclusion: split the qualifying series into the ones we rebook
+    // (included) and the ones the owner dropped, and collect the registered players of
+    // dropped series they chose to move to the second bucket — minus anyone still in an
+    // included series (they get a real claim). See _shared/rebook-exclusion.ts.
+    const seriesForExclusion = qualifyingSeries.map((series) => {
+      const pids = new Set<string>();
+      for (const src of series) {
+        for (const b of bookingsBySlot.get(src.id) ?? []) if (b.player_id) pids.add(b.player_id);
+      }
+      return { seriesKey: seriesKey(series[0]), registeredPlayerIds: [...pids] };
+    });
+    const exclusion = computeRebookExclusion(seriesForExclusion, excludedSeriesKeys, secondBucketSeriesKeys);
+    const includedSeries = qualifyingSeries.filter((s) => exclusion.includedKeys.has(seriesKey(s[0])));
+    // Distinct players across the INCLUDED series only (a player in two series counts
+    // once) — the "N invitations" headline + the create-path player count.
+    const includedPlayerSet = new Set<string>();
+    for (const series of includedSeries) {
+      for (const src of series) {
+        for (const b of bookingsBySlot.get(src.id) ?? []) includedPlayerSet.add(b.player_id ?? `g:${b.guest_player_id}`);
+      }
+    }
+    // Merge the moved-to-second-bucket players into the priority list (validated below).
+    const priorityPeopleWithExcluded = [...new Set([...priorityPeopleRaw, ...exclusion.secondBucketProfileIds])].slice(0, 200);
+
+    if (!dryRun && includedSeries.length === 0) {
+      return new Response(JSON.stringify({ ok: false, reason: "nothing_to_rebook" }), {
+        status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
     // Suggested defaults from the source term: most common price + length in weeks.
+    // (Computed over the FULL qualifying set — form defaults must not lurch as the owner excludes.)
     const suggestedPrice = mode(qualifyingSeries.flat().map((s) => s.price_per_session).filter((p): p is number => p != null));
     const suggestedWeeks = Math.max(
       ...qualifyingSeries.map((series) => {
@@ -361,6 +401,29 @@ serve(async (req) => {
       await loadInfo("profiles", [...playerIds], "");
       await loadInfo("guest_players", [...guestIds], "g:");
 
+      // Trainer display names for the review (trainer_id = trainer_profiles.id → profiles.full_name).
+      const trainerIds = [...new Set(qualifyingSeries.map((s) => s[0].trainer_id).filter((x): x is string => !!x))];
+      const trainerNameById = new Map<string, string>();
+      if (trainerIds.length > 0) {
+        const { data: tps } = await supabase.from("trainer_profiles").select("id, user_id").in("id", trainerIds);
+        const userByTrainer = new Map<string, string>();
+        const userIds: string[] = [];
+        for (const t of (tps ?? []) as Array<{ id: string; user_id: string | null }>) {
+          if (t.user_id) { userByTrainer.set(t.id, t.user_id); userIds.push(t.user_id); }
+        }
+        if (userIds.length > 0) {
+          const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", userIds);
+          const nameByUser = new Map<string, string>();
+          for (const p of (profs ?? []) as Array<{ user_id: string; full_name: string | null }>) {
+            nameByUser.set(p.user_id, (p.full_name ?? "").trim());
+          }
+          for (const [tid, uid] of userByTrainer) {
+            const n = nameByUser.get(uid);
+            if (n) trainerNameById.set(tid, n);
+          }
+        }
+      }
+
       const groupsDetail = qualifyingSeries.map((series) => {
         const tmpl = series[0];
         const d = new Date(tmpl.start_time);
@@ -382,6 +445,11 @@ serve(async (req) => {
         const splitPayment = tmpl.split_payment === true;
         const invoiceTotal = P == null ? null : (splitPayment ? P * sessions : P * sessions * N);
         return {
+          // Stable join key between the review UI and the create loop (survives the
+          // players>0 filter, which breaks index-alignment with qualifyingSeries).
+          sourceSeriesKey: seriesKey(tmpl),
+          trainerId: tmpl.trainer_id,
+          trainerName: tmpl.trainer_id ? (trainerNameById.get(tmpl.trainer_id) ?? null) : null,
           weekday: weekdayFmt.format(d),
           time: timeFmt.format(d),
           locationId: tmpl.location_id,
@@ -394,9 +462,12 @@ serve(async (req) => {
           roster,
         };
       }).filter((g) => g.players > 0);
-      const totalSessions = groupsDetail.reduce((sum, g) => sum + g.sessions * g.players, 0);
-      const noEmailTotal = groupsDetail.reduce((sum, g) => sum + g.noEmailCount, 0);
-      const grandInvoiceTotal = groupsDetail.reduce((sum, g) => sum + (g.invoiceTotal ?? 0), 0);
+      // groupsDetail lists EVERY series (so the review can show + toggle them); the
+      // headline totals reflect only the INCLUDED (not-excluded) series.
+      const includedDetail = groupsDetail.filter((g) => exclusion.includedKeys.has(g.sourceSeriesKey));
+      const totalSessions = includedDetail.reduce((sum, g) => sum + g.sessions * g.players, 0);
+      const noEmailTotal = includedDetail.reduce((sum, g) => sum + g.noEmailCount, 0);
+      const grandInvoiceTotal = includedDetail.reduce((sum, g) => sum + (g.invoiceTotal ?? 0), 0);
       // Whether the source prices are VAT-inclusive (the new round inherits this), so the
       // wizard can label the price field. Majority of the qualifying series; null if none.
       const vatFlags = qualifyingSeries.map((s) => s[0].prices_include_vat === true);
@@ -404,8 +475,8 @@ serve(async (req) => {
       const pricesIncludeVat = vatFlags.length === 0 ? null : inclCount >= vatFlags.length - inclCount;
       return new Response(JSON.stringify({
         ok: true, dryRun: true,
-        groups: qualifyingSeries.length,
-        players: playerSet.size,
+        groups: includedDetail.length,
+        players: includedPlayerSet.size,
         suggestedWeeks,
         suggestedPrice,
         pricesIncludeVat,
@@ -414,6 +485,8 @@ serve(async (req) => {
         totalSessions,
         noEmailTotal,
         grandInvoiceTotal,
+        // How many registered players the current exclusions would move to the second bucket.
+        secondBucketAddedCount: exclusion.secondBucketProfileIds.length,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
     const effName = targetCycleName || "Volgende ronde";
@@ -462,7 +535,7 @@ serve(async (req) => {
     //    slot + claim is written, so a mid-run failure/timeout leaves an invisible
     //    draft (cleaned up on retry) instead of a half-built 'open' round that a retry
     //    would refuse with already_exists.
-    const repTemplate = qualifyingSeries[0][0];
+    const repTemplate = includedSeries[0][0];
     const cyclePrice = sessionPrice ?? suggestedPrice ?? repTemplate.price_per_session;
     const newEndDate = new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
     const singleLocation = locationIds.length === 1
@@ -472,7 +545,7 @@ serve(async (req) => {
     // Validate the priority list against THIS academy's registered players, so a
     // client can't grant an arbitrary profile member-window access to freed seats.
     let priorityPeople: string[] = [];
-    if (priorityPeopleRaw.length > 0) {
+    if (priorityPeopleWithExcluded.length > 0) {
       const { data: overview } = await supabase.rpc("get_players_overview", {
         p_scope: "academy", p_scope_id: academyProfileId, p_limit: 5000, p_offset: 0,
       });
@@ -481,9 +554,9 @@ serve(async (req) => {
           .filter((r) => r.player_type === "registered" && r.profile_id)
           .map((r) => r.profile_id as string),
       );
-      priorityPeople = priorityPeopleRaw.filter((id) => registered.has(id));
-      if (priorityPeople.length !== priorityPeopleRaw.length) {
-        logStep("priority_people_filtered", { submitted: priorityPeopleRaw.length, kept: priorityPeople.length });
+      priorityPeople = priorityPeopleWithExcluded.filter((id) => registered.has(id));
+      if (priorityPeople.length !== priorityPeopleWithExcluded.length) {
+        logStep("priority_people_filtered", { submitted: priorityPeopleWithExcluded.length, kept: priorityPeople.length });
       }
     }
 
@@ -537,7 +610,9 @@ serve(async (req) => {
       //    group — so one Yes rebooks the whole new term. Inserts are BATCHED per
       //    series (one slot insert + chunked claim inserts) so a 20-group term is a few
       //    dozen round-trips, not thousands.
-      for (const series of qualifyingSeries) {
+      //    Excluded series (trainer deselected / session removed) are omitted here;
+      //    their moved players were folded into rebook_priority_people above.
+      for (const series of includedSeries) {
         const tmpl = series[0];
         const durationMs = new Date(tmpl.end_time).getTime() - new Date(tmpl.start_time).getTime();
         const effPrice = sessionPrice ?? tmpl.price_per_session;
@@ -683,7 +758,7 @@ serve(async (req) => {
         }
       }
 
-      logStep("done", { targetCycle: targetCycle.id, groups: qualifyingSeries.length, players: playerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
+      logStep("done", { targetCycle: targetCycle.id, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
       // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
       if (failedClaimIds.length > 0) {
         await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targetCycle.id, invitesSent, failedClaimIds });
@@ -691,8 +766,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         ok: true,
         targetCycleId: targetCycle.id,
-        groups: qualifyingSeries.length,
-        players: playerSet.size,
+        groups: includedSeries.length,
+        players: includedPlayerSet.size,
         slotsCopied,
         claimsCreated,
         invitesSent,
