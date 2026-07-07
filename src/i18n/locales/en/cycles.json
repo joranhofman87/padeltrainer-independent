@@ -790,6 +790,7 @@
     "cardTitle": "Keep your spot?",
     "cardDescription": "You have priority to keep your spot for the next cycle. You only pay when the cycle starts; the price is split between the players who join.",
     "toastReserved": "Great! Your spot is reserved for the next cycle.",
+    "someSessionsFull": "{{n}} session(s) were full and were not booked.",
     "toastReleased": "Your spot has been released. Thanks for your response.",
     "errorFull": "This spot was just filled.",
     "errorExpired": "The reservation period has expired.",

@@ -810,6 +810,8 @@ export interface AcceptAndPayResult {
   mode?: 'deferred' | 'upfront' | 'upfront_invoiced' | 'upfront_unavailable' | 'strict_mollie_unavailable';
   checkoutUrl?: string;
   publicToken?: string;
+  /** RB-P2-05: sessions in the cyclus that were full at accept time and NOT booked (upfront path). */
+  skippedFull?: number;
 }
 
 /**
@@ -876,6 +878,8 @@ export interface PublicRebookInvoiceResult {
   publicToken?: string;
   status?: string;
   checkoutUrl?: string;
+  /** RB-P2-05: sessions in the cyclus that were full at accept time and NOT booked/invoiced. */
+  skippedFull?: number;
 }
 
 /**
@@ -928,8 +932,8 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     // result is handled here (the public fn already accepted the claim server-side, so we must NOT
     // fall through and re-accept — that would show a misleading "already responded").
     if (res && res.reason !== 'is_group' && res.reason !== 'invoke_failed' && res.reason !== 'claim_not_found') {
-      if (res.ok && res.checkoutUrl) return { ok: true, status: 'claimed', mode: 'upfront', checkoutUrl: res.checkoutUrl };
-      if (res.ok && res.publicToken) return { ok: true, status: 'claimed', mode: 'upfront_invoiced', publicToken: res.publicToken };
+      if (res.ok && res.checkoutUrl) return { ok: true, status: 'claimed', mode: 'upfront', checkoutUrl: res.checkoutUrl, skippedFull: res.skippedFull };
+      if (res.ok && res.publicToken) return { ok: true, status: 'claimed', mode: 'upfront_invoiced', publicToken: res.publicToken, skippedFull: res.skippedFull };
       if (res.reason === 'strict_mollie_unavailable') return { ok: true, status: 'pending', mode: 'strict_mollie_unavailable' };
       // Booked server-side but no checkout/invoice (e.g. the academy's payment setup is incomplete):
       // the seat is reserved — surface that (manual follow-up), don't lose it or double-accept.

@@ -118,6 +118,7 @@ Deno.serve(async (req: Request) => {
     // single-claim RPC path books one slot per call. A failed sibling (e.g. slot_full) must not block
     // the rest.
     let strict = false;
+    const requestedPending = (myClaims as { claim_token: string; status: string }[]).filter((mc) => mc.status === "pending").length;
     for (const mc of myClaims as { claim_token: string; status: string }[]) {
       if (mc.status !== "pending") continue;
       const { data: acc, error: accErr } = await admin.rpc("respond_to_priority_claim", {
@@ -138,6 +139,10 @@ Deno.serve(async (req: Request) => {
     const { data: booked } = await bq;
     const bookingIds = [...new Set((booked ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean))] as string[];
     if (bookingIds.length === 0) return json({ ok: false, reason: "nothing_booked" });
+    // RB-P2-05: some sessions in the cyclus may have been full at accept time and skipped
+    // (the accept loop continues past a slot_full sibling). Surface the count so the client can
+    // tell the player "N sessions were full" instead of a silent partial booking + partial invoice.
+    const skippedFull = Math.max(0, requestedPending - bookingIds.length);
 
     // After we've booked seats, a mint failure must RELEASE the seats on a STRICT cycle (no seat
     // without an online payment) and report strict_mollie_unavailable; a NON-strict cycle keeps the
@@ -199,7 +204,7 @@ Deno.serve(async (req: Request) => {
       await undoSeats(bookingIds);
       return json({ ok: false, reason: "strict_mollie_unavailable" });
     }
-    return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status, checkoutUrl });
+    return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status, checkoutUrl, skippedFull });
   } catch (e) {
     const message = String((e as Error)?.message ?? e);
     await notifySlackEdgeError("create-rebook-invoice-public", message);
