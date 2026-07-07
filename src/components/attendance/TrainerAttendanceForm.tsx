@@ -182,7 +182,7 @@ export function TrainerAttendanceForm({ slotId, players, onSaved }: TrainerAtten
           value={publicNotes}
           onChange={e => setPublicNotes(e.target.value)}
           placeholder={t('attendance.sessionSummaryPlaceholder', 'What was practiced today...')}
-          className="min-h-[60px] text-xs"
+          className="min-h-[60px] md:text-xs"
         />
       </div>
 
@@ -192,7 +192,7 @@ export function TrainerAttendanceForm({ slotId, players, onSaved }: TrainerAtten
           value={privateNotes}
           onChange={e => setPrivateNotes(e.target.value)}
           placeholder={t('attendance.privateNotesPlaceholder', 'Internal notes...')}
-          className="min-h-[60px] text-xs"
+          className="min-h-[60px] md:text-xs"
         />
       </div>
 
