@@ -340,6 +340,52 @@ serve(async (req) => {
         );
       }
 
+      // RB01 tier gate — authenticated single-slot (no bookingIds) creation path.
+      // This branch books via the service-role book_slot_for_payment RPC, which
+      // bypasses the enforce_booking_slot_tier trigger (auth.uid() is NULL under
+      // service role). Refuse here — before computing the amount, minting Mollie, or
+      // holding a seat — if the logged-in caller isn't eligible for the slot's tier
+      // (hidden priority/member seat). Mirrors the guest path's resolveSlotTier refusal.
+      // The bookingIds branch above pays EXISTING, already-tier-checked bookings and is
+      // intentionally NOT gated. book_slot_for_payment re-checks tier as the hard boundary.
+      {
+        const { data: bookReason, error: gateError } = await supabase.rpc("can_book_slot", {
+          _slot_id: slotId,
+          _user_id: user.id,
+        });
+        if (gateError) {
+          // Deploy order is enforced (migration first, then this function). Tolerate a
+          // genuinely-missing RPC by failing OPEN — but alert LOUDLY; the RPC gate inside
+          // book_slot_for_payment still enforces. Any other error is a hard failure.
+          const missing =
+            gateError.code === "PGRST202" ||
+            gateError.code === "42883" ||
+            (gateError.message || "").includes("can_book_slot");
+          if (missing) {
+            logStep("can_book_slot missing — failing open; RPC gate still enforces", { code: gateError.code });
+            await notifySlack(supabase, "edge_function_error", {
+              function: "create-mollie-payment",
+              error: "can_book_slot RPC missing — tier pre-check skipped (deploy order violated)",
+              slotId,
+            });
+            await writeAuditLog(supabase, {
+              function_name: "create-mollie-payment",
+              status: "error",
+              error_message: "can_book_slot missing — tier pre-check skipped (deploy order violated)",
+              metadata: { slotId },
+            });
+          } else {
+            throw new Error(`Tier check failed: ${gateError.message}`);
+          }
+        } else if (typeof bookReason === "string" && bookReason !== "") {
+          logStep("Refused — slot tier not bookable by caller", { slotId, reason: bookReason });
+          return new Response(
+            JSON.stringify({ error: "slot_not_bookable", reason: bookReason }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
       recipientAcademyProfileId = (slot as { academy_profile_id: string | null }).academy_profile_id ?? null;
       // Base session price + the slot's extra costs (balls, court hire, …). The player is
       // quoted price_per_session + extras on the booking screen, so the charge — and thus
