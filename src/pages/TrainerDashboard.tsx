@@ -19,6 +19,7 @@ import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader'
 import { supabase } from '@/lib/supabaseClient';
 import { sumReceivedInRange } from '@/lib/trainerEarnings';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import { useTranslation } from 'react-i18next';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { getTrainerShortUrl } from '@/lib/domains';
@@ -288,7 +289,8 @@ function paymentBadgeVariant(status: string): 'success' | 'warning' | 'muted' {
 export default function TrainerDashboard() {
   const { user, profile, role, loading, subscription } = useAuth();
   const navigate = useNavigate();
-  const { t } = useTranslation('trainer');
+  const { t, i18n } = useTranslation('trainer');
+  const dfLocale = getDateFnsLocale(i18n.language);
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['trainer-stats', user?.id],
@@ -475,7 +477,7 @@ export default function TrainerDashboard() {
                           ? `${cyclusName} (${booking.sessionCount} ${sessionLabel})`
                           : undefined
                       }
-                      meta={format(new Date(booking.created_at), 'dd MMM yyyy')}
+                      meta={format(new Date(booking.created_at), 'dd MMM yyyy', { locale: dfLocale })}
                       trailing={
                         <DashboardPaymentBadge
                           status={booking.payment_status}
@@ -512,7 +514,7 @@ export default function TrainerDashboard() {
                       key={slot.cyclus_id || slot.id}
                       primary={slot.cyclus_name || locationName || '—'}
                       secondary={`${slot.sessionCount} ${sessionLabel}`}
-                      meta={`${format(new Date(slot.start_time), 'EEE dd MMM')} · ${format(new Date(slot.start_time), 'HH:mm')}`}
+                      meta={`${format(new Date(slot.start_time), 'EEE dd MMM', { locale: dfLocale })} · ${format(new Date(slot.start_time), 'HH:mm')}`}
                     />
                   );
                 })}

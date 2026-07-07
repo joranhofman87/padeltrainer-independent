@@ -30,6 +30,8 @@ import { InvoiceListTable } from "@/components/invoices/InvoiceListTable";
 import { InvoiceEmailDialog } from "@/components/invoices/InvoiceEmailDialog";
 import { BulkInvoiceEmailDialog } from "@/components/invoices/BulkInvoiceEmailDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListPageSkeleton } from "@/components/ui/list-page-skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -602,11 +604,10 @@ export default function TrainerInvoices() {
 
             <TabsContent value={activeTab} className="mt-4">
               {isLoading ? (
-                <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+                <ListPageSkeleton />
               ) : filteredInvoices.length === 0 ? (
-                <Card><CardContent className="py-12 text-center text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                  <p>{t("invoices.noInvoices", "Geen facturen gevonden")}</p>
+                <Card><CardContent className="py-6">
+                  <EmptyState icon={FileText} variant="trainer" title={t("invoices.noInvoices", "Geen facturen gevonden")} />
                 </CardContent></Card>
               ) : (
                 <>
@@ -624,7 +625,7 @@ export default function TrainerInvoices() {
                     onRowClick={(inv) => navigate(`/app/trainer/invoices/${inv.id}/edit`)}
                     rowHref={(inv) => `/app/trainer/invoices/${inv.id}/edit`}
                     labels={{
-                      selectAll: "Select all",
+                      selectAll: t("invoices.selectAll", "Select all"),
                       number: t("invoices.number", "Nummer"),
                       player: t("invoices.player", "Klant"),
                       delivery: tDelivery("emailDelivery.column", "Delivery"),
@@ -634,8 +635,8 @@ export default function TrainerInvoices() {
                       amount: t("invoices.amount", "Bedrag"),
                       status: t("invoices.status", "Status"),
                       actions: t("invoices.actions", "Acties"),
-                      selectRow: (n) => `Select ${n}`,
-                      forwardedOn: (d) => `Doorgestuurd op ${d}`,
+                      selectRow: (n) => t("invoices.selectRow", "Select {{name}}", { name: n }),
+                      forwardedOn: (d) => t("invoices.forwardedOn", "Doorgestuurd op {{date}}", { date: d }),
                     }}
                     renderActions={(inv) => (
                       <>

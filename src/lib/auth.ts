@@ -3,6 +3,7 @@ import { getAuthRedirectUrl } from "@/lib/domains";
 import { logger } from '@/lib/logger';
 import { buildFullName } from '@/lib/profileName';
 import { createSignupFailure, extractSignupResponseError, normalizeSignupFailure, SIGNUP_ERROR_CODE } from '@/lib/signupErrors';
+import { clearCachedSubscription } from '@/lib/subscriptionCache';
 
 export type { SignupFailure, SignupErrorCode } from '@/lib/signupErrors';
 export { SIGNUP_ERROR_CODE, isSignupEmailAlreadyRegistered, normalizeSignupFailure } from '@/lib/signupErrors';
@@ -437,6 +438,8 @@ export async function completeOAuthSignup(
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
+  // A cached entitlement must not leak to the next account on this device.
+  clearCachedSubscription();
   return { error };
 }
 

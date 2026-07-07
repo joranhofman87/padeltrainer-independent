@@ -10,6 +10,7 @@ import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare, Euro } from 'lucid
 import { ExtraCostPresetsCard } from '@/components/settings/ExtraCostPresetsCard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
@@ -68,7 +69,7 @@ export default function TrainerBookingSettings() {
     if (error) {
       toast({
         title: t('common:error'),
-        description: 'Failed to update setting',
+        description: t('bookingSettings.updateFailed', 'Failed to update setting'),
         variant: 'destructive',
       });
     } else {
@@ -158,11 +159,7 @@ export default function TrainerBookingSettings() {
   };
 
   if (loading || loadingSettings) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   return (

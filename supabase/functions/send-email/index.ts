@@ -1448,11 +1448,16 @@ const handler = async (req: Request): Promise<Response> => {
         ? "/app/trainer/settings/notifications"
         : "/app/player/settings/notifications";
 
+      // Footer follows the email body's language — an NL body used to end in an
+      // English footer.
+      const footerCopy = language === "nl"
+        ? { from: "Je ontvangt deze e-mail van PadelTrainer.ai.", manage: "E-mailmeldingen beheren" }
+        : { from: "You're receiving this email from PadelTrainer.ai.", manage: "Manage email notifications" };
       finalHtml += `
         <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
           <p style="color: #6b7280; font-size: 12px; text-align: center;">
-            You're receiving this email from PadelTrainer.ai.<br/>
-            <a href="https://padeltrainer.ai${notifPath}" style="color: #6b7280; text-decoration: underline;">Manage email notifications</a>
+            ${footerCopy.from}<br/>
+            <a href="https://padeltrainer.ai${notifPath}" style="color: #6b7280; text-decoration: underline;">${footerCopy.manage}</a>
           </p>
         </div>
       `;

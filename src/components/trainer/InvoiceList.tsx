@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Card, CardContent } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
@@ -399,16 +400,15 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
       {/* Invoice List */}
       {filteredInvoices.length === 0 ? (
-        <Card className={flushOnMobileCardClass("p-8 text-center")}>
-          <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="font-semibold text-lg mb-2">
-            {statusFilter === 'all'
-              ? 'Nog geen facturen'
-              : `Geen ${t(`invoiceStatus.${statusFilter}`, { ns: 'common' }).toLowerCase()} facturen`}
-          </h3>
-          <p className="text-muted-foreground">
-            Maak je eerste factuur aan via de pending payments tab.
-          </p>
+        <Card className={flushOnMobileCardClass()}>
+          <EmptyState
+            icon={FileText}
+            variant="trainer"
+            title={statusFilter === 'all'
+              ? t('invoiceList.emptyTitle', 'Nog geen facturen')
+              : t('invoiceList.emptyFilteredTitle', 'Geen {{status}} facturen', { status: t(`invoiceStatus.${statusFilter}`, { ns: 'common' }).toLowerCase() })}
+            description={t('invoiceList.emptyDescription', 'Maak je eerste factuur aan via de openstaande betalingen.')}
+          />
         </Card>
       ) : (
         filteredInvoices.map((invoice) => (

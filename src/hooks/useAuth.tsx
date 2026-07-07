@@ -7,6 +7,7 @@ import { isUserClubManager } from '@/lib/club';
 import { logger } from '@/lib/logger';
 import { isUserAcademyManager } from '@/lib/academy';
 import { identifyUser, resetUser } from '@/lib/tracking';
+import { logSubscriptionFallback, readCachedSubscription, writeCachedSubscription } from '@/lib/subscriptionCache';
 import i18n from '@/i18n';
 
 interface AuthContextType {
@@ -158,50 +159,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileReady(true);
   };
 
+  // A FAILED check must not read as "expired": the old single-shot fallback set
+  // isSubscribed/isInTrial false, so one network flake hard-locked PAYING trainers
+  // into the paywall with a dead sidebar (TrainerLayout redirects on it). Retry,
+  // then fall back to the in-memory state from this session, then to the
+  // last-known-good cache from a recent successful check; fail closed only when
+  // this device has never seen an entitlement.
   const fetchSubscription = useCallback(async () => {
     if (!session?.access_token) {
       setSubscription(null);
       return;
     }
+    const userId = session.user?.id ?? '';
 
-    try {
-      const { data, error } = await supabase.functions.invoke('check-stripe-subscription', {
-        body: { type: 'trainer' },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) {
-        logger.error('Error fetching subscription', error as Error, { component: 'useAuth' });
-        setSubscription({
-          isSubscribed: false,
-          tier: 'trial',
-          subscriptionEnd: null,
-          trialEndsAt: null,
-          isInTrial: false,
-          isPublic: false,
-          managedByAcademy: false,
-          academyName: null,
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1000));
+      try {
+        const { data, error } = await supabase.functions.invoke('check-stripe-subscription', {
+          body: { type: 'trainer' },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         });
+        if (error) throw error;
+
+        const tier = data.tier || 'trial';
+        const next: SubscriptionInfo = {
+          isSubscribed: data.subscribed,
+          tier: tier as SubscriptionTier,
+          subscriptionEnd: data.endsAt || null,
+          trialEndsAt: data.trialEndsAt || null,
+          isInTrial: data.status === 'trialing',
+          isPublic: data.isPublic ?? false,
+          managedByAcademy: data.managedByAcademy ?? false,
+          academyName: data.academyName ?? null,
+        };
+        setSubscription(next);
+        if (userId) writeCachedSubscription(userId, next);
         return;
+      } catch (err) {
+        lastError = err;
       }
+    }
 
-      const tier = data.tier || 'trial';
-
-      setSubscription({
-        isSubscribed: data.subscribed,
-        tier: tier as SubscriptionTier,
-        subscriptionEnd: data.endsAt || null,
-        trialEndsAt: data.trialEndsAt || null,
-        isInTrial: data.status === 'trialing',
-        isPublic: data.isPublic ?? false,
-        managedByAcademy: data.managedByAcademy ?? false,
-        academyName: data.academyName ?? null,
-      });
-    } catch (err) {
-      logger.error('Error fetching subscription', err as Error, { component: 'useAuth' });
-      setSubscription({
+    logger.error('Error fetching subscription after retries', lastError as Error, { component: 'useAuth' });
+    const cached = userId ? readCachedSubscription(userId) : null;
+    setSubscription((prev) => {
+      if (prev) {
+        logSubscriptionFallback('memory');
+        return prev;
+      }
+      if (cached) {
+        logSubscriptionFallback('cache');
+        return cached;
+      }
+      logSubscriptionFallback('fail_closed');
+      return {
         isSubscribed: false,
         tier: 'trial',
         subscriptionEnd: null,
@@ -210,9 +224,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isPublic: false,
         managedByAcademy: false,
         academyName: null,
-      });
-    }
-  }, [session?.access_token]);
+      };
+    });
+  }, [session?.access_token, session?.user?.id]);
 
   const refreshAuth = async () => {
     if (user) {
@@ -245,6 +259,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedRef.current = nextSession.user.id;
         setProfileReady(false);
         setProfileFetchFailed(false);
+        // Different user in this same provider instance — drop the previous user's
+        // subscription so the fetchSubscription fail-open (prev-keep) can never hand
+        // it to the new user before their own check resolves.
+        setSubscription(null);
 
         await Promise.race([
           fetchUserData(nextSession.user.id),

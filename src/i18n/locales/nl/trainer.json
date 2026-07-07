@@ -165,7 +165,17 @@
     "allLevels": "Alle niveaus welkom",
     "academy": "Academy",
     "branding": "Profiel branding",
-    "brandingDescription": "Laat je profiel opvallen"
+    "brandingDescription": "Laat je profiel opvallen",
+    "copyLinkFailed": "Link kopiëren is niet gelukt",
+    "preview": {
+      "title": "Voorbeeldweergave",
+      "message": "Spelers kunnen dit nog niet zien. Zo ziet je profiel eruit zodra je het publiceert.",
+      "editProfile": "Profiel bewerken",
+      "addAvailability": "Beschikbaarheid toevoegen",
+      "published": "Profiel gepubliceerd!",
+      "publish": "Profiel publiceren",
+      "upgradeToPublish": "Upgrade om te publiceren"
+    }
   },
   "dashboard": {
     "greeting": "Fijn dat je er bent, {{name}}",
@@ -1135,7 +1145,8 @@
     "recurringSummary_one": "Maakt {{count}} sessie op {{day}} {{startDate}} om {{time}}",
     "recurringSummary_other": "Maakt {{count}} sessies elke {{day}} om {{time}}, van {{startDate}} tot {{endDate}}",
     "generateCycleDescription_one": "Dit maakt {{count}} terugkerend slot met {{sessionCount}} sessies in totaal",
-    "generateCycleDescription_other": "Dit maakt {{count}} terugkerende slots met {{sessionCount}} sessies in totaal"
+    "generateCycleDescription_other": "Dit maakt {{count}} terugkerende slots met {{sessionCount}} sessies in totaal",
+    "editCyclePricing": "Cyclusprijzen bewerken →"
   },
   "openSlots": {
     "title": "Open trainingsslots",
@@ -1204,7 +1215,8 @@
     "vatBulkUpdateCancel": "Nee, alleen nieuwe sessies",
     "vatBulkUpdateSuccess": "{{slots}} sessies en {{invoices}} facturen bijgewerkt",
     "vatBulkUpdateError": "Fout bij het bijwerken van bestaande sessies en facturen",
-    "genericError": "Kon de instelling niet opslaan. Probeer het opnieuw."
+    "genericError": "Kon de instelling niet opslaan. Probeer het opnieuw.",
+    "updateFailed": "Instelling opslaan is niet gelukt"
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. kom binnenkort terug!",
   "clearFilters": "Filters wissen",
@@ -1327,7 +1339,10 @@
       "unknownUser": "een gebruiker",
       "loading": "Laden…",
       "none": "Geen statuswijzigingen vastgelegd"
-    }
+    },
+    "selectAll": "Alles selecteren",
+    "selectRow": "Selecteer {{name}}",
+    "forwardedOn": "Doorgestuurd op {{date}}"
   },
   "profileVisibility": {
     "title": "Zichtbaarheid marktplaats",
@@ -1582,7 +1597,8 @@
     "paymentRecordedDescription": "De boeking is gemarkeerd als betaald",
     "invoiceSyncFailed": "Betaling geregistreerd, maar een gekoppelde factuur kon niet worden bijgewerkt. Controleer de factuur.",
     "markPaidError": "Kon de betaling niet opslaan. Probeer het opnieuw.",
-    "settingsUpdateError": "Kon je betalingsinstellingen niet bijwerken. Probeer het opnieuw."
+    "settingsUpdateError": "Kon je betalingsinstellingen niet bijwerken. Probeer het opnieuw.",
+    "mollieConnectFailed": "Verbinden met Mollie is niet gelukt"
   },
   "analyticsPage": {
     "title": "Statistieken",
@@ -1880,5 +1896,10 @@
   "invoiceEdit": {
     "lockedCancelled": "Geannuleerde facturen kunnen niet meer worden gewijzigd.",
     "lockedPaid": "Betaalde facturen kunnen niet meer worden gewijzigd. Maak een creditfactuur."
+  },
+  "invoiceList": {
+    "emptyTitle": "Nog geen facturen",
+    "emptyFilteredTitle": "Geen {{status}} facturen",
+    "emptyDescription": "Maak je eerste factuur aan via de openstaande betalingen."
   }
 }

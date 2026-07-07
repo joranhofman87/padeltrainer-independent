@@ -1418,5 +1418,10 @@
       "loadError": "Kon de sessie niet laden. Probeer het opnieuw.",
       "error": "Bijwerken mislukt. Probeer het opnieuw."
     }
+  },
+  "cycleForm": {
+    "minMaxGroupSize": "Minimale groepsgrootte moet ≤ maximale groepsgrootte zijn",
+    "startDateRequired": "Startdatum is verplicht",
+    "noDeadline": "Geen deadline"
   }
 }

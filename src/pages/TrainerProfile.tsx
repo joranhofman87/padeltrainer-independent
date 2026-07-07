@@ -252,7 +252,7 @@ export default function TrainerProfile() {
       toast.success(t('profile.linkCopied'));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Failed to copy link');
+      toast.error(t('profile.copyLinkFailed', 'Failed to copy link'));
     }
   };
 
@@ -418,12 +418,12 @@ export default function TrainerProfile() {
             <AlertDescription>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <p className="font-medium text-amber-800 dark:text-amber-300">Preview mode</p>
-                  <p className="text-sm text-amber-700 dark:text-amber-400">Players can't see this yet. This is how your profile will look when you publish.</p>
+                  <p className="font-medium text-amber-800 dark:text-amber-300">{t('profile.preview.title', 'Preview mode')}</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">{t('profile.preview.message', "Players can't see this yet. This is how your profile will look when you publish.")}</p>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/profile')}>Edit profile</Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>Add availability</Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/profile')}>{t('profile.preview.editProfile', 'Edit profile')}</Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate('/app/trainer/calendar')}>{t('profile.preview.addAvailability', 'Add availability')}</Button>
                   {subscription && canBeVisible(subscription) ? (
                     <Button size="sm" onClick={async () => {
                       const { error } = await supabase
@@ -431,12 +431,12 @@ export default function TrainerProfile() {
                         .update({ is_public: true })
                         .eq('user_id', user.id);
                       if (!error) {
-                        toast.success('Profile published!');
+                        toast.success(t('profile.preview.published', 'Profile published!'));
                         window.location.reload();
                       }
-                    }}>Publish profile</Button>
+                    }}>{t('profile.preview.publish', 'Publish profile')}</Button>
                   ) : (
-                    <Button size="sm" onClick={() => navigate('/trainer/subscription')}>Upgrade to publish</Button>
+                    <Button size="sm" onClick={() => navigate('/trainer/subscription')}>{t('profile.preview.upgradeToPublish', 'Upgrade to publish')}</Button>
                   )}
                 </div>
               </div>

@@ -231,10 +231,10 @@ export default function CycleForm({
     notify_admin_on_submission: z.boolean().default(true),
     notify_admin_emails: z.string().optional().default(''),
   }).refine(data => !data.min_group_size || !data.max_group_size || data.min_group_size <= data.max_group_size, {
-    message: 'Min group size must be ≤ max group size',
+    message: t('cycleForm.minMaxGroupSize', 'Min group size must be ≤ max group size'),
     path: ['min_group_size'],
   }).refine(data => data.is_always_open || !!data.start_date, {
-    message: 'Start date is required',
+    message: t('cycleForm.startDateRequired', 'Start date is required'),
     path: ['start_date'],
     // A training cycle without a location is the root cause of players showing no club
     // (the slot inherits the cycle's location). Require one when clubs are available;
@@ -1077,7 +1077,7 @@ export default function CycleForm({
                     <DatePickerPopover
                       value={field.value}
                       onChange={field.onChange}
-                      placeholder="No deadline"
+                      placeholder={t('cycleForm.noDeadline', 'No deadline')}
                       className="w-full"
                     />
                   </FormControl>

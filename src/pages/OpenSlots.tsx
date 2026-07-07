@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { FullPageLoader } from '@/components/ui/page-spinner';
 import { BookForPlayerDialog } from '@/components/booking/BookForPlayerDialog';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
@@ -277,11 +278,7 @@ export default function OpenSlots() {
   const anySlots = totalOpenSlots > 0;
 
   if (authLoading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   return (

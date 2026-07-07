@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
@@ -129,7 +129,7 @@ export function OnboardingStep1Profile({ onNext }: OnboardingStep1ProfileProps) 
 
         <div className="space-y-2">
           <Label htmlFor="hourlyRate">{t('onboarding.step1.hourlyRateLabel')} *</Label>
-          <Input
+          <MoneyInput
             id="hourlyRate"
             type="number"
             min={1}
