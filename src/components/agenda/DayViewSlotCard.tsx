@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useTranslation } from "react-i18next";
 import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
-import { getSlotStatus, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
+import { getSlotStatus, slotDisplayCapacity, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
 
 interface DayViewSlotCardProps {
   slot: SlotWithBookings;
@@ -74,7 +74,8 @@ export function DayViewSlotCard({
   const status = getSlotStatus(slot);
   const startTime = format(new Date(slot.start_time), "HH:mm");
   const endTime = format(new Date(slot.end_time), "HH:mm");
-  const spotsLeft = 4 - slot.active_bookings;
+  const capacity = slotDisplayCapacity(slot);
+  const spotsLeft = capacity - slot.active_bookings;
   const hasSpots = spotsLeft > 0;
   const ratingInfo = calculateAverageRating(slot.booked_players || []);
 
@@ -193,7 +194,7 @@ export function DayViewSlotCard({
             <div className="flex items-center gap-3">
               <Users className="h-4 w-4" />
               <span className="font-medium">
-                {t("calendar.players")} ({slot.active_bookings}/4)
+                {t("calendar.players")} ({slot.active_bookings}/{capacity})
               </span>
               {ratingInfo.average !== null && (
                 <Badge variant="secondary" className="text-xs">
@@ -212,7 +213,8 @@ export function DayViewSlotCard({
           <div className="p-4 space-y-2 bg-background/30">
             {/* Player Slots Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {Array.from({ length: 4 }).map((_, index) => {
+              {/* One row per seat; overbooked slots still show every player. */}
+              {Array.from({ length: Math.max(capacity, slot.booked_players?.length ?? 0) }).map((_, index) => {
                 const player = slot.booked_players?.[index];
                 
                 if (player) {

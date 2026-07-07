@@ -38,6 +38,7 @@ import { buildCycleEditPatch, slotEditBaselineFromSlot } from '@/lib/cycleEditPa
 import { useTrainerRatingSystem } from '@/hooks/useTrainerRatingSystem';
 import { BookedPlayer } from '@/lib/slotTypes';
 import { SlotAttendanceCard } from '@/components/attendance/SlotAttendanceCard';
+import { TrainerAttendanceForm } from '@/components/attendance/TrainerAttendanceForm';
 import PriorityClaimsSection from '@/components/cycles/PriorityClaimsSection';
 import SlotTierControlCard from '@/components/cycles/SlotTierControlCard';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -86,6 +87,8 @@ export default function TrainerSlotDetail() {
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [editingBookingData, setEditingBookingData] = useState<any>(null);
   const [slotInvoices, setSlotInvoices] = useState<SlotInvoice[]>([]);
+  // Bumped on attendance save so the read-only report card refetches.
+  const [attendanceVersion, setAttendanceVersion] = useState(0);
 
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
 
@@ -457,9 +460,19 @@ export default function TrainerSlotDetail() {
           {detail && <PriorityClaimsSection slotId={detail.id} />}
           {detail && <SlotTierControlCard slotId={detail.id} />}
 
-          {/* Attendance */}
+          {/* Attendance — the write form first (the agenda "Report needed" badge deep-links
+              here; this page used to be read-only, a dead end on the app's own nudge), then
+              the read-only card with player confirmations/conflicts. */}
           {detail && isPast(new Date(detail.end_time)) && (
-            <SlotAttendanceCard slotId={detail.id} bookedPlayers={detail.booked_players.map(p => ({ id: p.id, name: p.name, profileId: p.id }))} isPastSlot={true} />
+            <div className="space-y-4">
+              <TrainerAttendanceForm
+                key={`form-${detail.id}`}
+                slotId={detail.id}
+                players={detail.booked_players.map(p => ({ id: p.bookingId, name: p.name, playerId: p.id }))}
+                onSaved={() => setAttendanceVersion(v => v + 1)}
+              />
+              <SlotAttendanceCard key={`card-${attendanceVersion}`} slotId={detail.id} bookedPlayers={detail.booked_players.map(p => ({ id: p.id, name: p.name, profileId: p.id }))} isPastSlot={true} />
+            </div>
           )}
 
           {/* Invoices */}

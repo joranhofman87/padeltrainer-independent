@@ -23,7 +23,8 @@ export type DeployDriftFeature =
   | 'get_trainer_earnings_summary'
   | 'registration_write_rpc'
   | 'create_rebook_invoice'
-  | 'cycles_public';
+  | 'cycles_public'
+  | 'session_reports_player_summaries';
 
 type DriftDetail = Record<string, string | number | boolean | null | undefined>;
 

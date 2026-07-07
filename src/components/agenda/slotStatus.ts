@@ -11,10 +11,19 @@ import type { SlotWithBookings } from "@/lib/slotTypes";
 
 export type SlotStatus = "free" | "partial" | "full" | "past" | "private";
 
+/**
+ * The slot's real capacity for display. Feeders populate max_participants via
+ * getSlotCapacity (DB NULL → default 4), but guard against 0/undefined anyway so
+ * a partial fixture can never divide the UI by zero.
+ */
+export function slotDisplayCapacity(slot: Pick<SlotWithBookings, "max_participants">): number {
+  return slot.max_participants > 0 ? slot.max_participants : 4;
+}
+
 export function getSlotStatus(slot: SlotWithBookings): SlotStatus {
   if (slot.is_past) return "past";
   if (!slot.is_public) return "private";
-  if (slot.active_bookings >= 4) return "full";
+  if (slot.active_bookings >= slotDisplayCapacity(slot)) return "full";
   if (slot.active_bookings > 0) return "partial";
   return "free";
 }
