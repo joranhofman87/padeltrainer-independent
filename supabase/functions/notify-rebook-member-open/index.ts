@@ -179,9 +179,9 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
     .map((a) => {
       const key = recipientKey(a);
       const info = key ? infoByKey.get(key) : undefined;
-      return key && info ? { key, name: info.name, email: info.email } : null;
+      return key && info ? { key, name: info.name, email: info.email, isGuest: key.startsWith("g:") } : null;
     })
-    .filter((r): r is { key: string; name: string; email: string } => !!r);
+    .filter((r): r is { key: string; name: string; email: string; isGuest: boolean } => !!r);
   if (recipients.length === 0) return { sent: 0, failed: 0 };
 
   // Academy slug + timezone for the deep-link + deadline formatting.
@@ -191,6 +191,17 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
   const slug = (academy as { slug?: string | null } | null)?.slug ?? null;
   const tz = (academy as { timezone?: string | null } | null)?.timezone || "Europe/Amsterdam";
   const bookUrl = slug ? `${APP_BASE}/nl/academies/${slug}?cycle=${cycleId}` : `${APP_BASE}/nl`;
+  // R06: a guest (no login) can't book the member window until they complete an account.
+  // link_guest_data_to_profile links them by email at signup, after which
+  // can_book_member_window clause (d) recognises them — so guests get an account-completion
+  // CTA (email + name pre-filled) instead of the bare booking link, which would dead-end.
+  // redirect is /app/player (sanitizeAppRedirect only allows /app/ paths); the booking link
+  // is offered as the "already have an account?" fallback below.
+  const signupUrl = (name: string, email: string) => {
+    const p = new URLSearchParams({ email, redirect: "/app/player" });
+    if (name) p.set("name", name);
+    return `${APP_BASE}/app/signup/player?${p.toString()}`;
+  };
   const deadline = memberEnd
     ? new Date(memberEnd).toLocaleDateString("nl-NL", { day: "numeric", month: "long", timeZone: tz })
     : null;
@@ -207,10 +218,18 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
         ${renderCustomMessage(customMessage, r.name)}
         <p style="color:#374151;line-height:1.6;">Er zijn plekken vrijgekomen voor de volgende ronde en jij mag als eerste boeken — vóór het publiek.</p>
         ${deadline ? `<p style="color:#6b7280;font-size:13px;">Je hebt voorrang tot <strong>${deadline}</strong>. Daarna komen de plekken vrij voor iedereen.</p>` : ""}
+        ${r.isGuest ? `
+        <p style="color:#374151;line-height:1.6;">Maak eerst je account aan met dit e-mailadres, dan kun je je plek boeken.</p>
+        <div style="text-align:center;margin:28px 0;">
+          <a href="${signupUrl(r.name, r.email)}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Account aanmaken &amp; plek boeken</a>
+        </div>
+        <p style="color:#9ca3af;font-size:12px;text-align:center;">Heb je al een account? <a href="${bookUrl}" style="color:#f45d25;">Boek hier direct</a>.</p>
+        ` : `
         <div style="text-align:center;margin:28px 0;">
           <a href="${bookUrl}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Bekijk vrije plekken</a>
         </div>
         <p style="color:#9ca3af;font-size:12px;text-align:center;">Of open deze link: <a href="${bookUrl}" style="color:#f45d25;">${bookUrl}</a></p>
+        `}
       </div>`;
     const { error } = await sendWithRetry(resend, {
       from: FROM,
