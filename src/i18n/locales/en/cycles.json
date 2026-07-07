@@ -1105,6 +1105,10 @@
     "noMatches": "No sessions match the filters.",
     "noPlayers": "No players in this session.",
     "selectForReminder": "Select for reminder",
+    "noEmailShort": "no email",
+    "copyClaimLink": "Copy invite link to share yourself",
+    "linkCopied": "Invite link copied",
+    "linkCopyFailed": "Copy failed",
     "status": {
       "rebooked": "Rebooked",
       "awaiting": "Awaiting response",

@@ -3,13 +3,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { computeMemberOpenAudience, type MemberOpenClaim, type MemberOpenRecipient } from "../_shared/rebook-member-open.ts";
+import { computeMemberOpenAudience, recipientKey, type MemberOpenClaim } from "../_shared/rebook-member-open.ts";
 
 // Cron-invoked (service-role) notifier: when a rebook round's MEMBER window opens
 // and seats have freed up, email the "second bucket" — the original-cohort players
 // who didn't rebook + the registered priority list — that they can book now.
 // Idempotent per round via cycles.settings.rebook_member_open_notified_at (claimed
-// atomically before send; unclaimed on total failure so the next tick retries).
+// atomically before send). RB03: successfully-emailed recipients are recorded per
+// person in settings.rebook_member_open_notified_recipients; on ANY send failure the
+// marker is released so the next tick re-detects the round and re-sends ONLY the
+// recipients that failed — never a duplicate to a successful one, never a silent drop.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,26 +82,34 @@ const handler = async (req: Request): Promise<Response> => {
     if (candErr) throw candErr;
     const cycleIds = ((cands ?? []) as Array<{ cycle_id: string }>).map((r) => r.cycle_id).slice(0, MAX_CYCLES_PER_RUN);
 
-    let cyclesNotified = 0;
+    let cyclesProcessed = 0;
     let totalSent = 0;
 
     for (const cycleId of cycleIds) {
-      // Atomic claim: stamp notified_at IF NULL. Lost race ⇒ another run has it.
+      // Atomic claim: stamp notified_at IF NULL. Lost race ⇒ another run has it. The
+      // claim serializes this round so the per-recipient bookkeeping below is race-free.
       const { data: claimed } = await supabase.rpc("claim_rebook_member_open_notice", { _cycle_id: cycleId });
       if (claimed !== true) continue;
 
       try {
-        const sent = await notifyCycle(supabase, resend, cycleId);
+        const { sent, failed } = await notifyCycle(supabase, resend, cycleId);
         totalSent += sent;
-        cyclesNotified += 1;
+        cyclesProcessed += 1;
+        if (failed > 0) {
+          // Partial OR total failure → release the marker so the next tick re-detects the
+          // round. Successful recipients are already recorded in settings, so the retry
+          // re-sends ONLY the ones that failed (no duplicate to a successful recipient).
+          await supabase.rpc("unclaim_rebook_member_open_notice", { _cycle_id: cycleId });
+          await notifySlackEdgeError("notify-rebook-member-open", `partial send: ${sent} ok, ${failed} failed`, { cycleId });
+        }
       } catch (e) {
-        // Total failure for this round → release the marker so the next tick retries.
+        // Unexpected error (e.g. a DB read) → release the marker so the next tick retries.
         await supabase.rpc("unclaim_rebook_member_open_notice", { _cycle_id: cycleId });
         await notifySlackEdgeError("notify-rebook-member-open", e instanceof Error ? e.message : String(e), { cycleId });
       }
     }
 
-    return json({ ok: true, cyclesNotified, totalSent });
+    return json({ ok: true, cyclesProcessed, totalSent });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await notifySlackEdgeError("notify-rebook-member-open", message);
@@ -106,27 +117,33 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-// Emails the second bucket for one round. Throws on a total send failure (0 sent,
-// ≥1 attempted) so the caller can release the idempotency marker and retry later.
-// The client is the untyped Deno service client (no generated Database types), so it
-// is typed loosely here — results are shaped via explicit casts below.
+// Emails the second bucket for one round. Returns { sent, failed }; the caller releases
+// the idempotency marker (retry) when failed > 0. Successful recipients are recorded per
+// person in settings.rebook_member_open_notified_recipients so a retry never re-sends to
+// them (RB03). The client is the untyped Deno service client (no generated Database types),
+// so it is typed loosely here — results are shaped via explicit casts below.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Promise<number> {
+async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Promise<{ sent: number; failed: number }> {
   // Cycle + academy context.
   const { data: cycle } = await supabase
     .from("cycles").select("id, name, owner_id, settings").eq("id", cycleId).maybeSingle();
-  if (!cycle) return 0;
+  if (!cycle) return { sent: 0, failed: 0 };
   const settings = (cycle.settings || {}) as Record<string, unknown>;
   const priorityPeople: string[] = Array.isArray(settings.rebook_priority_people)
     ? (settings.rebook_priority_people as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
   const customMessage = typeof settings.rebook_member_open_message === "string" ? settings.rebook_member_open_message : "";
+  // RB03: recipients already emailed in a prior (partial) run — skipped so a retry only
+  // re-sends the ones that failed.
+  const alreadyNotifiedKeys: string[] = Array.isArray(settings.rebook_member_open_notified_recipients)
+    ? (settings.rebook_member_open_notified_recipients as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
 
   // The round's slots (source_cycle_id = this cycle) → their pending-window claims.
   const { data: slots } = await supabase
     .from("availability_slots").select("id, member_window_ends_at, academy_profile_id").eq("source_cycle_id", cycleId);
   const slotIds = ((slots ?? []) as Array<{ id: string }>).map((s) => s.id);
-  if (slotIds.length === 0) return 0;
+  if (slotIds.length === 0) return { sent: 0, failed: 0 };
   const memberEnd = ((slots ?? []) as Array<{ member_window_ends_at: string | null }>)
     .map((s) => s.member_window_ends_at).filter((x): x is string => !!x).sort()[0] ?? null;
   const academyProfileId = ((slots ?? []) as Array<{ academy_profile_id: string | null }>)
@@ -141,8 +158,8 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
     claims.push(...((rows ?? []) as MemberOpenClaim[]));
   }
 
-  const audience = computeMemberOpenAudience(claims, priorityPeople);
-  if (audience.length === 0) return 0;
+  const audience = computeMemberOpenAudience(claims, priorityPeople, { alreadyNotifiedKeys });
+  if (audience.length === 0) return { sent: 0, failed: 0 };
 
   // Resolve names + emails; drop anyone without an email.
   const playerIds = audience.map((a) => a.player_id).filter((x): x is string => !!x);
@@ -158,9 +175,14 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
   for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
     if (g.email?.trim()) infoByKey.set(`g:${g.id}`, { name: (g.full_name ?? "").trim(), email: g.email.trim() });
   }
-  const keyOf = (a: MemberOpenRecipient) => a.player_id ?? (a.guest_player_id ? `g:${a.guest_player_id}` : "");
-  const recipients = audience.map((a) => infoByKey.get(keyOf(a))).filter((r): r is { name: string; email: string } => !!r);
-  if (recipients.length === 0) return 0;
+  const recipients = audience
+    .map((a) => {
+      const key = recipientKey(a);
+      const info = key ? infoByKey.get(key) : undefined;
+      return key && info ? { key, name: info.name, email: info.email } : null;
+    })
+    .filter((r): r is { key: string; name: string; email: string } => !!r);
+  if (recipients.length === 0) return { sent: 0, failed: 0 };
 
   // Academy slug + timezone for the deep-link + deadline formatting.
   const { data: academy } = academyProfileId
@@ -175,6 +197,7 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
 
   let sent = 0;
   let failed = 0;
+  const newlyNotified: string[] = [];
   for (const r of recipients) {
     if (sent > 0 || failed > 0) await sleep(120);
     const html = `
@@ -195,14 +218,27 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
       subject: "Er zijn plekken vrijgekomen — jij mag als eerste boeken",
       html,
     });
-    if (error) { failed++; console.error("member-open send error", error); } else { sent++; }
+    if (error) { failed++; console.error("member-open send error", error); } else { sent++; newlyNotified.push(r.key); }
   }
 
-  // Total failure with recipients present → signal the caller to retry the whole round.
-  if (sent === 0 && failed > 0) {
-    throw new Error(`all ${failed} member-open emails failed for cycle ${cycleId}`);
+  // RB03: record who was successfully emailed so a retry (below, on any failure) skips
+  // them. Re-read settings right before writing to minimize clobbering a concurrent
+  // academy edit; the atomic claim already serializes concurrent notifier runs.
+  if (newlyNotified.length > 0) {
+    const { data: fresh } = await supabase.from("cycles").select("settings").eq("id", cycleId).maybeSingle();
+    const freshSettings = ((fresh?.settings as Record<string, unknown>) || settings) as Record<string, unknown>;
+    const prior: string[] = Array.isArray(freshSettings.rebook_member_open_notified_recipients)
+      ? (freshSettings.rebook_member_open_notified_recipients as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    const merged = [...new Set([...prior, ...newlyNotified])];
+    const { error: persistErr } = await supabase
+      .from("cycles")
+      .update({ settings: { ...freshSettings, rebook_member_open_notified_recipients: merged } })
+      .eq("id", cycleId);
+    if (persistErr) console.error("member-open persist notified recipients error", persistErr);
   }
-  return sent;
+
+  return { sent, failed };
 }
 
 serve(handler);

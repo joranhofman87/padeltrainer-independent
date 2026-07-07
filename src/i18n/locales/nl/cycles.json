@@ -1230,6 +1230,10 @@
     "noMatches": "Geen sessies komen overeen met de filters.",
     "noPlayers": "Geen spelers in deze sessie.",
     "selectForReminder": "Selecteer voor herinnering",
+    "noEmailShort": "geen e-mail",
+    "copyClaimLink": "Kopieer uitnodigingslink om zelf te delen",
+    "linkCopied": "Uitnodigingslink gekopieerd",
+    "linkCopyFailed": "Kopiëren mislukt",
     "status": {
       "rebooked": "Geherboekt",
       "awaiting": "Wacht op reactie",
