@@ -12,16 +12,89 @@ export type GroupStatus = 'rebooked' | 'awaiting' | 'declined' | 'members' | 'pu
 type SlotPhase = 'priority' | 'members' | 'public' | 'held';
 type ClaimsState = 'rebooked' | 'awaiting' | 'declined' | 'none';
 
+export type ClaimResponse = 'claimed' | 'pending' | 'declined' | 'expired';
+export type ResponseIntent = 'accept' | 'decline' | null;
+/** What the owner really wants to see: did this invitee rebook, say no, or not respond. */
+export type RebookOutcome = 'rebooked' | 'declined' | 'noResponse';
+
 export interface RebookManagePlayer {
   key: string; // player_id or `g:${guest_player_id}`
   playerId: string | null;
   guestPlayerId: string | null;
   name: string;
-  response: 'claimed' | 'pending' | 'declined';
+  response: ClaimResponse;
+  /** The button the player clicked on the invite (recorded even if they never finished). */
+  responseIntent: ResponseIntent;
   paid: boolean;
   hasInvoice: boolean;
   /** When this invitee was last sent a rebook reminder (max across their claims). */
   lastRemindedAt: string | null;
+}
+
+/**
+ * Collapse the raw claim state + intent into the single answer the owner cares about.
+ * An explicit "No" (status declined OR a recorded decline intent) is a decline even if the
+ * claim technically still reads 'pending'; an expired/pending claim with no decline intent is
+ * a non-response; a 'clicked Yes but never paid' claim (accept intent, still pending) is NOT
+ * counted as rebooked (there is no booking) — it surfaces separately via clickedYesUnpaid.
+ */
+export function rebookPlayerOutcome(p: Pick<RebookManagePlayer, 'response' | 'responseIntent'>): RebookOutcome {
+  if (p.response === 'claimed') return 'rebooked';
+  if (p.response === 'declined' || p.responseIntent === 'decline') return 'declined';
+  return 'noResponse';
+}
+
+/**
+ * Clicked "Yes" on the invite but never completed (no booking yet) AND can still act — i.e. the
+ * claim is still pending. Gated on 'pending' (not merely !== 'claimed') so an EXPIRED accept-intent
+ * claim, which can no longer be completed, is not counted as an actionable "started but didn't pay"
+ * (and doesn't collide with the "verlopen" chip).
+ */
+export function clickedYesUnpaid(p: Pick<RebookManagePlayer, 'response' | 'responseIntent'>): boolean {
+  return p.responseIntent === 'accept' && p.response === 'pending';
+}
+
+export interface RebookOutcomeSummary {
+  invited: number;
+  rebooked: number;
+  declined: number;
+  noResponse: number;
+  clickedYesUnpaid: number;
+}
+
+/**
+ * Assemble the headline "X invited · Y rebooked · Z declined · W no response" totals.
+ *
+ * Counts DISTINCT invitees, not group-memberships: one round has many weekly series (one group
+ * per series), and a player enrolled in two series (e.g. Mon 18:00 AND Wed 20:00) appears once per
+ * group. Without dedup, `invited` and every bucket inflate. We collapse each identity (`p.key`) to
+ * its strongest outcome across all their series — rebooked > declined > noResponse — so someone who
+ * rebooked one slot but let another lapse reads as "rebooked", matching what the owner intuitively
+ * expects from "who rebooked / who said no".
+ */
+const OUTCOME_RANK: Record<RebookOutcome, number> = { rebooked: 3, declined: 2, noResponse: 1 };
+export function summariseRebookOutcomes(players: RebookManagePlayer[]): RebookOutcomeSummary {
+  const byKey = new Map<string, { outcome: RebookOutcome; clickedYes: boolean }>();
+  for (const p of players) {
+    const outcome = rebookPlayerOutcome(p);
+    const clickedYes = clickedYesUnpaid(p);
+    const prev = byKey.get(p.key);
+    if (!prev) {
+      byKey.set(p.key, { outcome, clickedYes });
+    } else {
+      byKey.set(p.key, {
+        outcome: OUTCOME_RANK[outcome] > OUTCOME_RANK[prev.outcome] ? outcome : prev.outcome,
+        clickedYes: prev.clickedYes || clickedYes,
+      });
+    }
+  }
+  const s: RebookOutcomeSummary = { invited: byKey.size, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 };
+  for (const { outcome, clickedYes } of byKey.values()) {
+    s[outcome] += 1;
+    // "clicked Yes, unpaid" is a sub-note of not-yet-rebooked; if they completed any series, drop it.
+    if (clickedYes && outcome !== 'rebooked') s.clickedYesUnpaid += 1;
+  }
+  return s;
 }
 
 export interface RebookManageGroup {
@@ -45,6 +118,8 @@ export interface RebookManageData {
   invitationMessage: string;
   groups: RebookManageGroup[];
   counts: Record<GroupStatus, number>;
+  /** Per-invitee headline (invited/rebooked/declined/no-response) — the owner's "who said no". */
+  summary: RebookOutcomeSummary;
   paidCount: number;
   unpaidCount: number;
 }
@@ -84,7 +159,7 @@ export function deriveGroupStatus(claims: ClaimsState, phase: SlotPhase): GroupS
   return 'awaiting';
 }
 
-function claimsStateOf(responses: Array<'claimed' | 'pending' | 'declined'>): ClaimsState {
+function claimsStateOf(responses: ClaimResponse[]): ClaimsState {
   if (responses.length === 0) return 'none';
   if (responses.some((r) => r === 'claimed')) return 'rebooked';
   if (responses.some((r) => r === 'pending')) return 'awaiting';
@@ -146,6 +221,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     invitationMessage,
     groups: [],
     counts: { rebooked: 0, awaiting: 0, declined: 0, members: 0, public: 0 },
+    summary: { invited: 0, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 },
     paidCount: 0,
     unpaidCount: 0,
   };
@@ -163,16 +239,25 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     status: string;
     rebook_group_id: string | null;
     reminded_at?: string | null;
+    response_intent?: string | null;
+    response_intent_at?: string | null;
   };
   const claimCols = 'id, slot_id, player_id, guest_player_id, status, rebook_group_id';
+  // reminded_at + response_intent were both added by owner-deployed migrations; if either isn't
+  // live yet the select 400s and the whole management view would blank. Fall back to the base
+  // columns (optional fields → undefined), mirroring getMyPendingPriorityClaims's tolerance.
   const primaryClaims = await supabase
     .from('slot_priority_claims')
-    .select(`${claimCols}, reminded_at`)
+    // response_intent/response_intent_at are real columns missing from the generated types
+    // (types.ts drift, like rebook_cyclus_id) — the select typechecks via `as unknown` and the
+    // runtime values are unchanged.
+    .select(`${claimCols}, reminded_at, response_intent, response_intent_at`)
     .in('slot_id', slotIds);
-  let claimData = primaryClaims.data as ClaimRow[] | null;
+  let claimData = primaryClaims.data as unknown as ClaimRow[] | null;
   if (
     primaryClaims.error &&
-    (primaryClaims.error.code === '42703' || /reminded_at/.test(primaryClaims.error.message ?? ''))
+    (primaryClaims.error.code === '42703' ||
+      /reminded_at|response_intent/.test(primaryClaims.error.message ?? ''))
   ) {
     const fb = await supabase.from('slot_priority_claims').select(claimCols).in('slot_id', slotIds);
     claimData = fb.data as ClaimRow[] | null;
@@ -223,7 +308,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     if (!g) { g = { slotIds: new Set(), players: new Map() }; groupsMap.set(groupKey, g); }
     g.slotIds.add(c.slot_id);
     const pk = keyOf(c);
-    const resp = (c.status === 'claimed' || c.status === 'pending' || c.status === 'declined') ? c.status : 'declined';
+    const resp: ClaimResponse =
+      c.status === 'claimed' || c.status === 'pending' || c.status === 'declined' || c.status === 'expired'
+        ? c.status
+        : 'expired';
     const existing = g.players.get(pk);
     if (!existing || rank[resp] > rank[existing.response]) {
       g.players.set(pk, {
@@ -232,17 +320,21 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         guestPlayerId: c.guest_player_id,
         name: nameByKey.get(pk) ?? '—',
         response: resp,
+        responseIntent: existing?.responseIntent ?? null,
         paid: isPaid(pk, c.rebook_group_id),
         hasInvoice: hasInvoiceFor(pk, c.rebook_group_id),
         lastRemindedAt: existing?.lastRemindedAt ?? null,
       });
     }
-    // Accumulate the most-recent reminder across this player's claims, independent of
-    // which claim won the response rank above.
+    // Accumulate the most-recent reminder + the recorded intent across this player's claims,
+    // independent of which claim won the response rank above. Intent lives on the emailed
+    // representative claim only; a recorded "decline" wins over "accept" (they said no somewhere).
     const cur = g.players.get(pk)!;
     if (c.reminded_at && (!cur.lastRemindedAt || new Date(c.reminded_at) > new Date(cur.lastRemindedAt))) {
       cur.lastRemindedAt = c.reminded_at;
     }
+    if (c.response_intent === 'decline') cur.responseIntent = 'decline';
+    else if (c.response_intent === 'accept' && cur.responseIntent !== 'decline') cur.responseIntent = 'accept';
   }
 
   const now = new Date();
@@ -299,8 +391,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // 'claimed' (symmetric with unpaidCount) keeps the headline paid figure from over-counting them.
   const paidCount = allPlayers.filter((p) => p.response === 'claimed' && p.paid).length;
   const unpaidCount = allPlayers.filter((p) => p.response === 'claimed' && !p.paid).length;
+  const summary = summariseRebookOutcomes(allPlayers);
 
-  return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, paidCount, unpaidCount };
+  return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, summary, paidCount, unpaidCount };
 }
 
 // ===== Bulk levers (resilient, per-slot) =====
