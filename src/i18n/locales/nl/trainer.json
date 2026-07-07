@@ -183,6 +183,7 @@
     "welcome": "Welkom terug, coach {{name}}! 💪",
     "subtitle": "Beheer je trainingssessies, bekijk boekingen en laat je padeltraining-bedrijf groeien",
     "subtitleShort": "Boekingen, planning en inkomsten in één overzicht",
+    "quickNavTitle": "Snel navigeren",
     "addSlot": "Slot toevoegen",
     "shareLink": "Deel je boekingspagina",
     "emptyBookingsHint": "Voeg een slot toe of deel je profiellink om boekingen te ontvangen.",

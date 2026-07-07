@@ -1,9 +1,17 @@
 {
   "badge": "Academy Manager",
+  "reportsSummary": {
+    "title": "Reports",
+    "thisMonth": "this month",
+    "viewFull": "Full report"
+  },
   "dashboard": {
     "title": "Academy Dashboard",
     "welcome": "Welcome back",
     "overview": "Overview",
+    "revenueThisMonth": "Revenue this month",
+    "newPlayersThisMonth": "New players",
+    "quickNavTitle": "Quick navigation",
     "calendar": "Calendar",
     "pendingVerification": "Your academy is pending verification",
     "pendingVerificationDescription": "An admin will review your academy and verify it. You'll have full access once verified.",

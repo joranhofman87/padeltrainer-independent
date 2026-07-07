@@ -183,6 +183,7 @@
     "welcome": "Welcome back, Coach {{name}}! 💪",
     "subtitle": "Manage your training sessions, view bookings, and grow your padel training business",
     "subtitleShort": "Your bookings, schedule, and earnings at a glance",
+    "quickNavTitle": "Quick navigation",
     "addSlot": "Add slot",
     "shareLink": "Share your booking page",
     "session": "session",
