@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Users, Globe, Lock, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
@@ -110,12 +114,33 @@ export default function SlotTierControlCard({ slotId, onChange }: Props) {
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => wrap(() => openSlotToMembersNow(slotId, 7))}>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => wrap(() => openSlotToMembersNow(slotId, 7))}
+            title={t('tierControl.openMembersHelp', 'Geef eerst je vaste spelers en voorrangslijst toegang, vóór het publiek.')}>
             <Users className="h-4 w-4 mr-1" /> {t('tierControl.openMembers', 'Open to members now')}
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => wrap(() => releaseSlotToPublic(slotId))}>
-            <Globe className="h-4 w-4 mr-1" /> {t('tierControl.openPublic', 'Open to public now')}
-          </Button>
+          {/* R16: opening straight to public silently skips the member/second-bucket tier —
+              confirm so the owner doesn't accidentally bypass their priority audience. */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" disabled={busy}>
+                <Globe className="h-4 w-4 mr-1" /> {t('tierControl.openPublic', 'Open to public now')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('tierControl.openPublicConfirmTitle', 'Direct voor iedereen openzetten?')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('tierControl.openPublicConfirmBody', 'Hiermee sla je het venster voor vaste spelers over — spelers die al een sessie hadden en je voorrangslijst krijgen géén eerste keus. Wil je in plaats daarvan eerst je vaste spelers laten boeken? Gebruik dan “Open voor vaste spelers”.')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => wrap(() => releaseSlotToPublic(slotId))}>
+                  {t('tierControl.openPublicConfirmAction', 'Ja, voor iedereen openzetten')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {slot.public_release_status === 'held' ? (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => wrap(() => setSlotToPendingReview(slotId))}>
               <Eye className="h-4 w-4 mr-1" /> {t('tierControl.unhold', 'Move to review')}

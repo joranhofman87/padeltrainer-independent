@@ -948,7 +948,11 @@
     "memberEnds": "Ledenperiode eindigt",
     "releaseStatus": "Vrijgavestatus",
     "openMembers": "Nu openstellen voor leden",
+    "openMembersHelp": "Geef eerst je vaste spelers en voorrangslijst toegang, vóór het publiek.",
     "openPublic": "Nu openbaar maken",
+    "openPublicConfirmTitle": "Direct voor iedereen openzetten?",
+    "openPublicConfirmBody": "Hiermee sla je het venster voor vaste spelers over — spelers die al een sessie hadden en je voorrangslijst krijgen géén eerste keus. Wil je in plaats daarvan eerst je vaste spelers laten boeken? Gebruik dan “Nu openstellen voor leden”.",
+    "openPublicConfirmAction": "Ja, voor iedereen openzetten",
     "hold": "Vasthouden voor controle",
     "unhold": "Naar controle",
     "releaseStatusValue": {

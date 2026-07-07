@@ -716,7 +716,11 @@
     "memberEnds": "Member window ends",
     "releaseStatus": "Release status",
     "openMembers": "Open to members now",
+    "openMembersHelp": "Give your returning players and priority list access first, before the public.",
     "openPublic": "Open to public now",
+    "openPublicConfirmTitle": "Open to everyone right away?",
+    "openPublicConfirmBody": "This skips the members window — players who already had a session and your priority list won't get first pick. Want your members to book first instead? Use “Open to members now”.",
+    "openPublicConfirmAction": "Yes, open to everyone",
     "hold": "Hold for review",
     "unhold": "Move to review",
     "releaseStatusValue": {
