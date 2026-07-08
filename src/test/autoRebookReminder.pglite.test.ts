@@ -93,6 +93,10 @@ beforeAll(async () => {
   `);
   // Load only the RPC + the guarded cron DO block (pg_cron absent → the block RAISE NOTICE + RETURNs).
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260721100000_auto_rebook_reminder.sql'), 'utf8'));
+  // The Vault-based reschedule migration must apply cleanly on top (pg_cron absent → it also
+  // RAISE NOTICE + RETURNs at the guard, never touching cron.job / vault) and must not disturb
+  // the detection RPC. Loading it here proves both.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260722100000_rebook_crons_use_vault.sql'), 'utf8'));
 });
 
 describe('rebook_claims_needing_auto_reminder', () => {
