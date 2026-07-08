@@ -13,6 +13,7 @@
  * users. The local service-role key below is the public Supabase demo key (safe to commit).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 
 const URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -192,7 +193,39 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
     }));
     await must('slot_priority_claims', admin.from('slot_priority_claims').insert(claims).select('id'));
   }
-  return { academy: academy.id, newCycle: newCycle.id, sampleToken: `seed-claim-a${idx}-s0-p1` };
+
+  // ── UPFRONT rebook round (the launch scenario): pay-now, FULL price for the FULL cycle. Each
+  //    invitee's two weekly claims share a rebook_group_id → sessions=2 → the claim card shows the
+  //    whole-term total (price × sessions) and one accept books the entire series. Covers a
+  //    registered player (p1) AND a guest (g1) — many academy-created players are guests. ──
+  const upfrontCycle = await must('cycles', admin.from('cycles').insert({
+    owner_type: 'academy', owner_id: academy.id, name: `Najaar ${idx} — direct betalen`, status: 'open',
+    price_per_session: 20, start_date: iso(daysFromNow(14)).slice(0, 10),
+    settings: { rebook_payment_mode: 'upfront', rebook_auto_reminder: true },
+  }).select('id').single());
+  const groupByInvitee = new Map(invitees.map((inv) => [inv.key, randomUUID()]));
+  for (let s = 0; s < 2; s++) {
+    const start = daysFromNow(21 + s * 7, 19);
+    const slot = await must('availability_slots', admin.from('availability_slots').insert({
+      trainer_id: trainerIds[s % trainerIds.length], academy_profile_id: academy.id, cyclus_id: upfrontCycle.id,
+      cyclus_name: `Najaar ${idx} — direct betalen`, start_time: iso(start), end_time: iso(plusMin(start, 90)),
+      price_per_session: 20, max_participants: 4, is_public: false,
+      priority_window_ends_at: iso(windowEnds), source_cycle_id: sourceCycle.id,
+    }).select('id').single());
+    const claims = invitees.map((inv) => ({
+      slot_id: slot.id, player_id: inv.player_id, guest_player_id: inv.guest_player_id,
+      rebook_group_id: groupByInvitee.get(inv.key), status: 'pending',
+      claim_token: `seed-claim-up-a${idx}-s${s}-${inv.key}`,
+    }));
+    await must('slot_priority_claims', admin.from('slot_priority_claims').insert(claims).select('id'));
+  }
+
+  return {
+    academy: academy.id, newCycle: newCycle.id, upfrontCycle: upfrontCycle.id,
+    sampleToken: `seed-claim-a${idx}-s0-p1`,
+    upfrontTokenPlayer: `seed-claim-up-a${idx}-s0-p1`,
+    upfrontTokenGuest: `seed-claim-up-a${idx}-s0-g1`,
+  };
 }
 
 async function main() {
