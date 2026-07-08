@@ -74,6 +74,9 @@ async function purgeSeedData() {
     await admin.from('bookings').delete().in('slot_id', slotIds);
     await admin.from('availability_slots').delete().in('id', slotIds);
   }
+  // Invoices reference the academy (and are minted by upfront-pay tests) — clear them before the
+  // academy, or the academy_profiles delete fails its FK and the slug collides on re-seed.
+  await admin.from('invoices').delete().in('academy_profile_id', acadIds);
   if (cycleIds.length) await admin.from('cycles').delete().in('id', cycleIds);
   await admin.from('academy_trainers').delete().in('academy_profile_id', acadIds);
   await admin.from('academy_managers').delete().in('academy_profile_id', acadIds);
