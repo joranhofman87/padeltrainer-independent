@@ -55,6 +55,31 @@ async function purgeSeedUsers() {
   }
 }
 
+/** Idempotent: delete prior seed DOMAIN rows (academies by slug) in FK-safe order, so a
+ *  re-run doesn't collide on the unique academy slug. Auth users are handled separately. */
+async function purgeSeedData() {
+  const { data: acads } = await admin.from('academy_profiles').select('id').or('slug.eq.test-padel-academy,slug.like.filler-academy-%');
+  const acadIds = (acads ?? []).map((a: { id: string }) => a.id);
+  if (acadIds.length === 0) return;
+  const { data: cyc } = await admin.from('cycles').select('id').in('owner_id', acadIds);
+  const cycleIds = (cyc ?? []).map((c: { id: string }) => c.id);
+  let slotIds: string[] = [];
+  if (cycleIds.length) {
+    const { data: slots } = await admin.from('availability_slots').select('id').in('cyclus_id', cycleIds);
+    slotIds = (slots ?? []).map((s: { id: string }) => s.id);
+  }
+  if (slotIds.length) {
+    await admin.from('slot_priority_claims').delete().in('slot_id', slotIds);
+    await admin.from('bookings').delete().in('slot_id', slotIds);
+    await admin.from('availability_slots').delete().in('id', slotIds);
+  }
+  if (cycleIds.length) await admin.from('cycles').delete().in('id', cycleIds);
+  await admin.from('academy_trainers').delete().in('academy_profile_id', acadIds);
+  await admin.from('academy_managers').delete().in('academy_profile_id', acadIds);
+  await admin.from('guest_players').delete().in('academy_profile_id', acadIds);
+  await admin.from('academy_profiles').delete().in('id', acadIds);
+}
+
 async function makeUser(email: string, fullName: string): Promise<string> {
   const { data, error } = await admin.auth.admin.createUser({
     email, password: PASSWORD, email_confirm: true, user_metadata: { full_name: fullName },
@@ -172,6 +197,7 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
 
 async function main() {
   console.log(`Seeding local (${URL}) · scale=${SCALE}`);
+  await purgeSeedData();
   await purgeSeedUsers();
   const hero = await seedAcademy(0, true);
   const fillerCount = SCALE === 'large' ? 12 : 0;

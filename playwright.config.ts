@@ -9,6 +9,9 @@ export default defineConfig({
   // the vitest unit tests under src/ are never picked up.
   testDir: '.',
   testMatch: ['e2e/**/*.spec.ts', 'tests/**/*.spec.ts'],
+  // e2e/local/** are LOCAL-stack specs (need `supabase start` + seed) — never run them in the
+  // default/CI run (which targets remote). They have their own config: playwright.local.config.ts.
+  testIgnore: ['**/e2e/local/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
