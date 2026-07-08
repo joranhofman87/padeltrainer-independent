@@ -35,7 +35,8 @@
     "db:rehearse:invoices-partition": "node scripts/db/rehearse-invoices-partition.mjs",
     "db:rehearse:all": "node scripts/db/run-all-rehearsals.mjs",
     "db:rehearse:invoice-status": "node scripts/db/rehearse-invoice-status-history.mjs",
-    "db:rehearse:registration-write": "npx tsx scripts/db/rehearse-registration-write.ts"
+    "db:rehearse:registration-write": "npx tsx scripts/db/rehearse-registration-write.ts",
+    "db:seed:local": "npx tsx scripts/db/seed-local.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
