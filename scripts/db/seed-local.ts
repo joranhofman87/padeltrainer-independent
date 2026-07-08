@@ -64,11 +64,19 @@ async function purgeSeedData() {
   if (acadIds.length === 0) return;
   const { data: cyc } = await admin.from('cycles').select('id').in('owner_id', acadIds);
   const cycleIds = (cyc ?? []).map((c: { id: string }) => c.id);
-  let slotIds: string[] = [];
+  // Gather slots by BOTH cycle membership AND academy ownership — the standalone public slot
+  // (cyclus_id NULL) is only reachable via academy_profile_id, so a cycle-only sweep would leak it
+  // (and its bookings) across re-seeds.
+  const slotIdSet = new Set<string>();
   if (cycleIds.length) {
     const { data: slots } = await admin.from('availability_slots').select('id').in('cyclus_id', cycleIds);
-    slotIds = (slots ?? []).map((s: { id: string }) => s.id);
+    (slots ?? []).forEach((s: { id: string }) => slotIdSet.add(s.id));
   }
+  {
+    const { data: slots } = await admin.from('availability_slots').select('id').in('academy_profile_id', acadIds);
+    (slots ?? []).forEach((s: { id: string }) => slotIdSet.add(s.id));
+  }
+  const slotIds = [...slotIdSet];
   if (slotIds.length) {
     await admin.from('slot_priority_claims').delete().in('slot_id', slotIds);
     await admin.from('bookings').delete().in('slot_id', slotIds);
@@ -124,7 +132,9 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
       user_id: uid, is_public: true, hourly_rate: 45, timezone: 'Europe/Amsterdam',
     }).select('id').single());
     await must('academy_trainers', admin.from('academy_trainers').insert({
-      academy_profile_id: academy.id, trainer_profile_id: tp.id,
+      // status defaults to 'invited'; the payment recipient resolver (resolveSlotRecipient)
+      // only routes an academy slot's money when the trainer link is 'active'.
+      academy_profile_id: academy.id, trainer_profile_id: tp.id, status: 'active',
     }).select('academy_profile_id').single());
     trainerIds.push(tp.id);
   }
@@ -152,6 +162,9 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
   // Source cycle (currently running) + weekly slots + bookings that fill the seats.
   const sourceCycle = await must('cycles', admin.from('cycles').insert({
     owner_type: 'academy', owner_id: academy.id, name: `Voorjaar ${idx}`, status: 'open',
+    // 'cyclus' = a weekly TRAINING round (not an event/registration) — bulk-rebook-cycle only
+    // rebooks weekly training cycli, and reports bucket by type.
+    type: 'cyclus',
     price_per_session: 20, start_date: iso(daysFromNow(-56)).slice(0, 10), end_date: iso(daysFromNow(-7)).slice(0, 10),
     settings: {},
   }).select('id').single());
@@ -174,9 +187,22 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
 
   if (!withRebookRound) return { academy: academy.id };
 
+  // ── A standalone PUBLIC bookable slot — the public "book + pay" money path ──
+  // No cyclus_id (a one-off public training), is_public + no priority/member window so
+  // resolveSlotTier === 'public', future start, capacity free. allow_single_booking + a
+  // 4-seat court at €20 means the per-seat guest price is 20 ÷ 4 = €5.00. The NULL cyclus_id
+  // makes it unique for the E2E to find (every cycle slot carries a cyclus_id).
+  const publicStart = daysFromNow(10, 17);
+  const publicSlot = await must('availability_slots', admin.from('availability_slots').insert({
+    trainer_id: trainerIds[0], academy_profile_id: academy.id, cyclus_id: null,
+    start_time: iso(publicStart), end_time: iso(plusMin(publicStart, 90)),
+    price_per_session: 20, max_participants: 4, is_public: true, allow_single_booking: true,
+  }).select('id').single());
+
   // ── Rebook round: a NEW cycle whose slots carry pending priority claims with fixed tokens ──
   const newCycle = await must('cycles', admin.from('cycles').insert({
     owner_type: 'academy', owner_id: academy.id, name: `Najaar ${idx} (herboeking)`, status: 'open',
+    type: 'cyclus',
     price_per_session: 20, start_date: iso(daysFromNow(14)).slice(0, 10),
     settings: { rebook_payment_mode: 'deferred_split', rebook_auto_reminder: true },
   }).select('id').single());
@@ -210,6 +236,7 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
   //    registered players + 1 guest (academy-created). Captain token = seed-claim-up-a0-s0-p1. ──
   const upfrontCycle = await must('cycles', admin.from('cycles').insert({
     owner_type: 'academy', owner_id: academy.id, name: `Najaar ${idx} — direct betalen`, status: 'open',
+    type: 'cyclus',
     price_per_session: 20, start_date: iso(daysFromNow(14)).slice(0, 10),
     settings: { rebook_payment_mode: 'upfront', rebook_auto_reminder: true },
   }).select('id').single());
@@ -238,6 +265,7 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
 
   return {
     academy: academy.id, newCycle: newCycle.id, upfrontCycle: upfrontCycle.id,
+    publicSlot: publicSlot.id,
     sampleToken: `seed-claim-a${idx}-s0-p1`,
     upfrontTokenPlayer: `seed-claim-up-a${idx}-s0-p1`,
     upfrontTokenGuest: `seed-claim-up-a${idx}-s0-g1`,
