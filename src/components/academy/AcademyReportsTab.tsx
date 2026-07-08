@@ -5,7 +5,7 @@ import {
   addWeeks, subWeeks, addMonths, subMonths, parseISO, differenceInMinutes,
 } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2, Clock, CheckCircle2, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatTile } from '@/components/ui/stat-tile';
@@ -40,7 +40,15 @@ interface SlotRow {
   is_public: boolean;
   price_per_session: number | null;
   booking_count: number;
+  /** ≥1 PLAYER filed a session_reports row with session_happened=true for this slot. */
+  player_confirmed: boolean;
+  /** The TRAINER filed a session_reports row with session_happened=true for this slot. */
+  trainer_confirmed: boolean;
 }
+
+const durationHours = (s: { start_time: string; end_time: string }) =>
+  differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)) / 60;
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 type Timescale = 'weekly' | 'monthly';
 
@@ -71,6 +79,35 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
   const { data: slots = [], isLoading } = useQuery({
     queryKey: ['academy-reports', academyId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
+      // Attendance "did it actually happen" lives in session_reports: a row per
+      // (slot, reporter). Academy managers can read these on their slots (RLS). We flag
+      // a slot player-confirmed when ≥1 PLAYER filed session_happened=true, and
+      // trainer-confirmed when the TRAINER did — the double-control the owner checks
+      // trainer invoices against.
+      type Base = Omit<SlotRow, 'player_confirmed' | 'trainer_confirmed'>;
+      const attachConfirmations = async (base: Base[]): Promise<SlotRow[]> => {
+        const ids = base.map(s => s.id);
+        const conf = new Map<string, { player: boolean; trainer: boolean }>();
+        if (ids.length > 0) {
+          const { data: reports } = await supabase
+            .from('session_reports')
+            .select('slot_id, reporter_role, session_happened')
+            .in('slot_id', ids);
+          for (const r of (reports ?? []) as Array<{ slot_id: string; reporter_role: string | null; session_happened: boolean | null }>) {
+            if (!r.session_happened) continue;
+            const cur = conf.get(r.slot_id) ?? { player: false, trainer: false };
+            if (r.reporter_role === 'player') cur.player = true;
+            else if (r.reporter_role === 'trainer') cur.trainer = true;
+            conf.set(r.slot_id, cur);
+          }
+        }
+        return base.map(s => ({
+          ...s,
+          player_confirmed: conf.get(s.id)?.player ?? false,
+          trainer_confirmed: conf.get(s.id)?.trainer ?? false,
+        }));
+      };
+
       // LEFT join (not !inner) so zero-booking sessions are included, and embed the
       // booking STATUS so we can count only capacity-OCCUPYING bookings. Counting every
       // booking row (incl. cancelled / cancelled_swap) inflated fill-rate past 100% and
@@ -115,20 +152,20 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
           });
         }
 
-        return (allSlots || []).map(s => ({
+        return attachConfirmations((allSlots || []).map(s => ({
           ...s,
           max_participants: s.max_participants || 4,
           booking_count: bookingCounts.get(s.id) || 0,
-        })) as SlotRow[];
+        })) as Base[]);
       }
 
-      return (data || []).map(s => ({
+      return attachConfirmations((data || []).map(s => ({
         ...s,
         max_participants: s.max_participants || 4,
         booking_count: (Array.isArray(s.bookings) ? s.bookings : []).filter(
           (b: { status: string | null }) => isOccupyingStatus(b.status),
         ).length,
-      })) as SlotRow[];
+      })) as Base[]);
     },
   });
 
@@ -140,9 +177,16 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     const fillRate = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
     const openSpots = slots.filter(s => s.is_public && s.booking_count < s.max_participants).length;
     const emptySlots = slots.filter(s => s.booking_count === 0).length;
-    const totalHours = slots.filter(s => s.booking_count > 0).reduce((sum, s) => sum + differenceInMinutes(parseISO(s.end_time), parseISO(s.start_time)), 0) / 60;
+    // "Held" = a session with ≥1 person in it (chargeable, regardless of headcount).
+    const heldSlots = slots.filter(s => s.booking_count > 0);
+    const heldSessions = heldSlots.length;
+    // Chargeable hours = duration of every held session. Confirmed hours = the subset a
+    // player confirmed actually happened (session_reports).
+    const totalHours = heldSlots.reduce((sum, s) => sum + durationHours(s), 0);
+    const confirmedHours = heldSlots.filter(s => s.player_confirmed).reduce((sum, s) => sum + durationHours(s), 0);
+    const trainerConfirmedHours = heldSlots.filter(s => s.trainer_confirmed).reduce((sum, s) => sum + durationHours(s), 0);
     const privateSlots = slots.filter(s => !s.is_public).length;
-    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, emptySlots, totalHours, privateSlots };
+    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, emptySlots, heldSessions, totalHours, confirmedHours, trainerConfirmedHours, privateSlots };
   }, [slots]);
 
   // By trainer
@@ -157,18 +201,19 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const trainer = trainers.find(t => t.id === tid);
       const cap = tSlots.reduce((s, sl) => s + sl.max_participants, 0);
       const booked = tSlots.reduce((s, sl) => s + sl.booking_count, 0);
-      const emptySlots = tSlots.filter(s => s.booking_count === 0).length;
-      const hours = tSlots.filter(s => s.booking_count > 0).reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
+      const heldSlots = tSlots.filter(s => s.booking_count > 0);
       return {
         name: trainer?.name || 'Unknown',
         sessions: tSlots.length,
-        emptySlots,
+        held: heldSlots.length,
         booked,
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
-        hours: Math.round(hours * 10) / 10,
+        hours: round1(heldSlots.reduce((s, sl) => s + durationHours(sl), 0)),
+        trainerConfirmedHours: round1(heldSlots.filter(s => s.trainer_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
+        confirmedHours: round1(heldSlots.filter(s => s.player_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
       };
-    }).sort((a, b) => b.sessions - a.sessions);
+    }).sort((a, b) => b.hours - a.hours);
   }, [slots, trainers]);
 
   // By location
@@ -184,18 +229,19 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const loc = locations.find(l => l.id === lid);
       const cap = lSlots.reduce((s, sl) => s + sl.max_participants, 0);
       const booked = lSlots.reduce((s, sl) => s + sl.booking_count, 0);
-      const emptySlots = lSlots.filter(s => s.booking_count === 0).length;
-      const hours = lSlots.filter(s => s.booking_count > 0).reduce((s, sl) => s + differenceInMinutes(parseISO(sl.end_time), parseISO(sl.start_time)), 0) / 60;
+      const heldSlots = lSlots.filter(s => s.booking_count > 0);
       return {
         name: loc?.name || t('reports.noLocation', 'No location'),
         sessions: lSlots.length,
-        emptySlots,
+        held: heldSlots.length,
         booked,
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
-        hours: Math.round(hours * 10) / 10,
+        hours: round1(heldSlots.reduce((s, sl) => s + durationHours(sl), 0)),
+        trainerConfirmedHours: round1(heldSlots.filter(s => s.trainer_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
+        confirmedHours: round1(heldSlots.filter(s => s.player_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
       };
-    }).sort((a, b) => b.sessions - a.sessions);
+    }).sort((a, b) => b.hours - a.hours);
   }, [slots, locations, t]);
 
   // CSV export
@@ -204,16 +250,16 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     let csv = '';
 
     if (rows) {
-      csv = 'Name,Sessions,Empty,Booked,Capacity,Fill Rate %,Hours\n';
+      csv = 'Name,Sessions,Held,Booked,Capacity,Fill Rate %,Chargeable Hours,Trainer-Confirmed Hours,Player-Confirmed Hours\n';
       rows.forEach(r => {
-        csv += `"${r.name}",${r.sessions},${r.emptySlots},${r.booked},${r.capacity},${r.fillRate},${r.hours}\n`;
+        csv += `"${r.name}",${r.sessions},${r.held},${r.booked},${r.capacity},${r.fillRate},${r.hours},${r.trainerConfirmedHours},${r.confirmedHours}\n`;
       });
     } else {
-      csv = 'Slot ID,Start,End,Trainer,Location,Booked,Capacity,Private\n';
+      csv = 'Slot ID,Start,End,Trainer,Location,Booked,Capacity,Private,Trainer Confirmed,Player Confirmed\n';
       slots.forEach(s => {
         const trName = trainers.find(t => t.id === s.trainer_id)?.name || '';
         const locName = locations.find(l => l.id === s.location_id)?.name || '';
-        csv += `"${s.id}","${s.start_time}","${s.end_time}","${trName}","${locName}",${s.booking_count},${s.max_participants},${!s.is_public}\n`;
+        csv += `"${s.id}","${s.start_time}","${s.end_time}","${trName}","${locName}",${s.booking_count},${s.max_participants},${!s.is_public},${s.trainer_confirmed},${s.player_confirmed}\n`;
       });
     }
 
@@ -268,19 +314,33 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       </div>
 
       {/* Stat cards — the shared StatTile (loading prop renders the '\u2014' placeholder) */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile
-          label={t('reports.sessions', 'Sessions')}
-          value={String(stats.totalSessions)}
+          label={t('reports.heldSessions', 'Sessions held')}
+          value={String(stats.heldSessions)}
           icon={Calendar}
           iconClassName="text-primary"
           loading={isLoading}
         />
         <StatTile
-          label={t('reports.emptySlots', 'Empty slots')}
-          value={String(stats.emptySlots)}
-          icon={CalendarX2}
-          iconClassName="text-destructive"
+          label={t('reports.chargeableHours', 'Chargeable hours')}
+          value={`${round1(stats.totalHours)}h`}
+          icon={Clock}
+          iconClassName="text-primary"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.confirmedTrainerHours', 'Confirmed by trainer')}
+          value={`${round1(stats.trainerConfirmedHours)}h`}
+          icon={UserCheck}
+          iconClassName="text-sky-600 dark:text-sky-400"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.confirmedHours', 'Confirmed by players')}
+          value={`${round1(stats.confirmedHours)}h`}
+          icon={CheckCircle2}
+          iconClassName="text-emerald-600 dark:text-emerald-400"
           loading={isLoading}
         />
         <StatTile
@@ -288,6 +348,13 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
           value={`${stats.fillRate}%`}
           icon={TrendingUp}
           iconClassName="text-emerald-600 dark:text-emerald-400"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.sessions', 'Sessions')}
+          value={String(stats.totalSessions)}
+          icon={CalendarX2}
+          iconClassName="text-muted-foreground"
           loading={isLoading}
         />
         <StatTile
@@ -343,6 +410,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                       <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmed', 'Confirmed')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -361,6 +429,23 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                             <TableCell className="text-right text-sm font-medium">
                               <span className={fill >= 100 ? 'text-emerald-600' : fill > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
                                 {fill}%
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              <span className="inline-flex items-center justify-end gap-1.5">
+                                {s.trainer_confirmed && (
+                                  <span title={t('reports.confirmedByTrainer', 'Trainer confirmed the session happened')}>
+                                    <UserCheck className="h-3.5 w-3.5 text-sky-600" />
+                                  </span>
+                                )}
+                                {s.player_confirmed && (
+                                  <span title={t('reports.confirmedByPlayer', 'A player confirmed the session happened')}>
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                  </span>
+                                )}
+                                {!s.trainer_confirmed && !s.player_confirmed && (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
                               </span>
                             </TableCell>
                           </TableRow>
@@ -391,21 +476,21 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                     <TableRow>
                       <TableHead>{t('reports.trainer', 'Trainer')}</TableHead>
                       <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
-                      <TableHead className="text-right">{t('reports.empty', 'Empty')}</TableHead>
+                      <TableHead className="text-right">{t('reports.held', 'Held')}</TableHead>
                       <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
                       <TableHead className="text-right">{t('reports.hours', 'Hours')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedTrainerShort', 'Trainer ✓ (h)')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedPlayersShort', 'Players ✓ (h)')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {trainerRows.map(r => (
                       <TableRow key={r.name}>
                         <TableCell className="text-sm font-medium">{r.name}</TableCell>
-                        <TableCell className="text-right text-sm">{r.sessions}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.emptySlots > 0 ? 'text-destructive' : 'text-muted-foreground'}>{r.emptySlots}</span>
-                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{r.sessions}</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{r.held}</TableCell>
                         <TableCell className="text-right text-sm">{r.booked}</TableCell>
                         <TableCell className="text-right text-sm">{r.capacity}</TableCell>
                         <TableCell className="text-right text-sm">
@@ -413,7 +498,17 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                             {r.fillRate}%
                           </span>
                         </TableCell>
-                        <TableCell className="text-right text-sm">{r.hours}h</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{r.hours}h</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
+                            {r.trainerConfirmedHours}h
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
+                            {r.confirmedHours}h
+                          </span>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -441,21 +536,21 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                     <TableRow>
                       <TableHead>{t('reports.location', 'Location')}</TableHead>
                       <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
-                      <TableHead className="text-right">{t('reports.empty', 'Empty')}</TableHead>
+                      <TableHead className="text-right">{t('reports.held', 'Held')}</TableHead>
                       <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
                       <TableHead className="text-right">{t('reports.hours', 'Hours')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedTrainerShort', 'Trainer ✓ (h)')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedPlayersShort', 'Players ✓ (h)')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {locationRows.map(r => (
                       <TableRow key={r.name}>
                         <TableCell className="text-sm font-medium">{r.name}</TableCell>
-                        <TableCell className="text-right text-sm">{r.sessions}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.emptySlots > 0 ? 'text-destructive' : 'text-muted-foreground'}>{r.emptySlots}</span>
-                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{r.sessions}</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{r.held}</TableCell>
                         <TableCell className="text-right text-sm">{r.booked}</TableCell>
                         <TableCell className="text-right text-sm">{r.capacity}</TableCell>
                         <TableCell className="text-right text-sm">
@@ -463,7 +558,17 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                             {r.fillRate}%
                           </span>
                         </TableCell>
-                        <TableCell className="text-right text-sm">{r.hours}h</TableCell>
+                        <TableCell className="text-right text-sm font-medium">{r.hours}h</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
+                            {r.trainerConfirmedHours}h
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
+                            {r.confirmedHours}h
+                          </span>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

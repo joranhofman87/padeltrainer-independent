@@ -922,6 +922,17 @@
     "vatWithRate": "BTW {{rate}}%"
   },
   "reports": {
+    "heldSessions": "Gegeven sessies",
+    "held": "Gegeven",
+    "chargeableHours": "Declarabele uren",
+    "confirmedHours": "Bevestigd door spelers",
+    "confirmedTrainerHours": "Bevestigd door trainer",
+    "confirmedTrainerShort": "Trainer ✓ (u)",
+    "confirmedPlayersShort": "Spelers ✓ (u)",
+    "confirmed": "Bevestigd",
+    "confirmedShort": "Bevestigd (u)",
+    "confirmedByTrainer": "Trainer bevestigde dat de sessie is doorgegaan",
+    "confirmedByPlayer": "Een speler bevestigde dat de sessie is doorgegaan",
     "booked": "Geboekt",
     "byLocation": "Per locatie",
     "byTrainer": "Per trainer",
