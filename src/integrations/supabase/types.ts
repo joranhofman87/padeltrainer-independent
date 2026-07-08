@@ -8560,6 +8560,19 @@ export type Database = {
         }
         Returns: undefined
       }
+      rebook_claims_needing_auto_reminder: {
+        Args: { _lead_hours?: number }
+        Returns: {
+          academy_name: string
+          claim_token: string
+          cycle_id: string
+          cycle_name: string
+          guest_player_id: string
+          player_id: string
+          recipient_email: string
+          recipient_name: string
+        }[]
+      }
       rebook_cycles_needing_member_open_notice: {
         Args: never
         Returns: {
