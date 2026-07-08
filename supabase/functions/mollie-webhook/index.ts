@@ -24,6 +24,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const MOLLIE_API_BASE = Deno.env.get("MOLLIE_API_BASE") ?? "https://api.mollie.com";
+
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[MOLLIE-WEBHOOK] ${step}`, details ? JSON.stringify(details) : "");
 };
@@ -185,7 +187,7 @@ serve(async (req) => {
     // The actual API call is always made with the connected-account token.
     const platformKey = Deno.env.get("MOLLIE_API_KEY") ?? "";
     const isTestMode = platformKey.startsWith("test_");
-    let fetchUrl = `https://api.mollie.com/v2/payments/${paymentId}`;
+    let fetchUrl = `${MOLLIE_API_BASE}/v2/payments/${paymentId}`;
     if (isTestMode) {
       fetchUrl += "?testmode=true";
     }
