@@ -17,6 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
+import { CAPACITY_OCCUPYING_STATUSES, isOccupyingStatus } from '@/lib/lessons';
 
 const dateFnsLocaleMap: Record<string, Locale> = { nl, es, de, fr, en: enUS, it: itLocale };
 
@@ -70,19 +71,23 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
   const { data: slots = [], isLoading } = useQuery({
     queryKey: ['academy-reports', academyId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
+      // LEFT join (not !inner) so zero-booking sessions are included, and embed the
+      // booking STATUS so we can count only capacity-OCCUPYING bookings. Counting every
+      // booking row (incl. cancelled / cancelled_swap) inflated fill-rate past 100% and
+      // added hours for sessions whose bookings were all cancelled.
       const { data, error } = await supabase
         .from('availability_slots')
         .select(`
           id, start_time, end_time, trainer_id, location_id,
           max_participants, price_per_session, is_public,
-          bookings!inner(id)
+          bookings(id, status)
         `)
         .eq('academy_profile_id', academyId)
         .gte('start_time', rangeStart.toISOString())
         .lte('start_time', rangeEnd.toISOString());
 
       if (error) {
-        // Retry without inner join for slots with no bookings
+        // Fallback: fetch slots + booking counts separately (same occupying-status rule).
         const { data: allSlots, error: err2 } = await supabase
           .from('availability_slots')
           .select(`
@@ -95,7 +100,6 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
 
         if (err2) throw err2;
 
-        // Fetch booking counts separately
         const slotIds = (allSlots || []).map(s => s.id);
         const bookingCounts = new Map<string, number>();
 
@@ -104,7 +108,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
             .from('bookings')
             .select('slot_id')
             .in('slot_id', slotIds)
-            .in('status', ['confirmed', 'pending']);
+            .in('status', [...CAPACITY_OCCUPYING_STATUSES]);
 
           (bookings || []).forEach(b => {
             bookingCounts.set(b.slot_id, (bookingCounts.get(b.slot_id) || 0) + 1);
@@ -121,7 +125,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       return (data || []).map(s => ({
         ...s,
         max_participants: s.max_participants || 4,
-        booking_count: Array.isArray(s.bookings) ? s.bookings.length : 0,
+        booking_count: (Array.isArray(s.bookings) ? s.bookings : []).filter(
+          (b: { status: string | null }) => isOccupyingStatus(b.status),
+        ).length,
       })) as SlotRow[];
     },
   });
