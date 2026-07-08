@@ -1189,6 +1189,8 @@
     "resumeDone": "{{sent}} invitation(s) sent"
   },
   "rebookShared": {
+    "autoReminder": "Automatic reminder",
+    "autoReminderHint": "Automatically remind players who haven't responded, just before their priority expires.",
     "paymentTitle": "Payment",
     "upfrontNoPaymentSetup": "Add your payment details first (Mollie or bank details) to enable paying directly.",
     "upfrontSetupLink": "Set up payment details",
