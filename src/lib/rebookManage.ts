@@ -4,7 +4,10 @@
 // private / send reminder). Read-only derivation — all signals already exist on
 // availability_slots + slot_priority_claims + invoices.
 import { supabase } from '@/lib/supabaseClient';
-import { releaseSlotToPublic, holdSlotForReview, type PublicReleaseStatus } from '@/lib/priorityClaims';
+import { releaseSlotToPublic, holdSlotForReview, declineClaimAsManager, type PublicReleaseStatus } from '@/lib/priorityClaims';
+import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
+import { updateCycleSettings } from '@/lib/cycleWrites';
+import type { CycleSettings } from '@/lib/cycleTypes';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
 import type { BulkResult, BulkFailure } from '@/lib/academyPlayerBulk';
 
@@ -27,6 +30,11 @@ export interface RebookManagePlayer {
   responseIntent: ResponseIntent;
   paid: boolean;
   hasInvoice: boolean;
+  /** True once the initial rebook invite email was sent to this invitee (any of their
+   *  claims carries invited_at). False = still un-emailed (or emailless guest). */
+  invited: boolean;
+  /** Every claim id for this invitee in the group — the levers for "free this seat". */
+  claimIds: string[];
   /** When this invitee was last sent a rebook reminder (max across their claims). */
   lastRemindedAt: string | null;
   /** False only for a GUEST with no email on file — a registered player always has an
@@ -129,6 +137,13 @@ export interface RebookManageData {
   summary: RebookOutcomeSummary;
   paidCount: number;
   unpaidCount: number;
+  /** € invoiced-and-paid vs € invoiced-and-still-outstanding across the round (single +
+   *  group rebook invoices). Not "expected" — deferred rounds may not be invoiced yet. */
+  paidAmount: number;
+  outstandingAmount: number;
+  /** Invite reps emailed vs total (per group+player) — "X of Y invites sent". */
+  invitesSent: number;
+  invitesTotal: number;
   /** Representative invites still un-sent (awaiting + never emailed) — for "resume sending". */
   uninvitedCount: number;
 }
@@ -175,8 +190,29 @@ function claimsStateOf(responses: ClaimResponse[]): ClaimsState {
   return 'declined'; // all declined/expired
 }
 
-export type SingleInvoiceRow = { player_id: string | null; guest_player_id: string | null; status: string };
-export type GroupInvoiceRow = { rebook_group_id: string | null; status: string };
+export type SingleInvoiceRow = { player_id: string | null; guest_player_id: string | null; status: string; total?: number | null };
+export type GroupInvoiceRow = { rebook_group_id: string | null; status: string; total?: number | null };
+
+/**
+ * Sum the round's invoiced money: € already paid vs € still outstanding. Single-claim and
+ * group invoices are distinct invoice rows (one per player vs one per group), so both are
+ * summed. Cancelled invoices are excluded; 'paid' → paidAmount, anything else → outstanding.
+ * Pure + exported so the owner's money headline is unit-tested.
+ */
+export function sumRebookInvoiceAmounts(
+  singleInvoices: SingleInvoiceRow[],
+  groupInvoices: GroupInvoiceRow[],
+): { paidAmount: number; outstandingAmount: number } {
+  let paidAmount = 0;
+  let outstandingAmount = 0;
+  for (const inv of [...singleInvoices, ...groupInvoices]) {
+    if (inv.status === 'cancelled') continue;
+    const amount = Number(inv.total) || 0;
+    if (inv.status === 'paid') paidAmount += amount;
+    else outstandingAmount += amount;
+  }
+  return { paidAmount, outstandingAmount };
+}
 
 /**
  * Resolve rebook paid/invoiced state per player. Rebook invoices are NEVER tagged `cycle_id`:
@@ -233,6 +269,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     summary: { invited: 0, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 },
     paidCount: 0,
     unpaidCount: 0,
+    paidAmount: 0,
+    outstandingAmount: 0,
+    invitesSent: 0,
+    invitesTotal: 0,
     uninvitedCount: 0,
   };
   if (slotRows.length === 0) return empty;
@@ -243,6 +283,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // 400s and the whole management view would blank. Retry without it (fallback null), mirroring
   // getMyPendingPriorityClaims's deploy-window tolerance.
   type ClaimRow = {
+    id: string;
     slot_id: string;
     player_id: string | null;
     guest_player_id: string | null;
@@ -282,14 +323,14 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // paid/invoiced state propagates to every member of that group.
   const groupIds = [...new Set(claimRows.map((c) => c.rebook_group_id).filter(Boolean))] as string[];
   const singleRes = await supabase
-    .from('invoices').select('player_id, guest_player_id, status')
+    .from('invoices').select('player_id, guest_player_id, status, total')
     // rebook_cyclus_id is a real column missing from the generated types (types.ts drift);
     // cast the key to a known column so `.eq` type-resolves — the runtime value is unchanged.
     .eq('rebook_cyclus_id' as 'id', cycleId);
   const singleInvoices = (singleRes.data ?? []) as SingleInvoiceRow[];
   let groupInvoices: GroupInvoiceRow[] = [];
   if (groupIds.length) {
-    const groupRes = await supabase.from('invoices').select('rebook_group_id, status').in('rebook_group_id', groupIds);
+    const groupRes = await supabase.from('invoices').select('rebook_group_id, status, total').in('rebook_group_id', groupIds);
     groupInvoices = (groupRes.data ?? []) as GroupInvoiceRow[];
   }
 
@@ -346,11 +387,18 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         responseIntent: existing?.responseIntent ?? null,
         paid: isPaid(pk, c.rebook_group_id),
         hasInvoice: hasInvoiceFor(pk, c.rebook_group_id),
+        invited: existing?.invited ?? false,
+        claimIds: existing?.claimIds ?? [],
         lastRemindedAt: existing?.lastRemindedAt ?? null,
         hasEmail: c.player_id ? true : guestHasEmail.has(pk),
         claimToken: c.claim_token ?? existing?.claimToken ?? null,
       });
     }
+    // Accumulate this claim's id + whether it was emailed, across ALL of the invitee's claims
+    // (independent of which one won the response rank above).
+    const acc = g.players.get(pk)!;
+    if (c.id && !acc.claimIds.includes(c.id)) acc.claimIds.push(c.id);
+    if (c.invited_at) acc.invited = true;
     // Accumulate the most-recent reminder + the recorded intent across this player's claims,
     // independent of which claim won the response rank above. Intent lives on the emailed
     // representative claim only; a recorded "decline" wins over "accept" (they said no somewhere).
@@ -426,13 +474,31 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // are stamped invited_at by the sender's drain (they can't be emailed), so they fall
   // out of this count once a drain has touched the round — the banner converges.
   let uninvitedCount = 0;
+  let invitesSent = 0;
+  let invitesTotal = 0;
   for (const g of groups) {
     for (const p of g.players) {
+      invitesTotal += 1;
+      if (p.invited) invitesSent += 1;
       if (p.response === 'pending' && !invitedKeys.has(`${g.groupId}|${p.key}`)) uninvitedCount += 1;
     }
   }
+  const { paidAmount, outstandingAmount } = sumRebookInvoiceAmounts(singleInvoices, groupInvoices);
 
-  return { cycleName: cycle?.name ?? '', invitationMessage, groups, counts, summary, paidCount, unpaidCount, uninvitedCount };
+  return {
+    cycleName: cycle?.name ?? '',
+    invitationMessage,
+    groups,
+    counts,
+    summary,
+    paidCount,
+    unpaidCount,
+    paidAmount,
+    outstandingAmount,
+    invitesSent,
+    invitesTotal,
+    uninvitedCount,
+  };
 }
 
 // ===== Bulk levers (resilient, per-slot) =====
@@ -492,12 +558,18 @@ export interface RebookRound {
   name: string;
   startDate: string | null; // yyyy-mm-dd
   status: string; // draft | open | closed | ...
+  archived: boolean;
 }
 
 /** The academy's rebooked "new round" cycles (type='cyclus' with a rebook payment
  *  mode in settings) — the cycles the rebook management view manages. Lets the UI
- *  offer a way back into each round's overview after the post-launch redirect. */
-export async function listRebookRounds(academyProfileId: string): Promise<RebookRound[]> {
+ *  offer a way back into each round's overview after the post-launch redirect.
+ *  Archived rounds are hidden unless `includeArchived` is set (so the owner can find +
+ *  restore them). */
+export async function listRebookRounds(
+  academyProfileId: string,
+  opts?: { includeArchived?: boolean },
+): Promise<RebookRound[]> {
   const { data, error } = await supabase
     .from('cycles')
     .select('id, name, start_date, status, settings, created_at')
@@ -507,10 +579,60 @@ export async function listRebookRounds(academyProfileId: string): Promise<Rebook
     .not('settings->>rebook_payment_mode', 'is', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((c) => ({
-    id: c.id as string,
-    name: ((c.name as string | null) ?? '').trim(),
-    startDate: (c.start_date as string | null) ?? null,
-    status: (c.status as string | null) ?? 'draft',
-  }));
+  return (data ?? [])
+    .map((c) => {
+      const s = (c.settings ?? null) as { rebook_archived?: unknown } | null;
+      return {
+        id: c.id as string,
+        name: ((c.name as string | null) ?? '').trim(),
+        startDate: (c.start_date as string | null) ?? null,
+        status: (c.status as string | null) ?? 'draft',
+        archived: s?.rebook_archived === true,
+      };
+    })
+    .filter((r) => opts?.includeArchived || !r.archived);
+}
+
+/**
+ * Archive (or restore) a rebook round: flips cycles.settings.rebook_archived, which only
+ * hides it from the rounds list. Touches NO bookings, sessions or invoices — reads the
+ * current settings and rewrites the merged object (updateCycleSettings overwrites wholesale).
+ */
+export async function setRebookRoundArchived(cycleId: string, archived: boolean): Promise<void> {
+  const { data, error } = await supabase.from('cycles').select('settings').eq('id', cycleId).maybeSingle();
+  if (error) throw error;
+  const current = (data?.settings ?? {}) as Record<string, unknown>;
+  await updateCycleSettings(cycleId, { ...current, rebook_archived: archived } as unknown as CycleSettings);
+}
+
+/**
+ * "Free the seat": the invitee isn't coming back, so cancel their reserved booking(s) on the
+ * round's sessions (which resyncs the split invoices) AND decline their claim(s) so the round
+ * overview reads "not rebooked" and the seat re-opens to members/public. Does NOT credit/refund
+ * a paid invoice — the owner handles that separately (the UI warns when an invoice was paid).
+ */
+export interface FreeSeatResult {
+  cancelledCount: number;
+  declinedCount: number;
+  cancelError: string | null;
+  syncError: string | null;
+}
+export async function freePlayerRebookSeat(args: {
+  slotIds: string[];
+  player: { playerId: string | null; guestPlayerId: string | null };
+  claimIds: string[];
+}): Promise<FreeSeatResult> {
+  const cancel = await cancelPlayerBookingsInCycle(args.slotIds, args.player);
+  let declinedCount = 0;
+  const declineErrors: string[] = [];
+  for (const id of args.claimIds) {
+    try { await declineClaimAsManager(id, 'Manager: niet herboekt'); declinedCount += 1; }
+    catch (e) { declineErrors.push(reasonOf(e)); }
+  }
+  return {
+    cancelledCount: cancel.cancelledCount,
+    declinedCount,
+    cancelError: cancel.cancelError ? reasonOf(cancel.cancelError) : (declineErrors[0] ?? null),
+    syncError: cancel.syncError ? reasonOf(cancel.syncError) : null,
+  };
 }

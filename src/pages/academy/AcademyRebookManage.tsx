@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,10 +22,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   getCycleRebookStatus, bulkReleaseToPublic, bulkHoldSlots, sendRebookReminder,
-  rebookPlayerOutcome, clickedYesUnpaid,
-  type GroupStatus, type RebookManageGroup, type RebookReminderTarget,
+  rebookPlayerOutcome, clickedYesUnpaid, freePlayerRebookSeat,
+  type GroupStatus, type RebookManageGroup, type RebookManagePlayer, type RebookReminderTarget,
 } from '@/lib/rebookManage';
 import { drainRebookInvites } from '@/lib/rebookInviteSend';
+import { formatCurrency } from '@/lib/format';
 
 const STATUS_STYLE: Record<GroupStatus, string> = {
   rebooked: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -243,6 +244,29 @@ export default function AcademyRebookManage() {
     } finally { setSendProgress(null); }
   };
 
+  // "Free the seat": the invitee isn't coming back — cancel their booking(s) on this series
+  // and decline their claim(s) so the spot re-opens. Confirmed via dialog (warns on paid).
+  const [freeTarget, setFreeTarget] = useState<{ group: RebookManageGroup; player: RebookManagePlayer } | null>(null);
+  const confirmFreeSeat = async () => {
+    if (!freeTarget) return;
+    const { group, player } = freeTarget;
+    setBusy(true);
+    try {
+      const res = await freePlayerRebookSeat({
+        slotIds: group.slotIds,
+        player: { playerId: player.playerId, guestPlayerId: player.guestPlayerId },
+        claimIds: player.claimIds,
+      });
+      if (res.cancelError) {
+        toast.error(t('rebookManage.freeSeatFailed', 'Kon de plek niet vrijgeven. Probeer het opnieuw.'));
+      } else {
+        toast.success(t('rebookManage.freeSeatDone', 'Plek vrijgegeven voor {{name}}', { name: player.name }));
+      }
+      setFreeTarget(null);
+      refetch();
+    } finally { setBusy(false); }
+  };
+
   if (isLoading) {
     return <div className="p-4 space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /></div>;
   }
@@ -301,12 +325,20 @@ export default function AcademyRebookManage() {
           </button>
         ))}
         <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200">
-          {t('rebookManage.paid', 'Betaald')}: {data?.paidCount ?? 0}
+          {t('rebookManage.paid', 'Betaald')}: {data?.paidCount ?? 0}{data && data.paidAmount > 0 ? ` · ${formatCurrency(data.paidAmount)}` : ''}
         </Badge>
         <Badge variant="outline" className="bg-rose-100 text-rose-800 border-rose-200">
-          {t('rebookManage.unpaid', 'Open')}: {data?.unpaidCount ?? 0}
+          {t('rebookManage.unpaid', 'Open')}: {data?.unpaidCount ?? 0}{data && data.outstandingAmount > 0 ? ` · ${formatCurrency(data.outstandingAmount)}` : ''}
         </Badge>
       </div>
+
+      {/* Invite delivery at a glance — how many of the round's invites actually went out. */}
+      {data && data.invitesTotal > 0 && (
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="rebook-invites-summary">
+          <MailCheck className="h-4 w-4" />
+          {t('rebookManage.invitesSent', '{{sent}} van {{total}} uitnodigingen verstuurd', { sent: data.invitesSent, total: data.invitesTotal })}
+        </p>
+      )}
 
       {/* Filter toolbar */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -448,6 +480,7 @@ export default function AcademyRebookManage() {
                   onToggleExpand={() => toggleExpanded(g.groupId)}
                   selectedPlayers={selectedPlayers}
                   onTogglePlayer={togglePlayer}
+                  onFreeSeat={(p) => setFreeTarget({ group: g, player: p })}
                   t={t}
                 />
               );
@@ -500,11 +533,36 @@ export default function AcademyRebookManage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Free-a-seat confirm: cancels the invitee's booking(s) + declines their claim(s). */}
+      <AlertDialog open={!!freeTarget} onOpenChange={(o) => { if (!o) setFreeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('rebookManage.freeSeatTitle', 'Plek vrijgeven voor {{name}}?', { name: freeTarget?.player.name ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('rebookManage.freeSeatBody', 'De reservering van deze speler voor deze sessies wordt geannuleerd en de plek komt weer vrij voor vaste spelers of het publiek. De speler wordt hiervan niet automatisch op de hoogte gebracht.')}
+              {freeTarget?.player.paid && (
+                <span className="mt-2 block font-medium text-rose-600">
+                  {t('rebookManage.freeSeatPaidWarning', 'Let op: deze speler heeft al betaald. De betaling wordt niet automatisch teruggestort — regel de terugbetaling zelf.')}
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmFreeSeat} disabled={busy} className="bg-rose-600 hover:bg-rose-700">
+              {busy ? t('common:loading', 'Bezig...') : t('rebookManage.freeSeatConfirm', 'Plek vrijgeven')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, t }: {
+function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, onFreeSeat, t }: {
   g: RebookManageGroup;
   isOpen: boolean;
   rebooked: number;
@@ -515,6 +573,7 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
   onToggleExpand: () => void;
   selectedPlayers: Map<string, RebookReminderTarget>;
   onTogglePlayer: (key: string, target: RebookReminderTarget) => void;
+  onFreeSeat: (player: RebookManagePlayer) => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const claimedCount = g.players.filter((p) => p.response === 'claimed').length;
@@ -600,6 +659,18 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                           · {t('rebookManage.remindedShort', 'herinnerd')} {fmtReminded(p.lastRemindedAt)}
                         </span>
                       )}
+                      {/* Per-invitee initial-invite delivery: sent ✓ vs not-yet-sent. */}
+                      {!emailless && (
+                        p.invited ? (
+                          <span className="inline-flex text-muted-foreground" title={t('rebookManage.inviteSent', 'Uitnodiging verstuurd')}>
+                            <MailCheck className="h-3 w-3" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 text-amber-700" title={t('rebookManage.inviteNotSent', 'Uitnodiging nog niet verstuurd')}>
+                            <Mail className="h-3 w-3" /> {t('rebookManage.inviteNotSentShort', 'niet verstuurd')}
+                          </span>
+                        )
+                      )}
                       {emailless && (
                         <span className="inline-flex items-center gap-0.5 text-rose-600">
                           <MailX className="h-3 w-3" /> {t('rebookManage.noEmailShort', 'geen e-mail')}
@@ -615,6 +686,18 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                         aria-label={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
                       >
                         <Copy className="h-3 w-3" />
+                      </button>
+                    )}
+                    {/* Free this invitee's seat (they're not rebooking) — claimed or still-holding. */}
+                    {(p.response === 'claimed' || p.response === 'pending') && (
+                      <button
+                        type="button"
+                        onClick={() => onFreeSeat(p)}
+                        className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-rose-600"
+                        title={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
+                        aria-label={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
+                      >
+                        <UserMinus className="h-3 w-3" />
                       </button>
                     )}
                     </span>
