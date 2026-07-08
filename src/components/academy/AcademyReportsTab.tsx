@@ -184,8 +184,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     // player confirmed actually happened (session_reports).
     const totalHours = heldSlots.reduce((sum, s) => sum + durationHours(s), 0);
     const confirmedHours = heldSlots.filter(s => s.player_confirmed).reduce((sum, s) => sum + durationHours(s), 0);
+    const trainerConfirmedHours = heldSlots.filter(s => s.trainer_confirmed).reduce((sum, s) => sum + durationHours(s), 0);
     const privateSlots = slots.filter(s => !s.is_public).length;
-    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, emptySlots, heldSessions, totalHours, confirmedHours, privateSlots };
+    return { totalSessions, totalCapacity, totalBooked, fillRate, openSpots, emptySlots, heldSessions, totalHours, confirmedHours, trainerConfirmedHours, privateSlots };
   }, [slots]);
 
   // By trainer
@@ -209,6 +210,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
         hours: round1(heldSlots.reduce((s, sl) => s + durationHours(sl), 0)),
+        trainerConfirmedHours: round1(heldSlots.filter(s => s.trainer_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
         confirmedHours: round1(heldSlots.filter(s => s.player_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
       };
     }).sort((a, b) => b.hours - a.hours);
@@ -236,6 +238,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         capacity: cap,
         fillRate: cap > 0 ? Math.round((booked / cap) * 100) : 0,
         hours: round1(heldSlots.reduce((s, sl) => s + durationHours(sl), 0)),
+        trainerConfirmedHours: round1(heldSlots.filter(s => s.trainer_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
         confirmedHours: round1(heldSlots.filter(s => s.player_confirmed).reduce((s, sl) => s + durationHours(sl), 0)),
       };
     }).sort((a, b) => b.hours - a.hours);
@@ -247,9 +250,9 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     let csv = '';
 
     if (rows) {
-      csv = 'Name,Sessions,Held,Booked,Capacity,Fill Rate %,Chargeable Hours,Player-Confirmed Hours\n';
+      csv = 'Name,Sessions,Held,Booked,Capacity,Fill Rate %,Chargeable Hours,Trainer-Confirmed Hours,Player-Confirmed Hours\n';
       rows.forEach(r => {
-        csv += `"${r.name}",${r.sessions},${r.held},${r.booked},${r.capacity},${r.fillRate},${r.hours},${r.confirmedHours}\n`;
+        csv += `"${r.name}",${r.sessions},${r.held},${r.booked},${r.capacity},${r.fillRate},${r.hours},${r.trainerConfirmedHours},${r.confirmedHours}\n`;
       });
     } else {
       csv = 'Slot ID,Start,End,Trainer,Location,Booked,Capacity,Private,Trainer Confirmed,Player Confirmed\n';
@@ -324,6 +327,13 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
           value={`${round1(stats.totalHours)}h`}
           icon={Clock}
           iconClassName="text-primary"
+          loading={isLoading}
+        />
+        <StatTile
+          label={t('reports.confirmedTrainerHours', 'Confirmed by trainer')}
+          value={`${round1(stats.trainerConfirmedHours)}h`}
+          icon={UserCheck}
+          iconClassName="text-sky-600 dark:text-sky-400"
           loading={isLoading}
         />
         <StatTile
@@ -471,7 +481,8 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
                       <TableHead className="text-right">{t('reports.hours', 'Hours')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmedShort', 'Confirmed')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedTrainerShort', 'Trainer ✓ (h)')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedPlayersShort', 'Players ✓ (h)')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -488,6 +499,11 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                           </span>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium">{r.hours}h</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
+                            {r.trainerConfirmedHours}h
+                          </span>
+                        </TableCell>
                         <TableCell className="text-right text-sm">
                           <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
                             {r.confirmedHours}h
@@ -525,7 +541,8 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                       <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
                       <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
                       <TableHead className="text-right">{t('reports.hours', 'Hours')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmedShort', 'Confirmed')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedTrainerShort', 'Trainer ✓ (h)')}</TableHead>
+                      <TableHead className="text-right">{t('reports.confirmedPlayersShort', 'Players ✓ (h)')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -542,6 +559,11 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
                           </span>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium">{r.hours}h</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
+                            {r.trainerConfirmedHours}h
+                          </span>
+                        </TableCell>
                         <TableCell className="text-right text-sm">
                           <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
                             {r.confirmedHours}h
