@@ -19,7 +19,7 @@ export function KpiTile({ value, current, previous, upIsGood = true, ...rest }: 
   const { t } = useTranslation('common');
   const delta = pctDelta(current, previous);
   let subtext: ReactNode = null;
-  if (delta !== null) {
+  if (delta !== null && !rest.loading) {
     const up = delta >= 0;
     const good = up === upIsGood;
     const Icon = up ? ArrowUpRight : ArrowDownRight;

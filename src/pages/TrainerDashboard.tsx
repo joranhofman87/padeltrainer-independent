@@ -1,34 +1,38 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Users,
-  DollarSign,
+  Banknote,
   Clock,
   Eye,
   CalendarDays,
   ClipboardList,
   Plus,
   UserPlus,
+  Wallet,
+  BarChart3,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { AppPage } from '@/components/ui/app-page';
 import { DashboardPageSkeleton } from '@/components/ui/dashboard-page-skeleton';
-import { Skeleton } from '@/components/ui/skeleton';
 import { TrainerPageHeader } from '@/components/trainer/shell/TrainerPageHeader';
 import { supabase } from '@/lib/supabaseClient';
 import { sumReceivedInRange } from '@/lib/trainerEarnings';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
-import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import { startOfMonth, endOfMonth } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { TrainerTrialBanner } from '@/components/trainer/TrainerTrialBanner';
 import { getTrainerShortUrl } from '@/lib/domains';
-import { UnpaidBookingsCard } from '@/components/dashboard/UnpaidBookingsCard';
+import { formatCurrency } from '@/lib/format';
 import { PendingAttendanceCard } from '@/components/dashboard/PendingAttendanceCard';
 import { getTrainerAcademy } from '@/lib/academy';
 import { useQuery } from '@tanstack/react-query';
-import { DashboardStatTile } from '@/components/trainer/dashboard/DashboardStatTile';
-import { EmptyState } from '@/components/ui/empty-state';
+import { StatTile } from '@/components/ui/stat-tile';
+import { KpiTile } from '@/components/dashboard/KpiTile';
+import { MoneyChart } from '@/components/dashboard/charts/MoneyChart';
+import { NewPlayersChart } from '@/components/dashboard/charts/NewPlayersChart';
+import { DashboardQuickNav, type QuickNavItem } from '@/components/dashboard/DashboardQuickNav';
+import { fetchTrainerAnalytics } from '@/lib/dashboardAnalytics';
 import { DashboardSetupBanner } from '@/components/trainer/dashboard/DashboardSetupBanner';
 import { computeTrainerPaymentsSetupComplete } from '@/lib/trainerSetupPlan';
 import { getAcademyPaymentInfo } from '@/lib/academyTrainerPayments';
@@ -37,11 +41,6 @@ import {
   filterGuestRowsByRemoval,
 } from '@/lib/playerRemovalVisibility';
 import { fetchPlayersOverview } from '@/lib/playersOverview';
-import {
-  DashboardSectionHeader,
-  DashboardActivityRow,
-  DashboardPaymentBadge,
-} from '@/components/dashboard/DashboardActivityList';
 
 interface DashboardStats {
   totalStudents: number;
@@ -261,36 +260,10 @@ async function fetchTrainerActivity(trainerId: string) {
   };
 }
 
-function ActivityListSkeleton({ rows = 4 }: { rows?: number }) {
-  return (
-    <div>
-      {Array.from({ length: rows }).map((_, i) => (
-        <div
-          key={i}
-          className="flex items-start justify-between gap-3 border-b border-border/50 px-4 py-3 last:border-0"
-        >
-          <div className="min-w-0 flex-1 space-y-2">
-            <Skeleton className="h-4 w-2/5" />
-            <Skeleton className="h-3 w-1/4" />
-          </div>
-          <Skeleton className="h-5 w-12 rounded-full" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function paymentBadgeVariant(status: string): 'success' | 'warning' | 'muted' {
-  if (status === 'paid') return 'success';
-  if (status === 'pending' || status === 'invoiced') return 'warning';
-  return 'muted';
-}
-
 export default function TrainerDashboard() {
   const { user, profile, role, loading, subscription } = useAuth();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation('trainer');
-  const dfLocale = getDateFnsLocale(i18n.language);
+  const { t } = useTranslation('trainer');
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['trainer-stats', user?.id],
@@ -313,16 +286,25 @@ export default function TrainerDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: activityData, isPending: activityPending } = useQuery({
+  // Monthly money + new-players series + KPI deltas (caller-scoped RPC).
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['trainer-analytics', trainerId],
+    queryFn: () => fetchTrainerAnalytics(12),
+    enabled: !!trainerId && role === 'trainer',
+    staleTime: 60_000,
+  });
+
+  const kpis = analytics?.kpis;
+  const monthly = analytics?.monthly ?? [];
+
+  // The activity query still feeds the setup banner counts + the pending-registrations
+  // action banner (the duplicative preview tables it used to render are gone).
+  const { data: activityData } = useQuery({
     queryKey: ['trainer-activity', trainerId],
     queryFn: () => fetchTrainerActivity(trainerId!),
     enabled: !!trainerId,
     staleTime: 60_000,
   });
-
-  // The activity query is disabled until the stats query yields a trainerId, so
-  // isPending alone would stay true forever when no trainer profile exists.
-  const activityLoading = statsLoading || (!!trainerId && activityPending);
 
   const recentBookings = activityData?.recentBookings ?? [];
   const recentRegistrations = activityData?.recentRegistrations ?? [];
@@ -334,6 +316,17 @@ export default function TrainerDashboard() {
     : t('nav.dashboard');
 
   const pendingRegistrations = recentRegistrations.filter((r) => r.status !== 'confirmed');
+
+  const quickNav: QuickNavItem[] = [
+    { label: t('nav.players'), to: '/app/trainer/players', icon: Users },
+    { label: t('nav.agenda'), to: '/app/trainer/agenda', icon: CalendarDays },
+    { label: t('nav.openSlots'), to: '/app/trainer/open-slots', icon: Clock },
+    { label: t('nav.registrations'), to: '/app/trainer/intake-requests', icon: ClipboardList },
+    { label: t('nav.earnings'), to: '/app/trainer/earnings', icon: Banknote },
+    { label: t('nav.expenses'), to: '/app/trainer/expenses', icon: Wallet },
+    { label: t('nav.analytics'), to: '/app/trainer/analytics', icon: BarChart3 },
+    { label: t('nav.settings'), to: '/app/trainer/settings', icon: SettingsIcon },
+  ];
 
   if (loading) {
     return (
@@ -383,21 +376,25 @@ export default function TrainerDashboard() {
       />
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t('nav.dashboard')}>
-        <DashboardStatTile
-          label={t('dashboard.stats.profileViews')}
-          value={String(stats.profileViews)}
-          icon={Eye}
-          loading={statsLoading}
-          onClick={() => navigate('/app/trainer/analytics')}
+        <KpiTile
+          label={t('dashboard.stats.revenue')}
+          value={formatCurrency(kpis?.revenue_this_month ?? 0)}
+          current={kpis?.revenue_this_month ?? 0}
+          previous={kpis?.revenue_last_month ?? 0}
+          icon={Banknote}
+          loading={analyticsLoading}
+          onClick={() => navigate('/app/trainer/earnings')}
         />
-        <DashboardStatTile
+        <KpiTile
           label={t('dashboard.stats.totalStudents')}
-          value={String(stats.totalStudents)}
+          value={String(kpis?.new_players_this_month ?? 0)}
+          current={kpis?.new_players_this_month ?? 0}
+          previous={kpis?.new_players_last_month ?? 0}
           icon={Users}
-          loading={statsLoading}
+          loading={analyticsLoading}
           onClick={() => navigate('/app/trainer/players')}
         />
-        <DashboardStatTile
+        <StatTile
           label={t('dashboard.stats.openSlots')}
           value={String(stats.openSlots)}
           icon={Clock}
@@ -405,16 +402,20 @@ export default function TrainerDashboard() {
           highlight
           onClick={() => navigate('/app/trainer/open-slots')}
         />
-        <DashboardStatTile
-          label={t('dashboard.stats.revenue')}
-          value={statsLoading ? '—' : `€${stats.monthlyEarnings.toFixed(0)}`}
-          icon={DollarSign}
+        <StatTile
+          label={t('dashboard.stats.profileViews')}
+          value={String(stats.profileViews)}
+          icon={Eye}
           loading={statsLoading}
-          onClick={() => navigate('/app/trainer/earnings')}
+          onClick={() => navigate('/app/trainer/analytics')}
         />
       </section>
 
-      <UnpaidBookingsCard trainerId={trainerId} />
+      {/* Analytics charts */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <MoneyChart data={monthly} />
+        <NewPlayersChart data={monthly} />
+      </div>
 
       {pendingRegistrations.length > 0 && (
         <div className="flex flex-col gap-3 rounded-lg border border-[hsl(var(--brand-200))] bg-[hsl(var(--brand-50))]/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -440,88 +441,10 @@ export default function TrainerDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="overflow-hidden border-border/80 shadow-sm">
-          <DashboardSectionHeader
-            title={t('dashboard.recentBookings')}
-            viewAllLabel={t('dashboard.viewAll')}
-            onViewAll={() => navigate('/app/trainer/schedule-overview')}
-          />
-          <CardContent className="p-0">
-            {activityLoading ? (
-              <ActivityListSkeleton />
-            ) : recentBookings.length === 0 ? (
-              <EmptyState variant="trainer"
-                icon={ClipboardList}
-                title={t('bookings.empty')}
-                description={t('dashboard.emptyBookingsHint')}
-              />
-            ) : (
-              <div>
-                {recentBookings.map((booking) => {
-                  const playerName =
-                    (booking.profiles as { full_name?: string } | null)?.full_name ||
-                    (booking.guest_players as { full_name?: string } | null)?.full_name ||
-                    '—';
-                  const cyclusName = (booking.availability_slots as { cyclus_name?: string } | null)?.cyclus_name;
-                  const sessionLabel =
-                    booking.sessionCount === 1
-                      ? t('dashboard.session')
-                      : t('dashboard.sessions');
-                  return (
-                    <DashboardActivityRow
-                      key={booking.id}
-                      primary={playerName}
-                      secondary={
-                        cyclusName
-                          ? `${cyclusName} (${booking.sessionCount} ${sessionLabel})`
-                          : undefined
-                      }
-                      meta={format(new Date(booking.created_at), 'dd MMM yyyy', { locale: dfLocale })}
-                      trailing={
-                        <DashboardPaymentBadge
-                          status={booking.payment_status}
-                          variant={paymentBadgeVariant(booking.payment_status)}
-                        />
-                      }
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden border-border/80 shadow-sm">
-          <DashboardSectionHeader
-            title={t('dashboard.upcomingSpots')}
-            viewAllLabel={t('dashboard.viewAll')}
-            onViewAll={() => navigate('/app/trainer/open-slots')}
-          />
-          <CardContent className="p-0">
-            {activityLoading ? (
-              <ActivityListSkeleton />
-            ) : upcomingSlots.length === 0 ? (
-              <EmptyState variant="trainer" icon={CalendarDays} title={t('availability.noSlots')} />
-            ) : (
-              <div>
-                {upcomingSlots.map((slot) => {
-                  const sessionLabel =
-                    slot.sessionCount === 1 ? t('dashboard.session') : t('dashboard.sessions');
-                  const locationName = (slot.locations as { name?: string } | null)?.name;
-                  return (
-                    <DashboardActivityRow
-                      key={slot.cyclus_id || slot.id}
-                      primary={slot.cyclus_name || locationName || '—'}
-                      secondary={`${slot.sessionCount} ${sessionLabel}`}
-                      meta={`${format(new Date(slot.start_time), 'EEE dd MMM', { locale: dfLocale })} · ${format(new Date(slot.start_time), 'HH:mm')}`}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Quick navigation — replaces the old duplicative preview tables */}
+      <div>
+        <h2 className="mb-3 text-base font-semibold">{t('dashboard.quickNavTitle', 'Quick navigation')}</h2>
+        <DashboardQuickNav items={quickNav} />
       </div>
     </AppPage>
   );

@@ -41,12 +41,17 @@ describe('Phase 2 operational list UI', () => {
     expect(source).toContain('EmptyState');
   });
 
-  it('AcademyDashboard uses StatTile and dashboard skeleton', () => {
+  it('AcademyDashboard composes the analytics dashboard (KPI tiles + charts + quick-nav, no preview tables)', () => {
     const source = read('pages/academy/AcademyDashboard.tsx');
     expect(source).toContain('StatTile');
     expect(source).toContain('DashboardPageSkeleton');
-    expect(source).toContain('DashboardSectionHeader');
-    expect(source).toContain('compactDataTableClass');
+    // Analytics redesign (Slice 3): money + players charts + quick-nav replace the
+    // duplicative preview tables.
+    expect(source).toContain('MoneyChart');
+    expect(source).toContain('NewPlayersChart');
+    expect(source).toContain('DashboardQuickNav');
+    expect(source).not.toContain('DashboardSectionHeader');
+    expect(source).not.toContain('compactDataTableClass');
   });
 
   it('TrainerDashboard uses AppPage and TrainerPageHeader', () => {

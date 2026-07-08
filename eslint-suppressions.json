@@ -278,11 +278,6 @@
       "count": 6
     }
   },
-  "src/components/dashboard/UnpaidBookingsCard.tsx": {
-    "react-refresh/only-export-components": {
-      "count": 1
-    }
-  },
   "src/components/featured/FeaturedSection.tsx": {
     "react-refresh/only-export-components": {
       "count": 1
@@ -428,11 +423,6 @@
       "count": 1
     }
   },
-  "src/components/trainer/DuplicateCyclusDialog.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/components/trainer/EditBookingDialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
@@ -449,22 +439,9 @@
       "count": 1
     }
   },
-  "src/components/trainer/ImportPlayersTab.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    }
-  },
   "src/components/trainer/InvoiceList.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
-  "src/components/trainer/QuickBookDialog.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
     },
     "react-hooks/exhaustive-deps": {
       "count": 1
@@ -483,19 +460,6 @@
   "src/components/trainer/onboarding/OnboardingStep1Profile.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1
-    }
-  },
-  "src/components/trainer/onboarding/OnboardingStep2Profile.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
-  "src/components/trainer/onboarding/OnboardingStep3Schedule.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 3
     }
   },
   "src/components/trainers/TrainerFilters.tsx": {
@@ -871,14 +835,6 @@
       "count": 1
     }
   },
-  "src/pages/TrainerBookings.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/pages/TrainerCalendar.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 8
@@ -916,23 +872,10 @@
       "count": 2
     }
   },
-  "src/pages/TrainerGetStarted.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 1
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/pages/TrainerIntakeRequests.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 15
     },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
-  "src/pages/TrainerOnboarding.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1
     }
@@ -1013,11 +956,6 @@
     },
     "react-hooks/exhaustive-deps": {
       "count": 1
-    }
-  },
-  "src/pages/academy/AcademyDashboard.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 19
     }
   },
   "src/pages/academy/AcademyIntakeRequests.tsx": {

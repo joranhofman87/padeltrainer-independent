@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { UNPAID_BOOKINGS_SELECT } from './unpaidBookings';
 
 const ACADEMY_PAGE_SOURCES = [
   'src/pages/academy/AcademyPlayers.tsx',
@@ -23,12 +22,6 @@ function readSource(relativePath: string): string {
 }
 
 describe('academy PostgREST embed safety', () => {
-  it('UNPAID_BOOKINGS_SELECT avoids invalid trainer profile embeds', () => {
-    expect(UNPAID_BOOKINGS_SELECT).not.toMatch(INVALID_TRAINER_PROFILE_EMBED);
-    expect(UNPAID_BOOKINGS_SELECT).not.toMatch(INVALID_SLOT_TRAINER_EMBED);
-    expect(UNPAID_BOOKINGS_SELECT).not.toContain('trainer_profiles');
-  });
-
   it.each(ACADEMY_PAGE_SOURCES)('%s does not embed profiles:user_id on trainer_profiles', (file) => {
     const code = codeWithoutComments(readSource(file));
     expect(code).not.toMatch(INVALID_TRAINER_PROFILE_EMBED);

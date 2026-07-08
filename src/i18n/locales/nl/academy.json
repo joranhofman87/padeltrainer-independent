@@ -1,9 +1,17 @@
 {
   "badge": "Academy beheerder",
+  "reportsSummary": {
+    "title": "Rapporten",
+    "thisMonth": "deze maand",
+    "viewFull": "Volledig rapport"
+  },
   "dashboard": {
     "title": "Academy dashboard",
     "welcome": "Welkom terug",
     "overview": "Overzicht",
+    "revenueThisMonth": "Omzet deze maand",
+    "newPlayersThisMonth": "Nieuwe spelers",
+    "quickNavTitle": "Snel navigeren",
     "calendar": "Kalender",
     "pendingVerification": "Je academy wacht op verificatie",
     "pendingVerificationDescription": "Een beheerder zal je academy beoordelen en verifiëren. je krijgt volledige toegang zodra dit is goedgekeurd.",
