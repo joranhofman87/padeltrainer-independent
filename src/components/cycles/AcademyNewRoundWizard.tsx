@@ -98,8 +98,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   // Live invite-drain progress ({ sent, total }) while a large round emails out.
   const [sendProgress, setSendProgress] = useState<{ sent: number; total: number } | null>(null);
   const [ackNoEmail, setAckNoEmail] = useState(false);
-  const [invitationMessage, setInvitationMessage] = useState('');
-  const [invitationSubject, setInvitationSubject] = useState('');
+  // Pre-fill a warm, personalised default so a new academy starts from something instead of
+  // a blank box; fully editable. Leads with "Hoi {first_name}," (substituted per recipient).
+  const [invitationMessage, setInvitationMessage] = useState(() => t('rebookShared.defaultInviteMessage'));
+  const [invitationSubject, setInvitationSubject] = useState(() => t('rebookShared.defaultInviteSubject'));
   const [rebookRules, setRebookRules] = useState('');
   // Priority list: registered players who also get first dibs (+ an email) when the
   // member window opens, plus the optional message for that "sessions opened" email.
