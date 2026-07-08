@@ -12,6 +12,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const MOLLIE_API_BASE = Deno.env.get("MOLLIE_API_BASE") ?? "https://api.mollie.com";
+
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CREATE-INVOICE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
 };
@@ -273,7 +275,7 @@ serve(async (req) => {
       try {
         const testParam = isTestMode ? "?testmode=true" : "";
         const checkResp = await fetch(
-          `https://api.mollie.com/v2/payments/${invoice.mollie_payment_id}${testParam}`,
+          `${MOLLIE_API_BASE}/v2/payments/${invoice.mollie_payment_id}${testParam}`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
         if (checkResp.ok) {
@@ -299,7 +301,7 @@ serve(async (req) => {
               paymentId: invoice.mollie_payment_id, openValue, invoiceTotal,
             });
             try {
-              await fetch(`https://api.mollie.com/v2/payments/${invoice.mollie_payment_id}${testParam}`, {
+              await fetch(`${MOLLIE_API_BASE}/v2/payments/${invoice.mollie_payment_id}${testParam}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${accessToken}` },
               });
@@ -328,7 +330,7 @@ serve(async (req) => {
     // Fetch Mollie profile ID (required for OAuth payments)
     let mollieProfileId: string | null = null;
     try {
-      const profileResp = await fetch("https://api.mollie.com/v2/profiles", {
+      const profileResp = await fetch(`${MOLLIE_API_BASE}/v2/profiles`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (profileResp.ok) {
@@ -416,7 +418,7 @@ serve(async (req) => {
       recreatedAfterPaymentId ? `cip:recreate:${recreatedAfterPaymentId}` : "cip",
       paymentBody,
     );
-    const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
+    const mollieRes = await fetch(`${MOLLIE_API_BASE}/v2/payments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
