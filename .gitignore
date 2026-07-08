@@ -50,3 +50,6 @@ supabase/.temp/
 
 # Playwright local auth sessions
 e2e/local/.auth/
+
+# local edge-runtime import map (test only)
+supabase/functions/import_map.local.json
