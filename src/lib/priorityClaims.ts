@@ -917,7 +917,16 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     const claimData = await fetchClaimByToken(token);
     slot = (claimData?.slot ?? null) as ClaimSlotInfo | null;
     playerId = ((claimData?.claim as { player_id?: string | null } | undefined)?.player_id) ?? null;
-    mode = await getCycleRebookPaymentMode(slot?.cyclus_id);
+    // Prefer the status-independent mode from the token RPC (SECURITY DEFINER, so it resolves
+    // even after the cycle leaves 'open' — otherwise an upfront cycle would silently fall back
+    // to deferred and skip the pay-first gate). Fall back to the cycles_public read only when
+    // the RPC didn't supply it (frontend deployed before the migration).
+    const rpcMode = (claimData as { rebook_payment_mode?: string | null } | null)?.rebook_payment_mode;
+    mode = rpcMode === 'upfront'
+      ? 'upfront'
+      : rpcMode === 'deferred_split'
+        ? 'deferred_split'
+        : await getCycleRebookPaymentMode(slot?.cyclus_id);
   } catch {
     // Mode lookup failed — accept as a plain commitment (deferred).
     const a = await acceptClaimWithToken(token);
