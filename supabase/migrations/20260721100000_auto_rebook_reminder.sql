@@ -97,5 +97,8 @@ BEGIN
     sr_key
   );
 
-  PERFORM cron.schedule('auto-rebook-reminder', '0 * * * *', cron_command);  -- hourly
+  -- Hourly, but only across a daytime UTC window (06:00–19:00 UTC) so it never wakes at
+  -- deep night. That range covers every Amsterdam daytime hour in both CET and CEST; the
+  -- edge fn's send-window guard is the exact local-time clamp (09:00–20:00 Amsterdam).
+  PERFORM cron.schedule('auto-rebook-reminder', '0 6-19 * * *', cron_command);
 END $$;

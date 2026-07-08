@@ -9,6 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { hourInTimeZone, isWithinSendWindow, SEND_TIME_ZONE } from "../_shared/send-window.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,6 +84,15 @@ serve(async (req: Request) => {
   const token = (req.headers.get("Authorization") || "").replace("Bearer ", "");
   if (token !== serviceKey) return json({ error: "unauthorized" }, 401);
   if (!resendApiKey) return json({ error: "email_not_configured" }, 500);
+
+  // Quiet hours: reminders only go out during the day (Amsterdam local time), never at
+  // night — the cron may still tick outside daytime, so this is where we actually clamp.
+  // `?force=1` bypasses it (service-role only) for a manual "send now" test.
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  const now = new Date();
+  if (!force && !isWithinSendWindow(now)) {
+    return json({ ok: true, skipped: "outside_send_window", hour: hourInTimeZone(now, SEND_TIME_ZONE) });
+  }
 
   const supabase = createClient(supabaseUrl, serviceKey);
   const resend = new Resend(resendApiKey);
