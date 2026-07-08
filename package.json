@@ -36,7 +36,9 @@
     "db:rehearse:all": "node scripts/db/run-all-rehearsals.mjs",
     "db:rehearse:invoice-status": "node scripts/db/rehearse-invoice-status-history.mjs",
     "db:rehearse:registration-write": "npx tsx scripts/db/rehearse-registration-write.ts",
-    "db:seed:local": "npx tsx scripts/db/seed-local.ts"
+    "db:seed:local": "npx tsx scripts/db/seed-local.ts",
+    "dev:e2e": "vite --mode e2e",
+    "e2e:local": "npm run db:seed:local && playwright test --config playwright.local.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
