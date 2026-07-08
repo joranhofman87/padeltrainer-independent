@@ -38,7 +38,8 @@
     "db:rehearse:registration-write": "npx tsx scripts/db/rehearse-registration-write.ts",
     "db:seed:local": "npx tsx scripts/db/seed-local.ts",
     "dev:e2e": "vite --mode e2e",
-    "e2e:local": "npm run db:seed:local && playwright test --config playwright.local.config.ts"
+    "e2e:local": "npm run db:seed:local && playwright test --config playwright.local.config.ts",
+    "edge:serve:local": "bash scripts/db/edge-serve-local.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
