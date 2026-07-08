@@ -54,6 +54,9 @@ interface ClaimData {
   booked_by_captain_name: string | null;
   // The cycle's rebooking-rules HTML (from the SECURITY DEFINER claim RPC), else null.
   rebook_rules: string | null;
+  // Payment mode from the token RPC — status-independent, so it stays correct even after the
+  // cycle leaves 'open' (unlike the cycles_public read). Absent pre-migration → fall back.
+  rebook_payment_mode?: string | null;
 }
 
 export default function PriorityClaimPage() {
@@ -94,9 +97,16 @@ export default function PriorityClaimPage() {
         const rawRules = claim?.rebook_rules ?? null;
         setRebookRules(isBlankRichTextHtml(rawRules) ? null : rawRules);
         // Mode-aware copy + "starts on" date + the group roster (for the "re-book the
-        // whole group" option): read in parallel; each falls back gracefully.
+        // whole group" option): read in parallel; each falls back gracefully. Prefer the
+        // status-independent mode the token RPC now returns; only hit the cycles_public read
+        // when it's absent (frontend deployed before the migration).
+        const rpcMode = claim?.rebook_payment_mode;
+        const modePromise: Promise<RebookPaymentMode> =
+          rpcMode === 'upfront' || rpcMode === 'deferred_split'
+            ? Promise.resolve(rpcMode)
+            : getCycleRebookPaymentMode(claim?.slot?.cyclus_id);
         const [mode, startDate, grp] = await Promise.all([
-          getCycleRebookPaymentMode(claim?.slot?.cyclus_id),
+          modePromise,
           getCycleStartDate(claim?.slot?.cyclus_id),
           fetchRebookGroupByToken(token).catch(() => null),
         ]);
@@ -284,10 +294,14 @@ export default function PriorityClaimPage() {
 
   const windowEnded = data.slot.priority_window_ends_at && new Date(data.slot.priority_window_ends_at) < new Date();
   const status = data.claim.status;
+  // A claim the cron expired or a manager released is no longer actionable even if its window
+  // isn't (yet) past — without this it would fall through to live Yes/No buttons that the
+  // server then refuses with a confusing "already responded".
+  const claimClosed = status !== 'pending' && status !== 'claimed' && status !== 'declined';
   const start = new Date(data.slot.start_time);
   const end = new Date(data.slot.end_time);
   // The player can still keep/release → show the "how it works" explainer.
-  const actionable = !accepted && !declined && status !== 'claimed' && status !== 'declined' && !windowEnded;
+  const actionable = !accepted && !declined && status === 'pending' && !windowEnded;
   // When the round has rules, proceeding (keep / group re-book) requires the opt-in tick. Declining never does.
   const rulesBlocked = !!rebookRules && !rulesAccepted;
 
@@ -432,6 +446,12 @@ export default function PriorityClaimPage() {
             <div>
               <p className="text-sm text-muted-foreground mb-2">{t('rebooking.windowEnded', 'The reservation period has ended.')}</p>
               <p className="text-sm text-muted-foreground mb-3">{t('rebooking.windowEndedRecovery', 'Your spot has been released to others. Still room? You can book again below. Questions? Contact the academy.')}</p>
+              <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+            </div>
+          ) : claimClosed ? (
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">{t('rebooking.claimClosed', 'This invitation is no longer active.')}</p>
+              <p className="text-sm text-muted-foreground mb-3">{t('rebooking.claimClosedRecovery', 'Your priority spot has been released. Still room? You can book again below. Questions? Contact the academy.')}</p>
               <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
             </div>
           ) : (

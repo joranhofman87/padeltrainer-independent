@@ -933,6 +933,8 @@
     "splitNote": "De prijs wordt gedeeld door iedereen die meedoet, dus als er minder spelers meedoen, betaalt iedereen iets meer.",
     "ifNoResponse": "Geen reactie betekent dat je je plek na de deadline opgeeft. Wil je er daarna weer bij? Vraag het de academy of zoek een vrije plek.",
     "windowEndedRecovery": "De voorrangsperiode is voorbij. Wil je er weer bij? Neem contact op met de academy of bekijk hieronder of er een vrije plek is.",
+    "claimClosed": "Deze uitnodiging is niet meer actief.",
+    "claimClosedRecovery": "Je voorrangsplek is vrijgegeven. Nog plek? Je kunt hieronder opnieuw boeken. Vragen? Neem contact op met de academy.",
     "cardRules": "Je houdt je plek tot de deadline. Reageer je niet, dan komt je plek vrij voor anderen.",
     "cardChangeTimes": "Wil je een ander moment? Vraag de academy om je te verplaatsen, of geef je plek vrij en boek opnieuw als er ergens plek is.",
     "cardRecovery": "Mis je de deadline? Zoek daarna een vrije plek of neem contact op met de academy."

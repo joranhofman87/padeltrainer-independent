@@ -25,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // the claim so a later run can retry). Returns the final Resend error or null.
 async function sendInviteWithRetry(
   resendClient: Resend,
-  payload: { from: string; to: string[]; subject: string; html: string },
+  payload: { from: string; to: string[]; subject: string; html: string; reply_to?: string; headers?: Record<string, string> },
   maxAttempts = 4,
 ): Promise<{ error: unknown | null }> {
   let lastError: unknown = null;
@@ -71,6 +71,16 @@ interface SlotRow {
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Strip characters that would break the RFC 5322 From display name (quotes, backslash,
+// angle brackets, CR/LF) and collapse whitespace, so an academy name with a comma/dot is
+// safe once we wrap the whole display phrase in quotes.
+const sanitizeFromName = (s: string) =>
+  (s || "").replace(/["\\<>\r\n]/g, "").replace(/\s+/g, " ").trim().slice(0, 64);
+
+// A basic email sanity check for the reply-to / unsubscribe mailto (no header injection).
+const isPlausibleEmail = (s: string | null | undefined): s is string =>
+  !!s && /^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(s.trim());
 
 // Personalization tokens — same set the reminder + invoice emails use.
 const substituteVars = (text: string, fullName: string) => {
@@ -319,7 +329,9 @@ const handler = async (req: Request): Promise<Response> => {
     // Already-invited claims are skipped unless the caller explicitly asks for
     // a resend. Test sends go to the caller's own inbox with a placeholder
     // token (see _shared/priority-claim-invite.ts), so invited_at is ignored.
-    const allClaims = claims as ClaimRow[];
+    // PostgREST types the to-one embeds (profiles/guest_players) as arrays; the runtime
+    // values are single objects — cast through unknown (same idiom as above).
+    const allClaims = claims as unknown as ClaimRow[];
     const eligible = allClaims.filter(
       (c) => c.status === "pending" && (isTest || resend === true || !c.invited_at)
     );
@@ -337,13 +349,24 @@ const handler = async (req: Request): Promise<Response> => {
       .select("id, start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at, academy_profile_id")
       .in("id", slotIds);
 
-    // Academy timezone for DISPLAY (slots are stored UTC). Default Europe/Amsterdam.
+    // Academy timezone for DISPLAY (slots are stored UTC; default Europe/Amsterdam), plus
+    // the academy NAME + reply-to so the invite identifies the sender (a cold recipient who
+    // registered with the academy — not "PadelTrainer.ai" — must recognise who it's from).
     const acadIds = [...new Set(((slots || []) as SlotRow[]).map((s) => s.academy_profile_id).filter((id): id is string => !!id))];
     const tzByAcademy = new Map<string, string>();
+    const nameByAcademy = new Map<string, string>();
+    const replyToByAcademy = new Map<string, string>();
     if (acadIds.length > 0) {
-      const { data: acads } = await supabase.from("academy_profiles").select("id, timezone").in("id", acadIds);
-      for (const a of (acads || []) as Array<{ id: string; timezone: string | null }>) {
+      const { data: acads } = await supabase
+        .from("academy_profiles")
+        .select("id, timezone, name, business_name, contact_email, invoice_reply_to_email")
+        .in("id", acadIds);
+      for (const a of (acads || []) as Array<{ id: string; timezone: string | null; name: string | null; business_name: string | null; contact_email: string | null; invoice_reply_to_email: string | null }>) {
         tzByAcademy.set(a.id, a.timezone || "Europe/Amsterdam");
+        const display = (a.business_name || a.name || "").trim();
+        if (display) nameByAcademy.set(a.id, display);
+        const replyTo = (a.invoice_reply_to_email || a.contact_email || "").trim();
+        if (isPlausibleEmail(replyTo)) replyToByAcademy.set(a.id, replyTo);
       }
     }
     const slotMap = new Map<string, SlotRow>(
@@ -384,7 +407,7 @@ const handler = async (req: Request): Promise<Response> => {
         .select("rebook_group_id, player_id, guest_player_id, status, availability_slots:slot_id(start_time)")
         .in("rebook_group_id", groupIds)
         .eq("status", "pending");
-      for (const gc of (groupClaims || []) as Array<{ rebook_group_id: string | null; player_id: string | null; guest_player_id: string | null; availability_slots: { start_time: string } | null }>) {
+      for (const gc of (groupClaims || []) as unknown as Array<{ rebook_group_id: string | null; player_id: string | null; guest_player_id: string | null; availability_slots: { start_time: string } | null }>) {
         if (!gc.rebook_group_id || !gc.availability_slots) continue;
         const pkey = gc.player_id ?? `g:${gc.guest_player_id}`;
         const key = `${gc.rebook_group_id}|${pkey}`;
@@ -437,6 +460,8 @@ const handler = async (req: Request): Promise<Response> => {
       // Times are stored UTC; render in the academy's timezone (default
       // Europe/Amsterdam) so 18:00-local reads as 18:00, not 16:00.
       const tz = (slot.academy_profile_id && tzByAcademy.get(slot.academy_profile_id)) || "Europe/Amsterdam";
+      const academyName = (slot.academy_profile_id && nameByAcademy.get(slot.academy_profile_id)) || "";
+      const replyTo = (slot.academy_profile_id && replyToByAcademy.get(slot.academy_profile_id)) || "";
       // For a group, anchor the description on the group's FIRST session.
       const start = new Date(group ? group.firstStart : slot.start_time);
       const durationMs = new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime();
@@ -489,11 +514,17 @@ const handler = async (req: Request): Promise<Response> => {
             : `<p style="color:#6b7280;font-size:13px;">Je houdt je vaste plek zolang de voorrangsperiode loopt. Daarna komt je plek vrij voor anderen.</p>`}
           <p style="color:#6b7280;font-size:13px;">Je houdt je eigen dag en tijd. Wil je wisselen? Vraag het de academy — dat is het makkelijkst. Je kunt ook je plek vrijgeven en opnieuw boeken als er ergens plek is.</p>
           <div style="text-align:center;margin:28px 0;">
-            <a href="${acceptUrl}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Ja, ik hou mijn plek</a>
-            <a href="${declineUrl}" style="display:inline-block;background:#ffffff;color:#1a1a1a;border:1px solid #d1d5db;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:4px;">Nee, geef mijn plek vrij</a>
+            <a href="${acceptUrl}" style="display:block;background:#16a34a;color:white;padding:16px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">Ja, ik hou mijn plek</a>
+            ${isUpfront ? `<p style="color:#6b7280;font-size:12px;margin:8px 0 0;">Je rondt daarna direct de online betaling af.</p>` : ""}
+            <p style="margin:14px 0 0;"><a href="${declineUrl}" style="color:#6b7280;font-size:14px;">Nee, ik geef mijn plek vrij</a></p>
           </div>
           <p style="color:#6b7280;font-size:13px;">${deadline ? "Reageer je niet? Dan komt je plek na de deadline vrij." : "Reageer je niet? Dan komt je plek daarna vrij."} Je kunt daarna nog proberen te boeken via de boekingspagina zolang er plek is, of contact opnemen met de academy.</p>
           <p style="color:#9ca3af;font-size:12px;text-align:center;">Of open deze link: <a href="${claimUrl}" style="color:#f45d25;">${claimUrl}</a></p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0 12px;" />
+          <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">
+            ${academyName ? `Je ontvangt deze e-mail omdat je traint bij <strong>${escapeHtml(academyName)}</strong>.` : ""}
+            Verzonden via PadelTrainer.ai${academyName ? ` namens ${escapeHtml(academyName)}` : ""}${replyTo ? " — vragen? Antwoord gerust op deze e-mail." : "."}
+          </p>
         </div>
       `;
 
@@ -517,15 +548,30 @@ const handler = async (req: Request): Promise<Response> => {
       // Pace sends a little so a big batch doesn't slam Resend's rate limit; the
       // retry wrapper still covers any 429s that slip through.
       if (sent > 0 || failed > 0) await sleep(120);
+      // Brand the sender with the academy name (a cold recipient recognises their academy,
+      // not "PadelTrainer.ai"); wrap the whole display phrase in quotes so a name with a
+      // comma/dot stays a valid RFC 5322 From. Reply-to routes replies to the academy, and a
+      // mailto List-Unsubscribe (to that same address — NOT the decline link, which would give
+      // up their spot) gives large mailbox providers the opt-out signal a bulk-ish blast needs.
+      const fromName = academyName ? `${sanitizeFromName(academyName)} via PadelTrainer.ai` : "PadelTrainer.ai";
+      const inviteHeaders: Record<string, string> = {};
+      if (replyTo) inviteHeaders["List-Unsubscribe"] = `<mailto:${replyTo}?subject=Uitschrijven>`;
       const { error: sendErr } = await sendInviteWithRetry(resendClient, {
-        from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
+        from: `"${fromName}" <noreply@app.padeltrainer.ai>`,
         to: [recipientEmail],
+        reply_to: replyTo || undefined,
+        ...(Object.keys(inviteHeaders).length ? { headers: inviteHeaders } : {}),
         subject: (() => {
           // Academy-authored subject if set (with {first_name} etc. substituted per
-          // recipient), else the default. Re-sanitized after substitution so a name with a
-          // stray newline can't defeat the header-injection guard. [TEST] prefix for tests.
+          // recipient), else the default (with the deadline appended when known, so the
+          // inbox preview carries the cutoff). Re-sanitized after substitution so a name with
+          // a stray newline can't defeat the header-injection guard. [TEST] prefix for tests.
           const base = sanitizeEmailSubject(
-            inviteSubject ? substituteVars(inviteSubject, recipientName) : "Reserveer je plek voor de volgende cyclus",
+            inviteSubject
+              ? substituteVars(inviteSubject, recipientName)
+              : deadline
+                ? `Reserveer je plek voor de volgende cyclus (vóór ${deadline})`
+                : "Reserveer je plek voor de volgende cyclus",
           );
           return testEmail ? `[TEST] ${base}` : base;
         })(),
