@@ -102,6 +102,11 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
     contact_email: `academy.manager${tag}@local.test`,
     is_public: true, subscription_status: 'active', timezone: 'Europe/Amsterdam',
     created_by: managerUid,
+    // Invoice/business details — required so non-draft invoices (the upfront pay path) can mint.
+    business_name: idx === 0 ? 'Test Padel Academy B.V.' : `Filler Academy ${idx} B.V.`,
+    business_address: 'Sportlaan 1, 1234 AB Amsterdam',
+    kvk_number: '12345678', btw_number: 'NL001234567B01',
+    iban: 'NL91ABNA0417164300', bic: 'ABNANL2A',
   }).select('id').single());
 
   await must('academy_managers', admin.from('academy_managers').insert({
@@ -195,16 +200,23 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
     await must('slot_priority_claims', admin.from('slot_priority_claims').insert(claims).select('id'));
   }
 
-  // ── UPFRONT rebook round (the launch scenario): pay-now, FULL price for the FULL cycle. Each
-  //    invitee's two weekly claims share a rebook_group_id → sessions=2 → the claim card shows the
-  //    whole-term total (price × sessions) and one accept books the entire series. Covers a
-  //    registered player (p1) AND a guest (g1) — many academy-created players are guests. ──
+  // ── UPFRONT rebook round (the LAUNCH scenario): a GROUP of up to 4 shares one court; the first
+  //    to respond (the "captain") pays the FULL group price upfront, online, no login, no split.
+  //    One shared rebook_group_id over all members × both weekly slots → the claim page shows the
+  //    "boek en betaal voor de hele groep" button → create-group-rebook-invoice. Members = 3
+  //    registered players + 1 guest (academy-created). Captain token = seed-claim-up-a0-s0-p1. ──
   const upfrontCycle = await must('cycles', admin.from('cycles').insert({
     owner_type: 'academy', owner_id: academy.id, name: `Najaar ${idx} — direct betalen`, status: 'open',
     price_per_session: 20, start_date: iso(daysFromNow(14)).slice(0, 10),
     settings: { rebook_payment_mode: 'upfront', rebook_auto_reminder: true },
   }).select('id').single());
-  const groupByInvitee = new Map(invitees.map((inv) => [inv.key, randomUUID()]));
+  const upfrontGroupId = randomUUID();
+  const upfrontMembers = [
+    { key: 'p1', player_id: playerIds[0] as string | null, guest_player_id: null as string | null },
+    { key: 'p2', player_id: playerIds[1], guest_player_id: null },
+    { key: 'p3', player_id: playerIds[2], guest_player_id: null },
+    { key: 'g1', player_id: null, guest_player_id: guestIds[0] },
+  ];
   for (let s = 0; s < 2; s++) {
     const start = daysFromNow(21 + s * 7, 19);
     const slot = await must('availability_slots', admin.from('availability_slots').insert({
@@ -213,9 +225,9 @@ async function seedAcademy(idx: number, withRebookRound: boolean) {
       price_per_session: 20, max_participants: 4, is_public: false,
       priority_window_ends_at: iso(windowEnds), source_cycle_id: sourceCycle.id,
     }).select('id').single());
-    const claims = invitees.map((inv) => ({
+    const claims = upfrontMembers.map((inv) => ({
       slot_id: slot.id, player_id: inv.player_id, guest_player_id: inv.guest_player_id,
-      rebook_group_id: groupByInvitee.get(inv.key), status: 'pending',
+      rebook_group_id: upfrontGroupId, status: 'pending',
       claim_token: `seed-claim-up-a${idx}-s${s}-${inv.key}`,
     }));
     await must('slot_priority_claims', admin.from('slot_priority_claims').insert(claims).select('id'));
