@@ -6,7 +6,7 @@
 // genuine non-responders due for a reminder: claim still 'pending' (not booked), did NOT
 // decline, NOT already reminded, priority window closing within the lead time, has an email,
 // on a rebook round with auto-reminder not disabled — one representative row per invitee.
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -97,6 +97,9 @@ beforeAll(async () => {
   // RAISE NOTICE + RETURNs at the guard, never touching cron.job / vault) and must not disturb
   // the detection RPC. Loading it here proves both.
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260722100000_rebook_crons_use_vault.sql'), 'utf8'));
+  // The app_now() clock migration re-emits the detection RPC with now() → app_now(); loading it
+  // last lets the time-travel block below set app.fake_now and move "now" around a fixed deadline.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260724100000_app_now_clock.sql'), 'utf8'));
 });
 
 describe('rebook_claims_needing_auto_reminder', () => {
@@ -126,5 +129,34 @@ describe('rebook_claims_needing_auto_reminder', () => {
     const near = (await db.query(`SELECT count(*)::int AS n FROM public.rebook_claims_needing_auto_reminder(1)`)).rows[0] as { n: number };
     // P1/G1's window is +12h, so a 1-hour lead excludes them.
     expect(near.n).toBe(0);
+  });
+});
+
+// The app_now() clock (migration 20260724100000) lets a test travel to any instant via the
+// app.fake_now GUC; in prod the GUC is never set so app_now() IS now(). Here we hold the
+// deadline fixed and move "now" around it to prove reminder eligibility flips deterministically.
+describe('app_now() time-travel (fake clock)', () => {
+  const atOffset = (expr: string) =>
+    `SELECT set_config('app.fake_now', (SELECT (priority_window_ends_at ${expr})::text FROM public.availability_slots WHERE id='${S_SOON_A}'), false)`;
+  const dueKeys = async () => (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+  afterEach(async () => { await db.query(`SELECT set_config('app.fake_now', '', false)`); });
+
+  it('fake_now unset → app_now() === now() (no behaviour change)', async () => {
+    expect((await dueKeys()).sort()).toEqual([`g:${G1}`, P1].sort());
+  });
+
+  it('6h before the deadline → the reminder is due', async () => {
+    await db.query(atOffset(`- interval '6 hours'`));
+    expect(await dueKeys()).toContain(P1);
+  });
+
+  it('48h before the deadline → NOT yet due (outside the 24h lead)', async () => {
+    await db.query(atOffset(`- interval '48 hours'`));
+    expect(await dueKeys()).not.toContain(P1);
+  });
+
+  it('after the deadline has passed → NOT due', async () => {
+    await db.query(atOffset(`+ interval '1 hour'`));
+    expect(await dueKeys()).not.toContain(P1);
   });
 });
