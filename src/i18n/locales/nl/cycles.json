@@ -1314,6 +1314,8 @@
     "resumeDone": "{{sent}} uitnodiging(en) verstuurd"
   },
   "rebookShared": {
+    "autoReminder": "Automatisch herinneren",
+    "autoReminderHint": "Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt. Wordt alleen overdag verstuurd, nooit 's nachts.",
     "paymentTitle": "Betaling",
     "upfrontNoPaymentSetup": "Stel eerst je betaalgegevens in (Mollie of bankgegevens) om direct betalen aan te zetten.",
     "upfrontSetupLink": "Betaalgegevens instellen",

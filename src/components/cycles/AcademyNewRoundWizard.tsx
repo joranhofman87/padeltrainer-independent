@@ -88,6 +88,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [strictMollie, setStrictMollie] = useState(false);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
+  // Automated reminder to non-responders ~24h before their priority window closes.
+  const [autoReminder, setAutoReminder] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [review, setReview] = useState<ReviewData | null>(null);
@@ -154,8 +156,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       rebookRules: normalizeRichTextHtml(rebookRules),
       priorityPeople: priorityPeople.map((p) => p.player_id),
       memberOpenMessage: priorityMessage.trim() || null,
+      autoReminder,
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, rebookRules, priorityPeople, priorityMessage],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, rebookRules, priorityPeople, priorityMessage, autoReminder],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -401,6 +404,14 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 lockMemberWindow={priorityPeople.length > 0}
                 lockMemberWindowHint={t('newRound.priorityRequiresMember', 'De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan.')}
               />
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <Checkbox checked={autoReminder} onCheckedChange={(v) => setAutoReminder(Boolean(v))} className="mt-0.5" />
+                <div>
+                  <div className="text-sm font-medium">{t('rebookShared.autoReminder', 'Automatisch herinneren')}</div>
+                  <div className="text-xs text-muted-foreground">{t('rebookShared.autoReminderHint', 'Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt.')}</div>
+                </div>
+              </label>
 
               <Card>
                 <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>

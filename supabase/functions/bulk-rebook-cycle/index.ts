@@ -142,6 +142,9 @@ serve(async (req) => {
     // client can't request strict on a deferred cycle. The strict accept RPC + webhook read it.
     const strictMollie: boolean = paymentMode === "upfront" && body?.strictMollie === true;
     const requireAdminReview: boolean = body?.requireAdminReview === true;
+    // Automated deadline reminder to non-responders (cron). Default ON; the wizard can
+    // opt out. Read by rebook_claims_needing_auto_reminder() as settings.rebook_auto_reminder.
+    const autoReminder: boolean = body?.autoReminder !== false;
     const targetCycleName: string | null = body?.targetCycleName ?? null;
     dryRun = body?.dryRun === true;
     // Defer the invite blast to the CLIENT (resumable, bounded chunks via
@@ -572,7 +575,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null },
+        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
       })
       .select("id, name")
       .single();
