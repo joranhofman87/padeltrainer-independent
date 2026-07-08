@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -667,6 +662,7 @@ export type Database = {
           id: string
           invoice_banner_color: string | null
           invoice_email_message: string | null
+          invoice_email_subject: string | null
           invoice_forward_emails: string[] | null
           invoice_include_year: boolean
           invoice_language: string
@@ -723,6 +719,7 @@ export type Database = {
           id?: string
           invoice_banner_color?: string | null
           invoice_email_message?: string | null
+          invoice_email_subject?: string | null
           invoice_forward_emails?: string[] | null
           invoice_include_year?: boolean
           invoice_language?: string
@@ -779,6 +776,7 @@ export type Database = {
           id?: string
           invoice_banner_color?: string | null
           invoice_email_message?: string | null
+          invoice_email_subject?: string | null
           invoice_forward_emails?: string[] | null
           invoice_include_year?: boolean
           invoice_language?: string
@@ -1144,6 +1142,7 @@ export type Database = {
           total_price: number | null
           trainer_id: string
           training_level: string | null
+          whole_slot_booking: boolean
         }
         Insert: {
           academy_profile_id?: string | null
@@ -1179,6 +1178,7 @@ export type Database = {
           total_price?: number | null
           trainer_id: string
           training_level?: string | null
+          whole_slot_booking?: boolean
         }
         Update: {
           academy_profile_id?: string | null
@@ -1214,6 +1214,7 @@ export type Database = {
           total_price?: number | null
           trainer_id?: string
           training_level?: string | null
+          whole_slot_booking?: boolean
         }
         Relationships: [
           {
@@ -1249,6 +1250,13 @@ export type Database = {
             columns: ["cyclus_id"]
             isOneToOne: false
             referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_slots_cyclus_id_fkey"
+            columns: ["cyclus_id"]
+            isOneToOne: false
+            referencedRelation: "cycles_public"
             referencedColumns: ["id"]
           },
           {
@@ -1432,11 +1440,13 @@ export type Database = {
       }
       bookings: {
         Row: {
+          amount_includes_extras: boolean | null
           court_type: string | null
           created_at: string
           discount_amount: number | null
           discount_reason: string | null
           guest_player_id: string | null
+          hold_expires_at: string | null
           id: string
           lesson_id: string | null
           mollie_payment_id: string | null
@@ -1450,17 +1460,20 @@ export type Database = {
           payment_amount: number | null
           payment_status: string
           player_id: string | null
+          public_token: string | null
           reminder_sent_at: string | null
           slot_id: string
           status: string
           updated_at: string
         }
         Insert: {
+          amount_includes_extras?: boolean | null
           court_type?: string | null
           created_at?: string
           discount_amount?: number | null
           discount_reason?: string | null
           guest_player_id?: string | null
+          hold_expires_at?: string | null
           id?: string
           lesson_id?: string | null
           mollie_payment_id?: string | null
@@ -1474,17 +1487,20 @@ export type Database = {
           payment_amount?: number | null
           payment_status?: string
           player_id?: string | null
+          public_token?: string | null
           reminder_sent_at?: string | null
           slot_id: string
           status?: string
           updated_at?: string
         }
         Update: {
+          amount_includes_extras?: boolean | null
           court_type?: string | null
           created_at?: string
           discount_amount?: number | null
           discount_reason?: string | null
           guest_player_id?: string | null
+          hold_expires_at?: string | null
           id?: string
           lesson_id?: string | null
           mollie_payment_id?: string | null
@@ -1498,6 +1514,7 @@ export type Database = {
           payment_amount?: number | null
           payment_status?: string
           player_id?: string | null
+          public_token?: string | null
           reminder_sent_at?: string | null
           slot_id?: string
           status?: string
@@ -2892,6 +2909,95 @@ export type Database = {
           },
         ]
       }
+      expenses: {
+        Row: {
+          academy_profile_id: string | null
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          expense_date: string
+          id: string
+          trainer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          amount: number
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          expense_date: string
+          id?: string
+          trainer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string | null
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          expense_date?: string
+          id?: string
+          trainer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       extra_cost_presets: {
         Row: {
           academy_profile_id: string | null
@@ -3229,6 +3335,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "intake_requests_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "intake_requests_guest_player_id_fkey"
             columns: ["guest_player_id"]
             isOneToOne: false
@@ -3374,6 +3487,7 @@ export type Database = {
           prices_include_vat: boolean
           public_token: string
           public_token_revoked_at: string | null
+          rebook_cyclus_id: string | null
           rebook_group_id: string | null
           registration_id: string | null
           sent_at: string | null
@@ -3412,6 +3526,7 @@ export type Database = {
           prices_include_vat?: boolean
           public_token?: string
           public_token_revoked_at?: string | null
+          rebook_cyclus_id?: string | null
           rebook_group_id?: string | null
           registration_id?: string | null
           sent_at?: string | null
@@ -3450,6 +3565,7 @@ export type Database = {
           prices_include_vat?: boolean
           public_token?: string
           public_token_revoked_at?: string | null
+          rebook_cyclus_id?: string | null
           rebook_group_id?: string | null
           registration_id?: string | null
           sent_at?: string | null
@@ -3497,6 +3613,13 @@ export type Database = {
             columns: ["cycle_id"]
             isOneToOne: false
             referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles_public"
             referencedColumns: ["id"]
           },
           {
@@ -4861,6 +4984,13 @@ export type Database = {
             referencedRelation: "cycles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "registrations_source_cycle_id_fkey"
+            columns: ["source_cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       review_tag_selections: {
@@ -5170,6 +5300,9 @@ export type Database = {
           reminded_at: string | null
           reminder_count: number
           responded_at: string | null
+          response_intent: string | null
+          response_intent_at: string | null
+          rules_accepted_at: string | null
           slot_id: string
           source_slot_id: string | null
           status: string
@@ -5191,6 +5324,9 @@ export type Database = {
           reminded_at?: string | null
           reminder_count?: number
           responded_at?: string | null
+          response_intent?: string | null
+          response_intent_at?: string | null
+          rules_accepted_at?: string | null
           slot_id: string
           source_slot_id?: string | null
           status?: string
@@ -5212,6 +5348,9 @@ export type Database = {
           reminded_at?: string | null
           reminder_count?: number
           responded_at?: string | null
+          response_intent?: string | null
+          response_intent_at?: string | null
+          rules_accepted_at?: string | null
           slot_id?: string
           source_slot_id?: string | null
           status?: string
@@ -5901,6 +6040,7 @@ export type Database = {
       }
       trainer_profiles: {
         Row: {
+          banner_url: string | null
           bic: string | null
           btw_number: string | null
           business_address: string | null
@@ -5965,6 +6105,7 @@ export type Database = {
           welcome_message: string | null
         }
         Insert: {
+          banner_url?: string | null
           bic?: string | null
           btw_number?: string | null
           business_address?: string | null
@@ -6029,6 +6170,7 @@ export type Database = {
           welcome_message?: string | null
         }
         Update: {
+          banner_url?: string | null
           bic?: string | null
           btw_number?: string | null
           business_address?: string | null
@@ -7065,6 +7207,83 @@ export type Database = {
           },
         ]
       }
+      cycles_public: {
+        Row: {
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          end_date: string | null
+          enrollment_deadline: string | null
+          id: string | null
+          is_always_open: boolean | null
+          location_id: string | null
+          name: string | null
+          owner_id: string | null
+          owner_type: string | null
+          price_per_session: number | null
+          price_table: Json | null
+          settings: Json | null
+          start_date: string | null
+          status: string | null
+          terms: string | null
+          total_price: number | null
+          type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          end_date?: string | null
+          enrollment_deadline?: string | null
+          id?: string | null
+          is_always_open?: boolean | null
+          location_id?: string | null
+          name?: string | null
+          owner_id?: string | null
+          owner_type?: string | null
+          price_per_session?: number | null
+          price_table?: Json | null
+          settings?: never
+          start_date?: string | null
+          status?: string | null
+          terms?: string | null
+          total_price?: number | null
+          type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          end_date?: string | null
+          enrollment_deadline?: string | null
+          id?: string | null
+          is_always_open?: boolean | null
+          location_id?: string | null
+          name?: string | null
+          owner_id?: string | null
+          owner_type?: string | null
+          price_per_session?: number | null
+          price_table?: Json | null
+          settings?: never
+          start_date?: string | null
+          status?: string | null
+          terms?: string | null
+          total_price?: number | null
+          type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cycles_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles_owner: {
         Row: {
           avatar_url: string | null
@@ -7214,6 +7433,41 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      session_reports_player_summaries: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          public_notes: string | null
+          reporter_role: string | null
+          session_happened: boolean | null
+          slot_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          public_notes?: string | null
+          reporter_role?: string | null
+          session_happened?: boolean | null
+          slot_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          public_notes?: string | null
+          reporter_role?: string | null
+          session_happened?: boolean | null
+          slot_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_reports_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trainer_mollie_status: {
         Row: {
@@ -7452,6 +7706,7 @@ export type Database = {
       }
       trainer_profiles_safe: {
         Row: {
+          banner_url: string | null
           certifications: string[] | null
           coaching_method: string | null
           created_at: string | null
@@ -7486,6 +7741,7 @@ export type Database = {
           welcome_message: string | null
         }
         Insert: {
+          banner_url?: string | null
           certifications?: string[] | null
           coaching_method?: string | null
           created_at?: string | null
@@ -7520,6 +7776,7 @@ export type Database = {
           welcome_message?: string | null
         }
         Update: {
+          banner_url?: string | null
           certifications?: string[] | null
           coaching_method?: string | null
           created_at?: string | null
@@ -7557,14 +7814,17 @@ export type Database = {
       }
     }
     Functions: {
+      _registration_form_settings: { Args: { p_settings: Json }; Returns: Json }
+      _registration_owner_authorized: {
+        Args: { p_owner_id: string; p_owner_type: string }
+        Returns: boolean
+      }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
         Returns: boolean
       }
-      accept_rebook_rules: {
-        Args: { _token: string }
-        Returns: undefined
-      }
+      accept_rebook_rules: { Args: { _token: string }; Returns: undefined }
+      admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
         Returns: undefined
@@ -7585,8 +7845,43 @@ export type Database = {
           updated_count: number
         }[]
       }
+      book_guest_cart_for_payment: {
+        Args: {
+          _amounts: number[]
+          _guest_player_id: string
+          _hold_minutes?: number
+          _notes?: string
+          _slot_ids: string[]
+        }
+        Returns: string[]
+      }
+      book_guest_cyclus_for_payment: {
+        Args: {
+          _amounts: number[]
+          _guest_player_id: string
+          _hold_minutes?: number
+          _notes?: string
+          _slot_ids: string[]
+        }
+        Returns: string[]
+      }
+      book_guest_slot_for_payment: {
+        Args: {
+          _guest_player_id: string
+          _hold_minutes?: number
+          _notes?: string
+          _payment_amount: number
+          _slot_id: string
+        }
+        Returns: string
+      }
       book_slot_for_payment: {
-        Args: { _payment_amount: number; _player_id: string; _slot_id: string }
+        Args: {
+          _notes?: string
+          _payment_amount: number
+          _player_id: string
+          _slot_id: string
+        }
         Returns: string
       }
       bump_rebook_reminders: {
@@ -7597,10 +7892,30 @@ export type Database = {
         }
         Returns: undefined
       }
+      can_book_member_window: {
+        Args: { _cycle_id: string; _user_id: string }
+        Returns: boolean
+      }
+      can_book_slot: {
+        Args: { _slot_id: string; _user_id: string }
+        Returns: string
+      }
+      can_current_user_book_member_window: {
+        Args: { _cycle_id: string }
+        Returns: boolean
+      }
+      can_manage_slot: {
+        Args: { _slot_id: string; _user_id: string }
+        Returns: boolean
+      }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
       claim_onboarding_email_queue_item: {
         Args: { p_from_status: string; p_queue_id: string }
+        Returns: boolean
+      }
+      claim_rebook_member_open_notice: {
+        Args: { _cycle_id: string }
         Returns: boolean
       }
       claim_stripe_event: {
@@ -7623,6 +7938,7 @@ export type Database = {
           n: number
         }[]
       }
+      create_invoice_deduped: { Args: { _payload: Json }; Returns: Json }
       create_rebook_group_guest: {
         Args: {
           _email?: string
@@ -7633,7 +7949,66 @@ export type Database = {
         }
         Returns: string
       }
+      create_registration_with_cycle: {
+        Args: {
+          p_currency: string
+          p_description: string
+          p_end_date: string
+          p_enrollment_deadline: string
+          p_format: string
+          p_is_always_open: boolean
+          p_location_id: string
+          p_name: string
+          p_owner_id: string
+          p_owner_type: string
+          p_price_table: Json
+          p_settings: Json
+          p_start_date: string
+          p_status: string
+          p_terms: string
+          p_total_price: number
+        }
+        Returns: {
+          created_at: string
+          currency: string
+          description: string | null
+          end_date: string | null
+          enrollment_deadline: string | null
+          format: string
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          owner_type: string
+          price_table: Json | null
+          settings: Json
+          source_cycle_id: string
+          start_date: string | null
+          status: string
+          total_price: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "registrations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       digits_only: { Args: { _value: string }; Returns: string }
+      expire_lapsed_priority_claims: { Args: never; Returns: number }
+      finalize_cycle_proposals: { Args: { p_cycle_id: string }; Returns: Json }
+      find_guest_players_by_email_for_academy: {
+        Args: {
+          _academy_profile_id: string
+          _email: string
+          _trainer_ids: string[]
+        }
+        Returns: {
+          full_name: string
+          id: string
+        }[]
+      }
       fold_search_text: { Args: { _value: string }; Returns: string }
       gen_random_bytes: { Args: { len: number }; Returns: string }
       generate_location_slug: {
@@ -7649,6 +8024,33 @@ export type Database = {
         Args: { _full_name: string; _trainer_id: string }
         Returns: string
       }
+      get_academy_cyclus_groups: {
+        Args: { p_academy_id: string }
+        Returns: {
+          cycle_name: string
+          cyclus_id: string
+          cyclus_name_fallback: string
+          first_slot_id: string
+          group_suffix: string
+          group_type: string
+          has_cycle_row: boolean
+          is_public: boolean
+          is_registration: boolean
+          location_name: string
+          max_booked: number
+          max_participants: number
+          payment_status_summary: string
+          period_end: string
+          period_start: string
+          player_count: number
+          player_names: string[]
+          price_per_session: number
+          sessions: number
+          status: string
+          trainer_id: string
+          trainer_name: string
+        }[]
+      }
       get_academy_cyclus_labels: {
         Args: { p_academy_profile_id: string }
         Returns: {
@@ -7657,6 +8059,10 @@ export type Database = {
           first_names: string[]
           location_name: string
         }[]
+      }
+      get_academy_dashboard_analytics: {
+        Args: { _academy_profile_id: string; _months?: number }
+        Returns: Json
       }
       get_academy_invoice_cancelled_count: {
         Args: {
@@ -7780,6 +8186,24 @@ export type Database = {
           state: string
         }[]
       }
+      get_guest_booking_by_token: {
+        Args: { _token: string }
+        Returns: {
+          academy_profile_id: string
+          booking_id: string
+          cyclus_name: string
+          end_time: string
+          hold_expires_at: string
+          mollie_payment_id: string
+          payment_amount: number
+          payment_status: string
+          session_count: number
+          slot_id: string
+          start_time: string
+          status: string
+          trainer_id: string
+        }[]
+      }
       get_invoice_delivery_status: {
         Args: { p_invoice_id: string }
         Returns: string
@@ -7826,16 +8250,15 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
-      get_my_linked_guest_bookings: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      get_my_linked_guest_bookings: { Args: never; Returns: Json }
       get_my_paid_booking_ids: {
-        Args: Record<PropertyKey, never>
-        Returns: { booking_id: string }[]
+        Args: never
+        Returns: {
+          booking_id: string
+        }[]
       }
       get_my_pending_priority_claims: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           claim_token: string
           cyclus_id: string
@@ -7929,7 +8352,41 @@ export type Database = {
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
+      get_public_slot_occupancy: {
+        Args: { _slot_ids: string[] }
+        Returns: {
+          occupied: number
+          slot_id: string
+        }[]
+      }
+      get_public_slot_payment_ready: {
+        Args: { _slot_ids: string[] }
+        Returns: {
+          payment_ready: boolean
+          slot_id: string
+        }[]
+      }
       get_rebook_group_by_token: { Args: { _token: string }; Returns: Json }
+      get_trainer_dashboard_analytics: {
+        Args: { _months?: number }
+        Returns: Json
+      }
+      get_trainer_earnings_summary: {
+        Args: {
+          p_last_month_end: string
+          p_last_month_start: string
+          p_this_month_end: string
+          p_this_month_start: string
+        }
+        Returns: {
+          completed_paid_count: number
+          last_month: number
+          pending_amount: number
+          pending_count: number
+          this_month: number
+          total_earnings: number
+        }[]
+      }
       get_trainer_invoice_delivery_summary: {
         Args: { p_tab?: string; p_trainer_id: string }
         Returns: {
@@ -8010,6 +8467,14 @@ export type Database = {
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
+      }
+      guest_belongs_to_user_academy: {
+        Args: { _guest_id: string; _user_id: string }
+        Returns: boolean
+      }
+      guest_booked_with_trainer: {
+        Args: { _guest_id: string; _user_id: string }
+        Returns: boolean
       }
       has_role: {
         Args: {
@@ -8095,6 +8560,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      rebook_cycles_needing_member_open_notice: {
+        Args: never
+        Returns: {
+          cycle_id: string
+        }[]
+      }
       rebook_group_apply: {
         Args: { _keep_keys?: Json; _new_guest_ids?: string[]; _token: string }
         Returns: Json
@@ -8112,6 +8583,16 @@ export type Database = {
         Args: { _cyclus_id: string }
         Returns: number
       }
+      reconcile_payments: {
+        Args: { _since?: string }
+        Returns: {
+          check_name: string
+          detail: Json
+          entity_id: string
+          entity_kind: string
+          severity: string
+        }[]
+      }
       record_email_event: {
         Args: {
           p_academy_profile_id?: string
@@ -8127,9 +8608,15 @@ export type Database = {
         }
         Returns: undefined
       }
-      release_expired_rebook_holds: { Args: Record<PropertyKey, never>; Returns: number }
+      record_priority_claim_intent: {
+        Args: { _intent: string; _token: string }
+        Returns: undefined
+      }
+      release_expired_guest_slot_holds: { Args: never; Returns: number }
+      release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
+      resolve_slot_booking_tier: { Args: { _slot_id: string }; Returns: string }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }
         Returns: Json
@@ -8137,6 +8624,7 @@ export type Database = {
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
+      schedule_release_rebook_holds_job: { Args: never; Returns: number }
       set_player_location: {
         Args: {
           p_academy_profile_id: string
@@ -8169,6 +8657,10 @@ export type Database = {
         Returns: undefined
       }
       try_lock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
+      unclaim_rebook_member_open_notice: {
+        Args: { _cycle_id: string }
+        Returns: undefined
+      }
       unlock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
       unschedule_all_background_pg_cron_jobs: {
         Args: never
@@ -8177,6 +8669,7 @@ export type Database = {
       unschedule_enrichment_job: { Args: never; Returns: undefined }
       unschedule_invoice_health_check_job: { Args: never; Returns: undefined }
       unschedule_logo_fetch_job: { Args: never; Returns: undefined }
+      unschedule_release_rebook_holds_job: { Args: never; Returns: undefined }
       update_cycle_pricing: {
         Args: {
           _cycle_id: string
@@ -8186,6 +8679,51 @@ export type Database = {
           _split_payment: boolean
         }
         Returns: undefined
+      }
+      update_registration_with_cycle: {
+        Args: {
+          p_currency: string
+          p_description: string
+          p_end_date: string
+          p_enrollment_deadline: string
+          p_format: string
+          p_is_always_open: boolean
+          p_location_id: string
+          p_name: string
+          p_price_table: Json
+          p_settings: Json
+          p_source_cycle_id: string
+          p_start_date: string
+          p_status: string
+          p_terms: string
+          p_total_price: number
+        }
+        Returns: {
+          created_at: string
+          currency: string
+          description: string | null
+          end_date: string | null
+          enrollment_deadline: string | null
+          format: string
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          owner_type: string
+          price_table: Json | null
+          settings: Json
+          source_cycle_id: string
+          start_date: string | null
+          status: string
+          total_price: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "registrations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
@@ -8349,3 +8887,4 @@ export const Constants = {
     },
   },
 } as const
+
