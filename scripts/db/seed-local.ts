@@ -77,6 +77,7 @@ async function purgeSeedData() {
   if (cycleIds.length) await admin.from('cycles').delete().in('id', cycleIds);
   await admin.from('academy_trainers').delete().in('academy_profile_id', acadIds);
   await admin.from('academy_managers').delete().in('academy_profile_id', acadIds);
+  await admin.from('academy_mollie_accounts').delete().in('academy_profile_id', acadIds);
   await admin.from('guest_players').delete().in('academy_profile_id', acadIds);
   await admin.from('academy_profiles').delete().in('id', acadIds);
 }
@@ -235,6 +236,20 @@ async function main() {
   const hero = await seedAcademy(0, true);
   const fillerCount = SCALE === 'large' ? 12 : 0;
   for (let i = 1; i <= fillerCount; i++) await seedAcademy(i, false);
+
+  // Optional: connect the hero academy to Mollie so the UPFRONT pay leg works locally. The token
+  // is passed via env (MOLLIE_TEST_ACCESS_TOKEN) — a test_… key — and NEVER committed. With
+  // MOLLIE_CLIENT_ID/SECRET unset, create-invoice-payment uses this token directly (no OAuth
+  // refresh), so a test_ API key stands in for the connected-account access token.
+  if (process.env.MOLLIE_TEST_ACCESS_TOKEN) {
+    await must('academy_mollie_accounts', admin.from('academy_mollie_accounts').insert({
+      academy_profile_id: hero.academy,
+      access_token: process.env.MOLLIE_TEST_ACCESS_TOKEN,
+      mollie_organization_id: process.env.MOLLIE_TEST_PROFILE_ID || 'org_test_seed',
+      onboarding_complete: true, charges_enabled: true, payouts_enabled: true,
+    }).select('id').single());
+    console.log('Connected the hero academy to Mollie (test mode).');
+  }
 
   const counts: Record<string, number> = {};
   for (const t of ['academy_profiles', 'trainer_profiles', 'profiles', 'guest_players', 'cycles', 'availability_slots', 'bookings', 'slot_priority_claims']) {
