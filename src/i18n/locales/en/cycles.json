@@ -1023,6 +1023,8 @@
     "priorityListTitle": "Priority list",
     "priorityListHint": "Pick players who may book first when seats open up — alongside the players who already had a session.",
     "priorityListSearch": "Search a player",
+    "priorityListSelectTrigger": "Search and select players",
+    "priorityListSelected": "{{count}} selected — search to add more",
     "priorityListEmpty": "No players found.",
     "priorityListRemove": "Remove",
     "priorityListMessageLabel": "Message with the notification (optional)",
