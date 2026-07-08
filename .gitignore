@@ -43,3 +43,10 @@ supabase/.temp/
 # Local migration exports - do not commit
 migration_exports/
 types.generated.ts
+
+# Supabase CLI local state
+supabase/.branches/
+supabase/.temp/
+
+# Playwright local auth sessions
+e2e/local/.auth/
