@@ -1316,6 +1316,8 @@
     "resumeDone": "{{sent}} uitnodiging(en) verstuurd"
   },
   "rebookShared": {
+    "defaultInviteSubject": "Blijf je erbij, {first_name}? Reserveer je vaste plek",
+    "defaultInviteMessage": "Hoi {first_name},\n\nDe volgende cyclus komt eraan en we houden je vaste plek graag voor je! Je hebt voorrang om als eerste te bevestigen. Bekijk hieronder de details en laat je ons weten of je erbij blijft?",
     "autoReminder": "Automatisch herinneren",
     "autoReminderHint": "Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt. Wordt alleen overdag verstuurd, nooit 's nachts.",
     "paymentTitle": "Betaling",

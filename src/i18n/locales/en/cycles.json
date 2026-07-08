@@ -1191,6 +1191,8 @@
     "resumeDone": "{{sent}} invitation(s) sent"
   },
   "rebookShared": {
+    "defaultInviteSubject": "Staying with us, {first_name}? Keep your regular spot",
+    "defaultInviteMessage": "Hi {first_name},\n\nThe next cycle is coming up and we'd love to keep your regular spot for you! You have priority to confirm first. Check the details below and let us know whether you're staying in.",
     "autoReminder": "Automatic reminder",
     "autoReminderHint": "Automatically remind players who haven't responded, just before their priority expires. Sent during the day only, never at night.",
     "paymentTitle": "Payment",

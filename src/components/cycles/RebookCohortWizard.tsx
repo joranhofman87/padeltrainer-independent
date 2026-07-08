@@ -109,8 +109,10 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
-  const [invitationMessage, setInvitationMessage] = useState('');
-  const [invitationSubject, setInvitationSubject] = useState('');
+  // Pre-fill a warm, personalised default so a new academy starts from something instead of
+  // a blank box; fully editable. Leads with "Hoi {first_name}," (substituted per recipient).
+  const [invitationMessage, setInvitationMessage] = useState(() => t('rebookShared.defaultInviteMessage'));
+  const [invitationSubject, setInvitationSubject] = useState(() => t('rebookShared.defaultInviteSubject'));
   const [rebookRules, setRebookRules] = useState('');
   // Trainer/session exclusion: the auto-preview's series (for the trainer checklist),
   // the excluded series (by sourceSeriesKey), and the subset whose players move to the
