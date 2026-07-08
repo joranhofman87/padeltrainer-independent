@@ -920,6 +920,14 @@
     "vatWithRate": "VAT {{rate}}%"
   },
   "reports": {
+    "heldSessions": "Sessions held",
+    "held": "Held",
+    "chargeableHours": "Chargeable hours",
+    "confirmedHours": "Confirmed by players",
+    "confirmed": "Confirmed",
+    "confirmedShort": "Confirmed (h)",
+    "confirmedByTrainer": "Trainer confirmed the session happened",
+    "confirmedByPlayer": "A player confirmed the session happened",
     "booked": "Booked",
     "byLocation": "By Location",
     "byTrainer": "By Trainer",

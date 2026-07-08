@@ -27,3 +27,26 @@ describe('AcademyReportsTab booking count', () => {
     expect(isOccupyingStatus('cancelled_swap')).toBe(false);
   });
 });
+
+// Trainer pay is per HOUR of session held (≥1 person), and the owner wants a player-
+// confirmation cross-check. Both come from session_reports.session_happened per reporter.
+describe('AcademyReportsTab attendance / chargeable hours', () => {
+  it('reads player/trainer confirmation from session_reports.session_happened', () => {
+    expect(source).toContain("from('session_reports')");
+    expect(source).toContain('session_happened');
+    expect(source).toContain("reporter_role === 'player'");
+    expect(source).toContain("reporter_role === 'trainer'");
+  });
+
+  it('only counts a confirmation when the reporter said the session HAPPENED', () => {
+    // guard against counting session_happened=false reports as confirmations
+    expect(source).toMatch(/if \(!r\.session_happened\) continue/);
+  });
+
+  it('chargeable + confirmed hours are computed over HELD (>=1 person) sessions', () => {
+    expect(source).toContain('booking_count > 0');
+    expect(source).toContain('player_confirmed');
+    expect(source).toContain('confirmedHours');
+    expect(source).toContain('chargeableHours'); // stat-tile label key
+  });
+});
