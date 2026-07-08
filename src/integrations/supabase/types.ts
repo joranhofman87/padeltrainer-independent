@@ -7829,6 +7829,7 @@ export type Database = {
         Args: { p_invoice_id: string; p_reason: string }
         Returns: undefined
       }
+      app_now: { Args: never; Returns: string }
       apply_slot_delete_to_cycle: {
         Args: { _cycle_id: string; _slot_ids: string[] }
         Returns: {
