@@ -93,16 +93,19 @@ const substituteVars = (text: string, fullName: string) => {
     .replace(/\{full_name\}/g, full);
 };
 
-// The academy's optional custom message → escaped, token-substituted paragraphs (or ''
-// when none). Substitute BEFORE escaping so an injected name is escaped too.
+// The academy's optional custom message. It LEADS the email (their own greeting +
+// words), so render it as clean paragraphs — no box — like a letter from the academy.
+// Substitute BEFORE escaping so an injected name is escaped too; blank lines collapse
+// (the paragraph margins provide the spacing). Returns '' when there is no message.
 const renderCustomMessage = (message: string, fullName: string): string => {
   const msg = (message || "").trim();
   if (!msg) return "";
-  const paras = substituteVars(msg, fullName)
+  return substituteVars(msg, fullName)
     .split("\n")
-    .map((line) => `<p style="color:#374151;line-height:1.6;margin:0 0 8px;">${escapeHtml(line)}</p>`)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => `<p style="color:#374151;line-height:1.6;margin:0 0 12px;">${escapeHtml(line)}</p>`)
     .join("");
-  return `<div style="background:#ffffff;border-left:3px solid #f45d25;padding:8px 0 8px 14px;margin:16px 0;">${paras}</div>`;
 };
 
 const handler = async (req: Request): Promise<Response> => {
@@ -497,10 +500,12 @@ const handler = async (req: Request): Promise<Response> => {
 
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color:#1a1a1a;">
-          <h2 style="margin:0 0 12px;">Hou je je vaste plek?${slot.cyclus_name ? ` (${slot.cyclus_name})` : ""}</h2>
-          <p style="color:#374151;line-height:1.6;">${recipientName ? `Hi ${recipientName},` : "Hi,"}</p>
-          ${renderCustomMessage(inviteMessage, recipientName)}
-          <p style="color:#374151;line-height:1.6;">Je hebt voorrang om je vaste plek voor de volgende cyclus te houden. Laat ons weten of je doorgaat.</p>
+          ${inviteMessage
+            ? `${renderCustomMessage(inviteMessage, recipientName)}
+               <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />`
+            : `<h2 style="margin:0 0 12px;">Hou je je vaste plek?${slot.cyclus_name ? ` (${escapeHtml(slot.cyclus_name)})` : ""}</h2>
+               <p style="color:#374151;line-height:1.6;">${recipientName ? `Hi ${escapeHtml(recipientName)},` : "Hi,"}</p>
+               <p style="color:#374151;line-height:1.6;">Je hebt voorrang om je vaste plek voor de volgende cyclus te houden. Laat ons weten of je doorgaat.</p>`}
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0;">
             <div style="font-weight:600;">${fmtDate}</div>
             <div style="color:#6b7280;">${fmtTime}</div>
