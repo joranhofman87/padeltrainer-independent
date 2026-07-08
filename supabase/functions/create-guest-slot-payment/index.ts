@@ -36,6 +36,9 @@ import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 type Supa = SupabaseClient;
 const ENDPOINT = "create-guest-slot-payment";
+// Prod default unchanged; a local mock (scripts/db/mock-mollie.mjs) sets MOLLIE_API_BASE
+// so the pay→webhook money path can run end-to-end with no real gateway.
+const MOLLIE_API_BASE = Deno.env.get("MOLLIE_API_BASE") ?? "https://api.mollie.com";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CREATE-GUEST-SLOT-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
@@ -273,7 +276,7 @@ Deno.serve(async (req) => {
     if (priorState?.mollie_payment_id) {
       try {
         const probe = await fetch(
-          `https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`,
+          `${MOLLIE_API_BASE}/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`,
           { headers: { Authorization: `Bearer ${accessToken}` } },
         );
         if (probe.ok) {
@@ -294,7 +297,7 @@ Deno.serve(async (req) => {
           if (prior.status === "open") {
             // Amount drifted — cancel the stale checkout before issuing a fresh one.
             try {
-              await fetch(`https://api.mollie.com/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`, {
+              await fetch(`${MOLLIE_API_BASE}/v2/payments/${priorState.mollie_payment_id}${probeTestParam}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${accessToken}` },
               });
@@ -319,7 +322,7 @@ Deno.serve(async (req) => {
     // Mollie profile for the connected account (required for OAuth payments).
     let mollieProfileId: string | null = null;
     try {
-      const profileResp = await fetch("https://api.mollie.com/v2/profiles", {
+      const profileResp = await fetch(`${MOLLIE_API_BASE}/v2/profiles`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (profileResp.ok) {
@@ -369,7 +372,7 @@ Deno.serve(async (req) => {
     // re-clicks to the SAME bookingId and the token is stable, so a retry re-sends an
     // identical body → Mollie replays the ORIGINAL payment (no duplicate checkout).
     const idempotencyKey = await mollieIdempotencyKey("gsp", paymentData);
-    const mollieRes = await fetch("https://api.mollie.com/v2/payments", {
+    const mollieRes = await fetch(`${MOLLIE_API_BASE}/v2/payments`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(paymentData),
