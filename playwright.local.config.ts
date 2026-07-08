@@ -15,7 +15,12 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: { baseURL, trace: 'on-first-retry' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    // Logs in the seeded roles once and saves storageState; authed specs opt in via
+    // test.use({ storageState: authFile(role) }). Public specs (no storageState) stay logged-out.
+    { name: 'setup', testMatch: /.*\.setup\.ts/ },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, dependencies: ['setup'] },
+  ],
   webServer: {
     command: 'npm run dev:e2e',
     url: baseURL,
