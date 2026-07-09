@@ -10,6 +10,14 @@
 // unique partial index on invoices.rebook_cyclus_id (one active invoice per claimant+cyclus).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { withTimeout } from "../_shared/edge-timeout.ts";
+
+// Deadlines for downstream invokes so a HANG becomes a deterministic failure (release seats + alert)
+// instead of a silent isolate kill that strands a strict HOLD with no invoice/payment. Well under the
+// platform wall-clock; well over the normal path (auto-create-invoice mints in ~1-3s, then does PDF +
+// bookkeeper email — the mint row exists before those, so a timeout falls through to the read-back).
+const MINT_TIMEOUT_MS = 30_000;
+const CHECKOUT_TIMEOUT_MS = 20_000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,10 +58,10 @@ Deno.serve(async (req: Request) => {
     const startCheckout = async (inv: RebookInvoice): Promise<string | undefined> => {
       if (inv.status === "paid") return undefined;
       try {
-        const { data: pay } = await admin.functions.invoke("create-invoice-payment", {
+        const { data: pay } = await withTimeout(admin.functions.invoke("create-invoice-payment", {
           body: { publicToken: inv.public_token, invoiceId: inv.id },
           headers: serviceAuth,
-        });
+        }), CHECKOUT_TIMEOUT_MS, "create-invoice-payment");
         return (pay as { paymentUrl?: string })?.paymentUrl;
       } catch (_) { return undefined; }
     };
@@ -179,13 +187,28 @@ Deno.serve(async (req: Request) => {
     // the authed sibling create-rebook-invoice ("without any split ... would be an N× overcharge
     // on shared cycles"). Only the whole-group captain (create-group-rebook-invoice) pays full
     // court price, because that one payment covers every seat. auto-create-invoice is guest-aware.
-    const { data: aci, error: aciErr } = await admin.functions.invoke("auto-create-invoice", {
-      body: { bookingIds, asDraft: false },
-      headers: serviceAuth,
-    });
-    if (aciErr) return await failAfterAccept("mint_failed");
-    if ((aci as { skipped?: boolean })?.skipped) {
-      return await failAfterAccept((aci as { reason?: string })?.reason ?? "business_incomplete");
+    // A mint HANG (a downstream lock / stuck fetch) must not run out the isolate's wall-clock — that
+    // kills us before failAfterAccept, stranding the strict holds with no invoice. On timeout we do NOT
+    // fail immediately: auto-create-invoice inserts the invoice row BEFORE its slower PDF + email steps,
+    // so the row may already exist — fall through to the read-back and only release if it truly didn't.
+    let aci: unknown = null;
+    let aciErr: unknown = null;
+    let mintTimedOut = false;
+    try {
+      const r = await withTimeout(admin.functions.invoke("auto-create-invoice", {
+        body: { bookingIds, asDraft: false },
+        headers: serviceAuth,
+      }), MINT_TIMEOUT_MS, "auto-create-invoice");
+      aci = (r as { data: unknown }).data;
+      aciErr = (r as { error: unknown }).error;
+    } catch (_) {
+      mintTimedOut = true;
+    }
+    if (!mintTimedOut) {
+      if (aciErr) return await failAfterAccept("mint_failed");
+      if ((aci as { skipped?: boolean })?.skipped) {
+        return await failAfterAccept((aci as { reason?: string })?.reason ?? "business_incomplete");
+      }
     }
 
     // Read back the invoice, scoped to the claimant identity (their bookings are theirs alone).
@@ -197,7 +220,7 @@ Deno.serve(async (req: Request) => {
       .limit(1);
     rb = pid ? rb.eq("player_id", pid) : rb.eq("guest_player_id", gid!);
     const { data: invoice } = await rb.maybeSingle();
-    if (!invoice?.public_token) return await failAfterAccept("no_invoice");
+    if (!invoice?.public_token) return await failAfterAccept(mintTimedOut ? "mint_timeout" : "no_invoice");
 
     // Tag rebook_cyclus_id → trips the unique index if a concurrent mint already won. On conflict:
     // cancel OUR duplicate invoice (VERIFY the cancel) and hand back the winner. We do NOT undo the
