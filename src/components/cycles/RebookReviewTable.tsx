@@ -4,6 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/pricing';
+import type { RebookPaymentMode } from '@/lib/priorityClaims';
 
 export interface RebookRosterEntry {
   name: string;
@@ -49,6 +50,9 @@ interface Props {
   /** Server-authoritative totals (interactive mode) — the distinct player count can't be
    *  re-summed client-side (a player in two series must count once). */
   summary?: { groups: number; players: number; sessions: number };
+  /** Round-level payment mode. In 'upfront' one captain pays the whole court, so the per-group
+   *  breakdown reads "P × S (whole group)" — never "× N". */
+  paymentMode?: RebookPaymentMode;
 }
 
 /**
@@ -71,6 +75,7 @@ export function RebookReviewTable({
   onToggleExcluded,
   onToggleSecondBucket,
   summary,
+  paymentMode,
 }: Props) {
   const { t } = useTranslation('cycles');
   // Detailed = the redeployed edge fn returned the rich fields. Otherwise degrade
@@ -153,16 +158,21 @@ export function RebookReviewTable({
                       {g.invoiceTotal != null ? formatPrice(g.invoiceTotal) : '—'}
                       {g.pricePerSession != null && (
                         <div className="text-[10px] text-muted-foreground">
-                          {g.splitPayment
-                            ? t('rebookReview.breakdownSplit', '{{p}} × {{s}} (gedeeld)', {
+                          {paymentMode === 'upfront'
+                            ? t('rebookReview.breakdownUpfront', '{{p}} × {{s}} (hele groep)', {
                                 p: formatPrice(g.pricePerSession),
                                 s: g.sessions,
                               })
-                            : t('rebookReview.breakdown', '{{p}} × {{s}} × {{n}}', {
-                                p: formatPrice(g.pricePerSession),
-                                s: g.sessions,
-                                n: g.players,
-                              })}
+                            : g.splitPayment
+                              ? t('rebookReview.breakdownSplit', '{{p}} × {{s}} (gedeeld)', {
+                                  p: formatPrice(g.pricePerSession),
+                                  s: g.sessions,
+                                })
+                              : t('rebookReview.breakdown', '{{p}} × {{s}} × {{n}}', {
+                                  p: formatPrice(g.pricePerSession),
+                                  s: g.sessions,
+                                  n: g.players,
+                                })}
                         </div>
                       )}
                     </TableCell>

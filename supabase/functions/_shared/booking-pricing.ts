@@ -92,6 +92,31 @@ export function applySplitPayment(total: number, playerCount: number): number {
   return Math.round((total / n) * 100) / 100;
 }
 
+export type RebookPaymentMode = "upfront" | "deferred_split";
+
+/**
+ * Projected invoice total for ONE rebook series/group shown in the wizard's step-2 review
+ * (assumes everyone accepts; null when no price is set). The rule tracks the PAYMENT MODE, not
+ * just split_payment:
+ *  - upfront (group-captain): ONE captain pays the FULL court for the whole cycle → P × S, once.
+ *    Mirrors create-group-rebook-invoice (splitAmongPlayers:1). NEVER × N — only one person pays.
+ *  - deferred_split WITH split_payment: the court price is shared across the group, so the group
+ *    total is still P × S.
+ *  - deferred_split WITHOUT split_payment: each player is billed the full price → P × S × N.
+ */
+export function projectRebookGroupInvoiceTotal(opts: {
+  pricePerSession: number | null;
+  sessions: number;
+  players: number;
+  splitPayment: boolean;
+  paymentMode: RebookPaymentMode;
+}): number | null {
+  const { pricePerSession: P, sessions, players, splitPayment, paymentMode } = opts;
+  if (P == null) return null;
+  const groupPaysOnce = paymentMode === "upfront" || splitPayment;
+  return groupPaysOnce ? P * sessions : P * sessions * players;
+}
+
 /**
  * G5 — the split-payment divisor is the cycle's COURT CAPACITY, not the live
  * player count. Freezing to capacity makes the divisor a pure function of the slot

@@ -1230,6 +1230,7 @@
     "invoice": "Invoice",
     "playersCount": "{{n}} players",
     "breakdownSplit": "{{p}} × {{s}} (split)",
+    "breakdownUpfront": "{{p}} × {{s}} (whole group)",
     "breakdown": "{{p}} × {{s}} × {{n}}",
     "totals": "{{groups}} groups · {{players}} players · {{sessions}} sessions",
     "grandTotal": "Total if everyone accepts: {{amount}}",

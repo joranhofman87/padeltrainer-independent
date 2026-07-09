@@ -52,3 +52,22 @@ describe('RebookReviewTable (interactive)', () => {
     expect(screen.queryAllByLabelText('Mee')).toHaveLength(0);
   });
 });
+
+describe('RebookReviewTable (per-group price breakdown by payment mode)', () => {
+  const priced: RebookGroupDetail[] = [
+    { sourceSeriesKey: 'k1', weekday: 'maandag', time: '18:00', players: 4, sessions: 8, pricePerSession: 20, splitPayment: false, invoiceTotal: 160, roster: [{ name: 'A', hasEmail: true }] },
+  ];
+
+  it('upfront: breakdown reads "(hele groep)" — the court paid once, never × headcount', () => {
+    render(<RebookReviewTable {...base} groups={priced} paymentMode="upfront" grandInvoiceTotal={160} />);
+    expect(screen.getByText(/hele groep/)).toBeTruthy();
+    // The per-seat "× 4" multiplier must NOT appear for a single-payer upfront round.
+    expect(screen.queryByText(/× 4/)).toBeNull();
+  });
+
+  it('deferred without split: keeps the per-seat "× N" breakdown', () => {
+    render(<RebookReviewTable {...base} groups={priced} paymentMode="deferred_split" grandInvoiceTotal={640} />);
+    expect(screen.getByText(/× 4/)).toBeTruthy();
+    expect(screen.queryByText(/hele groep/)).toBeNull();
+  });
+});

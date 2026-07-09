@@ -480,6 +480,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 grandInvoiceTotal={review.grandInvoiceTotal}
                 ackNoEmail={ackNoEmail}
                 onAckChange={setAckNoEmail}
+                paymentMode={paymentMode}
               />
               {holidays.filter((h) => h.from && h.to).length > 0 && (
                 <p className="text-xs text-muted-foreground">
