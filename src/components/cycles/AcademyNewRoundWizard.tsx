@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, startOfDay } from 'date-fns';
+import { addWeeks, format, startOfDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -75,7 +75,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
 
   const [sourceCyclusId, setSourceCyclusId] = useState<string>(searchParams.get('source') ?? '');
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
-  const [weeks, setWeeks] = useState('');
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [sessionPrice, setSessionPrice] = useState('');
   const [holidays, setHolidays] = useState<HolidayRange[]>([]);
   const [targetCycleName, setTargetCycleName] = useState(
@@ -141,6 +141,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   );
 
   const newStartDate = startDate ? format(startDate, 'yyyy-MM-dd') : '';
+  const newEndDate = endDate ? format(endDate, 'yyyy-MM-dd') : '';
   const inputsValid = Boolean(sourceCyclusId) && Boolean(newStartDate);
 
   const baseBody = useMemo(
@@ -153,7 +154,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       strictMollie: paymentMode === 'upfront' && strictMollie,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
-      weeks: weeks ? Number(weeks) : 0,
+      // Date model: the round runs from newStartDate to newEndDate; the number of sessions is
+      // derived from that range minus the holiday days. When the end date is left blank, the
+      // edge fn falls back to the previous round's length (suggestedWeeks).
+      newEndDate: newEndDate || null,
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
@@ -168,7 +172,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       memberOpenMessage: priorityMessage.trim() || null,
       autoReminder,
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, priorityPeople, priorityMessage, autoReminder],
+    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, priorityPeople, priorityMessage, autoReminder],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -188,10 +192,12 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         toast.info(t('newRound.previewEmpty', 'Geen spelers gevonden in deze cyclus.'));
         return;
       }
-      // Pre-fill weeks + price from the previous round when the user left them blank.
+      // Pre-fill the end date + price from the previous round when the user left them blank.
+      // The last session lands (weeks-1) weeks after the start, so that's the suggested end date —
+      // the user sees a concrete range they can shorten/extend and re-check.
       const suggestedWeeks = Number(data?.suggestedWeeks ?? 0);
       const suggestedPrice = data?.suggestedPrice == null ? null : Number(data.suggestedPrice);
-      if (!weeks && suggestedWeeks > 0) setWeeks(String(suggestedWeeks));
+      if (!endDate && startDate && suggestedWeeks > 0) setEndDate(startOfDay(addWeeks(startDate, suggestedWeeks - 1)));
       if (sessionPrice === '' && suggestedPrice != null) setSessionPrice(String(suggestedPrice));
       setAckNoEmail(false);
       setReview({
@@ -348,7 +354,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>{t('newRound.whenAndHowMany', 'Wanneer en hoeveel weken?')}</CardTitle></CardHeader>
+            <CardHeader><CardTitle>{t('newRound.whenAndHowMany', 'Wanneer loopt de ronde?')}</CardTitle></CardHeader>
             <CardContent className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs">{t('newRound.startDate', 'Startdatum')}</Label>
@@ -360,16 +366,14 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t('newRound.weeks', 'Aantal weken')}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={52}
-                  value={weeks}
-                  onChange={(e) => setWeeks(e.target.value)}
-                  placeholder={t('newRound.weeksPlaceholder', 'bv. 10')}
+                <Label className="text-xs">{t('newRound.endDate', 'Einddatum')}</Label>
+                <DatePickerPopover
+                  value={endDate}
+                  onChange={(d) => { if (d) { setEndDate(startOfDay(d)); setReview(null); } }}
+                  disabled={(date) => (startDate ? date < startDate : date < startOfDay(new Date()))}
+                  className="w-full"
                 />
-                <p className="text-xs text-muted-foreground">{t('newRound.weeksHint', 'Vakantieweken worden overgeslagen.')}</p>
+                <p className="text-xs text-muted-foreground">{t('newRound.endDateHint', 'Leeg = lengte van de vorige ronde. Vakantiedagen worden niet ingepland.')}</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t('newRound.sessionPrice', 'Prijs per sessie (€)')}</Label>
@@ -499,13 +503,18 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             <CardHeader><CardTitle>{t('newRound.reviewTitle', 'Dit gaat er gebeuren')}</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
               <p>
-                {t('newRound.reviewIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie):', {
+                {t('newRound.reviewIntroRange', 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}, € {{price}} per sessie:', {
                   name: targetCycleName.trim() || t('newRound.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
-                  date: newStartDate,
-                  weeks: review.effWeeks,
+                  start: newStartDate,
+                  end: newEndDate || newStartDate,
                   price: effPrice || '—',
                 })}
               </p>
+              {holidays.filter((h) => h.from && h.to).length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('newRound.reviewHolidayNote', '{{count}} vakantieperiode wordt niet ingepland — die sessies zitten niet in de aantallen hieronder.', { count: holidays.filter((h) => h.from && h.to).length })}
+                </p>
+              )}
               <RebookReviewTable
                 groups={review.groupsDetail}
                 noEmailTotal={review.noEmailTotal}

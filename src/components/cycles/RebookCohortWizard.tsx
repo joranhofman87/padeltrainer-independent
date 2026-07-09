@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, parse } from 'date-fns';
+import { addWeeks, format, parse } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -81,7 +81,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const [selectedLocationIds, setSelectedLocationIds] = useState<Set<string>>(new Set());
   const [termEndDate, setTermEndDate] = useState('');
   const [newStartDate, setNewStartDate] = useState('');
-  const [weeks, setWeeks] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
   const [sessionPrice, setSessionPrice] = useState('');
   const [holidays, setHolidays] = useState<HolidayRange[]>([]);
 
@@ -168,7 +168,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       strictMollie: paymentMode === 'upfront' && strictMollie,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
-      weeks: weeks ? Number(weeks) : 0,
+      // Date model: the round runs from newStartDate to newEndDate; the session count is derived
+      // from that range minus the holiday days. Blank end date → previous term's length (fallback).
+      newEndDate: newEndDate || null,
       sessionPrice: sessionPrice === '' ? null : Number(sessionPrice),
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
@@ -196,7 +198,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       requireAdminReview,
       autoReminder,
       targetCycleName,
-      weeks,
+      newEndDate,
       sessionPrice,
       holidays,
       invitationMessage,
@@ -240,8 +242,12 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         };
         setPreview(result);
         setPreviewGroups(Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : []);
-        // Pre-fill weeks + price from the previous term when the user hasn't set them.
-        setWeeks((w) => (w ? w : (result.suggestedWeeks > 0 ? String(result.suggestedWeeks) : w)));
+        // Pre-fill the end date + price from the previous term when the user hasn't set them. The last
+        // session lands (weeks-1) weeks after the start → that's the suggested end date (adjustable).
+        setNewEndDate((e2) => {
+          if (e2 || !newStartDate || result.suggestedWeeks <= 0) return e2;
+          return format(addWeeks(parse(newStartDate, 'yyyy-MM-dd', new Date()), result.suggestedWeeks - 1), 'yyyy-MM-dd');
+        });
         setSessionPrice((p) => (p !== '' ? p : (result.suggestedPrice != null ? String(result.suggestedPrice) : p)));
       } catch (e) {
         if (!cancelled) {
@@ -416,13 +422,18 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <div>
           <h1 className="text-2xl font-bold">{t('rebookCohort.confirmTitle', 'Controleer voordat je verstuurt')}</h1>
           <p className="text-muted-foreground">
-            {t('rebookCohort.confirmIntro', 'Je maakt "{{name}}" aan vanaf {{date}} ({{weeks}} weken, € {{price}} per sessie). Dit nodigt de volgende spelers nu per e-mail uit:', {
+            {t('rebookCohort.confirmIntroRange', 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}, € {{price}} per sessie. Dit nodigt de volgende spelers nu per e-mail uit:', {
               name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
-              date: newStartDate ? format(parse(newStartDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : newStartDate,
-              weeks: confirmData.effWeeks ?? '',
+              start: newStartDate ? format(parse(newStartDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : newStartDate,
+              end: newEndDate ? format(parse(newEndDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : (newStartDate ? format(parse(newStartDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : ''),
               price: sessionPrice || (preview?.suggestedPrice ?? ''),
             })}
           </p>
+          {holidays.filter((h) => h.from && h.to).length > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {t('rebookCohort.confirmHolidayNote', '{{count}} vakantieperiode wordt niet ingepland — die sessies zitten niet in de aantallen hieronder.', { count: holidays.filter((h) => h.from && h.to).length })}
+            </p>
+          )}
         </div>
         <RebookReviewTable
           groups={confirmData.groupsDetail}
@@ -520,7 +531,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
               <span>
                 <span className="font-semibold">{t('rebookCohort.cohortCount', 'Dit betreft {{players}} spelers in {{groups}} groepen.', { players: preview.players, groups: preview.groups })}</span>
                 {preview.suggestedWeeks > 0 && (
-                  <span className="text-muted-foreground"> {t('rebookCohort.cohortWeeks', '± {{count}} weken per groep.', { count: weeks ? Number(weeks) : preview.suggestedWeeks })}</span>
+                  <span className="text-muted-foreground"> {t('rebookCohort.cohortWeeks', '± {{count}} weken per groep.', { count: preview.suggestedWeeks })}</span>
                 )}
               </span>
             ) : preview ? (
@@ -557,7 +568,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <CardHeader>
           <CardTitle>{t('rebookCohort.dates', 'Wanneer?')}</CardTitle>
         </CardHeader>
-        <CardContent className="grid sm:grid-cols-2 gap-4">
+        <CardContent className="grid sm:grid-cols-3 gap-4">
           <div>
             <Label className="text-xs">{t('rebookCohort.termEnd', 'Einde huidige termijn')}</Label>
             <DateField value={termEndDate} onChange={setTermEndDate} />
@@ -570,6 +581,13 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
             <DateField value={newStartDate} onChange={setNewStartDate} />
             <p className="text-xs text-muted-foreground mt-1">
               {t('rebookCohort.newStartHint', 'Wanneer de volgende termijn begint.')}
+            </p>
+          </div>
+          <div>
+            <Label className="text-xs">{t('rebookCohort.newEnd', 'Einde nieuwe ronde')}</Label>
+            <DateField value={newEndDate} onChange={setNewEndDate} />
+            <p className="text-xs text-muted-foreground mt-1">
+              {t('rebookCohort.newEndHint', 'Leeg = lengte van de vorige ronde. Vakantiedagen worden niet ingepland.')}
             </p>
           </div>
         </CardContent>
@@ -599,23 +617,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
 
       <Card>
         <CardHeader>
-          <CardTitle>{t('rebookCohort.sessionsAndPrice', 'Aantal weken en prijs')}</CardTitle>
+          <CardTitle>{t('rebookCohort.priceTitle', 'Prijs per sessie')}</CardTitle>
         </CardHeader>
         <CardContent className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs">{t('rebookCohort.weeks', 'Aantal weken')}</Label>
-            <Input
-              type="number"
-              min={1}
-              max={52}
-              value={weeks}
-              onChange={(e) => setWeeks(e.target.value)}
-              placeholder={preview?.suggestedWeeks ? String(preview.suggestedWeeks) : ''}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              {t('rebookCohort.weeksHint', 'Hoeveel weken de nieuwe ronde loopt. Vakantieweken worden overgeslagen.')}
-            </p>
-          </div>
           <div>
             <div className="flex items-center justify-between">
               <Label className="text-xs">{t('rebookCohort.sessionPrice', 'Prijs per sessie (€)')}</Label>

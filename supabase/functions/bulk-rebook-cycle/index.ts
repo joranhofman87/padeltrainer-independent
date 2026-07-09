@@ -69,7 +69,7 @@ function localWallTimeToUtc(y: number, mo: number, d: number, h: number, mi: num
  * the old and new term. Any occurrence whose local date is inside a holiday
  * range is dropped — nothing is planned on holidays.
  */
-function generateWeeklyStarts(newStartDate: string, templateStartIso: string, weeks: number, holidays: Holiday[], tz: string): string[] {
+function generateWeeklyStarts(newStartDate: string, templateStartIso: string, weeks: number, holidays: Holiday[], tz: string, endDate?: string | null): string[] {
   const tmpl = new Date(templateStartIso);
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false })
     .formatToParts(tmpl);
@@ -84,10 +84,15 @@ function generateWeeklyStarts(newStartDate: string, templateStartIso: string, we
   let cur = new Date(`${newStartDate}T12:00:00.000Z`); // noon avoids DST edges while stepping days
   for (let i = 0; i < 7 && wdFmt.format(cur) !== tWeekday; i++) cur = new Date(cur.getTime() + DAY_MS);
 
+  // Two modes: with an endDate (start→end inclusive), iterate weekly occurrences until we pass it;
+  // otherwise iterate exactly `weeks` occurrences. Both drop holiday-covered dates. MAX_WEEKS caps a
+  // runaway end date (60 weeks > a year of weekly sessions).
+  const MAX_WEEKS = 60;
   const out: string[] = [];
-  for (let i = 0; i < weeks; i++) {
+  for (let i = 0; i < (endDate ? MAX_WEEKS : weeks); i++) {
     const dayAnchor = new Date(cur.getTime() + i * 7 * DAY_MS);
     const dateStr = ymdFmt.format(dayAnchor); // yyyy-mm-dd in tz
+    if (endDate && dateStr > endDate) break; // past the chosen end date
     if (holidays.some((h) => h.from && h.to && dateStr >= h.from && dateStr <= h.to)) continue;
     const [y, mo, d] = dateStr.split("-").map(Number);
     out.push(localWallTimeToUtc(y, mo - 1, d, tHour, tMin, tz).toISOString());
@@ -136,6 +141,9 @@ serve(async (req) => {
     const locationIds: string[] = Array.isArray(body?.locationIds) ? body.locationIds : [];
     const termEndDate: string = body?.termEndDate; // yyyy-mm-dd
     const newStartDate: string = body?.newStartDate; // yyyy-mm-dd
+    // Optional END DATE (yyyy-mm-dd): when given, the round runs start→end (weekly, minus holidays)
+    // instead of a fixed `weeks` count — the clearer model the wizard now uses. `weeks` stays a fallback.
+    const bodyEndDate: string | null = typeof body?.newEndDate === "string" && body.newEndDate ? body.newEndDate : null;
     const priorityWindowDays: number = Number(body?.priorityWindowDays ?? 7);
     const memberWindowDays: number = Number(body?.memberWindowDays ?? 0);
     const paymentMode: string = body?.paymentMode === "upfront" ? "upfront" : "deferred_split";
@@ -387,7 +395,11 @@ serve(async (req) => {
       }),
     );
 
-    const effWeeks = weeks > 0 ? weeks : suggestedWeeks;
+    // With an explicit end date, generation is driven by it (below) — effWeeks is only the informational
+    // rebook_weeks setting, so derive the week span of the range. Otherwise use the weeks input.
+    const effWeeks = bodyEndDate
+      ? Math.max(1, Math.floor((Date.parse(`${bodyEndDate}T00:00:00Z`) - Date.parse(`${newStartDate}T00:00:00Z`)) / (7 * DAY_MS)) + 1)
+      : (weeks > 0 ? weeks : suggestedWeeks);
 
     if (dryRun) {
       // Per-group breakdown for the admin to FULLY review BEFORE anything is created
@@ -454,7 +466,7 @@ serve(async (req) => {
         for (const src of series) {
           for (const b of bookingsBySlot.get(src.id) ?? []) cohort.add(b.player_id ?? `g:${b.guest_player_id}`);
         }
-        const sessions = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz).length;
+        const sessions = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz, bodyEndDate).length;
         const roster = [...cohort]
           .map((k) => infoByKey.get(k) ?? { name: "—", hasEmail: false })
           .sort((a, b) => a.name.localeCompare(b.name, "nl"));
@@ -562,7 +574,9 @@ serve(async (req) => {
     //    would refuse with already_exists.
     const repTemplate = includedSeries[0][0];
     const cyclePrice = sessionPrice ?? suggestedPrice ?? repTemplate.price_per_session;
-    const newEndDate = new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
+    // The cycle's end_date is the chosen end date when given (exact), else derived from the weeks count.
+    const newEndDate = bodyEndDate
+      ?? new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
     const singleLocation = locationIds.length === 1
       ? locationIds[0]
       : (sourceCyclusId ? repTemplate.location_id : null); // cyclus mode: inherit the source venue
@@ -671,7 +685,7 @@ serve(async (req) => {
         }
         if (cohort.size === 0) continue;
 
-        const allStarts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz);
+        const allStarts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz, bodyEndDate);
         const trainerKey = tmpl.trainer_id ?? ""; // NOT NULL in the DB; local type is looser
         let claimed = claimedByTrainer.get(trainerKey);
         if (!claimed) { claimed = []; claimedByTrainer.set(trainerKey, claimed); }
