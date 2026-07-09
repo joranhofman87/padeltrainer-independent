@@ -90,11 +90,23 @@ Deno.serve(async (req: Request) => {
     const cyclusId = (slot?.cyclus_id as string | null) ?? null;
     if (!cyclusId) return json({ ok: false, reason: "no_cyclus" });
 
+    // Is this a STRICT pay-first cycle (settings.rebook_strict_mollie)? Resolved BEFORE the accept loop
+    // so the "already started" early-return below can enforce strict too — otherwise a strict cycle
+    // whose checkout can't (re)start would fall into the bank/invoice fallback (a seat reserved with no
+    // online payment). The accept loop still derives its own `strict` from the accept RPC (authoritative).
+    const { data: cyc } = await admin.from("cycles").select("settings").eq("id", cyclusId).maybeSingle();
+    const cycleStrict = (cyc?.settings as { rebook_strict_mollie?: boolean } | null)?.rebook_strict_mollie === true;
+
     // DOUBLE-PAY GUARD (sequential): any active rebook invoice already covers this claimant+cyclus →
     // hand THAT one back (re-click / returning). The unique index makes a 2nd active one impossible.
     const existing = await activeRebookInvoice(cyclusId, pid, gid);
     if (existing) {
       const checkoutUrl = await startCheckout(existing);
+      // STRICT: never return the bank-fallback publicToken without a live checkout — the client would
+      // show "your spot is reserved, pay by invoice", i.e. a held seat with no online payment. If the
+      // checkout can't (re)start, report strict_mollie_unavailable → the client offers a retry, not a
+      // fallback. The seat is a TTL hold, so it self-releases if the player never completes payment.
+      if (cycleStrict && !checkoutUrl) return json({ ok: false, reason: "strict_mollie_unavailable" });
       return json({ ok: true, alreadyStarted: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status, checkoutUrl });
     }
 
@@ -117,7 +129,11 @@ Deno.serve(async (req: Request) => {
     // Accept each still-pending claim (books the claimant's own seat; strict → a TTL HOLD). The legacy
     // single-claim RPC path books one slot per call. A failed sibling (e.g. slot_full) must not block
     // the rest.
-    let strict = false;
+    // Authoritative strict flag = the cycle's own setting (settings.rebook_strict_mollie), NOT just
+    // the accept RPC's per-row `strict`. If the RPC ever fails to stamp `strict` on a strict cycle,
+    // deriving it from acc.strict alone would silently bypass pay-first enforcement and leave a seat
+    // reserved without payment — so a strict cycle is ALWAYS treated as strict here.
+    let strict = cycleStrict;
     const requestedPending = (myClaims as { claim_token: string; status: string }[]).filter((mc) => mc.status === "pending").length;
     for (const mc of myClaims as { claim_token: string; status: string }[]) {
       if (mc.status !== "pending") continue;
@@ -147,8 +163,13 @@ Deno.serve(async (req: Request) => {
     // After we've booked seats, a mint failure must RELEASE the seats on a STRICT cycle (no seat
     // without an online payment) and report strict_mollie_unavailable; a NON-strict cycle keeps the
     // seat as a reserved commitment (the academy follows up / the client shows "reserved").
-    const failAfterAccept = (reason: string): Promise<Response> | Response => {
-      if (strict) return undoSeats(bookingIds).then(() => json({ ok: false, reason: "strict_mollie_unavailable" }));
+    const failAfterAccept = async (reason: string): Promise<Response> => {
+      // Money-adjacent: a claimant tried to pay upfront and we couldn't complete it. Alert LOUDLY so
+      // this class of failure ("Mollie won't load" / seat silently reserved) is never invisible again.
+      await notifySlackEdgeError("create-rebook-invoice-public", `rebook pay-first failed: ${reason}`, {
+        token: token.slice(0, 8), cyclusId, strict, reason,
+      });
+      if (strict) { await undoSeats(bookingIds); return json({ ok: false, reason: "strict_mollie_unavailable" }); }
       return json({ ok: false, reason });
     };
 
@@ -190,6 +211,9 @@ Deno.serve(async (req: Request) => {
       const winner = await activeRebookInvoice(cyclusId, pid, gid);
       if (winner) {
         const checkoutUrl = await startCheckout(winner);
+        // STRICT: same guard as the double-pay early-return — never hand back a bank-fallback
+        // publicToken without a live checkout (that would reserve a seat with no online payment).
+        if (strict && !checkoutUrl) return json({ ok: false, reason: "strict_mollie_unavailable" });
         return json({ ok: true, alreadyStarted: true, invoiceId: winner.id, publicToken: winner.public_token, status: winner.status, checkoutUrl });
       }
       return json({ ok: false, reason: "retry" });
@@ -200,6 +224,9 @@ Deno.serve(async (req: Request) => {
     // cancel HOLDS, reset claims to pending (no seat without an online payment; no bank fallback).
     const checkoutUrl = await startCheckout(invoice as RebookInvoice);
     if (strict && !checkoutUrl) {
+      await notifySlackEdgeError("create-rebook-invoice-public", "strict rebook: Mollie checkout would not start — seat released", {
+        token: token.slice(0, 8), cyclusId, invoiceId: invoice.id,
+      });
       await admin.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
       await undoSeats(bookingIds);
       return json({ ok: false, reason: "strict_mollie_unavailable" });

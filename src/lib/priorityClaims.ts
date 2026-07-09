@@ -928,9 +928,11 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
         ? 'deferred_split'
         : await getCycleRebookPaymentMode(slot?.cyclus_id);
   } catch {
-    // Mode lookup failed — accept as a plain commitment (deferred).
-    const a = await acceptClaimWithToken(token);
-    return a?.ok ? { ...a, mode: 'deferred' } : a;
+    // Mode lookup failed. Do NOT silently accept as a deferred commitment: for a STRICT upfront cycle
+    // that would degrade the claim to "reserved, pay later" and bypass the pay-first gate (the exact
+    // leak a page refresh could trigger). Refuse without accepting so the caller can retry once the
+    // mode resolves — a missed acceptance is recoverable; a strict cycle silently reserved is not.
+    return { ok: false, reason: 'mode_lookup_failed' };
   }
 
   // UPFRONT → the no-login public path (accept + one full-price invoice + checkout). A group claim
