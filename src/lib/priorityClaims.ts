@@ -631,6 +631,28 @@ export async function fetchClaimByToken(token: string) {
   return data as Record<string, unknown> | null;
 }
 
+/**
+ * Resume-payment: the claim's ONE active UNPAID rebook invoice pay token, so an accepted upfront
+ * claim whose Mollie checkout was dropped/refreshed can offer "Continue to payment" instead of the
+ * dead-end deferred copy. Token-gated SECURITY DEFINER read (works logged-out); fail-OPEN — returns
+ * null on any error / when the RPC isn't deployed yet, so the button simply doesn't render.
+ */
+export async function getUnpaidRebookInvoiceByToken(
+  token: string,
+): Promise<{ public_token: string; status: string } | null> {
+  try {
+    const { data, error } = await supabase.rpc(
+      'get_unpaid_rebook_invoice_by_claim_token' as never,
+      { _token: token } as never,
+    );
+    if (error || !data) return null;
+    const row = data as { public_token?: string | null; status?: string | null };
+    return row?.public_token ? { public_token: row.public_token, status: row.status ?? 'sent' } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function declineClaimWithToken(token: string, reason?: string) {
   const { data, error } = await supabase.rpc('respond_to_priority_claim', {
     _token: token,

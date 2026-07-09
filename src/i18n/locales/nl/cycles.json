@@ -893,6 +893,8 @@
     "releaseShort": "Geef vrij",
     "working": "Bezig…",
     "reserved": "Je plek is gereserveerd. Je ontvangt een factuur wanneer de cyclus start.",
+    "upfrontReserved": "Je plek is gereserveerd — rond de betaling af om te bevestigen.",
+    "continuePayment": "Ga verder naar betaling →",
     "released": "Je plek is vrijgegeven. Bedankt voor je reactie.",
     "windowEnded": "De reserveringsperiode is verlopen.",
     "browse": "Bekijk beschikbare plekken",
