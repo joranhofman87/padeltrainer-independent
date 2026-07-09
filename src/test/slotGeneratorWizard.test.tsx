@@ -9,6 +9,8 @@ vi.mock('react-router-dom', async (orig) => {
   return { ...actual, useNavigate: () => navigateSpy };
 });
 
+const { MemoryRouter } = await import('react-router-dom');
+
 const { SlotGeneratorWizard } = await import('@/components/cycles/SlotGeneratorWizard');
 
 const locations = [{ id: 'loc1', name: 'Court A', city: 'Amsterdam' }];
@@ -40,6 +42,50 @@ describe('SlotGeneratorWizard', () => {
       />,
     );
     expect(screen.getByLabelText('Trainer')).toBeInTheDocument();
+  });
+
+  it('academy with NO locations: shows the add-location helper + link in the field (no picker)', () => {
+    renderWithCycles(
+      <MemoryRouter>
+        <SlotGeneratorWizard
+          ownerType="academy"
+          ownerId="ac1"
+          backHref="/app/academy/registrations"
+          trainerSelection={{ mode: 'self', trainerId: 'tr1' }}
+          availableLocations={[]}
+          manageLocationsHref="/app/academy/locations"
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Locatie')).toBeInTheDocument();
+    expect(screen.getByText(/Voeg eerst een locatie toe/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Naar locaties' })).toHaveAttribute('href', '/app/academy/locations');
+  });
+
+  it('academy: location is required — cannot advance to preview without one', () => {
+    renderWithCycles(
+      <MemoryRouter>
+        <SlotGeneratorWizard
+          ownerType="academy"
+          ownerId="ac1"
+          backHref="/app/academy/registrations"
+          trainerSelection={{ mode: 'self', trainerId: 'tr1' }}
+          availableLocations={[]}
+          manageLocationsHref="/app/academy/locations"
+        />
+      </MemoryRouter>,
+    );
+    // Fill everything EXCEPT location, so the location requirement is the only thing blocking.
+    fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Herfst training' } });
+    fireEvent.change(screen.getByLabelText('Prijs per sessie (€)'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Startdatum'), { target: { value: '2026-06-01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Einddatum' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: '28' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voorbeeld' }));
+    // Blocked by the location requirement — never reaches the preview step.
+    expect(screen.queryByRole('button', { name: 'Sessies aanmaken' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Voorbeeld' })).toBeInTheDocument();
   });
 
   it('configure → preview → generate → done step (live immediately, no publish step)', async () => {

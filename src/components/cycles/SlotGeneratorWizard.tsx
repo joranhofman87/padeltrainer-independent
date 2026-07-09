@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, CalendarPlus, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarPlus, Loader2, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,8 @@ export interface SlotGeneratorWizardProps {
   /** Trainer model — injected, never derived from `ownerType` inside the component. */
   trainerSelection: { mode: 'self'; trainerId: string } | { mode: 'pick'; trainers: SlotGeneratorTrainer[] };
   availableLocations?: SlotLocation[];
+  /** Where "add a location first" links to when the owner has none yet (academy: its locations page). */
+  manageLocationsHref?: string;
   timezone?: string;
   /** Test/override seam for the create-lib (defaults to the real one). */
   generate?: typeof generateCycleWithSlots;
@@ -49,6 +51,7 @@ export function SlotGeneratorWizard({
   backHref,
   trainerSelection,
   availableLocations,
+  manageLocationsHref,
   timezone = 'Europe/Amsterdam',
   generate = generateCycleWithSlots,
 }: SlotGeneratorWizardProps) {
@@ -84,6 +87,13 @@ export function SlotGeneratorWizard({
 
   const trainerId = trainerSelection.mode === 'self' ? trainerSelection.trainerId : pickedTrainerId;
 
+  // Location is a required field for an academy (its sessions are always at a venue). The trainer
+  // path keeps it optional (some independents don't track locations). `noLocations` is the academy
+  // "you haven't added a location yet" case — availableLocations is passed as an (empty) array there;
+  // the trainer path passes it undefined and the picker self-fetches.
+  const locationRequired = ownerType === 'academy';
+  const noLocations = Array.isArray(availableLocations) && availableLocations.length === 0;
+
   // The preview is grouped into the same per-(weekday+time) series the generator will create one
   // cyclus from each — so the review step shows exactly the cycli that will be made.
   const previewSeries = useMemo(
@@ -116,6 +126,7 @@ export function SlotGeneratorWizard({
   const handlePreview = () => {
     if (!cycleName.trim()) return toast.error(t('slotGenerator.errNoName', 'Geef de cyclus een naam.'));
     if (!trainerId) return toast.error(t('slotGenerator.errNoTrainer', 'Kies een trainer.'));
+    if (locationRequired && !locationId) return toast.error(t('slotGenerator.errNoLocation', 'Kies een locatie.'));
     if (!startDate) return toast.error(t('slotGenerator.errNoStart', 'Kies een startdatum.'));
     if (!endDate) return toast.error(t('slotGenerator.errNoEnd', 'Kies een einddatum.'));
     if (format(endDate, 'yyyy-MM-dd') < startDate) {
@@ -218,12 +229,33 @@ export function SlotGeneratorWizard({
               )}
             </div>
 
-            <SlotLocationPicker
-              value={locationId}
-              onChange={setLocationId}
-              trainerId={trainerId || null}
-              availableLocations={availableLocations}
-            />
+            <div className="space-y-1.5">
+              <Label>{t('slotGenerator.location', 'Locatie')}</Label>
+              {noLocations ? (
+                // Academy with no locations yet: show the "add a location first" helper right here
+                // (the field's place) instead of the picker, so the requirement is obvious inline.
+                <div className="rounded-md border border-dashed px-3 py-2.5 text-sm">
+                  <div className="flex items-start gap-2 text-muted-foreground">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="space-y-1">
+                      <p>{t('slotGenerator.noLocationsHelp', 'Voeg eerst een locatie toe voordat je sessies kunt plannen.')}</p>
+                      {manageLocationsHref && (
+                        <Button variant="link" size="sm" asChild className="h-auto p-0" aria-label={t('slotGenerator.addLocationCta', 'Naar locaties')}>
+                          <Link to={manageLocationsHref}>{t('slotGenerator.addLocationCta', 'Naar locaties')}</Link>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <SlotLocationPicker
+                  value={locationId}
+                  onChange={setLocationId}
+                  trainerId={trainerId || null}
+                  availableLocations={availableLocations}
+                />
+              )}
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
