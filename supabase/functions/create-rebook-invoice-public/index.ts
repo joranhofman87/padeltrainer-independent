@@ -86,7 +86,34 @@ Deno.serve(async (req: Request) => {
       .eq("claim_token", token)
       .maybeSingle();
     if (!claim) return json({ ok: false, error: "claim_not_found" }, 404);
-    if (claim.rebook_group_id) return json({ ok: false, reason: "is_group" });
+    // A grouped claim normally routes to the captain-pays-all path (create-group-rebook-invoice). But a
+    // SOLO group — this claimant is the group's ONLY member (a one-player series, or a group that
+    // attrited to one) — has NO captain button in the UI (it renders only for >1 member), so its "keep
+    // my spot" dead-ends for a logged-out / guest player (the login-required member path can't start a
+    // checkout, and a guest can never log in). Delegate a solo group to the group fn: it books the one
+    // member's seats at full price — exactly what the deferred split would bill a 1-member group
+    // (headcount 1 ⇒ P×S) — and works logged-out. Multi-member groups still refuse → is_group.
+    if (claim.rebook_group_id) {
+      const { data: groupClaims } = await admin
+        .from("slot_priority_claims")
+        .select("player_id, guest_player_id")
+        .eq("rebook_group_id", claim.rebook_group_id);
+      const distinctPlayers = new Set(
+        (groupClaims ?? [])
+          .map((c: { player_id: string | null; guest_player_id: string | null }) => c.player_id ?? c.guest_player_id)
+          .filter(Boolean),
+      );
+      if (distinctPlayers.size > 1) return json({ ok: false, reason: "is_group" });
+      try {
+        const { data: grp } = await withTimeout(
+          admin.functions.invoke("create-group-rebook-invoice", { body: { token }, headers: serviceAuth }),
+          MINT_TIMEOUT_MS + CHECKOUT_TIMEOUT_MS, "create-group-rebook-invoice-delegate",
+        );
+        return json(grp ?? { ok: false, reason: "strict_mollie_unavailable" });
+      } catch (_) {
+        return json({ ok: false, reason: "strict_mollie_unavailable" });
+      }
+    }
 
     const pid = (claim.player_id as string | null) ?? null;
     const gid = (claim.guest_player_id as string | null) ?? null;
