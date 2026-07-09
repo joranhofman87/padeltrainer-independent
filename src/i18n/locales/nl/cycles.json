@@ -1356,6 +1356,7 @@
     "invoice": "Factuur",
     "playersCount": "{{n}} spelers",
     "breakdownSplit": "{{p}} × {{s}} (gedeeld)",
+    "breakdownUpfront": "{{p}} × {{s}} (hele groep)",
     "breakdown": "{{p}} × {{s}} × {{n}}",
     "totals": "{{groups}} groepen · {{players}} spelers · {{sessions}} sessies",
     "grandTotal": "Totaal indien iedereen accepteert: {{amount}}",

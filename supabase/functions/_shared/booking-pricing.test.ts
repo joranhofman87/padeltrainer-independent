@@ -3,6 +3,7 @@ import {
   applySplitPayment,
   computeSingleSlotPaymentAmount,
   hasNonUniformCapacity,
+  projectRebookGroupInvoiceTotal,
   resolveSplitDivisorFromSlots,
   shouldSkipExtrasForPaidExtrasBookings,
   sumSlotExtraCosts,
@@ -15,6 +16,41 @@ const slot = (over: Record<string, unknown> = {}) => ({
   max_participants: 4,
   allow_single_booking: false,
   ...over,
+});
+
+Deno.test("projectRebookGroupInvoiceTotal: upfront charges the court ONCE (P×S), never × headcount", () => {
+  // RL Padel: €20 court, 8 sessions, group of 4. Upfront = one captain pays the whole court for
+  // the cycle → €160, NOT €160 × 4. This is the review-step over-charge the fix addresses.
+  assertEquals(
+    projectRebookGroupInvoiceTotal({ pricePerSession: 20, sessions: 8, players: 4, splitPayment: false, paymentMode: "upfront" }),
+    160,
+  );
+  // Group size must not change the upfront total.
+  assertEquals(
+    projectRebookGroupInvoiceTotal({ pricePerSession: 20, sessions: 8, players: 1, splitPayment: false, paymentMode: "upfront" }),
+    160,
+  );
+});
+
+Deno.test("projectRebookGroupInvoiceTotal: deferred_split with split_payment shares the court (P×S)", () => {
+  assertEquals(
+    projectRebookGroupInvoiceTotal({ pricePerSession: 20, sessions: 8, players: 4, splitPayment: true, paymentMode: "deferred_split" }),
+    160,
+  );
+});
+
+Deno.test("projectRebookGroupInvoiceTotal: deferred_split WITHOUT split bills each player full (P×S×N)", () => {
+  assertEquals(
+    projectRebookGroupInvoiceTotal({ pricePerSession: 20, sessions: 8, players: 4, splitPayment: false, paymentMode: "deferred_split" }),
+    640,
+  );
+});
+
+Deno.test("projectRebookGroupInvoiceTotal: null price → null (no total shown)", () => {
+  assertEquals(
+    projectRebookGroupInvoiceTotal({ pricePerSession: null, sessions: 8, players: 4, splitPayment: false, paymentMode: "upfront" }),
+    null,
+  );
 });
 
 Deno.test("sumSlotExtraCosts sums positive extras and ignores blanks/non-positive", () => {

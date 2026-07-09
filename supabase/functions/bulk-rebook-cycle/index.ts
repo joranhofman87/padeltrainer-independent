@@ -3,6 +3,7 @@ import { corsHeaders, requireUser, jsonForbidden } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
+import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -439,14 +440,16 @@ serve(async (req) => {
           .map((k) => infoByKey.get(k) ?? { name: "—", hasEmail: false })
           .sort((a, b) => a.name.localeCompare(b.name, "nl"));
         const noEmailCount = roster.filter((r) => !r.hasEmail).length;
-        // Invoice projection — same rule the real invoicing applies: with split_payment
-        // the session price is divided across the group (group total = P × S); without
-        // split each player pays the full price (group total = P × S × N). Assumes
-        // everyone accepts; null when no price is set.
+        // Invoice projection — tracks the PAYMENT MODE, not just split_payment. Upfront is the
+        // group-captain model: ONE captain pays the full court for the whole cycle (P × S), so it
+        // must NOT multiply by the group size (see projectRebookGroupInvoiceTotal + the earlier
+        // P×S×N bug where the review over-stated the upfront total by the headcount).
         const N = cohort.size;
         const P = sessionPrice ?? tmpl.price_per_session;
         const splitPayment = tmpl.split_payment === true;
-        const invoiceTotal = P == null ? null : (splitPayment ? P * sessions : P * sessions * N);
+        const invoiceTotal = projectRebookGroupInvoiceTotal({
+          pricePerSession: P, sessions, players: N, splitPayment, paymentMode: paymentMode as "upfront" | "deferred_split",
+        });
         return {
           // Stable join key between the review UI and the create loop (survives the
           // players>0 filter, which breaks index-alignment with qualifyingSeries).
