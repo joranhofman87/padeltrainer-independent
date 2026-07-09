@@ -1,12 +1,12 @@
 // @vitest-environment node
-// runBookingPaidSideEffects — the guest confirmation email + hoisted Slack ping
-// (public-booking audit P1-5 / cart PR 3).
+// runBookingPaidSideEffects — the hoisted Slack ping + staff notifications.
 //
-// Before this change the email AND the payment_received Slack ping both lived inside
-// `if (booking?.profiles?.email)`, whose join is player_id-keyed — guest bookings
-// (player_id NULL) silently got neither. Now: player bookings keep the player template,
-// guest bookings get the invoice email (send-invoice-email, PDF itemizes all sessions),
-// and Slack pings for both.
+// The player-facing PAYMENT CONFIRMATION email now lives in ONE unified helper
+// (sendPlayerBookingConfirmation, tested in bookingConfirmationEmail.test.ts): both a
+// guest and a registered player, single-slot or cyclus, get the same friendly email
+// (sessions + invoice PDF + sign-in link). It sends via Resend directly, so in this
+// Node test env (no Deno / no RESEND_API_KEY) it short-circuits to a no-op — which is
+// why the tests below assert the SLACK + STAFF side effects, not the email.
 //
 // The helper takes the supabase client as a parameter and its only remote import is
 // type-only, so we drive the REAL helper with a hand-rolled fake — no module mocks.
@@ -133,54 +133,10 @@ const callsTo = (
   name: string,
 ) => invoke.mock.calls.filter((c) => c[0] === name);
 
-describe('runBookingPaidSideEffects — guest confirmation email (P1-5)', () => {
-  it('guest booking: sends the invoice email exactly once, with the minted invoiceId', async () => {
-    const { supabase, invoke } = makeFakeSupabase({
-      booking: guestBooking,
-      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
-    });
-    await run(supabase);
-    const sends = callsTo(invoke, 'send-invoice-email');
-    expect(sends).toHaveLength(1);
-    expect(sends[0][1]).toMatchObject({ body: { invoiceId: 'INV-1' } });
-    // the player template must NOT fire for a guest
-    expect(callsTo(invoke, 'send-email')).toHaveLength(0);
-  });
-
-  it('guest booking: falls back to the overlapping invoice when the invoke response is empty', async () => {
-    const { supabase, invoke } = makeFakeSupabase({
-      booking: guestBooking,
-      invoiceInvokeData: null,
-      invoiceFallbackRow: { id: 'INV-2' },
-    });
-    await run(supabase);
-    const sends = callsTo(invoke, 'send-invoice-email');
-    expect(sends).toHaveLength(1);
-    expect(sends[0][1]).toMatchObject({ body: { invoiceId: 'INV-2' } });
-  });
-
-  it('guest booking with NO resolvable invoice: no email, but an alert (money landed silently)', async () => {
-    const { supabase, invoke } = makeFakeSupabase({
-      booking: guestBooking,
-      invoiceInvokeData: null,
-      invoiceFallbackRow: null,
-    });
-    const notifySlackError = await run(supabase);
-    expect(callsTo(invoke, 'send-invoice-email')).toHaveLength(0);
-    const alerts = notifySlackError.mock.calls.map((c) => String(c[1]));
-    expect(alerts.some((m) => m.includes('no invoice'))).toBe(true);
-  });
-
-  it('player booking: keeps the player confirmation template, never the invoice email', async () => {
-    const { supabase, invoke } = makeFakeSupabase({
-      booking: playerBooking,
-      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
-    });
-    await run(supabase);
-    expect(callsTo(invoke, 'send-email')).toHaveLength(1);
-    expect(callsTo(invoke, 'send-invoice-email')).toHaveLength(0);
-  });
-});
+// NOTE: the player/guest confirmation EMAIL (unified helper sendPlayerBookingConfirmation)
+// is covered by bookingConfirmationEmail.test.ts. In this Node env the helper short-circuits
+// (no RESEND_API_KEY) so it emits no email and no alert — these blocks cover the parts of
+// runBookingPaidSideEffects that still fire here: the Slack ping and staff notifications.
 
 describe('runBookingPaidSideEffects — Slack payment_received hoisted out of the email guard', () => {
   it('pings payment_received for a GUEST booking (used to be silently skipped)', async () => {
@@ -309,19 +265,3 @@ describe('runBookingPaidSideEffects — staff booking notifications', () => {
   });
 });
 
-describe('runBookingPaidSideEffects — player confirmation invoke fixed (type, not template)', () => {
-  it("sends type 'booking_confirmation' with the fields the template renders", async () => {
-    const { supabase, invoke } = makeFakeSupabase({ booking: playerBooking });
-    await run(supabase);
-    const confirmations = callsTo(invoke, 'send-email').filter(
-      (c) => (c[1]?.body as { type?: string } | undefined)?.type === 'booking_confirmation',
-    );
-    expect(confirmations).toHaveLength(1);
-    const body = confirmations[0][1]!.body as Record<string, unknown>;
-    expect(body.template).toBeUndefined();
-    const data = body.data as Record<string, unknown>;
-    expect(data.price).toBe('25.00');
-    expect(data.lessonTitle).toBeTruthy();
-    expect(data.trainerName).toBe('Trainer T');
-  });
-});

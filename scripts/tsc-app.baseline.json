@@ -64,6 +64,7 @@
   "src/test/registrations.test.ts|TS2353|Object literal may only specify known properties, and 'x' does not exist in type 'ScoringWeights'.": 1,
   "src/test/serviceRoleAuth.test.ts|TS2578|Unused '@ts-expect-error' directive.": 1,
   "src/test/slotDeleteGuard.test.ts|TS2556|A spread argument must either have a tuple type or be passed to a rest parameter.": 1,
+  "supabase/functions/_shared/booking-confirmation-email.ts|TS2307|Cannot find module 'https://esm.sh/@supabase/supabase-js@2' or its corresponding type declarations.": 1,
   "supabase/functions/_shared/mollie-booking-paid-side-effects.ts|TS2307|Cannot find module 'https://esm.sh/@supabase/supabase-js@2' or its corresponding type declarations.": 1,
   "supabase/functions/_shared/service-role-auth.ts|TS2304|Cannot find name 'Deno'.": 1
 }
