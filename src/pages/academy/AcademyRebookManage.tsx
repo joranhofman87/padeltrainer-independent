@@ -432,7 +432,12 @@ export default function AcademyRebookManage() {
             <EyeOff className="h-4 w-4 mr-1" /> {t('rebookManage.makePrivate', 'Verbergen')}
           </Button>
           <Button size="sm" disabled={busy || selectedPlayers.size === 0}
-            onClick={() => { if (!message.trim() && data?.invitationMessage) setMessage(data.invitationMessage); setComposeOpen(true); }}>
+            onClick={() => {
+              // Pre-fill from the round's saved REMINDER text (falls back to the invite message).
+              if (!message.trim()) setMessage(data?.reminderMessage || data?.invitationMessage || '');
+              if (!subject.trim() && data?.reminderSubject) setSubject(data.reminderSubject);
+              setComposeOpen(true);
+            }}>
             <Mail className="h-4 w-4 mr-1" /> {t('rebookManage.emailReminder', 'Herinnering mailen')}
           </Button>
           <Button size="sm" variant="ghost" onClick={clearSelection}>{t('common:clear', 'Wissen')}</Button>

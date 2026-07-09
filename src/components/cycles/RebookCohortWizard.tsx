@@ -113,6 +113,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   // a blank box; fully editable. Leads with "Hoi {first_name}," (substituted per recipient).
   const [invitationMessage, setInvitationMessage] = useState(() => t('rebookShared.defaultInviteMessage'));
   const [invitationSubject, setInvitationSubject] = useState(() => t('rebookShared.defaultInviteSubject'));
+  const [reminderMessage, setReminderMessage] = useState(() => t('rebookShared.defaultReminderMessage'));
+  const [reminderSubject, setReminderSubject] = useState(() => t('rebookShared.defaultReminderSubject'));
   const [rebookRules, setRebookRules] = useState('');
   // Trainer/session exclusion: the auto-preview's series (for the trainer checklist),
   // the excluded series (by sourceSeriesKey), and the subset whose players move to the
@@ -171,6 +173,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
       invitationSubject: invitationSubject.trim() || null,
+      reminderMessage: reminderMessage.trim() || null,
+      reminderSubject: reminderSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
       excludedSeriesKeys: [...excludedSeriesKeys],
       secondBucketSeriesKeys: [...secondBucketSeriesKeys],
@@ -197,6 +201,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       holidays,
       invitationMessage,
       invitationSubject,
+      reminderMessage,
+      reminderSubject,
       rebookRules,
       excludedSeriesKeys,
       secondBucketSeriesKeys,
@@ -676,6 +682,30 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
               <div className="text-xs text-muted-foreground">{t('rebookShared.autoReminderHint', 'Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt.')}</div>
             </div>
           </label>
+
+          {autoReminder && (
+            <div className="ml-7 space-y-3 rounded-md border p-3">
+              <EmailSubjectField
+                id="rebook-cohort-reminder-subject"
+                value={reminderSubject}
+                onChange={setReminderSubject}
+                disabled={submitting}
+                label={t('rebookShared.reminderSubjectLabel', 'Onderwerp van de herinnering')}
+                placeholder={t('rebookShared.defaultReminderSubject', 'Herinnering: bevestig je plek')}
+                variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+              />
+              <EmailMessageField
+                id="rebook-cohort-reminder-message"
+                value={reminderMessage}
+                onChange={setReminderMessage}
+                disabled={submitting}
+                maxLength={2000}
+                label={t('rebookShared.reminderMessageLabel', 'Bericht in de herinnering')}
+                placeholder={t('rebookShared.defaultReminderMessage', '')}
+                variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+              />
+            </div>
+          )}
 
           <Card>
             <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>

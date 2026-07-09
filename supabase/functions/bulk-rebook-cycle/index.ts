@@ -170,6 +170,12 @@ serve(async (req) => {
     // Optional academy-authored subject line for the invitation email (empty ⇒ default).
     // Stored on the cycle + forwarded to send-priority-claim-invitation (which re-sanitizes).
     const invitationSubject: string = sanitizeEmailSubject(body?.invitationSubject);
+    // Optional academy-authored REMINDER text — used by auto-rebook-reminder (empty ⇒ built-in copy)
+    // and pre-fills the manual reminder. Stored on the cycle.
+    const reminderMessage: string = typeof body?.reminderMessage === "string"
+      ? body.reminderMessage.trim().slice(0, 2000)
+      : "";
+    const reminderSubject: string = sanitizeEmailSubject(body?.reminderSubject);
     // Rebooking rules (rich HTML). Stored on the new cycle for the claim/pay page to show + gate
     // consent against — NOT sent in the invitation email (that uses invitationMessage above).
     const rebookRules: string = typeof body?.rebookRules === "string"
@@ -610,7 +616,7 @@ serve(async (req) => {
           allow_single_booking: repTemplate.allow_single_booking === true,
           whole_slot_booking: repTemplate.whole_slot_booking === true,
           allow_cyclus_booking: sourceCycleSettings.allow_cyclus_booking !== false,
-          rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
+          rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
       })
       .select("id, name")
       .single();

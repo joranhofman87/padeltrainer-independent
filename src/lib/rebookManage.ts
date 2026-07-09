@@ -131,6 +131,10 @@ export interface RebookManageData {
   /** The academy's saved invite message for this round (cycles.settings.rebook_invitation_message);
    *  used to pre-fill the reminder composer. '' when none was set. */
   invitationMessage: string;
+  /** The academy's saved reminder text for this round (used by auto-rebook-reminder + to pre-fill
+   *  the manual reminder composer). '' when none was set. */
+  reminderMessage: string;
+  reminderSubject: string;
   groups: RebookManageGroup[];
   counts: Record<GroupStatus, number>;
   /** Per-invitee headline (invited/rebooked/declined/no-response) — the owner's "who said no". */
@@ -256,14 +260,18 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at')
       .eq('cyclus_id', cycleId),
   ]);
-  const invitationMessage = (() => {
-    const s = (cycle?.settings ?? null) as { rebook_invitation_message?: unknown } | null;
-    return typeof s?.rebook_invitation_message === 'string' ? s.rebook_invitation_message : '';
-  })();
+  const settingsObj = (cycle?.settings ?? null) as {
+    rebook_invitation_message?: unknown; rebook_reminder_message?: unknown; rebook_reminder_subject?: unknown;
+  } | null;
+  const invitationMessage = typeof settingsObj?.rebook_invitation_message === 'string' ? settingsObj.rebook_invitation_message : '';
+  const reminderMessage = typeof settingsObj?.rebook_reminder_message === 'string' ? settingsObj.rebook_reminder_message : '';
+  const reminderSubject = typeof settingsObj?.rebook_reminder_subject === 'string' ? settingsObj.rebook_reminder_subject : '';
   const slotRows = (slots ?? []) as SlotRow[];
   const empty: RebookManageData = {
     cycleName: cycle?.name ?? '',
     invitationMessage,
+    reminderMessage,
+    reminderSubject,
     groups: [],
     counts: { rebooked: 0, awaiting: 0, declined: 0, members: 0, public: 0 },
     summary: { invited: 0, rebooked: 0, declined: 0, noResponse: 0, clickedYesUnpaid: 0 },
@@ -488,6 +496,8 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   return {
     cycleName: cycle?.name ?? '',
     invitationMessage,
+    reminderMessage,
+    reminderSubject,
     groups,
     counts,
     summary,

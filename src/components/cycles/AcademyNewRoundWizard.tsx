@@ -102,6 +102,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   // a blank box; fully editable. Leads with "Hoi {first_name}," (substituted per recipient).
   const [invitationMessage, setInvitationMessage] = useState(() => t('rebookShared.defaultInviteMessage'));
   const [invitationSubject, setInvitationSubject] = useState(() => t('rebookShared.defaultInviteSubject'));
+  // The automated-reminder email text (used by auto-rebook-reminder; also pre-fills the manual send).
+  const [reminderMessage, setReminderMessage] = useState(() => t('rebookShared.defaultReminderMessage'));
+  const [reminderSubject, setReminderSubject] = useState(() => t('rebookShared.defaultReminderSubject'));
   const [rebookRules, setRebookRules] = useState('');
   // Priority list: registered players who also get first dibs (+ an email) when the
   // member window opens, plus the optional message for that "sessions opened" email.
@@ -155,6 +158,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       holidays: holidays.filter((h) => h.from && h.to),
       invitationMessage: invitationMessage.trim() || null,
       invitationSubject: invitationSubject.trim() || null,
+      reminderMessage: reminderMessage.trim() || null,
+      reminderSubject: reminderSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
       // Split by type: registered profiles vs accountless guests (two separate settings arrays,
       // each with its own can_book_member_window clause).
@@ -163,7 +168,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       memberOpenMessage: priorityMessage.trim() || null,
       autoReminder,
     }),
-    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, rebookRules, priorityPeople, priorityMessage, autoReminder],
+    [sourceCyclusId, newStartDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, weeks, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, priorityPeople, priorityMessage, autoReminder],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -417,6 +422,30 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   <div className="text-xs text-muted-foreground">{t('rebookShared.autoReminderHint', 'Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt.')}</div>
                 </div>
               </label>
+
+              {autoReminder && (
+                <div className="ml-7 space-y-3 rounded-md border p-3">
+                  <EmailSubjectField
+                    id="rebook-reminder-subject"
+                    value={reminderSubject}
+                    onChange={setReminderSubject}
+                    disabled={submitting}
+                    label={t('rebookShared.reminderSubjectLabel', 'Onderwerp van de herinnering')}
+                    placeholder={t('rebookShared.defaultReminderSubject', 'Herinnering: bevestig je plek')}
+                    variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                  />
+                  <EmailMessageField
+                    id="rebook-reminder-message"
+                    value={reminderMessage}
+                    onChange={setReminderMessage}
+                    disabled={submitting}
+                    maxLength={2000}
+                    label={t('rebookShared.reminderMessageLabel', 'Bericht in de herinnering')}
+                    placeholder={t('rebookShared.defaultReminderMessage', '')}
+                    variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                  />
+                </div>
+              )}
 
               <Card>
                 <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
