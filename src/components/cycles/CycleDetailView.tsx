@@ -529,6 +529,7 @@ export function CycleDetailView({
         // Only when the owner explicitly opted in to dropping the booked out-of-range sessions.
         bookedIdsToRemove: endDatePlan?.removeBooked ? endDatePlan?.protectedIds : undefined,
         skipInvoices: skipInvoiceUpdates,
+        newSessionStatus: endDatePlan?.newSessionStatus,
       });
       if (added > 0) toast.success(t('detail.edit.sessionsAdded', { count: added }));
       else if (removed > 0) toast.success(t('detail.edit.sessionsRemoved', { count: removed }));
