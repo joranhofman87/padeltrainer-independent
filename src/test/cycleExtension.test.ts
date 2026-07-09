@@ -1,6 +1,52 @@
 import { describe, it, expect } from 'vitest';
-import { planCycleExtension, type ExtensionSlotInput } from '@/lib/cycleExtension';
+import { planCycleExtension, buildRosterCopyRows, type ExtensionSlotInput, type TemplateRosterBooking } from '@/lib/cycleExtension';
 import { SlotPlanError } from '@/lib/slotPlan';
+
+describe('buildRosterCopyRows', () => {
+  const tmpl = (over: Partial<TemplateRosterBooking> = {}): TemplateRosterBooking => ({
+    player_id: null, guest_player_id: null, payment_amount: 20, original_amount: 20,
+    discount_amount: 0, discount_reason: null, notes: null, status: 'confirmed', ...over,
+  });
+
+  it('copies a template roster onto the new slot but resets payment to UNPAID', () => {
+    // A PAID guest on the template → attached to the new session, but NOT marked paid (new session).
+    const rows = buildRosterCopyRows('new-slot', [tmpl({ guest_player_id: 'g1', payment_amount: 10 })]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      slot_id: 'new-slot',
+      guest_player_id: 'g1',
+      player_id: null,
+      status: 'confirmed',
+      payment_status: 'pending',   // never inherit the template's paid state
+      paid_externally: false,
+      payment_amount: 10,          // but keep the exact per-slot amount (identical slot ⇒ same price)
+    });
+  });
+
+  it('preserves the registered player identity + discount, and the enrolment status', () => {
+    const rows = buildRosterCopyRows('s2', [
+      tmpl({ player_id: 'p1', status: 'pending_approval', payment_amount: 15, original_amount: 20, discount_amount: 5, discount_reason: 'sibling' }),
+    ]);
+    expect(rows[0]).toMatchObject({
+      player_id: 'p1', guest_player_id: null, status: 'pending_approval',
+      payment_amount: 15, original_amount: 20, discount_amount: 5, discount_reason: 'sibling',
+      payment_status: 'pending', paid_externally: false,
+    });
+  });
+
+  it('copies every roster member and defaults a missing discount to 0', () => {
+    const rows = buildRosterCopyRows('s3', [
+      tmpl({ guest_player_id: 'g1', discount_amount: null }),
+      tmpl({ player_id: 'p2' }),
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].discount_amount).toBe(0);
+  });
+
+  it('an empty template roster produces no rows', () => {
+    expect(buildRosterCopyRows('s4', [])).toEqual([]);
+  });
+});
 
 const TZ = 'Europe/Amsterdam';
 const slot = (id: string, startISO: string, durationMin = 60): ExtensionSlotInput => ({
