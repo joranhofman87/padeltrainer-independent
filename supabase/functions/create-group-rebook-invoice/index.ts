@@ -212,6 +212,10 @@ serve(async (req: Request) => {
       const winner = await activeGroupInvoice(claim.rebook_group_id);
       if (winner) {
         const checkoutUrl = await startCheckout(winner);
+        // STRICT: never hand back the bank-fallback publicToken without a live checkout — that would
+        // reserve a seat with no online payment. Mirrors the single-claim fn + the double-pay guard +
+        // the main checkout-fail block below; this race branch was the one strict leak left open.
+        if (strict && !checkoutUrl) return json({ ok: false, reason: "strict_mollie_unavailable" });
         return json({ ok: true, alreadyStarted: true, invoiceId: winner.id, publicToken: winner.public_token, status: winner.status, checkoutUrl });
       }
       return json({ ok: false, reason: "retry" });
