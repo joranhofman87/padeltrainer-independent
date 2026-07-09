@@ -65,9 +65,12 @@ describe('RebookReviewTable (per-group price breakdown by payment mode)', () => 
     expect(screen.queryByText(/× 4/)).toBeNull();
   });
 
-  it('deferred without split: keeps the per-seat "× N" breakdown', () => {
-    render(<RebookReviewTable {...base} groups={priced} paymentMode="deferred_split" grandInvoiceTotal={640} />);
-    expect(screen.getByText(/× 4/)).toBeTruthy();
+  it('deferred (split or not): shares the court "(gedeeld)" — never a per-seat × N', () => {
+    // The deferred cron splits the cycle total by group headcount regardless of split_payment, so
+    // the group pays P×S once (each committer (P×S)/N). No × headcount multiplier is ever shown.
+    render(<RebookReviewTable {...base} groups={priced} paymentMode="deferred_split" grandInvoiceTotal={160} />);
+    expect(screen.getByText(/gedeeld/)).toBeTruthy();
+    expect(screen.queryByText(/× 4/)).toBeNull();
     expect(screen.queryByText(/hele groep/)).toBeNull();
   });
 });

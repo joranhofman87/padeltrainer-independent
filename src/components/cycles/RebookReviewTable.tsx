@@ -158,21 +158,17 @@ export function RebookReviewTable({
                       {g.invoiceTotal != null ? formatPrice(g.invoiceTotal) : '—'}
                       {g.pricePerSession != null && (
                         <div className="text-[10px] text-muted-foreground">
+                          {/* A rebook group always pays the court price ONCE (P × S) — upfront the
+                              captain pays the whole, deferred it's split across the group. Never × N. */}
                           {paymentMode === 'upfront'
                             ? t('rebookReview.breakdownUpfront', '{{p}} × {{s}} (hele groep)', {
                                 p: formatPrice(g.pricePerSession),
                                 s: g.sessions,
                               })
-                            : g.splitPayment
-                              ? t('rebookReview.breakdownSplit', '{{p}} × {{s}} (gedeeld)', {
-                                  p: formatPrice(g.pricePerSession),
-                                  s: g.sessions,
-                                })
-                              : t('rebookReview.breakdown', '{{p}} × {{s}} × {{n}}', {
-                                  p: formatPrice(g.pricePerSession),
-                                  s: g.sessions,
-                                  n: g.players,
-                                })}
+                            : t('rebookReview.breakdownSplit', '{{p}} × {{s}} (gedeeld)', {
+                                p: formatPrice(g.pricePerSession),
+                                s: g.sessions,
+                              })}
                         </div>
                       )}
                     </TableCell>
