@@ -447,7 +447,7 @@ export default function PriorityClaimPage() {
                     <CalendarClock className="h-5 w-5" />
                     {t('rebooking.upfrontReserved', 'Your spot is reserved — complete payment to confirm it.')}
                   </div>
-                  <Button asChild disabled={acting} className="w-full sm:w-auto">
+                  <Button asChild disabled={acting} className="w-full sm:w-auto" aria-label={t('rebooking.continuePayment', 'Continue to payment →')}>
                     <Link to={`/pay/${unpaidInvoiceToken}`}>{t('rebooking.continuePayment', 'Continue to payment →')}</Link>
                   </Button>
                 </>
