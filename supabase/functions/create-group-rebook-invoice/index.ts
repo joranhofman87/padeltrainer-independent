@@ -10,6 +10,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { withTimeout } from "../_shared/edge-timeout.ts";
+
+// Deadlines for downstream invokes so a HANG becomes a deterministic failure (release the captain's
+// holds + alert) instead of a silent isolate kill that strands a strict seat with no invoice/payment.
+const MINT_TIMEOUT_MS = 30_000;
+const CHECKOUT_TIMEOUT_MS = 20_000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,10 +53,10 @@ serve(async (req: Request) => {
     const startCheckout = async (inv: GroupInvoice): Promise<string | undefined> => {
       if (inv.status === "paid") return undefined;
       try {
-        const { data: pay } = await admin.functions.invoke("create-invoice-payment", {
+        const { data: pay } = await withTimeout(admin.functions.invoke("create-invoice-payment", {
           body: { publicToken: inv.public_token, invoiceId: inv.id },
           headers: serviceAuth,
-        });
+        }), CHECKOUT_TIMEOUT_MS, "create-invoice-payment");
         return (pay as { paymentUrl?: string })?.paymentUrl;
       } catch (_) { return undefined; }
     };
@@ -61,11 +67,25 @@ serve(async (req: Request) => {
     // Token gate: a valid, still-pending GROUP claim. The holder is the captain.
     const { data: claim } = await admin
       .from("slot_priority_claims")
-      .select("id, player_id, guest_player_id, rebook_group_id, status")
+      .select("id, player_id, guest_player_id, slot_id, rebook_group_id, status")
       .eq("claim_token", token)
       .maybeSingle();
     if (!claim) return json({ ok: false, error: "claim_not_found" }, 404);
     if (!claim.rebook_group_id) return json({ ok: false, reason: "not_a_group" });
+
+    // Authoritative strict flag = the cycle's own setting (settings.rebook_strict_mollie), NOT just the
+    // accept RPC's per-row `strict`. If the RPC ever fails to stamp `strict` on a strict cycle, deriving
+    // it from acc.strict alone would silently bypass pay-first enforcement and leave a group seat
+    // reserved without payment — so a strict cycle is ALWAYS treated as strict here (mirrors #442 on the
+    // single-claim path). Resolved up front so the double-pay guard below can enforce strict too.
+    const { data: gslot } = await admin
+      .from("availability_slots").select("cyclus_id").eq("id", claim.slot_id).maybeSingle();
+    const cyclusId = (gslot?.cyclus_id as string | null) ?? null;
+    let cycleStrict = false;
+    if (cyclusId) {
+      const { data: cyc } = await admin.from("cycles").select("settings").eq("id", cyclusId).maybeSingle();
+      cycleStrict = (cyc?.settings as { rebook_strict_mollie?: boolean } | null)?.rebook_strict_mollie === true;
+    }
 
     // DOUBLE-PAY GUARD (sequential): the rebooking invite goes to EVERY group member, so any of them
     // can click "pay for the group". If this group already has an active invoice (someone paid-first,
@@ -74,6 +94,10 @@ serve(async (req: Request) => {
     const existing = await activeGroupInvoice(claim.rebook_group_id);
     if (existing) {
       const checkoutUrl = await startCheckout(existing);
+      // STRICT: never return the bank-fallback publicToken without a live checkout — that would reserve a
+      // seat with no online payment. Report strict_mollie_unavailable → the client offers a retry, not a
+      // fallback. The seat is a TTL hold, so it self-releases if payment never completes.
+      if (cycleStrict && !checkoutUrl) return json({ ok: false, reason: "strict_mollie_unavailable" });
       return json({ ok: true, alreadyStarted: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status, checkoutUrl });
     }
 
@@ -89,7 +113,9 @@ serve(async (req: Request) => {
     if (!acc?.ok) return json({ ok: false, reason: acc?.reason ?? "accept_failed" });
     // STRICT pay-first (A5): respond_to_priority_claim created the captain's seats as HOLDS (A2).
     // Strict has NO bank fallback, so a Mollie checkout MUST start below — else we abort + release.
-    const strict = acc.strict === true;
+    // Authoritative from the cycle setting OR the RPC flag (either being true ⇒ strict), so a missing
+    // per-row `strict` can never downgrade a strict cycle to a bank fallback.
+    const strict = cycleStrict || acc.strict === true;
 
     // 2) Collect the captain's just-created booking ids (one per week).
     let q = admin.from("slot_priority_claims")
@@ -102,17 +128,52 @@ serve(async (req: Request) => {
     const bookingIds = [...new Set((capClaims ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean))] as string[];
     if (bookingIds.length === 0) return json({ ok: false, reason: "nothing_booked" });
 
+    /** Release the captain's just-booked HOLDS: cancel the bookings and reset their group claims to
+     *  pending so the seat is free again (strict keeps NO seat without an online payment). */
+    const releaseCaptainHolds = async (ids: string[]) => {
+      await admin.from("bookings").update({ status: "cancelled" }).in("id", ids);
+      await admin.from("slot_priority_claims")
+        .update({ status: "pending", booking_id: null, responded_at: null })
+        .eq("rebook_group_id", claim.rebook_group_id).in("booking_id", ids);
+    };
+
+    // After booking the captain's seats, a mint failure must RELEASE them on a STRICT cycle (no seat
+    // without an online payment) and report strict_mollie_unavailable; a NON-strict cycle keeps the
+    // seat as a reserved commitment. Either way, alert LOUDLY — this money-adjacent failure ("Mollie
+    // won't load" / seat silently reserved) must never be invisible.
+    const failAfterMint = async (reason: string): Promise<Response> => {
+      await notifySlackEdgeError("create-group-rebook-invoice", `group rebook pay-first failed: ${reason}`, {
+        token: token.slice(0, 8), groupId: claim.rebook_group_id, strict, reason,
+      });
+      if (strict) { await releaseCaptainHolds(bookingIds); return json({ ok: false, reason: "strict_mollie_unavailable" }); }
+      return json({ ok: false, reason });
+    };
+
     // 3) Mint ONE invoice for the captain at the FULL court price. splitAmongPlayers:1 forces
     //    no-split: auto-create-invoice otherwise auto-detects a split from slot.split_payment=true
     //    (÷ court capacity, NOT payer count), which would bill the captain 1/capacity for the whole
     //    court in this pay-once-for-the-group model. (1 ⇒ helper returns null ⇒ full price.)
-    const { data: aci, error: aciErr } = await admin.functions.invoke("auto-create-invoice", {
-      body: { bookingIds, asDraft: false, splitAmongPlayers: 1 },
-      headers: serviceAuth,
-    });
-    if (aciErr) return json({ ok: false, reason: "mint_failed", message: String(aciErr) });
-    if ((aci as { skipped?: boolean })?.skipped) {
-      return json({ ok: false, reason: (aci as { reason?: string })?.reason ?? "business_incomplete" });
+    //    A mint HANG must not run out the isolate's wall-clock (a silent kill would strand the strict
+    //    holds); on timeout, fall through to the read-back — the invoice row may already exist (it is
+    //    inserted before the slower PDF + email steps) — and only release if it truly didn't.
+    let aci: unknown = null;
+    let aciErr: unknown = null;
+    let mintTimedOut = false;
+    try {
+      const r = await withTimeout(admin.functions.invoke("auto-create-invoice", {
+        body: { bookingIds, asDraft: false, splitAmongPlayers: 1 },
+        headers: serviceAuth,
+      }), MINT_TIMEOUT_MS, "auto-create-invoice");
+      aci = (r as { data: unknown }).data;
+      aciErr = (r as { error: unknown }).error;
+    } catch (_) {
+      mintTimedOut = true;
+    }
+    if (!mintTimedOut) {
+      if (aciErr) return await failAfterMint("mint_failed");
+      if ((aci as { skipped?: boolean })?.skipped) {
+        return await failAfterMint((aci as { reason?: string })?.reason ?? "business_incomplete");
+      }
     }
 
     // 4) Read back the invoice + its public pay token (handles fresh + deduped re-runs). Scope to
@@ -127,7 +188,7 @@ serve(async (req: Request) => {
       .limit(1);
     rb = claim.player_id ? rb.eq("player_id", claim.player_id) : rb.eq("guest_player_id", claim.guest_player_id!);
     const { data: invoice } = await rb.maybeSingle();
-    if (!invoice?.public_token) return json({ ok: false, reason: "no_invoice" });
+    if (!invoice?.public_token) return await failAfterMint(mintTimedOut ? "mint_timeout" : "no_invoice");
 
     // 5) Tag the invoice to the group → discoverable by the double-pay guard + trips the unique
     //    partial index if a concurrent payer already won. On conflict (or any tag error): cancel our
@@ -162,11 +223,11 @@ serve(async (req: Request) => {
     //    their claims to pending (no seat without an online payment; no bank fallback).
     const checkoutUrl = await startCheckout(invoice as GroupInvoice);
     if (strict && !checkoutUrl) {
+      await notifySlackEdgeError("create-group-rebook-invoice", "strict group rebook: Mollie checkout would not start — seats released", {
+        token: token.slice(0, 8), groupId: claim.rebook_group_id, invoiceId: invoice.id,
+      });
       await admin.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
-      await admin.from("bookings").update({ status: "cancelled" }).in("id", bookingIds);
-      await admin.from("slot_priority_claims")
-        .update({ status: "pending", booking_id: null, responded_at: null })
-        .eq("rebook_group_id", claim.rebook_group_id).in("booking_id", bookingIds);
+      await releaseCaptainHolds(bookingIds);
       return json({ ok: false, reason: "strict_mollie_unavailable" });
     }
     return json({ ok: true, invoiceId: invoice.id, publicToken: invoice.public_token, status: invoice.status, checkoutUrl });
