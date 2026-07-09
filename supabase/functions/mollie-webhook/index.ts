@@ -9,6 +9,7 @@ import {
   usesInvoicePaidBranch,
 } from "../_shared/mollie-webhook-metadata.ts";
 import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
+import { sendPlayerBookingConfirmation } from "../_shared/booking-confirmation-email.ts";
 import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from "../_shared/payment-audit.ts";
 import {
   applyBookingPaymentWriteback,
@@ -412,7 +413,7 @@ serve(async (req) => {
         let linkedBookingsSyncFailed = false;
         const { data: invoiceData, error: invoiceDataError } = await supabase
           .from("invoices")
-          .select("booking_ids")
+          .select("booking_ids, rebook_cyclus_id, rebook_group_id")
           .eq("id", invoiceIdFromMetadata)
           .single();
 
@@ -513,6 +514,44 @@ serve(async (req) => {
               "Invoice paid webhook: forward-invoice failed",
               { paymentId, invoiceId: invoiceIdFromMetadata, error: String(fwdErr) },
             );
+          }
+
+          // REBOOK pay-first: this is an INVOICE payment, so the booking-paid confirmation path never
+          // runs and the payer would otherwise hear nothing. Send them their confirmation here —
+          // sessions + the paid invoice PDF + a sign-in link (guest → signup, registered → login) —
+          // reusing the same composer as public bookings. Scoped to rebook invoices (tagged
+          // rebook_cyclus_id / rebook_group_id) + claim-gated so a duplicate delivery never re-sends.
+          if (
+            (invoiceData?.rebook_cyclus_id || invoiceData?.rebook_group_id) &&
+            invoiceData?.booking_ids && invoiceData.booking_ids.length > 0
+          ) {
+            try {
+              const confirmation = await sendPlayerBookingConfirmation({
+                // cast: the shared composer types SupabaseClient from `@2` while this fn pins
+                // `@2.57.2` — a pure version-identity mismatch (same client at runtime).
+                supabase: supabase as unknown as Parameters<typeof sendPlayerBookingConfirmation>[0]["supabase"],
+                bookingIds: invoiceData.booking_ids,
+                invoiceId: invoiceIdFromMetadata,
+                logStep,
+              });
+              if (!confirmation.ok) {
+                const { reason } = confirmation;
+                if (reason === "no_payer" || reason === "no_recipient_email") {
+                  await notifySlackError(
+                    "mollie-webhook",
+                    "Rebook paid: player confirmation not sent",
+                    { paymentId, invoiceId: invoiceIdFromMetadata, reason },
+                  );
+                }
+              }
+            } catch (confErr) {
+              logStep("rebook_confirmation_exception", { error: String(confErr), paymentId, invoiceId: invoiceIdFromMetadata });
+              await notifySlackError(
+                "mollie-webhook",
+                "Rebook paid: player confirmation threw",
+                { paymentId, invoiceId: invoiceIdFromMetadata, error: String(confErr) },
+              );
+            }
           }
         }
 
