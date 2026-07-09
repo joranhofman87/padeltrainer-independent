@@ -10,6 +10,7 @@ import { Resend } from "https://esm.sh/resend@2.0.0";
 import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { hourInTimeZone, isWithinSendWindow, SEND_TIME_ZONE } from "../_shared/send-window.ts";
+import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,14 +26,32 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function reminderHtml(name: string, cycleName: string, academyName: string, cta: string): string {
+// Personalization tokens — the same set the invite + reminder emails use.
+const substituteVars = (text: string, fullName: string): string => {
+  const full = (fullName || "").trim();
+  const first = full.split(/\s+/)[0] || full;
+  return text.replace(/\{first_name\}/g, first).replace(/\{full_name\}/g, full);
+};
+
+// The academy's optional custom reminder message. Substitute BEFORE escaping so an injected name is
+// escaped too; blank lines collapse. Returns '' when there is no message → the built-in copy is used.
+const renderCustomMessage = (message: string, fullName: string): string => {
+  const msg = (message || "").trim();
+  if (!msg) return "";
+  return substituteVars(msg, fullName)
+    .split("\n").map((line) => line.trim()).filter((line) => line.length > 0)
+    .map((line) => `<p style="color:#374151;line-height:1.6;margin:0 0 12px;">${escapeHtml(line)}</p>`).join("");
+};
+
+function reminderHtml(name: string, cycleName: string, academyName: string, cta: string, customMessage: string): string {
   const safeName = escapeHtml(name || "");
   const safeCycle = escapeHtml(cycleName || "");
+  const custom = renderCustomMessage(customMessage, name); // '' when the academy set no custom text
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       ${safeCycle ? `<h2 style="color:${BRAND};">${safeCycle}</h2>` : ""}
-      <p>Hi ${safeName},</p>
-      <p style="color:#374151;line-height:1.6;">Je hebt je plek${safeCycle ? ` in <strong>${safeCycle}</strong>` : ""} nog niet bevestigd. Je hebt hier als eerste recht op, maar je voorrang eindigt binnenkort — bevestig snel om je plek te behouden.</p>
+      ${custom || `<p>Hi ${safeName},</p>
+      <p style="color:#374151;line-height:1.6;">Je hebt je plek${safeCycle ? ` in <strong>${safeCycle}</strong>` : ""} nog niet bevestigd. Je hebt hier als eerste recht op, maar je voorrang eindigt binnenkort — bevestig snel om je plek te behouden.</p>`}
       <div style="text-align:center;margin:28px 0;">
         <a href="${cta}" style="display:inline-block;background:${BRAND};color:#fff;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Bevestig je plek</a>
       </div>
@@ -121,16 +140,24 @@ serve(async (req: Request) => {
       const { data: slotRows } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
       const slotIds = (slotRows ?? []).map((s: { id: string }) => s.id);
 
+      // The academy's optional custom reminder text (set on the round) — falls back to the built-in copy.
+      const { data: cycleRow } = await supabase.from("cycles").select("settings").eq("id", cycleId).maybeSingle();
+      const settings = (cycleRow?.settings ?? {}) as Record<string, unknown>;
+      const customMessage = typeof settings.rebook_reminder_message === "string" ? settings.rebook_reminder_message : "";
+      const customSubjectRaw = typeof settings.rebook_reminder_subject === "string" ? settings.rebook_reminder_subject : "";
+
       const sentPlayerIds: string[] = [];
       const sentGuestIds: string[] = [];
       for (const rec of grp.recipients) {
         const cta = buildClaimUrl(APP_BASE, rec.claim_token, false);
-        const subject = grp.name ? `Herinnering: bevestig je plek in ${grp.name}` : "Herinnering: bevestig je plek";
+        const subject = customSubjectRaw
+          ? sanitizeEmailSubject(substituteVars(customSubjectRaw, rec.recipient_name ?? ""))
+          : (grp.name ? `Herinnering: bevestig je plek in ${grp.name}` : "Herinnering: bevestig je plek");
         const { error: sendErr } = await sendWithRetry(resend, {
           from: FROM,
           to: [rec.recipient_email],
           subject,
-          html: reminderHtml(rec.recipient_name ?? "", grp.name, grp.academy, cta),
+          html: reminderHtml(rec.recipient_name ?? "", grp.name, grp.academy, cta, customMessage),
         });
         if (sendErr) { totalFailed += 1; continue; }
         totalSent += 1;
