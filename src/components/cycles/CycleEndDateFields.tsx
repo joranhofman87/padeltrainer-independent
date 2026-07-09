@@ -4,6 +4,7 @@ import { Loader2, AlertTriangle, CalendarPlus } from 'lucide-react';
 import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { findSlotsAfterDate, type OutOfRangeSlots } from '@/lib/cycles';
 import { previewCycleExtension, type CycleExtensionPreview } from '@/lib/cycleExtension';
 
@@ -24,6 +25,9 @@ export interface CycleEndDatePlan {
   removeUnbooked: boolean;
   /** Whether the user opted to ALSO remove the booked out-of-range sessions (cancels their bookings). */
   removeBooked: boolean;
+  /** Payment status for the roster attached to NEW sessions: 'paid' (settled externally, no invoice)
+   *  or 'pending' (openstaand — billed). Default 'pending'. */
+  newSessionStatus: 'paid' | 'pending';
 }
 
 interface Props {
@@ -74,6 +78,8 @@ export function CycleEndDateFields({
   const [checking, setChecking] = useState(false);
   const [removeUnbooked, setRemoveUnbooked] = useState(false);
   const [removeBooked, setRemoveBooked] = useState(false);
+  // Openstaand (billed) by default; the owner can mark the new sessions as already paid.
+  const [newSessionStatus, setNewSessionStatus] = useState<'paid' | 'pending'>('pending');
   const [extendPreview, setExtendPreview] = useState<CycleExtensionPreview | null>(null);
   const [previewingExtend, setPreviewingExtend] = useState(false);
 
@@ -123,9 +129,9 @@ export function CycleEndDateFields({
 
   // Report the plan up whenever any input to it changes (primitive deps → no render loop).
   useEffect(() => {
-    onPlanChange({ endDate: value, invalid, willAdd, removableIds, protectedCount, protectedIds, removeUnbooked, removeBooked });
+    onPlanChange({ endDate: value, invalid, willAdd, removableIds, protectedCount, protectedIds, removeUnbooked, removeBooked, newSessionStatus });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, invalid, willAdd, removableKey, protectedCount, protectedKey, removeUnbooked, removeBooked]);
+  }, [value, invalid, willAdd, removableKey, protectedCount, protectedKey, removeUnbooked, removeBooked, newSessionStatus]);
 
   return (
     <div className="space-y-3">
@@ -187,10 +193,24 @@ export function CycleEndDateFields({
               <Loader2 className="h-4 w-4 animate-spin" /> {t('editEndDate.checking', 'Sessies controleren…')}
             </span>
           ) : (
-            <p className="flex items-start gap-2">
-              <CalendarPlus className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
-              <span>{t('editEndDate.willAdd', 'Er worden {{count}} nieuwe wekelijkse sessies aangemaakt (zelfde dag, tijd, trainer en prijs).', { count: willAdd })}</span>
-            </p>
+            <div className="space-y-2.5">
+              <p className="flex items-start gap-2">
+                <CalendarPlus className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
+                <span>{t('editEndDate.willAddV2', 'Er worden {{count}} nieuwe wekelijkse sessies aangemaakt (zelfde dag, tijd, trainer, prijs en spelers).', { count: willAdd })}</span>
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-session-status">{t('editEndDate.newSessionStatusLabel', 'Status van de nieuwe sessies')}</Label>
+                <Select value={newSessionStatus} onValueChange={(v) => setNewSessionStatus(v as 'paid' | 'pending')} disabled={disabled}>
+                  <SelectTrigger id="new-session-status" aria-label={t('editEndDate.newSessionStatusLabel', 'Status van de nieuwe sessies')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">{t('editEndDate.statusPending', 'Openstaand — facturen worden bijgewerkt')}</SelectItem>
+                    <SelectItem value="paid">{t('editEndDate.statusPaid', 'Betaald — geen factuur')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           )}
         </div>
       )}

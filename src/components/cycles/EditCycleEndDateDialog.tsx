@@ -60,6 +60,7 @@ export function EditCycleEndDateDialog({ open, onOpenChange, cyclusId, cyclusNam
       const { added, removed } = await applyCycleEndDate(cyclusId, endDate, {
         removableIds: plan?.removableIds,
         removeUnbooked: plan?.removeUnbooked,
+        newSessionStatus: plan?.newSessionStatus,
       });
       toast.success(
         added > 0

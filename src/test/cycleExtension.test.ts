@@ -46,6 +46,20 @@ describe('buildRosterCopyRows', () => {
   it('an empty template roster produces no rows', () => {
     expect(buildRosterCopyRows('s4', [])).toEqual([]);
   });
+
+  it('paid mode marks the new bookings paid externally with a paid_at (no invoice will be raised)', () => {
+    const rows = buildRosterCopyRows('s5', [tmpl({ guest_player_id: 'g1', payment_amount: 20 })], {
+      paid: true, paidAtIso: '2027-01-01T00:00:00.000Z',
+    });
+    expect(rows[0]).toMatchObject({
+      payment_status: 'paid', paid_externally: true, paid_at: '2027-01-01T00:00:00.000Z', payment_amount: 20,
+    });
+  });
+
+  it('default (no opts) stays openstaand: pending + unpaid', () => {
+    const rows = buildRosterCopyRows('s6', [tmpl({ player_id: 'p1' })]);
+    expect(rows[0]).toMatchObject({ payment_status: 'pending', paid_externally: false, paid_at: null });
+  });
 });
 
 const TZ = 'Europe/Amsterdam';

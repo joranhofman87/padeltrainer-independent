@@ -229,20 +229,26 @@ export interface TemplateRosterBooking {
  * Build the booking rows that attach a template slot's roster to a NEW session. Pure (exported for
  * tests). Each new booking keeps the person (player_id XOR guest_player_id), their enrolment status,
  * and their exact per-slot amount + discount (an identical slot with the identical roster owes the
- * same), but is reset to UNPAID — a brand-new session nobody has paid yet, so payment_status='pending'
- * and paid_externally=false regardless of the template's paid state.
+ * same). The owner chooses the new sessions' payment status:
+ *  - default (paid: false) → 'pending' (openstaand): billed by the invoice sync.
+ *  - paid: true → 'paid' + paid_externally + paid_at (settled outside — no invoice), matching the
+ *    app's canonical mark-paid (bookings.ts).
+ * The template's own paid state is never inherited — the choice is explicit.
  */
 export function buildRosterCopyRows(
   newSlotId: string,
   templateBookings: TemplateRosterBooking[],
+  opts: { paid?: boolean; paidAtIso?: string | null } = {},
 ): Record<string, unknown>[] {
+  const paid = opts.paid === true;
   return templateBookings.map((b) => ({
     slot_id: newSlotId,
     player_id: b.player_id ?? null,
     guest_player_id: b.guest_player_id ?? null,
     status: b.status,
-    payment_status: 'pending',
-    paid_externally: false,
+    payment_status: paid ? 'paid' : 'pending',
+    paid_at: paid ? (opts.paidAtIso ?? null) : null,
+    paid_externally: paid,
     payment_amount: b.payment_amount ?? null,
     original_amount: b.original_amount ?? null,
     discount_amount: b.discount_amount ?? 0,
@@ -267,6 +273,7 @@ async function attachTemplateRosterToNewSlots(
   keyToTemplateId: Map<string, string>,
   splitPayment: boolean,
   skipInvoices: boolean,
+  newSessionPaid: boolean,
 ): Promise<void> {
   const pairs = insertedSlots
     .map((s) => ({ newSlotId: s.id, templateId: keyToTemplateId.get(rosterMatchKey(s.trainer_id, s.start_time)) }))
@@ -288,9 +295,10 @@ async function attachTemplateRosterToNewSlots(
     rosterByTemplate.set(b.slot_id, list);
   }
 
+  const paidAtIso = newSessionPaid ? new Date().toISOString() : null;
   const rows: Record<string, unknown>[] = [];
   for (const { newSlotId, templateId } of pairs) {
-    rows.push(...buildRosterCopyRows(newSlotId, rosterByTemplate.get(templateId) ?? []));
+    rows.push(...buildRosterCopyRows(newSlotId, rosterByTemplate.get(templateId) ?? [], { paid: newSessionPaid, paidAtIso }));
   }
   if (rows.length === 0) return;
 
@@ -304,7 +312,8 @@ async function attachTemplateRosterToNewSlots(
     splitPayment,
     slotIds: insertedSlots.map((s) => s.id),
     cyclusId: cycleId,
-    skipInvoices,
+    // Paid sessions are settled externally → no invoice at all (they're non-chargeable anyway).
+    skipInvoices: skipInvoices || newSessionPaid,
   });
 }
 
@@ -323,7 +332,7 @@ async function attachTemplateRosterToNewSlots(
 export async function extendCycleToEndDate(
   cycleId: string,
   newEndDate: string,
-  opts: { skipInvoices?: boolean } = {},
+  opts: { skipInvoices?: boolean; newSessionStatus?: 'paid' | 'pending' } = {},
 ): Promise<ExtendCycleResult> {
   const ctx = await loadExtensionContext(cycleId);
   if (!ctx || ctx.slots.length === 0) return { added: 0 };
@@ -359,7 +368,9 @@ export async function extendCycleToEndDate(
   // extended cycle's new weeks aren't empty. split_payment is per-slot but uniform within a cycle.
   const insertedSlots = (insertedData ?? []) as Array<{ id: string; trainer_id: unknown; start_time: string }>;
   const splitPayment = ctx.slots.some((s) => (s as { split_payment?: boolean }).split_payment === true);
-  await attachTemplateRosterToNewSlots(cycleId, insertedSlots, keyToTemplateId, splitPayment, opts.skipInvoices ?? false);
+  await attachTemplateRosterToNewSlots(
+    cycleId, insertedSlots, keyToTemplateId, splitPayment, opts.skipInvoices ?? false, opts.newSessionStatus === 'paid',
+  );
 
   return { added: rows.length };
 }
@@ -389,9 +400,15 @@ export async function applyCycleEndDate(
     bookedIdsToRemove?: string[];
     /** Threads the "Don't update invoices" toggle through the booked-session removal. */
     skipInvoices?: boolean;
+    /** Status for the roster attached to NEW sessions: 'paid' (settled externally, no invoice) or
+     *  'pending' (openstaand, billed). Default 'pending'. */
+    newSessionStatus?: 'paid' | 'pending';
   } = {},
 ): Promise<ApplyCycleEndDateResult> {
-  const { added } = await extendCycleToEndDate(cycleId, newEndDate, { skipInvoices: opts.skipInvoices });
+  const { added } = await extendCycleToEndDate(cycleId, newEndDate, {
+    skipInvoices: opts.skipInvoices,
+    newSessionStatus: opts.newSessionStatus,
+  });
   let removed = 0;
   if (opts.removeUnbooked && opts.removableIds && opts.removableIds.length > 0) {
     removed += await deleteUnbookedSlots(opts.removableIds);
