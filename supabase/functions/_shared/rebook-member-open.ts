@@ -36,6 +36,7 @@ const keyOf = recipientKey;
 export function computeMemberOpenAudience(
   claims: MemberOpenClaim[],
   priorityProfileIds: string[],
+  priorityGuestIds: string[] = [],
   opts: { excludeDecliners?: boolean; alreadyNotifiedKeys?: string[] } = {},
 ): MemberOpenRecipient[] {
   const excludeDecliners = opts.excludeDecliners ?? true;
@@ -76,6 +77,17 @@ export function computeMemberOpenAudience(
     if (byKey.get(pid)?.hasClaimed) continue;
     if (alreadyNotified.has(pid)) continue; // RB03: emailed in a prior run
     if (!out.has(pid)) out.set(pid, { player_id: pid, guest_player_id: null });
+  }
+
+  // Priority list — accountless GUESTS (guest_players.id). Keyed g:<id> like a guest claim, so it
+  // dedupes against a guest already in the cohort and against a prior run; a guest who already
+  // rebooked is skipped. They get the same "create account & book" member-open email.
+  for (const gid of priorityGuestIds) {
+    if (!gid) continue;
+    const k = `g:${gid}`;
+    if (byKey.get(k)?.hasClaimed) continue;
+    if (alreadyNotified.has(k)) continue; // RB03: emailed in a prior run
+    if (!out.has(k)) out.set(k, { player_id: null, guest_player_id: gid });
   }
 
   return [...out.values()];

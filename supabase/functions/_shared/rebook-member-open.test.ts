@@ -37,6 +37,7 @@ Deno.test("includes decliners when excludeDecliners=false", () => {
   const audience = computeMemberOpenAudience(
     [claim({ player_id: "p1", status: "declined" }), claim({ player_id: "p2", status: "pending" })],
     [],
+    [],
     { excludeDecliners: false },
   );
   assertEquals(keys(audience), ["p1", "p2"]);
@@ -81,6 +82,7 @@ Deno.test("RB03: alreadyNotifiedKeys excludes recipients emailed in a prior run 
       claim({ guest_player_id: "g1", status: "pending" }),
     ],
     ["p9"],
+    [],
     { alreadyNotifiedKeys: ["p2", "g:g1"] },
   );
   // p2 (cohort) and g1 (guest) already emailed ⇒ retry only re-sends p3 + the priority p9.
@@ -88,13 +90,30 @@ Deno.test("RB03: alreadyNotifiedKeys excludes recipients emailed in a prior run 
 });
 
 Deno.test("RB03: a priority-list person already emailed is not re-added", () => {
-  const audience = computeMemberOpenAudience([], ["p9", "p8"], { alreadyNotifiedKeys: ["p9"] });
+  const audience = computeMemberOpenAudience([], ["p9", "p8"], [], { alreadyNotifiedKeys: ["p9"] });
   assertEquals(keys(audience), ["p8"]);
 });
 
 Deno.test("RB03: empty alreadyNotifiedKeys is a no-op", () => {
-  const audience = computeMemberOpenAudience([claim({ player_id: "p2", status: "pending" })], [], {
+  const audience = computeMemberOpenAudience([claim({ player_id: "p2", status: "pending" })], [], [], {
     alreadyNotifiedKeys: [],
   });
   assertEquals(keys(audience), ["p2"]);
+});
+
+Deno.test("priority GUESTS: added as guest recipients, deduped vs cohort + skipped once rebooked", () => {
+  const audience = computeMemberOpenAudience(
+    [
+      claim({ guest_player_id: "g1", status: "pending" }), // cohort guest, also on the list → one entry
+      claim({ guest_player_id: "g2", status: "claimed" }), // already rebooked → never emailed
+    ],
+    [],
+    ["g1", "g2", "g3"], // priority guests
+  );
+  assertEquals(keys(audience), ["g:g1", "g:g3"]);
+});
+
+Deno.test("priority guests honor alreadyNotifiedKeys (g:<id>) on a retry", () => {
+  const audience = computeMemberOpenAudience([], [], ["g5", "g6"], { alreadyNotifiedKeys: ["g:g5"] });
+  assertEquals(keys(audience), ["g:g6"]);
 });

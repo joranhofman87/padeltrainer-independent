@@ -183,6 +183,14 @@ serve(async (req) => {
           .filter((x): x is string => typeof x === "string" && x.length > 0)
           .slice(0, 200)
       : [];
+    // Accountless GUEST academy players granted priority (guest_players.id). Validated below against
+    // the academy's own guests; reached via the "create account & book" member-open email + the
+    // linked-guest can_book_member_window clause.
+    const priorityGuestsRaw: string[] = Array.isArray(body?.priorityGuests)
+      ? ([...new Set(body.priorityGuests)] as unknown[])
+          .filter((x): x is string => typeof x === "string" && x.length > 0)
+          .slice(0, 200)
+      : [];
     // Optional academy message for that email (empty ⇒ default copy in the notifier).
     const memberOpenMessage: string = typeof body?.memberOpenMessage === "string"
       ? body.memberOpenMessage.trim().slice(0, 2000)
@@ -551,18 +559,29 @@ serve(async (req) => {
     // Validate the priority list against THIS academy's registered players, so a
     // client can't grant an arbitrary profile member-window access to freed seats.
     let priorityPeople: string[] = [];
-    if (priorityPeopleWithExcluded.length > 0) {
-      const { data: overview } = await supabase.rpc("get_players_overview", {
-        p_scope: "academy", p_scope_id: academyProfileId, p_limit: 5000, p_offset: 0,
+    let priorityGuests: string[] = [];
+    if (priorityPeopleWithExcluded.length > 0 || priorityGuestsRaw.length > 0) {
+      // Keep only ids that genuinely belong to this academy. filter_academy_priority_ids is
+      // service-role-callable (unlike get_players_overview, which is gated on is_academy_manager
+      // (auth.uid()) and granted to `authenticated` only — from this service-role context that call
+      // failed and SILENTLY dropped every priority person, registered included). Authorization was
+      // already done above via the academy_managers gate.
+      const { data: valid, error: validErr } = await supabase.rpc("filter_academy_priority_ids", {
+        _academy_profile_id: academyProfileId,
+        _profile_ids: priorityPeopleWithExcluded,
+        _guest_ids: priorityGuestsRaw,
       });
-      const registered = new Set(
-        ((overview ?? []) as Array<{ profile_id: string | null; player_type: string | null }>)
-          .filter((r) => r.player_type === "registered" && r.profile_id)
-          .map((r) => r.profile_id as string),
-      );
-      priorityPeople = priorityPeopleWithExcluded.filter((id) => registered.has(id));
-      if (priorityPeople.length !== priorityPeopleWithExcluded.length) {
-        logStep("priority_people_filtered", { submitted: priorityPeopleWithExcluded.length, kept: priorityPeople.length });
+      if (validErr) logStep("priority_validation_error", { error: validErr.message });
+      const rows = (valid ?? []) as Array<{ profile_id: string | null; guest_player_id: string | null }>;
+      const okProfiles = new Set(rows.map((r) => r.profile_id).filter((x): x is string => !!x));
+      const okGuests = new Set(rows.map((r) => r.guest_player_id).filter((x): x is string => !!x));
+      priorityPeople = priorityPeopleWithExcluded.filter((id) => okProfiles.has(id));
+      priorityGuests = priorityGuestsRaw.filter((id) => okGuests.has(id));
+      if (priorityPeople.length !== priorityPeopleWithExcluded.length || priorityGuests.length !== priorityGuestsRaw.length) {
+        logStep("priority_people_filtered", {
+          submittedRegistered: priorityPeopleWithExcluded.length, keptRegistered: priorityPeople.length,
+          submittedGuests: priorityGuestsRaw.length, keptGuests: priorityGuests.length,
+        });
       }
     }
 
@@ -578,7 +597,7 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
+        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
       })
       .select("id, name")
       .single();
