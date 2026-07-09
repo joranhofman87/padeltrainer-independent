@@ -39,10 +39,13 @@ Deno.test("projectRebookGroupInvoiceTotal: deferred_split with split_payment sha
   );
 });
 
-Deno.test("projectRebookGroupInvoiceTotal: deferred_split WITHOUT split bills each player full (P×S×N)", () => {
+Deno.test("projectRebookGroupInvoiceTotal: deferred_split WITHOUT split still shares the court (P×S)", () => {
+  // The deferred cron (generate-cycle-commitment-invoices) ALWAYS splits the cycle total by group
+  // headcount and never reads split_payment, so the group total is P×S (each of N pays (P×S)/N) —
+  // NOT P×S×N. The review must show €160, not €640, for this config (the over-projection fix).
   assertEquals(
     projectRebookGroupInvoiceTotal({ pricePerSession: 20, sessions: 8, players: 4, splitPayment: false, paymentMode: "deferred_split" }),
-    640,
+    160,
   );
 });
 

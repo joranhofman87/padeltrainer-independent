@@ -96,13 +96,19 @@ export type RebookPaymentMode = "upfront" | "deferred_split";
 
 /**
  * Projected invoice total for ONE rebook series/group shown in the wizard's step-2 review
- * (assumes everyone accepts; null when no price is set). The rule tracks the PAYMENT MODE, not
- * just split_payment:
- *  - upfront (group-captain): ONE captain pays the FULL court for the whole cycle → P × S, once.
- *    Mirrors create-group-rebook-invoice (splitAmongPlayers:1). NEVER × N — only one person pays.
- *  - deferred_split WITH split_payment: the court price is shared across the group, so the group
- *    total is still P × S.
- *  - deferred_split WITHOUT split_payment: each player is billed the full price → P × S × N.
+ * (assumes everyone accepts; null when no price is set).
+ *
+ * A rebook group ALWAYS pays the court price ONCE for the cycle → P × S, regardless of payment
+ * mode or split_payment. The mode only changes WHO/HOW, not the group total:
+ *  - upfront (group-captain): ONE captain pays the full court up front → create-group-rebook-invoice
+ *    mints one invoice at P × S (splitAmongPlayers:1).
+ *  - deferred_split: the court price is split among the committed group at cycle start → each of N
+ *    committers is invoiced (P × S) / N, so the group total is still P × S. The deferred cron
+ *    (generate-cycle-commitment-invoices → buildCommitmentInvoicePlan) ALWAYS splits by group
+ *    headcount and never reads split_payment, so !split does NOT bill each player the full price.
+ *
+ * Hence: NEVER × N. `players`/`splitPayment`/`paymentMode` are accepted for signature stability but
+ * do not change the total.
  */
 export function projectRebookGroupInvoiceTotal(opts: {
   pricePerSession: number | null;
@@ -111,10 +117,9 @@ export function projectRebookGroupInvoiceTotal(opts: {
   splitPayment: boolean;
   paymentMode: RebookPaymentMode;
 }): number | null {
-  const { pricePerSession: P, sessions, players, splitPayment, paymentMode } = opts;
+  const { pricePerSession: P, sessions } = opts;
   if (P == null) return null;
-  const groupPaysOnce = paymentMode === "upfront" || splitPayment;
-  return groupPaysOnce ? P * sessions : P * sessions * players;
+  return P * sessions;
 }
 
 /**
