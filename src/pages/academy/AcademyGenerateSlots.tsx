@@ -83,6 +83,7 @@ export default function AcademyGenerateSlots() {
                 backHref="/app/academy/registrations"
                 trainerSelection={{ mode: 'pick', trainers }}
                 availableLocations={locations}
+                manageLocationsHref="/app/academy/locations"
               />
             )}
           </>
