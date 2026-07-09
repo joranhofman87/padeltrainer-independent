@@ -1,9 +1,12 @@
 import { localWallTimeToUtc, MAX_PLANNED_SLOTS, SlotPlanError } from '@/lib/slotPlan';
 import { supabase } from '@/lib/supabaseClient';
 import { insertAvailabilitySlots } from '@/lib/slots';
+import { insertBookings } from '@/lib/bookings';
 import { updateCycle } from '@/lib/cycles';
 import { deleteUnbookedSlots } from '@/lib/cycleWrites';
 import { cancelBookingsAndDeleteSlots } from '@/lib/slotDeleteGuard';
+import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
+import { syncInvoicesAfterAddPlayer, type AddPlayerBookingRow } from '@/lib/invoiceAfterAddPlayer';
 
 /**
  * Pure planner for EXTENDING an existing cycle to a later end date by replicating its weekly
@@ -210,6 +213,101 @@ export interface ExtendCycleResult {
   added: number;
 }
 
+/** A roster booking on a template slot — the subset we copy forward onto a new session. */
+export interface TemplateRosterBooking {
+  player_id: string | null;
+  guest_player_id: string | null;
+  payment_amount: number | null;
+  original_amount: number | null;
+  discount_amount: number | null;
+  discount_reason: string | null;
+  notes: string | null;
+  status: string;
+}
+
+/**
+ * Build the booking rows that attach a template slot's roster to a NEW session. Pure (exported for
+ * tests). Each new booking keeps the person (player_id XOR guest_player_id), their enrolment status,
+ * and their exact per-slot amount + discount (an identical slot with the identical roster owes the
+ * same), but is reset to UNPAID — a brand-new session nobody has paid yet, so payment_status='pending'
+ * and paid_externally=false regardless of the template's paid state.
+ */
+export function buildRosterCopyRows(
+  newSlotId: string,
+  templateBookings: TemplateRosterBooking[],
+): Record<string, unknown>[] {
+  return templateBookings.map((b) => ({
+    slot_id: newSlotId,
+    player_id: b.player_id ?? null,
+    guest_player_id: b.guest_player_id ?? null,
+    status: b.status,
+    payment_status: 'pending',
+    paid_externally: false,
+    payment_amount: b.payment_amount ?? null,
+    original_amount: b.original_amount ?? null,
+    discount_amount: b.discount_amount ?? 0,
+    discount_reason: b.discount_reason ?? null,
+    notes: b.notes ?? null,
+  }));
+}
+
+/** Stable key matching a NEW slot back to the TEMPLATE it was projected from — trainer + the exact
+ *  instant (epoch, so a Postgres timestamptz round-trip format change can't break the match). */
+const rosterMatchKey = (trainerId: unknown, startTime: string): string =>
+  `${String(trainerId ?? '')}|${new Date(startTime).getTime()}`;
+
+/**
+ * Attach each new slot's roster: copy its template slot's live (capacity-occupying) bookings —
+ * registered players AND guests — onto the new session (via buildRosterCopyRows), then sync invoices
+ * so the newly-attached players are billed for the new sessions (unless skipInvoices).
+ */
+async function attachTemplateRosterToNewSlots(
+  cycleId: string,
+  insertedSlots: Array<{ id: string; trainer_id: unknown; start_time: string }>,
+  keyToTemplateId: Map<string, string>,
+  splitPayment: boolean,
+  skipInvoices: boolean,
+): Promise<void> {
+  const pairs = insertedSlots
+    .map((s) => ({ newSlotId: s.id, templateId: keyToTemplateId.get(rosterMatchKey(s.trainer_id, s.start_time)) }))
+    .filter((x): x is { newSlotId: string; templateId: string } => !!x.templateId);
+  const templateIds = [...new Set(pairs.map((p) => p.templateId))];
+  if (templateIds.length === 0) return;
+
+  const { data: tmplBookings, error: readErr } = await supabase
+    .from('bookings')
+    .select('slot_id, player_id, guest_player_id, payment_amount, original_amount, discount_amount, discount_reason, notes, status')
+    .in('slot_id', templateIds)
+    .in('status', CAPACITY_OCCUPYING_STATUSES as unknown as string[]);
+  if (readErr) throw readErr;
+
+  const rosterByTemplate = new Map<string, TemplateRosterBooking[]>();
+  for (const b of (tmplBookings ?? []) as Array<TemplateRosterBooking & { slot_id: string }>) {
+    const list = rosterByTemplate.get(b.slot_id) ?? [];
+    list.push(b);
+    rosterByTemplate.set(b.slot_id, list);
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (const { newSlotId, templateId } of pairs) {
+    rows.push(...buildRosterCopyRows(newSlotId, rosterByTemplate.get(templateId) ?? []));
+  }
+  if (rows.length === 0) return;
+
+  const { data: inserted, error: insErr } = await insertBookings(
+    rows, supabase, 'id, slot_id, player_id, guest_player_id, payment_amount, payment_status, paid_externally',
+  );
+  if (insErr) throw insErr;
+
+  await syncInvoicesAfterAddPlayer({
+    newBookings: (inserted ?? []) as AddPlayerBookingRow[],
+    splitPayment,
+    slotIds: insertedSlots.map((s) => s.id),
+    cyclusId: cycleId,
+    skipInvoices,
+  });
+}
+
 /**
  * Lengthen a cycle so it runs through `newEndDate`: generate the missing weekly sessions (every
  * series in the cycle's final week, projected forward) and bump the cycle's end_date. Each new slot
@@ -222,7 +320,11 @@ export interface ExtendCycleResult {
  * the target isn't after the current last session it just records the end_date (use the trim path to
  * shorten). The timezone is resolved from the cycle's owner (academy/trainer), never the browser.
  */
-export async function extendCycleToEndDate(cycleId: string, newEndDate: string): Promise<ExtendCycleResult> {
+export async function extendCycleToEndDate(
+  cycleId: string,
+  newEndDate: string,
+  opts: { skipInvoices?: boolean } = {},
+): Promise<ExtendCycleResult> {
   const ctx = await loadExtensionContext(cycleId);
   if (!ctx || ctx.slots.length === 0) return { added: 0 };
 
@@ -237,17 +339,28 @@ export async function extendCycleToEndDate(cycleId: string, newEndDate: string):
   if (planned.length === 0) return { added: 0 };
 
   const byId = new Map(ctx.slots.map((s) => [s.id, s]));
+  // Match each new slot back to its template by (trainer, instant) — insertAvailabilitySlots sorts
+  // the rows, so we can't rely on the returned order to line up with `planned`.
+  const keyToTemplateId = new Map<string, string>();
   const rows = planned.map((p) => {
     const tmpl = byId.get(p.templateId)!;
     const row: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(tmpl)) if (!COPY_OMIT.has(k)) row[k] = v;
     row.start_time = p.start_time;
     row.end_time = p.end_time;
+    keyToTemplateId.set(rosterMatchKey(row.trainer_id, p.start_time), p.templateId);
     return row;
   });
 
-  const { error: insErr } = await insertAvailabilitySlots(rows, supabase);
+  const { data: insertedData, error: insErr } = await insertAvailabilitySlots(rows, supabase, 'id, trainer_id, start_time');
   if (insErr) throw insErr;
+
+  // Attach each new session's roster (the players on the template it was copied from), so an
+  // extended cycle's new weeks aren't empty. split_payment is per-slot but uniform within a cycle.
+  const insertedSlots = (insertedData ?? []) as Array<{ id: string; trainer_id: unknown; start_time: string }>;
+  const splitPayment = ctx.slots.some((s) => (s as { split_payment?: boolean }).split_payment === true);
+  await attachTemplateRosterToNewSlots(cycleId, insertedSlots, keyToTemplateId, splitPayment, opts.skipInvoices ?? false);
+
   return { added: rows.length };
 }
 
@@ -278,7 +391,7 @@ export async function applyCycleEndDate(
     skipInvoices?: boolean;
   } = {},
 ): Promise<ApplyCycleEndDateResult> {
-  const { added } = await extendCycleToEndDate(cycleId, newEndDate);
+  const { added } = await extendCycleToEndDate(cycleId, newEndDate, { skipInvoices: opts.skipInvoices });
   let removed = 0;
   if (opts.removeUnbooked && opts.removableIds && opts.removableIds.length > 0) {
     removed += await deleteUnbookedSlots(opts.removableIds);
