@@ -215,13 +215,17 @@ serve(async (req) => {
       });
     }
 
+    // Public-booking settings carried from the SOURCE cycle so a RELEASED rebook round prices + gates
+    // public whole-cycle checkout exactly like the original (allow_cyclus_booking is cycle-level and
+    // lives only in settings; the split/booking-mode flags also live on the copied slots below).
+    let sourceCycleSettings: Record<string, unknown> = {};
     // Cyclus mode: derive (and trust) the academy from the cyclus row itself, so a
     // caller can't rebook a cyclus into a different academy's namespace. The
     // manager authorization below then runs against this derived academy.
     if (sourceCyclusId) {
       const { data: srcCycle, error: scErr } = await supabase
         .from("cycles")
-        .select("id, owner_id, owner_type, type")
+        .select("id, owner_id, owner_type, type, settings")
         .eq("id", sourceCyclusId)
         .maybeSingle();
       if (scErr) throw scErr;
@@ -238,6 +242,7 @@ serve(async (req) => {
         });
       }
       academyProfileId = srcCycle.owner_id;
+      sourceCycleSettings = (srcCycle.settings as Record<string, unknown> | null) ?? {};
     }
 
     // Authorization: caller must manage this academy (or be service-role).
@@ -597,7 +602,15 @@ serve(async (req) => {
         status: "draft",
         location_id: singleLocation,
         price_per_session: cyclePrice,
-        settings: { rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
+        settings: {
+          // Public-booking config so a released round prices/gates exactly like the source cycle:
+          // split + booking-mode mirror the copied slots (repTemplate); allow_cyclus_booking is
+          // cycle-level → mirror the source (default allowed when there's no single source cycle).
+          split_payment: repTemplate.split_payment === true,
+          allow_single_booking: repTemplate.allow_single_booking === true,
+          whole_slot_booking: repTemplate.whole_slot_booking === true,
+          allow_cyclus_booking: sourceCycleSettings.allow_cyclus_booking !== false,
+          rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
       })
       .select("id, name")
       .single();
