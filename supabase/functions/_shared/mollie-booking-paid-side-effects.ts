@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
 type NotifySlackError = (
@@ -116,64 +117,22 @@ export async function runBookingPaidSideEffects(opts: {
       }
     }
 
-    if (booking?.profiles?.email) {
-      // Player booking: the confirmation email. send-email keys on `type` (a
-      // `template:` body 400s at its required-fields check) — this invoke was
-      // silently broken from day one, so no player ever received it until now.
-      await supabase.functions.invoke("send-email", {
-        body: {
-          to: booking.profiles.email,
-          type: "booking_confirmation",
-          data: {
-            playerName: booking.profiles.full_name,
-            lessonTitle: booking.availability_slots.cyclus_name || "Training session",
-            trainerName,
-            lessonDate: formatAmsterdam(booking.availability_slots.start_time, "date"),
-            lessonTime: formatAmsterdam(booking.availability_slots.start_time, "time"),
-            location: booking.availability_slots.locations?.name,
-            price: paymentAmountValue,
-          },
-        },
-      });
-      logStep("Confirmation email sent");
-    } else if (booking?.guest_player_id) {
-      // GUEST booking (player_id NULL → the profiles join above is empty): send the
-      // INVOICE email — the attached PDF itemizes every paid session and
-      // send-invoice-email resolves the guest's address itself
-      // (get_invoice_recipient_identity). Before this branch existed, guests got NO
-      // post-payment email at all (public-booking audit P1-5): only the player_id
-      // profile was consulted, so the guard silently skipped them. Duplicate
-      // deliveries are already double-guarded (the caller's atomic paid claim +
-      // send-invoice-email's own recent-send window).
-      let targetInvoiceId = invoiceId;
-      if (!targetInvoiceId) {
-        // Invoke response carried no id (transient, or the invoice pre-existed via
-        // dedup) — fall back to the invoice overlapping these bookings.
-        const { data: inv } = await supabase
-          .from("invoices")
-          .select("id")
-          .overlaps("booking_ids", bookingIds)
-          .neq("status", "cancelled")
-          .limit(1)
-          .maybeSingle();
-        targetInvoiceId = (inv as { id?: string } | null)?.id ?? null;
-      }
-      if (targetInvoiceId) {
-        // send-invoice-email is verify_jwt-gated → pass explicit service auth (the
-        // create-rebook-invoice pattern). Deno.env via globalThis so this helper
-        // stays importable in the Node test runner.
-        const serviceKey = (globalThis as { Deno?: { env?: { get?: (k: string) => string | undefined } } })
-          .Deno?.env?.get?.("SUPABASE_SERVICE_ROLE_KEY");
-        await supabase.functions.invoke("send-invoice-email", {
-          body: { invoiceId: targetInvoiceId },
-          ...(serviceKey ? { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } } : {}),
-        });
-        logStep("Guest confirmation email sent (invoice email)", { invoiceId: targetInvoiceId });
-      } else {
-        // Non-fatal, but alert: money landed and the guest heard nothing.
-        logStep("Guest confirmation email skipped — no invoice id resolved");
-        await notifySlackError(source, "guest paid but no invoice found for the confirmation email", {
+    // Player-facing PAYMENT CONFIRMATION: ONE friendly email for BOTH a registered
+    // player and a guest, single-slot or cyclus — "what you booked" + the invoice PDF
+    // (the same artifact the bookkeeper receives) + a "sign in / create an account to
+    // see your sessions" link. Replaces the two older divergent emails (a player
+    // booking_confirmation with NO pdf; the guest's raw invoice email). Non-fatal; the
+    // caller's atomic paid claim already guards against a double-send.
+    const confirmation = await sendPlayerBookingConfirmation({ supabase, bookingIds, invoiceId, logStep });
+    if (!confirmation.ok) {
+      const { reason } = confirmation;
+      if (reason === "no_payer" || reason === "no_recipient_email") {
+        // Money landed but nobody could be emailed — alert LOUDLY. This is exactly the
+        // silent gap that once left a guest cyclus payer (Kim de Kort) with no email; a
+        // single unified path plus this alert means no payer type can fall through again.
+        await notifySlackError(source, "paid booking had no resolvable recipient for the confirmation email", {
           bookingIds,
+          reason,
         });
       }
     }
