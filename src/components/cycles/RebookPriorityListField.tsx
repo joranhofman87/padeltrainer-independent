@@ -7,13 +7,9 @@ import { Label } from '@/components/ui/label';
 import { PlayerMultiSelect, type PlayerMultiSelectOption } from '@/components/players/PlayerMultiSelect';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { fetchAllPlayersOverview } from '@/lib/playersOverview';
+import { toPriorityPerson, type PriorityPerson } from './priorityPerson';
 
-/** A registered player the academy grants priority to (no accountless guests). */
-export interface PriorityPerson {
-  player_id: string; // profiles.id
-  full_name: string;
-  email: string | null;
-}
+export type { PriorityPerson } from './priorityPerson';
 
 interface Props {
   academyProfileId: string;
@@ -34,36 +30,35 @@ interface Props {
 export function RebookPriorityListField({ academyProfileId, value, onChange, message, onMessageChange, disabled }: Props) {
   const { t } = useTranslation('cycles');
 
-  const { data: players = [] } = useQuery({
-    queryKey: ['rebook-priority-registered-players', academyProfileId],
-    queryFn: async (): Promise<PlayerMultiSelectOption[]> => {
+  // The WHOLE academy player list — registered players AND accountless guests.
+  const { data: people = [] } = useQuery({
+    queryKey: ['rebook-priority-academy-players', academyProfileId],
+    queryFn: async (): Promise<PriorityPerson[]> => {
       const rows = await fetchAllPlayersOverview({ kind: 'academy', id: academyProfileId });
-      return rows
-        .filter((r) => r.player_type === 'registered' && !!r.profile_id)
-        .map((r) => ({
-          id: r.profile_id as string,
-          full_name: r.full_name,
-          email: r.email ?? null,
-        }));
+      return rows.map(toPriorityPerson).filter((p): p is PriorityPerson => p !== null);
     },
     enabled: !!academyProfileId,
   });
 
-  const selectedIds = useMemo(() => value.map((p) => p.player_id), [value]);
+  const options: PlayerMultiSelectOption[] = useMemo(
+    () => people.map((p) => ({ id: p.id, full_name: p.full_name, email: p.email })),
+    [people],
+  );
+  const selectedIds = useMemo(() => value.map((p) => p.id), [value]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  const togglePlayer = (playerId: string) => {
-    if (selectedSet.has(playerId)) {
-      onChange(value.filter((p) => p.player_id !== playerId));
+  const togglePlayer = (id: string) => {
+    if (selectedSet.has(id)) {
+      onChange(value.filter((p) => p.id !== id));
       return;
     }
-    const p = players.find((pl) => pl.id === playerId);
+    const p = people.find((pl) => pl.id === id);
     if (!p) return;
-    onChange([...value, { player_id: p.id, full_name: p.full_name, email: p.email ?? null }]);
+    onChange([...value, p]);
   };
 
-  const removePlayer = (playerId: string) => {
-    onChange(value.filter((p) => p.player_id !== playerId));
+  const removePlayer = (id: string) => {
+    onChange(value.filter((p) => p.id !== id));
   };
 
   const triggerLabel = value.length > 0
@@ -80,7 +75,7 @@ export function RebookPriorityListField({ academyProfileId, value, onChange, mes
       </div>
 
       <PlayerMultiSelect
-        options={players}
+        options={options}
         selectedIds={selectedIds}
         onToggle={togglePlayer}
         triggerLabel={triggerLabel}
@@ -94,13 +89,13 @@ export function RebookPriorityListField({ academyProfileId, value, onChange, mes
       {value.length > 0 && (
         <div className="flex flex-wrap gap-2" data-testid="rebook-priority-chips">
           {value.map((p) => (
-            <Badge key={p.player_id} variant="secondary" className="gap-1 pr-1">
+            <Badge key={p.id} variant="secondary" className="gap-1 pr-1">
               {p.full_name}
               <button
                 type="button"
                 aria-label={t('newRound.priorityListRemove', 'Verwijderen')}
                 className="ml-1 rounded-sm hover:bg-muted-foreground/20"
-                onClick={() => removePlayer(p.player_id)}
+                onClick={() => removePlayer(p.id)}
                 disabled={disabled}
               >
                 <X className="h-3 w-3" />

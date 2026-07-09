@@ -156,7 +156,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       invitationMessage: invitationMessage.trim() || null,
       invitationSubject: invitationSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
-      priorityPeople: priorityPeople.map((p) => p.player_id),
+      // Split by type: registered profiles vs accountless guests (two separate settings arrays,
+      // each with its own can_book_member_window clause).
+      priorityPeople: priorityPeople.filter((p) => p.player_type === 'registered').map((p) => p.id),
+      priorityGuests: priorityPeople.filter((p) => p.player_type === 'guest').map((p) => p.id),
       memberOpenMessage: priorityMessage.trim() || null,
       autoReminder,
     }),

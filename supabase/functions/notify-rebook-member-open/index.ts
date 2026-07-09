@@ -132,6 +132,11 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
   const priorityPeople: string[] = Array.isArray(settings.rebook_priority_people)
     ? (settings.rebook_priority_people as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
+  // Accountless GUEST academy players granted priority — emailed the same "create account & book"
+  // link; can_book_member_window clause (e) grants them once their guest row links by email.
+  const priorityGuests: string[] = Array.isArray(settings.rebook_priority_guests)
+    ? (settings.rebook_priority_guests as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
   const customMessage = typeof settings.rebook_member_open_message === "string" ? settings.rebook_member_open_message : "";
   // RB03: recipients already emailed in a prior (partial) run — skipped so a retry only
   // re-sends the ones that failed.
@@ -158,7 +163,7 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
     claims.push(...((rows ?? []) as MemberOpenClaim[]));
   }
 
-  const audience = computeMemberOpenAudience(claims, priorityPeople, { alreadyNotifiedKeys });
+  const audience = computeMemberOpenAudience(claims, priorityPeople, priorityGuests, { alreadyNotifiedKeys });
   if (audience.length === 0) return { sent: 0, failed: 0 };
 
   // Resolve names + emails; drop anyone without an email.

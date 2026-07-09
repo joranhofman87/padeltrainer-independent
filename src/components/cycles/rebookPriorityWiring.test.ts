@@ -13,7 +13,9 @@ describe('rebook priority list wiring', () => {
     const src = read('RebookCohortWizard.tsx');
     expect(src).toContain('RebookPriorityListField');
     expect(src).toContain('priorityPeople');
-    expect(src).toMatch(/priorityPeople:\s*priorityPeople\.map\(\(p\)\s*=>\s*p\.player_id\)/);
+    // Registered profiles and accountless guests are submitted as two separate arrays.
+    expect(src).toMatch(/priorityPeople:\s*priorityPeople\.filter\(\(p\)\s*=>\s*p\.player_type === 'registered'\)\.map\(\(p\)\s*=>\s*p\.id\)/);
+    expect(src).toMatch(/priorityGuests:\s*priorityPeople\.filter\(\(p\)\s*=>\s*p\.player_type === 'guest'\)\.map\(\(p\)\s*=>\s*p\.id\)/);
     expect(src).toContain('memberOpenMessage');
     // priority requires the member window to be on
     expect(src).toContain('lockMemberWindow={priorityPeople.length > 0}');
@@ -22,7 +24,8 @@ describe('rebook priority list wiring', () => {
   it('AcademyNewRoundWizard (per-cyclus) still mounts the priority field and submits priorityPeople', () => {
     const src = read('AcademyNewRoundWizard.tsx');
     expect(src).toContain('RebookPriorityListField');
-    expect(src).toMatch(/priorityPeople:\s*priorityPeople\.map\(\(p\)\s*=>\s*p\.player_id\)/);
+    expect(src).toMatch(/priorityPeople:\s*priorityPeople\.filter\(\(p\)\s*=>\s*p\.player_type === 'registered'\)\.map\(\(p\)\s*=>\s*p\.id\)/);
+    expect(src).toMatch(/priorityGuests:\s*priorityPeople\.filter\(\(p\)\s*=>\s*p\.player_type === 'guest'\)\.map\(\(p\)\s*=>\s*p\.id\)/);
   });
 
   it('the priority field uses the stay-open multi-select (not the single-pick combobox)', () => {
