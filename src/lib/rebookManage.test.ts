@@ -99,13 +99,29 @@ describe('buildRebookPaidResolver (P1-1: rebook invoices are tagged rebook_cyclu
     expect(r.isPaid('p1', 'grpA')).toBe(false);
     expect(r.hasInvoice('p1', null)).toBe(false);
   });
+
+  it('getPayToken: UNPAID invoices expose their /pay token — own single first, else the group one', () => {
+    const r = buildRebookPaidResolver(
+      [
+        { player_id: 'p1', guest_player_id: null, status: 'sent', public_token: 'tok-single' },
+        { player_id: 'p2', guest_player_id: null, status: 'paid', public_token: 'tok-paid' }, // paid → no link
+        { player_id: 'p3', guest_player_id: null, status: 'cancelled', public_token: 'tok-dead' }, // cancelled → no link
+      ],
+      [{ rebook_group_id: 'g1', status: 'open', public_token: 'tok-group' }],
+    );
+    expect(r.getPayToken('p1', 'g1')).toBe('tok-single'); // own unpaid invoice wins
+    expect(r.getPayToken('p2', null)).toBeNull(); // already paid
+    expect(r.getPayToken('p3', null)).toBeNull(); // cancelled (zombie-swept)
+    expect(r.getPayToken('p9', 'g1')).toBe('tok-group'); // teammate → the group's shared unpaid invoice
+    expect(r.getPayToken('p9', 'g2')).toBeNull(); // no invoice anywhere
+  });
 });
 
 const mkPlayer = (over: Partial<RebookManagePlayer>): RebookManagePlayer => ({
   key: 'k', playerId: 'p', guestPlayerId: null, name: 'X',
   response: 'pending', responseIntent: null, paid: false, hasInvoice: false, invited: false,
   claimIds: [], lastRemindedAt: null,
-  hasEmail: true, claimToken: null,
+  hasEmail: true, claimToken: null, payToken: null,
   ...over,
 });
 
