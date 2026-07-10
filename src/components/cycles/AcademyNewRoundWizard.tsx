@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, ChevronDown, Send } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
@@ -90,7 +90,6 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   // Automated reminder to non-responders ~24h before their priority window closes.
   const [autoReminder, setAutoReminder] = useState(true);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [review, setReview] = useState<ReviewData | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -409,94 +408,57 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             </CardContent>
           </Card>
 
-          <div>
-            <Button variant="ghost" size="sm" onClick={() => setShowAdvanced((v) => !v)}>
-              <ChevronDown className={`h-4 w-4 mr-1 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-              {t('newRound.advanced', 'Geavanceerde opties')}
-            </Button>
-          </div>
+          {/* Payment + access settings are core decisions, not "advanced" — always visible
+              (the old collapsible buried the payment mode, which owners must consciously pick). */}
+          <RebookPaymentModeField
+            academyProfileId={academyProfileId}
+            paymentMode={paymentMode}
+            setPaymentMode={setPaymentMode}
+            strictMollie={strictMollie}
+            setStrictMollie={setStrictMollie}
+          />
 
-          {showAdvanced && (
-            <>
-              <RebookAccessWindows
-                priorityWindowDays={priorityWindowDays}
-                setPriorityWindowDays={setPriorityWindowDays}
-                enableMemberWindow={enableMemberWindow}
-                setEnableMemberWindow={setEnableMemberWindow}
-                memberWindowDays={memberWindowDays}
-                setMemberWindowDays={setMemberWindowDays}
-                lockMemberWindow={priorityPeople.length > 0}
-                lockMemberWindowHint={t('newRound.priorityRequiresMember', 'De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan.')}
-              />
+          <RebookAccessWindows
+            priorityWindowDays={priorityWindowDays}
+            setPriorityWindowDays={setPriorityWindowDays}
+            enableMemberWindow={enableMemberWindow}
+            setEnableMemberWindow={setEnableMemberWindow}
+            memberWindowDays={memberWindowDays}
+            setMemberWindowDays={setMemberWindowDays}
+            lockMemberWindow={priorityPeople.length > 0}
+            lockMemberWindowHint={t('newRound.priorityRequiresMember', 'De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan.')}
+          />
 
+          {/* The priority list rides on the member window (that's when these people get first
+              dibs on freed seats) — without it the list does nothing, so only show it then. */}
+          {enableMemberWindow && (
+            <Card>
+              <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
+              <CardContent>
+                <RebookPriorityListField
+                  academyProfileId={academyProfileId}
+                  value={priorityPeople}
+                  onChange={setPriorityPeople}
+                  message={priorityMessage}
+                  onMessageChange={setPriorityMessage}
+                  disabled={submitting}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader><CardTitle>{t('newRound.publicRelease', 'Publiek vrijgeven')}</CardTitle></CardHeader>
+            <CardContent>
               <label className="flex items-start gap-3 cursor-pointer">
-                <Checkbox checked={autoReminder} onCheckedChange={(v) => setAutoReminder(Boolean(v))} className="mt-0.5" />
+                <Checkbox checked={requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(Boolean(v))} />
                 <div>
-                  <div className="text-sm font-medium">{t('rebookShared.autoReminder', 'Automatisch herinneren')}</div>
-                  <div className="text-xs text-muted-foreground">{t('rebookShared.autoReminderHint', 'Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt.')}</div>
+                  <div className="text-sm font-medium">{t('newRound.requireReview', 'Mijn goedkeuring vereist voordat het publiek wordt')}</div>
+                  <div className="text-xs text-muted-foreground">{t('newRound.requireReviewHint', 'De plekken blijven verborgen totdat je ze zelf vrijgeeft.')}</div>
                 </div>
               </label>
-
-              {autoReminder && (
-                <div className="ml-7 space-y-3 rounded-md border p-3">
-                  <EmailSubjectField
-                    id="rebook-reminder-subject"
-                    value={reminderSubject}
-                    onChange={setReminderSubject}
-                    disabled={submitting}
-                    label={t('rebookShared.reminderSubjectLabel', 'Onderwerp van de herinnering')}
-                    placeholder={t('rebookShared.defaultReminderSubject', 'Herinnering: bevestig je plek')}
-                    variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
-                  />
-                  <EmailMessageField
-                    id="rebook-reminder-message"
-                    value={reminderMessage}
-                    onChange={setReminderMessage}
-                    disabled={submitting}
-                    maxLength={2000}
-                    label={t('rebookShared.reminderMessageLabel', 'Bericht in de herinnering')}
-                    placeholder={t('rebookShared.defaultReminderMessage', '')}
-                    variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
-                  />
-                </div>
-              )}
-
-              <Card>
-                <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
-                <CardContent>
-                  <RebookPriorityListField
-                    academyProfileId={academyProfileId}
-                    value={priorityPeople}
-                    onChange={setPriorityPeople}
-                    message={priorityMessage}
-                    onMessageChange={setPriorityMessage}
-                    disabled={submitting}
-                  />
-                </CardContent>
-              </Card>
-
-              <RebookPaymentModeField
-                academyProfileId={academyProfileId}
-                paymentMode={paymentMode}
-                setPaymentMode={setPaymentMode}
-                strictMollie={strictMollie}
-                setStrictMollie={setStrictMollie}
-              />
-
-              <Card>
-                <CardHeader><CardTitle>{t('newRound.publicRelease', 'Publiek vrijgeven')}</CardTitle></CardHeader>
-                <CardContent>
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <Checkbox checked={requireAdminReview} onCheckedChange={(v) => setRequireAdminReview(Boolean(v))} />
-                    <div>
-                      <div className="text-sm font-medium">{t('newRound.requireReview', 'Mijn goedkeuring vereist voordat het publiek wordt')}</div>
-                      <div className="text-xs text-muted-foreground">{t('newRound.requireReviewHint', 'De plekken blijven verborgen totdat je ze zelf vrijgeeft.')}</div>
-                    </div>
-                  </label>
-                </CardContent>
-              </Card>
-            </>
-          )}
+            </CardContent>
+          </Card>
 
           <div className="flex justify-end">
             <Button onClick={handleReview} disabled={previewing || !inputsValid}>
@@ -565,6 +527,40 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   placeholder={t('newRound.inviteMessagePlaceholder', 'Bijv. Leuk dat je er weer bij bent! Bevestig hieronder je vaste plek voor de volgende ronde.')}
                   variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
                 />
+              </div>
+              {/* The automated reminder lives HERE with the other email content (owner request):
+                  everything a player will receive is written/reviewed in one place. */}
+              <div className="space-y-3 rounded-md border p-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <Checkbox checked={autoReminder} onCheckedChange={(v) => setAutoReminder(Boolean(v))} className="mt-0.5" />
+                  <div>
+                    <div className="text-sm font-medium">{t('rebookShared.autoReminder', 'Automatisch herinneren')}</div>
+                    <div className="text-xs text-muted-foreground">{t('rebookShared.autoReminderHint', 'Stuur spelers die nog niet reageerden automatisch een herinnering vlak voordat hun voorrang verloopt.')}</div>
+                  </div>
+                </label>
+                {autoReminder && (
+                  <div className="space-y-3 pl-7">
+                    <EmailSubjectField
+                      id="rebook-reminder-subject"
+                      value={reminderSubject}
+                      onChange={setReminderSubject}
+                      disabled={submitting}
+                      label={t('rebookShared.reminderSubjectLabel', 'Onderwerp van de herinnering')}
+                      placeholder={t('rebookShared.defaultReminderSubject', 'Herinnering: bevestig je plek')}
+                      variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                    />
+                    <EmailMessageField
+                      id="rebook-reminder-message"
+                      value={reminderMessage}
+                      onChange={setReminderMessage}
+                      disabled={submitting}
+                      maxLength={2000}
+                      label={t('rebookShared.reminderMessageLabel', 'Bericht in de herinnering')}
+                      placeholder={t('rebookShared.defaultReminderMessage', '')}
+                      variablesHelp={t('newRound.inviteVariablesHelp', 'Voeg variabele toe:')}
+                    />
+                  </div>
+                )}
               </div>
               <div className="rounded-md border p-3">
                 <RebookRulesField
