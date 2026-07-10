@@ -8,7 +8,6 @@ import { Plus, CalendarDays, PartyPopper, CalendarPlus } from 'lucide-react';
 import { type Cycle } from '@/lib/cycles';
 import { listRegistrationCycles } from '@/lib/registrations';
 import CyclesTable from '@/components/cycles/CyclesTable';
-import RebookRoundsSection from '@/components/cycles/RebookRoundsSection';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyLocations } from '@/lib/academy';
 import { logger } from '@/lib/logger';
@@ -116,8 +115,6 @@ export default function AcademyRegistrations() {
           {t('actionExplainers.event', 'A one-off activity, such as a tournament or clinic.')}
         </p>
       </div>
-
-      {activeAcademy && <RebookRoundsSection academyId={activeAcademy.id} />}
 
       {cycles.length === 0 ? (
         <div className="text-center py-16">

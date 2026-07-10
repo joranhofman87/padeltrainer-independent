@@ -197,6 +197,7 @@ const AcademyPlayerDetail = lazy(() => import('@/pages/academy/AcademyPlayerDeta
 
 const AcademyInvoices = lazy(() => import('@/pages/academy/AcademyInvoices'));
 const AcademyExpenses = lazy(() => import('@/pages/academy/AcademyExpenses'));
+const AcademyRebook = lazy(() => import('@/pages/academy/AcademyRebook'));
 const AcademyCreateInvoice = lazy(() => import('@/pages/academy/AcademyCreateInvoice'));
 const AcademyEditInvoice = lazy(() => import('@/pages/academy/AcademyEditInvoice'));
 
@@ -361,6 +362,8 @@ export function DomainRouter() {
           <Route path="open-slots" element={<Navigate to="/app/academy/calendar?tab=cycles" replace />} />
           <Route path="locations" element={<AcademyLocations />} />
           <Route path="registrations" element={<AcademyRegistrations />} />
+          {/* Rebooking rounds get their own page (moved off the top of Registrations). */}
+          <Route path="rebook" element={<AcademyRebook />} />
           {/* Registration WORKFLOW (intake → proposals → approve) lives under /registrations. */}
           <Route path="registrations/new" element={<CycleFormPage ownerType="academy" />} />
           <Route path="registrations/:cycleId" element={<AcademyCycleDetail />} />

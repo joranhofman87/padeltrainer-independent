@@ -1329,7 +1329,9 @@
     "resumeFailed": "Kon de uitnodigingen niet versturen. Probeer het later opnieuw.",
     "resumePartial": "{{sent}} uitnodiging(en) verstuurd, {{left}} nog open. Probeer de rest zo opnieuw.",
     "resumeDone": "{{sent}} uitnodiging(en) verstuurd",
-    "roundCycleCount": "{{count}} cycli in deze ronde"
+    "roundCycleCount": "{{count}} cycli in deze ronde",
+    "pageTitle": "Herboekingen",
+    "pageDescription": "Beheer lopende herboekingsrondes: wie reageerde, wie betaalde en welke plekken open staan."
   },
   "rebookShared": {
     "defaultInviteSubject": "Blijf je erbij, {first_name}? Reserveer je vaste plek",

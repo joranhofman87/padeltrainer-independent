@@ -10,6 +10,7 @@ describe('academySidebarNav', () => {
       'players',
       'trainers',
       'registrations',
+      'rebook',
       'invoices',
       'expenses',
       'settings',
@@ -24,6 +25,7 @@ describe('academySidebarNav', () => {
       '/app/academy/players',
       '/app/academy/trainers',
       '/app/academy/registrations',
+      '/app/academy/rebook',
       '/app/academy/invoices',
       '/app/academy/expenses',
       '/app/academy/settings',
@@ -46,18 +48,23 @@ describe('academySidebarNav', () => {
     expect(isAcademyNavItemActive('/app/academy/players', schedule)).toBe(false);
   });
 
-  it('routes the "next round" cycle-ops (rebook / bulk-copy / :id/rebook) to Sessions, not Schedule', () => {
-    const registrations = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'registrations')!;
+  it('routes the rebook ops (cohort wizard + :id/rebook) to the Rebooking item, bulk-copy to Sessions', () => {
+    const rebook = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'rebook')!;
     const sessions = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'sessions')!;
     const schedule = ACADEMY_PRIMARY_NAV.find((item) => item.id === 'schedule')!;
-    for (const path of ['/app/academy/cycles/rebook', '/app/academy/cycles/bulk-copy', '/app/academy/cycles/abc-123/rebook']) {
-      expect(isAcademyNavItemActive(path, sessions)).toBe(true);
+    // Rebook flow → the Rebooking nav item (its own page + the /cycles rebook ops).
+    for (const path of ['/app/academy/rebook', '/app/academy/cycles/rebook', '/app/academy/cycles/abc-123/rebook']) {
+      expect(isAcademyNavItemActive(path, rebook)).toBe(true);
+      expect(isAcademyNavItemActive(path, sessions)).toBe(false);
       expect(isAcademyNavItemActive(path, schedule)).toBe(false);
-      expect(isAcademyNavItemActive(path, registrations)).toBe(false);
     }
-    // the Sessions hub highlights Sessions; cycle CRUD highlights Schedule (not Sessions)
+    // bulk-copy stays on Sessions; the rebook item does NOT claim it.
+    expect(isAcademyNavItemActive('/app/academy/cycles/bulk-copy', sessions)).toBe(true);
+    expect(isAcademyNavItemActive('/app/academy/cycles/bulk-copy', rebook)).toBe(false);
+    // the Sessions hub highlights Sessions; cycle CRUD highlights Schedule (not Sessions/Rebook)
     expect(isAcademyNavItemActive('/app/academy/sessions', sessions)).toBe(true);
     expect(isAcademyNavItemActive('/app/academy/cycles/new', sessions)).toBe(false);
+    expect(isAcademyNavItemActive('/app/academy/cycles/new', rebook)).toBe(false);
   });
 
   it('includes Trainers nav item after Players and before Registrations', () => {

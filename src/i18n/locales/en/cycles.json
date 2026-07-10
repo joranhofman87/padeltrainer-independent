@@ -1204,7 +1204,9 @@
     "resumeFailed": "Could not send the invitations. Please try again later.",
     "resumePartial": "{{sent}} invitation(s) sent, {{left}} still pending. Try the rest again shortly.",
     "resumeDone": "{{sent}} invitation(s) sent",
-    "roundCycleCount": "{{count}} cycles in this round"
+    "roundCycleCount": "{{count}} cycles in this round",
+    "pageTitle": "Rebooking",
+    "pageDescription": "Manage running rebooking rounds: who responded, who paid, and which spots are open."
   },
   "rebookShared": {
     "defaultInviteSubject": "Staying with us, {first_name}? Keep your regular spot",
