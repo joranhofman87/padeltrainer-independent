@@ -1,36 +1,76 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarClock, RefreshCw, Settings2, Archive, ArchiveRestore, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Archive, ArchiveRestore, Loader2, RefreshCw } from 'lucide-react';
 import { formatDate } from '@/lib/format';
-import { listRebookRounds, setRebookRoundArchived, type RebookRound } from '@/lib/rebookManage';
+import { formatPrice } from '@/lib/pricing';
+import { setRebookRoundArchived } from '@/lib/rebookManage';
+import { listRebookRoundOverview, type RebookRoundOverviewRow } from '@/lib/rebookRoundsOverview';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
+import { useTableSort } from '@/hooks/useTableSort';
+import { useVisibleColumns, type ColumnDescriptor } from '@/components/players/useVisibleColumns';
+import { PlayerColumnsMenu } from '@/components/players/PlayerColumnsMenu';
+import { TableToolbar } from '@/components/ui/table-toolbar';
+import { ListPagination } from '@/components/ui/list-pagination';
 
 /**
- * Discovery entry point for the per-cycle rebook management view. Rebooked "new
- * round" cycles are type='cyclus', so they never appear in the registration/event
- * list — without this an academy can only reach a round's overview via the one-time
- * post-launch redirect. Finished rounds can be archived (hidden from the active list
- * without touching any bookings). Renders nothing when the academy has no rounds.
+ * The rebook management HUB — one row per rebooking round, sortable + searchable, reusing the shared
+ * DataTable engine (same as Players/Invoices). Each row shows that round's response funnel + money at a
+ * glance (aggregates via listRebookRoundOverview, matching the per-round drill-in); click a row to open
+ * the full per-player manage view. Finished rounds can be archived (hidden without touching bookings).
  */
+
+type ColKey =
+  | 'start'
+  | 'series'
+  | 'status'
+  | 'invited'
+  | 'rebooked'
+  | 'noResponse'
+  | 'paidAmount'
+  | 'outstanding'
+  | 'declined'
+  | 'clickedYes'
+  | 'paidCount'
+  | 'invites'
+  | 'openSpots';
+
+const DEFAULT_COLUMNS: ColKey[] = [
+  'start',
+  'series',
+  'status',
+  'invited',
+  'rebooked',
+  'noResponse',
+  'paidAmount',
+  'outstanding',
+];
+
+const PAGE_SIZE = 25;
+
 export default function RebookRoundsSection({ academyId }: { academyId: string }) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
-  const [rounds, setRounds] = useState<RebookRound[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [rows, setRows] = useState<RebookRoundOverviewRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
 
   const reload = useCallback(() => {
     let active = true;
-    listRebookRounds(academyId, { includeArchived: true })
-      .then((r) => { if (active) setRounds(r); })
+    setLoading(true);
+    listRebookRoundOverview(academyId, { includeArchived: true })
+      .then((r) => { if (active) setRows(r); })
       .catch((e) => logger.error('Failed to load rebook rounds', e as Error, { component: 'RebookRoundsSection' }))
-      .finally(() => { if (active) setLoaded(true); });
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [academyId]);
 
@@ -40,7 +80,7 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
     setBusyId(id);
     try {
       await setRebookRoundArchived(id, archived);
-      setRounds((prev) => prev.map((r) => (r.id === id ? { ...r, archived } : r)));
+      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, archived } : r)));
       toast.success(archived
         ? t('rebookManage.roundArchived', 'Herboeking gearchiveerd')
         : t('rebookManage.roundRestored', 'Herboeking hersteld'));
@@ -49,78 +89,179 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
     } finally { setBusyId(null); }
   };
 
-  if (!loaded || rounds.length === 0) return null;
+  const archivedCount = useMemo(() => rows.filter((r) => r.archived).length, [rows]);
 
-  const active = rounds.filter((r) => !r.archived);
-  const archived = rounds.filter((r) => r.archived);
+  // Archived visibility + name search (case-insensitive). Sorting is applied after, by the shared hook.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (r.archived && !showArchived) return false;
+      if (q && !(r.name || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [rows, showArchived, search]);
 
-  const row = (r: RebookRound) => (
-    <div
-      key={r.id}
-      className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="min-w-0">
-        <div className="truncate font-medium">{r.name || t('rebookManage.untitledRound', 'Herboeking')}</div>
-        {r.startDate && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <CalendarClock className="h-3 w-3" />
-            {/* start_date is a pure DATE — parse at local noon so it never shifts a day */}
-            {t('rebookManage.roundStarts', 'Start {{date}}', { date: formatDate(`${r.startDate}T12:00:00`, 'd MMM yyyy') })}
-          </div>
-        )}
-        {r.cycleIds.length > 1 && (
-          <div className="text-xs text-muted-foreground">
-            {t('rebookManage.roundCycleCount', '{{count}} cycli in deze ronde', { count: r.cycleIds.length })}
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => navigate(`/app/academy/cycles/${r.id}/rebook`)}>
-          <Settings2 className="h-4 w-4" />
-          {t('actions.manageRebooking', 'Beheer herboeking')}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busyId === r.id}
-          onClick={() => setArchived(r.id, !r.archived)}
-          title={r.archived ? t('rebookManage.restoreRound', 'Herstellen') : t('rebookManage.archiveRound', 'Archiveren')}
-          aria-label={r.archived ? t('rebookManage.restoreRound', 'Herstellen') : t('rebookManage.archiveRound', 'Archiveren')}
-        >
-          {busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : r.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-        </Button>
-      </div>
-    </div>
+  const { sortedData, sortConfig, handleSort } = useTableSort<RebookRoundOverviewRow>(filtered, undefined, null, { emptyLast: true });
+
+  // Reset to the first page whenever the visible set changes.
+  useEffect(() => { setPage(0); }, [search, showArchived, sortConfig.key, sortConfig.direction]);
+  const pageCount = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageRows = sortedData.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns<ColKey>(
+    columnDescriptors(t),
+    DEFAULT_COLUMNS,
+    academyId ? `rebookManage:overview:cols:${academyId}` : null,
   );
+
+  const num = (r: RebookRoundOverviewRow, v: number) => (r.statsLoaded ? v : '—');
+
+  const cycleStatusLabel = (s: string) =>
+    t(`rebookManage.overview.cycleStatus.${s}`, s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+  const statusVariant = (s: string): 'default' | 'secondary' | 'outline' =>
+    s === 'open' ? 'default' : s === 'closed' ? 'outline' : 'secondary';
+
+  const columns: ColumnDef<RebookRoundOverviewRow>[] = [
+    {
+      key: 'name',
+      header: t('rebookManage.overview.colRound', 'Ronde'),
+      sortKey: 'name',
+      className: 'font-medium max-w-[240px]',
+      cellTitle: (r) => r.name || undefined,
+      linkTo: (r) => `/app/academy/cycles/${r.id}/rebook`,
+      renderCell: (r) => (
+        <span className="flex items-center gap-2">
+          <span className="truncate">{r.name || t('rebookManage.untitledRound', 'Herboeking')}</span>
+          {r.archived && (
+            <Badge variant="outline" className="shrink-0 text-[10px]">{t('rebookManage.overview.archivedTag', 'Gearchiveerd')}</Badge>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'start',
+      header: t('rebookManage.overview.colStart', 'Start'),
+      sortKey: 'startDate',
+      // start_date is a pure DATE — parse at local noon so it never shifts a day.
+      renderCell: (r) => (r.startDate ? formatDate(`${r.startDate}T12:00:00`, 'd MMM yyyy') : '—'),
+    },
+    { key: 'series', header: t('rebookManage.overview.colSeries', 'Series'), sortKey: 'seriesCount', align: 'right', renderCell: (r) => r.seriesCount },
+    {
+      key: 'status',
+      header: t('rebookManage.overview.colStatus', 'Status'),
+      sortKey: 'status',
+      renderCell: (r) => <Badge variant={statusVariant(r.status)}>{cycleStatusLabel(r.status)}</Badge>,
+    },
+    { key: 'invited', header: t('rebookManage.overview.colInvited', 'Uitgenodigd'), sortKey: 'invited', align: 'right', renderCell: (r) => num(r, r.invited) },
+    { key: 'rebooked', header: t('rebookManage.overview.colRebooked', 'Herboekt'), sortKey: 'rebooked', align: 'right', renderCell: (r) => num(r, r.rebooked) },
+    { key: 'noResponse', header: t('rebookManage.overview.colNoResponse', 'Geen reactie'), sortKey: 'noResponse', align: 'right', renderCell: (r) => num(r, r.noResponse) },
+    { key: 'paidAmount', header: t('rebookManage.overview.colPaidAmount', 'Betaald'), sortKey: 'paidAmount', align: 'right', renderCell: (r) => (r.statsLoaded ? formatPrice(r.paidAmount) : '—') },
+    { key: 'outstanding', header: t('rebookManage.overview.colOutstanding', 'Openstaand'), sortKey: 'outstandingAmount', align: 'right', renderCell: (r) => (r.statsLoaded ? formatPrice(r.outstandingAmount) : '—') },
+    { key: 'declined', header: t('rebookManage.overview.colDeclined', 'Zei nee'), sortKey: 'declined', align: 'right', renderCell: (r) => num(r, r.declined) },
+    { key: 'clickedYes', header: t('rebookManage.overview.colClickedYes', 'Ja, niet afgerond'), sortKey: 'clickedYesUnpaid', align: 'right', renderCell: (r) => num(r, r.clickedYesUnpaid) },
+    { key: 'paidCount', header: t('rebookManage.overview.colPaidCount', 'Betaald (spelers)'), sortKey: 'paidCount', align: 'right', renderCell: (r) => num(r, r.paidCount) },
+    { key: 'invites', header: t('rebookManage.overview.colInvites', 'Uitnodigingen'), sortKey: 'invitesSent', align: 'right', renderCell: (r) => (r.statsLoaded ? `${r.invitesSent}/${r.invitesTotal}` : '—') },
+    { key: 'openSpots', header: t('rebookManage.overview.colOpenSpots', 'Open plekken'), sortKey: 'openSpots', align: 'right', renderCell: (r) => num(r, r.openSpots) },
+  ];
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-10 text-center">
+        <RefreshCw className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <p className="font-medium">{t('rebookManage.overview.emptyTitle', 'Nog geen herboekingen')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('rebookManage.overview.emptyDescription', 'Zet een volgende ronde op via de Sessies-hub om spelers te laten herboeken.')}
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <RefreshCw className="h-4 w-4" />
-          {t('rebookManage.roundsTitle', 'Herboekingen')}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {t('rebookManage.roundsDescription', 'Beheer een lopende herboeking: wie reageerde, wie betaalde en welke plekken open staan.')}
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {active.length === 0 && !showArchived && (
-          <p className="text-sm text-muted-foreground">{t('rebookManage.noActiveRounds', 'Geen lopende herboekingen.')}</p>
+    <div className="space-y-3">
+      <TableToolbar
+        searchPlaceholder={t('rebookManage.overview.searchPlaceholder', 'Zoek op naam…')}
+        searchValue={search}
+        onSearchChange={setSearch}
+        trailing={
+          <PlayerColumnsMenu<ColKey>
+            allColumns={columnDescriptors(t)}
+            isColVisible={isColVisible}
+            onToggle={toggleColumn}
+            labels={{
+              button: t('rebookManage.overview.columnsButton', 'Kolommen'),
+              default: t('rebookManage.overview.columnsDefault', 'Standaard'),
+              optional: t('rebookManage.overview.columnsOptional', 'Optioneel'),
+            }}
+          />
+        }
+      >
+        {archivedCount > 0 && (
+          <Button variant="outline" size="sm" onClick={() => setShowArchived((v) => !v)}>
+            {showArchived
+              ? t('rebookManage.hideArchived', 'Verberg gearchiveerd')
+              : t('rebookManage.showArchived', 'Toon gearchiveerd ({{count}})', { count: archivedCount })}
+          </Button>
         )}
-        {active.map(row)}
+      </TableToolbar>
 
-        {archived.length > 0 && (
-          <div className="pt-1">
-            <Button variant="link" size="sm" className="h-auto p-0 text-sm" onClick={() => setShowArchived((v) => !v)}>
-              {showArchived
-                ? t('rebookManage.hideArchived', 'Verberg gearchiveerd')
-                : t('rebookManage.showArchived', 'Toon gearchiveerd ({{count}})', { count: archived.length })}
-            </Button>
-            {showArchived && <div className="mt-2 space-y-2 opacity-70">{archived.map(row)}</div>}
-          </div>
+      <DataTable<RebookRoundOverviewRow>
+        columns={columns}
+        rows={pageRows}
+        visibleKeys={['name', ...visibleColumns]}
+        sortKey={sortConfig.key ? String(sortConfig.key) : null}
+        sortDirection={sortConfig.direction}
+        onSort={(key) => handleSort(key as keyof RebookRoundOverviewRow)}
+        onRowClick={(r) => navigate(`/app/academy/cycles/${r.id}/rebook`)}
+        compact
+        stickyHeader
+        // Show on mobile too (horizontal-scrolls via compact min-width) — the old card list rendered
+        // on phones, and the sibling admin tables (CyclesTable/WaitingListTable/InvoiceListTable) do the same.
+        desktopOnly={false}
+        actionsHeader={<span className="sr-only">{t('rebookManage.overview.actionsHeader', 'Acties')}</span>}
+        renderActions={(r) => (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busyId === r.id}
+            onClick={() => setArchived(r.id, !r.archived)}
+            title={r.archived ? t('rebookManage.restoreRound', 'Herstellen') : t('rebookManage.archiveRound', 'Archiveren')}
+            aria-label={r.archived ? t('rebookManage.restoreRound', 'Herstellen') : t('rebookManage.archiveRound', 'Archiveren')}
+          >
+            {busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : r.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+          </Button>
         )}
-      </CardContent>
-    </Card>
+        empty={t('rebookManage.overview.noMatches', 'Geen herboekingen gevonden.')}
+      />
+
+      <ListPagination page={safePage} pageCount={pageCount} onPageChange={setPage} />
+    </div>
   );
+}
+
+function columnDescriptors(t: (key: string, fallback: string) => string): ColumnDescriptor<ColKey>[] {
+  return [
+    { key: 'start', label: t('rebookManage.overview.colStart', 'Start'), isDefault: true },
+    { key: 'series', label: t('rebookManage.overview.colSeries', 'Series'), isDefault: true },
+    { key: 'status', label: t('rebookManage.overview.colStatus', 'Status'), isDefault: true },
+    { key: 'invited', label: t('rebookManage.overview.colInvited', 'Uitgenodigd'), isDefault: true },
+    { key: 'rebooked', label: t('rebookManage.overview.colRebooked', 'Herboekt'), isDefault: true },
+    { key: 'noResponse', label: t('rebookManage.overview.colNoResponse', 'Geen reactie'), isDefault: true },
+    { key: 'paidAmount', label: t('rebookManage.overview.colPaidAmount', 'Betaald'), isDefault: true },
+    { key: 'outstanding', label: t('rebookManage.overview.colOutstanding', 'Openstaand'), isDefault: true },
+    { key: 'declined', label: t('rebookManage.overview.colDeclined', 'Zei nee'), isDefault: false },
+    { key: 'clickedYes', label: t('rebookManage.overview.colClickedYes', 'Ja, niet afgerond'), isDefault: false },
+    { key: 'paidCount', label: t('rebookManage.overview.colPaidCount', 'Betaald (spelers)'), isDefault: false },
+    { key: 'invites', label: t('rebookManage.overview.colInvites', 'Uitnodigingen'), isDefault: false },
+    { key: 'openSpots', label: t('rebookManage.overview.colOpenSpots', 'Open plekken'), isDefault: false },
+  ];
 }
