@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { insertBookings, insertBookingSingle } from '@/lib/bookings';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
+import { buildCyclusOfferings } from '@/lib/bookLessonOfferings';
 import { syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { resolveSplitDivisor } from '@/lib/splitDivisor';
 import { initiateCyclePayment } from '@/lib/cyclePayment';
@@ -115,7 +116,7 @@ export default function BookLesson() {
   const [applicableTerms, setApplicableTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean }>>({});
+  const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean; allow_cyclus_booking?: boolean }>>({});
 
   useEffect(() => {
     if (!loading && user && role !== 'player') {
@@ -240,18 +241,12 @@ export default function BookLesson() {
           return { ...s, location: s.locations as SlotWithDetails['location'], spotsLeft: maxP - bookingCount, averageRating, ratingSystem } as SlotWithDetails;
         });
 
-      const cyclusGroups: Record<string, SlotWithDetails[]> = {};
-      const standaloneSlots: SlotWithDetails[] = [];
-      const totalSlotsPerCyclus: Record<string, number> = {};
       const cyclusIds: string[] = [];
       slotsData.forEach((s) => {
-        if (s.cyclus_id) {
-          totalSlotsPerCyclus[s.cyclus_id] = (totalSlotsPerCyclus[s.cyclus_id] || 0) + 1;
-          if (!cyclusIds.includes(s.cyclus_id)) cyclusIds.push(s.cyclus_id);
-        }
+        if (s.cyclus_id && !cyclusIds.includes(s.cyclus_id)) cyclusIds.push(s.cyclus_id);
       });
 
-      const newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean }> = {};
+      const newCycleSettingsMap: Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean; allow_cyclus_booking?: boolean }> = {};
       if (cyclusIds.length > 0) {
         // Read cyclus settings through the sanitized cycles_public view (P2-1) so an
         // anonymous booker never receives settings.notify_admin_emails. Published cyclus
@@ -280,69 +275,28 @@ export default function BookLesson() {
               invoice_delay_weeks: (settings?.invoice_delay_weeks as number) || undefined,
               mark_as_paid: (settings?.mark_as_paid as boolean) || undefined,
               split_payment: (settings?.split_payment as boolean) || undefined,
+              // Keep the raw boolean — `false` is meaningful (whole-cyclus checkout
+              // refused), so it must NOT be coerced to undefined via `|| undefined`.
+              allow_cyclus_booking:
+                typeof settings?.allow_cyclus_booking === 'boolean'
+                  ? (settings.allow_cyclus_booking as boolean)
+                  : undefined,
             };
           }
         }
       }
       setCycleSettingsMap(newCycleSettingsMap);
 
-      availableSlots.forEach((slot) => {
-        if (slot.cyclus_id) {
-          if (!cyclusGroups[slot.cyclus_id]) cyclusGroups[slot.cyclus_id] = [];
-          cyclusGroups[slot.cyclus_id].push(slot);
-        } else {
-          standaloneSlots.push(slot);
-        }
-      });
-
-      const bundles: CyclusBundle[] = [];
-      const partialCyclusSlots: SlotWithDetails[] = [];
-      // P-04: cycle slots with allow_single_booking are ALSO offered as individual
-      // sessions ("Losse sessies"), unless the cycle uses split payment (its
-      // per-player amount depends on the cycle headcount, so a fixed
-      // single-session price would distort the split).
-      const cycleSingleSessionSlots: SlotWithDetails[] = [];
-      Object.entries(cyclusGroups).forEach(([cyclusId, cyclusSlots]) => {
-        const totalInCyclus = totalSlotsPerCyclus[cyclusId] || cyclusSlots.length;
-        if (cyclusSlots.length === totalInCyclus) {
-          const sortedSlots = cyclusSlots.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-          const totalPrice = sortedSlots.reduce((sum, s) => sum + (s.price_per_session || 0), 0);
-          bundles.push({
-            cyclus_id: cyclusId, cyclus_name: sortedSlots[0].cyclus_name || t('booking.trainingCycleFallback', 'Training cycle'),
-            slots: sortedSlots, totalPrice,
-            firstDate: sortedSlots[0].start_time, lastDate: sortedSlots[sortedSlots.length - 1].start_time,
-            location: sortedSlots[0].location, min_group_size: newCycleSettingsMap[cyclusId]?.min_group_size,
-          });
-          if (!newCycleSettingsMap[cyclusId]?.split_payment) {
-            sortedSlots.forEach((slot) => {
-              if (slot.allow_single_booking === true) {
-                // Cycle prices are per player: a single session costs the full
-                // price_per_session. The render path (SlotList/BookingSummary)
-                // divides by max_participants when allow_single_booking is set,
-                // so disable it on this copy and tag it fromCycle so handleBook
-                // also charges the full per-player price.
-                cycleSingleSessionSlots.push({ ...slot, allow_single_booking: false, fromCycle: true });
-              }
-            });
-          }
-        } else if (newCycleSettingsMap[cyclusId]?.split_payment) {
-          // Split-payment cycles keep their original slots: the per-player
-          // amount depends on the cycle headcount, so a fixed single-session
-          // price would distort the split.
-          partialCyclusSlots.push(...cyclusSlots);
-        } else {
-          // P-04: like the cycleSingleSessionSlots copies above — cycle prices
-          // are per player, so a partially-available cycle slot offered as an
-          // individual session must charge the full price_per_session, never
-          // the per-spot divided price.
-          cyclusSlots.forEach((slot) => {
-            partialCyclusSlots.push({ ...slot, allow_single_booking: false, fromCycle: true });
-          });
-        }
-      });
-
+      // Group into whole-cyclus bundles + individual sessions. The rules (honor
+      // allow_cyclus_booking; build the bundle from the *bookable* sessions so a partially-filled
+      // rebook cyclus still offers its remaining weeks as one payment) live in a pure, tested helper.
+      const { bundles, individualSlots } = buildCyclusOfferings<SlotWithDetails>(
+        availableSlots,
+        newCycleSettingsMap,
+        t('booking.trainingCycleFallback', 'Training cycle'),
+      );
       setCyclusBundles(bundles);
-      setIndividualSlots([...standaloneSlots, ...partialCyclusSlots, ...cycleSingleSessionSlots]);
+      setIndividualSlots(individualSlots);
     }
 
     if (trainerData?.id) {
