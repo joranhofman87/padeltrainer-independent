@@ -41,6 +41,7 @@ const data = (over: Partial<RebookManageData> = {}): RebookManageData => ({
   invitesSent: 45,
   invitesTotal: 51,
   uninvitedCount: 6,
+  cycleIds: ['cyc-1', 'cyc-2', 'cyc-3'],
   ...over,
 });
 
