@@ -224,6 +224,9 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
         onRowClick={(r) => navigate(`/app/academy/cycles/${r.id}/rebook`)}
         compact
         stickyHeader
+        // Show on mobile too (horizontal-scrolls via compact min-width) — the old card list rendered
+        // on phones, and the sibling admin tables (CyclesTable/WaitingListTable/InvoiceListTable) do the same.
+        desktopOnly={false}
         actionsHeader={<span className="sr-only">{t('rebookManage.overview.actionsHeader', 'Acties')}</span>}
         renderActions={(r) => (
           <Button
