@@ -172,6 +172,12 @@ export default function PriorityClaimPage() {
           window.location.href = `/pay/${res.publicToken}`;
           return;
         }
+        if (res.mode === 'already_paid') {
+          // Re-click / stale tab on an already-PAID rebook: success — never an error.
+          toast.success(t('rebooking.alreadyPaid', 'This spot is already paid — you’re all set.'));
+          setAccepted(true);
+          return;
+        }
         if (res.mode === 'strict_mollie_unavailable') {
           // Strict: no seat is held without payment — the hold was released. Do NOT mark accepted.
           toast.error(t('rebooking.strictMollieUnavailable', 'We couldn’t start the online payment, so no spot was reserved. Please try again.'));
@@ -223,6 +229,13 @@ export default function PriorityClaimPage() {
       // Record the captain's consent before the group checkout redirect (best-effort).
       if (rebookRules) await recordRebookRulesConsent(token);
       const res = await createGroupRebookInvoice(token);
+      // Already PAID (another member / a stale tab): success — refresh so the page shows the
+      // paid-group state. Checked BEFORE the publicToken branch (a paid response carries it too).
+      if (res.ok && (res.alreadyPaid || res.status === 'paid')) {
+        toast.success(t('rebookGroup.alreadyPaidInfo', 'Your group is already paid — nothing left to do.'));
+        loadClaim();
+        return;
+      }
       if (res.ok && res.checkoutUrl) {
         toast.success(t('rebooking.redirectingToPayment', 'Taking you to the payment page…'));
         window.location.href = res.checkoutUrl;
@@ -245,6 +258,12 @@ export default function PriorityClaimPage() {
       if (res.reason === 'strict_mollie_unavailable') {
         // Strict group: no seats held without an online payment — the holds were released.
         toast.error(t('rebooking.strictMollieUnavailable', 'We couldn’t start the online payment, so no spot was reserved. Please try again.'));
+        return;
+      }
+      if (res.reason === 'member_already_paid') {
+        // I1 cross-guard: a teammate already paid for just their own seat — the full-court group
+        // payment would double-collect it. The academy sorts this out (they were alerted).
+        toast.error(t('rebookGroup.memberAlreadyPaid', 'Someone in your group already paid for their own spot. Contact the academy to arrange the group payment.'));
         return;
       }
       toast.error(t('rebooking.errorGeneric', 'Something went wrong. Please try again.'));
@@ -485,6 +504,26 @@ export default function PriorityClaimPage() {
               <p className="text-sm text-muted-foreground mb-2">{t('rebooking.claimClosed', 'This invitation is no longer active.')}</p>
               <p className="text-sm text-muted-foreground mb-3">{t('rebooking.claimClosedRecovery', 'Your priority spot has been released. Still room? You can book again below. Questions? Contact the academy.')}</p>
               <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+            </div>
+          ) : group?.group_invoice_status === 'paid' ? (
+            // AUDIT FIX: the group's court is already PAID (captain's invoice) — a pending teammate
+            // must see that, not the pay buttons ("pay for the whole group" would hit the paid
+            // invoice; "just my own spot" would stack a second charge — both server-refused now,
+            // but the UI should never steer them there). Declining stays possible: it frees their
+            // seat so the captain can assign someone else.
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-5 w-5" />
+                {(() => {
+                  const captain = group.members?.find((m) => m.status === 'claimed' && !m.is_self)?.first_name;
+                  return captain
+                    ? t('rebookGroup.groupPaidBy', '{{name}} has already paid for your group — your spot is covered once the line-up is confirmed.', { name: captain })
+                    : t('rebookGroup.groupPaid', 'Your group is already paid — your spot is covered once the line-up is confirmed.');
+                })()}
+              </div>
+              <Button onClick={onDecline} disabled={acting} variant="outline" className="w-full sm:w-auto">
+                {acting ? '…' : t('rebooking.release', 'No, release my spot')}
+              </Button>
             </div>
           ) : (
             <div className="space-y-3 pt-2">
