@@ -5,6 +5,7 @@ import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
 import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
+import { canonicalizeSeriesCohort } from "../_shared/rebook-cohort.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -752,14 +753,12 @@ serve(async (req) => {
         const effPrice = sessionPrice ?? tmpl.price_per_session;
         const rebookGroupId = crypto.randomUUID();
 
-        // Cohort for this group = distinct players booked on ANY session of the series.
-        const cohort = new Map<string, { player_id: string | null; guest_player_id: string | null }>();
-        for (const src of series) {
-          for (const b of bookingsBySlot.get(src.id) ?? []) {
-            cohort.set(b.player_id ?? `g:${b.guest_player_id}`, b);
-          }
-        }
-        if (cohort.size === 0) continue;
+        // Cohort for this group = ONE canonical claim identity per distinct person booked on ANY
+        // session of the series. canonicalizeSeriesCohort collapses a guest linked to a profile
+        // (a booking with BOTH ids) to a single XOR identity so the claim insert can't emit two rows
+        // sharing a guest_player_id → uq_slot_priority_claims_slot_guest 23505 (see the helper).
+        const cohortArr = canonicalizeSeriesCohort(series.flatMap((src) => bookingsBySlot.get(src.id) ?? []));
+        if (cohortArr.length === 0) continue;
 
         const allStarts = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz, bodyEndDate);
         const trainerKey = tmpl.trainer_id ?? ""; // NOT NULL in the DB; local type is looser
@@ -828,7 +827,6 @@ serve(async (req) => {
         for (const s of slots) startBySlot.set(s.id, s.start_time);
 
         // 5b. Batch-insert all (slot × player) claims for this series, chunked.
-        const cohortArr = [...cohort.values()];
         const claimRows = slots.flatMap((s) =>
           cohortArr.map((b) => ({
             slot_id: s.id,
