@@ -558,9 +558,15 @@ export default function PriorityClaimPage() {
                         : t('rebookGroup.primary', 'Ja — schrijf de hele groep opnieuw in')}
                   </Button>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Button onClick={onClaim} disabled={acting || rulesBlocked} variant="outline" className="flex-1">
-                      {t('rebooking.keepJustMe', 'Alleen mijn eigen plek')}
-                    </Button>
+                    {/* "Just my own spot" is a DEFERRED-only option: on an UPFRONT cycle the group
+                        pays the whole court ONCE via the captain, so a member paying for only their
+                        seat would half-fund the court and break the pay-once flow. Hide it there —
+                        the member either joins via the captain's full-group payment or declines. */}
+                    {paymentMode !== 'upfront' && (
+                      <Button onClick={onClaim} disabled={acting || rulesBlocked} variant="outline" className="flex-1">
+                        {t('rebooking.keepJustMe', 'Alleen mijn eigen plek')}
+                      </Button>
+                    )}
                     <Button onClick={onDecline} disabled={acting} variant="outline" className="flex-1">
                       {acting ? '…' : t('rebooking.release', 'No, release my spot')}
                     </Button>
