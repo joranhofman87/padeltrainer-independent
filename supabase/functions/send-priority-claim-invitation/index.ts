@@ -19,6 +19,29 @@ const APP_BASE = resolveAppBase(Deno.env.get("PUBLIC_APP_URL"));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Serialize a send failure to a legible string. Resend errors (and thrown Supabase errors) are PLAIN
+ * OBJECTS, so `String(err)` is the useless "[object Object]". Pull name/message/statusCode off them so
+ * the actual reason (e.g. "validation_error … domain is not verified (403)", "rate_limit_exceeded") can
+ * be surfaced to the caller + Slack instead of only console — otherwise a whole failed blast is a black
+ * box (the caller only learns "N not sent", never WHY).
+ */
+const describeSendError = (e: unknown): string => {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as { name?: unknown; message?: unknown; error?: unknown; statusCode?: unknown };
+    const parts = [
+      typeof o.name === "string" ? o.name : null,
+      typeof o.message === "string" ? o.message : null,
+      typeof o.error === "string" ? o.error : null,
+      o.statusCode != null ? `(${String(o.statusCode)})` : null,
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(" ");
+    try { return JSON.stringify(e); } catch { return String(e); }
+  }
+  return String(e);
+};
+
 // Resend rate-limits bursts (HTTP 429). A bulk rebook can fire dozens of invites
 // back to back, so back off and retry on rate-limit errors instead of dropping the
 // invitation. Non-rate-limit errors are returned immediately (the caller releases
@@ -429,6 +452,9 @@ const handler = async (req: Request): Promise<Response> => {
     let sent = 0;
     let failed = 0;
     const failedClaimIds: string[] = [];
+    // First per-send failure reason (Resend rejection etc.) — surfaced to the caller + Slack so a
+    // failed blast reports WHY, not just "N not sent" (the reason otherwise only reaches console).
+    let firstSendError: string | null = null;
 
     // Wall-clock budget: under sustained Resend rate-limiting a big batch (pacing +
     // up to ~4.8s backoff per send) could blow the edge runtime's hard timeout, which
@@ -584,6 +610,7 @@ const handler = async (req: Request): Promise<Response> => {
       });
       if (sendErr) {
         console.error("send error", sendErr);
+        if (!firstSendError) firstSendError = describeSendError(sendErr);
         failed++;
         failedClaimIds.push(c.id);
         // Release the claim so a later run can retry this invitation.
@@ -611,15 +638,15 @@ const handler = async (req: Request): Promise<Response> => {
     if (failed > 0) {
       await notifySlackEdgeError(
         "send-priority-claim-invitation",
-        `${failed} of ${eligible.length} priority-claim invites failed`,
-        { sent, skipped, failed, failedClaimIds, isTest, resend: resend === true },
+        `${failed} of ${eligible.length} priority-claim invites failed${firstSendError ? `: ${firstSendError}` : ""}`,
+        { sent, skipped, failed, failedClaimIds, sampleError: firstSendError, isTest, resend: resend === true },
       );
     }
     // `remaining` (cycleId mode only): representative invites still un-sent for this
     // round AFTER this chunk, so the client can loop until drained. Failures rolled
     // invited_at back to NULL, so they reappear as eligible on the next call (transient
     // 429s get retried); the client stops on no-progress to avoid an endless loop.
-    return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds, remaining: cycleRemaining }), {
+    return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds, remaining: cycleRemaining, sampleError: firstSendError ?? undefined }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });

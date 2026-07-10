@@ -270,6 +270,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
               sent: result.totalSent,
               total,
             }),
+            // Surface WHY the rest didn't send (a Resend rejection / error reason from the edge fn),
+            // instead of leaving the owner to dig through logs.
+            result.sampleError ? { description: result.sampleError } : undefined,
           );
         } else {
           toast.success(
