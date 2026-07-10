@@ -129,7 +129,7 @@ serve(async (req: Request) => {
     // double-collect that seat. Refuse + alert LOUDLY; staff resolves (deducting a member's share is
     // a manual money decision, not an automatic one). Fail CLOSED on a check error — this guards money.
     {
-      let gq = admin.from("slot_priority_claims")
+      const gq = admin.from("slot_priority_claims")
         .select("booking_id, player_id, guest_player_id")
         .eq("rebook_group_id", claim.rebook_group_id)
         .eq("status", "claimed")
@@ -202,7 +202,10 @@ serve(async (req: Request) => {
         token: token.slice(0, 8), groupId: claim.rebook_group_id, strict, reason,
       });
       if (strict) { await releaseCaptainHolds(bookingIds); return json({ ok: false, reason: "strict_mollie_unavailable" }); }
-      return json({ ok: false, reason });
+      // NON-strict: the captain's seats stay booked as a reserved commitment (the academy follows
+      // up manually — it was alerted above). Tell the client explicitly so it can show the honest
+      // "reserved, you'll receive an invoice" copy for THIS case only, and a real error otherwise.
+      return json({ ok: false, reason, reserved: true });
     };
 
     // 3) Mint ONE invoice for the captain at the FULL court price. splitAmongPlayers:1 forces

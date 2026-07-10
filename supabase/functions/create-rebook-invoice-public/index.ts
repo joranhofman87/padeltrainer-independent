@@ -230,7 +230,10 @@ Deno.serve(async (req: Request) => {
         token: token.slice(0, 8), cyclusId, strict, reason,
       });
       if (strict) { await undoSeats(bookingIds); return json({ ok: false, reason: "strict_mollie_unavailable" }); }
-      return json({ ok: false, reason });
+      // NON-strict: the seats stay booked as a reserved commitment (the academy follows up — it was
+      // alerted above). Tell the client explicitly so it can show the honest "reserved, you'll
+      // receive an invoice" copy for THIS case only, and a real error otherwise.
+      return json({ ok: false, reason, reserved: true });
     };
 
     // Mint ONE invoice over ONLY this claimant's own bookings. We intentionally OMIT
