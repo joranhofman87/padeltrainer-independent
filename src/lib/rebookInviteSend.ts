@@ -20,6 +20,8 @@ export interface SendChunkResult {
   failed: number;
   remaining: number;
   failedClaimIds: string[];
+  /** First per-send failure reason from the edge fn (e.g. a Resend rejection), if any. */
+  sampleError?: string | null;
 }
 
 /** Injectable for tests; production hits the edge function. */
@@ -46,6 +48,9 @@ export interface DrainResult {
   leftover: number;
   stoppedReason: 'drained' | 'no_progress' | 'error';
   failedClaimIds: string[];
+  /** A sample failure reason (first Resend rejection / thrown error) — so the UI can show WHY, not
+   *  just "N not sent". Null when nothing failed. */
+  sampleError?: string | null;
 }
 
 const defaultSender: ChunkSender = async ({ cycleId, limit, customMessage, customSubject }) => {
@@ -63,6 +68,7 @@ const defaultSender: ChunkSender = async ({ cycleId, limit, customMessage, custo
     failed: Number(data.failed ?? 0),
     remaining: Number(data.remaining ?? 0),
     failedClaimIds: Array.isArray(data.failedClaimIds) ? data.failedClaimIds : [],
+    sampleError: typeof data.sampleError === 'string' ? data.sampleError : null,
   };
 };
 
@@ -89,18 +95,21 @@ export async function drainRebookInvites(
   let total = 0; // sendable total, learned from the first chunk
   const failedClaimIds = new Set<string>();
   let stoppedReason: DrainResult['stoppedReason'] = 'drained';
+  let sampleError: string | null = null;
 
   for (let i = 0; i < maxIterations; i++) {
     let chunk: SendChunkResult;
     try {
       chunk = await send({ cycleId, limit, customMessage: opts.customMessage, customSubject: opts.customSubject });
-    } catch {
+    } catch (e) {
       stoppedReason = 'error';
+      if (!sampleError) sampleError = e instanceof Error ? e.message : String(e);
       break;
     }
     totalSent += chunk.sent;
     remaining = chunk.remaining;
     lastFailed = chunk.failed;
+    if (!sampleError && chunk.sampleError) sampleError = chunk.sampleError;
     // The first chunk reveals the full sendable set (this chunk's attempts + what's
     // left); pin it so a progress bar has a stable, emailless-excluded denominator.
     if (i === 0) total = chunk.sent + chunk.failed + chunk.remaining;
@@ -115,7 +124,7 @@ export async function drainRebookInvites(
   }
 
   const leftover = stoppedReason === 'drained' ? 0 : remaining + lastFailed;
-  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds] };
+  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], sampleError };
 }
 
 /**
@@ -134,6 +143,7 @@ export async function drainRebookRoundInvites(
   const failedClaimIds = new Set<string>();
   // 'error' if any cycle errored; else 'no_progress' if any stalled with work left; else 'drained'.
   let stoppedReason: DrainResult['stoppedReason'] = 'drained';
+  let sampleError: string | null = null;
 
   for (const cycleId of cycleIds) {
     const before = totalSent;
@@ -147,9 +157,10 @@ export async function drainRebookRoundInvites(
     totalSent += res.totalSent;
     leftover += res.leftover;
     for (const id of res.failedClaimIds) failedClaimIds.add(id);
+    if (!sampleError && res.sampleError) sampleError = res.sampleError;
     if (res.stoppedReason === 'error') stoppedReason = 'error';
     else if (res.stoppedReason === 'no_progress' && stoppedReason !== 'error') stoppedReason = 'no_progress';
   }
 
-  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds] };
+  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], sampleError };
 }
