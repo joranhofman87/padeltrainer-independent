@@ -11,6 +11,28 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
 };
 
 /**
+ * Serialize a thrown value to a legible string. Supabase/PostgREST errors are PLAIN OBJECTS
+ * (not Error instances), so `String(err)` yields the useless "[object Object]" — which both hid
+ * every DB failure behind an opaque 500 AND broke the `trainer_slot_overlap` detection below (the
+ * includes() check could never match). Pull message/details/hint/code off the object instead.
+ */
+const describeThrown = (e: unknown): string => {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [
+      typeof o.message === "string" ? o.message : null,
+      typeof o.details === "string" ? o.details : null,
+      typeof o.hint === "string" ? o.hint : null,
+      o.code ? `(${String(o.code)})` : null,
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(" ");
+    try { return JSON.stringify(e); } catch { return String(e); }
+  }
+  return String(e);
+};
+
+/**
  * Bulk cohort rebooking, keyed on LOCATION + TERM-END week (not cyclus_id).
  *
  * The cohort spans registration-module sessions AND hand-added agenda sessions,
@@ -910,7 +932,9 @@ serve(async (req) => {
       throw buildErr;
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    // Supabase errors are plain objects → describeThrown pulls the real message/code (NOT
+    // "[object Object]"), which also lets the trainer_slot_overlap check below actually match.
+    const message = describeThrown(error);
     logStep("ERROR", { message });
     // The trainer_slot_overlap trigger refusing a replica means the NEW term collides
     // with slots the trainer already has (a data conflict the academy must resolve by
