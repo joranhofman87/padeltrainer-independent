@@ -26,7 +26,7 @@ const corsHeaders = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
 
-interface RebookInvoice { id: string; public_token: string; status: string }
+interface RebookInvoice { id: string; public_token: string; status: string; booking_ids?: string[] | null }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
       cyclusId: string, playerId: string | null, guestId: string | null,
     ): Promise<RebookInvoice | null> => {
       let q = admin.from("invoices")
-        .select("id, public_token, status")
+        .select("id, public_token, status, booking_ids")
         .eq("rebook_cyclus_id", cyclusId)
         .neq("status", "cancelled")
         .order("created_at", { ascending: false })
@@ -51,6 +51,23 @@ Deno.serve(async (req: Request) => {
       q = playerId ? q.eq("player_id", playerId) : q.eq("guest_player_id", guestId!);
       const { data } = await q.maybeSingle();
       return (data as RebookInvoice | null)?.public_token ? (data as RebookInvoice) : null;
+    };
+
+    /** ZOMBIE GUARD: an UNPAID invoice whose bookings were ALL released (TTL cron ran between mint
+     *  and this retry) must never be re-served — paying it would take money for seats that no longer
+     *  exist. The cron now sweeps these too (20260803100000); this closes the ≤5-min gap between
+     *  release and sweep. Cancels the zombie (never a paid one) and reports it so the caller can
+     *  fall through to a fresh accept+mint. Fail-SAFE: on a read error, treat as live (the webhook's
+     *  cancelled-booking guard is the terminal backstop). */
+    const isZombieInvoice = async (inv: RebookInvoice): Promise<boolean> => {
+      const ids = inv.booking_ids ?? [];
+      if (inv.status === "paid" || ids.length === 0) return false;
+      const { data: live, error } = await admin
+        .from("bookings").select("id").in("id", ids).neq("status", "cancelled").limit(1);
+      if (error || live === null) return false;
+      if (live.length > 0) return false;
+      await admin.from("invoices").update({ status: "cancelled" }).eq("id", inv.id).neq("status", "paid");
+      return true;
     };
 
     /** Best-effort Mollie checkout for an UNPAID invoice (paid needs none; the client falls back to
@@ -135,7 +152,13 @@ Deno.serve(async (req: Request) => {
     // DOUBLE-PAY GUARD (sequential): any active rebook invoice already covers this claimant+cyclus →
     // hand THAT one back (re-click / returning). The unique index makes a 2nd active one impossible.
     const existing = await activeRebookInvoice(cyclusId, pid, gid);
-    if (existing) {
+    if (existing && !(await isZombieInvoice(existing))) {
+      // Already PAID: this is a success, not a failure — never let the strict guard below misread
+      // "no checkout for a paid invoice" as strict_mollie_unavailable ("no spot was reserved") to a
+      // player who has, in fact, paid. The client shows the paid state / links the paid invoice.
+      if (existing.status === "paid") {
+        return json({ ok: true, alreadyStarted: true, alreadyPaid: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status });
+      }
       const checkoutUrl = await startCheckout(existing);
       // STRICT: never return the bank-fallback publicToken without a live checkout — the client would
       // show "your spot is reserved, pay by invoice", i.e. a held seat with no online payment. If the
@@ -144,6 +167,8 @@ Deno.serve(async (req: Request) => {
       if (cycleStrict && !checkoutUrl) return json({ ok: false, reason: "strict_mollie_unavailable" });
       return json({ ok: true, alreadyStarted: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status, checkoutUrl });
     }
+    // (A zombie was cancelled above → fall through to a fresh accept + mint, exactly as if the
+    // cron's sweep had already run.)
 
     // FULL-CYCLE SCOPE (F2/A-4): all the CLAIMANT's claims across this cyclus, by identity — derived
     // server-side, never client-supplied booking IDs.
@@ -260,6 +285,10 @@ Deno.serve(async (req: Request) => {
       if (cancelErr) return json({ ok: false, reason: "mint_conflict", message: String(cancelErr) });
       const winner = await activeRebookInvoice(cyclusId, pid, gid);
       if (winner) {
+        // PAID winner (concurrent payment already completed) = success, not a strict failure.
+        if (winner.status === "paid") {
+          return json({ ok: true, alreadyStarted: true, alreadyPaid: true, invoiceId: winner.id, publicToken: winner.public_token, status: winner.status });
+        }
         const checkoutUrl = await startCheckout(winner);
         // STRICT: same guard as the double-pay early-return — never hand back a bank-fallback
         // publicToken without a live checkout (that would reserve a seat with no online payment).

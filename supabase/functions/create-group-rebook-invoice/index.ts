@@ -24,7 +24,7 @@ const corsHeaders = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
 
-interface GroupInvoice { id: string; public_token: string; status: string }
+interface GroupInvoice { id: string; public_token: string; status: string; booking_ids?: string[] | null }
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -39,13 +39,27 @@ serve(async (req: Request) => {
     const activeGroupInvoice = async (groupId: string): Promise<GroupInvoice | null> => {
       const { data } = await admin
         .from("invoices")
-        .select("id, public_token, status")
+        .select("id, public_token, status, booking_ids")
         .eq("rebook_group_id", groupId)
         .neq("status", "cancelled")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       return (data as GroupInvoice | null)?.public_token ? (data as GroupInvoice) : null;
+    };
+
+    /** ZOMBIE GUARD (mirrors create-rebook-invoice-public): an UNPAID group invoice whose bookings
+     *  were ALL released by the TTL cron must never be re-served — cancel it and mint fresh. Never
+     *  touches a paid invoice; fail-safe (treated as live) on a read error. */
+    const isZombieInvoice = async (inv: GroupInvoice): Promise<boolean> => {
+      const ids = inv.booking_ids ?? [];
+      if (inv.status === "paid" || ids.length === 0) return false;
+      const { data: live, error } = await admin
+        .from("bookings").select("id").in("id", ids).neq("status", "cancelled").limit(1);
+      if (error || live === null) return false;
+      if (live.length > 0) return false;
+      await admin.from("invoices").update({ status: "cancelled" }).eq("id", inv.id).neq("status", "paid");
+      return true;
     };
 
     /** Best-effort Mollie checkout for an UNPAID invoice (paid invoices need none; the client falls
@@ -92,7 +106,12 @@ serve(async (req: Request) => {
     // or this caller returning), hand THAT one back — never mint a second. The unique partial index
     // on invoices(rebook_group_id) WHERE status<>'cancelled' makes a 2nd active invoice impossible.
     const existing = await activeGroupInvoice(claim.rebook_group_id);
-    if (existing) {
+    if (existing && !(await isZombieInvoice(existing))) {
+      // Already PAID: success, not a failure — a teammate clicking after the captain paid must see
+      // the paid state, never "couldn't start payment, no spot was reserved".
+      if (existing.status === "paid") {
+        return json({ ok: true, alreadyStarted: true, alreadyPaid: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status });
+      }
       const checkoutUrl = await startCheckout(existing);
       // STRICT: never return the bank-fallback publicToken without a live checkout — that would reserve a
       // seat with no online payment. Report strict_mollie_unavailable → the client offers a retry, not a
@@ -100,8 +119,45 @@ serve(async (req: Request) => {
       if (cycleStrict && !checkoutUrl) return json({ ok: false, reason: "strict_mollie_unavailable" });
       return json({ ok: true, alreadyStarted: true, invoiceId: existing.id, publicToken: existing.public_token, status: existing.status, checkoutUrl });
     }
+    // (A zombie was cancelled above → fall through to a fresh accept + mint.)
 
     if (claim.status !== "pending") return json({ ok: false, reason: "already_responded", status: claim.status });
+
+    // I1 CROSS-GUARD (audit): a member may have already PAID for just their own seat via the authed
+    // just-my-spot path — those payments are NOT tagged to the group (no group invoice exists yet),
+    // so the double-pay guard above can't see them. The captain's full-court payment would then
+    // double-collect that seat. Refuse + alert LOUDLY; staff resolves (deducting a member's share is
+    // a manual money decision, not an automatic one). Fail CLOSED on a check error — this guards money.
+    {
+      let gq = admin.from("slot_priority_claims")
+        .select("booking_id, player_id, guest_player_id")
+        .eq("rebook_group_id", claim.rebook_group_id)
+        .eq("status", "claimed")
+        .not("booking_id", "is", null);
+      const { data: claimedRows, error: gqErr } = await gq;
+      if (gqErr) return json({ ok: false, reason: "retry" }, 503);
+      const captainKey = claim.player_id ? `p:${claim.player_id}` : `g:${claim.guest_player_id}`;
+      const otherBookingIds = (claimedRows ?? [])
+        .filter((r: { player_id: string | null; guest_player_id: string | null }) =>
+          (r.player_id ? `p:${r.player_id}` : `g:${r.guest_player_id}`) !== captainKey)
+        .map((r: { booking_id: string | null }) => r.booking_id)
+        .filter(Boolean) as string[];
+      if (otherBookingIds.length > 0) {
+        const { data: paidRows, error: pbErr } = await admin
+          .from("bookings").select("id")
+          .in("id", otherBookingIds)
+          .eq("payment_status", "paid")
+          .neq("status", "cancelled")
+          .limit(1);
+        if (pbErr) return json({ ok: false, reason: "retry" }, 503);
+        if ((paidRows ?? []).length > 0) {
+          await notifySlackEdgeError("create-group-rebook-invoice", "group pay refused: a member already paid for their own seat — captain full-court payment would double-collect", {
+            token: token.slice(0, 8), groupId: claim.rebook_group_id,
+          });
+          return json({ ok: false, reason: "member_already_paid" });
+        }
+      }
+    }
 
     // 1) Book ONLY the captain's own seat (group accept filters to the captain's player); the
     //    teammates' claims stay 'pending' so the slot remains held for them.
@@ -211,6 +267,10 @@ serve(async (req: Request) => {
       // Hand back the winner if it's already tagged; otherwise the client retries → the guard wins.
       const winner = await activeGroupInvoice(claim.rebook_group_id);
       if (winner) {
+        // PAID winner (concurrent payment already completed) = success, not a strict failure.
+        if (winner.status === "paid") {
+          return json({ ok: true, alreadyStarted: true, alreadyPaid: true, invoiceId: winner.id, publicToken: winner.public_token, status: winner.status });
+        }
         const checkoutUrl = await startCheckout(winner);
         // STRICT: never hand back the bank-fallback publicToken without a live checkout — that would
         // reserve a seat with no online payment. Mirrors the single-claim fn + the double-pay guard +

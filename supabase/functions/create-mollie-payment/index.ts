@@ -313,6 +313,53 @@ serve(async (req) => {
         }
       }
 
+      // I1 CROSS-GUARD (audit): rebook GROUPS pay the court ONCE via the captain's group invoice.
+      // RB-P1-01 above can't see it — the group invoice covers the CAPTAIN's bookings, never this
+      // member's — so a member paying "just my own spot" after the captain's group invoice exists
+      // would stack a second charge on an already-covered court. If any requested booking belongs
+      // to a rebook-group claim whose group has an active (non-cancelled) group invoice, refuse:
+      // that seat is settled via the captain's payment. Fail CLOSED on a check error (money guard).
+      {
+        const { data: groupRows, error: grErr } = await supabase
+          .from("slot_priority_claims")
+          .select("rebook_group_id")
+          .in("booking_id", requestedBookingIds)
+          .not("rebook_group_id", "is", null);
+        if (grErr) {
+          logStep("Group-invoice check failed — refusing to mint (fail closed)", { error: grErr.message });
+          return new Response(
+            JSON.stringify({ error: "invoice_check_failed", message: "Kon de betaalstatus niet controleren. Probeer het zo opnieuw." }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const groupIds = [...new Set(((groupRows ?? []) as Array<{ rebook_group_id: string | null }>)
+          .map((r) => r.rebook_group_id).filter(Boolean))] as string[];
+        if (groupIds.length > 0) {
+          const { data: groupInv, error: giErr } = await supabase
+            .from("invoices")
+            .select("id, status")
+            .in("rebook_group_id", groupIds)
+            .neq("status", "cancelled")
+            .limit(1);
+          if (giErr) {
+            logStep("Group-invoice lookup failed — refusing to mint (fail closed)", { error: giErr.message });
+            return new Response(
+              JSON.stringify({ error: "invoice_check_failed", message: "Kon de betaalstatus niet controleren. Probeer het zo opnieuw." }),
+              { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+          if ((groupInv ?? []).length > 0) {
+            logStep("Refusing — the rebook group already has an active group invoice (captain pays once)", {
+              invoiceId: (groupInv![0] as { id: string }).id, groupIds,
+            });
+            return new Response(
+              JSON.stringify({ error: "group_already_paid", invoiceId: (groupInv![0] as { id: string }).id }),
+              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+      }
+
       const slots = existingBookings.map((b) => b.availability_slots as SlotPricingInput & { cyclus_id: string | null; academy_profile_id: string | null });
       // All slots in a cyclus share one academy; use it to disambiguate a multi-academy trainer.
       recipientAcademyProfileId = slots[0]?.academy_profile_id ?? null;
