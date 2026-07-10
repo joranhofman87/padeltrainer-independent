@@ -45,7 +45,8 @@ beforeAll(async () => {
       ('${S1}', 'claimed', NULL,    'tokA',    '${PA}', NULL),   -- single, has an unpaid invoice
       ('${S1}', 'claimed', NULL,    'tokPaid', '${PB}', NULL),   -- single, invoice already paid
       ('${S1}', 'claimed', NULL,    'tokC',    '${PC}', NULL),   -- single, NO invoice for this identity
-      ('${S1}', 'claimed', '${G1}', 'tokG',    NULL,    '${GG}');-- group captain, unpaid group invoice
+      ('${S1}', 'claimed', '${G1}', 'tokG',    NULL,    '${GG}'),-- group captain, unpaid group invoice
+      ('${S1}', 'pending', '${G1}', 'tokMate', '${PC}', NULL);   -- group TEAMMATE (not the invoice recipient)
 
     INSERT INTO public.invoices (rebook_group_id, rebook_cyclus_id, player_id, guest_player_id, status, public_token, public_token_revoked_at) VALUES
       (NULL,    '${CY1}', '${PA}', NULL,    'sent', '${TOK_A}',          NULL),  -- INV_A: PA unpaid
@@ -54,6 +55,11 @@ beforeAll(async () => {
       (NULL,    '${CY1}', '${PA}', NULL,    'sent', gen_random_uuid(),   now()); -- INV_A2: PA but token revoked
   `);
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260802100000_unpaid_rebook_invoice_by_token.sql'), 'utf8'));
+  // Apply the redefinition in prod migration order — the group branch is now captain-scoped.
+  // (Loads only the resume-RPC half; get_rebook_group_by_token has its own suite + schema.)
+  const combined = readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260803100100_group_token_paid_state.sql'), 'utf8');
+  const resumeHalf = combined.slice(combined.indexOf('CREATE OR REPLACE FUNCTION public.get_unpaid_rebook_invoice_by_claim_token'));
+  await db.exec(resumeHalf);
 });
 
 describe('get_unpaid_rebook_invoice_by_claim_token', () => {
@@ -72,6 +78,11 @@ describe('get_unpaid_rebook_invoice_by_claim_token', () => {
 
   it('returns the group invoice token for a group captain claim', async () => {
     expect((await resolve('tokG'))?.public_token).toBe(TOK_G);
+  });
+
+  it("does NOT hand a teammate the captain's group invoice (captain-scoped)", async () => {
+    // tokMate is in the same group but is not the invoice recipient — no resume banner for them.
+    expect(await resolve('tokMate')).toBeNull();
   });
 
   it('returns null for an unknown token', async () => {

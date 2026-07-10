@@ -98,10 +98,38 @@ describe('acceptClaimAndStartPayment — UPFRONT delegates to the no-login publi
     expect(h.state.invokeArgs.find((c) => c.fn === 'create-mollie-payment')).toBeFalsy();
   });
 
-  it('a mint failure surfaces as "reserved" (upfront_unavailable), never a double-accept', async () => {
-    h.state.publicResult = { ok: false, reason: 'business_incomplete' };
+  it('a NON-strict kept-seat mint failure surfaces as "reserved" (upfront_unavailable), never a double-accept', async () => {
+    // The fn stamps reserved:true when the seats were kept as a reserved commitment.
+    h.state.publicResult = { ok: false, reason: 'business_incomplete', reserved: true };
     const res = await acceptClaimAndStartPayment('tok-1');
     expect(res?.mode).toBe('upfront_unavailable');
+  });
+
+  it('a kept-seat mint failure from a PRE-flag backend (no reserved key) still maps to "reserved"', async () => {
+    // Deploy-order safety: known kept-seat reasons keep the honest reserved copy without the flag.
+    h.state.publicResult = { ok: false, reason: 'mint_failed' };
+    const res = await acceptClaimAndStartPayment('tok-1');
+    expect(res?.mode).toBe('upfront_unavailable');
+  });
+
+  it('a nothing-booked failure surfaces as an ERROR — never "reserved", never a double-accept (audit fix)', async () => {
+    // e.g. a tag-conflict 'retry' / 'mint_conflict': the fn booked nothing (or undid it). The old
+    // client mapped this to "reserved — you'll receive an invoice", lying to the player.
+    h.state.publicResult = { ok: false, reason: 'retry' };
+    const res = await acceptClaimAndStartPayment('tok-1');
+    expect(res?.ok).toBe(false);
+    expect(res?.reason).toBe('retry');
+    // No fall-through to the legacy authed path: no re-accept, no checkout attempt.
+    expect(h.rpc).not.toHaveBeenCalledWith('respond_to_priority_claim', expect.anything());
+    expect(h.state.invokeArgs.find((c) => c.fn === 'create-mollie-payment')).toBeFalsy();
+  });
+
+  it('an already-PAID rebook maps to mode "already_paid" (success, nothing to pay)', async () => {
+    h.state.publicResult = { ok: true, alreadyStarted: true, alreadyPaid: true, status: 'paid', publicToken: 'tk-paid' };
+    const res = await acceptClaimAndStartPayment('tok-1');
+    expect(res?.ok).toBe(true);
+    expect(res?.mode).toBe('already_paid');
+    expect(res?.publicToken).toBe('tk-paid');
   });
 
   it("a group member's just-my-spot (is_group) falls through to the legacy authed path; a strict HOLD stays payable → checkout", async () => {

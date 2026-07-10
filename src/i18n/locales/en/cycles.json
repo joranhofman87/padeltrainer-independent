@@ -827,7 +827,8 @@
     "claimClosedRecovery": "Your priority spot has been released. Still room? You can book again below. Questions? Contact the academy.",
     "cardRules": "You keep your spot until the deadline. If you don't respond, your spot is released to others.",
     "cardChangeTimes": "Want a different time? Ask the academy to move you, or release your spot and rebook if another time has room.",
-    "cardRecovery": "Miss the deadline? You can look for an available spot afterwards, or contact the academy."
+    "cardRecovery": "Miss the deadline? You can look for an available spot afterwards, or contact the academy.",
+    "alreadyPaid": "This spot is already paid — you’re all set."
   },
   "genericError": "Something went wrong. Please try again.",
   "loadCyclesError": "Could not load your registrations. Please try again.",
@@ -1099,7 +1100,11 @@
     "addFirstNameRequired": "Enter a first name.",
     "addLastNameRequired": "Enter a last name.",
     "addEmailInvalid": "Enter a valid email address.",
-    "addPhoneRequired": "Enter a phone number."
+    "addPhoneRequired": "Enter a phone number.",
+    "alreadyPaidInfo": "Your group is already paid — nothing left to do.",
+    "memberAlreadyPaid": "Someone in your group already paid for their own spot. Contact the academy to arrange the group payment.",
+    "groupPaid": "Your group is already paid — your spot is covered once the line-up is confirmed.",
+    "groupPaidBy": "{{name}} has already paid for your group — your spot is covered once the line-up is confirmed."
   },
   "rebookManage": {
     "title": "Manage rebooking",
@@ -1235,7 +1240,8 @@
     "priorityHint": "The slot stays reserved for them until they decline or this period ends.",
     "enableMemberWindow": "Then give returning players first pick of any free slots, before the public",
     "memberLabel": "How long do returning players keep priority on free slots?",
-    "memberHint": "After that, anyone can book the remaining slots."
+    "memberHint": "After that, anyone can book the remaining slots.",
+    "strictMollie": "Strict: only lock in the spot after it has been paid online (Mollie) — no invoice fallback."
   },
   "rebookReview": {
     "group": "Group & players",

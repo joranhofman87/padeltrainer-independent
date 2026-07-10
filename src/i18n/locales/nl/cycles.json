@@ -939,7 +939,8 @@
     "claimClosedRecovery": "Je voorrangsplek is vrijgegeven. Nog plek? Je kunt hieronder opnieuw boeken. Vragen? Neem contact op met de academy.",
     "cardRules": "Je houdt je plek tot de deadline. Reageer je niet, dan komt je plek vrij voor anderen.",
     "cardChangeTimes": "Wil je een ander moment? Vraag de academy om je te verplaatsen, of geef je plek vrij en boek opnieuw als er ergens plek is.",
-    "cardRecovery": "Mis je de deadline? Zoek daarna een vrije plek of neem contact op met de academy."
+    "cardRecovery": "Mis je de deadline? Zoek daarna een vrije plek of neem contact op met de academy.",
+    "alreadyPaid": "Deze plek is al betaald — je hoeft niets meer te doen."
   },
   "tierControl": {
     "title": "Zichtbaarheid & herboeking",
@@ -1224,7 +1225,11 @@
     "addFirstNameRequired": "Vul een voornaam in.",
     "addLastNameRequired": "Vul een achternaam in.",
     "addEmailInvalid": "Vul een geldig e-mailadres in.",
-    "addPhoneRequired": "Vul een telefoonnummer in."
+    "addPhoneRequired": "Vul een telefoonnummer in.",
+    "alreadyPaidInfo": "Je groep is al betaald — je hoeft niets meer te doen.",
+    "memberAlreadyPaid": "Iemand in je groep heeft al voor zijn eigen plek betaald. Neem contact op met de academie om de groepsbetaling te regelen.",
+    "groupPaid": "Je groep is al betaald — je plek is gedekt zodra de line-up is bevestigd.",
+    "groupPaidBy": "{{name}} heeft al voor je groep betaald — je plek is gedekt zodra de line-up is bevestigd."
   },
   "rebookManage": {
     "title": "Herboeking beheren",

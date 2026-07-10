@@ -709,6 +709,8 @@ export interface RebookGroup {
   can_manage_group?: boolean;
   /** The single active group invoice (upfront) — manage links covered teammates onto it. */
   group_invoice_id?: string | null;
+  /** That invoice's status ('paid' ⇒ the court is settled; teammates see an informational state). */
+  group_invoice_status?: string | null;
   self_key: string;
   slot: Record<string, unknown>;
   sessions: number;
@@ -771,6 +773,8 @@ export interface GroupRebookInvoiceResult {
   reason?: string;
   /** True when the group already had an active invoice — the caller is sent to THAT one, not a 2nd. */
   alreadyStarted?: boolean;
+  /** True when that invoice is already PAID — success state, nothing to pay. */
+  alreadyPaid?: boolean;
   invoiceId?: string;
   publicToken?: string;
   status?: string;
@@ -828,8 +832,10 @@ export interface AcceptAndPayResult {
    * - 'strict_mollie_unavailable': STRICT pay-first cycle where the Mollie checkout
    *   could not be started — strict has NO bank fallback, so the just-created HOLD
    *   was RELEASED (no seat is kept). The player should retry; nothing is reserved.
+   * - 'already_paid': the claimant's (or their group's) rebook invoice is ALREADY PAID —
+   *   a re-click / stale tab. Success state: nothing to pay, the spot is secured.
    */
-  mode?: 'deferred' | 'upfront' | 'upfront_invoiced' | 'upfront_unavailable' | 'strict_mollie_unavailable';
+  mode?: 'deferred' | 'upfront' | 'upfront_invoiced' | 'upfront_unavailable' | 'strict_mollie_unavailable' | 'already_paid';
   checkoutUrl?: string;
   publicToken?: string;
   /** RB-P2-05: sessions in the cyclus that were full at accept time and NOT booked (upfront path). */
@@ -896,6 +902,10 @@ export interface PublicRebookInvoiceResult {
   ok: boolean;
   reason?: string;
   alreadyStarted?: boolean;
+  /** True when the existing rebook invoice is already PAID — success state, nothing to pay. */
+  alreadyPaid?: boolean;
+  /** NON-strict failure where the seats WERE kept as a reserved commitment (academy follows up). */
+  reserved?: boolean;
   invoiceId?: string;
   publicToken?: string;
   status?: string;
@@ -965,12 +975,26 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     // result is handled here (the public fn already accepted the claim server-side, so we must NOT
     // fall through and re-accept — that would show a misleading "already responded").
     if (res && res.reason !== 'is_group' && res.reason !== 'invoke_failed' && res.reason !== 'claim_not_found') {
+      // ALREADY PAID (re-click / stale tab / teammate after the captain paid): success — nothing
+      // to pay. Checked BEFORE the publicToken branch (a paid response carries the token too).
+      if (res.ok && (res.status === 'paid' || res.alreadyPaid)) {
+        return { ok: true, status: 'claimed', mode: 'already_paid', publicToken: res.publicToken };
+      }
       if (res.ok && res.checkoutUrl) return { ok: true, status: 'claimed', mode: 'upfront', checkoutUrl: res.checkoutUrl, skippedFull: res.skippedFull };
       if (res.ok && res.publicToken) return { ok: true, status: 'claimed', mode: 'upfront_invoiced', publicToken: res.publicToken, skippedFull: res.skippedFull };
       if (res.reason === 'strict_mollie_unavailable') return { ok: true, status: 'pending', mode: 'strict_mollie_unavailable' };
-      // Booked server-side but no checkout/invoice (e.g. the academy's payment setup is incomplete):
-      // the seat is reserved — surface that (manual follow-up), don't lose it or double-accept.
-      return { ok: true, status: 'claimed', mode: 'upfront_unavailable' };
+      // NON-strict kept-seat failures: the seats stay booked as a reserved commitment (the academy
+      // was alerted and follows up) — the "reserved, you'll receive an invoice" copy is HONEST here.
+      // Prefer the fn's explicit reserved flag; fall back to the known kept-seat mint reasons for a
+      // pre-flag deployed backend (deploy-order safety).
+      const KEPT_SEAT_REASONS = ['mint_failed', 'business_incomplete', 'missing_price_data', 'no_invoice', 'mint_timeout'];
+      if (res.ok || res.reserved || (res.reason && KEPT_SEAT_REASONS.includes(res.reason))) {
+        return { ok: true, status: 'claimed', mode: 'upfront_unavailable' };
+      }
+      // AUDIT FIX: any OTHER failure booked nothing — it must never masquerade as "reserved —
+      // you'll receive an invoice". Surface it so the player retries (the claim page maps known
+      // reasons; unknown → generic error toast).
+      return { ok: false, reason: res.reason ?? 'unknown' };
     }
   }
 
