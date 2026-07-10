@@ -58,6 +58,8 @@ interface ConfirmData {
   groupsDetail: RebookGroupDetail[];
   noEmailTotal: number;
   grandInvoiceTotal: number;
+  /** The cycles this run will create — one per series (per-series split). >1 ⇒ show the breakdown. */
+  targetCycles: Array<{ name: string }>;
 }
 
 /** A calendar date field over a yyyy-MM-dd string value (matches the app's other date pickers). */
@@ -316,6 +318,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       if (error) throw error;
       setSecondBucketAdded(Number(data?.secondBucketAddedCount ?? 0));
       setConfirmData((prev) => (prev ? {
+        targetCycles: Array.isArray(data?.targetCycles) ? (data.targetCycles as Array<{ name: string }>) : prev.targetCycles,
         groups: Number(data?.groups ?? 0),
         players: Number(data?.players ?? 0),
         totalSessions: Number(data?.totalSessions ?? 0),
@@ -358,6 +361,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : [],
         noEmailTotal: Number(data?.noEmailTotal ?? 0),
         grandInvoiceTotal: Number(data?.grandInvoiceTotal ?? 0),
+        targetCycles: Array.isArray(data?.targetCycles) ? (data.targetCycles as Array<{ name: string }>) : [],
       });
       window.scrollTo({ top: 0 });
     } catch (e) {
@@ -429,6 +433,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
               price: sessionPrice || (preview?.suggestedPrice ?? ''),
             })}
           </p>
+          {confirmData.targetCycles.length > 1 && (
+            <p className="text-sm font-medium text-foreground mt-2">
+              {t('rebookCohort.confirmMultiCycle', 'Er worden {{count}} aparte cycli aangemaakt (één per groep): {{names}}', {
+                count: confirmData.targetCycles.length,
+                names: confirmData.targetCycles.map((c) => c.name).join(', '),
+              })}
+            </p>
+          )}
           {holidays.filter((h) => h.from && h.to).length > 0 && (
             <p className="text-xs text-muted-foreground mt-1">
               {t('rebookCohort.confirmHolidayNote', '{{count}} vakantieperiode wordt niet ingepland — die sessies zitten niet in de aantallen hieronder.', { count: holidays.filter((h) => h.from && h.to).length })}

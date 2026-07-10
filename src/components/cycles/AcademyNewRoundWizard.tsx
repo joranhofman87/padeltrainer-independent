@@ -15,7 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { drainRebookInvites } from '@/lib/rebookInviteSend';
+import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/lib/cyclusLabel';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
@@ -227,8 +227,11 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
     setSendProgress(null);
     try {
       // 1. Create the round + claims WITHOUT sending (skipInvites) — returns fast.
+      //    roundAware:true tells the engine we can drain a MULTI-cycle round (one cycle per
+      //    series); without it a multi-target run sends inline so an old client never strands
+      //    sibling cycles' invites.
       const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-        body: { ...baseBody, skipInvites: true },
+        body: { ...baseBody, skipInvites: true, roundAware: true },
       });
       if (error) throw error;
       if (data?.ok === false && data?.reason === 'already_exists') {
@@ -240,15 +243,19 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         return;
       }
       const newCycleId = data?.targetCycleId as string | undefined;
+      // A per-series run returns all sibling cycles; drain invites across ALL of them.
+      const roundCycleIds: string[] = Array.isArray(data?.targetCycles) && data.targetCycles.length > 0
+        ? (data.targetCycles as Array<{ id: string }>).map((c) => c.id)
+        : (newCycleId ? [newCycleId] : []);
       const total = Number(data?.representativeCount ?? data?.players ?? 0);
 
       // 2. Drain the invites with live progress — but ONLY when the edge fn actually
       //    deferred them (invitesDeferred). If an older bulk-rebook-cycle is still
       //    deployed it sent inline and ignored skipInvites; fall back to its own
       //    invitesSent/failedClaimIds so we never mis-report during a deploy gap.
-      if (newCycleId && total > 0 && data?.invitesDeferred === true) {
+      if (roundCycleIds.length > 0 && total > 0 && data?.invitesDeferred === true) {
         setSendProgress({ sent: 0, total });
-        const result = await drainRebookInvites(newCycleId, {
+        const result = await drainRebookRoundInvites(roundCycleIds, {
           customMessage: baseBody.invitationMessage,
           customSubject: baseBody.invitationSubject,
           // Prefer the drain's sendable total (excludes emailless reps) once known.

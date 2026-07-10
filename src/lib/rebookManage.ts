@@ -124,6 +124,10 @@ export interface RebookManageGroup {
   capacity: number;
   status: GroupStatus;
   players: RebookManagePlayer[];
+  /** The cycle this group belongs to (per-series split): set on multi-cycle rounds so the manage
+   *  page can label which new cycle each group became; null/absent for a single-cycle round. */
+  cycleId?: string | null;
+  cycleName?: string | null;
 }
 
 export interface RebookManageData {
@@ -162,6 +166,7 @@ interface SlotRow {
   public_release_status: PublicReleaseStatus | null;
   priority_window_ends_at: string | null;
   member_window_ends_at: string | null;
+  cyclus_id?: string | null;
 }
 
 /** Manager-facing slot phase from the window timestamps (no viewer context). Mirrors
@@ -253,13 +258,35 @@ export function buildRebookPaidResolver(
 }
 
 export async function getCycleRebookStatus(cycleId: string): Promise<RebookManageData> {
-  const [{ data: cycle }, { data: slots }] = await Promise.all([
-    supabase.from('cycles').select('name, settings').eq('id', cycleId).maybeSingle(),
-    supabase
-      .from('availability_slots')
-      .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at')
-      .eq('cyclus_id', cycleId),
-  ]);
+  // ROUND AGGREGATION: a per-series rebook run creates one cycle per series, all sharing
+  // settings.rebook_round_id. The manage/progress view shows the WHOLE round combined (the owner's
+  // "one combined view on how the rebooking is going"), while the cycles stay separate elsewhere.
+  // Legacy single-cycle rounds (no rebook_round_id) resolve to just [cycleId] → identical to before.
+  const { data: cycle } = await supabase
+    .from('cycles').select('name, owner_type, owner_id, settings').eq('id', cycleId).maybeSingle();
+  const roundSettings = (cycle?.settings ?? {}) as Record<string, unknown>;
+  const roundId = typeof roundSettings.rebook_round_id === 'string' ? roundSettings.rebook_round_id : null;
+  let cycleIds = [cycleId];
+  const cycleNameById = new Map<string, string>([[cycleId, cycle?.name ?? '']]);
+  if (roundId && cycle?.owner_id) {
+    const { data: siblings } = await supabase
+      .from('cycles')
+      .select('id, name')
+      .eq('owner_type', cycle.owner_type)
+      .eq('owner_id', cycle.owner_id)
+      // Match this engine's own cycles only (rebook marker) sharing the round id.
+      .eq('settings->>rebook_round_id', roundId)
+      .not('settings->>rebook_payment_mode', 'is', null);
+    if (siblings && siblings.length > 0) {
+      cycleIds = siblings.map((c) => c.id);
+      cycleNameById.clear();
+      for (const c of siblings) cycleNameById.set(c.id, c.name);
+    }
+  }
+  const { data: slots } = await supabase
+    .from('availability_slots')
+    .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at, cyclus_id')
+    .in('cyclus_id', cycleIds);
   const settingsObj = (cycle?.settings ?? null) as {
     rebook_invitation_message?: unknown; rebook_reminder_message?: unknown; rebook_reminder_subject?: unknown;
   } | null;
@@ -267,8 +294,12 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const reminderMessage = typeof settingsObj?.rebook_reminder_message === 'string' ? settingsObj.rebook_reminder_message : '';
   const reminderSubject = typeof settingsObj?.rebook_reminder_subject === 'string' ? settingsObj.rebook_reminder_subject : '';
   const slotRows = (slots ?? []) as SlotRow[];
+  // For a multi-cycle round, the header shows the round label; a single cycle shows its own name.
+  const displayName = (roundId && cycleIds.length > 1 && typeof roundSettings.rebook_round_label === 'string'
+    ? roundSettings.rebook_round_label
+    : cycle?.name) ?? '';
   const empty: RebookManageData = {
-    cycleName: cycle?.name ?? '',
+    cycleName: displayName,
     invitationMessage,
     reminderMessage,
     reminderSubject,
@@ -333,8 +364,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const singleRes = await supabase
     .from('invoices').select('player_id, guest_player_id, status, total')
     // rebook_cyclus_id is a real column missing from the generated types (types.ts drift);
-    // cast the key to a known column so `.eq` type-resolves — the runtime value is unchanged.
-    .eq('rebook_cyclus_id' as 'id', cycleId);
+    // cast the key to a known column so `.in` type-resolves — the runtime value is unchanged.
+    // Round-aware: single-claim invoices span every sibling cycle of the round.
+    .in('rebook_cyclus_id' as 'id', cycleIds);
   const singleInvoices = (singleRes.data ?? []) as SingleInvoiceRow[];
   let groupInvoices: GroupInvoiceRow[] = [];
   if (groupIds.length) {
@@ -441,6 +473,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       capacity: rep.max_participants ?? 0,
       status,
       players,
+      // Only meaningful when the round spans >1 cycle; the UI shows it as a per-group badge.
+      cycleId: cycleIds.length > 1 ? (rep.cyclus_id ?? null) : null,
+      cycleName: cycleIds.length > 1 ? (rep.cyclus_id ? cycleNameById.get(rep.cyclus_id) ?? null : null) : null,
     });
   }
   groups.sort((a, b) => a.weekday.localeCompare(b.weekday) || a.time.localeCompare(b.time));
@@ -494,7 +529,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const { paidAmount, outstandingAmount } = sumRebookInvoiceAmounts(singleInvoices, groupInvoices);
 
   return {
-    cycleName: cycle?.name ?? '',
+    cycleName: displayName,
     invitationMessage,
     reminderMessage,
     reminderSubject,
@@ -564,11 +599,13 @@ export async function sendRebookReminder(args: {
 // ===== Discovery: list an academy's rebook rounds =====
 
 export interface RebookRound {
-  id: string;
+  id: string; // the PRIMARY cycle id (where 'Beheer' lands; its manage page aggregates the round)
   name: string;
   startDate: string | null; // yyyy-mm-dd
   status: string; // draft | open | closed | ...
   archived: boolean;
+  /** All cycle ids of this round (a per-series run has >1). Length 1 for legacy single-cycle rounds. */
+  cycleIds: string[];
 }
 
 /** The academy's rebooked "new round" cycles (type='cyclus' with a rebook payment
@@ -589,18 +626,33 @@ export async function listRebookRounds(
     .not('settings->>rebook_payment_mode', 'is', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? [])
-    .map((c) => {
-      const s = (c.settings ?? null) as { rebook_archived?: unknown } | null;
-      return {
-        id: c.id as string,
-        name: ((c.name as string | null) ?? '').trim(),
-        startDate: (c.start_date as string | null) ?? null,
-        status: (c.status as string | null) ?? 'draft',
-        archived: s?.rebook_archived === true,
-      };
-    })
-    .filter((r) => opts?.includeArchived || !r.archived);
+  // GROUP BY ROUND: a per-series run creates one cycle per series sharing settings.rebook_round_id.
+  // Collapse them into ONE round entry (label from rebook_round_label) so the list shows one row per
+  // round, not per cycle. Legacy cycles without a round id key on their own id → one row each, as before.
+  // 'created_at DESC' order is preserved (first-seen key wins → newest round first).
+  type Row = { id: string; name: string; start_date: string | null; status: string; settings: Record<string, unknown> | null };
+  const rows = (data ?? []) as unknown as Row[];
+  const byRound = new Map<string, RebookRound>();
+  for (const c of rows) {
+    const s = c.settings ?? {};
+    const roundId = typeof s.rebook_round_id === 'string' ? s.rebook_round_id : c.id;
+    const existing = byRound.get(roundId);
+    if (existing) {
+      existing.cycleIds.push(c.id);
+      // Any non-archived sibling makes the round visible.
+      if (s.rebook_archived !== true) existing.archived = false;
+      continue;
+    }
+    byRound.set(roundId, {
+      id: c.id,
+      name: (typeof s.rebook_round_label === 'string' && s.rebook_round_label ? s.rebook_round_label : (c.name ?? '')).trim(),
+      startDate: c.start_date ?? null,
+      status: c.status ?? 'draft',
+      archived: s.rebook_archived === true,
+      cycleIds: [c.id],
+    });
+  }
+  return [...byRound.values()].filter((r) => opts?.includeArchived || !r.archived);
 }
 
 /**
@@ -609,9 +661,26 @@ export async function listRebookRounds(
  * current settings and rewrites the merged object (updateCycleSettings overwrites wholesale).
  */
 export async function setRebookRoundArchived(cycleId: string, archived: boolean): Promise<void> {
-  const { data, error } = await supabase.from('cycles').select('settings').eq('id', cycleId).maybeSingle();
+  const { data, error } = await supabase.from('cycles').select('settings, owner_type, owner_id').eq('id', cycleId).maybeSingle();
   if (error) throw error;
   const current = (data?.settings ?? {}) as Record<string, unknown>;
+  // Archive/restore the WHOLE round (every sibling cycle sharing rebook_round_id), so a per-series
+  // round hides/restores as one unit. Legacy single-cycle rounds have no round id → just this cycle.
+  const roundId = typeof current.rebook_round_id === 'string' ? current.rebook_round_id : null;
+  if (roundId && data?.owner_id) {
+    const { data: siblings } = await supabase
+      .from('cycles')
+      .select('id, settings')
+      .eq('owner_type', data.owner_type)
+      .eq('owner_id', data.owner_id)
+      .eq('settings->>rebook_round_id', roundId);
+    if (siblings && siblings.length > 0) {
+      await Promise.all(siblings.map((c) =>
+        updateCycleSettings(c.id, { ...((c.settings ?? {}) as Record<string, unknown>), rebook_archived: archived } as unknown as CycleSettings),
+      ));
+      return;
+    }
+  }
   await updateCycleSettings(cycleId, { ...current, rebook_archived: archived } as unknown as CycleSettings);
 }
 

@@ -963,7 +963,8 @@
     "trainersHint": "Uncheck trainers who aren't continuing. Their sessions won't be rebooked; on the next step you choose whether their players may book other freed seats.",
     "trainerGroups": "{{n}} group(s)",
     "unknownTrainer": "Unknown trainer",
-    "secondBucketNote": "{{n}} players from removed sessions will be able to book other freed seats (+ an email when those open)."
+    "secondBucketNote": "{{n}} players from removed sessions will be able to book other freed seats (+ an email when those open).",
+    "confirmMultiCycle": "{{count}} separate cycles will be created (one per group): {{names}}"
   },
   "newRound": {
     "defaultCycleName": "Next round {{year}}",
@@ -1202,7 +1203,8 @@
     "sendingInvites": "Sending… {{sent}}/{{total}}",
     "resumeFailed": "Could not send the invitations. Please try again later.",
     "resumePartial": "{{sent}} invitation(s) sent, {{left}} still pending. Try the rest again shortly.",
-    "resumeDone": "{{sent}} invitation(s) sent"
+    "resumeDone": "{{sent}} invitation(s) sent",
+    "roundCycleCount": "{{count}} cycles in this round"
   },
   "rebookShared": {
     "defaultInviteSubject": "Staying with us, {first_name}? Keep your regular spot",

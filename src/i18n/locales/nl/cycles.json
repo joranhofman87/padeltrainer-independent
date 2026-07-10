@@ -1088,7 +1088,8 @@
     "trainersHint": "Vink trainers uit die niet doorgaan. Hun sessies worden niet opnieuw geboekt; in de volgende stap kies je of hun spelers andere vrijgekomen plekken mogen boeken.",
     "trainerGroups": "{{n}} groep(en)",
     "unknownTrainer": "Onbekende trainer",
-    "secondBucketNote": "{{n}} spelers uit weggelaten sessies mogen straks andere vrijgekomen plekken boeken (+ een e-mail zodra die opengaan)."
+    "secondBucketNote": "{{n}} spelers uit weggelaten sessies mogen straks andere vrijgekomen plekken boeken (+ een e-mail zodra die opengaan).",
+    "confirmMultiCycle": "Er worden {{count}} aparte cycli aangemaakt (één per groep): {{names}}"
   },
   "newRound": {
     "defaultCycleName": "Volgende ronde {{year}}",
@@ -1327,7 +1328,8 @@
     "sendingInvites": "Versturen… {{sent}}/{{total}}",
     "resumeFailed": "Kon de uitnodigingen niet versturen. Probeer het later opnieuw.",
     "resumePartial": "{{sent}} uitnodiging(en) verstuurd, {{left}} nog open. Probeer de rest zo opnieuw.",
-    "resumeDone": "{{sent}} uitnodiging(en) verstuurd"
+    "resumeDone": "{{sent}} uitnodiging(en) verstuurd",
+    "roundCycleCount": "{{count}} cycli in deze ronde"
   },
   "rebookShared": {
     "defaultInviteSubject": "Blijf je erbij, {first_name}? Reserveer je vaste plek",

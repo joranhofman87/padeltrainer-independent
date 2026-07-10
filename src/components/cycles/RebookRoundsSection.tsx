@@ -68,6 +68,11 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
             {t('rebookManage.roundStarts', 'Start {{date}}', { date: formatDate(`${r.startDate}T12:00:00`, 'd MMM yyyy') })}
           </div>
         )}
+        {r.cycleIds.length > 1 && (
+          <div className="text-xs text-muted-foreground">
+            {t('rebookManage.roundCycleCount', '{{count}} cycli in deze ronde', { count: r.cycleIds.length })}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => navigate(`/app/academy/cycles/${r.id}/rebook`)}>
