@@ -154,6 +154,10 @@ export interface RebookManageData {
   invitesTotal: number;
   /** Representative invites still un-sent (awaiting + never emailed) — for "resume sending". */
   uninvitedCount: number;
+  /** All cycle ids of this round (a per-series run has >1). Resume-send MUST drain across ALL of them
+   *  (round-scoped), else invites stranded on sibling cycles can never be sent. Length 1 for legacy
+   *  single-cycle rounds. */
+  cycleIds: string[];
 }
 
 interface SlotRow {
@@ -313,6 +317,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     invitesSent: 0,
     invitesTotal: 0,
     uninvitedCount: 0,
+    cycleIds,
   };
   if (slotRows.length === 0) return empty;
   const slotById = new Map(slotRows.map((s) => [s.id, s]));
@@ -543,6 +548,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     invitesSent,
     invitesTotal,
     uninvitedCount,
+    cycleIds,
   };
 }
 

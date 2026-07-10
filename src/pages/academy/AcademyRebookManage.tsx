@@ -25,7 +25,7 @@ import {
   rebookPlayerOutcome, clickedYesUnpaid, freePlayerRebookSeat,
   type GroupStatus, type RebookManageGroup, type RebookManagePlayer, type RebookReminderTarget,
 } from '@/lib/rebookManage';
-import { drainRebookInvites } from '@/lib/rebookInviteSend';
+import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
 import { formatCurrency } from '@/lib/format';
 
 const STATUS_STYLE: Record<GroupStatus, string> = {
@@ -230,7 +230,11 @@ export default function AcademyRebookManage() {
     if (total <= 0) return;
     setSendProgress({ sent: 0, total });
     try {
-      const res = await drainRebookInvites(cycleId, {
+      // Round-scoped: a per-series round has one cycle PER SERIES, and the un-sent invites can live on
+      // ANY sibling cycle. Draining only the route cycleId would find its own reps already invited and
+      // send 0 while the UI still shows N unsent (stranded on siblings). Drain across ALL round cycles,
+      // exactly as the initial-blast wizard does.
+      const res = await drainRebookRoundInvites(data?.cycleIds ?? [cycleId], {
         onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
       });
       if (res.stoppedReason === 'error' && res.totalSent === 0) {
