@@ -85,11 +85,38 @@ const handler = async (req: Request): Promise<Response> => {
     let cyclesProcessed = 0;
     let totalSent = 0;
 
+    // ROUND DEDUP: a per-series rebook round creates SIBLING cycles sharing one
+    // settings.rebook_round_id and ONE priority list, all opening at the same instant.
+    // One "sessions opened" email per person per ROUND — the first due cycle of a round
+    // sends; its siblings are claimed silently (both within this tick and across ticks).
+    const { data: dueRows } = await supabase.from("cycles").select("id, settings").in("id", cycleIds);
+    const roundOf = new Map<string, string | null>();
+    for (const r of dueRows ?? []) {
+      roundOf.set(r.id, ((r.settings as Record<string, unknown> | null)?.rebook_round_id as string | undefined) ?? null);
+    }
+    const seenRounds = new Set<string>();
+    const roundAlreadyNotified = async (round: string, selfId: string): Promise<boolean> => {
+      const { data } = await supabase.from("cycles").select("id")
+        .eq("settings->>rebook_round_id", round)
+        .neq("id", selfId)
+        .not("settings->>rebook_member_open_notified_at", "is", null)
+        .limit(1);
+      return (data ?? []).length > 0;
+    };
+
     for (const cycleId of cycleIds) {
       // Atomic claim: stamp notified_at IF NULL. Lost race ⇒ another run has it. The
       // claim serializes this round so the per-recipient bookkeeping below is race-free.
       const { data: claimed } = await supabase.rpc("claim_rebook_member_open_notice", { _cycle_id: cycleId });
       if (claimed !== true) continue;
+
+      const round = roundOf.get(cycleId) ?? null;
+      if (round && (seenRounds.has(round) || (await roundAlreadyNotified(round, cycleId)))) {
+        // Sibling of an already-notified round: keep the claim stamped, send nothing.
+        cyclesProcessed += 1;
+        continue;
+      }
+      if (round) seenRounds.add(round);
 
       try {
         const { sent, failed } = await notifyCycle(supabase, resend, cycleId);
