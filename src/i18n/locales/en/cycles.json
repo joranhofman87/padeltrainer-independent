@@ -1182,6 +1182,7 @@
     "noEmailShort": "no email",
     "copyClaimLink": "Copy invite link to share yourself",
     "copyPayLink": "Copy payment link (straight to checkout)",
+    "inviteSentShort": "sent",
     "linkCopied": "Invite link copied",
     "payLinkCopied": "Payment link copied",
     "linkCopyFailed": "Copy failed",
