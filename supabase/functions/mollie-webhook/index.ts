@@ -8,7 +8,7 @@ import {
   parseMolliePaymentMetadata,
   usesInvoicePaidBranch,
 } from "../_shared/mollie-webhook-metadata.ts";
-import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
+import { runBookingPaidSideEffects, sendStaffBookingNotifications } from "../_shared/mollie-booking-paid-side-effects.ts";
 import { sendPlayerBookingConfirmation } from "../_shared/booking-confirmation-email.ts";
 import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from "../_shared/payment-audit.ts";
 import {
@@ -535,14 +535,15 @@ serve(async (req) => {
                 logStep,
               });
               if (!confirmation.ok) {
-                const { reason } = confirmation;
-                if (reason === "no_payer" || reason === "no_recipient_email") {
-                  await notifySlackError(
-                    "mollie-webhook",
-                    "Rebook paid: player confirmation not sent",
-                    { paymentId, invoiceId: invoiceIdFromMetadata, reason },
-                  );
-                }
+                // Alert on EVERY non-send, not just recipient-resolution failures. The silent
+                // reasons (no_resend = RESEND_API_KEY unset, send_failed = Resend rejected) are
+                // exactly what hides a "paid but no confirmation email" — surface them all so a
+                // missing rebook email is never invisible again.
+                await notifySlackError(
+                  "mollie-webhook",
+                  "Rebook paid: player confirmation not sent",
+                  { paymentId, invoiceId: invoiceIdFromMetadata, reason: confirmation.reason },
+                );
               }
             } catch (confErr) {
               logStep("rebook_confirmation_exception", { error: String(confErr), paymentId, invoiceId: invoiceIdFromMetadata });
@@ -550,6 +551,41 @@ serve(async (req) => {
                 "mollie-webhook",
                 "Rebook paid: player confirmation threw",
                 { paymentId, invoiceId: invoiceIdFromMetadata, error: String(confErr) },
+              );
+            }
+
+            // Staff notification: tell the academy managers (with the amount) + the involved
+            // trainers (their own sessions, no amount) that a rebooking was paid — the same
+            // deduped notice a public booking sends. The booking-paid side-effects path never
+            // runs for an INVOICE payment, so this is the only place it can fire; claim-gated
+            // above so a duplicate webhook delivery can't re-send. Non-fatal (helper alerts Slack
+            // on its own failures). For a group-captain invoice, booking_ids spans the whole group
+            // (one academy) → the manager gets one email with every session + the captain's total.
+            try {
+              const { data: payerRow } = await supabase
+                .from("bookings")
+                .select("profiles:player_id(full_name), guest_players:guest_player_id(full_name)")
+                .eq("id", invoiceData.booking_ids[0])
+                .maybeSingle();
+              const payer = payerRow as
+                | { profiles?: { full_name?: string | null } | null; guest_players?: { full_name?: string | null } | null }
+                | null;
+              const playerName = payer?.profiles?.full_name ?? payer?.guest_players?.full_name ?? "Speler";
+              await sendStaffBookingNotifications({
+                supabase: supabase as unknown as Parameters<typeof sendStaffBookingNotifications>[0]["supabase"],
+                bookingIds: invoiceData.booking_ids,
+                playerName,
+                paymentAmountValue: payment.amount?.value,
+                source: "mollie-webhook-rebook",
+                logStep,
+                notifySlackError,
+              });
+            } catch (staffErr) {
+              logStep("rebook_staff_notify_exception", { error: String(staffErr), paymentId, invoiceId: invoiceIdFromMetadata });
+              await notifySlackError(
+                "mollie-webhook",
+                "Rebook paid: staff notification threw",
+                { paymentId, invoiceId: invoiceIdFromMetadata, error: String(staffErr) },
               );
             }
           }
