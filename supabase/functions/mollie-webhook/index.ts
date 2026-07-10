@@ -525,6 +525,65 @@ serve(async (req) => {
             (invoiceData?.rebook_cyclus_id || invoiceData?.rebook_group_id) &&
             invoiceData?.booking_ids && invoiceData.booking_ids.length > 0
           ) {
+            // GROUP invoice = the captain paid the FULL court price for the whole group — so seat
+            // EVERY still-pending member now (confirmed/paid, covered by the captain), instead of
+            // waiting for each to click their link (the already-paid guard rightly won't charge
+            // them, but it must not leave their seats unbooked either: capacity would read 1/4 and
+            // the paid seats could be re-sold once the round opens up). Reuses the deployed
+            // rebook_group_manage RPC — capacity-guarded, dedup-guarded, links the covered bookings
+            // onto this invoice; keeping every pending member declines nobody. Members who declined
+            // BEFORE payment stay out. Idempotent: a re-run finds no pending claims → no-op.
+            if (invoiceData.rebook_group_id) {
+              try {
+                const groupId = invoiceData.rebook_group_id;
+                const { data: capClaim } = await supabase
+                  .from("slot_priority_claims")
+                  .select("claim_token")
+                  .eq("rebook_group_id", groupId)
+                  .eq("status", "claimed")
+                  .in("booking_id", invoiceData.booking_ids)
+                  .limit(1)
+                  .maybeSingle();
+                const { data: pendingClaims } = await supabase
+                  .from("slot_priority_claims")
+                  .select("player_id, guest_player_id")
+                  .eq("rebook_group_id", groupId)
+                  .eq("status", "pending");
+                const keepKeys = [...new Set(
+                  ((pendingClaims ?? []) as Array<{ player_id: string | null; guest_player_id: string | null }>)
+                    .map((c) => (c.player_id ? `p:${c.player_id}` : `g:${c.guest_player_id}`)),
+                )];
+                if (capClaim?.claim_token && keepKeys.length > 0) {
+                  const { data: cover, error: coverErr } = await supabase.rpc("rebook_group_manage", {
+                    _token: capClaim.claim_token,
+                    _keep_keys: keepKeys,
+                    _new_guest_ids: [],
+                    _invoice_id: invoiceIdFromMetadata,
+                  });
+                  const coverRes = (cover ?? {}) as { ok?: boolean; booked?: number; skipped_full?: number; reason?: string };
+                  logStep("rebook_group_covered", {
+                    groupId, invoiceId: invoiceIdFromMetadata,
+                    members: keepKeys.length, booked: coverRes.booked ?? 0,
+                    skippedFull: coverRes.skipped_full ?? 0, ok: coverRes.ok, reason: coverRes.reason,
+                  });
+                  if (coverErr || coverRes.ok === false) {
+                    await notifySlackError(
+                      "mollie-webhook",
+                      "Rebook group paid: covering members failed — seats may show open despite payment",
+                      { paymentId, invoiceId: invoiceIdFromMetadata, groupId, error: coverErr?.message ?? coverRes.reason },
+                    );
+                  }
+                }
+              } catch (coverEx) {
+                logStep("rebook_group_cover_exception", { error: String(coverEx), paymentId, invoiceId: invoiceIdFromMetadata });
+                await notifySlackError(
+                  "mollie-webhook",
+                  "Rebook group paid: covering members threw",
+                  { paymentId, invoiceId: invoiceIdFromMetadata, error: String(coverEx) },
+                );
+              }
+            }
+
             try {
               const confirmation = await sendPlayerBookingConfirmation({
                 // cast: the shared composer types SupabaseClient from `@2` while this fn pins
