@@ -1306,7 +1306,9 @@
     "selectForReminder": "Selecteer voor herinnering",
     "noEmailShort": "geen e-mail",
     "copyClaimLink": "Kopieer uitnodigingslink om zelf te delen",
+    "copyPayLink": "Kopieer betaallink (direct naar de checkout)",
     "linkCopied": "Uitnodigingslink gekopieerd",
+    "payLinkCopied": "Betaallink gekopieerd",
     "linkCopyFailed": "Kopiëren mislukt",
     "status": {
       "rebooked": "Geherboekt",

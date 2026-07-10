@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -586,13 +586,22 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const claimedCount = g.players.filter((p) => p.response === 'claimed').length;
-  // RB05: emailless invitees (guests with no email) were never actually emailed — let the
-  // owner copy their claim link and share it manually (WhatsApp, etc.). Clipboard only:
-  // the token is sensitive, so it is never logged or sent to analytics.
+  // Manual sharing (WhatsApp etc.) — clipboard only: tokens are sensitive, never logged or
+  // sent to analytics. The CLAIM link is each invitee's accept-and-pay entry (works for
+  // everyone, incl. emailless guests — RB05); the PAY link (/pay/:token, deliberately NOT
+  // lang-prefixed) goes straight to the Mollie checkout of an already-minted UNPAID invoice.
   const copyClaimLink = async (token: string) => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/nl/claim/${token}`);
       toast.success(t('rebookManage.linkCopied', 'Uitnodigingslink gekopieerd'));
+    } catch {
+      toast.error(t('rebookManage.linkCopyFailed', 'Kopiëren mislukt'));
+    }
+  };
+  const copyPayLink = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/pay/${token}`);
+      toast.success(t('rebookManage.payLinkCopied', 'Betaallink gekopieerd'));
     } catch {
       toast.error(t('rebookManage.linkCopyFailed', 'Kopiëren mislukt'));
     }
@@ -686,7 +695,8 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                         </span>
                       )}
                     </button>
-                    {emailless && p.claimToken && (
+                    {/* Copy claim link — every unpaid invitee (WhatsApp-able accept-and-pay entry). */}
+                    {!p.paid && p.claimToken && (
                       <button
                         type="button"
                         onClick={() => copyClaimLink(p.claimToken!)}
@@ -695,6 +705,18 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                         aria-label={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
                       >
                         <Copy className="h-3 w-3" />
+                      </button>
+                    )}
+                    {/* Copy PAY link — direct to the Mollie checkout of their unpaid invoice. */}
+                    {!p.paid && p.payToken && (
+                      <button
+                        type="button"
+                        onClick={() => copyPayLink(p.payToken!)}
+                        className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-emerald-700"
+                        title={t('rebookManage.copyPayLink', 'Kopieer betaallink (direct naar de checkout)')}
+                        aria-label={t('rebookManage.copyPayLink', 'Kopieer betaallink (direct naar de checkout)')}
+                      >
+                        <CreditCard className="h-3 w-3" />
                       </button>
                     )}
                     {/* Free this invitee's seat (they're not rebooking) — claimed or still-holding. */}

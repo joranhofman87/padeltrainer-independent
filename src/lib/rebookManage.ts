@@ -65,8 +65,12 @@ export interface RebookManagePlayer {
    *  their claim link and share it manually. */
   hasEmail: boolean;
   /** A representative claim_token so the owner can copy this invitee's claim link
-   *  (`/nl/claim/:token`) — used only for the emailless-recovery copy-link (RB05). */
+   *  (`/nl/claim/:token`) and share it manually (WhatsApp etc.). */
   claimToken: string | null;
+  /** Public token of this invitee's UNPAID rebook invoice (own single invoice, else their group's)
+   *  — `/pay/:token` goes straight to the Mollie checkout, for manual sharing. Null when paid or
+   *  no invoice was minted yet. */
+  payToken: string | null;
 }
 
 /**
@@ -226,8 +230,8 @@ function claimsStateOf(responses: ClaimResponse[]): ClaimsState {
   return 'declined'; // all declined/expired
 }
 
-export type SingleInvoiceRow = { player_id: string | null; guest_player_id: string | null; status: string; total?: number | null };
-export type GroupInvoiceRow = { rebook_group_id: string | null; status: string; total?: number | null };
+export type SingleInvoiceRow = { player_id: string | null; guest_player_id: string | null; status: string; total?: number | null; public_token?: string | null };
+export type GroupInvoiceRow = { rebook_group_id: string | null; status: string; total?: number | null; public_token?: string | null };
 
 /**
  * Sum the round's invoiced money: € already paid vs € still outstanding. Single-claim and
@@ -276,11 +280,29 @@ export function buildRebookPaidResolver(
     invoicedGroups.add(inv.rebook_group_id);
     if (inv.status === 'paid') paidGroups.add(inv.rebook_group_id);
   }
+  // Pay-link tokens for UNPAID (not paid, not cancelled) invoices: /pay/<token> goes straight to
+  // the Mollie checkout, so the academy can share it manually (WhatsApp etc.) with someone who
+  // accepted but never finished paying. Keyed like paid/invoiced: own single invoice first, else
+  // the group's one shared invoice (any member may complete a group payment — deliberate).
+  const payTokenByKey = new Map<string, string>();
+  for (const inv of singleInvoices) {
+    const key = inv.player_id ?? (inv.guest_player_id ? `g:${inv.guest_player_id}` : null);
+    if (!key || inv.status === 'cancelled' || inv.status === 'paid' || !inv.public_token) continue;
+    payTokenByKey.set(key, inv.public_token);
+  }
+  const payTokenByGroup = new Map<string, string>();
+  for (const inv of groupInvoices) {
+    if (!inv.rebook_group_id || inv.status === 'cancelled' || inv.status === 'paid' || !inv.public_token) continue;
+    payTokenByGroup.set(inv.rebook_group_id, inv.public_token);
+  }
   return {
     isPaid: (pk: string, groupId: string | null) =>
       paidKeys.has(pk) || (groupId != null && paidGroups.has(groupId)),
     hasInvoice: (pk: string, groupId: string | null) =>
       invoicedKeys.has(pk) || (groupId != null && invoicedGroups.has(groupId)),
+    /** Public /pay token of the player's UNPAID invoice (own single first, else their group's). */
+    getPayToken: (pk: string, groupId: string | null): string | null =>
+      payTokenByKey.get(pk) ?? (groupId != null ? payTokenByGroup.get(groupId) ?? null : null),
   };
 }
 
@@ -401,7 +423,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // paid/invoiced state propagates to every member of that group.
   const groupIds = [...new Set(claimRows.map((c) => c.rebook_group_id).filter(Boolean))] as string[];
   const singleRes = await supabase
-    .from('invoices').select('player_id, guest_player_id, status, total')
+    .from('invoices').select('player_id, guest_player_id, status, total, public_token')
     // rebook_cyclus_id is a real column missing from the generated types (types.ts drift);
     // cast the key to a known column so `.in` type-resolves — the runtime value is unchanged.
     // Round-aware: single-claim invoices span every sibling cycle of the round.
@@ -409,7 +431,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const singleInvoices = (singleRes.data ?? []) as SingleInvoiceRow[];
   let groupInvoices: GroupInvoiceRow[] = [];
   if (groupIds.length) {
-    const groupRes = await supabase.from('invoices').select('rebook_group_id, status, total').in('rebook_group_id', groupIds);
+    const groupRes = await supabase.from('invoices').select('rebook_group_id, status, total, public_token').in('rebook_group_id', groupIds);
     groupInvoices = (groupRes.data ?? []) as GroupInvoiceRow[];
   }
 
@@ -431,7 +453,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   }
 
   // Single-claim invoices → per identity; group invoices → per group (propagated to members).
-  const { isPaid, hasInvoice: hasInvoiceFor } = buildRebookPaidResolver(singleInvoices, groupInvoices);
+  const { isPaid, hasInvoice: hasInvoiceFor, getPayToken } = buildRebookPaidResolver(singleInvoices, groupInvoices);
 
   const keyOf = (c: { player_id: string | null; guest_player_id: string | null }) =>
     c.player_id ?? `g:${c.guest_player_id}`;
@@ -466,6 +488,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         responseIntent: existing?.responseIntent ?? null,
         paid: isPaid(pk, c.rebook_group_id),
         hasInvoice: hasInvoiceFor(pk, c.rebook_group_id),
+        payToken: getPayToken(pk, c.rebook_group_id),
         invited: existing?.invited ?? false,
         claimIds: existing?.claimIds ?? [],
         lastRemindedAt: existing?.lastRemindedAt ?? null,
