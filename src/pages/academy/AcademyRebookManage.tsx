@@ -13,6 +13,7 @@ import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SelectFilter } from '@/components/ui/select-filter';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTableCard, compactDataTableClass } from '@/components/ui/data-table';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -448,10 +449,10 @@ export default function AcademyRebookManage() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
+      {/* Table — same compact density + card frame as the Players/overview tables. */}
+      <DataTableCard desktopOnly={false}>
+        <Table className={compactDataTableClass}>
+          <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead className="w-8">
                 <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="select all sessions" />
@@ -496,7 +497,7 @@ export default function AcademyRebookManage() {
             })}
           </TableBody>
         </Table>
-      </div>
+      </DataTableCard>
       {isFetching && <div className="text-xs text-muted-foreground">{t('common:loading', 'Bezig...')}</div>}
 
       <Dialog open={composeOpen} onOpenChange={(o) => { if (!o) setComposeOpen(false); }}>
@@ -628,117 +629,137 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
           )}
         </TableCell>
       </TableRow>
-      {isOpen && (
-        <TableRow>
+      {isOpen && (g.players.length === 0 ? (
+        <TableRow className="bg-muted/20 hover:bg-muted/20">
           <TableCell />
-          <TableCell colSpan={7} className="bg-muted/30">
-            {g.players.length === 0 ? (
-              <span className="text-xs text-muted-foreground">{t('rebookManage.noPlayers', 'Geen spelers in deze sessie.')}</span>
-            ) : (
-              <div className="flex flex-wrap gap-1.5 py-1">
-                {g.players.map((p) => {
-                  const sel = selectedPlayers.has(p.key);
-                  // Outcome (not raw status) drives the icon so a "clicked No" that is still
-                  // technically a pending claim reads as a decline, and expired ≠ declined.
-                  const outcome = rebookPlayerOutcome(p);
-                  const Icon = outcome === 'rebooked' ? CheckCircle2 : outcome === 'declined' ? XCircle : Clock;
-                  const tone = outcome === 'rebooked' ? 'text-emerald-600' : outcome === 'declined' ? 'text-rose-600' : 'text-amber-600';
-                  const emailless = !p.hasEmail;
-                  return (
-                    <span key={p.key} className="inline-flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => onTogglePlayer(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId })}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${sel ? 'border-primary bg-primary/10' : emailless ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-background'}`}
-                      title={t('rebookManage.selectForReminder', 'Selecteer voor herinnering')}
-                    >
-                      <Icon className={`h-3.5 w-3.5 ${tone}`} />
-                      <span>{p.name}</span>
-                      {p.response === 'claimed' && (
-                        <span className={p.paid ? 'text-emerald-600' : 'text-rose-600'}>
-                          · {p.paid ? t('rebookManage.paidShort', 'betaald') : t('rebookManage.unpaidShort', 'open')}
-                        </span>
-                      )}
-                      {/* Distinguish the ambiguous "awaiting" states the owner asked about. */}
-                      {clickedYesUnpaid(p) && (
-                        <span className="text-amber-700">· {t('rebookManage.clickedYesShort', 'klikte Ja')}</span>
-                      )}
-                      {p.response !== 'claimed' && p.responseIntent === 'decline' && (
-                        <span className="text-rose-600">· {t('rebookManage.saidNoShort', 'zei nee')}</span>
-                      )}
-                      {p.response === 'expired' && p.responseIntent !== 'decline' && (
-                        <span className="text-muted-foreground">· {t('rebookManage.expiredShort', 'verlopen')}</span>
-                      )}
-                      {p.lastRemindedAt && (
-                        <span
-                          className="text-muted-foreground"
-                          title={t('rebookManage.lastReminded', 'Laatst herinnerd op {{date}}', { date: fmtReminded(p.lastRemindedAt) })}
-                        >
-                          · {t('rebookManage.remindedShort', 'herinnerd')} {fmtReminded(p.lastRemindedAt)}
-                        </span>
-                      )}
-                      {/* Per-invitee initial-invite delivery: sent ✓ vs not-yet-sent. */}
-                      {!emailless && (
-                        p.invited ? (
-                          <span className="inline-flex text-muted-foreground" title={t('rebookManage.inviteSent', 'Uitnodiging verstuurd')}>
-                            <MailCheck className="h-3 w-3" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-0.5 text-amber-700" title={t('rebookManage.inviteNotSent', 'Uitnodiging nog niet verstuurd')}>
-                            <Mail className="h-3 w-3" /> {t('rebookManage.inviteNotSentShort', 'niet verstuurd')}
-                          </span>
-                        )
-                      )}
-                      {emailless && (
-                        <span className="inline-flex items-center gap-0.5 text-rose-600">
-                          <MailX className="h-3 w-3" /> {t('rebookManage.noEmailShort', 'geen e-mail')}
-                        </span>
-                      )}
-                    </button>
-                    {/* Copy claim link — every unpaid invitee (WhatsApp-able accept-and-pay entry). */}
-                    {!p.paid && p.claimToken && (
-                      <button
-                        type="button"
-                        onClick={() => copyClaimLink(p.claimToken!)}
-                        className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-foreground"
-                        title={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
-                        aria-label={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                    )}
-                    {/* Copy PAY link — direct to the Mollie checkout of their unpaid invoice. */}
-                    {!p.paid && p.payToken && (
-                      <button
-                        type="button"
-                        onClick={() => copyPayLink(p.payToken!)}
-                        className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-emerald-700"
-                        title={t('rebookManage.copyPayLink', 'Kopieer betaallink (direct naar de checkout)')}
-                        aria-label={t('rebookManage.copyPayLink', 'Kopieer betaallink (direct naar de checkout)')}
-                      >
-                        <CreditCard className="h-3 w-3" />
-                      </button>
-                    )}
-                    {/* Free this invitee's seat (they're not rebooking) — claimed or still-holding. */}
-                    {(p.response === 'claimed' || p.response === 'pending') && (
-                      <button
-                        type="button"
-                        onClick={() => onFreeSeat(p)}
-                        className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-rose-600"
-                        title={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
-                        aria-label={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
-                      >
-                        <UserMinus className="h-3 w-3" />
-                      </button>
-                    )}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
+          <TableCell />
+          <TableCell colSpan={6} className="text-xs text-muted-foreground">
+            {t('rebookManage.noPlayers', 'Geen spelers in deze sessie.')}
           </TableCell>
         </TableRow>
-      )}
+      ) : (
+        // One aligned SUB-ROW per player (same compact height as the rest of the table); cells
+        // mirror the header's responsive columns so counts line up at every breakpoint.
+        g.players.map((p) => {
+          const sel = selectedPlayers.has(p.key);
+          // Outcome (not raw status) drives the icon so a "clicked No" that is still
+          // technically a pending claim reads as a decline, and expired ≠ declined.
+          const outcome = rebookPlayerOutcome(p);
+          const Icon = outcome === 'rebooked' ? CheckCircle2 : outcome === 'declined' ? XCircle : Clock;
+          const tone = outcome === 'rebooked' ? 'text-emerald-600' : outcome === 'declined' ? 'text-rose-600' : 'text-amber-600';
+          const emailless = !p.hasEmail;
+          return (
+            <TableRow key={p.key} className="bg-muted/20 hover:bg-muted/40" data-state={sel ? 'selected' : undefined}>
+              {/* c1: select for reminder (was chip-click — a checkbox is clearer + consistent). */}
+              <TableCell>
+                <Checkbox
+                  checked={sel}
+                  onCheckedChange={() => onTogglePlayer(p.key, { player_id: p.playerId, guest_player_id: p.guestPlayerId })}
+                  aria-label={t('rebookManage.selectForReminder', 'Selecteer voor herinnering')}
+                />
+              </TableCell>
+              <TableCell />
+              {/* c3 (Sessie): indented player name + outcome icon. */}
+              <TableCell className="max-w-[240px]">
+                <span className="flex min-w-0 items-center gap-1.5 pl-4">
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${tone}`} />
+                  <span className="truncate" title={p.name}>{p.name}</span>
+                </span>
+              </TableCell>
+              {/* c4 (Trainer col, md+): initial-invite delivery. */}
+              <TableCell className="hidden md:table-cell text-xs">
+                {emailless ? (
+                  <span className="inline-flex items-center gap-1 text-rose-600">
+                    <MailX className="h-3 w-3" /> {t('rebookManage.noEmailShort', 'geen e-mail')}
+                  </span>
+                ) : p.invited ? (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground" title={t('rebookManage.inviteSent', 'Uitnodiging verstuurd')}>
+                    <MailCheck className="h-3 w-3" /> {t('rebookManage.inviteSentShort', 'verstuurd')}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-amber-700" title={t('rebookManage.inviteNotSent', 'Uitnodiging nog niet verstuurd')}>
+                    <Mail className="h-3 w-3" /> {t('rebookManage.inviteNotSentShort', 'niet verstuurd')}
+                  </span>
+                )}
+              </TableCell>
+              {/* c5 (Locatie col, lg+): last reminder. */}
+              <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                {p.lastRemindedAt
+                  ? <span title={t('rebookManage.lastReminded', 'Laatst herinnerd op {{date}}', { date: fmtReminded(p.lastRemindedAt) })}>
+                      {t('rebookManage.remindedShort', 'herinnerd')} {fmtReminded(p.lastRemindedAt)}
+                    </span>
+                  : '—'}
+              </TableCell>
+              {/* c6 (Status): this player's own state, incl. the ambiguous awaiting variants. */}
+              <TableCell className="text-xs">
+                {p.response === 'claimed' ? (
+                  <span className="text-emerald-700">{t('rebookManage.status.rebooked', 'Geherboekt')}</span>
+                ) : p.responseIntent === 'decline' ? (
+                  <span className="text-rose-600">{t('rebookManage.saidNoShort', 'zei nee')}</span>
+                ) : p.response === 'expired' ? (
+                  <span className="text-muted-foreground">{t('rebookManage.expiredShort', 'verlopen')}</span>
+                ) : clickedYesUnpaid(p) ? (
+                  <span className="text-amber-700">{t('rebookManage.clickedYesShort', 'klikte Ja')} — {t('rebookManage.unpaidShort', 'open')}</span>
+                ) : (
+                  <span className="text-muted-foreground">{t('rebookManage.status.awaiting', 'Wacht op reactie')}</span>
+                )}
+              </TableCell>
+              {/* c7 (Geherboekt): did THIS player rebook. */}
+              <TableCell className="text-right">
+                {p.response === 'claimed'
+                  ? <CheckCircle2 className="ml-auto h-4 w-4 text-emerald-600" aria-label={t('rebookManage.status.rebooked', 'Geherboekt')} />
+                  : <span className="text-muted-foreground">—</span>}
+              </TableCell>
+              {/* c8 (Betaald): paid state + the per-player actions (copy links, free seat). */}
+              <TableCell className="text-right">
+                <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                  {p.response === 'claimed' && (
+                    <span className={`text-xs ${p.paid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {p.paid ? t('rebookManage.paidShort', 'betaald') : t('rebookManage.unpaidShort', 'open')}
+                    </span>
+                  )}
+                  {/* Copy claim link — every unpaid invitee (WhatsApp-able accept-and-pay entry). */}
+                  {!p.paid && p.claimToken && (
+                    <button
+                      type="button"
+                      onClick={() => copyClaimLink(p.claimToken!)}
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-foreground"
+                      title={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
+                      aria-label={t('rebookManage.copyClaimLink', 'Kopieer uitnodigingslink om zelf te delen')}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  )}
+                  {/* Copy PAY link — direct to the Mollie checkout of their unpaid invoice. */}
+                  {!p.paid && p.payToken && (
+                    <button
+                      type="button"
+                      onClick={() => copyPayLink(p.payToken!)}
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-emerald-700"
+                      title={t('rebookManage.copyPayLink', 'Kopieer betaallink (direct naar de checkout)')}
+                      aria-label={t('rebookManage.copyPayLink', 'Kopieer betaallink (direct naar de checkout)')}
+                    >
+                      <CreditCard className="h-3 w-3" />
+                    </button>
+                  )}
+                  {/* Free this invitee's seat (they're not rebooking) — claimed or still-holding. */}
+                  {(p.response === 'claimed' || p.response === 'pending') && (
+                    <button
+                      type="button"
+                      onClick={() => onFreeSeat(p)}
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-rose-600"
+                      title={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
+                      aria-label={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
+                    >
+                      <UserMinus className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              </TableCell>
+            </TableRow>
+          );
+        })
+      ))}
     </>
   );
 }
