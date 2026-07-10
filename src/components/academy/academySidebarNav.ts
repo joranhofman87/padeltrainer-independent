@@ -9,6 +9,7 @@ import {
   FileText,
   Wallet,
   Settings,
+  RefreshCw,
 } from 'lucide-react';
 
 export type AcademyNavItemId =
@@ -18,6 +19,7 @@ export type AcademyNavItemId =
   | 'players'
   | 'trainers'
   | 'registrations'
+  | 'rebook'
   | 'invoices'
   | 'expenses'
   | 'settings';
@@ -84,6 +86,14 @@ export const ACADEMY_PRIMARY_NAV: AcademyNavItem[] = [
     testId: 'nav-academy-registrations',
   },
   {
+    id: 'rebook',
+    to: '/app/academy/rebook',
+    labelKey: 'nav.rebook',
+    defaultLabel: 'Rebooking',
+    icon: RefreshCw,
+    testId: 'nav-academy-rebook',
+  },
+  {
     id: 'invoices',
     to: '/app/academy/invoices',
     labelKey: 'nav.invoices',
@@ -115,27 +125,26 @@ const SETTINGS_SECTION_PREFIXES = [
   '/app/academy/locations',
 ] as const;
 
-// Rebook + bulk-copy (incl. /cycles/:id/rebook) live under /cycles/* but are "set up next
-// round" operations — launched from the Sessions hub — so they highlight Sessions.
-const NEXT_ROUND_CYCLE_ROUTES = [
-  '/app/academy/cycles/rebook',
-  '/app/academy/cycles/bulk-copy',
-] as const;
-
-function isNextRoundCycleRoute(pathname: string): boolean {
+// The rebook flow lives under /cycles/* (the cohort wizard at /cycles/rebook and the per-round
+// manager at /cycles/:id/rebook) but belongs to its own Rebooking nav item now — NOT Sessions.
+function isRebookCycleRoute(pathname: string): boolean {
   return (
-    NEXT_ROUND_CYCLE_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/')) ||
-    // /app/academy/cycles/:cycleId/rebook → the rebook manager (a "next round" op).
+    pathname === '/app/academy/cycles/rebook' ||
+    pathname.startsWith('/app/academy/cycles/rebook/') ||
+    // /app/academy/cycles/:cycleId/rebook → the per-round rebook manager.
     /^\/app\/academy\/cycles\/[^/]+\/rebook(\/|$)/.test(pathname)
   );
 }
 
+// bulk-copy (copy a term's sessions into a new one) is a Sessions-hub "next round" op — stays there.
+function isBulkCopyRoute(pathname: string): boolean {
+  return pathname === '/app/academy/cycles/bulk-copy' || pathname.startsWith('/app/academy/cycles/bulk-copy/');
+}
+
 // Training-cycle CRUD (/cycles/new, /cycles/:id, /cycles/:id/edit) is a SCHEDULE ("Schema") thing —
-// these pages are opened from the Schedule's cyclus tab. Registrations now live entirely under
-// /registrations/*, so a training-cycle page must NOT highlight Registrations. ("Next round"
-// cycle-ops — rebook/bulk-copy — highlight Sessions instead.)
+// opened from the Schedule's cyclus tab — EXCEPT the rebook + bulk-copy ops (their own nav items).
 function isScheduleCycleRoute(pathname: string): boolean {
-  return pathname.startsWith('/app/academy/cycles') && !isNextRoundCycleRoute(pathname);
+  return pathname.startsWith('/app/academy/cycles') && !isRebookCycleRoute(pathname) && !isBulkCopyRoute(pathname);
 }
 
 export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): boolean {
@@ -146,8 +155,12 @@ export function isAcademyNavItemActive(pathname: string, item: AcademyNavItem): 
     return pathname.startsWith(item.to) || isScheduleCycleRoute(pathname);
   }
   if (item.id === 'sessions') {
-    // The Sessions hub + the "next round" ops (rebook / bulk-copy) launched from it.
-    return pathname.startsWith(item.to) || isNextRoundCycleRoute(pathname);
+    // The Sessions hub + the bulk-copy "next round" op launched from it.
+    return pathname.startsWith(item.to) || isBulkCopyRoute(pathname);
+  }
+  if (item.id === 'rebook') {
+    // The Rebooking page + the cohort wizard + the per-round rebook manager.
+    return pathname.startsWith(item.to) || isRebookCycleRoute(pathname);
   }
   if (item.id === 'registrations') {
     // Registrations are their own /registrations/* section now — NOT /cycles/*.

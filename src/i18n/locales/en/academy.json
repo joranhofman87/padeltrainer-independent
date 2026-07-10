@@ -486,7 +486,8 @@
     "expandSidebar": "Expand sidebar",
     "openMenu": "Open menu",
     "primary": "Academy navigation",
-    "referral": "Referral"
+    "referral": "Referral",
+    "rebook": "Rebooking"
   },
   "invoiceSettings": {
     "title": "Invoice Settings",
