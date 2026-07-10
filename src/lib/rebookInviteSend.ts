@@ -117,3 +117,39 @@ export async function drainRebookInvites(
   const leftover = stoppedReason === 'drained' ? 0 : remaining + lastFailed;
   return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds] };
 }
+
+/**
+ * Drain the invites for a whole rebook ROUND — a per-series run now creates one cycle per series
+ * (all sharing settings.rebook_round_id), so the invites live across N sibling cycles. Runs the
+ * per-cycle drain for each id sequentially (each cycle's send-priority-claim-invitation is scoped
+ * by cyclus_id) and merges the results into one round-level DrainResult, so nothing is stranded on
+ * a sibling cycle. onProgress reports the running round total across all cycles.
+ */
+export async function drainRebookRoundInvites(
+  cycleIds: string[],
+  opts: DrainOptions = {},
+): Promise<DrainResult> {
+  let totalSent = 0;
+  let leftover = 0;
+  const failedClaimIds = new Set<string>();
+  // 'error' if any cycle errored; else 'no_progress' if any stalled with work left; else 'drained'.
+  let stoppedReason: DrainResult['stoppedReason'] = 'drained';
+
+  for (const cycleId of cycleIds) {
+    const before = totalSent;
+    const res = await drainRebookInvites(cycleId, {
+      ...opts,
+      // Rebase this cycle's progress onto the round running total.
+      onProgress: opts.onProgress
+        ? (p) => opts.onProgress!({ totalSent: before + p.totalSent, stillToSend: p.stillToSend, total: p.total })
+        : undefined,
+    });
+    totalSent += res.totalSent;
+    leftover += res.leftover;
+    for (const id of res.failedClaimIds) failedClaimIds.add(id);
+    if (res.stoppedReason === 'error') stoppedReason = 'error';
+    else if (res.stoppedReason === 'no_progress' && stoppedReason !== 'error') stoppedReason = 'no_progress';
+  }
+
+  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds] };
+}

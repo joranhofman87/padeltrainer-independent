@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { drainRebookInvites, type SendChunkResult } from './rebookInviteSend';
+import { drainRebookInvites, drainRebookRoundInvites, type SendChunkResult } from './rebookInviteSend';
 
 /** A fake sender that replays a scripted list of chunk results. */
 const scripted = (chunks: SendChunkResult[]) => {
@@ -87,5 +87,62 @@ describe('drainRebookInvites', () => {
     const sender = vi.fn(async () => ({ sent: 0, failed: 0, remaining: 0, failedClaimIds: [] }));
     await drainRebookInvites('cyc', { sender, limit: 25, customMessage: 'hi', customSubject: 'subj' });
     expect(sender).toHaveBeenCalledWith({ cycleId: 'cyc', limit: 25, customMessage: 'hi', customSubject: 'subj' });
+  });
+});
+
+/** A sender that scripts chunk results PER cycleId (for round-level drain across sibling cycles). */
+const scriptedByCycle = (byCycle: Record<string, SendChunkResult[]>) => {
+  const idx: Record<string, number> = {};
+  return vi.fn(async ({ cycleId }: { cycleId: string }) => {
+    const chunks = byCycle[cycleId] ?? [{ sent: 0, failed: 0, remaining: 0, failedClaimIds: [] }];
+    const i = idx[cycleId] ?? 0;
+    idx[cycleId] = i + 1;
+    return chunks[Math.min(i, chunks.length - 1)];
+  });
+};
+
+describe('drainRebookRoundInvites', () => {
+  it('drains every sibling cycle and merges the counts into one round result', async () => {
+    const sender = scriptedByCycle({
+      a: [{ sent: 2, failed: 0, remaining: 0, failedClaimIds: [] }],
+      b: [{ sent: 3, failed: 0, remaining: 0, failedClaimIds: [] }],
+    });
+    const r = await drainRebookRoundInvites(['a', 'b'], { sender });
+    expect(r.stoppedReason).toBe('drained');
+    expect(r.totalSent).toBe(5);
+    expect(r.leftover).toBe(0);
+    // Each cycle drained independently (its send-priority-claim-invitation is scoped by cyclus_id).
+    expect(sender).toHaveBeenCalledWith(expect.objectContaining({ cycleId: 'a' }));
+    expect(sender).toHaveBeenCalledWith(expect.objectContaining({ cycleId: 'b' }));
+  });
+
+  it('propagates a partial/leftover from any one sibling into the round result', async () => {
+    const sender = scriptedByCycle({
+      a: [{ sent: 2, failed: 0, remaining: 0, failedClaimIds: [] }],
+      b: [{ sent: 0, failed: 2, remaining: 0, failedClaimIds: ['x', 'y'] }], // whole chunk failed → no_progress
+    });
+    const r = await drainRebookRoundInvites(['a', 'b'], { sender });
+    expect(r.totalSent).toBe(2);
+    expect(r.leftover).toBe(2);
+    expect(r.stoppedReason).toBe('no_progress');
+    expect(r.failedClaimIds.sort()).toEqual(['x', 'y']);
+  });
+
+  it('reports round-level progress rebased across cycles', async () => {
+    const sender = scriptedByCycle({
+      a: [{ sent: 2, failed: 0, remaining: 0, failedClaimIds: [] }],
+      b: [{ sent: 3, failed: 0, remaining: 0, failedClaimIds: [] }],
+    });
+    const seen: number[] = [];
+    await drainRebookRoundInvites(['a', 'b'], { sender, onProgress: (p) => seen.push(p.totalSent) });
+    // Running totals never go backwards across the cycle boundary.
+    expect(seen).toEqual([2, 5]);
+  });
+
+  it('a single-cycle round behaves exactly like the per-cycle drain', async () => {
+    const sender = scriptedByCycle({ solo: [{ sent: 4, failed: 0, remaining: 0, failedClaimIds: [] }] });
+    const r = await drainRebookRoundInvites(['solo'], { sender });
+    expect(r.totalSent).toBe(4);
+    expect(r.stoppedReason).toBe('drained');
   });
 });
