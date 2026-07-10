@@ -904,6 +904,8 @@ export interface PublicRebookInvoiceResult {
   alreadyStarted?: boolean;
   /** True when the existing rebook invoice is already PAID — success state, nothing to pay. */
   alreadyPaid?: boolean;
+  /** NON-strict failure where the seats WERE kept as a reserved commitment (academy follows up). */
+  reserved?: boolean;
   invoiceId?: string;
   publicToken?: string;
   status?: string;
@@ -981,14 +983,17 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
       if (res.ok && res.checkoutUrl) return { ok: true, status: 'claimed', mode: 'upfront', checkoutUrl: res.checkoutUrl, skippedFull: res.skippedFull };
       if (res.ok && res.publicToken) return { ok: true, status: 'claimed', mode: 'upfront_invoiced', publicToken: res.publicToken, skippedFull: res.skippedFull };
       if (res.reason === 'strict_mollie_unavailable') return { ok: true, status: 'pending', mode: 'strict_mollie_unavailable' };
-      if (res.ok) {
-        // Booked server-side but no checkout/invoice (e.g. the academy's payment setup is incomplete):
-        // the seat is reserved — surface that (manual follow-up), don't lose it or double-accept.
+      // NON-strict kept-seat failures: the seats stay booked as a reserved commitment (the academy
+      // was alerted and follows up) — the "reserved, you'll receive an invoice" copy is HONEST here.
+      // Prefer the fn's explicit reserved flag; fall back to the known kept-seat mint reasons for a
+      // pre-flag deployed backend (deploy-order safety).
+      const KEPT_SEAT_REASONS = ['mint_failed', 'business_incomplete', 'missing_price_data', 'no_invoice', 'mint_timeout'];
+      if (res.ok || res.reserved || (res.reason && KEPT_SEAT_REASONS.includes(res.reason))) {
         return { ok: true, status: 'claimed', mode: 'upfront_unavailable' };
       }
-      // AUDIT FIX: a FAILED result must never masquerade as "reserved — you'll receive an invoice".
-      // The fn either refused before accepting or released the strict seats; surface the failure so
-      // the player retries (the claim page maps known reasons; unknown → generic error toast).
+      // AUDIT FIX: any OTHER failure booked nothing — it must never masquerade as "reserved —
+      // you'll receive an invoice". Surface it so the player retries (the claim page maps known
+      // reasons; unknown → generic error toast).
       return { ok: false, reason: res.reason ?? 'unknown' };
     }
   }
