@@ -781,6 +781,8 @@
     "releaseShort": "Release",
     "working": "Working…",
     "reserved": "Your spot is reserved. You'll receive an invoice when the cycle starts.",
+    "upfrontReserved": "Your spot is reserved — complete payment to confirm it.",
+    "continuePayment": "Continue to payment →",
     "released": "Your spot has been released. Thanks for letting us know.",
     "windowEnded": "The reservation period has ended.",
     "browse": "Browse available spots",

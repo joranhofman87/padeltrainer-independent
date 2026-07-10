@@ -16,6 +16,7 @@ import {
   sendRebookGroupConfirmations,
   getCycleRebookPaymentMode,
   getCycleStartDate,
+  getUnpaidRebookInvoiceByToken,
   recordRebookRulesConsent,
   recordPriorityClaimIntent,
   type RebookPaymentMode,
@@ -79,6 +80,9 @@ export default function PriorityClaimPage() {
   const [group, setGroup] = useState<RebookGroup | null>(null);
   // null = claim card; 'apply' = deferred group editor; 'manage' = post-payment roster editor.
   const [groupMode, setGroupMode] = useState<'apply' | 'manage' | null>(null);
+  // Resume-payment: the pay token of an accepted-but-UNPAID upfront rebook invoice (checkout dropped /
+  // page refreshed). When set, the claimed state shows "Continue to payment" instead of deferred copy.
+  const [unpaidInvoiceToken, setUnpaidInvoiceToken] = useState<string | null>(null);
 
   const loadClaim = useCallback(() => {
     if (!token) return;
@@ -113,6 +117,17 @@ export default function PriorityClaimPage() {
         setPaymentMode(mode);
         setCycleStartDate(startDate);
         setGroup(grp);
+        // Resume-payment: an already-accepted UPFRONT claim may have an unpaid invoice (Mollie was
+        // dropped / the page was refreshed). Look up its pay token so the claimed state can offer
+        // "Continue to payment" instead of the deferred "you'll get an invoice" dead-end. Key off the
+        // locally-resolved `mode` + claim status (not the async state, which hasn't committed yet).
+        // Best-effort + fail-open (no token → keeps today's copy).
+        if (mode === 'upfront' && claim?.claim?.status === 'claimed') {
+          const inv = await getUnpaidRebookInvoiceByToken(token);
+          setUnpaidInvoiceToken(inv?.public_token ?? null);
+        } else {
+          setUnpaidInvoiceToken(null);
+        }
       })
       .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
@@ -423,19 +438,36 @@ export default function PriorityClaimPage() {
 
           {accepted || status === 'claimed' ? (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle2 className="h-5 w-5" />
-                {group?.can_manage_group
-                  ? t('rebookGroup.paidManagePrompt', 'Betaling ontvangen — je plek is gereserveerd. Stel hieronder je groep samen.')
-                  : !accepted && data.booked_by_captain_name
-                    ? t('rebookGroup.bookedByCaptain', '{{name}} heeft je groep al opnieuw ingeschreven — je doet mee. Je plek is gereserveerd.', { name: data.booked_by_captain_name })
-                    : t('rebooking.reserved', "Your spot is reserved. You'll receive an invoice when the cycle starts.")}
-              </div>
-              {/* Post-payment (upfront captain): assign/change the players covered by the payment. */}
-              {group?.can_manage_group && token && (
-                <Button onClick={() => setGroupMode('manage')} disabled={acting} className="w-full sm:w-auto">
-                  {t('rebookGroup.manageEntry', 'Stel je groep samen →')}
-                </Button>
+              {paymentMode === 'upfront' && unpaidInvoiceToken ? (
+                // Accepted an UPFRONT rebook but payment isn't finished (dropped checkout / refresh):
+                // offer to resume instead of the deferred "you'll get an invoice" copy — on a strict
+                // cycle no invoice is ever sent, so this is the only way to complete the booking.
+                <>
+                  <div className="flex items-center gap-2 text-amber-600">
+                    <CalendarClock className="h-5 w-5" />
+                    {t('rebooking.upfrontReserved', 'Your spot is reserved — complete payment to confirm it.')}
+                  </div>
+                  <Button asChild disabled={acting} className="w-full sm:w-auto" aria-label={t('rebooking.continuePayment', 'Continue to payment →')}>
+                    <Link to={`/pay/${unpaidInvoiceToken}`}>{t('rebooking.continuePayment', 'Continue to payment →')}</Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-5 w-5" />
+                    {group?.can_manage_group
+                      ? t('rebookGroup.paidManagePrompt', 'Betaling ontvangen — je plek is gereserveerd. Stel hieronder je groep samen.')
+                      : !accepted && data.booked_by_captain_name
+                        ? t('rebookGroup.bookedByCaptain', '{{name}} heeft je groep al opnieuw ingeschreven — je doet mee. Je plek is gereserveerd.', { name: data.booked_by_captain_name })
+                        : t('rebooking.reserved', "Your spot is reserved. You'll receive an invoice when the cycle starts.")}
+                  </div>
+                  {/* Post-payment (upfront captain): assign/change the players covered by the payment. */}
+                  {group?.can_manage_group && token && (
+                    <Button onClick={() => setGroupMode('manage')} disabled={acting} className="w-full sm:w-auto">
+                      {t('rebookGroup.manageEntry', 'Stel je groep samen →')}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           ) : declined || status === 'declined' ? (
