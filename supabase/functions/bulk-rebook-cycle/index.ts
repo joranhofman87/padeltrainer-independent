@@ -4,6 +4,7 @@ import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
 import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
+import { buildTargetCycleNames, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -401,7 +402,33 @@ serve(async (req) => {
       ? Math.max(1, Math.floor((Date.parse(`${bodyEndDate}T00:00:00Z`) - Date.parse(`${newStartDate}T00:00:00Z`)) / (7 * DAY_MS)) + 1)
       : (weeks > 0 ? weeks : suggestedWeeks);
 
+    // PER-SERIES TARGETS (owner model): one rebook run creates ONE target cycle per source series —
+    // cycles stay separated; only the rebook PROGRESS is aggregated (via settings.rebook_round_id).
+    // Trainer + location names feed the name-disambiguation chain when two series share day+time.
+    const effName = targetCycleName || "Volgende ronde";
+    const nmTrainerIds = [...new Set(qualifyingSeries.map((s) => s[0].trainer_id).filter((x): x is string => !!x))];
+    const nmLocationIds = [...new Set(qualifyingSeries.map((s) => s[0].location_id).filter((x): x is string => !!x))];
+    const nmTrainerById = new Map<string, string>();
+    const nmLocationById = new Map<string, string>();
+    if (qualifyingSeries.length > 1) {
+      if (nmTrainerIds.length > 0) {
+        const { data: tn } = await supabase.from("trainer_profiles").select("id, full_name").in("id", nmTrainerIds);
+        for (const t of tn ?? []) if (t.full_name) nmTrainerById.set(t.id, String(t.full_name).split(" ")[0]);
+      }
+      if (nmLocationIds.length > 0) {
+        const { data: ln } = await supabase.from("locations").select("id, name").in("id", nmLocationIds);
+        for (const l of ln ?? []) if (l.name) nmLocationById.set(l.id, String(l.name));
+      }
+    }
+    const nameInputFor = (series: Slot[]): SeriesNameInput => ({
+      key: seriesKey(series[0]),
+      startIso: series[0].start_time,
+      trainerName: series[0].trainer_id ? nmTrainerById.get(series[0].trainer_id) ?? null : null,
+      locationName: series[0].location_id ? nmLocationById.get(series[0].location_id) ?? null : null,
+    });
+
     if (dryRun) {
+      const dryNames = buildTargetCycleNames(effName, qualifyingSeries.map(nameInputFor), tz);
       // Per-group breakdown for the admin to FULLY review BEFORE anything is created
       // or emailed: weekday + time, the roster (names + whether each has an email, so
       // the admin can spot players who'd be silently skipped), the holiday-adjusted
@@ -485,6 +512,8 @@ serve(async (req) => {
           // Stable join key between the review UI and the create loop (survives the
           // players>0 filter, which breaks index-alignment with qualifyingSeries).
           sourceSeriesKey: seriesKey(tmpl),
+          // The cycle this series will become — shown in the review so the admin sees the split.
+          targetName: dryNames.get(seriesKey(tmpl)) ?? effName,
           trainerId: tmpl.trainer_id,
           trainerName: tmpl.trainer_id ? (trainerNameById.get(tmpl.trainer_id) ?? null) : null,
           weekday: weekdayFmt.format(d),
@@ -519,6 +548,7 @@ serve(async (req) => {
         pricesIncludeVat,
         effWeeks,
         groupsDetail,
+        targetCycles: includedDetail.map((g) => ({ name: g.targetName, sourceSeriesKey: g.sourceSeriesKey, players: g.players, sessions: g.sessions })),
         totalSessions,
         noEmailTotal,
         grandInvoiceTotal,
@@ -526,8 +556,6 @@ serve(async (req) => {
         secondBucketAddedCount: exclusion.secondBucketProfileIds.length,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
-    const effName = targetCycleName || "Volgende ronde";
-
     // Best-effort teardown of a half-built cycle (used to roll back a failed run, and
     // to clear a leftover draft before a clean retry). A freshly-built rebook cycle
     // has no bookings yet, so deleting its slots can't orphan a paid seat.
@@ -545,41 +573,39 @@ serve(async (req) => {
     // genuine double-run → block it (a second run would email everyone again). A
     // leftover DRAFT with the same key is debris from a previously-failed run (it was
     // never visible/bookable) → delete it and rebuild cleanly.
+    const targetNamesByKey = buildTargetCycleNames(effName, includedSeries.map(nameInputFor), tz);
+    const allTargetNames = [...targetNamesByKey.values()];
     const { data: existing } = await supabase
       .from("cycles")
-      .select("id, status")
+      .select("id, status, name")
       .eq("owner_type", "academy")
       .eq("owner_id", academyProfileId)
-      .eq("name", effName)
+      .in("name", allTargetNames)
       .eq("start_date", newStartDate)
       // Only ever match THIS engine's own cycles (rebook marker present), so the
       // already_exists block and the draft cleanup below can never touch — let alone
       // delete — a manually-created registration/event cycle that shares name+date.
-      .not("settings->>rebook_payment_mode", "is", null)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      if (existing[0].status === "draft") {
-        await cleanupCycle(existing[0].id);
-      } else {
-        // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
-        return new Response(JSON.stringify({ ok: false, reason: "already_exists", existingCycleId: existing[0].id }), {
-          status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
-        });
-      }
+      .not("settings->>rebook_payment_mode", "is", null);
+    const existingNonDraft = (existing ?? []).filter((e) => e.status !== "draft");
+    if (existingNonDraft.length > 0) {
+      // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
+      return new Response(JSON.stringify({
+        ok: false, reason: "already_exists",
+        existingCycleId: existingNonDraft[0].id,
+        existingNames: existingNonDraft.map((e) => e.name),
+      }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+    }
+    for (const e of existing ?? []) {
+      if (e.status === "draft") await cleanupCycle(e.id);
     }
 
     // 4. Create the target cycle as a DRAFT. It is flipped to 'open' only after every
     //    slot + claim is written, so a mid-run failure/timeout leaves an invisible
     //    draft (cleaned up on retry) instead of a half-built 'open' round that a retry
     //    would refuse with already_exists.
-    const repTemplate = includedSeries[0][0];
-    const cyclePrice = sessionPrice ?? suggestedPrice ?? repTemplate.price_per_session;
     // The cycle's end_date is the chosen end date when given (exact), else derived from the weeks count.
     const newEndDate = bodyEndDate
       ?? new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
-    const singleLocation = locationIds.length === 1
-      ? locationIds[0]
-      : (sourceCyclusId ? repTemplate.location_id : null); // cyclus mode: inherit the source venue
 
     // Validate the priority list against THIS academy's registered players, so a
     // client can't grant an arbitrary profile member-window access to freed seats.
@@ -610,30 +636,53 @@ serve(async (req) => {
       }
     }
 
-    const { data: targetCycle, error: tcErr } = await supabase
-      .from("cycles")
-      .insert({
+    // allow_cyclus_booking is cycle-level → read each series' SOURCE cycle settings (cyclus mode
+    // already fetched them; location mode fetches the distinct source cycles here).
+    const srcCycleIds = [...new Set(includedSeries.map((sr) => sr[0].cyclus_id).filter((x): x is string => !!x))];
+    const srcSettingsById = new Map<string, Record<string, unknown>>();
+    if (sourceCyclusId) srcSettingsById.set(sourceCyclusId, sourceCycleSettings);
+    if (!sourceCyclusId && srcCycleIds.length > 0) {
+      const { data: srcRows } = await supabase.from("cycles").select("id, settings").in("id", srcCycleIds);
+      for (const c of srcRows ?? []) srcSettingsById.set(c.id, (c.settings as Record<string, unknown> | null) ?? {});
+    }
+
+    // ONE round id stamped on every target: the manage/progress views aggregate the run by it,
+    // while the cycles themselves stay separate (the owner's model).
+    const roundId = crypto.randomUUID();
+    const sharedRebookSettings = {
+      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder,
+      rebook_round_id: roundId, rebook_round_label: effName,
+    };
+    const draftRows = includedSeries.map((series) => {
+      const tmpl = series[0];
+      const srcSettings = tmpl.cyclus_id ? (srcSettingsById.get(tmpl.cyclus_id) ?? {}) : {};
+      return {
         owner_type: "academy",
         owner_id: academyProfileId,
-        name: effName,
+        name: targetNamesByKey.get(seriesKey(tmpl))!,
         start_date: newStartDate,
         end_date: newEndDate,
         type: "cyclus",
         status: "draft",
-        location_id: singleLocation,
-        price_per_session: cyclePrice,
+        location_id: tmpl.location_id ?? (locationIds.length === 1 ? locationIds[0] : null),
+        price_per_session: sessionPrice ?? tmpl.price_per_session ?? suggestedPrice,
         settings: {
-          // Public-booking config so a released round prices/gates exactly like the source cycle:
-          // split + booking-mode mirror the copied slots (repTemplate); allow_cyclus_booking is
-          // cycle-level → mirror the source (default allowed when there's no single source cycle).
-          split_payment: repTemplate.split_payment === true,
-          allow_single_booking: repTemplate.allow_single_booking === true,
-          whole_slot_booking: repTemplate.whole_slot_booking === true,
-          allow_cyclus_booking: sourceCycleSettings.allow_cyclus_booking !== false,
-          rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder },
-      })
-      .select("id, name")
-      .single();
+          // Public-booking config so a released round prices/gates exactly like ITS OWN source
+          // series: split + booking-mode mirror the copied slots; allow_cyclus_booking mirrors the
+          // series' source cycle (default allowed when the source slots were hand-added).
+          split_payment: tmpl.split_payment === true,
+          allow_single_booking: tmpl.allow_single_booking === true,
+          whole_slot_booking: tmpl.whole_slot_booking === true,
+          allow_cyclus_booking: srcSettings.allow_cyclus_booking !== false,
+          rebook_source_cyclus_id: tmpl.cyclus_id ?? null,
+          ...sharedRebookSettings,
+        },
+      };
+    });
+    const { data: targetRows, error: tcErr } = await supabase
+      .from("cycles")
+      .insert(draftRows)
+      .select("id, name");
     if (tcErr) {
       // 23505 = the concurrency unique index fired (a simultaneous run won the race).
       if (String((tcErr as { code?: string }).code) === "23505") {
@@ -643,6 +692,9 @@ serve(async (req) => {
       }
       throw tcErr;
     }
+    const targets = targetRows ?? [];
+    const targetByName = new Map(targets.map((t) => [t.name, t]));
+    const targetForSeries = (series: Slot[]) => targetByName.get(targetNamesByKey.get(seriesKey(series[0]))!)!;
 
     let committed = false;
     try {
@@ -672,6 +724,8 @@ serve(async (req) => {
       //    their moved players were folded into rebook_priority_people above.
       for (const series of includedSeries) {
         const tmpl = series[0];
+        // THIS series' own target cycle — slots + claims land here, never in a shared mega-cycle.
+        const targetCycle = targetForSeries(series);
         const durationMs = new Date(tmpl.end_time).getTime() - new Date(tmpl.start_time).getTime();
         const effPrice = sessionPrice ?? tmpl.price_per_session;
         const rebookGroupId = crypto.randomUUID();
@@ -787,7 +841,7 @@ serve(async (req) => {
 
       // 6. Commit: flip the draft to 'open' now that all slots + claims are written.
       //    Done BEFORE the invites so a later email hiccup can't roll back the round.
-      const { error: commitErr } = await supabase.from("cycles").update({ status: "open" }).eq("id", targetCycle.id);
+      const { error: commitErr } = await supabase.from("cycles").update({ status: "open" }).in("id", targets.map((t) => t.id));
       if (commitErr) throw commitErr;
       committed = true;
 
@@ -796,9 +850,15 @@ serve(async (req) => {
       //    the cycle is already committed, so a partial send is recoverable.
       //    When skipInvites is set the CLIENT drains the invites (resumable, with
       //    progress) — we return representativeCount and send nothing here.
+      // skipInvites (client-drained invites) is honored per ROUND. An OLD frontend only knows how
+      // to drain ONE cycle id — with a multi-cycle round its drain would silently strand the other
+      // cycles' invites. Unless the client declares itself round-aware, a multi-target run sends
+      // inline (the pre-skipInvites behavior) so nothing is ever dropped.
+      const roundAware = body?.roundAware === true;
+      const deferInvites = skipInvites && (targets.length <= 1 || roundAware);
       let invitesSent = 0;
       const failedClaimIds: string[] = [];
-      if (!skipInvites) {
+      if (!deferInvites) {
         for (let i = 0; i < representativeClaimIds.length; i += 50) {
           const batch = representativeClaimIds.slice(i, i + 50);
           const { data, error } = await supabase.functions.invoke("send-priority-claim-invitation", {
@@ -816,14 +876,18 @@ serve(async (req) => {
         }
       }
 
-      logStep("done", { targetCycle: targetCycle.id, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
+      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
       // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
       if (failedClaimIds.length > 0) {
-        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targetCycle.id, invitesSent, failedClaimIds });
+        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds });
       }
       return new Response(JSON.stringify({
         ok: true,
-        targetCycleId: targetCycle.id,
+        // Backward compat: old clients navigate to targetCycleId (the primary cycle, whose manage
+        // page aggregates the whole round). New clients read targetCycles + roundId.
+        targetCycleId: targets[0].id,
+        targetCycles: targets.map((t) => ({ id: t.id, name: t.name })),
+        roundId,
         groups: includedSeries.length,
         players: includedPlayerSet.size,
         slotsCopied,
@@ -833,12 +897,15 @@ serve(async (req) => {
         // Total invites the client should drain (skipInvites mode); also lets the
         // caller show an accurate "X of Y" even on the inline path.
         representativeCount: representativeClaimIds.length,
-        invitesDeferred: skipInvites,
+        invitesDeferred: deferInvites,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     } catch (buildErr) {
       // Roll back the half-built draft (only if not yet committed) so a retry is clean.
       if (!committed) {
-        try { await cleanupCycle(targetCycle.id); } catch (_) { /* best-effort */ }
+        // All-or-nothing: roll back EVERY draft of the round so a retry is clean.
+        for (const t of targets) {
+          try { await cleanupCycle(t.id); } catch (_) { /* best-effort */ }
+        }
       }
       throw buildErr;
     }
