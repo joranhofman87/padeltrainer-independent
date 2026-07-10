@@ -1085,6 +1085,7 @@
     "payLaterNote": "You only pay when the cycle starts; the price is shared across the group.",
     "coveredNote": "Already paid — these players are covered by your payment.",
     "notPaid": "Complete the payment first to set up your group.",
+    "upfrontCycle": "This round uses pay-first checkout. Refresh the page and use the payment button.",
     "confirm": "Re-book the group",
     "confirmManage": "Save group",
     "done": "Your group has been re-booked. Everyone's spot is reserved.",

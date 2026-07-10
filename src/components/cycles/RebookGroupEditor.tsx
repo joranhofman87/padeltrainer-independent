@@ -83,6 +83,10 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
           toast.info(t('rebookGroup.alreadyDone', 'Deze groep is al opnieuw ingeschreven.'));
         } else if (res.reason === 'not_paid') {
           toast.error(t('rebookGroup.notPaid', 'Rond eerst de betaling af om je groep samen te stellen.'));
+        } else if (res.reason === 'upfront_cycle') {
+          // Server-side upfront guard (migration 20260804100000): the deferred apply path refuses
+          // pay-first rounds — only reachable when the client's mode resolution went stale.
+          toast.error(t('rebookGroup.upfrontCycle', 'Deze ronde werkt met direct betalen. Ververs de pagina en gebruik de betaalknop.'));
         } else {
           toast.error(t('rebooking.errorGeneric', 'Something went wrong. Please try again.'));
         }

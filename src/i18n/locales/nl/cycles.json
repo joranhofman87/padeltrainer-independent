@@ -1210,6 +1210,7 @@
     "payLaterNote": "Je betaalt pas wanneer de cyclus start; de prijs wordt over de groep verdeeld.",
     "coveredNote": "Al betaald — deze spelers vallen onder jouw betaling.",
     "notPaid": "Rond eerst de betaling af om je groep samen te stellen.",
+    "upfrontCycle": "Deze ronde werkt met direct betalen. Ververs de pagina en gebruik de betaalknop.",
     "confirm": "Groep opnieuw inschrijven",
     "confirmManage": "Groep opslaan",
     "done": "Je groep is opnieuw ingeschreven. Iedereens plek is gereserveerd.",
