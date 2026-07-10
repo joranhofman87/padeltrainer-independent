@@ -15,6 +15,29 @@ export type GroupStatus = 'rebooked' | 'awaiting' | 'declined' | 'members' | 'pu
 type SlotPhase = 'priority' | 'members' | 'public' | 'held';
 type ClaimsState = 'rebooked' | 'awaiting' | 'declined' | 'none';
 
+/**
+ * PostgREST silently caps a single select at ~1000 rows (project default) — NO error, just a
+ * truncated result. A real round blows past that: 100+ invitees × ~14 weekly claims ≈ 1500+ claim
+ * rows, so the one-shot read dropped ~500 rows INCLUDING the representative claims carrying
+ * `invited_at`. The manage view then showed dozens of already-emailed players as "niet verstuurd"
+ * (and the resume button — correctly — found nothing to send: the sender reads in chunks and saw
+ * the true state). Page every bulk read with .range() until a short page; `order` keeps the
+ * pagination deterministic.
+ */
+const FETCH_PAGE = 1000;
+export async function fetchAllPages<T>(
+  buildPage: (from: number, to: number) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>,
+): Promise<{ rows: T[]; error: { code?: string; message?: string } | null }> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += FETCH_PAGE) {
+    const { data, error } = await buildPage(from, from + FETCH_PAGE - 1);
+    if (error) return { rows, error };
+    const page = (data ?? []) as T[];
+    rows.push(...page);
+    if (page.length < FETCH_PAGE) return { rows, error: null };
+  }
+}
+
 export type ClaimResponse = 'claimed' | 'pending' | 'declined' | 'expired';
 export type ResponseIntent = 'accept' | 'decline' | null;
 /** What the owner really wants to see: did this invitee rebook, say no, or not respond. */
@@ -287,17 +310,21 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       for (const c of siblings) cycleNameById.set(c.id, c.name);
     }
   }
-  const { data: slots } = await supabase
-    .from('availability_slots')
-    .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at, cyclus_id')
-    .in('cyclus_id', cycleIds);
+  const { rows: slots } = await fetchAllPages<SlotRow>((from, to) =>
+    supabase
+      .from('availability_slots')
+      .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at, cyclus_id')
+      .in('cyclus_id', cycleIds)
+      .order('id')
+      .range(from, to),
+  );
   const settingsObj = (cycle?.settings ?? null) as {
     rebook_invitation_message?: unknown; rebook_reminder_message?: unknown; rebook_reminder_subject?: unknown;
   } | null;
   const invitationMessage = typeof settingsObj?.rebook_invitation_message === 'string' ? settingsObj.rebook_invitation_message : '';
   const reminderMessage = typeof settingsObj?.rebook_reminder_message === 'string' ? settingsObj.rebook_reminder_message : '';
   const reminderSubject = typeof settingsObj?.rebook_reminder_subject === 'string' ? settingsObj.rebook_reminder_subject : '';
-  const slotRows = (slots ?? []) as SlotRow[];
+  const slotRows = slots;
   // For a multi-cycle round, the header shows the round label; a single cycle shows its own name.
   const displayName = (roundId && cycleIds.length > 1 && typeof roundSettings.rebook_round_label === 'string'
     ? roundSettings.rebook_round_label
@@ -343,23 +370,30 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // reminded_at + response_intent were both added by owner-deployed migrations; if either isn't
   // live yet the select 400s and the whole management view would blank. Fall back to the base
   // columns (optional fields → undefined), mirroring getMyPendingPriorityClaims's tolerance.
-  const primaryClaims = await supabase
-    .from('slot_priority_claims')
-    // response_intent/response_intent_at are real columns missing from the generated types
-    // (types.ts drift, like rebook_cyclus_id) — the select typechecks via `as unknown` and the
-    // runtime values are unchanged.
-    .select(`${claimCols}, reminded_at, response_intent, response_intent_at`)
-    .in('slot_id', slotIds);
-  let claimData = primaryClaims.data as unknown as ClaimRow[] | null;
+  // Paginated (see fetchAllPages): a 100+ invitee round has 1500+ claims — a one-shot read
+  // silently truncated at 1000 and dropped the invited_at representative rows.
+  const primaryClaims = await fetchAllPages<ClaimRow>((from, to) =>
+    supabase
+      .from('slot_priority_claims')
+      // response_intent/response_intent_at are real columns missing from the generated types
+      // (types.ts drift, like rebook_cyclus_id) — the select typechecks via `as unknown` and the
+      // runtime values are unchanged.
+      .select(`${claimCols}, reminded_at, response_intent, response_intent_at`)
+      .in('slot_id', slotIds)
+      .order('id')
+      .range(from, to),
+  );
+  let claimRows = primaryClaims.rows;
   if (
     primaryClaims.error &&
     (primaryClaims.error.code === '42703' ||
       /reminded_at|response_intent/.test(primaryClaims.error.message ?? ''))
   ) {
-    const fb = await supabase.from('slot_priority_claims').select(claimCols).in('slot_id', slotIds);
-    claimData = fb.data as ClaimRow[] | null;
+    const fb = await fetchAllPages<ClaimRow>((from, to) =>
+      supabase.from('slot_priority_claims').select(claimCols).in('slot_id', slotIds).order('id').range(from, to),
+    );
+    claimRows = fb.rows;
   }
-  const claimRows = (claimData ?? []) as ClaimRow[];
 
   // P1-1: rebook invoices are NEVER tagged cycle_id — single-claim invoices carry rebook_cyclus_id,
   // group invoices carry rebook_group_id. Read paid/invoiced via those keys (reading cycle_id showed
