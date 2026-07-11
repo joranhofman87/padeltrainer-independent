@@ -5,7 +5,7 @@ vi.mock('@/lib/invoiceSync', () => ({
 }));
 
 import { syncInvoicesAfterBookingRemoval } from '@/lib/invoiceSync';
-import { cancelBookingsAndSync, insertBookings, insertBookingSingle } from './bookings';
+import { cancelBookingsAndSync, insertBookings, insertBookingSingle, markPaidPaymentAmount } from './bookings';
 
 const syncMock = syncInvoicesAfterBookingRemoval as unknown as ReturnType<typeof vi.fn>;
 
@@ -109,6 +109,21 @@ function mockInsertClient(opts: { error?: unknown; data?: unknown } = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { client: client as any, calls };
 }
+
+describe('markPaidPaymentAmount (Batch 2 e — mark-paid must not clobber the split share/discount)', () => {
+  it('keeps an existing per-player charge (a €25 split share stays €25, not the €50 slot price)', () => {
+    expect(markPaidPaymentAmount(25, 50)).toBe(25);
+  });
+  it('keeps a €0 covered-seat amount (0 is a real amount, not "missing")', () => {
+    expect(markPaidPaymentAmount(0, 50)).toBe(0);
+  });
+  it('falls back to the slot price only when the booking has no amount yet', () => {
+    expect(markPaidPaymentAmount(null, 50)).toBe(50);
+  });
+  it('null amount + null slot price → 0', () => {
+    expect(markPaidPaymentAmount(null, null)).toBe(0);
+  });
+});
 
 describe('insertBookings', () => {
   it('inserts the given rows into bookings (array, no returning → plain insert)', async () => {
