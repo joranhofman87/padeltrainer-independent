@@ -1111,7 +1111,7 @@
   "rebookManage": {
     "title": "Manage rebooking",
     "overview": {
-      "searchPlaceholder": "Search by name…",
+      "searchPlaceholder": "Search by name or location…",
       "columnsButton": "Columns",
       "columnsDefault": "Default",
       "columnsOptional": "Optional",
@@ -1138,7 +1138,8 @@
       },
       "emptyTitle": "No rebookings yet",
       "emptyDescription": "Start a next round from the Sessions hub to let players rebook.",
-      "noMatches": "No rebookings found."
+      "noMatches": "No rebookings found.",
+      "colLocation": "Location"
     },
     "roundsTitle": "Rebookings",
     "invitesSent": "{{sent}} of {{total}} invites sent",

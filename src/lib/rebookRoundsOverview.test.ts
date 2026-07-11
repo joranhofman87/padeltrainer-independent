@@ -12,12 +12,12 @@ const round = (over: Partial<RebookRound> = {}): RebookRound => ({
   ...over,
 });
 
-const group = (capacity: number): RebookManageGroup => ({
+const group = (capacity: number, locationId: string | null = 'loc-1'): RebookManageGroup => ({
   groupId: `g-${capacity}`,
   weekday: 'woensdag',
   time: '19:00',
   trainerId: null,
-  locationId: null,
+  locationId,
   trainerName: null,
   locationName: null,
   slotIds: [],
@@ -68,6 +68,11 @@ describe('toRebookRoundOverviewRow', () => {
       invitesTotal: 51,
       statsLoaded: true,
     });
+  });
+
+  it('derives the distinct location ids of the round from its groups (dedup, nulls dropped)', () => {
+    const d = data({ groups: [group(4, 'loc-1'), group(4, 'loc-1'), group(2, 'loc-2'), group(2, null)] });
+    expect(toRebookRoundOverviewRow(round(), d).locationIds.sort()).toEqual(['loc-1', 'loc-2']);
   });
 
   it('capacity is the sum of the round series capacities; openSpots = capacity − rebooked', () => {
