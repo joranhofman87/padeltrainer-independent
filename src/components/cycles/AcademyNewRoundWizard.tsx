@@ -26,6 +26,7 @@ import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
+import { RebookReminderLeadField } from '@/components/cycles/RebookReminderLeadField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
@@ -91,6 +92,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   // Automated reminder to non-responders ~24h before their priority window closes.
   const [autoReminder, setAutoReminder] = useState(true);
+  // Hours before each player's deadline the automated reminder fires (stored unit = hours).
+  const [reminderLeadHours, setReminderLeadHours] = useState(24);
 
   const [review, setReview] = useState<ReviewData | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -174,8 +177,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       priorityGuests: priorityPeople.filter((p) => p.player_type === 'guest').map((p) => p.id),
       memberOpenMessage: priorityMessage.trim() || null,
       autoReminder,
+      reminderLeadHours,
     }),
-    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, priorityPeople, priorityMessage, autoReminder],
+    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, priorityPeople, priorityMessage, autoReminder, reminderLeadHours],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -544,6 +548,12 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 </label>
                 {autoReminder && (
                   <div className="space-y-3 pl-7">
+                    <RebookReminderLeadField
+                      id="rebook-newround-reminder-lead"
+                      valueHours={reminderLeadHours}
+                      onChange={setReminderLeadHours}
+                      disabled={submitting}
+                    />
                     <EmailSubjectField
                       id="rebook-reminder-subject"
                       value={reminderSubject}

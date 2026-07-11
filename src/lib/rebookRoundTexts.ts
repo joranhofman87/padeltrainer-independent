@@ -14,6 +14,8 @@ export interface RebookRoundTexts {
   invitationMessage: string;
   reminderSubject: string;
   reminderMessage: string;
+  /** Hours before each player's deadline the automated reminder fires; null = default (24h). */
+  reminderLeadHours: number | null;
   /** Rebooking rules (rich HTML, '' = no rules → no consent gate). */
   rebookRules: string;
 }
@@ -23,14 +25,16 @@ export interface SaveRoundTextsResult {
   failed: Array<{ cycleId: string; reason: string }>;
 }
 
-/** The settings keys a texts save writes — '' clears the key back to the default (null). */
-export function textsToSettingsPatch(texts: RebookRoundTexts): Record<string, string | null> {
+/** The settings keys a texts save writes — '' / null clears the key back to the default. */
+export function textsToSettingsPatch(texts: RebookRoundTexts): Record<string, string | number | null> {
+  const lead = texts.reminderLeadHours;
   return {
     rebook_claim_info: texts.claimInfo.trim() || null,
     rebook_invitation_subject: texts.invitationSubject.trim() || null,
     rebook_invitation_message: texts.invitationMessage.trim() || null,
     rebook_reminder_subject: texts.reminderSubject.trim() || null,
     rebook_reminder_message: texts.reminderMessage.trim() || null,
+    rebook_reminder_lead_hours: lead != null && Number.isInteger(lead) && lead >= 1 && lead <= 336 ? lead : null,
     rebook_rules: texts.rebookRules.trim() || null,
   };
 }

@@ -1409,7 +1409,12 @@
     "memberHint": "Daarna kan iedereen de overgebleven plekken boeken.",
     "claimInfoLabel": "Uitleg op de bevestigingspagina (optioneel)",
     "claimInfoPlaceholder": "Leeg = de standaardtekst (\"Hoe werkt het?\" en \"Wil je een ander moment?\").",
-    "claimInfoHint": "Dit vervangt het uitlegblok op de pagina waar spelers hun plek bevestigen. Laat leeg om de standaardtekst te gebruiken."
+    "claimInfoHint": "Dit vervangt het uitlegblok op de pagina waar spelers hun plek bevestigen. Laat leeg om de standaardtekst te gebruiken.",
+    "reminderLeadLabel": "Wanneer versturen?",
+    "reminderLeadHours": "uur",
+    "reminderLeadDays": "dag(en)",
+    "reminderLeadSuffix": "voor het verlopen van de voorrang",
+    "reminderLeadHint": "Elke speler krijgt de herinnering zodra zijn eigen deadline binnen deze tijd valt (één herinnering per speler)."
   },
   "rebookReview": {
     "group": "Groep & spelers",

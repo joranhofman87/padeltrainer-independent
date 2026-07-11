@@ -178,6 +178,12 @@ serve(async (req) => {
     // Automated deadline reminder to non-responders (cron). Default ON; the wizard can
     // opt out. Read by rebook_claims_needing_auto_reminder() as settings.rebook_auto_reminder.
     const autoReminder: boolean = body?.autoReminder !== false;
+    // Per-round reminder LEAD: hours before each player's deadline the reminder fires
+    // (settings.rebook_reminder_lead_hours; the SQL picker clamps 1..336). null ⇒ 24h default.
+    const reminderLeadHours: number | null = (() => {
+      const n = Number(body?.reminderLeadHours);
+      return Number.isInteger(n) && n >= 1 && n <= 336 ? n : null;
+    })();
     const targetCycleName: string | null = body?.targetCycleName ?? null;
     dryRun = body?.dryRun === true;
     // Defer the invite blast to the CLIENT (resumable, bounded chunks via
@@ -772,7 +778,7 @@ serve(async (req) => {
     // existing round's id, so the added series join its combined overview.
     const roundId = extendRoundId ?? crypto.randomUUID();
     const sharedRebookSettings = {
-      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_claim_info: claimInfo || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder,
+      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_claim_info: claimInfo || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder, rebook_reminder_lead_hours: reminderLeadHours,
       rebook_round_id: roundId, rebook_round_label: effName,
     };
     const draftRows = includedSeries.map((series) => {
