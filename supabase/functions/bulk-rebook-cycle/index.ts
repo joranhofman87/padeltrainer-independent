@@ -317,6 +317,13 @@ serve(async (req) => {
       label: string;
       sentSourceIds: Set<string>;
       sentNames: Set<string>;
+      /** Names the extension must NOT mint: the round's own PLUS every other non-draft rebook
+       *  cycle of this academy at the same start_date. Two rounds can share a label + start date
+       *  (e.g. "Najaar 26" at two clubs) — without the cross-round names, an extension's bare
+       *  "<label> — Di 19:00" collides with the sibling round's cycle and the double-run guard
+       *  refuses the whole send. Naming-only: the already-sent SKIP stays round-scoped — a
+       *  same-time series in another round is a different group to disambiguate, not to skip. */
+      takenNames: Set<string>;
     } | null = null;
     if (extendRoundId) {
       const { data: roundRows, error: rrErr } = await supabase
@@ -337,6 +344,19 @@ serve(async (req) => {
         .map((r) => (r.settings ?? {}).rebook_round_label)
         .find((x): x is string => typeof x === "string" && x.trim().length > 0);
       const nonDraft = rounds.filter((r) => r.status !== "draft");
+      const sentNames = new Set(nonDraft.map((r) => r.name));
+      const { data: sameDateRows, error: sdErr } = await supabase
+        .from("cycles")
+        .select("name, status")
+        .eq("owner_type", "academy")
+        .eq("owner_id", academyProfileId)
+        .eq("start_date", newStartDate)
+        .not("settings->>rebook_payment_mode", "is", null);
+      if (sdErr) throw sdErr;
+      const takenNames = new Set(sentNames);
+      for (const r of (sameDateRows ?? []) as Array<{ name: string; status: string }>) {
+        if (r.status !== "draft") takenNames.add(r.name);
+      }
       extendRound = {
         label: (label ?? rounds[0].name).trim(),
         sentSourceIds: new Set(
@@ -344,7 +364,8 @@ serve(async (req) => {
             .map((r) => (r.settings ?? {}).rebook_source_cyclus_id)
             .filter((x): x is string => typeof x === "string" && x.length > 0),
         ),
-        sentNames: new Set(nonDraft.map((r) => r.name)),
+        sentNames,
+        takenNames,
       };
     }
 
@@ -520,7 +541,7 @@ serve(async (req) => {
     });
 
     if (dryRun) {
-      const dryNames = buildTargetCycleNames(effName, qualifyingSeries.map(nameInputFor), tz, extendRound?.sentNames);
+      const dryNames = buildTargetCycleNames(effName, qualifyingSeries.map(nameInputFor), tz, extendRound?.takenNames);
       // Per-group breakdown for the admin to FULLY review BEFORE anything is created
       // or emailed: weekday + time, the roster (names + whether each has an email, so
       // the admin can spot players who'd be silently skipped), the holiday-adjusted
@@ -667,7 +688,7 @@ serve(async (req) => {
     // genuine double-run → block it (a second run would email everyone again). A
     // leftover DRAFT with the same key is debris from a previously-failed run (it was
     // never visible/bookable) → delete it and rebuild cleanly.
-    const targetNamesByKey = buildTargetCycleNames(effName, includedSeries.map(nameInputFor), tz, extendRound?.sentNames);
+    const targetNamesByKey = buildTargetCycleNames(effName, includedSeries.map(nameInputFor), tz, extendRound?.takenNames);
     const allTargetNames = [...targetNamesByKey.values()];
     const { data: existing } = await supabase
       .from("cycles")
