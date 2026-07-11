@@ -6483,16 +6483,19 @@ export type Database = {
           academy_profile_id: string | null
           charges_enabled: boolean | null
           is_connected: boolean | null
+          onboarding_complete: boolean | null
         }
         Insert: {
           academy_profile_id?: string | null
           charges_enabled?: boolean | null
           is_connected?: never
+          onboarding_complete?: boolean | null
         }
         Update: {
           academy_profile_id?: string | null
           charges_enabled?: boolean | null
           is_connected?: never
+          onboarding_complete?: boolean | null
         }
         Relationships: [
           {
@@ -8469,6 +8472,10 @@ export type Database = {
           vat_breakdown: Json
           vat_rate: number
         }[]
+      }
+      get_unpaid_rebook_invoice_by_claim_token: {
+        Args: { _token: string }
+        Returns: Json
       }
       get_unseen_shared_feedback_count: {
         Args: { p_profile_id: string }
