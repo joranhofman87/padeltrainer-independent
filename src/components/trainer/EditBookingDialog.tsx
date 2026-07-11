@@ -187,7 +187,7 @@ export function EditBookingDialog({
       // deleting, so a sync failure orphaned the booking_id on the invoice with no
       // row left to recover. The facade cancels FIRST (the row survives as
       // 'cancelled') then syncs, surfacing the two failure modes separately.
-      const { cancelError, syncError } = await cancelBookingsAndSync([booking.id]);
+      const { cancelError, syncError } = await cancelBookingsAndSync([booking.id], undefined, { declineClaims: true });
       if (cancelError) throw cancelError;
       if (syncError) {
         logger.error("Error recalculating invoices after booking removal", syncError, { component: 'EditBookingDialog' });

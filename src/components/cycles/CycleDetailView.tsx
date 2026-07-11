@@ -383,7 +383,7 @@ export function CycleDetailView({
         allSlotIds,
         { playerId: removeTarget.playerId, guestPlayerId: removeTarget.guestPlayerId },
         supabase,
-        { skipInvoiceSync: skipInvoiceUpdates },
+        { skipInvoiceSync: skipInvoiceUpdates, declineClaims: true },
       );
       if (res.cancelError) throw res.cancelError;
       if (res.syncError) logger.error('Invoice sync after whole-cycle remove failed', res.syncError);

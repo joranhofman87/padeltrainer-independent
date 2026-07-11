@@ -35,7 +35,7 @@ const params = {
 
 beforeEach(() => {
   cancelBookingsAndSync.mockReset();
-  cancelBookingsAndSync.mockResolvedValue({ cancelError: null, syncError: null });
+  cancelBookingsAndSync.mockResolvedValue({ cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [] });
   loggerError.mockReset();
 });
 

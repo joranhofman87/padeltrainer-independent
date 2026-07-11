@@ -506,7 +506,7 @@ export default function AcademyCalendar() {
     // the trainer schedule. Previously the academy removed the player WITHOUT
     // reconciling invoices → the removed player could still be billed / the
     // split stay stale. Now reconciled; a sync failure is surfaced separately.
-    const { cancelError, syncError } = await cancelBookingsAndSync([bookingId]);
+    const { cancelError, syncError } = await cancelBookingsAndSync([bookingId], undefined, { declineClaims: true });
     if (cancelError) {
       logger.error('Error removing player', cancelError as Error, { component: 'AcademyCalendar' });
       toast({ title: t('calendar.removeFailed', { defaultValue: 'Failed to remove player' }), variant: 'destructive' });

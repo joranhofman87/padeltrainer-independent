@@ -64,11 +64,17 @@ beforeAll(async () => {
       discount_reason text, paid_externally boolean, notes text
     );
     CREATE TABLE guest_players (id uuid PRIMARY KEY, has_trained boolean);
+    -- Minimal shape of the rebook-claim table the V6 stuck-claim fix touches.
+    CREATE TABLE slot_priority_claims (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      slot_id uuid, booking_id uuid, guest_player_id uuid, player_id uuid,
+      status text, responded_at text, decline_reason text
+    );
   `);
 });
 
 beforeEach(async () => {
-  await db.exec(`DELETE FROM bookings; DELETE FROM availability_slots; DELETE FROM cycles; DELETE FROM guest_players;`);
+  await db.exec(`DELETE FROM bookings; DELETE FROM availability_slots; DELETE FROM cycles; DELETE FROM guest_players; DELETE FROM slot_priority_claims;`);
   await db.exec(`INSERT INTO cycles (id, settings, price_per_session) VALUES ('${CYCLE}', '{"split_payment": false}'::jsonb, 20);`);
   // One PAST session + two upcoming — start_time as ISO text (sorts chronologically).
   await db.exec(`INSERT INTO availability_slots (id, cyclus_id, start_time, end_time, price_per_session, max_participants) VALUES
@@ -230,6 +236,72 @@ describe('cancelBookingsAndSync — 0-row guard (RLS-blocked / phantom-success)'
     expect(res.cancelError).toBeNull();
     const row = (await db.query<{ status: string }>(`SELECT status FROM bookings WHERE id = $1`, [id])).rows[0];
     expect(row.status).toBe('cancelled');
+  });
+});
+
+describe('cancelBookingsAndSync — declineClaims (V6: stuck-claim on removal)', () => {
+  const claimStatus = async (id: string): Promise<string | undefined> =>
+    (await db.query<{ status: string }>(`SELECT status FROM slot_priority_claims WHERE id = $1`, [id])).rows[0]?.status;
+
+  const seedBookingWithClaim = async (bId: string, cId: string, paid: boolean) => {
+    await db.exec(`INSERT INTO bookings (id, slot_id, guest_player_id, status, payment_status, paid_externally) VALUES
+      ('${bId}','${S1}','${GB}','confirmed','${paid ? 'paid' : 'pending'}', false);`);
+    await db.exec(`INSERT INTO slot_priority_claims (id, slot_id, booking_id, guest_player_id, status) VALUES
+      ('${cId}','${S1}','${bId}','${GB}','claimed');`);
+  };
+
+  it('declines the linked "claimed" claim when declineClaims is set (the seat re-opens)', async () => {
+    const bId = '71000000-0000-0000-0000-000000000001', cId = '72000000-0000-0000-0000-000000000001';
+    await seedBookingWithClaim(bId, cId, false);
+    const res = await cancelBookingsAndSync([bId], supa, { skipInvoiceSync: true, declineClaims: true });
+    expect(res.cancelError).toBeNull();
+    expect(res.declinedClaimCount).toBe(1);
+    expect(res.paidClaimBookingIds).toEqual([]);
+    expect(await claimStatus(cId)).toBe('declined'); // no longer a false "Geherboekt"
+  });
+
+  it('does NOT decline the claim by default (payment-rollback / non-removal callers unaffected)', async () => {
+    const bId = '71000000-0000-0000-0000-000000000002', cId = '72000000-0000-0000-0000-000000000002';
+    await seedBookingWithClaim(bId, cId, false);
+    const res = await cancelBookingsAndSync([bId], supa, { skipInvoiceSync: true }); // no declineClaims
+    expect(res.declinedClaimCount).toBe(0);
+    expect(await claimStatus(cId)).toBe('claimed'); // untouched — the rollback path can still retry
+  });
+
+  it('leaves a PAID claim intact and surfaces it (refund is the owner\'s call, never silent)', async () => {
+    const bId = '71000000-0000-0000-0000-000000000003', cId = '72000000-0000-0000-0000-000000000003';
+    await seedBookingWithClaim(bId, cId, true);
+    const res = await cancelBookingsAndSync([bId], supa, { skipInvoiceSync: true, declineClaims: true });
+    expect(res.declinedClaimCount).toBe(0);
+    expect(res.paidClaimBookingIds).toEqual([bId]);
+    expect(await claimStatus(cId)).toBe('claimed'); // paid seat's claim preserved
+  });
+
+  it('ordinary (non-rebook) cancel finds zero claims → no-op, no error', async () => {
+    const bId = '71000000-0000-0000-0000-000000000004';
+    await db.exec(`INSERT INTO bookings (id, slot_id, guest_player_id, status, payment_status, paid_externally) VALUES
+      ('${bId}','${S1}','${GB}','confirmed','pending', false);`);
+    const res = await cancelBookingsAndSync([bId], supa, { skipInvoiceSync: true, declineClaims: true });
+    expect(res.cancelError).toBeNull();
+    expect(res.declinedClaimCount).toBe(0);
+  });
+});
+
+describe('swapPlayerInCycle — declines the swapped-OUT player\'s stranded claim (V6)', () => {
+  it('re-points A→B and declines A\'s "claimed" claim so the round stops showing A as rebooked', async () => {
+    const bId = '73000000-0000-0000-0000-000000000001', cId = '74000000-0000-0000-0000-000000000001';
+    await db.exec(`INSERT INTO bookings (id, slot_id, guest_player_id, status, payment_status, payment_amount, paid_externally) VALUES
+      ('${bId}','${S1}','${GB}','confirmed','pending', 20, false);`);
+    // GB's rebook claim points at the booking that is about to be reassigned to GA.
+    await db.exec(`INSERT INTO slot_priority_claims (id, slot_id, booking_id, guest_player_id, status) VALUES
+      ('${cId}','${S1}','${bId}','${GB}','claimed');`);
+
+    const res = await swapPlayerInCycle({ cycleId: CYCLE, fromPlayer: { guestPlayerId: GB }, toGuestPlayerId: GA, skipInvoices: true, client: supa });
+
+    expect(res.error).toBeNull();
+    expect(res.reassignedCount).toBe(1);
+    const claim = (await db.query<{ status: string }>(`SELECT status FROM slot_priority_claims WHERE id = $1`, [cId])).rows[0];
+    expect(claim.status).toBe('declined'); // A no longer reads "Geherboekt" on a seat that is now B's
   });
 });
 

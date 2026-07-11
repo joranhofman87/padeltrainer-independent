@@ -43,7 +43,7 @@ describe('cancelBookingsAndSync — skipInvoiceSync', () => {
   it('with skipInvoiceSync: cancels the booking but does NOT sync invoices', async () => {
     const client = makeClient({ data: [{ id: 'b1' }], error: null });
     const res = await cancelBookingsAndSync(['b1'], client as never, { skipInvoiceSync: true });
-    expect(res).toEqual({ cancelError: null, syncError: null });
+    expect(res).toEqual({ cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [] });
     expect(syncInvoicesAfterBookingRemoval).not.toHaveBeenCalled();
   });
 

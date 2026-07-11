@@ -853,7 +853,7 @@ export default function TrainerScheduleOverview() {
     // booking↔invoice write matches every other remove-player path. The cancel
     // commits before the sync, so a sync failure is surfaced as a stale-invoice
     // warning rather than a false "removed".
-    const { cancelError, syncError } = await cancelBookingsAndSync([removeBookingId]);
+    const { cancelError, syncError } = await cancelBookingsAndSync([removeBookingId], undefined, { declineClaims: true });
     if (cancelError) {
       setRemovingBooking(false);
       toast({ title: "Error", description: getFriendlyErrorMessage(cancelError, t("scheduleOverview.genericError", "Something went wrong. Please try again.")), variant: "destructive" });
@@ -988,7 +988,7 @@ export default function TrainerScheduleOverview() {
           // Canonical cancel + invoice reconcile (src/lib/bookings.ts), shared
           // with handleRemovePlayer. A cancel failure now surfaces (was
           // previously unchecked → could silently proceed as if removed).
-          const { cancelError, syncError } = await cancelBookingsAndSync(cancelledIds);
+          const { cancelError, syncError } = await cancelBookingsAndSync(cancelledIds, undefined, { declineClaims: true });
           if (cancelError) throw cancelError;
 
           // Surface a sync failure instead of a false "success": the removed

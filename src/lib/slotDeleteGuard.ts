@@ -124,7 +124,7 @@ export async function cancelBookingsAndDeleteSlots(
 
   let syncError: Error | null = null;
   if (bookingIds.length > 0) {
-    const res = await cancelBookingsAndSync(bookingIds, supabase, { skipInvoiceSync: skip });
+    const res = await cancelBookingsAndSync(bookingIds, supabase, { skipInvoiceSync: skip, declineClaims: true });
     if (res.cancelError) throw res.cancelError;
     if (res.syncError) syncError = res.syncError;
   }

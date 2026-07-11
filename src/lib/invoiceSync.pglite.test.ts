@@ -33,7 +33,7 @@ beforeAll(async () => {
     CREATE TABLE availability_slots (
       id text PRIMARY KEY, price_per_session numeric, cyclus_id text, cyclus_name text,
       start_time timestamptz, prices_include_vat boolean, extra_costs jsonb, location_id text);
-    CREATE TABLE bookings (id text PRIMARY KEY, slot_id text, payment_amount numeric, status text);
+    CREATE TABLE bookings (id text PRIMARY KEY, slot_id text, payment_amount numeric, status text, payment_status text);
     CREATE TABLE invoices (
       id text PRIMARY KEY, invoice_number text, booking_ids text[], line_items jsonb,
       subtotal numeric, vat_amount numeric, total numeric, status text, vat_rate numeric,
