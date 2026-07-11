@@ -8001,6 +8001,12 @@ export type Database = {
       }
       digits_only: { Args: { _value: string }; Returns: string }
       expire_lapsed_priority_claims: { Args: never; Returns: number }
+      expired_holds_over_capacity: {
+        Args: { _booking_ids: string[] }
+        Returns: {
+          booking_id: string
+        }[]
+      }
       filter_academy_priority_ids: {
         Args: {
           _academy_profile_id: string
