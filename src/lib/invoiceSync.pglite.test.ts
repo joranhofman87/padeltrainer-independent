@@ -15,7 +15,7 @@ vi.mock('@/lib/supabaseClient', () => ({
   ),
 }));
 
-import { syncInvoicesAfterBookingRemoval, recalculateInvoiceAfterRemoval } from '@/lib/invoiceSync';
+import { syncInvoicesAfterBookingRemoval, recalculateInvoiceAfterRemoval, syncInvoicesAfterPriceChange } from '@/lib/invoiceSync';
 import { cancelBookingsAndSync } from '@/lib/bookings';
 
 let db: PGlite;
@@ -38,7 +38,7 @@ beforeAll(async () => {
       id text PRIMARY KEY, invoice_number text, booking_ids text[], line_items jsonb,
       subtotal numeric, vat_amount numeric, total numeric, status text, vat_rate numeric,
       split_count int, pdf_url text, vat_breakdown jsonb, notes text,
-      updated_at timestamptz DEFAULT now());
+      cycle_id text, updated_at timestamptz DEFAULT now());
     CREATE FUNCTION bump_updated_at() RETURNS trigger LANGUAGE plpgsql
       AS $$ BEGIN NEW.updated_at = clock_timestamp(); RETURN NEW; END; $$;
     CREATE TRIGGER trg_inv_updated BEFORE UPDATE ON invoices
@@ -105,5 +105,43 @@ describe('booking cancel → invoice reconciliation (against real Postgres)', ()
     const inv = await invRow();
     expect(inv.booking_ids).toEqual(['B2']);
     expect(Number(inv.total)).toBe(25); // remaining player keeps their 1/2 share — not re-inflated
+  });
+});
+
+describe('registration invoice (cycle_id set) is never repriced from slot prices (audit Theme 12)', () => {
+  const regInvTotal = async (): Promise<number> =>
+    Number((await db.query<{ total: string }>(`SELECT total FROM invoices WHERE id = 'REG1'`)).rows[0].total);
+
+  beforeEach(async () => {
+    // A sign-up invoice: total is the €80 registration fee (overlay price), cycle_id set. finalize
+    // has merged the training booking B1 onto it, so it now overlaps a slot the price-sync touches.
+    await db.exec(`
+      DELETE FROM bookings; DELETE FROM invoices;
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B1', 'S1', NULL, 'confirmed');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count, cycle_id)
+        VALUES ('REG1', '2026-R01', ARRAY['B1'], '[]'::jsonb, 0, 0, 80, 'sent', 21, 1, 'C1');
+    `);
+  });
+
+  it('a slot-price change does NOT re-total it from the slot price (stays the €80 registration fee)', async () => {
+    await syncInvoicesAfterPriceChange(['S1']);
+    expect(await regInvTotal()).toBe(80); // NOT rebuilt to 1×€50 slot price
+  });
+
+  it('cancelling one of its merged bookings does NOT rebuild it either', async () => {
+    await syncInvoicesAfterBookingRemoval(['B1']);
+    expect(await regInvTotal()).toBe(80); // untouched — the overlay fee, not per-booking
+  });
+
+  it('CONTROL: a booking invoice (cycle_id NULL) with the same overlap IS still rebuilt', async () => {
+    await db.exec(`
+      INSERT INTO bookings (id, slot_id, payment_amount, status) VALUES ('B2', 'S1', NULL, 'confirmed');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count, cycle_id)
+        VALUES ('BOOK1', '2026-B01', ARRAY['B2'], '[]'::jsonb, 0, 0, 999, 'sent', 21, 1, NULL);
+    `);
+    await syncInvoicesAfterPriceChange(['S1']);
+    const bookInv = Number((await db.query<{ total: string }>(`SELECT total FROM invoices WHERE id = 'BOOK1'`)).rows[0].total);
+    expect(bookInv).toBe(50); // repriced to the slot — proves the skip is scoped to cycle_id invoices only
+    expect(await regInvTotal()).toBe(80); // and the registration invoice beside it is still untouched
   });
 });
