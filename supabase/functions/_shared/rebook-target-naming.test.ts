@@ -62,3 +62,59 @@ Deno.test("missing trainer/location names fall through without crashing", () => 
   ], TZ);
   assertEquals(new Set([...names.values()]).size, 2); // numeric fallback
 });
+
+// ===== Extend mode (takenNames): an extension run must never mint a name the round already uses =====
+
+Deno.test("extend: non-colliding series get the normal day+time name", () => {
+  const taken = new Set(["Najaar 26 — Do 18:00", "Najaar 26 — Ma 19:00"]);
+  const names = buildTargetCycleNames("Najaar 26", [
+    { key: "a", startIso: WED_9 },
+    { key: "b", startIso: WED_19 },
+  ], TZ, taken);
+  assertEquals(names.get("a"), "Najaar 26 — Wo 09:00");
+  assertEquals(names.get("b"), "Najaar 26 — Wo 19:00");
+});
+
+Deno.test("extend: a SINGLE new series still gets the day+time label (never the bare round name)", () => {
+  const taken = new Set(["Najaar 26 — Do 18:00"]);
+  const names = buildTargetCycleNames("Najaar 26", [{ key: "a", startIso: WED_9 }], TZ, taken);
+  assertEquals(names.get("a"), "Najaar 26 — Wo 09:00");
+});
+
+Deno.test("extend: collision with a taken name escalates through trainer tier", () => {
+  const taken = new Set(["Najaar 26 — Wo 09:00"]);
+  const names = buildTargetCycleNames("Najaar 26", [
+    { key: "a", startIso: WED_9, trainerName: "Jan", locationName: "Beach Club" },
+  ], TZ, taken);
+  assertEquals(names.get("a"), "Najaar 26 — Wo 09:00 · Jan");
+});
+
+Deno.test("extend: collision with taken name and no trainer/location → numeric skips taken suffixes", () => {
+  const taken = new Set(["Najaar 26 — Wo 09:00", "Najaar 26 — Wo 09:00 #2"]);
+  const names = buildTargetCycleNames("Najaar 26", [
+    { key: "a", startIso: WED_9 },
+    { key: "b", startIso: WED_19 },
+  ], TZ, taken);
+  assertEquals(names.get("a"), "Najaar 26 — Wo 09:00 #3");
+  assertEquals(names.get("b"), "Najaar 26 — Wo 19:00");
+});
+
+Deno.test("extend: in-run duplicates AND taken names dedupe together", () => {
+  const taken = new Set(["Najaar 26 — Wo 09:00"]);
+  const names = buildTargetCycleNames("Najaar 26", [
+    { key: "a", startIso: WED_9 },
+    { key: "b", startIso: WED_9 },
+  ], TZ, taken);
+  const all = [...names.values()];
+  assertEquals(new Set(all).size, 2);
+  for (const n of all) assertEquals(taken.has(n), false);
+});
+
+Deno.test("without takenNames the behavior is unchanged (backwards compatible)", () => {
+  const names = buildTargetCycleNames("Ronde 3", [
+    { key: "a", startIso: WED_9 },
+    { key: "b", startIso: WED_9 },
+  ], TZ);
+  assertEquals(names.get("a"), "Ronde 3 — Wo 09:00");
+  assertEquals(names.get("b"), "Ronde 3 — Wo 09:00 #2");
+});

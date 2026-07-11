@@ -24,10 +24,19 @@ import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
+import {
+  getRebookRoundExtendPrefill,
+  suggestTermEndFromSources,
+  type RebookRoundExtendPrefill,
+} from '@/lib/rebookRoundExtend';
 
 interface Props {
   academyProfileId: string;
   backHref: string;
+  /** Extend mode: add groups to this EXISTING round (settings.rebook_round_id). The wizard
+   *  prefills the round's shape (label pinned, everything else editable) and the server skips
+   *  groups already in the round instead of re-inviting them. */
+  extendRoundId?: string | null;
 }
 
 interface LocationOption {
@@ -42,6 +51,8 @@ interface PreviewResult {
   suggestedWeeks: number;
   suggestedPrice: number | null;
   pricesIncludeVat: boolean | null;
+  /** Extend mode: groups skipped because they are already part of the round. */
+  alreadySentGroups: number;
 }
 
 interface HolidayRange {
@@ -74,7 +85,7 @@ function DateField({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-export default function RebookCohortWizard({ academyProfileId, backHref }: Props) {
+export default function RebookCohortWizard({ academyProfileId, backHref, extendRoundId }: Props) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
 
@@ -142,6 +153,57 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       .finally(() => setLoadingLocations(false));
   }, [academyProfileId, t]);
 
+  // Extend mode: prefill the wizard from the round being extended. Everything stays editable
+  // except the name (the server pins the round label so the new cycles join the round).
+  const [extendPrefill, setExtendPrefill] = useState<RebookRoundExtendPrefill | null>(null);
+  const [loadingExtend, setLoadingExtend] = useState(Boolean(extendRoundId));
+  useEffect(() => {
+    if (!extendRoundId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const prefill = await getRebookRoundExtendPrefill(academyProfileId, extendRoundId);
+        if (cancelled) return;
+        if (!prefill) {
+          toast.error(t('rebookCohort.extendNotFound', 'Deze ronde is niet gevonden.'));
+          navigate(backHref);
+          return;
+        }
+        setExtendPrefill(prefill);
+        setTargetCycleName(prefill.label);
+        setSelectedLocationIds(new Set(prefill.locationIds));
+        if (prefill.startDate) setNewStartDate(prefill.startDate);
+        if (prefill.endDate) setNewEndDate(prefill.endDate);
+        setSessionPrice(prefill.sessionPrice);
+        setHolidays(prefill.holidays);
+        setPaymentMode(prefill.paymentMode);
+        setStrictMollie(prefill.strictMollie);
+        setAutoReminder(prefill.autoReminder);
+        if (prefill.invitationMessage) setInvitationMessage(prefill.invitationMessage);
+        if (prefill.invitationSubject) setInvitationSubject(prefill.invitationSubject);
+        if (prefill.reminderMessage) setReminderMessage(prefill.reminderMessage);
+        if (prefill.reminderSubject) setReminderSubject(prefill.reminderSubject);
+        if (prefill.rebookRules) setRebookRules(prefill.rebookRules);
+        // Suggest the term end from the round's source cycles (their last session) so the owner
+        // usually doesn't have to re-enter it; still adjustable.
+        const termEnd = await suggestTermEndFromSources(prefill.sourceCyclusIds);
+        if (!cancelled && termEnd) setTermEndDate(termEnd);
+      } catch (e) {
+        if (!cancelled) {
+          toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errExtendLoad', 'Kon de ronde niet laden. Probeer het opnieuw.')));
+          navigate(backHref);
+        }
+      } finally {
+        if (!cancelled) setLoadingExtend(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academyProfileId, extendRoundId]);
+
+  // In extend mode "back" lands on the round's manage page (where the flow started).
+  const effectiveBackHref = extendPrefill ? `/app/academy/cycles/${extendPrefill.anyCycleId}/rebook` : backHref;
+
   const toggleLocation = (id: string) => {
     setSelectedLocationIds((prev) => {
       const next = new Set(prev);
@@ -160,6 +222,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   const baseBody = useMemo(
     () => ({
       academyProfileId,
+      extendRoundId: extendRoundId || null,
       locationIds: Array.from(selectedLocationIds),
       termEndDate,
       newStartDate,
@@ -188,6 +251,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     }),
     [
       academyProfileId,
+      extendRoundId,
       selectedLocationIds,
       termEndDate,
       newStartDate,
@@ -230,7 +294,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     const handle = setTimeout(async () => {
       try {
         const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-          body: { academyProfileId, locationIds: [...selectedLocationIds], termEndDate, newStartDate, paymentMode, requireAdminReview, dryRun: true },
+          body: { academyProfileId, extendRoundId: extendRoundId || null, locationIds: [...selectedLocationIds], termEndDate, newStartDate, paymentMode, requireAdminReview, dryRun: true },
         });
         if (cancelled) return;
         if (error) throw error;
@@ -240,6 +304,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
           suggestedWeeks: Number(data?.suggestedWeeks ?? 0),
           suggestedPrice: data?.suggestedPrice == null ? null : Number(data.suggestedPrice),
           pricesIncludeVat: data?.pricesIncludeVat == null ? null : Boolean(data.pricesIncludeVat),
+          alreadySentGroups: Number(data?.alreadySentGroups ?? 0),
         };
         setPreview(result);
         setPreviewGroups(Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : []);
@@ -261,7 +326,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     }, 600);
     return () => { cancelled = true; clearTimeout(handle); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [academyProfileId, locKey, termEndDate, newStartDate, paymentMode, requireAdminReview]);
+  }, [academyProfileId, extendRoundId, locKey, termEndDate, newStartDate, paymentMode, requireAdminReview]);
 
   // Trainer checklist (built from the auto-preview's series) + exclusion handlers.
   const previewTrainers = useMemo(() => {
@@ -398,7 +463,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
       // Land on the new cycle's rebook management view so the academy can track
       // responses / payments and manage the round (falls back to backHref).
       const newCycleId = data?.targetCycleId as string | undefined;
-      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : backHref);
+      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : effectiveBackHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {
@@ -406,7 +471,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
     }
   };
 
-  if (loadingLocations) {
+  if (loadingLocations || loadingExtend) {
     return (
       <div className="container max-w-3xl mx-auto py-6">
         <Skeleton className="h-64 w-full" />
@@ -425,7 +490,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
         <div>
           <h1 className="text-2xl font-bold">{t('rebookCohort.confirmTitle', 'Controleer voordat je verstuurt')}</h1>
           <p className="text-muted-foreground">
-            {t('rebookCohort.confirmIntroRange', 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}, € {{price}} per sessie. Dit nodigt de volgende spelers nu per e-mail uit:', {
+            {t(extendPrefill ? 'rebookCohort.confirmIntroExtend' : 'rebookCohort.confirmIntroRange', extendPrefill
+              ? 'Je voegt groepen toe aan "{{name}}" van {{start}} t/m {{end}}, € {{price}} per sessie. Dit nodigt de volgende spelers nu per e-mail uit:'
+              : 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}, € {{price}} per sessie. Dit nodigt de volgende spelers nu per e-mail uit:', {
               name: targetCycleName.trim() || t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
               start: newStartDate ? format(parse(newStartDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : newStartDate,
               end: newEndDate ? format(parse(newEndDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : (newStartDate ? format(parse(newStartDate, 'yyyy-MM-dd', new Date()), 'd MMM yyyy') : ''),
@@ -549,17 +616,26 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
   // ===== Configure =====
   return (
     <div className="container max-w-3xl mx-auto px-4 py-6 space-y-6">
-      <Button variant="ghost" size="sm" onClick={() => navigate(backHref)}>
+      <Button variant="ghost" size="sm" onClick={() => navigate(effectiveBackHref)}>
         <ArrowLeft className="h-4 w-4 mr-2" /> {t('common:back', 'Terug')}
       </Button>
 
       <div>
-        <h1 className="text-2xl font-bold">{t('rebookCohort.title', 'Hele groep opnieuw boeken')}</h1>
+        <h1 className="text-2xl font-bold">
+          {extendPrefill
+            ? t('rebookCohort.extendTitle', 'Groepen toevoegen aan "{{name}}"', { name: extendPrefill.label })
+            : t('rebookCohort.title', 'Hele groep opnieuw boeken')}
+        </h1>
         <p className="text-muted-foreground">
-          {t(
-            'rebookCohort.subtitle',
-            'Kies de locatie(s) en de week waarin de huidige termijn eindigt. We zoeken de wekelijkse groepen, kopiëren ze naar de nieuwe ronde en nodigen elke speler uit.',
-          )}
+          {extendPrefill
+            ? t(
+                'rebookCohort.extendSubtitle',
+                'De instellingen van de ronde zijn overgenomen; je kunt alles behalve de naam aanpassen. Groepen die al in de ronde zitten worden overgeslagen — alleen nieuwe groepen worden uitgenodigd.',
+              )
+            : t(
+                'rebookCohort.subtitle',
+                'Kies de locatie(s) en de week waarin de huidige termijn eindigt. We zoeken de wekelijkse groepen, kopiëren ze naar de nieuwe ronde en nodigen elke speler uit.',
+              )}
         </p>
       </div>
 
@@ -578,9 +654,16 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
                 {preview.suggestedWeeks > 0 && (
                   <span className="text-muted-foreground"> {t('rebookCohort.cohortWeeks', '± {{count}} weken per groep.', { count: preview.suggestedWeeks })}</span>
                 )}
+                {preview.alreadySentGroups > 0 && (
+                  <span className="text-muted-foreground"> {t('rebookCohort.alreadySentGroups', '{{count}} groep(en) zitten al in deze ronde en worden overgeslagen.', { count: preview.alreadySentGroups })}</span>
+                )}
               </span>
             ) : preview ? (
-              <span className="text-muted-foreground">{t('rebookCohort.previewEmpty', 'Geen spelers gevonden voor deze selectie.')}</span>
+              <span className="text-muted-foreground">
+                {preview.alreadySentGroups > 0
+                  ? t('rebookCohort.previewAllSent', 'Alle gevonden groepen ({{count}}) zitten al in deze ronde — er is niets nieuws om toe te voegen.', { count: preview.alreadySentGroups })
+                  : t('rebookCohort.previewEmpty', 'Geen spelers gevonden voor deze selectie.')}
+              </span>
             ) : null}
           </CardContent>
         </Card>
@@ -700,7 +783,13 @@ export default function RebookCohortWizard({ academyProfileId, backHref }: Props
             value={targetCycleName}
             onChange={(e) => setTargetCycleName(e.target.value)}
             placeholder={t('rebookCohort.targetNamePlaceholder', 'bv. Najaar 2026')}
+            disabled={Boolean(extendPrefill)}
           />
+          {extendPrefill && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {t('rebookCohort.extendNameHint', 'Nieuwe groepen worden aan deze bestaande ronde toegevoegd; de naam ligt daarom vast.')}
+            </p>
+          )}
         </CardContent>
       </Card>
 
