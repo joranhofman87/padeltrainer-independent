@@ -23,6 +23,8 @@ export type BuildSingleSlotAddPlayerBookingsInput = {
   /** Discount subtracted from payer / first player only. */
   firstPlayerDiscount?: number;
   discountReason?: string | null;
+  /** G5 frozen split divisor: the slot's max_participants. See {@link calculateSlotBookingPricing}. */
+  slotCapacity?: number | null;
 };
 
 export function buildSingleSlotAddPlayerBookings(
@@ -40,6 +42,7 @@ export function buildSingleSlotAddPlayerBookings(
       splitPayment: true,
       existingActiveBookingCount: input.existingActiveBookingCount,
       newPlayerCount: guestIds.length,
+      slotCapacity: input.slotCapacity,
     });
     paymentByGuest = new Map(
       guestIds.map((id, index) => [id, pricing.newPlayerAmounts[index] ?? 0]),
@@ -108,6 +111,8 @@ export type BuildCyclusSlotAddPlayerBookingsInput = {
   discountReason?: string | null;
   payerGuestPlayerId?: string | null;
   isFirstCyclusSlot: boolean;
+  /** G5 frozen split divisor: the slot's max_participants. */
+  slotCapacity?: number | null;
 };
 
 export function buildCyclusSlotAddPlayerBookings(
@@ -128,5 +133,6 @@ export function buildCyclusSlotAddPlayerBookings(
     notes: input.notes,
     firstPlayerDiscount: discount,
     discountReason: input.discountReason,
+    slotCapacity: input.slotCapacity,
   });
 }

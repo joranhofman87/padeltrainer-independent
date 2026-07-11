@@ -136,8 +136,9 @@ describe('addPlayersToCycle (skipInvoices) — all-sessions scope', () => {
 
   it('reads split_payment from the cycle settings JSON (not a top-level column) and splits accordingly', async () => {
     // Regression for the "column cycles.split_payment does not exist" 400: split_payment lives in
-    // settings. With a split cycle + an occupied €20 slot, the added player pays the €10 split share,
-    // proving fetchCyclePricing read it from settings.
+    // settings. With a split cycle + an occupied €20 slot, the added player pays the FROZEN-capacity
+    // share (€20 / max_participants 4 = €5 — G5, audit Batch 2 c), proving fetchCyclePricing read
+    // split_payment from settings AND that the divisor is the court capacity, not the live headcount.
     await db.exec(`UPDATE cycles SET settings = '{"split_payment": true}'::jsonb WHERE id = '${CYCLE}';`);
     await db.exec(`UPDATE availability_slots SET price_per_session = 20 WHERE id = '${S1}';`);
     await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, payment_amount, paid_externally) VALUES
@@ -146,7 +147,7 @@ describe('addPlayersToCycle (skipInvoices) — all-sessions scope', () => {
     const res = await addPlayersToCycle({ cycleId: CYCLE, guestPlayerIds: [GA], skipInvoices: true, client: supa });
 
     expect(res.insertedCount).toBe(3);
-    expect(await amountOnSlot(GA, S1)).toBe(10); // split with the existing co-occupant on the €20 slot
+    expect(await amountOnSlot(GA, S1)).toBe(5); // €20 / capacity 4 — frozen, not €20/2 live co-occupant
   });
 });
 

@@ -33,7 +33,7 @@ describe("buildSingleSlotAddPlayerBookings", () => {
     expect(rows[0].payment_amount).toBe(0);
   });
 
-  it("split payment divides session price across participants", () => {
+  it("split payment divides session price across participants (legacy live-count, no capacity)", () => {
     const rows = buildSingleSlotAddPlayerBookings({
       slotId: "slot-1",
       sessionPrice: 80,
@@ -43,6 +43,32 @@ describe("buildSingleSlotAddPlayerBookings", () => {
       notes: null,
     });
     expect(rows[0].payment_amount).toBe(40);
+  });
+
+  it("split with a FROZEN capacity → slot/capacity, ignoring live headcount (audit Batch 2 c)", () => {
+    // A player added to a split court of 4 pays €20 (80/4) whether they're the 1st or the 3rd —
+    // matching the invoice/recalc/charge paths — not €40 (80/live-2) or the full €80.
+    const lone = buildSingleSlotAddPlayerBookings({
+      slotId: "slot-1",
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 0,
+      guestPlayerIds: ["guest-new"],
+      notes: null,
+      slotCapacity: 4,
+    });
+    expect(lone[0].payment_amount).toBe(20);
+
+    const third = buildSingleSlotAddPlayerBookings({
+      slotId: "slot-1",
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 2,
+      guestPlayerIds: ["guest-new"],
+      notes: null,
+      slotCapacity: 4,
+    });
+    expect(third[0].payment_amount).toBe(20);
   });
 
   it("non-split empty slot: first player full price, second companion €0", () => {
