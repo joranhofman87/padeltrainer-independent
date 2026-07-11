@@ -699,6 +699,22 @@ serve(async (req) => {
         throw new Error(`Booking amount lookup failed: ${amountRowsError.message}`);
       }
 
+      // Batch 3 (§4.1): a paid payment whose bookings NO LONGER EXIST — the slot was deleted while
+      // the hold was mid-checkout, cascading the booking (+ its claim) away — matches zero rows here.
+      // expectedSum would then be 0, so the amount check is skipped and the writeback transitions
+      // nothing; that used to log a benign `duplicateWebhookIgnored`. It is money captured with NO
+      // seat: ALERT for a manual refund instead of swallowing it. (Retrying can't resurrect the rows.)
+      if ((amountRows || []).length === 0) {
+        logStep("Paid payment matches ZERO booking rows — money received, no bookings", { bookingIds, paymentId: payment.id });
+        await notifySlackError(
+          "mollie-webhook",
+          "Paid Mollie payment matches ZERO booking rows — money received but the bookings are gone (slot deleted mid-checkout?). Manual refund / review needed.",
+          { bookingIds, paymentId: payment.id },
+        );
+        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paidPaymentNoBookings, mollie_payment_id: payment.id, metadata: { bookingIds } });
+        return new Response("OK", { status: 200 });
+      }
+
       // A paid payment landing on a CANCELLED booking (e.g. the BookLesson
       // online-cycle rollback soft-cancelled it after a payment-creation hiccup,
       // then the payment completed out of band). applyBookingPaymentWriteback's
