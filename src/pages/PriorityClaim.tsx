@@ -55,6 +55,9 @@ interface ClaimData {
   booked_by_captain_name: string | null;
   // The cycle's rebooking-rules HTML (from the SECURITY DEFINER claim RPC), else null.
   rebook_rules: string | null;
+  // Academy-authored claim-page explanation (plain text) replacing the standard "How does it
+  // work?" box when set. Absent pre-migration / empty → standard copy.
+  rebook_claim_info?: string | null;
   // Payment mode from the token RPC — status-independent, so it stays correct even after the
   // cycle leaves 'open' (unlike the cycles_public read). Absent pre-migration → fall back.
   rebook_payment_mode?: string | null;
@@ -437,21 +440,28 @@ export default function PriorityClaimPage() {
 
           {actionable && (
             <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-sm">
-              <p className="font-medium">{t('rebooking.rulesTitle', 'How does it work?')}</p>
-              <p className="text-muted-foreground">
-                {data.slot.priority_window_ends_at
-                  ? t('rebooking.ruleKeep', 'You keep your spot until the deadline above.')
-                  : t('rebooking.ruleKeepNoDeadline', 'You keep your spot while the priority period is open.')}
-                {' '}
-                {t('rebooking.ruleAfter', "If you don't respond in time, your spot is released afterwards: first to other players from your current cycle, then to everyone.")}
-              </p>
-              <p className="text-muted-foreground">
-                <span className="font-medium text-foreground">{t('rebooking.changeTimesTitle', 'Want a different time?')}</span>{' '}
-                {t('rebooking.changeTimesBody', 'You keep your own day and time. To switch, release your spot and book again once spots open, or contact the academy.')}
-              </p>
-              <p className="text-muted-foreground">
-                {t('rebooking.ifNoResponse', "No response means your spot is released after the deadline. You can still book afterwards via ‘Browse available spots’ while spots last.")}
-              </p>
+              {data.rebook_claim_info?.trim() ? (
+                /* Academy-authored explanation (plain text, per round) replaces the standard copy. */
+                <p className="text-muted-foreground whitespace-pre-line">{data.rebook_claim_info.trim()}</p>
+              ) : (
+                <>
+                  <p className="font-medium">{t('rebooking.rulesTitle', 'How does it work?')}</p>
+                  <p className="text-muted-foreground">
+                    {data.slot.priority_window_ends_at
+                      ? t('rebooking.ruleKeep', 'You keep your spot until the deadline above.')
+                      : t('rebooking.ruleKeepNoDeadline', 'You keep your spot while the priority period is open.')}
+                    {' '}
+                    {t('rebooking.ruleAfter', "If you don't respond in time, your spot is released afterwards: first to other players from your current cycle, then to everyone.")}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium text-foreground">{t('rebooking.changeTimesTitle', 'Want a different time?')}</span>{' '}
+                    {t('rebooking.changeTimesBody', 'You keep your own day and time. To switch, release your spot and book again once spots open, or contact the academy.')}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {t('rebooking.ifNoResponse', "No response means your spot is released after the deadline. You can still book afterwards via ‘Browse available spots’ while spots last.")}
+                  </p>
+                </>
+              )}
             </div>
           )}
 

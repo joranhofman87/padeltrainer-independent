@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, CreditCard, Plus } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, CreditCard, Plus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +28,8 @@ import {
 } from '@/lib/rebookManage';
 import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
 import { formatCurrency } from '@/lib/format';
+import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { RebookRoundTextsDialog } from '@/components/cycles/RebookRoundTextsDialog';
 
 const STATUS_STYLE: Record<GroupStatus, string> = {
   rebooked: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -50,6 +52,9 @@ export default function AcademyRebookManage() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation('cycles');
+  const { activeAcademy } = useAcademyContext();
+  // Round texts editor (claim-page explanation + emails + rules, saved round-wide).
+  const [textsOpen, setTextsOpen] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['rebook-manage', cycleId],
@@ -285,19 +290,36 @@ export default function AcademyRebookManage() {
         <h1 className="text-lg font-semibold truncate">
           {t('rebookManage.title', 'Herboeking beheren')}{data?.cycleName ? ` — ${data.cycleName}` : ''}
         </h1>
-        {/* Extend the round: add groups that were left out of (or failed during) the original
-            send — e.g. a weekday that was deselected. Legacy rounds without a round id can't. */}
+        {/* Round-wide actions (need settings.rebook_round_id — legacy single-cycle rounds lack it):
+            edit the round's texts (claim page + emails + rules) and extend the round with groups
+            that were left out of (or failed during) the original send. */}
         {data?.roundId && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto shrink-0"
-            onClick={() => navigate(`/app/academy/cycles/rebook?extendRound=${data.roundId}`)}
-          >
-            <Plus className="h-4 w-4 mr-1" /> {t('rebookManage.addGroups', 'Groepen toevoegen')}
-          </Button>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {activeAcademy && (
+              <Button variant="outline" size="sm" onClick={() => setTextsOpen(true)}>
+                <Pencil className="h-4 w-4 mr-1" /> {t('rebookManage.editTexts', 'Teksten bewerken')}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/app/academy/cycles/rebook?extendRound=${data.roundId}`)}
+            >
+              <Plus className="h-4 w-4 mr-1" /> {t('rebookManage.addGroups', 'Groepen toevoegen')}
+            </Button>
+          </div>
         )}
       </div>
+
+      {data?.roundId && activeAcademy && (
+        <RebookRoundTextsDialog
+          open={textsOpen}
+          onOpenChange={setTextsOpen}
+          academyProfileId={activeAcademy.id}
+          roundId={data.roundId}
+          onSaved={() => refetch()}
+        />
+      )}
 
       {/* Per-invitee headline — the owner's "who rebooked / who said no / who's silent". */}
       {data && data.summary.invited > 0 && (

@@ -23,6 +23,7 @@ const row = (overrides: Partial<RoundCycleRow> = {}): RoundCycleRow => ({
     rebook_reminder_message: 'Nog niet bevestigd…',
     rebook_reminder_subject: 'Herinnering',
     rebook_rules: '<p>Regels</p>',
+    rebook_claim_info: 'Zo werkt het bij ons.',
     rebook_source_cyclus_id: 'src-1',
   },
   ...overrides,
@@ -50,8 +51,10 @@ describe('mapRoundCyclesToPrefill', () => {
       reminderMessage: 'Nog niet bevestigd…',
       reminderSubject: 'Herinnering',
       rebookRules: '<p>Regels</p>',
+      claimInfo: 'Zo werkt het bij ons.',
       locationIds: ['loc-1'],
       sourceCyclusIds: ['src-1'],
+      cycleIds: ['cycle-a'],
     });
     expect(p?.holidays).toEqual([{ name: 'Herfstvakantie', from: '2026-10-19', to: '2026-10-25' }]);
   });

@@ -25,6 +25,7 @@ import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
+import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
@@ -105,6 +106,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [reminderMessage, setReminderMessage] = useState(() => t('rebookShared.defaultReminderMessage'));
   const [reminderSubject, setReminderSubject] = useState(() => t('rebookShared.defaultReminderSubject'));
   const [rebookRules, setRebookRules] = useState('');
+  // Per-round override of the claim page's standard explanation box ('' = standard copy).
+  const [claimInfo, setClaimInfo] = useState('');
   // Priority list: registered players who also get first dibs (+ an email) when the
   // member window opens, plus the optional message for that "sessions opened" email.
   const [priorityPeople, setPriorityPeople] = useState<PriorityPerson[]>([]);
@@ -164,6 +167,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       reminderMessage: reminderMessage.trim() || null,
       reminderSubject: reminderSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
+      claimInfo: claimInfo.trim() || null,
       // Split by type: registered profiles vs accountless guests (two separate settings arrays,
       // each with its own can_book_member_window clause).
       priorityPeople: priorityPeople.filter((p) => p.player_type === 'registered').map((p) => p.id),
@@ -171,7 +175,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       memberOpenMessage: priorityMessage.trim() || null,
       autoReminder,
     }),
-    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, priorityPeople, priorityMessage, autoReminder],
+    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, priorityPeople, priorityMessage, autoReminder],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -561,6 +565,14 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                     />
                   </div>
                 )}
+              </div>
+              <div className="rounded-md border p-3">
+                <RebookClaimInfoField
+                  id="rebook-newround-claim-info"
+                  value={claimInfo}
+                  onChange={setClaimInfo}
+                  disabled={submitting}
+                />
               </div>
               <div className="rounded-md border p-3">
                 <RebookRulesField
