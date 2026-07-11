@@ -39,6 +39,7 @@ import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   useCyclesQuery,
+  useRegistrationCyclesQuery,
   useIntakeRequestsQuery,
   usePlayerLinksQuery,
   useInvalidateProposalData,
@@ -69,6 +70,9 @@ export default function AcademyIntakeRequests() {
   // TanStack Query — cached data
   const academyId = activeAcademy?.id ?? null;
   const { data: cycles = [], isLoading: cyclesLoading } = useCyclesQuery('academy', academyId);
+  // The manual "Add registration" picker must offer only registration/event FORMS, overlay-aware
+  // (audit Batch 1 V3) — not every owned cyclus/rebook round.
+  const { data: registrationCycles = [] } = useRegistrationCyclesQuery('academy', academyId);
   const { data: requests = [], isLoading: requestsLoading } = useIntakeRequestsQuery('academy', academyId);
   const cycleIds = useMemo(() => cycles.map(c => c.id), [cycles]);
   const { data: playerLinksData = [] } = usePlayerLinksQuery(cycleIds);
@@ -573,7 +577,7 @@ export default function AcademyIntakeRequests() {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         cycleId={selectedCycleId !== 'all' ? selectedCycleId : undefined}
-        cycles={cycles}
+        cycles={registrationCycles}
         onSuccess={() => {
           setShowAddDialog(false);
           if (academyId) invalidateAll('academy', academyId);

@@ -42,6 +42,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { logger } from '@/lib/logger';
 import {
   useCyclesQuery,
+  useRegistrationCyclesQuery,
   useIntakeRequestsQuery,
   usePlayerLinksQuery,
   useInvalidateProposalData,
@@ -88,6 +89,8 @@ export default function TrainerIntakeRequests() {
 
   // TanStack Query — cached
   const { data: cycles = [], isLoading: cyclesLoading } = useCyclesQuery('trainer', trainerId);
+  // Overlay-aware registration/event forms for the manual "Add registration" picker (Batch 1 V3).
+  const { data: registrationCycles = [] } = useRegistrationCyclesQuery('trainer', trainerId);
   const { data: requests = [] } = useIntakeRequestsQuery('trainer', trainerId);
   const cycleIds = useMemo(() => cycles.map(c => c.id), [cycles]);
   const { data: playerLinksData = [] } = usePlayerLinksQuery(cycleIds);
@@ -611,7 +614,7 @@ export default function TrainerIntakeRequests() {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         cycleId={selectedCycleId !== 'all' ? selectedCycleId : undefined}
-        cycles={cycles}
+        cycles={registrationCycles}
         onSuccess={() => {
           setShowAddDialog(false);
           if (trainerId) invalidateAll('trainer', trainerId);

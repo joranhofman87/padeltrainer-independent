@@ -14,6 +14,7 @@ import {
   type SlotWithOccupancy,
   type PlayerLink,
 } from '@/lib/cycles';
+import { listRegistrationCycles } from '@/lib/registrations';
 
 // ── Multi-cycle pages (AcademyIntakeRequests / TrainerIntakeRequests) ──
 
@@ -21,6 +22,21 @@ export function useCyclesQuery(ownerType: 'academy' | 'trainer', ownerId: string
   return useQuery<Cycle[]>({
     queryKey: ['cycles', ownerType, ownerId],
     queryFn: () => getCycles(ownerType, ownerId!),
+    enabled: !!ownerId,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Registration/event FORMS only (legacy typed reg/event cycles UNION the registrations overlays,
+ * keyed on source_cycle_id = intake_requests.cycle_id). Overlay-aware, so a post-split registration
+ * (born type='cyclus') is included while a plain training cyclus / rebook round is not — the correct
+ * option set for the manual "Add registration" intake picker (audit Batch 1 V3).
+ */
+export function useRegistrationCyclesQuery(ownerType: 'academy' | 'trainer', ownerId: string | null) {
+  return useQuery<Cycle[]>({
+    queryKey: ['registration-cycles', ownerType, ownerId],
+    queryFn: () => listRegistrationCycles(ownerType, ownerId!),
     enabled: !!ownerId,
     staleTime: 60_000,
   });
