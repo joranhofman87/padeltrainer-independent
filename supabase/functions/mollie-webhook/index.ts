@@ -756,6 +756,31 @@ serve(async (req) => {
       }
     }
 
+    // Batch 3 (§4.1) oversell guard: a payment arriving on an EXPIRED hold must not be confirmed if
+    // the seat was taken while the hold lapsed (a padel court can't seat a 5th). Ask the DB which of
+    // these bookings are expired holds on a now-full slot and DON'T confirm those — alert for a manual
+    // refund instead. On-time (live-hold) payments are never returned, so a legit payment is never
+    // dropped. confirmBookingIds is what the writeback below actually transitions.
+    let confirmBookingIds = bookingIds;
+    if (payment.status === "paid") {
+      const { data: oversoldRows } = await supabase.rpc("expired_holds_over_capacity", {
+        _booking_ids: bookingIds,
+      });
+      const oversoldIds = ((oversoldRows ?? []) as Array<{ booking_id: string }>).map(
+        (r) => r.booking_id,
+      );
+      if (oversoldIds.length > 0) {
+        confirmBookingIds = bookingIds.filter((id) => !oversoldIds.includes(id));
+        logStep("Paid payment on EXPIRED hold(s) whose slot is now FULL — NOT confirming (oversell guard)", { oversoldIds, paymentId: payment.id });
+        await notifySlackError(
+          "mollie-webhook",
+          "Paid Mollie payment landed on an EXPIRED hold whose seat was taken while it lapsed — NOT confirmed, to avoid overselling the court. Manual refund / review needed.",
+          { oversoldIds, paymentId: payment.id },
+        );
+        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paidHoldOverCapacity, mollie_payment_id: payment.id, booking_id: oversoldIds[0], metadata: { oversoldIds } });
+      }
+    }
+
     // (A4 strict rebook) For a failed/canceled/expired payment, a payment_pending HOLD must
     // release its seat AND re-offer its claim. Capture the holds BEFORE the write-back cancels
     // them; scoped to status='payment_pending' so the non-strict upfront flow is unchanged.
@@ -792,7 +817,7 @@ serve(async (req) => {
     // in applyBookingPaymentWriteback so it is unconditional + unit-tested.
     const transitionedRows = await applyBookingPaymentWriteback(
       supabase,
-      bookingIds,
+      confirmBookingIds,
       updateData,
     );
 
