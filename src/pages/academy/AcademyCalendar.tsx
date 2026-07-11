@@ -46,6 +46,7 @@ import { DeleteSlotDialog } from "@/components/slots/DeleteSlotDialog";
 // SlotDetailDialog removed — now using /app/academy/slot/:slotId page
 
 import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
+import { fetchAllByInChunks } from "@/lib/supabasePaging";
 import AcademyDayGrid, { type KnownPlayer } from "@/components/academy/AcademyDayGrid";
 // Legacy week/overview components retired in favor of AgendaWeekByTrainer + AgendaMonth
 import AcademyTrainerHours from "@/components/academy/AcademyTrainerHours";
@@ -274,19 +275,26 @@ export default function AcademyCalendar() {
     
     if (trainerIds.length === 0) return [];
     
-    const { data: slotsData, error } = await supabase
-      .from("availability_slots")
-      .select(`
-        id, trainer_id, start_time, end_time, max_participants, is_public,
-        location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
-        price_per_session, locations(name, logo_url)
-      `)
-      .in("trainer_id", trainerIds)
-      .gte("start_time", rangeStart.toISOString())
-      .lte("start_time", rangeEnd.toISOString())
-      .order("start_time", { ascending: true });
-
-    if (error) {
+    // Page the FULL month (a busy academy exceeds the 1000-row PostgREST cap; a silent truncation
+    // here under-counts trainer-hours on the payment CSV). Page by the unique id, then re-sort by
+    // start_time for display.
+    let slotsData: Array<Record<string, unknown>> = [];
+    try {
+      slotsData = await fetchAllByInChunks(trainerIds, (chunk) =>
+        supabase
+          .from("availability_slots")
+          .select(`
+            id, trainer_id, start_time, end_time, max_participants, is_public,
+            location_id, cyclus_id, cyclus_name, rating_system, min_rating, max_rating,
+            price_per_session, locations(name, logo_url)
+          `)
+          .in("trainer_id", chunk)
+          .gte("start_time", rangeStart.toISOString())
+          .lte("start_time", rangeEnd.toISOString())
+          .order("id", { ascending: true }),
+      );
+      slotsData.sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+    } catch (error) {
       logger.error("Error fetching slots", error as Error, { component: "AcademyCalendar" });
       return [];
     }
@@ -310,23 +318,26 @@ export default function AcademyCalendar() {
     // the avatar (not part of the name resolver).
     const trainerNameMap = await fetchTrainerDisplayNamesByProfileIds(trainerIds, supabase, "AcademyCalendar");
 
-    const slotIds = slotsData?.map((s) => s.id) || [];
+    const slotIds = slotsData.map((s) => s.id as string);
     let bookings: any[] = [];
-    
-    if (slotIds.length > 0) {
-      const { data: bookingsData, error: bookingsError } = await supabase
-        .from("bookings")
-        .select(`
-          id, slot_id, status, player_id, guest_player_id,
-          profiles:player_id (full_name, skill_rating, rating_system, birth_date),
-          guest_players:guest_player_id (full_name, skill_rating, rating_system, birth_date)
-        `)
-        .in("slot_id", slotIds);
 
-      if (bookingsError) {
+    if (slotIds.length > 0) {
+      // Page the bookings too — a full academy month easily exceeds 1000 booking rows, and a
+      // truncated read silently drops players from the calendar + the trainer-hours totals.
+      try {
+        bookings = await fetchAllByInChunks(slotIds, (chunk) =>
+          supabase
+            .from("bookings")
+            .select(`
+              id, slot_id, status, player_id, guest_player_id,
+              profiles:player_id (full_name, skill_rating, rating_system, birth_date),
+              guest_players:guest_player_id (full_name, skill_rating, rating_system, birth_date)
+            `)
+            .in("slot_id", chunk)
+            .order("id", { ascending: true }),
+        );
+      } catch (bookingsError) {
         logger.error("Error fetching bookings", bookingsError as Error, { component: "AcademyCalendar" });
-      } else {
-        bookings = bookingsData || [];
       }
     }
 
