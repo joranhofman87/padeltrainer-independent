@@ -52,7 +52,7 @@ beforeAll(async () => {
       id text PRIMARY KEY, invoice_number text, booking_ids text[], line_items jsonb,
       subtotal numeric, vat_amount numeric, total numeric, status text, vat_rate numeric,
       split_count int, pdf_url text, vat_breakdown jsonb, notes text,
-      updated_at timestamptz DEFAULT now());
+      cycle_id text, updated_at timestamptz DEFAULT now());
     CREATE FUNCTION bump_updated_at() RETURNS trigger LANGUAGE plpgsql
       AS $$ BEGIN NEW.updated_at = clock_timestamp(); RETURN NEW; END; $$;
     CREATE TRIGGER trg_inv_updated BEFORE UPDATE ON invoices

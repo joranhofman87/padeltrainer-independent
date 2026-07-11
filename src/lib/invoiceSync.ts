@@ -461,6 +461,8 @@ interface OverlapInvoiceRow {
   id: string;
   status: string;
   booking_ids: string[] | null;
+  /** Set only on registration/event invoices — those are overlay-priced and must be skipped (Theme 12). */
+  cycle_id?: string | null;
   invoice_number?: string;
 }
 
@@ -480,7 +482,8 @@ async function fetchInvoicesOverlappingBookings(
   extraColumns = "",
 ): Promise<OverlapInvoiceRow[]> {
   if (bookingIds.length === 0) return [];
-  const columns = `id, status, booking_ids${extraColumns ? `, ${extraColumns}` : ""}`;
+  // cycle_id is always selected so we can SKIP registration/event invoices below (Theme 12).
+  const columns = `id, status, booking_ids, cycle_id${extraColumns ? `, ${extraColumns}` : ""}`;
   const byId = new Map<string, OverlapInvoiceRow>();
   for (const idChunk of chunk(bookingIds, SUPABASE_IN_CHUNK_SIZE)) {
     const rows = await fetchAllRows<OverlapInvoiceRow>(
@@ -497,7 +500,17 @@ async function fetchInvoicesOverlappingBookings(
           ) => PromiseLike<{ data: OverlapInvoiceRow[] | null; error: unknown }>;
         },
     );
-    for (const row of rows) byId.set(row.id, row);
+    for (const row of rows) {
+      // NEVER rebuild a REGISTRATION/EVENT invoice from slot prices. Its total is the overlay
+      // (flat event / package) price, and the only insert that sets invoices.cycle_id is the
+      // event/registration minter — booking + rebook invoices keep it NULL. finalize-proposals
+      // merges training booking_ids onto the sign-up invoice, which would otherwise make it match
+      // this slot-price rebuild and get re-totalled from availability_slots.price_per_session,
+      // silently charging the registrant the training total instead of the quoted registration fee
+      // (architecture audit 2026-07-11, Theme 12 — the one confirmed runtime money defect).
+      if ((row as { cycle_id?: string | null }).cycle_id != null) continue;
+      byId.set(row.id, row);
+    }
   }
   return [...byId.values()];
 }
