@@ -185,6 +185,9 @@ export interface RebookManageData {
    *  (round-scoped), else invites stranded on sibling cycles can never be sent. Length 1 for legacy
    *  single-cycle rounds. */
   cycleIds: string[];
+  /** settings.rebook_round_id — the id the "add groups to this round" wizard extends. Null for
+   *  legacy single-cycle rounds (created before per-series rounds existed), which can't be extended. */
+  roundId: string | null;
 }
 
 interface SlotRow {
@@ -367,6 +370,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     invitesTotal: 0,
     uninvitedCount: 0,
     cycleIds,
+    roundId,
   };
   if (slotRows.length === 0) return empty;
   const slotById = new Map(slotRows.map((s) => [s.id, s]));
@@ -606,6 +610,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     invitesTotal,
     uninvitedCount,
     cycleIds,
+    roundId,
   };
 }
 

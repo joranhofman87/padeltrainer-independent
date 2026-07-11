@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, CreditCard } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, CreditCard, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -285,6 +285,18 @@ export default function AcademyRebookManage() {
         <h1 className="text-lg font-semibold truncate">
           {t('rebookManage.title', 'Herboeking beheren')}{data?.cycleName ? ` — ${data.cycleName}` : ''}
         </h1>
+        {/* Extend the round: add groups that were left out of (or failed during) the original
+            send — e.g. a weekday that was deselected. Legacy rounds without a round id can't. */}
+        {data?.roundId && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto shrink-0"
+            onClick={() => navigate(`/app/academy/cycles/rebook?extendRound=${data.roundId}`)}
+          >
+            <Plus className="h-4 w-4 mr-1" /> {t('rebookManage.addGroups', 'Groepen toevoegen')}
+          </Button>
+        )}
       </div>
 
       {/* Per-invitee headline — the owner's "who rebooked / who said no / who's silent". */}

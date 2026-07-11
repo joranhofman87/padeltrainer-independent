@@ -4,7 +4,7 @@ import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
 import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
-import { buildTargetCycleNames, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
+import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
 import { canonicalizeSeriesCohort } from "../_shared/rebook-cohort.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
@@ -185,6 +185,12 @@ serve(async (req) => {
     // edge wall-clock and silently partial-send. When set, we create the round +
     // claims and return representativeCount; the wizard then drains the invites.
     const skipInvites: boolean = body?.skipInvites === true;
+    // EXTEND MODE: add series to an EXISTING round (settings.rebook_round_id) instead of
+    // starting a new one. New cycles join that round (same round id → one combined manage/
+    // progress view); series whose source cycle already has a cycle in the round are skipped
+    // (reported as alreadySentGroups) instead of tripping the double-run guard or re-emailing.
+    const extendRoundId: string | null =
+      typeof body?.extendRoundId === "string" && body.extendRoundId ? body.extendRoundId : null;
     // New term shape (see generateWeeklyStarts): number of weeks, named holiday
     // ranges to skip, and the session price to apply to every new session.
     const weeks: number = Math.min(52, Math.max(0, Math.floor(Number(body?.weeks ?? 0)))); // hard cap at the source-form max
@@ -303,6 +309,45 @@ serve(async (req) => {
       .maybeSingle();
     const tz = acadTz?.timezone || "Europe/Amsterdam";
 
+    // Extend mode: resolve the round being extended. Looked up WITHIN this academy (whose
+    // manager gate already ran), so a foreign round id simply doesn't resolve. The round's
+    // label overrides the request's name (target names must share the round prefix for the
+    // guard + hub grouping to work), and its non-draft cycles tell us which series were sent.
+    let extendRound: {
+      label: string;
+      sentSourceIds: Set<string>;
+      sentNames: Set<string>;
+    } | null = null;
+    if (extendRoundId) {
+      const { data: roundRows, error: rrErr } = await supabase
+        .from("cycles")
+        .select("id, name, status, settings")
+        .eq("owner_type", "academy")
+        .eq("owner_id", academyProfileId)
+        .eq("settings->>rebook_round_id", extendRoundId)
+        .not("settings->>rebook_payment_mode", "is", null);
+      if (rrErr) throw rrErr;
+      const rounds = (roundRows ?? []) as Array<{ id: string; name: string; status: string; settings: Record<string, unknown> | null }>;
+      if (rounds.length === 0) {
+        return new Response(JSON.stringify({ ok: false, reason: "round_not_found" }), {
+          status: 404, headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+      const label = rounds
+        .map((r) => (r.settings ?? {}).rebook_round_label)
+        .find((x): x is string => typeof x === "string" && x.trim().length > 0);
+      const nonDraft = rounds.filter((r) => r.status !== "draft");
+      extendRound = {
+        label: (label ?? rounds[0].name).trim(),
+        sentSourceIds: new Set(
+          nonDraft
+            .map((r) => (r.settings ?? {}).rebook_source_cyclus_id)
+            .filter((x): x is string => typeof x === "string" && x.length > 0),
+        ),
+        sentNames: new Set(nonDraft.map((r) => r.name)),
+      };
+    }
+
     // 1. Gather candidate slots: the whole source cyclus, or the academy's slots
     //    at the chosen location(s) up to the term end.
     const SLOT_COLUMNS = "id, trainer_id, location_id, academy_profile_id, start_time, end_time, court_type, training_level, price_per_session, total_price, allow_single_booking, whole_slot_booking, min_participants, max_participants, extra_costs, rating_system, min_rating, max_rating, prices_include_vat, split_payment, cyclus_id";
@@ -350,12 +395,32 @@ serve(async (req) => {
       }
     }
 
+    // EXTEND: drop series already in the round, so re-selecting everything can never re-invite
+    // a sent group. Matched by SOURCE cycle id (stamped on every round cycle at creation —
+    // naming-proof); series without a source cycle (hand-added slots) fall back to the name
+    // chain's tier-1 base ("<label> — <Day HH:mm>"), matching bare or suffixed sent names.
+    let alreadySentGroups = 0;
+    if (extendRound) {
+      const { sentSourceIds, sentNames, label } = extendRound;
+      const kept = qualifyingSeries.filter((series) => {
+        const tmpl = series[0];
+        if (tmpl.cyclus_id) return !sentSourceIds.has(tmpl.cyclus_id);
+        const baseName = `${label} — ${seriesLabel(tmpl.start_time, tz)}`;
+        return ![...sentNames].some((n) => n === baseName || n.startsWith(`${baseName} ·`) || n.startsWith(`${baseName} #`));
+      });
+      alreadySentGroups = qualifyingSeries.length - kept.length;
+      qualifyingSeries.length = 0;
+      qualifyingSeries.push(...kept);
+    }
+
     const allQualifyingSlotIds = qualifyingSeries.flat().map((s) => s.id);
     if (allQualifyingSlotIds.length === 0) {
-      const message = sourceCyclusId
-        ? "No bookable sessions found in this cyclus."
-        : "No series found ending in that week at those locations.";
-      return new Response(JSON.stringify({ ok: true, dryRun, groups: 0, players: 0, slotsCopied: 0, claimsCreated: 0, invitesSent: 0, message }), {
+      const message = alreadySentGroups > 0
+        ? "Every matching group is already part of this round."
+        : sourceCyclusId
+          ? "No bookable sessions found in this cyclus."
+          : "No series found ending in that week at those locations.";
+      return new Response(JSON.stringify({ ok: true, dryRun, groups: 0, players: 0, slotsCopied: 0, claimsCreated: 0, invitesSent: 0, alreadySentGroups, message }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -428,12 +493,16 @@ serve(async (req) => {
     // PER-SERIES TARGETS (owner model): one rebook run creates ONE target cycle per source series —
     // cycles stay separated; only the rebook PROGRESS is aggregated (via settings.rebook_round_id).
     // Trainer + location names feed the name-disambiguation chain when two series share day+time.
-    const effName = targetCycleName || "Volgende ronde";
+    // Extend mode pins the name to the round's label — target names must share the round's
+    // prefix for the taken-name disambiguation + the hub's per-round grouping to line up.
+    const effName = extendRound ? extendRound.label : (targetCycleName || "Volgende ronde");
     const nmTrainerIds = [...new Set(qualifyingSeries.map((s) => s[0].trainer_id).filter((x): x is string => !!x))];
     const nmLocationIds = [...new Set(qualifyingSeries.map((s) => s[0].location_id).filter((x): x is string => !!x))];
     const nmTrainerById = new Map<string, string>();
     const nmLocationById = new Map<string, string>();
-    if (qualifyingSeries.length > 1) {
+    // Extend mode loads the display names even for a single series: the taken-name
+    // disambiguation may need trainer/location tiers against the round's existing names.
+    if (qualifyingSeries.length > 1 || extendRound) {
       if (nmTrainerIds.length > 0) {
         const { data: tn } = await supabase.from("trainer_profiles").select("id, full_name").in("id", nmTrainerIds);
         for (const t of tn ?? []) if (t.full_name) nmTrainerById.set(t.id, String(t.full_name).split(" ")[0]);
@@ -451,7 +520,7 @@ serve(async (req) => {
     });
 
     if (dryRun) {
-      const dryNames = buildTargetCycleNames(effName, qualifyingSeries.map(nameInputFor), tz);
+      const dryNames = buildTargetCycleNames(effName, qualifyingSeries.map(nameInputFor), tz, extendRound?.sentNames);
       // Per-group breakdown for the admin to FULLY review BEFORE anything is created
       // or emailed: weekday + time, the roster (names + whether each has an email, so
       // the admin can spot players who'd be silently skipped), the holiday-adjusted
@@ -577,6 +646,8 @@ serve(async (req) => {
         grandInvoiceTotal,
         // How many registered players the current exclusions would move to the second bucket.
         secondBucketAddedCount: exclusion.secondBucketProfileIds.length,
+        // Extend mode: groups skipped because they are already part of the round.
+        alreadySentGroups,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
     // Best-effort teardown of a half-built cycle (used to roll back a failed run, and
@@ -596,7 +667,7 @@ serve(async (req) => {
     // genuine double-run → block it (a second run would email everyone again). A
     // leftover DRAFT with the same key is debris from a previously-failed run (it was
     // never visible/bookable) → delete it and rebuild cleanly.
-    const targetNamesByKey = buildTargetCycleNames(effName, includedSeries.map(nameInputFor), tz);
+    const targetNamesByKey = buildTargetCycleNames(effName, includedSeries.map(nameInputFor), tz, extendRound?.sentNames);
     const allTargetNames = [...targetNamesByKey.values()];
     const { data: existing } = await supabase
       .from("cycles")
@@ -670,8 +741,9 @@ serve(async (req) => {
     }
 
     // ONE round id stamped on every target: the manage/progress views aggregate the run by it,
-    // while the cycles themselves stay separate (the owner's model).
-    const roundId = crypto.randomUUID();
+    // while the cycles themselves stay separate (the owner's model). Extending reuses the
+    // existing round's id, so the added series join its combined overview.
+    const roundId = extendRoundId ?? crypto.randomUUID();
     const sharedRebookSettings = {
       rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder,
       rebook_round_id: roundId, rebook_round_label: effName,
@@ -896,7 +968,7 @@ serve(async (req) => {
         }
       }
 
-      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
+      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, extended: Boolean(extendRound), alreadySentGroups, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
       // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
       if (failedClaimIds.length > 0) {
         await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds });
@@ -918,6 +990,8 @@ serve(async (req) => {
         // caller show an accurate "X of Y" even on the inline path.
         representativeCount: representativeClaimIds.length,
         invitesDeferred: deferInvites,
+        // Extend mode: groups skipped because they were already part of the round.
+        alreadySentGroups,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
     } catch (buildErr) {
       // Roll back the half-built draft (only if not yet committed) so a retry is clean.

@@ -29,15 +29,24 @@ export function seriesLabel(startIso: string, tz: string): string {
 /**
  * Distinct target-cycle names, keyed by series key. Deterministic for a given input order.
  * Single series → [roundName] verbatim.
+ *
+ * `takenNames` (extend mode): names already used by the round's EXISTING cycles. A name that
+ * matches a taken one escalates through the same disambiguation chain (trainer → location →
+ * numeric), and the numeric tier skips suffixes the round already occupies — so an extension
+ * run can never mint a name that trips the double-run guard against its own round. When
+ * takenNames is non-empty even a single series gets the "— <Day HH:mm>" label (the verbatim
+ * shortcut would reuse the bare round name, which the original multi-series run never used).
  */
 export function buildTargetCycleNames(
   roundName: string,
   series: SeriesNameInput[],
   tz: string,
+  takenNames?: ReadonlySet<string>,
 ): Map<string, string> {
+  const taken = takenNames ?? new Set<string>();
   const out = new Map<string, string>();
   if (series.length === 0) return out;
-  if (series.length === 1) {
+  if (series.length === 1 && taken.size === 0) {
     out.set(series[0].key, roundName);
     return out;
   }
@@ -50,10 +59,13 @@ export function buildTargetCycleNames(
     return m;
   };
 
+  // A name needs disambiguation when it collides within THIS run or with a taken (existing) name.
+  const colliding = (dup: Map<string, number>, name: string) => (dup.get(name) ?? 0) > 1 || taken.has(name);
+
   // Tier 2: same day+time (two trainers) → append the trainer name.
   let dup = counts(base);
   const withTrainer = base.map((e) =>
-    (dup.get(e.name) ?? 0) > 1 && e.s.trainerName
+    colliding(dup, e.name) && e.s.trainerName
       ? { s: e.s, name: `${e.name} · ${e.s.trainerName}` }
       : e,
   );
@@ -61,20 +73,26 @@ export function buildTargetCycleNames(
   // Tier 3: still colliding (same trainer/time, two locations) → append the location.
   dup = counts(withTrainer);
   const withLocation = withTrainer.map((e) =>
-    (dup.get(e.name) ?? 0) > 1 && e.s.locationName
+    colliding(dup, e.name) && e.s.locationName
       ? { s: e.s, name: `${e.name} · ${e.s.locationName}` }
       : e,
   );
 
-  // Tier 4: last resort — numeric suffix keeps the DB unique key satisfied no matter what.
+  // Tier 4: last resort — numeric suffix keeps the DB unique key satisfied no matter what,
+  // skipping suffixes the round's existing cycles already occupy.
   dup = counts(withLocation);
   const seen = new Map<string, number>();
   for (const e of withLocation) {
     let name = e.name;
-    if ((dup.get(e.name) ?? 0) > 1) {
-      const n = (seen.get(e.name) ?? 0) + 1;
+    if (colliding(dup, e.name)) {
+      let n = (seen.get(e.name) ?? 0) + 1;
+      let candidate = n === 1 ? e.name : `${e.name} #${n}`;
+      while (taken.has(candidate)) {
+        n += 1;
+        candidate = `${e.name} #${n}`;
+      }
       seen.set(e.name, n);
-      if (n > 1) name = `${e.name} #${n}`;
+      name = candidate;
     }
     out.set(e.s.key, name);
   }
