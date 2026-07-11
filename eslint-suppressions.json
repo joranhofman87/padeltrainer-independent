@@ -890,7 +890,7 @@
   },
   "src/pages/TrainerScheduleOverview.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 6
     }
   },
   "src/pages/TrainerSettings.tsx": {
