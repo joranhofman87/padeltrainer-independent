@@ -225,11 +225,11 @@ serve(async (req) => {
     const rebookRules: string = typeof body?.rebookRules === "string"
       ? body.rebookRules.trim().slice(0, 8000)
       : "";
-    // Academy-authored claim-page explanation (plain text, replaces the standard "Hoe werkt
-    // het?" box on the claim page when set). Served to the anon page via
-    // get_priority_claim_by_token → rebook_claim_info. Empty ⇒ standard copy.
+    // Academy-authored claim-page explanation (rich HTML like rebookRules — the claim page
+    // renders it through DOMPurify). Replaces the standard "Hoe werkt het?" box when set;
+    // served to the anon page via get_priority_claim_by_token → rebook_claim_info.
     const claimInfo: string = typeof body?.claimInfo === "string"
-      ? body.claimInfo.trim().slice(0, 4000)
+      ? body.claimInfo.trim().slice(0, 8000)
       : "";
     // Priority list: registered profile ids who also get member-window access + a
     // "sessions opened" email. Deduped + capped here; validated against the academy's

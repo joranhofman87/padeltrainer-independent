@@ -170,7 +170,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       reminderMessage: reminderMessage.trim() || null,
       reminderSubject: reminderSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
-      claimInfo: claimInfo.trim() || null,
+      claimInfo: normalizeRichTextHtml(claimInfo),
       // Split by type: registered profiles vs accountless guests (two separate settings arrays,
       // each with its own can_book_member_window clause).
       priorityPeople: priorityPeople.filter((p) => p.player_type === 'registered').map((p) => p.id),

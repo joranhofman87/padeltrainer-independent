@@ -31,6 +31,12 @@ describe('textsToSettingsPatch', () => {
     expect(patch.rebook_claim_info).toBeNull();
     expect(patch.rebook_rules).toBeNull();
     expect(patch.rebook_invitation_subject).toBeNull();
+  });
+
+  it('clears visually-blank rich-text HTML back to null (empty editor emits <p></p>)', () => {
+    const patch = textsToSettingsPatch(texts({ claimInfo: '<p></p>', rebookRules: '<p><br></p>' }));
+    expect(patch.rebook_claim_info).toBeNull();
+    expect(patch.rebook_rules).toBeNull();
     // The others are untouched.
     expect(patch.rebook_invitation_message).toBe('Beste {first_name},');
   });

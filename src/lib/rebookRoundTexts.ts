@@ -6,6 +6,7 @@
 // per cycle and the caller re-offers a retry (writes are idempotent merges).
 import { supabase } from '@/lib/supabaseClient';
 import { updateCycleSettings } from '@/lib/cycleWrites';
+import { normalizeRichTextHtml } from '@/lib/richText';
 
 export interface RebookRoundTexts {
   /** Claim-page explanation ('' = the standard "Hoe werkt het?" copy). */
@@ -29,13 +30,13 @@ export interface SaveRoundTextsResult {
 export function textsToSettingsPatch(texts: RebookRoundTexts): Record<string, string | number | null> {
   const lead = texts.reminderLeadHours;
   return {
-    rebook_claim_info: texts.claimInfo.trim() || null,
+    rebook_claim_info: normalizeRichTextHtml(texts.claimInfo),
     rebook_invitation_subject: texts.invitationSubject.trim() || null,
     rebook_invitation_message: texts.invitationMessage.trim() || null,
     rebook_reminder_subject: texts.reminderSubject.trim() || null,
     rebook_reminder_message: texts.reminderMessage.trim() || null,
     rebook_reminder_lead_hours: lead != null && Number.isInteger(lead) && lead >= 1 && lead <= 336 ? lead : null,
-    rebook_rules: texts.rebookRules.trim() || null,
+    rebook_rules: normalizeRichTextHtml(texts.rebookRules),
   };
 }
 

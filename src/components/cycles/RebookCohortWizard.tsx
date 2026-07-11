@@ -251,7 +251,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       reminderSubject: reminderSubject.trim() || null,
       reminderLeadHours,
       rebookRules: normalizeRichTextHtml(rebookRules),
-      claimInfo: claimInfo.trim() || null,
+      claimInfo: normalizeRichTextHtml(claimInfo),
       excludedSeriesKeys: [...excludedSeriesKeys],
       secondBucketSeriesKeys: [...secondBucketSeriesKeys],
       priorityPeople: priorityPeople.filter((p) => p.player_type === 'registered').map((p) => p.id),

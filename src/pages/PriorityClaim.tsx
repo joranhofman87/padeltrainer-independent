@@ -25,6 +25,7 @@ import {
 } from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { isBlankRichTextHtml } from '@/lib/richText';
+import { SafeHtml } from '@/components/ui/SafeHtml';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { RebookGroupEditor } from '@/components/cycles/RebookGroupEditor';
@@ -55,8 +56,8 @@ interface ClaimData {
   booked_by_captain_name: string | null;
   // The cycle's rebooking-rules HTML (from the SECURITY DEFINER claim RPC), else null.
   rebook_rules: string | null;
-  // Academy-authored claim-page explanation (plain text) replacing the standard "How does it
-  // work?" box when set. Absent pre-migration / empty → standard copy.
+  // Academy-authored claim-page explanation (rich HTML, DOMPurify-rendered; legacy values may be
+  // plain text) replacing the standard "How does it work?" box when set. Absent/blank → standard copy.
   rebook_claim_info?: string | null;
   // Payment mode from the token RPC — status-independent, so it stays correct even after the
   // cycle leaves 'open' (unlike the cycles_public read). Absent pre-migration → fall back.
@@ -440,9 +441,18 @@ export default function PriorityClaimPage() {
 
           {actionable && (
             <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-sm">
-              {data.rebook_claim_info?.trim() ? (
-                /* Academy-authored explanation (plain text, per round) replaces the standard copy. */
-                <p className="text-muted-foreground whitespace-pre-line">{data.rebook_claim_info.trim()}</p>
+              {data.rebook_claim_info && !isBlankRichTextHtml(data.rebook_claim_info) ? (
+                /* Academy-authored explanation (per round) replaces the standard copy. Rich HTML is
+                   rendered via SafeHtml (DOMPurify); a plain-text value (saved before the field
+                   became a rich-text editor) has no tags and keeps its line breaks via pre-line. */
+                /^\s*</.test(data.rebook_claim_info) ? (
+                  <SafeHtml
+                    html={data.rebook_claim_info}
+                    className="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground"
+                  />
+                ) : (
+                  <p className="text-muted-foreground whitespace-pre-line">{data.rebook_claim_info.trim()}</p>
+                )
               ) : (
                 <>
                   <p className="font-medium">{t('rebooking.rulesTitle', 'How does it work?')}</p>
