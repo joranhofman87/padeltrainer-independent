@@ -22,6 +22,7 @@ import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
+import { RebookReminderLeadField } from '@/components/cycles/RebookReminderLeadField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
@@ -111,6 +112,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   // Automated reminder to non-responders ~24h before their priority window closes.
   const [autoReminder, setAutoReminder] = useState(true);
+  // Hours before each player's deadline the automated reminder fires (stored unit = hours).
+  const [reminderLeadHours, setReminderLeadHours] = useState(24);
 
   const [targetCycleName, setTargetCycleName] = useState(
     t('rebookCohort.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
@@ -182,6 +185,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
         setPaymentMode(prefill.paymentMode);
         setStrictMollie(prefill.strictMollie);
         setAutoReminder(prefill.autoReminder);
+        if (prefill.reminderLeadHours != null) setReminderLeadHours(prefill.reminderLeadHours);
         if (prefill.invitationMessage) setInvitationMessage(prefill.invitationMessage);
         if (prefill.invitationSubject) setInvitationSubject(prefill.invitationSubject);
         if (prefill.reminderMessage) setReminderMessage(prefill.reminderMessage);
@@ -245,6 +249,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       invitationSubject: invitationSubject.trim() || null,
       reminderMessage: reminderMessage.trim() || null,
       reminderSubject: reminderSubject.trim() || null,
+      reminderLeadHours,
       rebookRules: normalizeRichTextHtml(rebookRules),
       claimInfo: claimInfo.trim() || null,
       excludedSeriesKeys: [...excludedSeriesKeys],
@@ -267,6 +272,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       strictMollie,
       requireAdminReview,
       autoReminder,
+      reminderLeadHours,
       targetCycleName,
       newEndDate,
       sessionPrice,
@@ -574,6 +580,12 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
           </label>
           {autoReminder && (
             <div className="space-y-3 pl-7">
+              <RebookReminderLeadField
+                id="rebook-cohort-reminder-lead"
+                valueHours={reminderLeadHours}
+                onChange={setReminderLeadHours}
+                disabled={submitting}
+              />
               <EmailSubjectField
                 id="rebook-cohort-reminder-subject"
                 value={reminderSubject}

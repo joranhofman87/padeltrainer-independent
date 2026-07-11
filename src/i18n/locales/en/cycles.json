@@ -1284,7 +1284,12 @@
     "strictMollie": "Strict: only lock in the spot after it has been paid online (Mollie) — no invoice fallback.",
     "claimInfoLabel": "Explanation on the confirmation page (optional)",
     "claimInfoPlaceholder": "Empty = the standard text (\"How does it work?\" and \"Want a different time?\").",
-    "claimInfoHint": "This replaces the explanation box on the page where players confirm their spot. Leave empty to use the standard text."
+    "claimInfoHint": "This replaces the explanation box on the page where players confirm their spot. Leave empty to use the standard text.",
+    "reminderLeadLabel": "When to send?",
+    "reminderLeadHours": "hours",
+    "reminderLeadDays": "day(s)",
+    "reminderLeadSuffix": "before the priority deadline",
+    "reminderLeadHint": "Each player gets the reminder once their own deadline falls within this window (one reminder per player)."
   },
   "rebookReview": {
     "group": "Group & players",

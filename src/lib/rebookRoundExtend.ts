@@ -21,6 +21,8 @@ export interface RebookRoundExtendPrefill {
   paymentMode: RebookPaymentMode;
   strictMollie: boolean;
   autoReminder: boolean;
+  /** Hours before each player's deadline the automated reminder fires; null = default (24h). */
+  reminderLeadHours: number | null;
   invitationMessage: string;
   invitationSubject: string;
   reminderMessage: string;
@@ -76,6 +78,10 @@ export function mapRoundCyclesToPrefill(roundId: string, rows: RoundCycleRow[]):
     paymentMode: firstValue('rebook_payment_mode') === 'upfront' ? 'upfront' : 'deferred_split',
     strictMollie: firstValue('rebook_strict_mollie') === true,
     autoReminder: firstValue('rebook_auto_reminder') !== false,
+    reminderLeadHours: (() => {
+      const n = Number(firstValue('rebook_reminder_lead_hours'));
+      return Number.isInteger(n) && n >= 1 && n <= 336 ? n : null;
+    })(),
     invitationMessage: str(firstValue('rebook_invitation_message')),
     invitationSubject: str(firstValue('rebook_invitation_subject')),
     reminderMessage: str(firstValue('rebook_reminder_message')),

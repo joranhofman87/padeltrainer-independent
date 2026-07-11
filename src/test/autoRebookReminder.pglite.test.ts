@@ -100,6 +100,8 @@ beforeAll(async () => {
   // The app_now() clock migration re-emits the detection RPC with now() → app_now(); loading it
   // last lets the time-travel block below set app.fake_now and move "now" around a fixed deadline.
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260724100000_app_now_clock.sql'), 'utf8'));
+  // Per-cycle lead override (settings.rebook_reminder_lead_hours) — the version under test below.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260806100000_rebook_reminder_lead_per_cycle.sql'), 'utf8'));
 });
 
 describe('rebook_claims_needing_auto_reminder', () => {
@@ -129,6 +131,38 @@ describe('rebook_claims_needing_auto_reminder', () => {
     const near = (await db.query(`SELECT count(*)::int AS n FROM public.rebook_claims_needing_auto_reminder(1)`)).rows[0] as { n: number };
     // P1/G1's window is +12h, so a 1-hour lead excludes them.
     expect(near.n).toBe(0);
+  });
+
+  // Per-cycle override: settings.rebook_reminder_lead_hours beats the caller's _lead_hours.
+  describe('per-cycle rebook_reminder_lead_hours override', () => {
+    afterEach(async () => {
+      await db.query(`UPDATE public.cycles SET settings = settings - 'rebook_reminder_lead_hours' WHERE id = '${C_REBOOK}'`);
+    });
+
+    it('a 72h round lead makes the +48h claim due even though the cron passes 24', async () => {
+      await db.query(`UPDATE public.cycles SET settings = settings || '{"rebook_reminder_lead_hours": 72}' WHERE id = '${C_REBOOK}'`);
+      const keys = (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+      expect(keys).toContain(P_FAR); // +48h window, inside the 72h round lead
+    });
+
+    it('a 6h round lead excludes the +12h claims even though the cron passes 24', async () => {
+      await db.query(`UPDATE public.cycles SET settings = settings || '{"rebook_reminder_lead_hours": 6}' WHERE id = '${C_REBOOK}'`);
+      const keys = (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+      expect(keys).not.toContain(P1);
+      expect(keys).not.toContain(P_FAR);
+    });
+
+    it('junk / non-numeric values fall back to the caller lead instead of erroring the cron', async () => {
+      await db.query(`UPDATE public.cycles SET settings = settings || '{"rebook_reminder_lead_hours": "soon"}' WHERE id = '${C_REBOOK}'`);
+      const keys = (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+      expect(keys.sort()).toEqual([`g:${G1}`, P1].sort()); // old 24h behavior
+    });
+
+    it('absent key → behavior identical to before the migration', async () => {
+      const keys = (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+      expect(keys.sort()).toEqual([`g:${G1}`, P1].sort());
+      expect(keys).not.toContain(P_FAR);
+    });
   });
 });
 

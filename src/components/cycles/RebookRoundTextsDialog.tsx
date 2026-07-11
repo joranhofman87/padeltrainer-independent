@@ -15,6 +15,7 @@ import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
 import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
+import { RebookReminderLeadField } from '@/components/cycles/RebookReminderLeadField';
 
 interface Props {
   open: boolean;
@@ -36,7 +37,7 @@ export function RebookRoundTextsDialog({ open, onOpenChange, academyProfileId, r
   const [saving, setSaving] = useState(false);
   const [cycleIds, setCycleIds] = useState<string[]>([]);
   const [texts, setTexts] = useState<RebookRoundTexts>({
-    claimInfo: '', invitationSubject: '', invitationMessage: '', reminderSubject: '', reminderMessage: '', rebookRules: '',
+    claimInfo: '', invitationSubject: '', invitationMessage: '', reminderSubject: '', reminderMessage: '', reminderLeadHours: null, rebookRules: '',
   });
   const set = (key: keyof RebookRoundTexts) => (value: string) => setTexts((cur) => ({ ...cur, [key]: value }));
 
@@ -59,6 +60,7 @@ export function RebookRoundTextsDialog({ open, onOpenChange, academyProfileId, r
           invitationMessage: prefill.invitationMessage,
           reminderSubject: prefill.reminderSubject,
           reminderMessage: prefill.reminderMessage,
+          reminderLeadHours: prefill.reminderLeadHours,
           rebookRules: prefill.rebookRules,
         });
       })
@@ -141,6 +143,12 @@ export function RebookRoundTextsDialog({ open, onOpenChange, academyProfileId, r
               />
             </div>
             <div className="space-y-3 rounded-md border p-3">
+              <RebookReminderLeadField
+                id="round-texts-reminder-lead"
+                valueHours={texts.reminderLeadHours ?? 24}
+                onChange={(hours) => setTexts((cur) => ({ ...cur, reminderLeadHours: hours }))}
+                disabled={saving}
+              />
               <EmailSubjectField
                 id="round-texts-reminder-subject"
                 value={texts.reminderSubject}

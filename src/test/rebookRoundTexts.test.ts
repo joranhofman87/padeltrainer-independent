@@ -8,6 +8,7 @@ const texts = (over: Partial<RebookRoundTexts> = {}): RebookRoundTexts => ({
   invitationMessage: 'Beste {first_name},',
   reminderSubject: 'Herinnering',
   reminderMessage: 'Nog niet bevestigd…',
+  reminderLeadHours: 48,
   rebookRules: '<p>Regels</p>',
   ...over,
 });
@@ -20,6 +21,7 @@ describe('textsToSettingsPatch', () => {
       rebook_invitation_message: 'Beste {first_name},',
       rebook_reminder_subject: 'Herinnering',
       rebook_reminder_message: 'Nog niet bevestigd…',
+      rebook_reminder_lead_hours: 48,
       rebook_rules: '<p>Regels</p>',
     });
   });
@@ -31,6 +33,13 @@ describe('textsToSettingsPatch', () => {
     expect(patch.rebook_invitation_subject).toBeNull();
     // The others are untouched.
     expect(patch.rebook_invitation_message).toBe('Beste {first_name},');
+  });
+
+  it('clears an invalid or default lead back to null (cron default 24h)', () => {
+    expect(textsToSettingsPatch(texts({ reminderLeadHours: null })).rebook_reminder_lead_hours).toBeNull();
+    expect(textsToSettingsPatch(texts({ reminderLeadHours: 0 })).rebook_reminder_lead_hours).toBeNull();
+    expect(textsToSettingsPatch(texts({ reminderLeadHours: 999 })).rebook_reminder_lead_hours).toBeNull();
+    expect(textsToSettingsPatch(texts({ reminderLeadHours: 72 })).rebook_reminder_lead_hours).toBe(72);
   });
 
   it('trims surrounding whitespace but keeps inner line breaks', () => {
