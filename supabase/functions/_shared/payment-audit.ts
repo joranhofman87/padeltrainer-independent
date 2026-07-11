@@ -34,6 +34,7 @@ export const PaymentAuditStatus = {
   amountMismatchBlocked: "amount_mismatch_blocked",
   paymentForCancelledInvoice: "payment_for_cancelled_invoice",
   paymentForCancelledBooking: "payment_for_cancelled_booking",
+  paidPaymentNoBookings: "paid_payment_no_bookings",
   paymentForUnknownInvoice: "payment_for_unknown_invoice",
   noConnectedMollieAccount: "no_connected_mollie_account",
   paymentChargedBack: "payment_charged_back",
