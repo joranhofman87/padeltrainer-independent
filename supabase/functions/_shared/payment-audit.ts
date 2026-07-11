@@ -35,6 +35,7 @@ export const PaymentAuditStatus = {
   paymentForCancelledInvoice: "payment_for_cancelled_invoice",
   paymentForCancelledBooking: "payment_for_cancelled_booking",
   paidPaymentNoBookings: "paid_payment_no_bookings",
+  paidHoldOverCapacity: "paid_hold_over_capacity",
   paymentForUnknownInvoice: "payment_for_unknown_invoice",
   noConnectedMollieAccount: "no_connected_mollie_account",
   paymentChargedBack: "payment_charged_back",
