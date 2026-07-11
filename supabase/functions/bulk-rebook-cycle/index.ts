@@ -219,6 +219,12 @@ serve(async (req) => {
     const rebookRules: string = typeof body?.rebookRules === "string"
       ? body.rebookRules.trim().slice(0, 8000)
       : "";
+    // Academy-authored claim-page explanation (plain text, replaces the standard "Hoe werkt
+    // het?" box on the claim page when set). Served to the anon page via
+    // get_priority_claim_by_token → rebook_claim_info. Empty ⇒ standard copy.
+    const claimInfo: string = typeof body?.claimInfo === "string"
+      ? body.claimInfo.trim().slice(0, 4000)
+      : "";
     // Priority list: registered profile ids who also get member-window access + a
     // "sessions opened" email. Deduped + capped here; validated against the academy's
     // players below (only after the academy is derived/authorized).
@@ -745,7 +751,7 @@ serve(async (req) => {
     // existing round's id, so the added series join its combined overview.
     const roundId = extendRoundId ?? crypto.randomUUID();
     const sharedRebookSettings = {
-      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder,
+      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_claim_info: claimInfo || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder,
       rebook_round_id: roundId, rebook_round_label: effName,
     };
     const draftRows = includedSeries.map((series) => {

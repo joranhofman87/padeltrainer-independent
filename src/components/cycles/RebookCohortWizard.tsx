@@ -21,6 +21,7 @@ import { RebookReviewTable, type RebookGroupDetail } from './RebookReviewTable';
 import { EmailMessageField } from '@/components/email/EmailMessageField';
 import { EmailSubjectField } from '@/components/email/EmailSubjectField';
 import { RebookRulesField } from '@/components/cycles/RebookRulesField';
+import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
@@ -128,6 +129,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
   const [reminderMessage, setReminderMessage] = useState(() => t('rebookShared.defaultReminderMessage'));
   const [reminderSubject, setReminderSubject] = useState(() => t('rebookShared.defaultReminderSubject'));
   const [rebookRules, setRebookRules] = useState('');
+  // Per-round override of the claim page's standard explanation box ('' = standard copy).
+  const [claimInfo, setClaimInfo] = useState('');
   // Trainer/session exclusion: the auto-preview's series (for the trainer checklist),
   // the excluded series (by sourceSeriesKey), and the subset whose players move to the
   // second bucket (member window). secondBucketAdded = server count for the note.
@@ -184,6 +187,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
         if (prefill.reminderMessage) setReminderMessage(prefill.reminderMessage);
         if (prefill.reminderSubject) setReminderSubject(prefill.reminderSubject);
         if (prefill.rebookRules) setRebookRules(prefill.rebookRules);
+        if (prefill.claimInfo) setClaimInfo(prefill.claimInfo);
         // Suggest the term end from the round's source cycles (their last session) so the owner
         // usually doesn't have to re-enter it; still adjustable.
         const termEnd = await suggestTermEndFromSources(prefill.sourceCyclusIds);
@@ -242,6 +246,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       reminderMessage: reminderMessage.trim() || null,
       reminderSubject: reminderSubject.trim() || null,
       rebookRules: normalizeRichTextHtml(rebookRules),
+      claimInfo: claimInfo.trim() || null,
       excludedSeriesKeys: [...excludedSeriesKeys],
       secondBucketSeriesKeys: [...secondBucketSeriesKeys],
       priorityPeople: priorityPeople.filter((p) => p.player_type === 'registered').map((p) => p.id),
@@ -271,6 +276,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       reminderMessage,
       reminderSubject,
       rebookRules,
+      claimInfo,
       excludedSeriesKeys,
       secondBucketSeriesKeys,
       priorityPeople,
@@ -589,6 +595,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
               />
             </div>
           )}
+        </div>
+        <div className="rounded-md border p-3">
+          <RebookClaimInfoField
+            id="rebook-cohort-claim-info"
+            value={claimInfo}
+            onChange={setClaimInfo}
+            disabled={submitting}
+          />
         </div>
         <div className="rounded-md border p-3">
           <RebookRulesField

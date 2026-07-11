@@ -1365,7 +1365,9 @@
     "resumeDone": "{{sent}} uitnodiging(en) verstuurd",
     "roundCycleCount": "{{count}} cycli in deze ronde",
     "pageTitle": "Herboekingen",
-    "pageDescription": "Beheer lopende herboekingsrondes: wie reageerde, wie betaalde en welke plekken open staan."
+    "pageDescription": "Beheer lopende herboekingsrondes: wie reageerde, wie betaalde en welke plekken open staan.",
+    "addGroups": "Groepen toevoegen",
+    "editTexts": "Teksten bewerken"
   },
   "rebookShared": {
     "defaultInviteSubject": "Blijf je erbij, {first_name}? Reserveer je vaste plek",
@@ -1404,7 +1406,10 @@
     "priorityHint": "De plek blijft voor hen gereserveerd totdat ze nee zeggen of deze periode voorbij is.",
     "enableMemberWindow": "Geef vaste spelers daarna eerst keuze uit vrije plekken, vóór het publiek",
     "memberLabel": "Hoelang houden vaste spelers voorrang op vrije plekken?",
-    "memberHint": "Daarna kan iedereen de overgebleven plekken boeken."
+    "memberHint": "Daarna kan iedereen de overgebleven plekken boeken.",
+    "claimInfoLabel": "Uitleg op de bevestigingspagina (optioneel)",
+    "claimInfoPlaceholder": "Leeg = de standaardtekst (\"Hoe werkt het?\" en \"Wil je een ander moment?\").",
+    "claimInfoHint": "Dit vervangt het uitlegblok op de pagina waar spelers hun plek bevestigen. Laat leeg om de standaardtekst te gebruiken."
   },
   "rebookReview": {
     "group": "Groep & spelers",
@@ -1549,5 +1554,15 @@
     "minMaxGroupSize": "Minimale groepsgrootte moet ≤ maximale groepsgrootte zijn",
     "startDateRequired": "Startdatum is verplicht",
     "noDeadline": "Geen deadline"
+  },
+  "rebookTexts": {
+    "title": "Teksten van de ronde bewerken",
+    "description": "Geldt voor alle groepen in deze ronde. De bevestigingspagina en regels veranderen direct; e-mailteksten gelden voor uitnodigingen en herinneringen die hierna nog verstuurd worden — al verzonden e-mails veranderen niet.",
+    "save": "Opslaan voor hele ronde",
+    "saved": "Teksten opgeslagen voor de hele ronde.",
+    "partialFail": "{{failed}} van de {{total}} groepen konden niet worden bijgewerkt. Probeer opnieuw op te slaan.",
+    "errNotFound": "Deze ronde is niet gevonden.",
+    "errLoad": "Kon de teksten niet laden. Probeer het opnieuw.",
+    "errSave": "Opslaan mislukt. Probeer het opnieuw."
   }
 }

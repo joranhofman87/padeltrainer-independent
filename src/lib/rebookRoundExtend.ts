@@ -11,6 +11,8 @@ export interface RebookRoundExtendPrefill {
   label: string;
   /** Any cycle of the round — its manage page aggregates the whole round (drill-in target). */
   anyCycleId: string;
+  /** ALL cycle ids of the round — a round-wide settings write must cover every one of them. */
+  cycleIds: string[];
   startDate: string | null; // yyyy-MM-dd
   endDate: string | null; // yyyy-MM-dd
   /** '' when the original run used the per-series source prices (no override). */
@@ -24,6 +26,8 @@ export interface RebookRoundExtendPrefill {
   reminderMessage: string;
   reminderSubject: string;
   rebookRules: string;
+  /** Custom claim-page explanation ('' = the standard copy). */
+  claimInfo: string;
   /** Distinct locations of the round's cycles — preselects the wizard's location checkboxes. */
   locationIds: string[];
   /** Source cycles the round was built from — used to suggest the term-end date. */
@@ -64,6 +68,7 @@ export function mapRoundCyclesToPrefill(roundId: string, rows: RoundCycleRow[]):
     roundId,
     label: (label ?? rows[0].name).trim(),
     anyCycleId: rows[0].id,
+    cycleIds: rows.map((r) => r.id),
     startDate: rows[0].start_date,
     endDate: rows[0].end_date,
     sessionPrice: typeof price === 'number' || (typeof price === 'string' && price !== '') ? String(price) : '',
@@ -76,6 +81,7 @@ export function mapRoundCyclesToPrefill(roundId: string, rows: RoundCycleRow[]):
     reminderMessage: str(firstValue('rebook_reminder_message')),
     reminderSubject: str(firstValue('rebook_reminder_subject')),
     rebookRules: str(firstValue('rebook_rules')),
+    claimInfo: str(firstValue('rebook_claim_info')),
     locationIds: [...new Set(rows.map((r) => r.location_id).filter((x): x is string => !!x))],
     sourceCyclusIds: [
       ...new Set(

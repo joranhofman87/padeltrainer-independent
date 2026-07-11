@@ -1240,7 +1240,9 @@
     "resumeDone": "{{sent}} invitation(s) sent",
     "roundCycleCount": "{{count}} cycles in this round",
     "pageTitle": "Rebooking",
-    "pageDescription": "Manage running rebooking rounds: who responded, who paid, and which spots are open."
+    "pageDescription": "Manage running rebooking rounds: who responded, who paid, and which spots are open.",
+    "addGroups": "Add groups",
+    "editTexts": "Edit texts"
   },
   "rebookShared": {
     "defaultInviteSubject": "Staying with us, {first_name}? Keep your regular spot",
@@ -1279,7 +1281,10 @@
     "enableMemberWindow": "Then give returning players first pick of any free slots, before the public",
     "memberLabel": "How long do returning players keep priority on free slots?",
     "memberHint": "After that, anyone can book the remaining slots.",
-    "strictMollie": "Strict: only lock in the spot after it has been paid online (Mollie) — no invoice fallback."
+    "strictMollie": "Strict: only lock in the spot after it has been paid online (Mollie) — no invoice fallback.",
+    "claimInfoLabel": "Explanation on the confirmation page (optional)",
+    "claimInfoPlaceholder": "Empty = the standard text (\"How does it work?\" and \"Want a different time?\").",
+    "claimInfoHint": "This replaces the explanation box on the page where players confirm their spot. Leave empty to use the standard text."
   },
   "rebookReview": {
     "group": "Group & players",
@@ -1424,5 +1429,15 @@
     "minMaxGroupSize": "Min group size must be ≤ max group size",
     "startDateRequired": "Start date is required",
     "noDeadline": "No deadline"
+  },
+  "rebookTexts": {
+    "title": "Edit the round's texts",
+    "description": "Applies to every group in this round. The confirmation page and rules change immediately; email texts apply to invitations and reminders sent from now on — emails already sent do not change.",
+    "save": "Save for the whole round",
+    "saved": "Texts saved for the whole round.",
+    "partialFail": "{{failed}} of {{total}} groups could not be updated. Try saving again.",
+    "errNotFound": "This round was not found.",
+    "errLoad": "Could not load the texts. Please try again.",
+    "errSave": "Saving failed. Please try again."
   }
 }
