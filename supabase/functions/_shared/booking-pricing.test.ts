@@ -1,6 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   applySplitPayment,
+  computeCyclusExtrasTotal,
+  computeCyclusTotalFromSlots,
   computeSingleSlotPaymentAmount,
   hasNonUniformCapacity,
   projectRebookGroupInvoiceTotal,
@@ -79,6 +81,31 @@ Deno.test("no extras → amount is unchanged (regression guard for the €0-extr
 });
 
 // G5 — the split divisor is the cycle's COURT CAPACITY (frozen), never a live player count.
+Deno.test("computeCyclusExtrasTotal: one_time billed ONCE, per_session (default) per session", () => {
+  // 8-session cycle. per_session €4 → 4×8=32; one_time €10 → 10 (once); mixed → 42.
+  assertEquals(computeCyclusExtrasTotal([{ price: 4, type: "per_session" }], 8), 32);
+  assertEquals(computeCyclusExtrasTotal([{ price: 10, type: "one_time" }], 8), 10);
+  assertEquals(
+    computeCyclusExtrasTotal([{ price: 4, type: "per_session" }, { price: 10, type: "one_time" }], 8),
+    42,
+  );
+  // No type → treated as per-session (mirrors the invoice's isOneTime = type === 'one_time').
+  assertEquals(computeCyclusExtrasTotal([{ price: 4 }], 8), 32);
+  // blanks/non-positive ignored; empty/null → 0.
+  assertEquals(computeCyclusExtrasTotal([{ price: 0 }, { price: -3 }, { price: null }], 8), 0);
+  assertEquals(computeCyclusExtrasTotal([], 8), 0);
+  assertEquals(computeCyclusExtrasTotal(null, 8), 0);
+});
+
+Deno.test("split-cyclus CHARGE now matches the INVOICE on extras (€80 court/4 + €4 balls → €21, not €20)", () => {
+  // Before the fix the charge dropped extras entirely (€20); the invoice billed €80/4 + €4/4 = €21.
+  const slots = [slot({ price_per_session: 80, max_participants: 4 })];
+  const base = computeCyclusTotalFromSlots(slots, null);
+  const extras = computeCyclusExtrasTotal([{ price: 4, type: "per_session" }], slots.length);
+  const divisor = resolveSplitDivisorFromSlots(slots);
+  assertEquals(applySplitPayment(base + extras, divisor), 21);
+});
+
 Deno.test("resolveSplitDivisorFromSlots = MAX(max_participants), clamp ≥1", () => {
   assertEquals(resolveSplitDivisorFromSlots([{ max_participants: 4 }, { max_participants: 4 }]), 4);
   // non-uniform → MAX (never overcharges)
