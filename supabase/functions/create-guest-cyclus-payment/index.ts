@@ -18,7 +18,7 @@
 //     soft-cancel backstop on failure.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
-import { applySplitPayment, computeCyclusTotalFromSlots, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type SlotPricingInput } from "../_shared/booking-pricing.ts";
+import { applySplitPayment, computeCyclusTotalFromSlots, computeCyclusExtrasTotal, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
     const { data: slots } = await supabase
       .from("availability_slots")
       .select(
-        "id, trainer_id, academy_profile_id, cyclus_name, price_per_session, start_time, end_time, max_participants, allow_single_booking, is_public, priority_window_ends_at, member_window_ends_at, public_release_status",
+        "id, trainer_id, academy_profile_id, cyclus_name, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs, is_public, priority_window_ends_at, member_window_ends_at, public_release_status",
       )
       .eq("cyclus_id", cyclusId)
       .gt("start_time", nowIso)
@@ -146,8 +146,8 @@ Deno.serve(async (req) => {
     let hourlyRate: number | null = null;
     const { data: tp } = await supabase.from("trainer_profiles").select("hourly_rate").eq("id", trainerId).maybeSingle();
     hourlyRate = tp?.hourly_rate != null ? Number(tp.hourly_rate) : null;
-    const total = computeCyclusTotalFromSlots(slots as unknown as SlotPricingInput[], hourlyRate);
-    if (!(total > 0)) return json({ error: "invalid_amount" }, 400);
+    const baseTotal = computeCyclusTotalFromSlots(slots as unknown as SlotPricingInput[], hourlyRate);
+    if (!(baseTotal > 0)) return json({ error: "invalid_amount" }, 400);
 
     const { data: cycle } = await supabase.from("cycles").select("settings").eq("id", cyclusId).maybeSingle();
     // Owner switch: a cyclus can be restricted to INDIVIDUAL sessions only (settings.
@@ -157,7 +157,16 @@ Deno.serve(async (req) => {
       logStep("Refused — whole-cyclus booking disabled for this cycle", { cyclusId });
       return json({ error: "cyclus_not_bookable" }, 403);
     }
-    const splitPayment = ((cycle?.settings as Record<string, unknown>) || {}).split_payment === true;
+    const settings = (cycle?.settings as Record<string, unknown>) || {};
+    const splitPayment = settings.split_payment === true;
+
+    // Fold extras into the charge so it collects what the invoice bills (one_time once, per_session
+    // per session, each ÷ split). Same extras source as auto-create-invoice: cycle settings, else
+    // first slot (audit Batch 2 — charge/invoice extras must agree; owner: charge the extras).
+    const cycleExtraCosts: ExtraCost[] | null =
+      (settings.extra_costs as ExtraCost[] | null) ??
+      ((slots[0] as { extra_costs?: ExtraCost[] | null })?.extra_costs ?? null);
+    const total = baseTotal + computeCyclusExtrasTotal(cycleExtraCosts, slots.length);
 
     // 6. Guest identity — always a guest_players row.
     const owner = slots[0].academy_profile_id

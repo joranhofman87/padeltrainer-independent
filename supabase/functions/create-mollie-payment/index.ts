@@ -4,6 +4,7 @@ import {
   applySplitPayment,
   amountsMatch,
   computeCyclusTotalFromSlots,
+  computeCyclusExtrasTotal,
   computeSingleSlotPaymentAmount,
   resolveSplitDivisorFromSlots,
   hasNonUniformCapacity,
@@ -222,7 +223,7 @@ serve(async (req) => {
           id, player_id, payment_status, status, slot_id,
           availability_slots!inner(
             id, trainer_id, academy_profile_id, cyclus_id, price_per_session, start_time, end_time,
-            max_participants, allow_single_booking
+            max_participants, allow_single_booking, extra_costs
           )
         `)
         .in("id", requestedBookingIds);
@@ -262,7 +263,7 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
-        const slot = b.availability_slots as SlotPricingInput & {
+        const slot = b.availability_slots as unknown as SlotPricingInput & {
           id: string;
           trainer_id: string;
           cyclus_id: string | null;
@@ -360,11 +361,12 @@ serve(async (req) => {
         }
       }
 
-      const slots = existingBookings.map((b) => b.availability_slots as SlotPricingInput & { cyclus_id: string | null; academy_profile_id: string | null });
+      const slots = existingBookings.map((b) => b.availability_slots as unknown as SlotPricingInput & { cyclus_id: string | null; academy_profile_id: string | null; extra_costs?: ExtraCost[] | null });
       // All slots in a cyclus share one academy; use it to disambiguate a multi-academy trainer.
       recipientAcademyProfileId = slots[0]?.academy_profile_id ?? null;
       const cyclusIds = [...new Set(slots.map((s) => s.cyclus_id).filter(Boolean))];
       let splitPayment = false;
+      let cycleExtraCosts: ExtraCost[] | null = null;
 
       if (cyclusIds.length === 1 && cyclusIds[0]) {
         const { data: cycle } = await supabase
@@ -374,9 +376,20 @@ serve(async (req) => {
           .maybeSingle();
         const settings = (cycle?.settings as Record<string, unknown>) || {};
         splitPayment = settings.split_payment === true;
+        // Same extras source the invoice uses (auto-create-invoice): cycle settings.extra_costs.
+        cycleExtraCosts = (settings.extra_costs as ExtraCost[] | null) ?? null;
+      }
+      // Fallback to the first slot's extra_costs, exactly like auto-create-invoice.
+      if (!cycleExtraCosts) {
+        cycleExtraCosts = (slots[0] as { extra_costs?: ExtraCost[] | null })?.extra_costs ?? null;
       }
 
-      const total = computeCyclusTotalFromSlots(slots, hourlyRate);
+      // Fold extras into the cyclus total so the CHARGE collects what the invoice bills (one_time
+      // once, per_session per session). applySplitPayment then divides base+extras by the frozen
+      // capacity — matching the invoice's per-line ÷ split_count (audit Batch 2 — extras agreement).
+      const total =
+        computeCyclusTotalFromSlots(slots, hourlyRate) +
+        computeCyclusExtrasTotal(cycleExtraCosts, slots.length);
       if (splitPayment) {
         // G5: split by the cycle's COURT CAPACITY (frozen), NOT the live player count.
         // A pure function of the slot rows, so it can't drift as the cohort forms

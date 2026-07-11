@@ -87,6 +87,29 @@ export function computeCyclusTotalFromSlots(
   return slots.reduce((sum, s) => sum + resolveSlotUnitPrice(s, hourlyRate), 0);
 }
 
+/**
+ * Cycle-level extra_costs total, PRE-split, to fold into the cyclus charge so it collects exactly
+ * what the invoice bills. Mirrors auto-create-invoice / buildCycleLineItems: a `one_time` extra is
+ * billed ONCE for the whole cycle, a per-session extra once per session. The caller adds this to the
+ * base cyclus total and then applySplitPayment divides the whole thing by the frozen capacity —
+ * exactly as the invoice divides each extra line by split_count. Without this the split-cyclus charge
+ * dropped extras entirely while the invoice appended them ÷ N (audit Batch 2 — charge/invoice extras
+ * must agree; owner decision: charge the extras).
+ */
+export function computeCyclusExtrasTotal(
+  extraCosts: ExtraCost[] | null | undefined,
+  sessionCount: number,
+): number {
+  if (!Array.isArray(extraCosts)) return 0;
+  const sessions = Math.max(0, sessionCount);
+  return extraCosts.reduce((sum, ec) => {
+    const p = Number(ec?.price);
+    if (!Number.isFinite(p) || p <= 0) return sum;
+    const qty = ec?.type === "one_time" ? 1 : sessions;
+    return sum + p * qty;
+  }, 0);
+}
+
 export function applySplitPayment(total: number, playerCount: number): number {
   const n = Math.max(playerCount, 1);
   return Math.round((total / n) * 100) / 100;
