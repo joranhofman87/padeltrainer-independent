@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } from "@/lib/bookings";
+import { buildCycleExtensionBookings } from "@/lib/cycleExtensionBookings";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { insertAvailabilitySlots, setSlotVisibility } from "@/lib/slots";
 import { isTrainerSlotOverlapError } from "@/lib/slotConflicts";
@@ -656,29 +657,12 @@ export default function TrainerScheduleOverview() {
                 .in("status", ["confirmed", "attended", "pending"]);
 
               if (existingBookings && existingBookings.length > 0) {
-                // Get unique players (by player_id or guest_player_id)
-                const playerMap = new Map<string, typeof existingBookings[0]>();
-                for (const b of existingBookings) {
-                  const key = b.player_id || b.guest_player_id || "";
-                  if (key && !playerMap.has(key)) playerMap.set(key, b);
-                }
-
-                const newBookings: any[] = [];
-                for (const [, templateBooking] of playerMap) {
-                  for (const newSlot of insertedSlots) {
-                    newBookings.push({
-                      slot_id: newSlot.id,
-                      player_id: templateBooking.player_id,
-                      guest_player_id: templateBooking.guest_player_id,
-                      status: templateBooking.status,
-                      payment_amount: templateBooking.payment_amount,
-                      payment_status: templateBooking.payment_status || "pending",
-                    });
-                  }
-                }
+                // Carry each enrolled player onto every new session — CLEAN (confirmed + UNPAID), never
+                // inheriting the template's 'attended'/'paid' state (audit Batch 2 d). See helper.
+                const newBookings = buildCycleExtensionBookings(existingBookings, insertedSlots.map((s) => s.id));
 
                 if (newBookings.length > 0) {
-                  const { data, error: createBookingsErr } = await insertBookings(newBookings, supabase, "id, player_id, guest_player_id");
+                  const { data, error: createBookingsErr } = await insertBookings(newBookings as unknown as Record<string, unknown>[], supabase, "id, player_id, guest_player_id");
                   if (createBookingsErr) throw createBookingsErr;
                   const createdBookings = data as { id: string; player_id: string | null; guest_player_id: string | null }[] | null;
 
