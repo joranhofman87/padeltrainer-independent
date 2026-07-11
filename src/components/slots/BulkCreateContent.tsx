@@ -38,6 +38,7 @@ import { logSupabaseError } from "@/lib/trainerOnboardingLegacy";
 import { getBulkCreateVatSettingsPath, priceDisplayModeToIncludesVat, shouldUseTrainerPricesIncludeVat } from "@/lib/academyPriceDisplay";
 import { buildBulkCycleBookings } from "@/lib/bulkCycleBookings";
 import { splitAmongPlayersForInvoiceCreate } from "@/lib/invoiceSplitPricing";
+import { resolveSplitDivisor } from "@/lib/splitDivisor";
 import { getSelectedGuestPlayerIds, groupChargeableBookingsByGuest, normalizePayerId, shouldShowPayerSelector } from "@/lib/cyclePayerSelection";
 import { buildDefaultBulkSlotOwnership, shouldInvokeNotifyFollowersOnBulkGenerate, shouldShowBulkBookingPartialFailureToast, shouldShowBulkPlayersAddedToast } from "@/lib/bulkCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
@@ -778,6 +779,8 @@ export function BulkCreateContent({
               sessionPrice: config.pricePerSession,
               splitPayment: config.splitPayment,
               markAsPaid: config.markAsPaid,
+              // G5: seed each split share as slot/capacity (frozen), not slot/(this batch's size).
+              slotCapacity: config.maxParticipants,
             });
 
             if (bookingsToInsert.length > 0) {
@@ -806,11 +809,18 @@ export function BulkCreateContent({
 
                   if (insertedBookings) {
                     const playerBookingMap = groupChargeableBookingsByGuest(insertedBookings);
+                    // G5 frozen divisor: slot capacity, NOT playerBookingMap.size (this batch's live
+                    // headcount). A court-of-4 split with 2 added must bill each slot/4, not slot/2 —
+                    // and a lone add must still split, not carry the whole court. Matches the seeded
+                    // payment_amount above + the invoice/recalc/charge paths (resolveSplitDivisor).
+                    const splitDivisor = config.splitPayment
+                      ? resolveSplitDivisor([{ max_participants: config.maxParticipants }])
+                      : 1;
 
                     for (const [, bIds] of playerBookingMap) {
                       try {
                         const invoiceBody: Record<string, unknown> = { bookingIds: bIds, asDraft: true };
-                        if (config.splitPayment && playerBookingMap.size > 1) {
+                        if (splitDivisor > 1) {
                           const playerBookings = (insertedBookings || []).filter((b) =>
                             bIds.includes(b.id),
                           );
@@ -819,7 +829,7 @@ export function BulkCreateContent({
                               payment_amount: b.payment_amount,
                               availability_slots: { price_per_session: config.pricePerSession },
                             })),
-                            playerBookingMap.size,
+                            splitDivisor,
                           );
                           if (splitCount != null) {
                             invoiceBody.splitAmongPlayers = splitCount;

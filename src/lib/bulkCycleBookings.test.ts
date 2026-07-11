@@ -33,6 +33,23 @@ describe("buildBulkCycleBookings", () => {
     expect(rows.every((r) => r.payment_amount === 33.33)).toBe(true);
   });
 
+  it("split with a FROZEN capacity → slot/capacity, not slot/(this batch's size) (audit Batch 2 c)", () => {
+    // 2 players bulk-added to a split court of 4 must each be seeded €25 (100/4), NOT €50 (100/2) —
+    // so they match a player added later via the add-player flow (which uses max_participants).
+    const rows = buildBulkCycleBookings({
+      slotIds: ["s1"],
+      selectedPlayers: ["p1", "p2"],
+      payerGuestPlayerId: null,
+      sessionPrice: 100,
+      splitPayment: true,
+      markAsPaid: false,
+      slotCapacity: 4,
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.payment_amount === 25)).toBe(true);
+  });
+
   it("uses first player as payer when payer not set (non-split)", () => {
     const rows = buildBulkCycleBookings({
       slotIds: ["s1"],

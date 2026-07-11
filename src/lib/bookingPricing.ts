@@ -6,6 +6,13 @@ export type SlotBookingPricingInput = {
   splitPayment: boolean;
   existingActiveBookingCount: number;
   newPlayerCount: number;
+  /**
+   * G5 frozen-capacity divisor for split payment: the slot's `max_participants`. When supplied
+   * (> 1) it — NOT the live headcount — divides the session price, so a split share never drifts
+   * with the cohort and always matches the invoice/recalc/charge paths (`resolveSplitDivisor`).
+   * Omitted / ≤ 1 → legacy behaviour (divide by the live `existing + new` total).
+   */
+  slotCapacity?: number | null;
 };
 
 export type SlotBookingPricingResult = {
@@ -55,9 +62,13 @@ export function calculateSlotBookingPricing(
   const newCount = Math.max(0, input.newPlayerCount);
 
   if (input.splitPayment) {
-    const totalParticipants = existing + newCount;
-    const perPlayerAmount =
-      totalParticipants > 0 ? round2(sessionPrice / totalParticipants) : 0;
+    // G5: divide by the FROZEN court capacity when known (> 1), never the live headcount, so the
+    // per-player share matches the invoice/recalc/charge paths (resolveSplitDivisor) and a court of
+    // N always bills slot/N regardless of how many are enrolled yet. Falls back to the live total
+    // only when capacity is unknown, preserving old behaviour for callers that can't supply it.
+    const capacity = Math.max(0, Number(input.slotCapacity) || 0);
+    const divisor = capacity > 1 ? capacity : existing + newCount;
+    const perPlayerAmount = divisor > 0 ? round2(sessionPrice / divisor) : 0;
     const newPlayerAmounts = Array.from({ length: newCount }, () => perPlayerAmount);
 
     return {

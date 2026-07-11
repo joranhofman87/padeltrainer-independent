@@ -95,6 +95,61 @@ describe("calculateSlotBookingPricing — split payment", () => {
   });
 });
 
+describe("calculateSlotBookingPricing — split payment with FROZEN capacity (G5, audit Batch 2 c)", () => {
+  it("2 added to a court of 4 → 20 each (slot/capacity), NOT 40 (slot/live-headcount)", () => {
+    const r = calculateSlotBookingPricing({
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 0,
+      newPlayerCount: 2,
+      slotCapacity: 4,
+    });
+    expect(r.perPlayerAmount).toBe(20);
+    expect(r.newPlayerAmounts).toEqual([20, 20]);
+  });
+
+  it("a lone add to a split court of 4 still splits → 20, never the full 80", () => {
+    const r = calculateSlotBookingPricing({
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 0,
+      newPlayerCount: 1,
+      slotCapacity: 4,
+    });
+    expect(r.newPlayerAmounts).toEqual([20]);
+  });
+
+  it("adding the 3rd player does NOT change the frozen share (still 20 for new + existing)", () => {
+    const r = calculateSlotBookingPricing({
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 2,
+      newPlayerCount: 1,
+      slotCapacity: 4,
+    });
+    expect(r.newPlayerAmounts).toEqual([20]);
+    expect(r.existingBookingsNewAmount).toBe(20); // heals existing rows to the frozen slot/4 share
+  });
+
+  it("capacity ≤ 1 or omitted falls back to the live headcount (legacy, unchanged)", () => {
+    const legacy = calculateSlotBookingPricing({
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 0,
+      newPlayerCount: 2,
+    });
+    expect(legacy.newPlayerAmounts).toEqual([40, 40]);
+    const capOne = calculateSlotBookingPricing({
+      sessionPrice: 80,
+      splitPayment: true,
+      existingActiveBookingCount: 0,
+      newPlayerCount: 2,
+      slotCapacity: 1,
+    });
+    expect(capOne.newPlayerAmounts).toEqual([40, 40]);
+  });
+});
+
 describe("calculateSlotBookingPricing — non-split", () => {
   it("first player on empty slot → 80", () => {
     const r = calculateSlotBookingPricing({
