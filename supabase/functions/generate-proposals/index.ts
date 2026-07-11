@@ -429,6 +429,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // GUARD (architecture audit 2026-07-11, V2): proposal generation DELETES every unbooked slot of
+    // this cycle (below) — and slot_priority_claims.slot_id is ON DELETE CASCADE, so running it on a
+    // training cyclus or a live rebook round would silently destroy that round's pending priority
+    // claims. It is a REGISTRATION-workflow operation, so it must only run on a registration/event
+    // cycle: a `registrations` overlay row for this cycle, OR a legacy type='registration'/'event'.
+    // Authorization above scopes by owner only; this adds the missing TYPE gate. Refuse otherwise.
+    if (cycle.type !== "registration" && cycle.type !== "event") {
+      const { data: overlay } = await supabase
+        .from("registrations").select("id").eq("source_cycle_id", cycleId).maybeSingle();
+      if (!overlay) {
+        return new Response(
+          JSON.stringify({ error: "not_a_registration", message: "Proposals can only be generated for a registration or event, not a training cycle." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Parse additional criteria using AI if provided
     let aiRules: { type: string; condition: string; value: any }[] = [];
     if (additionalCriteria && additionalCriteria.trim()) {
