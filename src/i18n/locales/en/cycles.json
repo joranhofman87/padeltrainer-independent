@@ -1445,5 +1445,8 @@
     "errNotFound": "This round was not found.",
     "errLoad": "Could not load the texts. Please try again.",
     "errSave": "Saving failed. Please try again."
+  },
+  "intake": {
+    "notARegistration": "You can only add sign-ups to a registration or event — not to a training cycle."
   }
 }

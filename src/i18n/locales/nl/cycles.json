@@ -1570,5 +1570,8 @@
     "errNotFound": "Deze ronde is niet gevonden.",
     "errLoad": "Kon de teksten niet laden. Probeer het opnieuw.",
     "errSave": "Opslaan mislukt. Probeer het opnieuw."
+  },
+  "intake": {
+    "notARegistration": "Je kunt alleen aanmeldingen toevoegen aan een inschrijving of evenement — niet aan een trainingscyclus."
   }
 }

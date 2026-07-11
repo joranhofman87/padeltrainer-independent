@@ -300,7 +300,13 @@ export default function AddIntakeRequestDialog({
       onSuccess();
     } catch (error: any) {
       logger.error('Error creating intake request', error as Error, { component: 'AddIntakeRequestDialog' });
-      toast.error(getFriendlyErrorMessage(error, 'Failed to add registration'));
+      // The intake-target trigger (migration 20260808100000) rejects a sign-up on a training cyclus /
+      // rebook round — give staff a clear reason instead of a raw check_violation.
+      if (/registration or event cycle/i.test(String(error?.message ?? error))) {
+        toast.error(t('intake.notARegistration', 'Je kunt alleen aanmeldingen toevoegen aan een inschrijving of evenement — niet aan een trainingscyclus.'));
+      } else {
+        toast.error(getFriendlyErrorMessage(error, 'Failed to add registration'));
+      }
     } finally {
       setIsSubmitting(false);
     }
