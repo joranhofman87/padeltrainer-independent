@@ -29,6 +29,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import { type Cycle, updateCycle } from '@/lib/cycles';
+import { syncRegistrationStatus } from '@/lib/registrations';
 import { buildRegistrationUrl } from '@/lib/cycleRegistrationUrl';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 
@@ -94,6 +95,9 @@ export default function CyclesTable({
     const newStatus = cycle.status === 'open' ? 'closed' : 'open';
     try {
       await updateCycle(cycle.id, { status: newStatus });
+      // A split registration's public form obeys registrations.status — keep it in lockstep so
+      // "close" actually closes the form (audit Theme 1). No-op when there is no overlay row.
+      await syncRegistrationStatus(cycle.id, newStatus);
       toast.success(t(`status.${newStatus}`));
       onDeleted(); // Refresh
     } catch (error: any) {

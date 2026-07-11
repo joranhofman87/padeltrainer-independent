@@ -44,6 +44,47 @@ export async function getRegistration(idOrSourceCycleId: string): Promise<Regist
   return (legacy.data as unknown as Registration | null) ?? null;
 }
 
+export interface RegistrationEditTarget {
+  writeTarget: 'cycle' | 'registration';
+  formType: 'registration' | 'event';
+}
+
+/**
+ * Decide how the cycle editor must SAVE — by OVERLAY EXISTENCE, not the shell's `type`.
+ *
+ * A registration created via create_registration_with_cycle has a `cycles` shell born `type='cyclus'`
+ * PLUS a `registrations` overlay. The old rule (`writeTarget = type==='cyclus' ? 'cycle' : 'registration'`)
+ * therefore sent every post-split registration's edits to the CYCLE row — never the overlay that the
+ * public /register form renders and the invoice path prices — so price/close changes silently never
+ * reached players (architecture audit 2026-07-11, Theme 1 / §3.1). Rule now: an overlay row (or a
+ * LEGACY `type` of 'registration'/'event') ⇒ write the registration; a genuine training cyclus with no
+ * overlay ⇒ write the cycle. `formType` comes from the overlay when present, else the legacy cycle type
+ * — otherwise a split EVENT (shell `type='cyclus'`) would mis-render as a registration.
+ */
+export function resolveRegistrationEditTarget(args: {
+  isEdit: boolean;
+  cycleType?: string | null;
+  overlayFormat?: Registration['format'] | null;
+  requestedType: Registration['format'];
+}): RegistrationEditTarget {
+  const { isEdit, cycleType, overlayFormat, requestedType } = args;
+  if (!isEdit) return { writeTarget: 'registration', formType: requestedType };
+  const isRegistrationRow = overlayFormat != null || cycleType === 'registration' || cycleType === 'event';
+  const formType: Registration['format'] = overlayFormat ?? (cycleType === 'event' ? 'event' : 'registration');
+  return { writeTarget: isRegistrationRow ? 'registration' : 'cycle', formType };
+}
+
+/**
+ * Keep a split registration's overlay status in lockstep with its cycle shell. The public /register
+ * form of a split registration obeys `registrations.status` (anon RLS: only status='open' is visible),
+ * so closing/opening must update BOTH rows — writing only `cycles.status` left the form live and still
+ * minting invoices (audit Theme 1). No-op when the cycle has no overlay (a legacy form's status lives
+ * on the cycle; a training cyclus has no overlay row), so it is safe to call for any cycle.
+ */
+export async function syncRegistrationStatus(sourceCycleId: string, status: Registration['status']): Promise<void> {
+  await supabase.from('registrations').update({ status } as never).eq('source_cycle_id', sourceCycleId);
+}
+
 /** Form fields for creating / editing a registration via the canonical RPCs. */
 export interface RegistrationInput {
   owner_type: Registration['owner_type'];

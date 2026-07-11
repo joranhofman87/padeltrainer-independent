@@ -55,6 +55,7 @@ import {
   type SlotWithOccupancy,
 } from '@/lib/cycles';
 import { updateCyclePricing, type ExtraCost } from '@/lib/cycles';
+import { syncRegistrationStatus } from '@/lib/registrations';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
 import { supabase } from '@/lib/supabaseClient';
 import { setSlotVisibility } from '@/lib/slots';
@@ -393,6 +394,9 @@ export default function AcademyCycleDetail() {
     const newStatus = cycle.status === 'open' ? 'closed' : 'open';
     try {
       await updateCycle(cycle.id, { status: newStatus });
+      // A split registration's public form obeys registrations.status — keep it in lockstep so
+      // "close" actually closes the form (audit Theme 1). No-op when there is no overlay row.
+      await syncRegistrationStatus(cycle.id, newStatus);
       toast.success(t(`status.${newStatus}`));
       refreshCycle();
     } catch (error: any) {
