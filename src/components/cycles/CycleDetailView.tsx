@@ -24,7 +24,7 @@ import CyclePricingCard from '@/components/cycles/CyclePricingCard';
 import { CycleEndDateFields, type CycleEndDatePlan } from '@/components/cycles/CycleEndDateFields';
 import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
 import { supabase } from '@/lib/supabaseClient';
-import { useCycleDetail, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
+import { useCycleDetail, representativeSlotPrice, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
 import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { addPlayersToCycle, swapPlayerInCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
@@ -189,17 +189,19 @@ export function CycleDetailView({
   const cycle = data?.cycle ?? null;
   const slots = useMemo(() => data?.slots ?? [], [data]);
 
-  // Seed the inline pricing card from the cycle ONCE per cycle id (slot price is the source of truth;
-  // the cycle row carries the template the bulk editor pushes down). Guarded so re-renders / parent
-  // refetches never clobber the owner's in-progress edits.
+  // Seed the inline pricing card from the SLOTS' actual price (the booking-truth value), falling back
+  // to the cycle row only when no slot carries a price. cycles.price_per_session can drift from the
+  // slots (bulk-copy attach, rebook, a misrouted edit) — seeding from it meant opening + saving the
+  // card pushed the STALE cycle value back over the real slot prices and re-invoiced at it (audit
+  // Batch 2 a). Guarded (once per cycle id) so re-renders never clobber an in-progress edit.
   useEffect(() => {
     if (!cycle || pricingSeededFor === cycle.id) return;
-    setPricePerSession(cycle.price_per_session ?? null);
+    setPricePerSession(representativeSlotPrice(slots) ?? cycle.price_per_session ?? null);
     setExtraCosts((cycle.settings?.extra_costs as ExtraCost[] | undefined) ?? []);
     setSplitPayment(cycle.settings?.split_payment ?? false);
     setPricesIncludeVat(cycle.settings?.prices_include_vat ?? true);
     setPricingSeededFor(cycle.id);
-  }, [cycle, pricingSeededFor]);
+  }, [cycle, slots, pricingSeededFor]);
 
   // Seed the inline looptijd value once per cycle (start = cycle start_date or first session date;
   // originalEnd = cycle end_date).

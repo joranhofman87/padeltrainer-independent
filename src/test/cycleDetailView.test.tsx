@@ -34,7 +34,11 @@ const {
   mockToast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 vi.mock('@/lib/supabaseClient', () => ({ supabase: supabaseMock }));
-vi.mock('@/lib/cycleDetail', () => ({ useCycleDetail: () => mockUseCycleDetail() }));
+vi.mock('@/lib/cycleDetail', () => ({
+  useCycleDetail: () => mockUseCycleDetail(),
+  representativeSlotPrice: (slots: Array<{ price_per_session: number | null }>) =>
+    slots?.find((s) => s.price_per_session != null)?.price_per_session ?? null,
+}));
 vi.mock('@/lib/slotDeleteGuard', () => ({
   applySlotDeleteToCycle: (...a: unknown[]) => mockApplyDelete(...a),
   cancelBookingsAndDeleteSlots: (...a: unknown[]) => mockCancelDelete(...a),
@@ -153,8 +157,8 @@ const sampleDetail: CycleDetail = {
     location: { id: 'l1', name: 'Court A', city: 'Amsterdam' },
   } as unknown as CycleDetail['cycle'],
   slots: [
-    { id: 's1', start_time: '2099-07-06T18:00:00Z', end_time: '2099-07-06T19:00:00Z', trainer_id: 't1', max_participants: 4, is_public: true, cyclus_name: 'Zomercyclus', playerNames: ['Alice', 'Bob'], bookedCount: 2, paymentStatus: 'all_paid' },
-    { id: 's2', start_time: '2099-07-13T18:00:00Z', end_time: '2099-07-13T19:00:00Z', trainer_id: 't1', max_participants: 4, is_public: true, cyclus_name: 'Zomercyclus', playerNames: [], bookedCount: 0, paymentStatus: 'no_players' },
+    { id: 's1', start_time: '2099-07-06T18:00:00Z', end_time: '2099-07-06T19:00:00Z', trainer_id: 't1', max_participants: 4, is_public: true, cyclus_name: 'Zomercyclus', price_per_session: 50, playerNames: ['Alice', 'Bob'], bookedCount: 2, paymentStatus: 'all_paid' },
+    { id: 's2', start_time: '2099-07-13T18:00:00Z', end_time: '2099-07-13T19:00:00Z', trainer_id: 't1', max_participants: 4, is_public: true, cyclus_name: 'Zomercyclus', price_per_session: 50, playerNames: [], bookedCount: 0, paymentStatus: 'no_players' },
   ],
   roster: [
     { name: 'Alice', sessionCount: 2, playerId: 'p-alice', guestPlayerId: null },
@@ -295,12 +299,13 @@ describe('CycleDetailView (inline edit)', () => {
     mockUseCycleDetail.mockReturnValue(loaded);
     const onMutated = vi.fn();
     renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} canEditPrice onMutated={onMutated} />);
-    // Seeded from the cycle's price_per_session.
-    expect(screen.getByDisplayValue('25')).toBeInTheDocument();
+    // Batch 2 (a): seeded from the SLOTS' actual price (50), NOT the drifted cycle row (25) — so
+    // opening + saving the card can't push the stale cycle value back over the real slot prices.
+    expect(screen.getByDisplayValue('50')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
     await waitFor(() =>
       expect(mockUpdatePricing).toHaveBeenCalledWith('cy1', {
-        price_per_session: 25,
+        price_per_session: 50,
         extra_costs: [],
         split_payment: false,
         prices_include_vat: true,

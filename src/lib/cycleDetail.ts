@@ -9,6 +9,27 @@ import {
 } from '@/lib/cyclusGroupPayment';
 
 /** One session of a cycle + the players in it, for the cycle-detail view (Slice 9). */
+/**
+ * The price the cycle's slots ACTUALLY charge — the value the inline pricing card should seed from,
+ * NOT cycles.price_per_session (which can drift: a bulk-copy attach copies source-slot prices onto a
+ * target cycle whose row price is never touched; a rebook/misrouted edit can null it). Returns the
+ * MOST COMMON non-null slot price (a stray drifted session can't win), null when no slot has a price
+ * — so a stale cycle row can no longer be pushed back over the real slot prices on save (audit Batch 2 a).
+ */
+export function representativeSlotPrice(slots: { price_per_session: number | null }[]): number | null {
+  const counts = new Map<number, number>();
+  for (const s of slots) {
+    if (s.price_per_session == null) continue;
+    counts.set(s.price_per_session, (counts.get(s.price_per_session) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  let bestN = 0;
+  for (const [price, n] of counts) {
+    if (n > bestN) { best = price; bestN = n; }
+  }
+  return best;
+}
+
 export interface CycleDetailSlot {
   id: string;
   start_time: string;
@@ -17,6 +38,8 @@ export interface CycleDetailSlot {
   max_participants: number | null;
   is_public: boolean;
   cyclus_name: string | null;
+  /** The slot's own price — the booking-truth value (the cycle row's price_per_session can drift). */
+  price_per_session: number | null;
   /** Display names of the players occupying this slot. */
   playerNames: string[];
   /** Count of capacity-occupying bookings on this slot. */
@@ -57,7 +80,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
 
   const { data: slotRows, error: slotErr } = await supabase
     .from('availability_slots')
-    .select('id, start_time, end_time, trainer_id, max_participants, is_public, cyclus_name')
+    .select('id, start_time, end_time, trainer_id, max_participants, is_public, cyclus_name, price_per_session')
     .eq('cyclus_id', cycleId)
     .order('start_time');
   if (slotErr) throw slotErr;
@@ -69,6 +92,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
     max_participants: number | null;
     is_public: boolean;
     cyclus_name: string | null;
+    price_per_session: number | null;
   }>;
   const slotIds = slots.map((s) => s.id);
 
@@ -137,6 +161,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
     max_participants: s.max_participants ?? null,
     is_public: s.is_public,
     cyclus_name: s.cyclus_name ?? null,
+    price_per_session: s.price_per_session ?? null,
     playerNames: playerNamesMap[s.id] ?? [],
     bookedCount: bookingCountMap[s.id] ?? 0,
     paymentStatus: computeCyclusGroupPaymentStatus(bookingsBySlot[s.id] ?? []),
