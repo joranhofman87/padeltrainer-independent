@@ -10,6 +10,7 @@ import { formatDate } from '@/lib/format';
 import { formatPrice } from '@/lib/pricing';
 import { setRebookRoundArchived } from '@/lib/rebookManage';
 import { listRebookRoundOverview, type RebookRoundOverviewRow } from '@/lib/rebookRoundsOverview';
+import { getAcademyLocationsWithDetails } from '@/lib/academy';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { logger } from '@/lib/logger';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
@@ -28,6 +29,7 @@ import { ListPagination } from '@/components/ui/list-pagination';
 
 type ColKey =
   | 'start'
+  | 'location'
   | 'series'
   | 'status'
   | 'invited'
@@ -43,6 +45,7 @@ type ColKey =
 
 const DEFAULT_COLUMNS: ColKey[] = [
   'start',
+  'location',
   'series',
   'status',
   'invited',
@@ -63,6 +66,8 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
   const [busyId, setBusyId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  // Location names for the Locatie column (id → name); best-effort, ids render as '—' until loaded.
+  const [locationNameById, setLocationNameById] = useState<Map<string, string>>(new Map());
 
   const reload = useCallback(() => {
     let active = true;
@@ -75,6 +80,17 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
   }, [academyId]);
 
   useEffect(() => reload(), [reload]);
+
+  useEffect(() => {
+    let active = true;
+    getAcademyLocationsWithDetails(academyId)
+      .then((rows) => {
+        if (!active) return;
+        setLocationNameById(new Map(rows.filter((r) => r.location).map((r) => [r.location.id, r.location.name])));
+      })
+      .catch((e) => logger.error('Failed to load locations for rebook overview', e as Error, { component: 'RebookRoundsSection' }));
+    return () => { active = false; };
+  }, [academyId]);
 
   const setArchived = async (id: string, archived: boolean) => {
     setBusyId(id);
@@ -91,17 +107,28 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
 
   const archivedCount = useMemo(() => rows.filter((r) => r.archived).length, [rows]);
 
-  // Archived visibility + name search (case-insensitive). Sorting is applied after, by the shared hook.
+  // Rows enriched with the resolved location label (joined names) so the Locatie column can
+  // sort and search on a plain string like every other column.
+  type OverviewRow = RebookRoundOverviewRow & { locationLabel: string };
+  const enriched: OverviewRow[] = useMemo(
+    () => rows.map((r) => ({
+      ...r,
+      locationLabel: r.locationIds.map((id) => locationNameById.get(id) ?? '').filter(Boolean).join(', '),
+    })),
+    [rows, locationNameById],
+  );
+
+  // Archived visibility + name/location search (case-insensitive). Sorting is applied after, by the shared hook.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
+    return enriched.filter((r) => {
       if (r.archived && !showArchived) return false;
-      if (q && !(r.name || '').toLowerCase().includes(q)) return false;
+      if (q && !(r.name || '').toLowerCase().includes(q) && !r.locationLabel.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, showArchived, search]);
+  }, [enriched, showArchived, search]);
 
-  const { sortedData, sortConfig, handleSort } = useTableSort<RebookRoundOverviewRow>(filtered, undefined, null, { emptyLast: true });
+  const { sortedData, sortConfig, handleSort } = useTableSort<OverviewRow>(filtered, undefined, null, { emptyLast: true });
 
   // Reset to the first page whenever the visible set changes.
   useEffect(() => { setPage(0); }, [search, showArchived, sortConfig.key, sortConfig.direction]);
@@ -112,7 +139,7 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
   const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns<ColKey>(
     columnDescriptors(t),
     DEFAULT_COLUMNS,
-    academyId ? `rebookManage:overview:cols:${academyId}` : null,
+    academyId ? `rebookManage:overview:cols:v2:${academyId}` : null,
   );
 
   const num = (r: RebookRoundOverviewRow, v: number) => (r.statsLoaded ? v : '—');
@@ -122,7 +149,7 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
   const statusVariant = (s: string): 'default' | 'secondary' | 'outline' =>
     s === 'open' ? 'default' : s === 'closed' ? 'outline' : 'secondary';
 
-  const columns: ColumnDef<RebookRoundOverviewRow>[] = [
+  const columns: ColumnDef<OverviewRow>[] = [
     {
       key: 'name',
       header: t('rebookManage.overview.colRound', 'Ronde'),
@@ -145,6 +172,14 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
       sortKey: 'startDate',
       // start_date is a pure DATE — parse at local noon so it never shifts a day.
       renderCell: (r) => (r.startDate ? formatDate(`${r.startDate}T12:00:00`, 'd MMM yyyy') : '—'),
+    },
+    {
+      key: 'location',
+      header: t('rebookManage.overview.colLocation', 'Locatie'),
+      sortKey: 'locationLabel',
+      className: 'max-w-[200px]',
+      cellTitle: (r) => r.locationLabel || undefined,
+      renderCell: (r) => <span className="truncate">{r.locationLabel || '\u2014'}</span>,
     },
     { key: 'series', header: t('rebookManage.overview.colSeries', 'Series'), sortKey: 'seriesCount', align: 'right', renderCell: (r) => r.seriesCount },
     {
@@ -189,7 +224,7 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
   return (
     <div className="space-y-3">
       <TableToolbar
-        searchPlaceholder={t('rebookManage.overview.searchPlaceholder', 'Zoek op naam…')}
+        searchPlaceholder={t('rebookManage.overview.searchPlaceholder', 'Zoek op naam of locatie…')}
         searchValue={search}
         onSearchChange={setSearch}
         trailing={
@@ -214,13 +249,13 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
         )}
       </TableToolbar>
 
-      <DataTable<RebookRoundOverviewRow>
+      <DataTable<OverviewRow>
         columns={columns}
         rows={pageRows}
         visibleKeys={['name', ...visibleColumns]}
         sortKey={sortConfig.key ? String(sortConfig.key) : null}
         sortDirection={sortConfig.direction}
-        onSort={(key) => handleSort(key as keyof RebookRoundOverviewRow)}
+        onSort={(key) => handleSort(key as keyof OverviewRow)}
         onRowClick={(r) => navigate(`/app/academy/cycles/${r.id}/rebook`)}
         compact
         stickyHeader
@@ -251,6 +286,7 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
 function columnDescriptors(t: (key: string, fallback: string) => string): ColumnDescriptor<ColKey>[] {
   return [
     { key: 'start', label: t('rebookManage.overview.colStart', 'Start'), isDefault: true },
+    { key: 'location', label: t('rebookManage.overview.colLocation', 'Locatie'), isDefault: true },
     { key: 'series', label: t('rebookManage.overview.colSeries', 'Series'), isDefault: true },
     { key: 'status', label: t('rebookManage.overview.colStatus', 'Status'), isDefault: true },
     { key: 'invited', label: t('rebookManage.overview.colInvited', 'Uitgenodigd'), isDefault: true },

@@ -33,6 +33,8 @@ export interface RebookRoundOverviewRow {
   /** false ⇒ this round's stats failed to load; the row still shows name/date/status with metrics zeroed. */
   statsLoaded: boolean;
   cycleIds: string[];
+  /** Distinct locations across the round's groups (usually one; extensions can add more). */
+  locationIds: string[];
 }
 
 /** Pure: fold a round + its aggregated status into one overview row. */
@@ -59,6 +61,7 @@ export function toRebookRoundOverviewRow(round: RebookRound, data: RebookManageD
     openSpots: Math.max(0, capacity - data.summary.rebooked),
     statsLoaded: true,
     cycleIds: round.cycleIds,
+    locationIds: [...new Set(data.groups.map((g) => g.locationId).filter((x): x is string => !!x))],
   };
 }
 
@@ -85,6 +88,7 @@ function zeroRow(round: RebookRound): RebookRoundOverviewRow {
     openSpots: 0,
     statsLoaded: false,
     cycleIds: round.cycleIds,
+    locationIds: [],
   };
 }
 

@@ -1236,7 +1236,7 @@
   "rebookManage": {
     "title": "Herboeking beheren",
     "overview": {
-      "searchPlaceholder": "Zoek op naam…",
+      "searchPlaceholder": "Zoek op naam of locatie…",
       "columnsButton": "Kolommen",
       "columnsDefault": "Standaard",
       "columnsOptional": "Optioneel",
@@ -1263,7 +1263,8 @@
       },
       "emptyTitle": "Nog geen herboekingen",
       "emptyDescription": "Zet een volgende ronde op via de Sessies-hub om spelers te laten herboeken.",
-      "noMatches": "Geen herboekingen gevonden."
+      "noMatches": "Geen herboekingen gevonden.",
+      "colLocation": "Locatie"
     },
     "roundsTitle": "Herboekingen",
     "invitesSent": "{{sent}} van {{total}} uitnodigingen verstuurd",
