@@ -24,6 +24,8 @@ export type BuildBulkCycleBookingsInput = {
   sessionPrice: number | null | undefined;
   splitPayment: boolean;
   markAsPaid: boolean;
+  /** G5 frozen split divisor: the slot's max_participants (court capacity). */
+  slotCapacity?: number | null;
 };
 
 /**
@@ -44,6 +46,7 @@ export function buildBulkCycleBookings(
     payerGuestPlayerId: payerId,
     sessionPrice,
     splitPayment: input.splitPayment,
+    slotCapacity: input.slotCapacity,
   });
 
   const rows: BulkCycleBookingInsert[] = [];

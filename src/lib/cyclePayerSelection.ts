@@ -38,6 +38,8 @@ export type BuildCyclePaymentAmountsInput = {
   payerGuestPlayerId: string | null;
   sessionPrice: number | null | undefined;
   splitPayment: boolean;
+  /** G5 frozen split divisor: the slot's max_participants. See {@link calculateSlotBookingPricing}. */
+  slotCapacity?: number | null;
 };
 
 /**
@@ -61,6 +63,7 @@ export function buildCyclePlayerPaymentAmounts(
       splitPayment: true,
       existingActiveBookingCount: 0,
       newPlayerCount: selected.length,
+      slotCapacity: input.slotCapacity,
     });
     selected.forEach((id, index) => {
       result.set(id, pricing.newPlayerAmounts[index] ?? 0);
