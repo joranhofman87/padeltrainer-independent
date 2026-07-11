@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft } from 'lucide-react';
 import { getCycle, type Cycle } from '@/lib/cycles';
+import { getRegistration, resolveRegistrationEditTarget, type Registration } from '@/lib/registrations';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useClubContext } from '@/components/club/ClubLayout';
@@ -43,6 +44,9 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [cycle, setCycle] = useState<Cycle | null>(null);
+  // The registrations overlay for this cycle (if any) — decides write target + form format by
+  // OVERLAY EXISTENCE, not the shell's type (a split registration's shell is born type='cyclus').
+  const [registration, setRegistration] = useState<Registration | null>(null);
 
   // Trainer-specific state
   const [trainerId, setTrainerId] = useState<string | null>(null);
@@ -216,8 +220,9 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
 
         // Load existing cycle for editing
         if (cycleId) {
-          const cycleData = await getCycle(cycleId);
+          const [cycleData, reg] = await Promise.all([getCycle(cycleId), getRegistration(cycleId)]);
           setCycle(cycleData);
+          setRegistration(reg);
         } else if (duplicateFromId) {
           const cycleData = await getCycle(duplicateFromId);
           if (cycleData) {
@@ -250,16 +255,15 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
     navigate(backPath);
   };
 
-  // When editing an existing cycle the type comes from the cycle itself (the
-  // edit route carries no ?type=); fall back to the requested type when creating.
-  const formType: 'registration' | 'event' =
-    cycleId && cycle ? (cycle.type === 'event' ? 'event' : 'registration') : requestedType;
-
-  // The editor writes registrations/events through the canonical write path. Only a (rare) plain
-  // training cyclus loaded for edit stays on the legacy cycle write — never mint a registration for
-  // a training cycle. Decided on the LOADED cycle's type (formType never yields 'cyclus').
-  const writeTarget: 'cycle' | 'registration' =
-    cycleId && cycle?.type === 'cyclus' ? 'cycle' : 'registration';
+  // Decide write target + form format by OVERLAY EXISTENCE, not the shell's type (a split
+  // registration's shell is born type='cyclus'; routing by type sent its edits to the cycle row —
+  // never the overlay the public form + invoice price read). See resolveRegistrationEditTarget.
+  const { formType, writeTarget } = resolveRegistrationEditTarget({
+    isEdit: Boolean(cycleId && cycle),
+    cycleType: cycle?.type,
+    overlayFormat: registration?.format ?? null,
+    requestedType,
+  });
 
   const title = cycleId
     ? formType === 'event' ? t('editEvent', 'Edit Event') : t('editRegistration', 'Edit Registration')
