@@ -55,7 +55,7 @@ beforeAll(async () => {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid,
       payment_status text, paid_at timestamptz, payment_amount numeric, status text, created_at timestamptz DEFAULT now());
     CREATE TABLE public.expenses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, trainer_id uuid, expense_date date, amount numeric);
-    CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, trainer_id uuid, status text);
+    CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, trainer_id uuid, status text, cycle_id uuid, paid_at timestamptz, total numeric);
     CREATE TABLE public.academy_player_locations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, profile_id uuid, guest_player_id uuid, created_at timestamptz DEFAULT now());
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), trainer_id uuid, created_at timestamptz DEFAULT now());
 
@@ -63,10 +63,13 @@ beforeAll(async () => {
     INSERT INTO public.trainer_profiles VALUES ('${T_A}','${TUSER_A}');
     INSERT INTO public.availability_slots VALUES ('${SLOT_A}','${ACAD_A}','${T_A}', 20);
 
-    -- Revenue: this-month 30 (explicit) + 20 (NULL amount -> slot price 20) = 50; last-month 40. One unpaid (excluded).
+    -- Revenue this-month bookings: 30 (explicit) + 20 (NULL amount -> slot price 20) + 0 (a REAL €0
+    -- captain-covered seat — must stay €0, not inflate to the €20 slot price) = 50. Last-month 40.
+    -- One unpaid (excluded). Plus €80 registration overlay-invoice income below → 130 total.
     INSERT INTO public.bookings (slot_id, player_id, payment_status, paid_at, payment_amount, status, created_at) VALUES
       ('${SLOT_A}', 'aa000000-0000-0000-0000-000000000001', 'paid', now(), 30, 'confirmed', now()),
       ('${SLOT_A}', 'aa000000-0000-0000-0000-000000000002', 'paid', now(), NULL, 'confirmed', now()),
+      ('${SLOT_A}', 'aa000000-0000-0000-0000-000000000005', 'paid', now(), 0, 'confirmed', now()),
       ('${SLOT_A}', 'aa000000-0000-0000-0000-000000000003', 'paid', date_trunc('month', now()) - interval '5 days', 40, 'confirmed', date_trunc('month', now()) - interval '5 days'),
       ('${SLOT_A}', 'aa000000-0000-0000-0000-000000000004', 'pending', NULL, 99, 'pending', now());
 
@@ -84,12 +87,20 @@ beforeAll(async () => {
     -- Trainer guest owned this month.
     INSERT INTO public.guest_players (trainer_id, created_at) VALUES ('${T_A}', now());
 
-    -- Invoices: ACAD_A has 1 sent (outstanding), 1 paid, 1 draft (not counted). Trainer 1 sent.
-    INSERT INTO public.invoices (academy_profile_id, status) VALUES ('${ACAD_A}','sent'), ('${ACAD_A}','paid'), ('${ACAD_A}','draft');
-    INSERT INTO public.invoices (trainer_id, status) VALUES ('${T_A}','sent');
+    -- Invoices: ACAD_A has 1 sent (outstanding KPI). Revenue income: a PAID registration/event
+    -- overlay invoice (cycle_id set, booking-less — Theme 12) adds €80. A paid BOOKING invoice
+    -- (cycle_id NULL) must NOT be counted (its money is already in bookings). draft = nowhere.
+    INSERT INTO public.invoices (academy_profile_id, status, cycle_id, paid_at, total) VALUES
+      ('${ACAD_A}','sent',  NULL,                                    NULL,  NULL),
+      ('${ACAD_A}','paid', '11111111-0000-0000-0000-0000000000a0', now(), 80),
+      ('${ACAD_A}','paid',  NULL,                                    now(), 999),
+      ('${ACAD_A}','draft', NULL,                                    NULL,  NULL);
+    INSERT INTO public.invoices (trainer_id, status, cycle_id, paid_at, total) VALUES ('${T_A}','sent', NULL, NULL, NULL);
   `);
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260719100000_dashboard_analytics.sql'), 'utf8'));
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260720100000_lock_dashboard_analytics_anon.sql'), 'utf8'));
+  // Revenue-truth fix (€0 seats kept; registration/event overlay-invoice income added) — must load LAST.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260809100000_dashboard_analytics_revenue_truth.sql'), 'utf8'));
 });
 
 describe('get_academy_dashboard_analytics', () => {
@@ -99,13 +110,13 @@ describe('get_academy_dashboard_analytics', () => {
     expect(r!.monthly).toHaveLength(12);
     // newest month = this month
     const cur = r!.monthly[r!.monthly.length - 1];
-    expect(Number(cur.revenue)).toBe(50);
+    expect(Number(cur.revenue)).toBe(130); // 30 + 20(NULL→slot) + 0(covered seat, NOT inflated) + 80(reg invoice)
     expect(Number(cur.expenses)).toBe(15);
-    expect(Number(cur.profit)).toBe(35);
+    expect(Number(cur.profit)).toBe(115); // 130 − 15
     expect(Number(cur.new_registered)).toBe(1);
     expect(Number(cur.new_guest)).toBe(1);
     const k = r!.kpis;
-    expect(Number(k.revenue_this_month)).toBe(50);
+    expect(Number(k.revenue_this_month)).toBe(130);
     expect(Number(k.revenue_last_month)).toBe(40);
     expect(Number(k.expenses_this_month)).toBe(15);
     expect(Number(k.new_players_this_month)).toBe(2);
@@ -130,17 +141,17 @@ describe('get_trainer_dashboard_analytics', () => {
     expect(r).not.toBeNull();
     expect(r!.monthly).toHaveLength(12);
     const cur = r!.monthly[r!.monthly.length - 1];
-    expect(Number(cur.revenue)).toBe(50);   // same slot's paid bookings
+    expect(Number(cur.revenue)).toBe(50);   // 30 + 20(NULL→slot) + 0(covered seat); no trainer overlay invoice
     expect(Number(cur.expenses)).toBe(8);
     expect(Number(cur.profit)).toBe(42);
-    // this-month new players: 3 registered (first non-cancelled bookings on the trainer's slot,
-    // incl. the still-pending one) + 1 guest; the last-month booking counts in the prior month.
-    expect(Number(cur.new_registered)).toBe(3);
+    // this-month new players: 4 registered (first non-cancelled bookings on the trainer's slot —
+    // incl. the still-pending one AND the €0 covered-seat group member) + 1 guest; last-month prior.
+    expect(Number(cur.new_registered)).toBe(4);
     expect(Number(cur.new_guest)).toBe(1);
     const k = r!.kpis;
     expect(Number(k.revenue_this_month)).toBe(50);
     expect(Number(k.revenue_last_month)).toBe(40);
-    expect(Number(k.new_players_this_month)).toBe(4);
+    expect(Number(k.new_players_this_month)).toBe(5);
     expect(Number(k.new_players_last_month)).toBe(1);
     expect(Number(k.outstanding_invoices)).toBe(1);
   });
