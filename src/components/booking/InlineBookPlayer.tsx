@@ -54,6 +54,8 @@ interface Slot {
   cyclus_name?: string | null;
   price_per_session?: number | null;
   split_payment?: boolean;
+  /** G5 frozen split divisor (court capacity). Omitted → legacy live-count split. */
+  max_participants?: number | null;
   booked_players?: BookedPlayer[];
 }
 
@@ -172,7 +174,7 @@ export function InlineBookPlayer({
 
   const fetchCyclusSlots = async (cyclusId: string) => {
     try {
-      const { data, error } = await supabase.from("availability_slots").select("id, start_time, end_time, price_per_session")
+      const { data, error } = await supabase.from("availability_slots").select("id, start_time, end_time, price_per_session, max_participants")
         .eq("cyclus_id", cyclusId).gte("start_time", new Date().toISOString()).order("start_time");
       if (error) throw error;
       setCyclusSlots(data || []);
@@ -216,6 +218,7 @@ export function InlineBookPlayer({
     splitPayment,
     existingActiveBookingCount: existingActiveCount,
     newPlayerCount: selectedCount,
+    slotCapacity: slot.max_participants,
   });
 
   const showInvoiceFollowUpToasts = (
@@ -394,6 +397,7 @@ export function InlineBookPlayer({
           splitPayment,
           existingActiveBookingCount: existingActiveCount,
           newPlayerCount: selectedPlayers.length,
+          slotCapacity: slot.max_participants,
         });
 
         const bookingsToInsert = selectedPlayers.map((player, index) =>

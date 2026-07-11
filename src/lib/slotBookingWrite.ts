@@ -41,6 +41,8 @@ export interface SlotForGuestBooking {
   start_time: string;
   end_time: string;
   price_per_session?: number | null;
+  /** G5 frozen split divisor (court capacity). Omitted → legacy live-count split. */
+  max_participants?: number | null;
 }
 
 type ExistingBookingRow = {
@@ -171,6 +173,7 @@ export async function insertGuestsIntoSlots(params: {
       splitPayment,
       existingActiveBookingCount: (bySlot.get(slot.id) || []).length,
       newPlayerCount: guestPlayerIds.length,
+      slotCapacity: slot.max_participants,
     });
 
   const bookingsToInsert = slots.flatMap((slot) => {

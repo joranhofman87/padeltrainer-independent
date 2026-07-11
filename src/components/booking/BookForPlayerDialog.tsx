@@ -91,6 +91,8 @@ interface Slot {
   cyclus_name?: string | null;
   price_per_session?: number | null;
   split_payment?: boolean;
+  /** G5 frozen split divisor (court capacity). Omitted → legacy live-count split. */
+  max_participants?: number | null;
   booked_players?: BookedPlayer[];
 }
 
@@ -99,6 +101,8 @@ type CyclusSlotRow = {
   start_time: string;
   end_time: string;
   price_per_session?: number | null;
+  /** G5 frozen split divisor (court capacity). */
+  max_participants?: number | null;
 };
 
 type ExistingBookingRow = {
@@ -148,6 +152,7 @@ export function BookForPlayerDialog({
   const [hourlyRate, setHourlyRate] = useState<number>(50);
   const [slotSplitPayment, setSlotSplitPayment] = useState(false);
   const [slotPricePerSession, setSlotPricePerSession] = useState<number | null>(null);
+  const [slotMaxParticipants, setSlotMaxParticipants] = useState<number | null>(null);
   const [invoicePayerGuestPlayerId, setInvoicePayerGuestPlayerId] = useState<string | null>(null);
   
   // Discount state
@@ -242,7 +247,7 @@ export function BookForPlayerDialog({
     try {
       const { data, error } = await supabase
         .from("availability_slots")
-        .select("split_payment, price_per_session")
+        .select("split_payment, price_per_session, max_participants")
         .eq("id", slotId)
         .maybeSingle();
 
@@ -250,6 +255,7 @@ export function BookForPlayerDialog({
       if (data) {
         setSlotSplitPayment(Boolean(data.split_payment));
         setSlotPricePerSession(data.price_per_session);
+        setSlotMaxParticipants(data.max_participants ?? null);
       }
     } catch (error) {
       logger.error("Error fetching slot pricing", error as Error, { component: "BookForPlayerDialog" });
@@ -260,7 +266,7 @@ export function BookForPlayerDialog({
     try {
       const { data, error } = await supabase
         .from("availability_slots")
-        .select("id, start_time, end_time, price_per_session")
+        .select("id, start_time, end_time, price_per_session, max_participants")
         .eq("cyclus_id", cyclusId)
         .gte("start_time", new Date().toISOString())
         .order("start_time");
@@ -416,11 +422,13 @@ export function BookForPlayerDialog({
             ),
           ),
           existingActiveBookingCount: cyclusExistingCounts[cyclusSlot.id] ?? 0,
+          maxParticipants: cyclusSlot.max_participants,
         }))
       : [
           {
             sessionPrice: pricePerSession,
             existingActiveBookingCount: countActiveBookings(slot?.booked_players),
+            maxParticipants: slotMaxParticipants ?? slot?.max_participants,
           },
         ];
   const sessionsCount = previewSlots.length;
@@ -622,6 +630,7 @@ export function BookForPlayerDialog({
             splitPayment,
             existingActiveBookingCount: existingOnSlot,
             newPlayerCount: selectedPlayers.length,
+            slotCapacity: cyclusSlot.max_participants,
           });
 
           if (!pricing.shouldRebalanceExisting || pricing.existingBookingsNewAmount == null) {
@@ -727,6 +736,7 @@ export function BookForPlayerDialog({
           notes: notesValue,
           firstPlayerDiscount: pricePreview.firstPlayerDiscount,
           discountReason: discountReason || null,
+          slotCapacity: slotMaxParticipants ?? slot.max_participants,
         });
 
         const { data: insertedRows, error: bookingError } = await insertBookings(
@@ -742,6 +752,7 @@ export function BookForPlayerDialog({
           splitPayment,
           existingActiveBookingCount: existingActiveCount,
           newPlayerCount: selectedPlayers.length,
+          slotCapacity: slotMaxParticipants ?? slot.max_participants,
         });
 
         if (pricing.shouldRebalanceExisting && pricing.existingBookingsNewAmount != null) {

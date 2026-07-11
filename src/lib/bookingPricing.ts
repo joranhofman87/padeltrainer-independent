@@ -232,6 +232,8 @@ export type AddPlayerPricingPreviewSlot = {
   /** Resolved session price (see resolveSlotSessionPrice). */
   sessionPrice: number;
   existingActiveBookingCount: number;
+  /** G5 frozen split divisor: the slot's max_participants. Omitted → legacy live-count split. */
+  maxParticipants?: number | null;
 };
 
 export type AddPlayerPricingPreviewInput = {
@@ -283,6 +285,7 @@ export function calculateAddPlayerPricingPreview(
       splitPayment: input.splitPayment,
       existingActiveBookingCount: slot.existingActiveBookingCount,
       newPlayerCount: newCount,
+      slotCapacity: slot.maxParticipants,
     });
     if (input.splitPayment || slot.existingActiveBookingCount > 0) {
       return pricing.newPlayerAmounts;

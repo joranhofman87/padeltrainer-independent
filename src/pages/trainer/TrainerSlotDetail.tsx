@@ -471,6 +471,7 @@ export default function TrainerSlotDetail() {
                     cyclus_name: detail.cyclus_name,
                     price_per_session: detail.price_per_session,
                     split_payment: detail.split_payment,
+                    max_participants: detail.max_participants,
                     booked_players: detail.booked_players,
                   }}
                   onBookingCreated={() => { setShowBookPlayer(false); fetchSlotDetail(); }}
