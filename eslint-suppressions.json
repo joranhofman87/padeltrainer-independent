@@ -198,7 +198,7 @@
   },
   "src/components/cycles/CycleForm.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 42
+      "count": 41
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
