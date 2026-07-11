@@ -531,10 +531,11 @@ export async function syncInvoicesAfterPriceChange(
 
   // Find bookings on these slots (paged/chunked — a large cycle can have
   // >1000 bookings, past which a single PostgREST response is truncated).
+  // payment_status comes along so the price OVERRIDE below can exclude already-paid seats.
   const bookings = await fetchAllByInChunks(slotIds, (idChunk) =>
     supabase
       .from("bookings")
-      .select("id, slot_id, payment_amount")
+      .select("id, slot_id, payment_amount, payment_status")
       .in("slot_id", idChunk)
       .in("status", ["confirmed", "pending"])
       .order("id", { ascending: true }),
@@ -550,10 +551,52 @@ export async function syncInvoicesAfterPriceChange(
   const invoices = await fetchInvoicesOverlappingBookings(bookingIds, statuses);
   if (invoices.length === 0) return;
 
+  // OVERRIDE (audit 2026-07-11, Batch 2 b — "everyone follows the new price").
+  // resolveFinalBookingPrices treats a booking's payment_amount as AUTHORITATIVE and never
+  // re-divides it, so a price change is a silent NO-OP for every seeded/split booking that
+  // already carries an explicit share — only NULL-amount bookings would pick up the new price.
+  // Clear the explicit amount on the UNPAID bookings of the invoices we're about to rebuild so
+  // the rebuild re-derives their share from the NEW slot price (÷ the frozen split_count). This
+  // deliberately wipes prior manual split shares / discounts on unpaid seats — the owner-chosen
+  // rule. Scope guarantees:
+  //   • PAID bookings keep their amount (that is what the player actually paid);
+  //   • only bookings on the invoices in `statuses` scope are touched (respects the
+  //     drafts-only vs also-sent choice — a booking whose sole invoice is out of scope is left
+  //     alone), and registration/event invoices are already filtered out (Theme 12).
+  const paidBookingIds = new Set(
+    bookings.filter((b) => b.payment_status === "paid").map((b) => b.id),
+  );
+  const changedBookingIds = new Set(bookingIds);
+  const overrideBookingIds = [
+    ...new Set(
+      invoices
+        .flatMap((inv) => inv.booking_ids ?? [])
+        .filter((id) => changedBookingIds.has(id) && !paidBookingIds.has(id)),
+    ),
+  ];
+  await clearBookingPaymentAmounts(overrideBookingIds);
+
   // Full recalculate with zero removed bookings: forces a rebuild of line
-  // items from current slot/booking data.
+  // items from current slot/booking data (now including the cleared amounts).
   for (const inv of invoices) {
     await recalculateInvoiceAfterRemoval({ id: inv.id }, []);
+  }
+}
+
+/**
+ * Null out `payment_amount` on the given (already UNPAID) bookings, chunked to keep the request
+ * array/URL bounded. A cleared amount makes every reader — invoice rebuild, pay page, reports —
+ * fall back to the current slot price (÷ split), which is the whole point of the price override.
+ * No-op on empty input.
+ */
+async function clearBookingPaymentAmounts(bookingIds: string[]): Promise<void> {
+  if (bookingIds.length === 0) return;
+  for (const idChunk of chunk(bookingIds, SUPABASE_IN_CHUNK_SIZE)) {
+    const { error } = await supabase
+      .from("bookings")
+      .update({ payment_amount: null })
+      .in("id", idChunk);
+    if (error) throw error;
   }
 }
 

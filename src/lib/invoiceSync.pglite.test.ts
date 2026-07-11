@@ -145,3 +145,49 @@ describe('registration invoice (cycle_id set) is never repriced from slot prices
     expect(await regInvTotal()).toBe(80); // and the registration invoice beside it is still untouched
   });
 });
+
+describe('price OVERRIDE: a change reaches unpaid seats, never touches paid ones (audit Batch 2 b)', () => {
+  const bAmt = async (id: string): Promise<number | null> => {
+    const v = (await db.query<{ payment_amount: string | null }>(
+      `SELECT payment_amount FROM bookings WHERE id = '${id}'`,
+    )).rows[0].payment_amount;
+    return v == null ? null : Number(v);
+  };
+
+  it('clears the UNPAID booking so it re-derives the new €50/2 share, but preserves the PAID one', async () => {
+    // Split-of-2 cycle, slot now €50 → the correct current share is €25. B1 carries a STALE explicit
+    // €20 share and is unpaid; B2 has already PAID €20. Without the override, resolveFinalBookingPrices
+    // keeps BOTH explicit amounts → the price bump is a silent no-op (total stays €40).
+    await db.exec(`
+      DELETE FROM bookings; DELETE FROM invoices;
+      INSERT INTO bookings (id, slot_id, payment_amount, status, payment_status) VALUES
+        ('B1', 'S1', 20, 'confirmed', 'pending'),
+        ('B2', 'S1', 20, 'confirmed', 'paid');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count)
+        VALUES ('INV1', '2026-OV1', ARRAY['B1','B2'], '[]'::jsonb, 0, 0, 40, 'draft', 21, 2);
+    `);
+
+    await syncInvoicesAfterPriceChange(['S1']);
+
+    expect(await bAmt('B1')).toBeNull(); // unpaid → cleared, now follows the new slot price
+    expect(await bAmt('B2')).toBe(20); // paid → the amount the player actually paid is preserved
+
+    // Rebuilt: unpaid B1 at the new €50/2 = €25 + paid B2 kept at €20 → €45 (was €40, a no-op before).
+    expect(Number((await invRow()).total)).toBe(45);
+  });
+
+  it('a NULL-amount booking is unchanged by the override and still reprices to the new share', async () => {
+    await db.exec(`
+      DELETE FROM bookings; DELETE FROM invoices;
+      INSERT INTO bookings (id, slot_id, payment_amount, status, payment_status) VALUES
+        ('B1', 'S1', NULL, 'confirmed', 'pending');
+      INSERT INTO invoices (id, invoice_number, booking_ids, line_items, subtotal, vat_amount, total, status, vat_rate, split_count)
+        VALUES ('INV1', '2026-OV2', ARRAY['B1'], '[]'::jsonb, 0, 0, 999, 'draft', 21, 2);
+    `);
+
+    await syncInvoicesAfterPriceChange(['S1']);
+
+    expect(await bAmt('B1')).toBeNull();
+    expect(Number((await invRow()).total)).toBe(25); // €50 / split 2
+  });
+});
