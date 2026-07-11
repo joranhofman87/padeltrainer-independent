@@ -163,6 +163,32 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
+    // GUARD (architecture audit 2026-07-11, V1): this endpoint attaches an intake_requests row (+ a
+    // guest + an official confirmation email) to `cycleId` with no type/status check — so a training
+    // cyclus or a live rebook round (both status='open' and form-renderable by URL) can collect phantom
+    // "registrations". Gate on the target actually being an OPEN registration/event: a `registrations`
+    // overlay row (status='open'), OR a legacy type='registration'/'event' cycle with status='open'.
+    {
+      const { data: cycleGate } = await adminClient
+        .from("cycles").select("type, status").eq("id", cycleId).maybeSingle();
+      if (!cycleGate) {
+        return new Response(
+          JSON.stringify({ error: "cycle_not_found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: overlay } = await adminClient
+        .from("registrations").select("status").eq("source_cycle_id", cycleId).maybeSingle();
+      const isRegistrationForm = !!overlay || cycleGate.type === "registration" || cycleGate.type === "event";
+      const isOpen = overlay ? overlay.status === "open" : cycleGate.status === "open";
+      if (!isRegistrationForm || !isOpen) {
+        return new Response(
+          JSON.stringify({ error: "registration_not_open", message: "This registration form is not open for sign-ups." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Duplicate check: reject same email + cycle within 60 seconds (prevents double-clicks)
     const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
     const { count: dupeCount } = await adminClient
