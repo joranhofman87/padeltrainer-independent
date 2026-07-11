@@ -235,6 +235,17 @@ export async function reconcileBookingInvoices(
  * (nothing else ran → abort) vs `invoiceSyncError` (the booking IS marked, but an
  * invoice may be stale → warn).
  */
+/**
+ * The payment_amount to record when a staff edit marks a booking PAID. An existing per-player charge
+ * — a split share or a negotiated discount — IS the authoritative amount and must be kept; only a
+ * booking with NO amount yet falls back to the full slot price. The old edit dialogs unconditionally
+ * overwrote payment_amount with the slot price, so marking a €25 split-share booking paid re-billed it
+ * at the €50 full price (architecture audit 2026-07-11, Batch 2 e).
+ */
+export function markPaidPaymentAmount(existing: number | null, slotPrice: number | null): number {
+  return existing != null ? existing : (slotPrice ?? 0);
+}
+
 export async function setBookingPaymentAndReconcile(
   bookingId: string,
   paid: boolean,

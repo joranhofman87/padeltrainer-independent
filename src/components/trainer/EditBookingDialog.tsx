@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { logger } from '@/lib/logger';
 import { loadActiveGuestPlayersForBooking } from "@/lib/guestPlayers";
-import { cancelBookingsAndSync } from "@/lib/bookings";
+import { cancelBookingsAndSync, markPaidPaymentAmount } from "@/lib/bookings";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
 import {
   Dialog,
@@ -140,7 +140,9 @@ export function EditBookingDialog({
       // Handle payment status changes
       if (paymentStatus === "paid" && booking.payment_status !== "paid") {
         updates.paid_at = new Date().toISOString();
-        updates.payment_amount = booking.availability_slots.price_per_session || 0;
+        // Keep an existing per-player charge (split share / discount is authoritative); only fall back
+        // to the full slot price when the booking has no amount yet (audit Batch 2 e).
+        updates.payment_amount = markPaidPaymentAmount(booking.payment_amount, booking.availability_slots.price_per_session);
       } else if (paymentStatus !== "paid") {
         updates.paid_at = null;
       }
