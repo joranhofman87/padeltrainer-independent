@@ -277,7 +277,7 @@ export default function TrainerCyclus() {
           .neq("status", "cancelled");
         const bookingIds = (activeBookings ?? []).map((b) => b.id);
 
-        const { cancelError, syncError } = await cancelBookingsAndSync(bookingIds);
+        const { cancelError, syncError } = await cancelBookingsAndSync(bookingIds, undefined, { declineClaims: true });
         if (cancelError) throw cancelError;
         if (syncError) {
           toast({

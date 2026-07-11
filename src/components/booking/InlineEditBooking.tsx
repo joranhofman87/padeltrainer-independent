@@ -169,6 +169,7 @@ export function InlineEditBooking({ booking, trainerId, academyProfileId, onBook
       // 'cancelled') then syncs, surfacing the two failure modes separately.
       const { cancelError, syncError } = await cancelBookingsAndSync([booking.id], supabase, {
         skipInvoiceSync: skipInvoiceUpdates,
+        declineClaims: true,
       });
       if (cancelError) throw cancelError;
       if (syncError) {

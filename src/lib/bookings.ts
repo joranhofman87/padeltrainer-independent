@@ -22,6 +22,17 @@ export interface CancelBookingResult {
    * split.
    */
   syncError: Error | null;
+  /**
+   * How many rebook priority-claims were declined as a side effect (only when
+   * `options.declineClaims` — see below). 0 for an ordinary (non-rebook) cancel.
+   */
+  declinedClaimCount: number;
+  /**
+   * Booking ids that were cancelled but had a PAID rebook claim, so the claim was
+   * left intact (never silently declined — the owner must decide on a refund/credit).
+   * The UI should warn on a non-empty list. Empty for the common case.
+   */
+  paidClaimBookingIds: string[];
 }
 
 /**
@@ -41,37 +52,69 @@ export interface CancelBookingResult {
 export async function cancelBookingsAndSync(
   bookingIds: string[],
   client: SupabaseClient<Database> = supabase,
-  options?: { skipInvoiceSync?: boolean },
+  options?: { skipInvoiceSync?: boolean; declineClaims?: boolean },
 ): Promise<CancelBookingResult> {
-  if (bookingIds.length === 0) return { cancelError: null, syncError: null };
+  const empty = { cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [] };
+  if (bookingIds.length === 0) return empty;
 
   const { data: cancelledRows, error: cancelError } = await client
     .from('bookings')
     .update({ status: 'cancelled' })
+    // payment_status is read back so a PAID rebook claim is surfaced, not silently declined.
     .in('id', bookingIds)
-    .select('id');
-  if (cancelError) return { cancelError, syncError: null };
+    .select('id, payment_status');
+  if (cancelError) return { ...empty, cancelError };
   // An RLS-blocked UPDATE returns NO error but changes 0 rows. Surface that as a real failure so the
   // caller never reports a phantom success (e.g. "removed from 14 sessions" while nothing changed —
   // the academy-manager bookings UPDATE policy, 20260704120000, must be live for this to persist).
   if ((cancelledRows?.length ?? 0) === 0) {
     return {
+      ...empty,
       cancelError: new Error('No bookings were cancelled — you may not have permission to change these bookings.'),
-      syncError: null,
     };
+  }
+
+  // V6 (architecture audit 2026-07-11): a rebook priority-claim points at the booking it created
+  // (slot_priority_claims.booking_id). Cancelling that booking WITHOUT declining the claim leaves it
+  // stuck 'claimed' — the round shows a false "Geherboekt", the freed seat can't re-open to
+  // members/public, and paid/outstanding counters chase a removed player. So when the caller is a
+  // genuine seat REMOVAL (`declineClaims`), decline the still-'claimed' claims linked to the cancelled
+  // bookings. A PAID claim is left intact and surfaced instead (refund is the owner's call). Best-effort
+  // + RLS-tolerant: an ordinary (non-rebook) cancel finds zero claims → no-op; a decline that RLS blocks
+  // must never fail the cancel itself. NOT run on payment-rollback cancels (the player may retry).
+  let declinedClaimCount = 0;
+  const paidClaimBookingIds: string[] = [];
+  if (options?.declineClaims) {
+    const cancelledIds = (cancelledRows ?? []).map((r) => r.id as string);
+    const paidIds = new Set(
+      (cancelledRows ?? []).filter((r) => (r as { payment_status?: string }).payment_status === 'paid').map((r) => r.id as string),
+    );
+    const { data: claims } = await client
+      .from('slot_priority_claims')
+      .select('id, booking_id')
+      .in('booking_id', cancelledIds)
+      .eq('status', 'claimed');
+    for (const c of (claims ?? []) as Array<{ id: string; booking_id: string }>) {
+      if (paidIds.has(c.booking_id)) { paidClaimBookingIds.push(c.booking_id); continue; }
+      const { error: declineError } = await client
+        .from('slot_priority_claims')
+        .update({ status: 'declined', responded_at: new Date().toISOString(), decline_reason: 'Seat removed (roster change)' })
+        .eq('id', c.id);
+      if (!declineError) declinedClaimCount += 1;
+    }
   }
 
   // Deliberate "Don't update invoices" roster edit: soft-cancel the booking but
   // leave every linked invoice exactly as it is (the owner reconciles billing
   // manually). Paid invoices are never touched either way.
-  if (options?.skipInvoiceSync) return { cancelError: null, syncError: null };
+  if (options?.skipInvoiceSync) return { cancelError: null, syncError: null, declinedClaimCount, paidClaimBookingIds };
 
   try {
     await syncInvoicesAfterBookingRemoval(bookingIds);
   } catch (err) {
-    return { cancelError: null, syncError: err instanceof Error ? err : new Error(String(err)) };
+    return { cancelError: null, syncError: err instanceof Error ? err : new Error(String(err)), declinedClaimCount, paidClaimBookingIds };
   }
-  return { cancelError: null, syncError: null };
+  return { cancelError: null, syncError: null, declinedClaimCount, paidClaimBookingIds };
 }
 
 export interface CancelPlayerInCycleResult extends CancelBookingResult {
@@ -92,10 +135,11 @@ export async function cancelPlayerBookingsInCycle(
   slotIds: string[],
   player: { playerId?: string | null; guestPlayerId?: string | null },
   client: SupabaseClient<Database> = supabase,
-  options?: { skipInvoiceSync?: boolean },
+  options?: { skipInvoiceSync?: boolean; declineClaims?: boolean },
 ): Promise<CancelPlayerInCycleResult> {
+  const empty = { cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [], cancelledCount: 0 };
   if (slotIds.length === 0 || (!player.playerId && !player.guestPlayerId)) {
-    return { cancelError: null, syncError: null, cancelledCount: 0 };
+    return empty;
   }
 
   let query = client
@@ -108,10 +152,10 @@ export async function cancelPlayerBookingsInCycle(
     : query.eq('guest_player_id', player.guestPlayerId as string);
 
   const { data, error } = await query;
-  if (error) return { cancelError: error, syncError: null, cancelledCount: 0 };
+  if (error) return { ...empty, cancelError: error };
 
   const ids = (data ?? []).map((b) => b.id as string);
-  if (ids.length === 0) return { cancelError: null, syncError: null, cancelledCount: 0 };
+  if (ids.length === 0) return empty;
 
   const res = await cancelBookingsAndSync(ids, client, options);
   return { ...res, cancelledCount: ids.length };

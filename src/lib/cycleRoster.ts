@@ -294,7 +294,7 @@ export async function swapPlayerInCycle(params: {
       // old person attributed to the booking and make the swap look like a no-op in the UI.
       .update({ guest_player_id: toGuestPlayerId, player_id: null })
       .in("id", reassignIds)
-      .select("id");
+      .select("id, payment_status");
     if (upErr) return { error: upErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
     reassignedCount = updatedRows?.length ?? 0;
     // An RLS-blocked UPDATE returns no error but changes 0 rows. Don't report a phantom swap — the
@@ -307,6 +307,26 @@ export async function swapPlayerInCycle(params: {
         syncFailed: false,
       };
     }
+    // V6 (architecture audit 2026-07-11): the reassigned bookings now belong to the INCOMING guest,
+    // but the OUTGOING player's rebook claim still points at them (slot_priority_claims.booking_id)
+    // and reads 'claimed' — a false "Geherboekt" for someone no longer on the seat, plus a suppressed
+    // resale of it. Decline those still-'claimed' claims (skip a PAID booking — that's a refund the
+    // owner must decide). Best-effort + RLS-tolerant: a non-rebook swap finds zero claims → no-op.
+    const paidReassignIds = new Set(
+      (updatedRows ?? []).filter((r) => (r as { payment_status?: string }).payment_status === 'paid').map((r) => r.id as string),
+    );
+    const { data: outClaims } = await client
+      .from('slot_priority_claims')
+      .select('id, booking_id')
+      .in('booking_id', reassignIds)
+      .eq('status', 'claimed');
+    for (const c of (outClaims ?? []) as Array<{ id: string; booking_id: string }>) {
+      if (paidReassignIds.has(c.booking_id)) continue;
+      await client
+        .from('slot_priority_claims')
+        .update({ status: 'declined', responded_at: new Date().toISOString(), decline_reason: 'Swapped out (roster change)' })
+        .eq('id', c.id);
+    }
   }
 
   let syncFailed = false;
@@ -314,6 +334,7 @@ export async function swapPlayerInCycle(params: {
   if (collisionIds.length > 0) {
     const { cancelError, syncError } = await cancelBookingsAndSync(collisionIds, client, {
       skipInvoiceSync: skipInvoices,
+      declineClaims: true,
     });
     if (cancelError || syncError) {
       // The reassign (the main action) already succeeded; a failed redundant-cancel is surfaced as a

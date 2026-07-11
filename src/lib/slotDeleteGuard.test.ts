@@ -42,7 +42,7 @@ describe('cancelBookingsAndDeleteSlots', () => {
     const res = await cancelBookingsAndDeleteSlots('cyc1', ['s1'], { skipInvoices: false });
 
     // cancel first, with skipInvoiceSync=false (invoices follow)
-    expect(mocks.cancelBookingsAndSync).toHaveBeenCalledWith(['b1', 'b2'], expect.anything(), { skipInvoiceSync: false });
+    expect(mocks.cancelBookingsAndSync).toHaveBeenCalledWith(['b1', 'b2'], expect.anything(), { skipInvoiceSync: false, declineClaims: true });
     // split resync runs (deletedCount > 0, not skipping)
     expect(mocks.syncSplitCountForCycle).toHaveBeenCalledWith('cyc1');
     expect(res.cancelledBookings).toBe(2);
@@ -55,7 +55,7 @@ describe('cancelBookingsAndDeleteSlots', () => {
 
     const res = await cancelBookingsAndDeleteSlots('cyc1', ['s1'], { skipInvoices: true });
 
-    expect(mocks.cancelBookingsAndSync).toHaveBeenCalledWith(['b1'], expect.anything(), { skipInvoiceSync: true });
+    expect(mocks.cancelBookingsAndSync).toHaveBeenCalledWith(['b1'], expect.anything(), { skipInvoiceSync: true, declineClaims: true });
     expect(mocks.syncSplitCountForCycle).not.toHaveBeenCalled();
     expect(res.cancelledBookings).toBe(1);
   });

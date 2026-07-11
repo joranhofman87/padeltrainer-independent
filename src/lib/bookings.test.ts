@@ -34,7 +34,7 @@ describe('cancelBookingsAndSync', () => {
     expect(syncMock).toHaveBeenCalledWith(['b1', 'b2']);
     // Ordering: the cancel MUST commit before the invoice sync.
     expect(inFn.mock.invocationCallOrder[0]).toBeLessThan(syncMock.mock.invocationCallOrder[0]);
-    expect(r).toEqual({ cancelError: null, syncError: null });
+    expect(r).toEqual({ cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [] });
   });
 
   it('is a no-op for an empty list (no DB writes, no sync)', async () => {
@@ -42,7 +42,7 @@ describe('cancelBookingsAndSync', () => {
     const r = await cancelBookingsAndSync([], client);
     expect(from).not.toHaveBeenCalled();
     expect(syncMock).not.toHaveBeenCalled();
-    expect(r).toEqual({ cancelError: null, syncError: null });
+    expect(r).toEqual({ cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [] });
   });
 
   it('returns the raw cancelError and does NOT touch invoices when the cancel fails', async () => {
