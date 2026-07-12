@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, CheckCircle2, PartyPopper } from "lucide-react";
+import { Loader2, PartyPopper } from "lucide-react";
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
 import type { GuestPlayer } from "./AddPlayerDialog";
 
@@ -23,13 +23,6 @@ interface AddPlayerFormProps {
   /** If true, show Cancel button */
   showCancel?: boolean;
   onCancel?: () => void;
-}
-
-interface LinkedProfile {
-  id: string;
-  full_name: string | null;
-  skill_rating: number | null;
-  rating_system?: string;
 }
 
 export function AddPlayerForm({
@@ -51,8 +44,6 @@ export function AddPlayerForm({
   const [ratingSystem, setRatingSystem] = useState<string>("knltb");
   const [skillRating, setSkillRating] = useState("");
   const [notes, setNotes] = useState("");
-  const [linkedProfile, setLinkedProfile] = useState<LinkedProfile | null>(null);
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [loadingRatingSystems, setLoadingRatingSystems] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastCreatedName, setLastCreatedName] = useState("");
@@ -88,50 +79,6 @@ export function AddPlayerForm({
     setRatingSystem("knltb");
     setSkillRating("");
     setNotes("");
-    setLinkedProfile(null);
-  };
-
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-  };
-
-  const handleEmailBlur = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail || !validateEmail(trimmedEmail)) {
-      setLinkedProfile(null);
-      return;
-    }
-
-    setIsCheckingEmail(true);
-    try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, skill_rating, rating_system")
-        .eq("email", trimmedEmail)
-        .maybeSingle();
-
-      if (data) {
-        setLinkedProfile(data);
-        if (!skillRating && data.skill_rating) {
-          const profileRatingSystem = data.rating_system || "knltb";
-          setRatingSystem(profileRatingSystem);
-          setSkillRating(data.skill_rating.toString());
-          const systemConfig = ratingSystems.find(s => s.code === profileRatingSystem);
-          toast({
-            title: t("players.autoFilledFromProfile"),
-            description: `${t("players.skillRating")}: ${data.skill_rating.toFixed(1)} (${systemConfig?.name || profileRatingSystem.toUpperCase()})`,
-          });
-        }
-      } else {
-        setLinkedProfile(null);
-      }
-    } catch (error) {
-      logger.warn('Error checking email', { error, component: 'AddPlayerForm' });
-      setLinkedProfile(null);
-    } finally {
-      setIsCheckingEmail(false);
-    }
   };
 
   /**
@@ -202,7 +149,6 @@ export function AddPlayerForm({
           skill_rating: skillRating ? parseFloat(skillRating) : null,
           rating_system: ratingSystem,
           notes: notes.trim() || null,
-          linked_profile_id: linkedProfile?.id || null,
         } as any)
         .select()
         .single();
@@ -321,33 +267,10 @@ export function AddPlayerForm({
             id="email"
             type="email"
             value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setLinkedProfile(null);
-            }}
-            onBlur={handleEmailBlur}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder={t("players.emailPlaceholder")}
           />
-          {isCheckingEmail && (
-            <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-          )}
         </div>
-        {linkedProfile && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 text-sm">
-            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-            <div>
-              <span className="font-medium">{t("players.linkedToProfile")}</span>
-              {linkedProfile.full_name && (
-                <span className="ml-1">"{linkedProfile.full_name}"</span>
-              )}
-              {linkedProfile.skill_rating && (
-                <span className="text-green-600 dark:text-green-400 ml-1">
-                  • {t("players.skillRating")}: {linkedProfile.skill_rating.toFixed(1)}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="space-y-2">
@@ -442,7 +365,6 @@ export function buildAddPlayerInsertPayload(args: {
   skillRating?: string;
   ratingSystem?: string;
   notes?: string;
-  linkedProfileId?: string | null;
 }) {
   const nameFields = buildGuestPlayerDbFields(args.firstName, args.lastName);
   return {
@@ -454,6 +376,5 @@ export function buildAddPlayerInsertPayload(args: {
     skill_rating: args.skillRating ? parseFloat(args.skillRating) : null,
     rating_system: args.ratingSystem ?? "knltb",
     notes: args.notes?.trim() || null,
-    linked_profile_id: args.linkedProfileId || null,
   };
 }

@@ -30,10 +30,9 @@ import {
   XCircle,
   AlertTriangle,
   Loader2,
-  Link2,
 } from "lucide-react";
 import { GuestPlayer } from "./AddPlayerDialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { csvHasGuestNameColumn, guestNameFieldsFromCsvRow } from "@/lib/guestPlayerCsvName";
 
 interface ImportPlayersDialogProps {
@@ -54,15 +53,6 @@ interface ParsedPlayer {
   notes: string | null;
   isValid: boolean;
   errors: string[];
-  linked_profile_id?: string | null;
-  linked_profile_name?: string | null;
-}
-
-interface ProfileMatch {
-  id: string;
-  email: string;
-  full_name: string | null;
-  skill_rating: number | null;
 }
 
 type ImportStep = "upload" | "preview" | "importing" | "complete";
@@ -232,37 +222,9 @@ export function ImportPlayersDialog({
       const players = parseCSV(content);
       
       if (players.length > 0) {
-        // Batch lookup for matching profiles
-        const validEmails = players
-          .filter(p => p.email && validateEmail(p.email))
-          .map(p => p.email.toLowerCase());
-
-        if (validEmails.length > 0) {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("id, email, full_name, skill_rating")
-            .in("email", validEmails);
-
-          if (profiles && profiles.length > 0) {
-            const profileMap = new Map<string, ProfileMatch>(
-              profiles.map(p => [p.email?.toLowerCase() || "", p as ProfileMatch])
-            );
-
-            // Update players with linked profile info
-            for (const player of players) {
-              const matchedProfile = profileMap.get(player.email.toLowerCase());
-              if (matchedProfile) {
-                player.linked_profile_id = matchedProfile.id;
-                player.linked_profile_name = matchedProfile.full_name;
-                // Auto-fill skill rating if not provided in CSV
-                if (!player.skill_rating && matchedProfile.skill_rating) {
-                  player.skill_rating = matchedProfile.skill_rating;
-                }
-              }
-            }
-          }
-        }
-
+        // FAM-02 (Batch 4, Level 1): imported players are DISTINCT people — we no longer look up
+        // matching profiles to auto-link or inherit their rating (a shared family email would
+        // otherwise copy a parent's rating onto a child). Genuine same-person dupes are merged later.
         setParsedPlayers(players);
         setStep("preview");
       }
@@ -306,7 +268,6 @@ export function ImportPlayersDialog({
             phone: player.phone,
             skill_rating: player.skill_rating,
             notes: player.notes,
-            linked_profile_id: player.linked_profile_id || null,
           } as any)
           .select()
           .single();
@@ -495,24 +456,7 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <span>{player.email || "—"}</span>
-                            {player.linked_profile_id && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Link2 className="h-3 w-3 text-green-600 flex-shrink-0" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{t("players.linkedToProfile")}</p>
-                                  {player.linked_profile_name && (
-                                    <p className="text-xs text-muted-foreground">
-                                      {player.linked_profile_name}
-                                    </p>
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                          </div>
+                          <span>{player.email || "—"}</span>
                         </TableCell>
                         <TableCell>{player.phone || "—"}</TableCell>
                         <TableCell>
