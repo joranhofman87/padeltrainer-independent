@@ -75,8 +75,23 @@ export async function deleteUserData(
 
     if (clubCycles && clubCycles.length > 0) {
       const cycleIds = clubCycles.map((c) => c.id);
-      await supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds);
-      await supabaseAdmin.from("cycles").delete().in("id", cycleIds);
+      // Delete the cycles' SLOTS first so their bookings + slot_priority_claims + session data
+      // CASCADE (slot_id ON DELETE CASCADE). Deleting only the cycle SET-NULLs each slot's cyclus_id
+      // (that FK is ON DELETE SET NULL), leaving ORPHANED slots with dangling bookings/claims — the
+      // departed user's session data persists (privacy). runDelete surfaces FK errors loudly instead
+      // of the previous bare await, which swallowed them into a silent partial delete.
+      await runDelete(
+        supabaseAdmin.from("availability_slots").delete().in("cyclus_id", cycleIds),
+        "availability_slots (club cycles)",
+      );
+      await runDelete(
+        supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds),
+        "intake_requests (club cycles)",
+      );
+      await runDelete(
+        supabaseAdmin.from("cycles").delete().in("id", cycleIds),
+        "cycles (club)",
+      );
     }
   }
 
@@ -107,8 +122,20 @@ export async function deleteUserData(
 
     if (academyCycles && academyCycles.length > 0) {
       const cycleIds = academyCycles.map((c) => c.id);
-      await supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds);
-      await supabaseAdmin.from("cycles").delete().in("id", cycleIds);
+      // Same as the club branch: delete the cycles' SLOTS first so bookings + priority claims +
+      // session data cascade, instead of orphaning them via the cyclus_id SET NULL; surface errors.
+      await runDelete(
+        supabaseAdmin.from("availability_slots").delete().in("cyclus_id", cycleIds),
+        "availability_slots (academy cycles)",
+      );
+      await runDelete(
+        supabaseAdmin.from("intake_requests").delete().in("cycle_id", cycleIds),
+        "intake_requests (academy cycles)",
+      );
+      await runDelete(
+        supabaseAdmin.from("cycles").delete().in("id", cycleIds),
+        "cycles (academy)",
+      );
     }
   }
 
