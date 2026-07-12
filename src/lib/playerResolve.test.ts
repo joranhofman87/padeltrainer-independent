@@ -247,7 +247,6 @@ describe('resolveOrCreateGuestPlayer', () => {
       skillRating: 6.5,
       ratingSystem: 'knltb',
       birthDate: '1990-05-01',
-      linkedProfileId: 'profile-1',
       source: 'cycle_registration',
       hasTrained: false,
     });
@@ -263,10 +262,11 @@ describe('resolveOrCreateGuestPlayer', () => {
       skill_rating: 6.5,
       rating_system: 'knltb',
       birth_date: '1990-05-01',
-      linked_profile_id: 'profile-1',
       source: 'cycle_registration',
       has_trained: false,
     });
+    // FAM-02 (Level 1): the resolver never links a guest to a profile anymore.
+    expect(payload.linked_profile_id).toBeUndefined();
   });
 
   it('inserts an academy-scoped guest with academy_profile_id', async () => {
@@ -313,7 +313,6 @@ describe('resolveOrCreateGuestPlayer', () => {
       skill_rating: 7,
       rating_system: 'knltb',
       birth_date: '',
-      linked_profile_id: null,
     };
     const id = await resolveOrCreateGuestPlayer({
       scope: { kind: 'trainer', trainerId: 't1' },
@@ -323,16 +322,15 @@ describe('resolveOrCreateGuestPlayer', () => {
       skillRating: 5,
       ratingSystem: 'utr',
       birthDate: '1992-02-02',
-      linkedProfileId: 'profile-9',
       patchExistingEmptyFields: true,
     });
     expect(id).toBe('existing-by-email');
     expect(insertMock).not.toHaveBeenCalled();
     expect(updateMock).toHaveBeenCalledTimes(1);
+    // FAM-02 (Level 1): linked_profile_id is no longer patched onto an existing guest.
     expect(updateMock.mock.calls[0][0]).toEqual({
       phone: '+31611111111',
       birth_date: '1992-02-02',
-      linked_profile_id: 'profile-9',
     });
   });
 
@@ -343,7 +341,6 @@ describe('resolveOrCreateGuestPlayer', () => {
       skill_rating: 7,
       rating_system: 'knltb',
       birth_date: '1990-01-01',
-      linked_profile_id: 'profile-1',
     };
     const id = await resolveOrCreateGuestPlayer({
       scope: { kind: 'academy', academyProfileId: 'a1' },
@@ -352,7 +349,6 @@ describe('resolveOrCreateGuestPlayer', () => {
       phone: '+31611111111',
       skillRating: 5,
       birthDate: '1992-02-02',
-      linkedProfileId: 'profile-9',
       patchExistingEmptyFields: true,
     });
     expect(id).toBe('existing-by-email');

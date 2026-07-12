@@ -67,39 +67,23 @@ describe('submitIntakeRequest -> addToStudentList', () => {
     resolveOrCreateGuestPlayerMock.mockResolvedValue('guest-1');
   });
 
-  it('academy cycle resolves the applicant into an academy-scoped guest player', async () => {
+  // FAM-02 (Batch 4, Level 1): a logged-in registrant is NOT shadowed as a guest — they already
+  // appear via their profile and as a prospect in the intake-requests view. No self-shadow guest.
+  it('academy cycle does NOT mint a self-shadow guest for a logged-in registrant', async () => {
     cycleOwnerRow = { owner_type: 'academy', owner_id: 'academy-1' };
-    await submitIntakeRequest(baseInput);
-    expect(resolveOrCreateGuestPlayerMock).toHaveBeenCalledTimes(1);
-    expect(resolveOrCreateGuestPlayerMock).toHaveBeenCalledWith({
-      scope: { kind: 'academy', academyProfileId: 'academy-1' },
-      fullName: 'Jan Jansen',
-      email: 'jan@test.com',
-      phone: '+31612345678',
-      skillRating: 6.5,
-      ratingSystem: 'knltb',
-      birthDate: '1990-05-01',
-      linkedProfileId: 'profile-1',
-      source: 'cycle_registration',
-      hasTrained: false,
-      patchExistingEmptyFields: true,
-    });
+    const result = await submitIntakeRequest(baseInput);
+    expect(result.id).toBe('req-1');
+    expect(resolveOrCreateGuestPlayerMock).not.toHaveBeenCalled();
   });
 
-  it('trainer cycle resolves the applicant into a trainer-scoped guest player', async () => {
+  it('trainer cycle does NOT mint a self-shadow guest for a logged-in registrant', async () => {
     cycleOwnerRow = { owner_type: 'trainer', owner_id: 'trainer-1' };
     await submitIntakeRequest(baseInput);
-    expect(resolveOrCreateGuestPlayerMock).toHaveBeenCalledTimes(1);
-    expect(resolveOrCreateGuestPlayerMock.mock.calls[0][0]).toMatchObject({
-      scope: { kind: 'trainer', trainerId: 'trainer-1' },
-      source: 'cycle_registration',
-      patchExistingEmptyFields: true,
-    });
+    expect(resolveOrCreateGuestPlayerMock).not.toHaveBeenCalled();
   });
 
-  it('registration still succeeds when the resolver fails (non-blocking)', async () => {
+  it('registration succeeds (guest creation skipped, non-blocking)', async () => {
     cycleOwnerRow = { owner_type: 'academy', owner_id: 'academy-1' };
-    resolveOrCreateGuestPlayerMock.mockResolvedValue(null);
     const result = await submitIntakeRequest(baseInput);
     expect(result.id).toBe('req-1');
   });

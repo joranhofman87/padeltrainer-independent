@@ -1,7 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
-import { resolveOrCreateGuestPlayer } from '@/lib/playerResolve';
-import type { GuestResolveScope } from '@/lib/playerResolve';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { isMissingRpc, isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { toCycle, toIntakeRequest } from './cycleMappers';
@@ -455,53 +453,28 @@ async function autoFollowOwner(
 
 // Add player to student list as a prospect (non-blocking — registration never fails on this).
 //
-// NEVER upsert here: the guest_players/club_players unique email indexes are
-// PARTIAL (WHERE email <> '' ..., migrations 20260224171306 / 20260126164841)
-// and PostgREST upserts cannot target partial indexes (Postgres 42P10), which
-// silently broke applicant -> player creation. Use select-then-insert instead.
+// FAM-02 (Batch 4, Level 1): academy/trainer registrants are NO LONGER added here. A logged-in
+// registrant is already a player via their profile and shows as a prospect in the intake-requests
+// view, so minting a "self-shadow" guest linked to their own profile is redundant — and that
+// overloaded linked_profile_id is exactly what the old players-overview de-dup had to collapse.
+// Only the club vertical still keeps a club_players roster row (separate table + overview).
 //
-// RLS note: submitIntakeRequest only runs for logged-in players (the anonymous
-// guest flow goes through the submit-guest-intake edge function, which uses the
-// service-role client). The INSERT policies from migration 20260126164841 allow
-// this because we set linked_profile_id = the player's own profile id AND
-// source = 'cycle_registration'. Players have no SELECT/UPDATE policy on these
-// tables though, so when a row with the same email already exists (e.g. added
-// manually by the trainer) the dedup select misses, the insert hits the unique
-// index (23505) and resolution yields null — acceptable, since the player
-// already exists in the list. A SECURITY DEFINER RPC would be needed to dedup
-// across rows the player cannot see; deliberately not built now.
+// club_players NEVER upserts: its unique email index is PARTIAL (WHERE email IS NOT NULL AND
+// email != '', migration 20260126164841) and PostgREST upserts cannot target partial indexes
+// (Postgres 42P10). Use select-then-insert; a 23505 on insert means the row already exists.
+//
+// RLS note (club): a logged-in player self-registering can INSERT the club_players row because
+// migration 20260126164841's INSERT policy requires linked_profile_id = their own profile id AND
+// source = 'cycle_registration' (both set in addToClubStudentList). Players have no SELECT/UPDATE
+// on the table, so a pre-existing same-email row makes the dedup select miss and the insert hits
+// the unique index (23505) — acceptable, the player is already listed.
 async function addToStudentList(
   ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
   input: IntakeRequestInput
 ): Promise<void> {
   try {
-    if (ownerType === 'trainer' || ownerType === 'academy') {
-      const scope: GuestResolveScope =
-        ownerType === 'trainer'
-          ? { kind: 'trainer', trainerId: ownerId }
-          : { kind: 'academy', academyProfileId: ownerId };
-      const guestPlayerId = await resolveOrCreateGuestPlayer({
-        scope,
-        fullName: input.full_name,
-        email: input.email,
-        phone: input.phone || null,
-        skillRating: input.rating ?? null,
-        ratingSystem: input.rating_system || 'knltb',
-        birthDate: input.birth_date || null,
-        linkedProfileId: input.player_id,
-        source: 'cycle_registration',
-        hasTrained: false,
-        patchExistingEmptyFields: true,
-      });
-      if (!guestPlayerId) {
-        logger.error('Add to student list failed (non-blocking)', undefined, {
-          ownerType,
-          ownerId,
-          cycleId: input.cycle_id,
-        });
-      }
-    } else if (ownerType === 'club') {
+    if (ownerType === 'club') {
       await addToClubStudentList(ownerId, input);
     }
   } catch (error) {
