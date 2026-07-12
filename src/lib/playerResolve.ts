@@ -109,7 +109,6 @@ export type ResolveOrCreateGuestPlayerArgs = {
   skillRating?: number | null;
   ratingSystem?: string | null;
   birthDate?: string | null;
-  linkedProfileId?: string | null;
   source?: string | null;
   hasTrained?: boolean;
   /** When reusing an existing row, fill optional fields that are still null/empty. */
@@ -120,14 +119,14 @@ function isEmptyValue(value: unknown): boolean {
   return value === null || value === undefined || value === '';
 }
 
-/** Fill phone/rating/birth_date/linked_profile_id on an existing guest, only where empty. */
+/** Fill phone/rating/birth_date on an existing guest, only where empty. */
 async function patchExistingGuestEmptyFields(
   guestPlayerId: string,
   args: ResolveOrCreateGuestPlayerArgs,
 ): Promise<void> {
   const { data: row } = await supabase
     .from('guest_players')
-    .select('phone, skill_rating, rating_system, birth_date, linked_profile_id')
+    .select('phone, skill_rating, rating_system, birth_date')
     .eq('id', guestPlayerId)
     .maybeSingle();
   if (!row) return;
@@ -141,9 +140,6 @@ async function patchExistingGuestEmptyFields(
     patch.rating_system = args.ratingSystem;
   }
   if (args.birthDate && isEmptyValue(row.birth_date)) patch.birth_date = args.birthDate;
-  if (args.linkedProfileId && isEmptyValue(row.linked_profile_id)) {
-    patch.linked_profile_id = args.linkedProfileId;
-  }
   if (Object.keys(patch).length === 0) return;
 
   await supabase.from('guest_players').update(patch).eq('id', guestPlayerId);
@@ -193,7 +189,6 @@ export async function resolveOrCreateGuestPlayer(
   if (args.skillRating != null) insertPayload.skill_rating = args.skillRating;
   if (args.ratingSystem) insertPayload.rating_system = args.ratingSystem;
   if (args.birthDate) insertPayload.birth_date = args.birthDate;
-  if (args.linkedProfileId) insertPayload.linked_profile_id = args.linkedProfileId;
   if (args.source) insertPayload.source = args.source;
   if (args.hasTrained !== undefined) insertPayload.has_trained = args.hasTrained;
 
