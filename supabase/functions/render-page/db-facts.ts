@@ -375,22 +375,30 @@ export async function fetchAcademyFacts(slug: string): Promise<AcademyFacts | nu
       .eq('academy_profile_id', ap.id)
       .eq('status', 'active');
 
-    // Cycles
+    // Cycles — bot-visible marketing, so show ONLY published, public programmes. Without a filter this
+    // leaked drafts + closed cycles AND internal rebook re-invitation rounds (with their prices) into
+    // the prerendered marketing (audit §4.5). status='open' drops drafts/closed (mirrors the anon
+    // cycles_public view); the rebook_round_id check drops internal rounds (settings fetched only to
+    // test it — never exposed). Fetch extra since the rebook filter runs client-side, then take 5.
     const { data: cycles } = await supabase
       .from('cycles')
-      .select('name, start_date, end_date, price_per_session, total_price, currency, status')
+      .select('name, start_date, end_date, price_per_session, total_price, currency, status, settings')
       .eq('owner_type', 'academy')
       .eq('owner_id', ap.id)
+      .eq('status', 'open')
       .order('start_date', { ascending: true })
-      .limit(5);
+      .limit(25);
 
-    const upcomingCycles = (cycles || []).map(c => ({
-      name: c.name,
-      startDate: c.start_date,
-      endDate: c.end_date,
-      price: c.total_price ? Number(c.total_price) : (c.price_per_session ? Number(c.price_per_session) : null),
-      currency: c.currency || 'EUR',
-    }));
+    const upcomingCycles = (cycles || [])
+      .filter((c) => !(c.settings as Record<string, unknown> | null)?.rebook_round_id)
+      .slice(0, 5)
+      .map((c) => ({
+        name: c.name,
+        startDate: c.start_date,
+        endDate: c.end_date,
+        price: c.total_price ? Number(c.total_price) : (c.price_per_session ? Number(c.price_per_session) : null),
+        currency: c.currency || 'EUR',
+      }));
 
     return {
       name: ap.name,
