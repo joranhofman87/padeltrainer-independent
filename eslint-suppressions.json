@@ -1068,7 +1068,7 @@
   },
   "src/pages/admin/AdminGuestPlayers.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 7
+      "count": 6
     }
   },
   "src/pages/admin/AdminLocations.tsx": {

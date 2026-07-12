@@ -167,7 +167,9 @@ serve(async (req) => {
         monthlyStats,
         registrations: {
           totalGuests: Number(reg.totalGuests || 0),
-          convertedToAccount: Number(reg.convertedToAccount || 0),
+          // FAM-02 (Batch 4, Level 1): "converted to account" was derived from the now-deprecated
+          // guest_players.linked_profile_id (a frozen pointer that no longer updates). Dropped — the
+          // admin_stats_summary RPC may still compute reg.convertedToAccount, but it is not surfaced.
           hasTrained: Number(reg.hasTrained || 0),
           thisMonth: Number(reg.thisMonth || 0),
           lastMonth: Number(reg.lastMonth || 0),
@@ -208,7 +210,7 @@ serve(async (req) => {
         .select("id, is_verified, subscription_status, subscription_tier, trial_ends_at"),
       supabase
         .from("guest_players")
-        .select("id, linked_profile_id, has_trained, created_at"),
+        .select("id, has_trained, created_at"),
     ]);
 
     const bookings = bookingsResult.data || [];
@@ -341,7 +343,7 @@ serve(async (req) => {
     // Guest player / registration stats
     const guestRegistrations = {
       totalGuests: guestPlayers.length,
-      convertedToAccount: guestPlayers.filter(g => g.linked_profile_id).length,
+      // FAM-02 (Batch 4, Level 1): "converted to account" dropped — see the sql-agg path above.
       hasTrained: guestPlayers.filter(g => g.has_trained).length,
       thisMonth: guestPlayers.filter(g => g.created_at && new Date(g.created_at) >= thisMonthStart).length,
       lastMonth: guestPlayers.filter(g => g.created_at && new Date(g.created_at) >= lastMonthStart && new Date(g.created_at) <= lastMonthEnd).length,
