@@ -41,6 +41,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/format';
 import { createCycle, updateCycle, type Cycle, type CycleInput, type CycleSettings, type ExtraCost, type EventPaymentMethod, type PriceTableRow, type CyclusOption } from '@/lib/cycles';
+import { mergeCycleSettingsOnEdit } from '@/lib/cycleTypes';
 import { applyBookingModeToFutureSlots } from '@/lib/cycleBookingMode';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import DayAvailabilityPicker, { type DayAvailability } from './DayAvailabilityPicker';
@@ -625,6 +626,17 @@ export default function CycleForm({
         }
       }
 
+      // When EDITING, MERGE the form-built keys onto the cycle's existing settings instead of
+      // replacing them. The form only rebuilds the form-relevant keys, so a wholesale replace wiped
+      // engine-owned state the form never knows about — the ~17 rebook_* keys, generated_by,
+      // excluded_dates — and a rebook round would vanish from the hub (audit §4.2, same class as V4).
+      // (The registration write RPC already merges server-side, #493; this covers the plain-cycle
+      // updateCycle path.) Form keys win for overlaps; undefined form values drop on JSON serialize.
+      const mergedSettings = mergeCycleSettingsOnEdit(
+        isEdit ? (cycle?.settings as CycleSettings | undefined) : undefined,
+        settings,
+      );
+
       const input: CycleInput = {
         owner_type: ownerType,
         owner_id: ownerId,
@@ -634,7 +646,7 @@ export default function CycleForm({
         end_date: endDate,
         enrollment_deadline: alwaysOpen ? null : values.enrollment_deadline?.toISOString(),
         is_always_open: alwaysOpen,
-        settings,
+        settings: mergedSettings,
         status: andOpen ? 'open' : (cycle?.status || 'draft'),
         type: formType,
         location_id: values.location_id || null,
