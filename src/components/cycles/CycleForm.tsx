@@ -129,15 +129,16 @@ export default function CycleForm({
   const [allowCyclusBooking, setAllowCyclusBooking] = useState<boolean>(
     (cycle?.settings as { allow_cyclus_booking?: boolean } | null | undefined)?.allow_cyclus_booking !== false
   );
-  const [paymentTiming, setPaymentTiming] = useState<'upfront' | 'invoice_after_weeks' | 'manual'>(() => {
+  // 'invoice_after_weeks' was removed (architecture audit 2026-07-11, Batch 2 f): the wizard offered
+  // it but NO biller ever existed to send the delayed invoice, so it silently did nothing. Legacy
+  // rows carrying it are coerced to 'manual' — the honest description of what actually happened
+  // (the owner invoices themselves).
+  const [paymentTiming, setPaymentTiming] = useState<'upfront' | 'manual'>(() => {
     const settings = cycle?.settings as any;
-    if (settings?.payment_timing) return settings.payment_timing;
-    if (settings?.mark_as_paid) return 'manual';
+    if (settings?.payment_timing === 'upfront') return 'upfront';
+    if (settings?.payment_timing || settings?.mark_as_paid) return 'manual';
     return 'upfront';
   });
-  const [invoiceDelayWeeks, setInvoiceDelayWeeks] = useState<number>(
-    (cycle?.settings as any)?.invoice_delay_weeks ?? 2
-  );
   const [splitPayment, setSplitPayment] = useState<boolean>(
     (cycle?.settings as any)?.split_payment ?? false
   );
@@ -320,14 +321,14 @@ export default function CycleForm({
       );
       setSplitPayment((cycle?.settings as any)?.split_payment ?? false);
       const settings = cycle?.settings as any;
-      if (settings?.payment_timing) {
-        setPaymentTiming(settings.payment_timing);
-      } else if (settings?.mark_as_paid) {
+      if (settings?.payment_timing === 'upfront') {
+        setPaymentTiming('upfront');
+      } else if (settings?.payment_timing || settings?.mark_as_paid) {
+        // Legacy 'invoice_after_weeks' (no biller) → manual, like the initial state above.
         setPaymentTiming('manual');
       } else {
         setPaymentTiming('upfront');
       }
-      setInvoiceDelayWeeks(settings?.invoice_delay_weeks ?? 2);
       setExtraCosts((cycle?.settings as any)?.extra_costs ?? []);
       setEventPaymentMethod((cycle?.settings as any)?.payment_methods ?? 'online');
       const regPm = (cycle?.settings as { payment_methods?: string } | null | undefined)?.payment_methods;
@@ -575,7 +576,6 @@ export default function CycleForm({
         allow_cyclus_booking: isEvent ? undefined : allowCyclusBooking,
         mark_as_paid: isEvent ? (eventPaymentMethod === 'cash') : paymentTiming === 'manual',
         payment_timing: isEvent ? undefined : paymentTiming,
-        invoice_delay_weeks: paymentTiming === 'invoice_after_weeks' ? invoiceDelayWeeks : undefined,
         split_payment: isEvent ? undefined : splitPayment,
         extra_costs: isEvent ? undefined : extraCosts.filter(ec => ec.description && ec.price > 0),
         // Event-specific
@@ -2045,42 +2045,6 @@ export default function CycleForm({
                       <div className="space-y-0.5">
                         <span className="text-sm font-medium">{t('form.paymentUpfront')}</span>
                         <p className="text-xs text-muted-foreground">{t('form.paymentUpfrontHelp')}</p>
-                      </div>
-                    </label>
-                    
-                    {/* Invoice after X weeks */}
-                    <label className={cn(
-                      "flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
-                      paymentTiming === 'invoice_after_weeks' && "border-primary bg-primary/5"
-                    )}>
-                      <input
-                        type="radio"
-                        name="payment_timing"
-                        value="invoice_after_weeks"
-                        checked={paymentTiming === 'invoice_after_weeks'}
-                        onChange={() => setPaymentTiming('invoice_after_weeks')}
-                        className="mt-1"
-                      />
-                      <div className="space-y-1.5 flex-1">
-                        <span className="text-sm font-medium">{t('form.paymentInvoiceAfter')}</span>
-                        <p className="text-xs text-muted-foreground">{t('form.paymentInvoiceAfterHelp')}</p>
-                        {paymentTiming === 'invoice_after_weeks' && (
-                          <div className="flex items-center gap-2 mt-1">
-                            <Select value={String(invoiceDelayWeeks)} onValueChange={(v) => setInvoiceDelayWeeks(Number(v))}>
-                              <SelectTrigger className="w-20 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[1, 2, 3, 4].map(w => (
-                                  <SelectItem key={w} value={String(w)}>
-                                    {w}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <span className="text-xs text-muted-foreground">{t('form.invoiceDelayWeeks')}</span>
-                          </div>
-                        )}
                       </div>
                     </label>
                     
