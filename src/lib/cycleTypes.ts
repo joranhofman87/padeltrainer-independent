@@ -129,6 +129,20 @@ export interface CycleSettings {
   [key: string]: unknown; // Allow for Json compatibility
 }
 
+/**
+ * Merge form-rebuilt settings onto a cycle's EXISTING settings when EDITING, so engine-owned keys the
+ * form never rebuilds — the rebook_* run-state, generated_by, excluded_dates, trainer_availability_
+ * windows — survive. A wholesale replace made an edited rebook round lose its state and vanish from
+ * the hub (audit §4.2). Form keys win for overlaps; with no existing settings (create) it is just the
+ * form settings.
+ */
+export function mergeCycleSettingsOnEdit(
+  existing: CycleSettings | null | undefined,
+  formSettings: CycleSettings,
+): CycleSettings {
+  return existing ? { ...existing, ...formSettings } : formSettings;
+}
+
 export interface TrainerAvailabilityWindow {
   trainerId: string;
   trainerName: string;
