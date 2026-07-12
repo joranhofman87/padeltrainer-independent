@@ -99,3 +99,67 @@ Deno.test("deleteUserData THROWS (never swallows) when a guest_players FK delete
   };
   await assertRejects(() => deleteUserData(admin, "u1"), Error, "guest_players");
 });
+
+// Audit §4.6: the club/academy branches must delete the cycles' availability_slots (so bookings +
+// priority claims + session data CASCADE), not only the cycle (which SET-NULLs the slots into orphans).
+function makeOrgAdmin(orgType: "club" | "academy") {
+  const profileTable = orgType === "club" ? "club_profiles" : "academy_profiles";
+  const store: Record<string, Row[]> = {
+    [profileTable]: [{ id: "org1", created_by: "u1" }],
+    cycles: [{ id: "oc1", owner_type: orgType, owner_id: "org1" }],
+    availability_slots: [{ id: "os1", cyclus_id: "oc1" }],
+    intake_requests: [{ id: "oir1", cycle_id: "oc1" }],
+    trainer_profiles: [],
+    profiles: [],
+  };
+  const callOrder: string[] = [];
+  const makeSelect = (t: string) => {
+    const filters: Array<(r: Row) => boolean> = [];
+    const q: Record<string, unknown> = {};
+    q.select = () => q;
+    q.eq = (c: string, v: unknown) => { filters.push((r) => r[c] === v); return q; };
+    q.in = (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return q; };
+    q.single = () => {
+      const rows = (store[t] ?? []).filter((r) => filters.every((f) => f(r)));
+      return Promise.resolve({ data: rows[0] ?? null, error: rows[0] ? null : { message: "not found" } });
+    };
+    q.then = (res: (v: { data: Row[]; error: null }) => void) =>
+      res({ data: (store[t] ?? []).filter((r) => filters.every((f) => f(r))), error: null });
+    return q;
+  };
+  const makeDelete = (t: string) => {
+    const filters: Array<(r: Row) => boolean> = [];
+    const run = () => { callOrder.push(`delete:${t}`); store[t] = (store[t] ?? []).filter((r) => !filters.every((f) => f(r))); return Promise.resolve({ error: null }); };
+    const thenable = { then: (res: (v: { error: unknown }) => void) => run().then(res) };
+    const d: Record<string, unknown> = {};
+    d.eq = (c: string, v: unknown) => { filters.push((r) => r[c] === v); return thenable; };
+    d.in = (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return thenable; };
+    return d;
+  };
+  const admin = {
+    _store: store, _callOrder: callOrder,
+    from(t: string) {
+      return {
+        select: () => makeSelect(t),
+        delete: () => makeDelete(t),
+        update: (_p: Row) => ({ eq: () => Promise.resolve({ data: null, error: null }), in: () => Promise.resolve({ data: null, error: null }) }),
+      };
+    },
+    auth: { admin: { deleteUser: (_id: string) => Promise.resolve({ error: null }) } },
+  };
+  return admin as unknown as SupabaseClient & { _store: Record<string, Row[]>; _callOrder: string[] };
+}
+
+for (const orgType of ["club", "academy"] as const) {
+  Deno.test(`deleteUserData deletes the ${orgType}'s cycle SLOTS before the cycle (no orphans)`, async () => {
+    const admin = makeOrgAdmin(orgType);
+    await deleteUserData(admin, "u1");
+    const s = (admin as unknown as { _store: Record<string, Row[]> })._store;
+    const order = (admin as unknown as { _callOrder: string[] })._callOrder;
+    assertEquals(s.availability_slots.length, 0, "cycle slots deleted, not orphaned");
+    assertEquals(s.cycles.length, 0, "cycle deleted");
+    const slotIdx = order.indexOf("delete:availability_slots");
+    const cycIdx = order.indexOf("delete:cycles");
+    assertEquals(slotIdx !== -1 && slotIdx < cycIdx, true, "slots deleted before cycle");
+  });
+}
