@@ -1,0 +1,429 @@
+-- ============================================================================
+-- get_players_overview — FAM-02 Level 1: guests + profiles are DISTINCT people (audit Batch 4, §4.3)
+-- ============================================================================
+-- Owner ruling: a guest's linked_profile_id no longer makes it the "same person" as the profile.
+-- This function was the worst offender of the overloaded link:
+--   1. registered_visible SUPPRESSED a profile's own row whenever a guest was linked to it — so a
+--      CHILD guest linked to a parent's profile made the PARENT vanish from the players list.
+--   2. the guest row COALESCEd its name/email/rating/etc. from the linked profile — so a linked
+--      child showed the PARENT's name + rating.
+-- Both are removed here: a profile always shows its own row, a guest always shows its own identity,
+-- and a guest's b_profile_id is NULL (so the trainer/location/cyclus filters match the guest's OWN
+-- guest_player_id bookings, never the linked profile's). Genuine same-person duplicates are now
+-- reconciled with merge_guest_players, not hidden by the link. Re-emitted verbatim from
+-- 20260615110110 except those two spots.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_players_overview(
+  p_scope text,                       -- 'academy' | 'trainer'
+  p_scope_id uuid,
+  p_search text DEFAULT NULL,
+  p_filters jsonb DEFAULT '{}'::jsonb,
+  p_sort text DEFAULT 'name',         -- 'name' | 'email' | 'skill' | 'created_at'
+  p_sort_dir text DEFAULT 'asc',
+  p_limit integer DEFAULT 50,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  player_key text,
+  player_type text,
+  guest_player_id uuid,
+  profile_id uuid,
+  full_name text,
+  email text,
+  phone text,
+  billing_business_name text,
+  billing_address text,
+  billing_btw_number text,
+  skill_rating numeric,
+  rating_system text,
+  notes text,
+  source text,
+  birth_date date,
+  has_trained boolean,
+  created_at timestamptz,
+  owner_trainer_id uuid,
+  metadata_id uuid,
+  tag_ids uuid[],
+  academy_notes text,
+  trainer_ids uuid[],
+  location_ids uuid[],
+  location_names text[],
+  has_active_cyclus boolean,
+  has_overdue_payment boolean,
+  email_undeliverable boolean,
+  total_count bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_trainer_ids uuid[];
+  v_tokens text[];
+  v_filter_trainer uuid    := nullif(p_filters->>'trainer_id','')::uuid;
+  v_filter_location uuid   := nullif(p_filters->>'location_id','')::uuid;
+  v_level_gt numeric       := (p_filters->>'level_gt')::numeric;   -- exclusive lower bound
+  v_level_max numeric      := (p_filters->>'level_max')::numeric;  -- inclusive upper bound
+  v_level_unrated boolean  := coalesce((p_filters->>'level_unrated')::boolean, false);
+  v_has_cyclus boolean     := (p_filters->>'has_active_cyclus')::boolean;  -- NULL = no filter
+  v_tag text               := nullif(p_filters->>'tag_id','');             -- uuid text | 'untagged'
+  v_payment text           := nullif(p_filters->>'payment','');            -- 'overdue' | 'ok'
+  v_limit integer          := least(greatest(coalesce(p_limit, 50), 1), 500);
+  v_offset integer         := greatest(coalesce(p_offset, 0), 0);
+BEGIN
+  -- ---- authorization (explicit; the function bypasses RLS below) ----
+  IF p_scope = 'academy' THEN
+    IF NOT public.is_academy_manager(auth.uid(), p_scope_id) THEN
+      RAISE EXCEPTION 'not authorized for academy %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+    SELECT coalesce(array_agg(at.trainer_profile_id), '{}'::uuid[])
+      INTO v_trainer_ids
+      FROM public.academy_trainers at
+     WHERE at.academy_profile_id = p_scope_id AND at.status = 'active';
+  ELSIF p_scope = 'trainer' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.trainer_profiles tp
+       WHERE tp.id = p_scope_id AND tp.user_id = auth.uid()
+    ) THEN
+      RAISE EXCEPTION 'not authorized for trainer %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+    v_trainer_ids := ARRAY[p_scope_id];
+  ELSE
+    RAISE EXCEPTION 'invalid scope: %', p_scope;
+  END IF;
+
+  IF coalesce(btrim(p_search), '') <> '' THEN
+    v_tokens := regexp_split_to_array(public.fold_search_text(btrim(p_search)), '\s+');
+  END IF;
+
+  RETURN QUERY
+  WITH scope_slots AS (
+    SELECT s.id, s.trainer_id, s.location_id, s.cyclus_id, s.end_time
+    FROM public.availability_slots s
+    WHERE s.trainer_id = ANY (v_trainer_ids)
+  ),
+  removed_meta AS (
+    SELECT m.guest_player_id AS gid, m.profile_id AS pid
+    FROM public.academy_player_metadata m
+    WHERE m.removed_at IS NOT NULL
+      AND ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
+        OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
+  ),
+  guests AS (
+    SELECT g.*
+    FROM public.guest_players g
+    WHERE ((p_scope = 'academy'
+            AND (g.academy_profile_id = p_scope_id OR g.trainer_id = ANY (v_trainer_ids)))
+        OR (p_scope = 'trainer' AND g.trainer_id = p_scope_id))
+      AND NOT EXISTS (SELECT 1 FROM removed_meta rm WHERE rm.gid = g.id)
+  ),
+  registered AS (
+    SELECT b.player_id AS pid, min(b.created_at) AS first_booking_at
+    FROM public.bookings b
+    JOIN scope_slots ss ON ss.id = b.slot_id
+    WHERE b.player_id IS NOT NULL
+      AND b.status IN ('confirmed','completed')
+    GROUP BY b.player_id
+  ),
+  registered_visible AS (
+    SELECT r.pid, r.first_booking_at
+    FROM registered r
+    -- FAM-02 (Batch 4, Level 1): a guest linked to a profile is a DISTINCT person, so a profile is
+    -- NO LONGER suppressed by a linked guest — both appear. (Was hiding the PARENT's own row when a
+    -- child guest was linked to it.)
+    WHERE NOT EXISTS (SELECT 1 FROM removed_meta rm WHERE rm.pid = r.pid)
+  ),
+  base AS (
+    -- Guests show their OWN identity (FAM-02 Level 1): a linked guest is a distinct person, so we no
+    -- longer COALESCE name/email/rating from the linked profile, and b_profile_id is NULL for guests
+    -- (so the filters below match the guest's OWN guest_player_id bookings, never the profile's).
+    SELECT
+      'g_' || g.id                                                AS b_player_key,
+      'guest'::text                                               AS b_player_type,
+      g.id                                                        AS b_guest_player_id,
+      NULL::uuid                                                  AS b_profile_id,
+      coalesce(nullif(btrim(g.full_name), ''), 'Unknown')         AS b_full_name,
+      coalesce(g.email, '')                                       AS b_email,
+      coalesce(g.phone, '')                                       AS b_phone,
+      g.billing_business_name                                     AS b_billing_business_name,
+      g.billing_address                                           AS b_billing_address,
+      g.billing_btw_number                                        AS b_billing_btw_number,
+      g.skill_rating                                              AS b_skill_rating,
+      coalesce(nullif(g.rating_system, ''), 'knltb')              AS b_rating_system,
+      g.notes                                                     AS b_notes,
+      g.source                                                    AS b_source,
+      g.birth_date                                                AS b_birth_date,
+      coalesce(g.has_trained, false)                              AS b_has_trained,
+      g.created_at                                                AS b_created_at,
+      g.trainer_id                                                AS b_owner_trainer_id
+    FROM guests g
+    UNION ALL
+    SELECT
+      'p_' || p.id, 'registered', NULL::uuid, p.id,
+      coalesce(nullif(btrim(p.full_name), ''), 'Unknown'),
+      coalesce(p.email, ''), coalesce(p.phone, ''),
+      p.billing_business_name, p.billing_address, p.billing_btw_number,
+      p.skill_rating, coalesce(nullif(p.rating_system, ''), 'knltb'),
+      NULL, NULL, p.birth_date, true, rv.first_booking_at, NULL::uuid
+    FROM registered_visible rv
+    JOIN public.profiles p ON p.id = rv.pid
+  ),
+  with_meta AS (
+    SELECT b.*, m.id AS b_metadata_id,
+           coalesce(m.tag_ids, '{}'::uuid[]) AS b_tag_ids,
+           m.notes AS b_academy_notes
+    FROM base b
+    LEFT JOIN public.academy_player_metadata m
+      ON ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
+       OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
+     AND ((b.b_guest_player_id IS NOT NULL AND m.guest_player_id = b.b_guest_player_id)
+       OR (b.b_player_type = 'registered'  AND m.profile_id      = b.b_profile_id))
+  ),
+  filtered AS (
+    SELECT w.*
+    FROM with_meta w
+    WHERE
+      -- search: every token must match folded name/email/business/phone text,
+      -- or (>= 3 digits) the digits-normalized phone
+      (v_tokens IS NULL OR NOT EXISTS (
+        SELECT 1 FROM unnest(v_tokens) tok
+        WHERE tok <> ''
+          AND NOT (
+            public.fold_search_text(
+              w.b_full_name || ' ' || w.b_email || ' '
+              || coalesce(w.b_billing_business_name, '') || ' ' || w.b_phone
+            ) LIKE '%' || tok || '%'
+            OR (length(public.digits_only(tok)) >= 3
+                AND public.digits_only(w.b_phone) LIKE '%' || public.digits_only(tok) || '%')
+          )
+      ))
+      -- level band: half-open (level_gt, level_max], or unrated
+      AND (
+        (v_level_gt IS NULL AND v_level_max IS NULL AND NOT v_level_unrated)
+        OR (v_level_unrated AND w.b_skill_rating IS NULL)
+        OR (NOT v_level_unrated AND w.b_skill_rating IS NOT NULL
+            AND (v_level_gt IS NULL OR w.b_skill_rating > v_level_gt)
+            AND (v_level_max IS NULL OR w.b_skill_rating <= v_level_max))
+      )
+      -- tag
+      AND (v_tag IS NULL
+        OR (v_tag = 'untagged' AND coalesce(array_length(w.b_tag_ids, 1), 0) = 0)
+        OR (v_tag <> 'untagged' AND w.b_tag_ids @> ARRAY[v_tag::uuid]))
+      -- trainer (owner trainer OR any in-scope booking with that trainer)
+      AND (v_filter_trainer IS NULL
+        OR w.b_owner_trainer_id = v_filter_trainer
+        OR EXISTS (
+          SELECT 1 FROM public.bookings b JOIN scope_slots ss ON ss.id = b.slot_id
+          WHERE ss.trainer_id = v_filter_trainer
+            AND b.status IN ('confirmed','completed')
+            AND (b.guest_player_id = w.b_guest_player_id
+              OR (w.b_profile_id IS NOT NULL AND b.player_id = w.b_profile_id))))
+      -- location: trained (active academy loc) OR preferred OR enrolled-intake, merged
+      -- locations resolved to canonical — an EXACT mirror of the displayed array below,
+      -- so filtering by a club returns precisely the players whose chip shows it.
+      AND (v_filter_location IS NULL OR (
+        EXISTS (
+          SELECT 1
+          FROM (
+            SELECT ss.location_id AS loc, true AS requires_active
+              FROM public.bookings b JOIN scope_slots ss ON ss.id = b.slot_id
+             WHERE b.status IN ('confirmed','completed')
+               AND ss.location_id IS NOT NULL
+               AND (b.guest_player_id = w.b_guest_player_id
+                 OR (w.b_profile_id IS NOT NULL AND b.player_id = w.b_profile_id))
+            UNION ALL
+            SELECT g.preferred_location_id, false
+              FROM public.guest_players g
+             WHERE g.id = w.b_guest_player_id AND g.preferred_location_id IS NOT NULL
+            UNION ALL
+            SELECT m.preferred_location_id, false
+              FROM public.academy_player_metadata m
+             WHERE ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
+                 OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
+               AND m.preferred_location_id IS NOT NULL
+               AND ((w.b_guest_player_id IS NOT NULL AND m.guest_player_id = w.b_guest_player_id)
+                 OR (w.b_profile_id IS NOT NULL AND m.profile_id = w.b_profile_id))
+            UNION ALL
+            SELECT ir.location_id, false
+              FROM public.intake_requests ir
+             WHERE ir.location_id IS NOT NULL
+               AND ((w.b_guest_player_id IS NOT NULL AND ir.guest_player_id = w.b_guest_player_id)
+                 OR (w.b_profile_id IS NOT NULL AND ir.player_id = w.b_profile_id))
+            UNION ALL
+            SELECT apl.location_id, false
+              FROM public.academy_player_locations apl
+             WHERE p_scope = 'academy' AND apl.academy_profile_id = p_scope_id AND apl.dismissed = false
+               AND ((w.b_guest_player_id IS NOT NULL AND apl.guest_player_id = w.b_guest_player_id)
+                 OR (w.b_profile_id IS NOT NULL AND apl.profile_id = w.b_profile_id))
+          ) src
+          LEFT JOIN public.locations lm ON lm.id = src.loc
+          WHERE coalesce(lm.merged_into, src.loc) = v_filter_location
+            AND (p_scope = 'trainer'
+              OR EXISTS (SELECT 1 FROM public.academy_locations al
+                         WHERE al.academy_profile_id = p_scope_id
+                           AND al.location_id = coalesce(lm.merged_into, src.loc)
+                           AND (al.is_active OR NOT src.requires_active)))
+        )
+        AND NOT (p_scope = 'academy' AND EXISTS (
+          SELECT 1 FROM public.academy_player_locations apl
+          LEFT JOIN public.locations lm2 ON lm2.id = apl.location_id
+          WHERE apl.academy_profile_id = p_scope_id AND apl.dismissed = true
+            AND coalesce(lm2.merged_into, apl.location_id) = v_filter_location
+            AND ((w.b_guest_player_id IS NOT NULL AND apl.guest_player_id = w.b_guest_player_id)
+              OR (w.b_profile_id IS NOT NULL AND apl.profile_id = w.b_profile_id))))
+      ))
+      -- active cyclus
+      AND (v_has_cyclus IS NULL OR v_has_cyclus = EXISTS (
+          SELECT 1 FROM public.bookings b JOIN scope_slots ss ON ss.id = b.slot_id
+          WHERE ss.cyclus_id IS NOT NULL AND ss.end_time >= now()
+            AND b.status IN ('confirmed','completed')
+            AND (b.guest_player_id = w.b_guest_player_id
+              OR (w.b_profile_id IS NOT NULL AND b.player_id = w.b_profile_id))))
+      -- payment status (parity with fetchOverduePayments: overdue = explicit
+      -- status, or past due while not paid (status/paid_at) and not closed)
+      AND (v_payment IS NULL OR (v_payment = 'overdue') = EXISTS (
+          SELECT 1 FROM public.invoices i
+          WHERE ((p_scope = 'academy' AND i.academy_profile_id = p_scope_id)
+              OR (p_scope = 'trainer' AND i.trainer_id         = p_scope_id))
+            AND (i.guest_player_id = w.b_guest_player_id
+              OR (w.b_profile_id IS NOT NULL AND i.player_id = w.b_profile_id))
+            AND (lower(i.status) = 'overdue'
+              OR (i.due_date < current_date
+                  AND i.paid_at IS NULL
+                  AND lower(i.status) NOT IN ('paid','cancelled','draft','void')))))
+  ),
+  page AS (
+    SELECT f.*, count(*) OVER () AS b_total_count
+    FROM filtered f
+    ORDER BY
+      CASE WHEN p_sort = 'name'       AND p_sort_dir = 'asc'  THEN lower(f.b_full_name) END ASC,
+      CASE WHEN p_sort = 'name'       AND p_sort_dir = 'desc' THEN lower(f.b_full_name) END DESC,
+      CASE WHEN p_sort = 'email'      AND p_sort_dir = 'asc'  THEN nullif(lower(f.b_email), '') END ASC NULLS LAST,
+      CASE WHEN p_sort = 'email'      AND p_sort_dir = 'desc' THEN nullif(lower(f.b_email), '') END DESC NULLS LAST,
+      CASE WHEN p_sort = 'skill'      AND p_sort_dir = 'asc'  THEN f.b_skill_rating END ASC NULLS LAST,
+      CASE WHEN p_sort = 'skill'      AND p_sort_dir = 'desc' THEN f.b_skill_rating END DESC NULLS LAST,
+      CASE WHEN p_sort = 'created_at' AND p_sort_dir = 'asc'  THEN f.b_created_at END ASC,
+      CASE WHEN p_sort = 'created_at' AND p_sort_dir = 'desc' THEN f.b_created_at END DESC,
+      lower(f.b_full_name) ASC,
+      f.b_player_key ASC
+    LIMIT v_limit OFFSET v_offset
+  )
+  -- Expensive aggregates only for the page rows (bounded by v_limit).
+  SELECT
+    c.b_player_key, c.b_player_type, c.b_guest_player_id, c.b_profile_id,
+    c.b_full_name, c.b_email, c.b_phone,
+    c.b_billing_business_name, c.b_billing_address, c.b_billing_btw_number,
+    c.b_skill_rating, c.b_rating_system, c.b_notes, c.b_source, c.b_birth_date,
+    c.b_has_trained, c.b_created_at, c.b_owner_trainer_id,
+    c.b_metadata_id, c.b_tag_ids, c.b_academy_notes,
+    coalesce(enr.trainer_ids, CASE WHEN c.b_owner_trainer_id IS NULL THEN '{}'::uuid[] ELSE ARRAY[c.b_owner_trainer_id] END),
+    coalesce(enr.location_ids, '{}'::uuid[]),
+    coalesce(enr.location_names, '{}'::text[]),
+    coalesce(enr.has_active_cyclus, false),
+    coalesce(pay.has_overdue_payment, false),
+    coalesce(eb.email_undeliverable, false),
+    c.b_total_count
+  FROM page c
+  LEFT JOIN LATERAL (
+    WITH pb AS (
+      SELECT ss.trainer_id, ss.location_id, ss.cyclus_id, ss.end_time
+      FROM public.bookings b JOIN scope_slots ss ON ss.id = b.slot_id
+      WHERE b.status IN ('confirmed','completed')
+        AND (b.guest_player_id = c.b_guest_player_id
+          OR (c.b_profile_id IS NOT NULL AND b.player_id = c.b_profile_id))
+    )
+    SELECT
+      (SELECT coalesce(array_agg(DISTINCT t.tid), '{}'::uuid[])
+         FROM (SELECT pb.trainer_id AS tid FROM pb WHERE pb.trainer_id IS NOT NULL
+               UNION
+               SELECT c.b_owner_trainer_id WHERE c.b_owner_trainer_id IS NOT NULL) t)
+        AS trainer_ids,
+      loc.location_ids,
+      loc.location_names,
+      EXISTS (SELECT 1 FROM pb WHERE pb.cyclus_id IS NOT NULL AND pb.end_time >= now())
+        AS has_active_cyclus
+    FROM (
+      SELECT coalesce(array_agg(l.id   ORDER BY l.name), '{}'::uuid[]) AS location_ids,
+             coalesce(array_agg(l.name ORDER BY l.name), '{}'::text[]) AS location_names
+      FROM (
+        -- canonical loc id + whether EVERY source for it requires an active academy
+        -- location (only-trained => true; any preferred/intake source => false)
+        SELECT coalesce(lm.merged_into, cand.location_id) AS location_id,
+               bool_and(cand.requires_active) AS req_active
+        FROM (
+          SELECT pb.location_id, true AS requires_active
+            FROM pb WHERE pb.location_id IS NOT NULL
+          UNION ALL
+          SELECT pref.pl, false
+            FROM (
+              SELECT g.preferred_location_id AS pl
+                FROM public.guest_players g WHERE g.id = c.b_guest_player_id
+              UNION ALL
+              SELECT m.preferred_location_id
+                FROM public.academy_player_metadata m
+               WHERE ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
+                   OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
+                 AND ((c.b_guest_player_id IS NOT NULL AND m.guest_player_id = c.b_guest_player_id)
+                   OR (c.b_profile_id IS NOT NULL AND m.profile_id = c.b_profile_id))
+            ) pref WHERE pref.pl IS NOT NULL
+          UNION ALL
+          SELECT ir.location_id, false
+            FROM public.intake_requests ir
+           WHERE ir.location_id IS NOT NULL
+             AND ((c.b_guest_player_id IS NOT NULL AND ir.guest_player_id = c.b_guest_player_id)
+               OR (c.b_profile_id IS NOT NULL AND ir.player_id = c.b_profile_id))
+          UNION ALL
+          SELECT apl.location_id, false
+            FROM public.academy_player_locations apl
+           WHERE p_scope = 'academy' AND apl.academy_profile_id = p_scope_id AND apl.dismissed = false
+             AND ((c.b_guest_player_id IS NOT NULL AND apl.guest_player_id = c.b_guest_player_id)
+               OR (c.b_profile_id IS NOT NULL AND apl.profile_id = c.b_profile_id))
+        ) cand
+        LEFT JOIN public.locations lm ON lm.id = cand.location_id
+        GROUP BY coalesce(lm.merged_into, cand.location_id)
+      ) d
+      JOIN public.locations l ON l.id = d.location_id
+      WHERE (p_scope = 'trainer'
+         OR EXISTS (SELECT 1 FROM public.academy_locations al
+                    WHERE al.academy_profile_id = p_scope_id
+                      AND al.location_id = d.location_id
+                      AND (al.is_active OR NOT d.req_active)))
+        AND NOT (p_scope = 'academy' AND EXISTS (
+              SELECT 1 FROM public.academy_player_locations apl
+              LEFT JOIN public.locations lm2 ON lm2.id = apl.location_id
+              WHERE apl.academy_profile_id = p_scope_id AND apl.dismissed = true
+                AND coalesce(lm2.merged_into, apl.location_id) = d.location_id
+                AND ((c.b_guest_player_id IS NOT NULL AND apl.guest_player_id = c.b_guest_player_id)
+                  OR (c.b_profile_id IS NOT NULL AND apl.profile_id = c.b_profile_id))))
+    ) loc
+  ) enr ON true
+  LEFT JOIN LATERAL (
+    SELECT EXISTS (
+      SELECT 1 FROM public.invoices i
+      WHERE ((p_scope = 'academy' AND i.academy_profile_id = p_scope_id)
+          OR (p_scope = 'trainer' AND i.trainer_id         = p_scope_id))
+        AND (i.guest_player_id = c.b_guest_player_id
+          OR (c.b_profile_id IS NOT NULL AND i.player_id = c.b_profile_id))
+        AND (lower(i.status) = 'overdue'
+          OR (i.due_date < current_date
+              AND i.paid_at IS NULL
+              AND lower(i.status) NOT IN ('paid','cancelled','draft','void')))
+    ) AS has_overdue_payment
+  ) pay ON true
+  LEFT JOIN LATERAL (
+    SELECT EXISTS (
+      SELECT 1 FROM public.email_address_state s
+      WHERE s.email = lower(btrim(c.b_email))
+        AND s.state IN ('hard_bounced','complained')
+    ) AS email_undeliverable
+  ) eb ON true;
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) IS
+  'Players overview (academy/trainer scope): guests + registered, removal-filtered. FAM-02 Level 1: guests + profiles are DISTINCT people — a profile is never suppressed by a linked guest, and a guest shows its OWN identity (no linked-profile dedup/inheritance; b_profile_id NULL for guests). Server-side search/filters/sort/pagination; location array unions trained + preferred + intake + manual-attach store, minus dismissed. SECURITY DEFINER with explicit scope authorization.';
+
+REVOKE ALL ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) TO authenticated;
