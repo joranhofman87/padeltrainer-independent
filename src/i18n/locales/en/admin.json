@@ -61,7 +61,7 @@
     "mollieConnect": "Mollie Connect",
     "mollieConnectDesc": "{{count}} pending onboarding",
     "registrationsLabel": "Registrations",
-    "registrationsDesc": "{{total}} total, {{converted}} converted"
+    "registrationsDesc": "{{total}} total"
   },
   "charts": {
     "revenueTitle": "Revenue Trends",

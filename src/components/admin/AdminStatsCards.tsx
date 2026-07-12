@@ -127,7 +127,7 @@ export function AdminStatsCards({ stats }: AdminStatsCardsProps) {
           lastMonth={stats.registrations?.lastMonth || 0}
         />
       ),
-      description: t("stats.registrationsDesc", { total: stats.registrations?.totalGuests || 0, converted: stats.registrations?.convertedToAccount || 0 }),
+      description: t("stats.registrationsDesc", { total: stats.registrations?.totalGuests || 0 }),
       icon: ClipboardList,
       color: "text-pink-500",
       onClick: () => navigate("/app/admin/guest-players"),

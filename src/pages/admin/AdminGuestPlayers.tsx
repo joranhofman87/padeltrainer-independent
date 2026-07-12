@@ -10,12 +10,11 @@ import { TableToolbar } from "@/components/ui/table-toolbar";
 import { compactDataTableClass, DataTableCard } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatTile } from "@/components/ui/stat-tile";
-import { Search, UserCheck, UserX, Users } from "lucide-react";
+import { Search, UserCheck, Users } from "lucide-react";
 import { format } from "date-fns";
 
 export default function AdminGuestPlayers() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
 
   const { data: guestPlayers = [], isLoading } = useQuery({
@@ -47,10 +46,6 @@ export default function AdminGuestPlayers() {
       if (!matchesName && !matchesEmail) return false;
     }
 
-    // Status filter
-    if (statusFilter === "converted" && !gp.linked_profile_id) return false;
-    if (statusFilter === "not_converted" && gp.linked_profile_id) return false;
-
     // Source filter
     if (sourceFilter !== "all" && gp.source !== sourceFilter) return false;
 
@@ -58,7 +53,6 @@ export default function AdminGuestPlayers() {
   });
 
   const totalCount = guestPlayers.length;
-  const convertedCount = guestPlayers.filter((g: any) => g.linked_profile_id).length;
   const trainedCount = guestPlayers.filter((g: any) => g.has_trained).length;
 
   const getTrainerName = (gp: any) => {
@@ -80,21 +74,11 @@ export default function AdminGuestPlayers() {
       description="Guest players from intake forms and manual registrations"
     >
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <StatTile
           label="Total Registrations"
           value={String(totalCount)}
           icon={Users}
-        />
-        <StatTile
-          label="Converted to Account"
-          value={String(convertedCount)}
-          icon={UserCheck}
-          subtext={
-            totalCount > 0
-              ? `${((convertedCount / totalCount) * 100).toFixed(1)}% conversion rate`
-              : undefined
-          }
         />
         <StatTile
           label="Has Trained"
@@ -108,17 +92,6 @@ export default function AdminGuestPlayers() {
         searchValue={search}
         onSearchChange={setSearch}
       >
-        <SelectFilter
-          value={statusFilter}
-          onValueChange={setStatusFilter}
-          allLabel="All statuses"
-          options={[
-            { value: "converted", label: "Converted" },
-            { value: "not_converted", label: "Not converted" },
-          ]}
-          placeholder="Status"
-          triggerClassName="w-[180px]"
-        />
         <SelectFilter
           value={sourceFilter}
           onValueChange={setSourceFilter}
@@ -171,24 +144,11 @@ export default function AdminGuestPlayers() {
                     ) : "—"}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                      {gp.linked_profile_id ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                          <UserCheck className="h-3 w-3 mr-1" />
-                          Converted
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          <UserX className="h-3 w-3 mr-1" />
-                          Guest
-                        </Badge>
-                      )}
-                      {gp.has_trained && (
-                        <Badge variant="outline" className="text-blue-600 border-blue-200">
-                          Trained
-                        </Badge>
-                      )}
-                    </div>
+                    {gp.has_trained ? (
+                      <Badge variant="outline" className="text-blue-600 border-blue-200">
+                        Trained
+                      </Badge>
+                    ) : "—"}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(gp.created_at), "dd MMM yyyy")}

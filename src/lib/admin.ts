@@ -156,7 +156,6 @@ export interface AdminStats {
   }>;
   registrations: {
     totalGuests: number;
-    convertedToAccount: number;
     hasTrained: number;
     thisMonth: number;
     lastMonth: number;

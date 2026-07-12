@@ -61,7 +61,7 @@
     "mollieConnect": "Mollie Connect",
     "mollieConnectDesc": "{{count}} onboarding in behandeling",
     "registrationsLabel": "Aanmeldingen",
-    "registrationsDesc": "{{total}} totaal, {{converted}} geconverteerd"
+    "registrationsDesc": "{{total}} totaal"
   },
   "charts": {
     "revenueTitle": "Omzettrends",
