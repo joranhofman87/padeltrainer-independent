@@ -29,6 +29,7 @@ import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
 import { RebookReminderLeadField } from '@/components/cycles/RebookReminderLeadField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
+import { RebookPublicOpenModeField, type PublicOpenMode } from './RebookPublicOpenModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
 
 interface Props {
@@ -89,6 +90,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [enableMemberWindow, setEnableMemberWindow] = useState(true);
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [strictMollie, setStrictMollie] = useState(false);
+  // How non-rebooked sessions become bookable once they OPEN to the public. 'inherit' = copy
+  // the source court's flags (legacy default); an explicit mode overrides the whole round.
+  const [publicOpenMode, setPublicOpenMode] = useState<PublicOpenMode>('inherit');
+  const [publicOpenSplit, setPublicOpenSplit] = useState(false);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   // Automated reminder to non-responders ~24h before their priority window closes.
   const [autoReminder, setAutoReminder] = useState(true);
@@ -157,6 +162,9 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
       paymentMode,
       strictMollie: paymentMode === 'upfront' && strictMollie,
+      // 'inherit' → null so the engine keeps its per-court source copy (unchanged path).
+      publicOpenMode: publicOpenMode === 'inherit' ? null : publicOpenMode,
+      publicOpenSplit,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
       // Date model: the round runs from newStartDate to newEndDate; the number of sessions is
@@ -179,7 +187,7 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       autoReminder,
       reminderLeadHours,
     }),
-    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, priorityPeople, priorityMessage, autoReminder, reminderLeadHours],
+    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, publicOpenMode, publicOpenSplit, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, priorityPeople, priorityMessage, autoReminder, reminderLeadHours],
   );
 
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
@@ -424,6 +432,13 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             setPaymentMode={setPaymentMode}
             strictMollie={strictMollie}
             setStrictMollie={setStrictMollie}
+          />
+
+          <RebookPublicOpenModeField
+            mode={publicOpenMode}
+            setMode={setPublicOpenMode}
+            split={publicOpenSplit}
+            setSplit={setPublicOpenSplit}
           />
 
           <RebookAccessWindows
