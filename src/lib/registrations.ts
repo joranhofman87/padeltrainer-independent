@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import { getCyclesWithCounts, countCyclesIntakesWithFallback, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
+import { getCyclesWithCounts, countCyclesIntakesWithFallback, attachCycleLocations, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
 import { isMissingRpc } from '@/lib/deployDrift';
 
 /**
@@ -287,7 +287,11 @@ export async function listRegistrationCycles(
   const byId = new Map<string, Cycle>();
   for (const c of legacy) byId.set(c.id, c);
   for (const c of mapped) byId.set(c.id, c); // migrated registration wins
-  return Array.from(byId.values()).sort((a, b) =>
+  const merged = Array.from(byId.values()).sort((a, b) =>
     (b.created_at ?? '').localeCompare(a.created_at ?? ''),
   );
+  // registrationToCycle carries only location_id (no joined name), and it OVERWRITES the
+  // legacy cycle that had `.location` embedded — so the migrated rows would render a blank
+  // Locatie column. Attach `{id,name,city}` to the whole set (idempotent for legacy rows).
+  return attachCycleLocations(merged);
 }

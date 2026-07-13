@@ -16,7 +16,13 @@ const chain = {
 vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => chain, rpc: (...a: unknown[]) => rpcFn(...a) } }));
 // listRegistrationCycles delegates the legacy half to getCyclesWithCounts — stub it so the test
 // exercises only the merge/dedupe/count logic.
-vi.mock('@/lib/cycles', () => ({ getCyclesWithCounts: vi.fn(), countCyclesIntakesWithFallback: vi.fn() }));
+vi.mock('@/lib/cycles', () => ({
+  getCyclesWithCounts: vi.fn(),
+  countCyclesIntakesWithFallback: vi.fn(),
+  // Mirror the real helper deterministically: attach {id,name,city} from each cycle's location_id.
+  attachCycleLocations: vi.fn(async (cycles: { location_id?: string | null }[]) =>
+    cycles.map((c) => ({ ...c, location: c.location_id ? { id: c.location_id, name: `Loc ${c.location_id}`, city: 'X' } : null }))),
+}));
 
 import {
   getRegistration,
@@ -148,6 +154,21 @@ describe('registrations lib', () => {
     const c1 = rows.find((r) => r.id === 'c1')!;
     expect(c1.type).toBe('registration'); // from the mapped registration, not the legacy '99' row
     expect(c1._intakeCount).toBe(2); // counted from intake_requests, not the stale legacy count
+  });
+
+  it('listRegistrationCycles attaches .location to migrated rows (regression: blank Locatie column)', async () => {
+    // A cycle migrated to the registrations table: registrationToCycle carries location_id but NO
+    // joined `.location`, and it OVERWRITES the legacy embed → the Locatie column would go blank.
+    vi.mocked(getCyclesWithCounts).mockResolvedValueOnce([
+      { id: 'c1', type: 'registration', created_at: '2026-01-01T00:00:00Z', location: { id: 'loc1', name: 'Old', city: 'X' } },
+    ] as never);
+    order.mockResolvedValueOnce({ data: [baseReg({ id: 'r1', source_cycle_id: 'c1' })], error: null });
+    vi.mocked(countCyclesIntakesWithFallback).mockResolvedValueOnce(new Map([['c1', 0]]));
+
+    const rows = await listRegistrationCycles('academy', 'a1');
+    const c1 = rows.find((r) => r.id === 'c1')!;
+    // attachCycleLocations must re-attach `.location` on the merged set (incl. the migrated winner).
+    expect(c1.location).toEqual({ id: 'loc1', name: 'Loc loc1', city: 'X' });
   });
 
   it('createRegistration calls create_registration_with_cycle with mapped params (FULL settings — RPC splits) + returns the row', async () => {
