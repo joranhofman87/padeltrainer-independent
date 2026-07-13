@@ -44,6 +44,11 @@ const data = (over: Partial<RebookManageData> = {}): RebookManageData => ({
   cycleIds: ['cyc-1', 'cyc-2', 'cyc-3'],
   roundId: 'round-1',
   priorityDeadline: { deadline: null, varies: false, editableSlotCount: 0 },
+  paymentMode: 'deferred_split',
+  strictMollie: false,
+  publicOpenMode: 'cyclus_only',
+  publicOpenSplit: false,
+  releasePolicy: 'auto',
   ...over,
 });
 

@@ -44,6 +44,20 @@ export function deriveCycleBookingMode(flags: {
   return flags.allowCyclus ? 'cyclus_only' : 'none';
 }
 
+/**
+ * Write-side inverse of {@link deriveCycleBookingMode}: a mode → the three authoritative flags.
+ * Shared by setCycleBookingMode and the rebook-round settings editor so the mapping lives once.
+ */
+export function cycleBookingModeToFlags(mode: CycleBookingMode): { allowSingle: boolean; allowCyclus: boolean; wholeSlot: boolean } {
+  return {
+    // single_only_whole_slot keeps allowSingle FALSE (full price + capacity 1); the whole_slot flag
+    // unlocks the permission gates instead.
+    allowSingle: mode === 'both' || mode === 'single_only',
+    allowCyclus: mode === 'both' || mode === 'cyclus_only',
+    wholeSlot: mode === 'single_only_whole_slot',
+  };
+}
+
 export interface BookingModeTarget {
   /** The group's cyclus_id (slots' grouping key — always present). */
   cyclusId: string;
@@ -114,9 +128,7 @@ export async function setCycleBookingMode(
   // single_only_whole_slot sells individual sessions as the ENTIRE slot at full price:
   // allow_single stays FALSE (that's what makes pricing full + capacity 1 everywhere) and
   // the whole_slot_booking flag unlocks the permission gates instead.
-  const allowSingle = mode === 'both' || mode === 'single_only';
-  const allowCyclus = mode === 'both' || mode === 'cyclus_only';
-  const wholeSlot = mode === 'single_only_whole_slot';
+  const { allowSingle, allowCyclus, wholeSlot } = cycleBookingModeToFlags(mode);
   const nowIso = new Date().toISOString();
 
   // Batch-read every real cycle's settings up front (one round trip).

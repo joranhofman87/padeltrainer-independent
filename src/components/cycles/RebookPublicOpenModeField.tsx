@@ -20,6 +20,8 @@ interface Props {
   setSplit: (b: boolean) => void;
   /** Cohort wizard spans many source courts → no single "current" value to show as context. */
   multiSource?: boolean;
+  /** Post-hoc editors (rebook manage page) pick a concrete mode — 'inherit' is meaningless there. */
+  hideInherit?: boolean;
 }
 
 // Split only makes sense for per-seat / whole-cycle selling; whole-court is one payment by
@@ -34,7 +36,7 @@ const MODE_HELP: Record<CycleBookingMode, string> = {
   cyclus_only: 'cyclesTab.bulkBooking.modeCyclusOnlyHelp',
 };
 
-export function RebookPublicOpenModeField({ mode, setMode, split, setSplit, multiSource }: Props) {
+export function RebookPublicOpenModeField({ mode, setMode, split, setSplit, multiSource, hideInherit }: Props) {
   const { t } = useTranslation('cycles');
   const showSplit = SPLIT_MODES.includes(mode);
 
@@ -48,7 +50,7 @@ export function RebookPublicOpenModeField({ mode, setMode, split, setSplit, mult
         <Select value={mode} onValueChange={(v) => setMode(v as PublicOpenMode)}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="inherit">{t('rebookShared.publicOpenInherit', 'Zelfde als de oorspronkelijke baan (overnemen)')}</SelectItem>
+            {!hideInherit && <SelectItem value="inherit">{t('rebookShared.publicOpenInherit', 'Zelfde als de oorspronkelijke baan (overnemen)')}</SelectItem>}
             <SelectItem value="both">{t('cyclesTab.bulkBooking.modeBoth', 'Losse sessies én hele cyclus', { ns: 'trainer' })}</SelectItem>
             <SelectItem value="single_only">{t('cyclesTab.bulkBooking.modeSingleOnly', 'Alleen losse sessies (per plek)', { ns: 'trainer' })}</SelectItem>
             <SelectItem value="single_only_whole_slot">{t('cyclesTab.bulkBooking.modeSingleOnlyWholeSlot', 'Alleen losse sessies (hele baan per boeking)', { ns: 'trainer' })}</SelectItem>

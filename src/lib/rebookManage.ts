@@ -4,8 +4,10 @@
 // private / send reminder). Read-only derivation — all signals already exist on
 // availability_slots + slot_priority_claims + invoices.
 import { supabase } from '@/lib/supabaseClient';
-import { releaseSlotToPublic, holdSlotForReview, declineClaimAsManager, type PublicReleaseStatus } from '@/lib/priorityClaims';
+import { releaseSlotToPublic, holdSlotForReview, declineClaimAsManager, type PublicReleaseStatus, type RebookPaymentMode } from '@/lib/priorityClaims';
 import { summariseRoundDeadline, type RoundDeadlineSummary } from '@/lib/rebookRoundDeadline';
+import { deriveCycleBookingMode, type CycleBookingMode } from '@/lib/cycleBookingMode';
+import { deriveReleasePolicy, type ReleasePolicyState } from '@/lib/rebookRoundSettings';
 import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { updateCycleSettings } from '@/lib/cycleWrites';
 import type { CycleSettings } from '@/lib/cycleTypes';
@@ -192,6 +194,15 @@ export interface RebookManageData {
   /** The round's priority deadline (latest among non-released slots) — shown + editable
    *  in the manage header. Computed from the already-fetched slot rows (no extra query). */
   priorityDeadline: RoundDeadlineSummary;
+  /** How RETURNING players pay when they keep their spot (cycles.settings.rebook_payment_mode). */
+  paymentMode: RebookPaymentMode;
+  strictMollie: boolean;
+  /** How the PUBLIC pays once non-rebooked sessions open — derived from the round's booking-mode
+   *  flags (deriveCycleBookingMode) + split_payment. Editable on the manage page. */
+  publicOpenMode: CycleBookingMode;
+  publicOpenSplit: boolean;
+  /** Whether sessions auto-open at the deadline or stay private ('mixed' when non-released slots disagree). */
+  releasePolicy: ReleasePolicyState;
 }
 
 interface SlotRow {
@@ -384,6 +395,18 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const reminderMessage = typeof settingsObj?.rebook_reminder_message === 'string' ? settingsObj.rebook_reminder_message : '';
   const reminderSubject = typeof settingsObj?.rebook_reminder_subject === 'string' ? settingsObj.rebook_reminder_subject : '';
   const slotRows = slots;
+  // Current post-deadline settings (surfaced so the manage page can show + edit them). Payment mode
+  // + booking flags live on the primary cycle's settings; release policy is derived from the slots.
+  const paymentMode: RebookPaymentMode = roundSettings.rebook_payment_mode === 'upfront' ? 'upfront' : 'deferred_split';
+  const strictMollie = roundSettings.rebook_strict_mollie === true;
+  const derivedOpenMode = deriveCycleBookingMode({
+    allowSingle: roundSettings.allow_single_booking === true,
+    wholeSlot: roundSettings.whole_slot_booking === true,
+    allowCyclus: roundSettings.allow_cyclus_booking !== false, // default true (the creation default)
+  });
+  const publicOpenMode: CycleBookingMode = derivedOpenMode === 'none' ? 'cyclus_only' : derivedOpenMode;
+  const publicOpenSplit = roundSettings.split_payment === true;
+  const releasePolicy = deriveReleasePolicy(slotRows.map((s) => s.public_release_status));
   // For a multi-cycle round, the header shows the round label; a single cycle shows its own name.
   const displayName = (roundId && cycleIds.length > 1 && typeof roundSettings.rebook_round_label === 'string'
     ? roundSettings.rebook_round_label
@@ -406,6 +429,11 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     cycleIds,
     roundId,
     priorityDeadline: summariseRoundDeadline(slotRows),
+    paymentMode,
+    strictMollie,
+    publicOpenMode,
+    publicOpenSplit,
+    releasePolicy,
   };
   if (slotRows.length === 0) return empty;
   const slotById = new Map(slotRows.map((s) => [s.id, s]));
@@ -650,6 +678,11 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     cycleIds,
     roundId,
     priorityDeadline: summariseRoundDeadline(slotRows),
+    paymentMode,
+    strictMollie,
+    publicOpenMode,
+    publicOpenSplit,
+    releasePolicy,
   };
 }
 
