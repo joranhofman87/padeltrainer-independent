@@ -45,16 +45,40 @@ type ColKey =
   | 'openSpots';
 
 const DEFAULT_COLUMNS: ColKey[] = [
-  'start',
-  'deadline',
   'location',
-  'series',
+  'deadline',
+  'start',
   'status',
+  'series',
   'invited',
   'rebooked',
   'noResponse',
   'paidAmount',
   'outstanding',
+];
+
+/**
+ * Canonical column ORDER (owner-chosen): identity (where/which round) → timeline (deadline/start)
+ * → state → funnel/money. Render order is pinned to this regardless of the visibility prefs'
+ * stored order, so a re-shown column lands in its logical place instead of appended at the end.
+ */
+const COLUMN_ORDER: Array<ColKey | 'name'> = [
+  'location',
+  'name',
+  'deadline',
+  'start',
+  'status',
+  'series',
+  'invited',
+  'rebooked',
+  'noResponse',
+  'paidAmount',
+  'outstanding',
+  'declined',
+  'clickedYes',
+  'paidCount',
+  'invites',
+  'openSpots',
 ];
 
 const PAGE_SIZE = 25;
@@ -140,7 +164,7 @@ export default function RebookRoundsSection({ academyId, timezone }: { academyId
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = sortedData.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
-  const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns<ColKey>(
+  const { toggleColumn, isColVisible } = useVisibleColumns<ColKey>(
     columnDescriptors(t),
     DEFAULT_COLUMNS,
     // v3: 'deadline' joined the defaults — bump so saved column prefs pick it up (#474 lesson).
@@ -273,7 +297,7 @@ export default function RebookRoundsSection({ academyId, timezone }: { academyId
       <DataTable<OverviewRow>
         columns={columns}
         rows={pageRows}
-        visibleKeys={['name', ...visibleColumns]}
+        visibleKeys={COLUMN_ORDER.filter((k) => k === 'name' || isColVisible(k))}
         sortKey={sortConfig.key ? String(sortConfig.key) : null}
         sortDirection={sortConfig.direction}
         onSort={(key) => handleSort(key as keyof OverviewRow)}
@@ -306,11 +330,11 @@ export default function RebookRoundsSection({ academyId, timezone }: { academyId
 
 function columnDescriptors(t: (key: string, fallback: string) => string): ColumnDescriptor<ColKey>[] {
   return [
-    { key: 'start', label: t('rebookManage.overview.colStart', 'Start'), isDefault: true },
-    { key: 'deadline', label: t('rebookManage.overview.colDeadline', 'Deadline'), isDefault: true },
     { key: 'location', label: t('rebookManage.overview.colLocation', 'Locatie'), isDefault: true },
-    { key: 'series', label: t('rebookManage.overview.colSeries', 'Series'), isDefault: true },
+    { key: 'deadline', label: t('rebookManage.overview.colDeadline', 'Deadline'), isDefault: true },
+    { key: 'start', label: t('rebookManage.overview.colStart', 'Start'), isDefault: true },
     { key: 'status', label: t('rebookManage.overview.colStatus', 'Status'), isDefault: true },
+    { key: 'series', label: t('rebookManage.overview.colSeries', 'Series'), isDefault: true },
     { key: 'invited', label: t('rebookManage.overview.colInvited', 'Uitgenodigd'), isDefault: true },
     { key: 'rebooked', label: t('rebookManage.overview.colRebooked', 'Herboekt'), isDefault: true },
     { key: 'noResponse', label: t('rebookManage.overview.colNoResponse', 'Geen reactie'), isDefault: true },
