@@ -76,6 +76,12 @@ describe('toRebookRoundOverviewRow', () => {
     });
   });
 
+  it('maps the round deadline through from priorityDeadline (null when unknown)', () => {
+    expect(toRebookRoundOverviewRow(round(), data()).deadline).toBeNull();
+    const d = data({ priorityDeadline: { deadline: '2026-07-14T07:00:00Z', varies: false, editableSlotCount: 10 } });
+    expect(toRebookRoundOverviewRow(round(), d).deadline).toBe('2026-07-14T07:00:00Z');
+  });
+
   it('derives the distinct location ids of the round from its groups (dedup, nulls dropped)', () => {
     const d = data({ groups: [group(4, 'loc-1'), group(4, 'loc-1'), group(2, 'loc-2'), group(2, null)] });
     expect(toRebookRoundOverviewRow(round(), d).locationIds.sort()).toEqual(['loc-1', 'loc-2']);
