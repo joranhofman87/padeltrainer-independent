@@ -8677,6 +8677,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      slot_held_by_paid_group: { Args: { _slot_id: string }; Returns: boolean }
       stripe_subscription_has_newer_activation: {
         Args: { _event_created: number; _subscription_id: string }
         Returns: boolean
