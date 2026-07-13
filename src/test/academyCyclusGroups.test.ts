@@ -39,6 +39,7 @@ const row = (over: Partial<AcademyCyclusGroupRow> = {}): AcademyCyclusGroupRow =
   is_public: true,
   status: 'open',
   group_type: 'cyclus',
+  kind: 'cyclus',
   period_start: '2026-06-01T18:00:00Z',
   period_end: '2026-06-08T18:00:00Z',
   payment_status_summary: 'has_unpaid',

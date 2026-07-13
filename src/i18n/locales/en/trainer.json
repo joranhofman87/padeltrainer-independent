@@ -1381,6 +1381,14 @@
     "levelRange": "Level range:"
   },
   "cyclesTab": {
+    "kind": {
+      "column": "Type",
+      "filterAll": "All types",
+      "rebook": "Rebooking",
+      "cyclus": "Cyclus",
+      "registration": "Registration",
+      "event": "Event"
+    },
     "clearSelection": "Clear selection",
     "noSlotsFound": "No slots found for selected cycles",
     "visibilityUpdated": "{{count}} slots made {{state}}",

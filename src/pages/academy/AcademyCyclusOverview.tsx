@@ -48,6 +48,20 @@ import {
 
 type TimeFilter = 'current' | 'future' | 'past' | 'all';
 
+/** The overview "Type" axis, mirroring get_academy_cyclus_groups.kind. A rebook round is born
+ *  type='cyclus', so it's detected from its run-state settings; kept in parity with the RPC's
+ *  CASE so the client fallback classifies identically to the server. */
+function deriveCycleKind(
+  cycle: { type?: string | null; settings?: Record<string, unknown> | null } | undefined,
+  isRegistration: boolean,
+): string {
+  const s = cycle?.settings ?? null;
+  if (s && (s.rebook_payment_mode != null || s.rebook_round_id != null)) return 'rebook';
+  if (isRegistration) return 'registration';
+  if (cycle?.type === 'event') return 'event';
+  return 'cyclus';
+}
+
 interface AcademyCyclusOverviewProps {
   /** Deep link from slot detail when cyclus_id has no cycles row (bulk recurring group). */
   highlightCyclusId?: string | null;
@@ -68,6 +82,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [filterLocation, setFilterLocation] = useState('all');
   const [filterPaid, setFilterPaid] = useState<PaidFilterValue>('all');
   const [filterVisibility, setFilterVisibility] = useState<'all' | 'public' | 'private'>('all');
+  const [filterKind, setFilterKind] = useState('all'); // 'all' | 'rebook' | 'cyclus' | 'registration' | 'event'
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   // Opt-in (default off): also delete selected cycli that still have bookings, cancelling those
   // bookings first. Off = the safe legacy behaviour (booked cycli are skipped, never auto-cancelled).
@@ -96,6 +111,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         if (typeof s.filterLocation === 'string') setFilterLocation(s.filterLocation);
         if (['all', 'paid', 'unpaid', 'no_players'].includes(s.filterPaid)) setFilterPaid(s.filterPaid);
         if (['all', 'public', 'private'].includes(s.filterVisibility)) setFilterVisibility(s.filterVisibility);
+        if (['all', 'rebook', 'cyclus', 'registration', 'event'].includes(s.filterKind)) setFilterKind(s.filterKind);
         if (['current', 'future', 'past', 'all'].includes(s.timeFilter)) setTimeFilter(s.timeFilter);
         if (typeof s.filterDay === 'string' && ['all', '0', '1', '2', '3', '4', '5', '6'].includes(s.filterDay)) setFilterDay(s.filterDay);
       }
@@ -107,10 +123,10 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     try {
       sessionStorage.setItem(
         filterStorageKey,
-        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter, filterDay }),
+        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, filterKind, timeFilter, filterDay }),
       );
     } catch { /* ignore quota/serialization errors */ }
-  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, timeFilter, filterDay]);
+  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, filterKind, timeFilter, filterDay]);
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -302,7 +318,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       // 1. Fetch cycles from cycles table (academy-owned + trainer-owned)
       const { data: academyCycles } = await supabase
         .from('cycles')
-        .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+        .select('id, name, owner_id, owner_type, status, type, settings, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
         .eq('owner_type', 'academy')
         .eq('owner_id', activeAcademy.id);
 
@@ -310,7 +326,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       if (trainerIds.length > 0) {
         const { data } = await supabase
           .from('cycles')
-          .select('id, name, owner_id, owner_type, status, type, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+          .select('id, name, owner_id, owner_type, status, type, settings, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
           .eq('owner_type', 'trainer')
           .in('owner_id', trainerIds);
         trainerCycles = data || [];
@@ -532,6 +548,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             is_public: false,
             status: cycle.status || 'draft',
             type: cycle.type || 'cyclus',
+            kind: deriveCycleKind(cycle, false),
             has_slots: false,
             has_cycle_row: true,
             is_registration: false,
@@ -634,6 +651,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               is_public: seriesSlots.some((s: { is_public?: boolean }) => s.is_public),
               status: cycle.status || 'draft',
               type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
+              kind: deriveCycleKind(cycle, isRegistration),
               has_slots: true,
               has_cycle_row: true,
               is_registration: isRegistration,
@@ -696,6 +714,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             is_public: trainerSlots.some((s: { is_public?: boolean }) => s.is_public),
             status: 'active',
             type: 'cyclus',
+            kind: 'cyclus', // orphan slot group — no cycles row, so no rebook/registration/event signal
             has_slots: true,
             has_cycle_row: false,
             is_registration: false,
@@ -774,6 +793,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       if (filterLocation !== 'all' && g.location_name !== filterLocation) return false;
       if (filterVisibility === 'public' && !g.is_public) return false;
       if (filterVisibility === 'private' && g.is_public) return false;
+      if (filterKind !== 'all' && g.kind !== filterKind) return false;
       if (!matchesPaidFilter(g.payment_status_summary, filterPaid)) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -785,7 +805,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
       return true;
     });
-  }, [timeFiltered, filterTrainer, filterDay, filterLocation, filterVisibility, filterPaid, search]);
+  }, [timeFiltered, filterTrainer, filterDay, filterLocation, filterVisibility, filterKind, filterPaid, search]);
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
@@ -1081,13 +1101,26 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     );
   };
 
-  const getTypeBadge = (type: string) => {
-    switch (type) {
-      case 'registration': return <Badge variant="outline" className="text-xs">{t('cyclesTab.registration')}</Badge>;
-      case 'event': return <Badge variant="outline" className="text-xs">{t('cyclesTab.event')}</Badge>;
-      default: return null;
-    }
-  };
+  // The "Type" column value: a first-class kind (rebook round / training cyclus / registration /
+  // event), so the overview separates the summer rebook flood from plain cycli at a glance.
+  const kindLabel = (kind: string) => t(`cyclesTab.kind.${kind}`, {
+    rebook: 'Herboeking', cyclus: 'Cyclus', registration: 'Inschrijving', event: 'Evenement',
+  }[kind] ?? kind);
+  const kindBadgeClass = (kind: string) => ({
+    rebook: 'bg-violet-100 text-violet-800 border-violet-200',
+    registration: 'bg-sky-100 text-sky-800 border-sky-200',
+    event: 'bg-amber-100 text-amber-800 border-amber-200',
+    cyclus: 'bg-slate-100 text-slate-700 border-slate-200',
+  }[kind] ?? 'bg-slate-100 text-slate-700 border-slate-200');
+  const getKindBadge = (kind: string) => (
+    <Badge variant="outline" className={`text-xs whitespace-nowrap ${kindBadgeClass(kind)}`}>{kindLabel(kind)}</Badge>
+  );
+  const KIND_FILTER_OPTIONS = [
+    { value: 'rebook', label: kindLabel('rebook') },
+    { value: 'cyclus', label: kindLabel('cyclus') },
+    { value: 'registration', label: kindLabel('registration') },
+    { value: 'event', label: kindLabel('event') },
+  ];
 
   // is_public = "any slot in this group is public" (shown/bookable on the profile page).
   // Groups without sessions have nothing to show publicly — render a dash, not "private".
@@ -1216,6 +1249,13 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               ]}
               triggerClassName="w-full sm:w-[180px] h-9"
             />
+            <SelectFilter
+              value={filterKind}
+              onValueChange={setFilterKind}
+              allLabel={t('cyclesTab.kind.filterAll', { defaultValue: 'All types' })}
+              options={KIND_FILTER_OPTIONS}
+              triggerClassName="w-full sm:w-[180px] h-9"
+            />
           </div>
         </CardContent>
       </Card>
@@ -1290,6 +1330,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                   />
                 </TableHead>
                 <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.name')}</SortableTableHead>
+                <SortableTableHead sortKey="kind" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.kind.column', { defaultValue: 'Type' })}</SortableTableHead>
                 <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.trainer')}</SortableTableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.location')}</TableHead>
                 <SortableTableHead sortKey="day_index" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.day', { defaultValue: 'Dag' })}</SortableTableHead>
@@ -1308,7 +1349,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={14} className="text-center text-muted-foreground py-12">
                     {t('cyclesTab.noCyclesFound')}
                   </TableCell>
                 </TableRow>
@@ -1335,9 +1376,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                         >
                           {group.cyclus_name}
                         </Link>
-                        {getTypeBadge(group.type)}
                       </div>
                     </TableCell>
+                    <TableCell className="whitespace-nowrap">{getKindBadge(group.kind)}</TableCell>
                     <TableCell className="whitespace-nowrap max-w-[160px] truncate" title={group.trainer_name}>{group.trainer_name}</TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={group.location_name || ''}>{group.location_name || '—'}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{group.day_name}</TableCell>
@@ -1415,7 +1456,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                     {getPaymentBadge(group)}
                     {getStatusBadge(group)}
                     {getVisibilityBadge(group)}
-                    {getTypeBadge(group.type)}
+                    {getKindBadge(group.kind)}
                     {group.cyclus_id && group.has_slots && (
                       <Button
                         variant="ghost"
