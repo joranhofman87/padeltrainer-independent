@@ -132,7 +132,7 @@ const PUBLIC_REGISTRATION_CYCLE_TYPES = ['registration', 'event'] as const;
  * which our missing-relation detector treats as "view missing"). A plain view +
  * JS location join is the repo pattern for every `_public`/`_safe` surface.
  */
-async function attachCycleLocations(cycles: Cycle[]): Promise<Cycle[]> {
+export async function attachCycleLocations(cycles: Cycle[]): Promise<Cycle[]> {
   const ids = Array.from(
     new Set(cycles.map((c) => c.location_id).filter((id): id is string => !!id)),
   );
