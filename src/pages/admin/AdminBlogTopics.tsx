@@ -143,6 +143,7 @@ export default function AdminBlogTopics() {
       <DataTable<TopicRow>
         columns={columns}
         rows={topics}
+        compact
         desktopOnly={false}
         empty={isLoading ? 'Loading...' : 'No topics yet'}
       />

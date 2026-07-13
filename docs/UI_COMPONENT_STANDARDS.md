@@ -22,7 +22,8 @@ form). Treat the invoice form as the worked example of the pattern below.
 | --- | --- | --- |
 | `AppPage` | `@/components/ui/app-page` | Standard page shell / width / padding |
 | `PageHeader` | `@/components/ui/page-header` | Page title + description + actions row |
-| `DataTableCard` | `@/components/ui/data-table` | Card-wrapped scrollable table (+ `compactDataTableClass`) |
+| **`DataTable`** | `@/components/ui/data-table-generic` | **THE data-table engine — every admin table** (columns as data, sorting, selection, row links, actions, `compact`) |
+| `DataTableCard` | `@/components/ui/data-table` | Card-wrapped scrollable table (+ `compactDataTableClass`) — only for tables the engine can't express |
 | `TableToolbar` | `@/components/ui/table-toolbar` | Search + filter row above a table |
 | `SortableTableHead` | `@/components/ui/sortable-table-head` | Clickable sortable `<th>` (pairs with `useTableSort`) |
 | `useTableSort` | `@/hooks/useTableSort` | Sort key + direction state for tables |
@@ -41,7 +42,63 @@ form). Treat the invoice form as the worked example of the pattern below.
 
 Every list/table page (academy, trainer, club, player, admin) has the same shape. Compose it from the
 shared primitives — don't re-wire the page chrome or the loading/empty/error states by hand.
-**Academy pages are the reference pattern** (e.g. `AcademyTrainers`).
+
+### The table itself: `DataTable` + `compact` — ALWAYS
+
+**Every admin data table uses the `DataTable` engine (`@/components/ui/data-table-generic`) with the
+`compact` prop.** Columns are data (`ColumnDef[]`), not JSX; the engine provides sorting, selection,
+per-cell row links (open-in-new-tab safe), a right-aligned actions column, and the standard **40px
+row density**. Reference implementations: `RebookRoundsSection` (/rebook), `CyclesTable`
+(/registrations), `InvoiceListTable`, `AcademyPlayers`. Do NOT hand-roll `<Table>` markup for a new
+list — that's how the app ended up with a dozen tables at three different heights.
+
+```tsx
+const columns: ColumnDef<Row>[] = [
+  { key: 'location', header: t('location'), className: 'max-w-[220px]', cellTitle: (r) => r.locationName,
+    renderCell: (r) => <span className="block truncate">{r.locationName}</span> },
+  { key: 'name', header: t('name'), sortKey: 'name', className: 'max-w-[260px] font-medium',
+    linkTo: (r) => `/app/...${r.id}`, renderCell: (r) => <span className="truncate">{r.name}</span> },
+  { key: 'date', header: t('date'), sortKey: 'date', className: 'whitespace-nowrap',
+    renderCell: (r) => formatDate(r.date) },
+];
+
+<DataTable<Row>
+  columns={columns}
+  rows={rows}
+  sortKey={sort.key} sortDirection={sort.direction} onSort={handleSort}
+  onRowClick={(r) => navigate(...)}
+  renderActions={(r) => <Button size="sm" variant="ghost" …/>}   // h-9 max — see height rules
+  compact                                                        // ← NON-NEGOTIABLE for admin tables
+  desktopOnly={false}
+  empty={t('noResults')}
+/>
+```
+
+**Compact height rules** — `compact` clamps every row to 40px (`[&_td]:h-10 … py-0 overflow-hidden`),
+so cell content must stay single-line and ≤36px tall or the row silently stretches/clips:
+
+1. **Dates and any short fixed text get `whitespace-nowrap`.** A squeezed column otherwise wraps
+   "24 aug. 2026" onto 3 lines and inflates EVERY row (the /rebook bug).
+2. **Long free text (names, locations, URLs) gets `max-w-[…]` + `truncate` + `cellTitle`** (hover
+   shows the full value). `truncate` must sit on the text element itself — on a flex CONTAINER it
+   never clips (give a flex child `min-w-0 truncate`).
+3. **No sub-lines / two-line cells.** The old "location under the name on mobile" pattern gets
+   clipped at 40px — give the value its own column instead.
+4. **Buttons inside rows: ≤ `h-9`** (`size="sm"`), icon buttons `h-8 w-8` (`size="icon"` is 40px —
+   exactly the row height — and will stretch rows).
+5. **Column order convention:** identity (location · name) → timeline (deadline/date) → state
+   (status) → counts/money. Pin the order in code (see `COLUMN_ORDER` in `RebookRoundsSection`) when
+   the page has a column-visibility menu, so re-shown columns land in their logical place.
+6. **Mobile:** pass `desktopOnly={false}` — compact's `min-w-[960px]` makes the table
+   horizontal-scroll on phones (the standard). Only keep a separate mobile card list when the page
+   already has one that's genuinely better (e.g. the invoice pages), and then wrap the desktop table
+   in `hidden md:block` yourself.
+
+**Escape hatch:** only hand-roll `DataTableCard` + `<Table className={compactDataTableClass}>` when
+the engine can't express the table (expandable sub-rows, inline-edit grids — e.g. the rebook manage
+table). Even then the compact class is mandatory so the height stays standard.
+
+### The page around it
 
 ```tsx
 <ListPageShell
@@ -58,17 +115,7 @@ shared primitives — don't re-wire the page chrome or the loading/empty/error s
     error={error}
     empty={<EmptyState icon={Users} title={t('empty')} description={t('emptyDescription')} />}
   >
-    <DataTableCard mobile={<MobileCards rows={rows} />}>
-      <Table className={compactDataTableClass}>
-        <TableHeader>
-          <SortableTableHead sortKey="name" currentSortKey={sort.key} currentDirection={sort.direction} onSort={handleSort}>
-            {t('name')}
-          </SortableTableHead>
-          {/* … */}
-        </TableHeader>
-        <TableBody>{rows.map(renderRow)}</TableBody>
-      </Table>
-    </DataTableCard>
+    <DataTable … compact desktopOnly={false} />
     <ListPagination page={page} pageCount={pageCount} onPageChange={setPage} />
   </ListPageState>
 </ListPageShell>
@@ -82,12 +129,10 @@ Rules of thumb:
 - **`ListPageState`** standardizes the body's data states with a fixed precedence:
   **loading → error → empty → content**. Pass the page's own `<EmptyState/>` as `empty` (stays
   on-brand and pixel-identical). It works inside a `<TabsContent>` too — one per tab.
-- **Sorting**: `useTableSort` + `SortableTableHead` for client-side sort; for server-paged lists drive
-  sort via RPC params (see the invoice list scaffold) and keep `SortableTableHead` wired to that state.
+- **Sorting**: `useTableSort` + the engine's `sortKey`/`onSort` for client-side sort; for server-paged
+  lists drive sort via RPC params (see the invoice list scaffold) and wire the same props to that state.
 - **Pagination**: render `ListPagination` inside the ready branch of `ListPageState` so it disappears
   with loading/empty.
-- **Mobile**: pass a card list to `DataTableCard`'s `mobile` slot (`flushOnMobileCardClass()` for the
-  full-width surface); desktop `<table>` and mobile cards render from the same row data.
 
 Keep page-specific bits (data fetching, columns, filters, bulk actions, dialogs) in the page — the
 shell standardizes the *frame*, not the contents.

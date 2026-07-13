@@ -96,7 +96,13 @@ export function InvoiceListTable<T extends InvoiceListRow>({
       renderCell: (inv) => inv.invoice_number,
       linkTo: (inv) => rowHref(inv),
     },
-    { key: 'player', header: labels.player, renderCell: (inv) => inv.player_name },
+    {
+      key: 'player',
+      header: labels.player,
+      className: 'max-w-[220px]',
+      cellTitle: (inv) => inv.player_name || undefined,
+      renderCell: (inv) => <span className="block truncate">{inv.player_name}</span>,
+    },
     {
       key: 'delivery',
       header: labels.delivery,
@@ -104,18 +110,22 @@ export function InvoiceListTable<T extends InvoiceListRow>({
         <InvoiceDeliveryChip deliveryStatus={inv.delivery_status} hasEmail={inv.linked_email != null} />
       ),
     },
-    { key: 'date', header: labels.date, renderCell: (inv) => fmt(inv.invoice_date) },
+    // nowrap on date cells: a squeezed column would wrap "24 aug. 2026" onto multiple lines
+    // and stretch the compact 40px rows (the /rebook lesson).
+    { key: 'date', header: labels.date, className: 'whitespace-nowrap', renderCell: (inv) => fmt(inv.invoice_date) },
     activeTab === 'paid'
       ? {
           key: 'paid_at',
           header: labels.paymentDate,
           sortKey: 'paid_at',
+          className: 'whitespace-nowrap',
           renderCell: (inv) => (inv.paid_at ? fmt(inv.paid_at) : '-'),
         }
       : {
           key: 'due_date',
           header: labels.dueDate,
           sortKey: 'due_date',
+          className: 'whitespace-nowrap',
           renderCell: (inv) => fmt(inv.due_date),
         },
     {
@@ -166,6 +176,7 @@ export function InvoiceListTable<T extends InvoiceListRow>({
         }}
         renderActions={renderActions}
         actionsHeader={labels.actions}
+        compact
         // The whole desktop table is already wrapped in `hidden md:block` (each page renders its own
         // mobile card list), so the engine must NOT also hide its inner scroll region — that would
         // double-hide and leave an empty card shell on mobile.

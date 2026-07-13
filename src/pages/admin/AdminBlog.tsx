@@ -39,13 +39,14 @@ const columns: ColumnDef<BlogRow>[] = [
     header: 'Actions',
     renderCell: (article) => (
       <div className="flex gap-1">
-        <Button variant="ghost" size="icon" aria-label="Edit" asChild>
+        {/* h-8: size="icon" is 40px — exactly the compact row height, so it would stretch rows. */}
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Edit" asChild>
           <a href={`${SANITY_STUDIO_URL}/structure/blogPost;${article._id}`} target="_blank" rel="noopener noreferrer">
             <Pencil className="h-4 w-4" />
           </a>
         </Button>
         {article.datePublished && (
-          <Button variant="ghost" size="icon" aria-label="View" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="View" asChild>
             <a href={`/en/blog/${article.slug}`} target="_blank" rel="noopener noreferrer">
               <Eye className="h-4 w-4" />
             </a>
@@ -86,6 +87,7 @@ export default function AdminBlog() {
       <DataTable<BlogRow>
         columns={columns}
         rows={filtered.map((a) => ({ ...a, id: a._id }))}
+        compact
         desktopOnly={false}
         empty={isLoading ? 'Loading...' : 'No articles found'}
       />
