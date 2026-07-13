@@ -35,6 +35,11 @@ export interface CyclusGroup {
    * 'event' | 'cyclus'. Unlike `type`/`group_type` it separates rebook rounds (born type='cyclus')
    * and registrations, so the overview can de-flood when summer rebook rounds open. */
   kind: string;
+  /** The user-assigned category (single per cycle) + its palette color, or null when uncategorized.
+   * Null for orphan slot-only groups (no cycles row to carry it). */
+  category_id: string | null;
+  category_name: string | null;
+  category_color: string | null;
   has_slots: boolean;
   /** True when a real `cycles` row backs this group — false for orphan cyclus_id groups (slots only,
    * no cycles row). Drives row-click: real cycle → cycle-detail view; orphan → its first session. */
@@ -69,6 +74,9 @@ export interface AcademyCyclusGroupRow {
   status: string;
   group_type: string;
   kind: string;
+  category_id: string | null;
+  category_name: string | null;
+  category_color: string | null;
   period_start: string;
   period_end: string;
   payment_status_summary: string;
@@ -152,6 +160,9 @@ export function mapCyclusGroupRow(
     status: row.status,
     type: row.group_type,
     kind: row.kind ?? 'cyclus',
+    category_id: row.category_id ?? null,
+    category_name: row.category_name ?? null,
+    category_color: row.category_color ?? null,
     has_slots: hasSlots,
     has_cycle_row: row.has_cycle_row,
     is_registration: row.is_registration,
