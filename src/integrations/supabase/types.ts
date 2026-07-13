@@ -8654,6 +8654,13 @@ export type Database = {
         Args: { _intent: string; _token: string }
         Returns: undefined
       }
+      reinstate_rebook_claims: {
+        Args: { _claim_ids: string[] }
+        Returns: {
+          claim_id: string
+          outcome: string
+        }[]
+      }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }

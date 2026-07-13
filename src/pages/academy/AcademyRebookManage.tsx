@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, CreditCard, Plus, Pencil } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, UserPlus, CreditCard, Plus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   getCycleRebookStatus, bulkReleaseToPublic, bulkHoldSlots, sendRebookReminder,
-  rebookPlayerOutcome, clickedYesUnpaid, freePlayerRebookSeat,
+  rebookPlayerOutcome, clickedYesUnpaid, freePlayerRebookSeat, reinstateRebookPlayer,
   type GroupStatus, type RebookManageGroup, type RebookManagePlayer, type RebookReminderTarget,
 } from '@/lib/rebookManage';
 import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
@@ -277,6 +277,33 @@ export default function AcademyRebookManage() {
         toast.success(t('rebookManage.freeSeatDone', 'Plek vrijgegeven voor {{name}}', { name: player.name }));
       }
       setFreeTarget(null);
+      refetch();
+    } finally { setBusy(false); }
+  };
+
+  // "Reinstate": the invitee accidentally said no — put them back. Re-books their whole series,
+  // COVERED (paid) when the group paid the full court, else unpaid. Confirmed via dialog.
+  const [reinstateTarget, setReinstateTarget] = useState<{ group: RebookManageGroup; player: RebookManagePlayer } | null>(null);
+  const confirmReinstate = async () => {
+    if (!reinstateTarget) return;
+    const { player } = reinstateTarget;
+    setBusy(true);
+    try {
+      const res = await reinstateRebookPlayer({ claimIds: player.claimIds });
+      if (res.error) {
+        toast.error(t('rebookManage.reinstateFailed', 'Kon de speler niet terugzetten. Probeer het opnieuw.'));
+      } else if (res.reinstated === 0 && res.reinstatedUnpaid === 0 && res.alreadyActive === 0 && res.seatFull > 0) {
+        toast.error(t('rebookManage.reinstateSeatFull', 'De plek was inmiddels bezet — {{name}} kon niet worden teruggezet.', { name: player.name }));
+      } else {
+        toast.success(t('rebookManage.reinstateDone', '{{name}} staat weer op de lijst', { name: player.name }));
+        if (res.reinstatedUnpaid > 0) {
+          toast.warning(t('rebookManage.reinstateUnpaidNote', 'Let op: {{name}} moet nog betalen — deel de betaallink.', { name: player.name }));
+        }
+        if (res.seatFull > 0) {
+          toast.warning(t('rebookManage.reinstatePartialFull', '{{count}} sessie(s) waren vol en zijn overgeslagen.', { count: res.seatFull }));
+        }
+      }
+      setReinstateTarget(null);
       refetch();
     } finally { setBusy(false); }
   };
@@ -566,6 +593,7 @@ export default function AcademyRebookManage() {
                   selectedPlayers={selectedPlayers}
                   onTogglePlayer={togglePlayer}
                   onFreeSeat={(p) => setFreeTarget({ group: g, player: p })}
+                  onReinstate={(p) => setReinstateTarget({ group: g, player: p })}
                   t={t}
                 />
               );
@@ -643,11 +671,30 @@ export default function AcademyRebookManage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={!!reinstateTarget} onOpenChange={(o) => { if (!o) setReinstateTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('rebookManage.reinstateTitle', '{{name}} toch herboeken?', { name: reinstateTarget?.player.name ?? '' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('rebookManage.reinstateBody', 'Deze speler krijgt zijn plek voor alle sessies van deze reeks terug. Heeft de groep de baan al betaald, dan is de speler meteen gedekt (geen extra kosten); anders staat de plek open en moet er nog betaald worden. Een sessie die inmiddels vol zit, wordt overgeslagen.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmReinstate} disabled={busy} className="bg-emerald-600 hover:bg-emerald-700">
+              {busy ? t('common:loading', 'Bezig...') : t('rebookManage.reinstateConfirm', 'Toch herboeken')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, onFreeSeat, t }: {
+function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, onFreeSeat, onReinstate, t }: {
   g: RebookManageGroup;
   isOpen: boolean;
   rebooked: number;
@@ -659,6 +706,7 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
   selectedPlayers: Map<string, RebookReminderTarget>;
   onTogglePlayer: (key: string, target: RebookReminderTarget) => void;
   onFreeSeat: (player: RebookManagePlayer) => void;
+  onReinstate: (player: RebookManagePlayer) => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const claimedCount = g.players.filter((p) => p.response === 'claimed').length;
@@ -827,6 +875,18 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                       aria-label={t('rebookManage.freeSeatAction', 'Plek vrijgeven (niet herboekt)')}
                     >
                       <UserMinus className="h-3 w-3" />
+                    </button>
+                  )}
+                  {/* Reinstate: they declined (accidentally) — put them back on the list. */}
+                  {p.response === 'declined' && (
+                    <button
+                      type="button"
+                      onClick={() => onReinstate(p)}
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-background p-1 text-muted-foreground hover:text-emerald-700"
+                      title={t('rebookManage.reinstateAction', 'Toch herboeken (plek weer toewijzen)')}
+                      aria-label={t('rebookManage.reinstateAction', 'Toch herboeken')}
+                    >
+                      <UserPlus className="h-3 w-3" />
                     </button>
                   )}
                 </span>
