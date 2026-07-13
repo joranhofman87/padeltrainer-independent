@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 import { syncInvoicesAfterBookingRemoval } from '@/lib/invoiceSync';
+import { matchBookingsToPerson, personRefOfIds } from '@/lib/personIdentity';
 
 /**
  * Domain service for booking writes. UI screens (trainer / academy) should call
@@ -126,10 +127,13 @@ export interface CancelPlayerInCycleResult extends CancelBookingResult {
  * Remove ONE player from a whole cycle/series in one action: find that player's
  * active (non-cancelled) bookings among `slotIds` and soft-cancel them via
  * {@link cancelBookingsAndSync}. The caller decides which slots to act on (e.g.
- * the cycle's FUTURE sessions, mirroring the whole-cycle ADD scope). A player is
- * matched by `playerId` (profile) OR `guestPlayerId` (guest) — whichever the
- * roster row carries. `options.skipInvoiceSync` threads straight through, so a
- * whole-cycle remove can leave invoices untouched. No bookings found ⇒ no-op.
+ * the cycle's FUTURE sessions, mirroring the whole-cycle ADD scope). The person
+ * is resolved GUEST-FIRST (FAM-02 Level 1, personIdentity.ts): a guest ref
+ * matches every booking carrying that guest id (dual-keyed rows are theirs),
+ * a profile ref matches only pure-profile rows — so removing a profile-holder
+ * can never sweep a linked guest's seats, and vice versa. `options.skipInvoiceSync`
+ * threads straight through, so a whole-cycle remove can leave invoices untouched.
+ * No bookings found ⇒ no-op.
  */
 export async function cancelPlayerBookingsInCycle(
   slotIds: string[],
@@ -138,18 +142,19 @@ export async function cancelPlayerBookingsInCycle(
   options?: { skipInvoiceSync?: boolean; declineClaims?: boolean },
 ): Promise<CancelPlayerInCycleResult> {
   const empty = { cancelError: null, syncError: null, declinedClaimCount: 0, paidClaimBookingIds: [], cancelledCount: 0 };
-  if (slotIds.length === 0 || (!player.playerId && !player.guestPlayerId)) {
+  const ref = personRefOfIds(player.playerId, player.guestPlayerId);
+  if (slotIds.length === 0 || !ref) {
     return empty;
   }
 
-  let query = client
-    .from('bookings')
-    .select('id')
-    .in('slot_id', slotIds)
-    .neq('status', 'cancelled');
-  query = player.playerId
-    ? query.eq('player_id', player.playerId)
-    : query.eq('guest_player_id', player.guestPlayerId as string);
+  const query = matchBookingsToPerson(
+    client
+      .from('bookings')
+      .select('id')
+      .in('slot_id', slotIds)
+      .neq('status', 'cancelled'),
+    ref,
+  );
 
   const { data, error } = await query;
   if (error) return { ...empty, cancelError: error };

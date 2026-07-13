@@ -69,4 +69,45 @@ describe('getCycleDetail (Slice 9 data layer)', () => {
     expect(empty.totalSlots).toBe(0);
     expect(empty.roster).toEqual([]);
   });
+
+  it('FAM-02: a dual-keyed booking is the GUEST person — own name, XOR entry, separate from the parent', async () => {
+    setMockData({
+      availability_slots: [
+        { id: 's1', cyclus_id: 'cy1', start_time: '2026-07-06T09:00:00Z', end_time: '2026-07-06T10:00:00Z', trainer_id: 'tr1', max_participants: 4, is_public: true, cyclus_name: 'Zomer' },
+      ],
+      bookings: [
+        // The parent's own seat + the linked child's dual-keyed seat (signup-linker backfill) on ONE slot.
+        { slot_id: 's1', player_id: 'PA', guest_player_id: null, status: 'confirmed', payment_status: 'paid', paid_externally: null },
+        { slot_id: 's1', player_id: 'PA', guest_player_id: 'G1', status: 'confirmed', payment_status: 'paid', paid_externally: null },
+      ],
+      profiles: [{ id: 'PA', full_name: 'Parent' }],
+      guest_players: [{ id: 'G1', full_name: 'Kid' }],
+    });
+    const d = await getCycleDetail('cy1');
+    // Two people occupy two seats: bookedCount and the roster AGREE (M-17 dual-key mismatch fixed).
+    expect(d.slots[0].bookedCount).toBe(2);
+    expect(d.slots[0].playerNames.sort()).toEqual(['Kid', 'Parent']); // child shows their OWN name
+    expect(d.totalPlayers).toBe(2);
+    expect(d.roster).toEqual([
+      { name: 'Kid', sessionCount: 1, playerId: null, guestPlayerId: 'G1' }, // XOR — guest person
+      { name: 'Parent', sessionCount: 1, playerId: 'PA', guestPlayerId: null },
+    ]);
+  });
+
+  it('FAM-02: a dual-keyed booking with a blank guest name falls back to the profile name', async () => {
+    setMockData({
+      availability_slots: [
+        { id: 's1', cyclus_id: 'cy1', start_time: '2026-07-06T09:00:00Z', end_time: '2026-07-06T10:00:00Z', trainer_id: 'tr1', max_participants: 4, is_public: true, cyclus_name: 'Zomer' },
+      ],
+      bookings: [
+        { slot_id: 's1', player_id: 'PA', guest_player_id: 'G1', status: 'confirmed', payment_status: 'paid', paid_externally: null },
+      ],
+      profiles: [{ id: 'PA', full_name: 'Parent' }],
+      guest_players: [{ id: 'G1', full_name: null }],
+    });
+    const d = await getCycleDetail('cy1');
+    expect(d.roster).toEqual([
+      { name: 'Parent', sessionCount: 1, playerId: null, guestPlayerId: 'G1' }, // still the guest's entry
+    ]);
+  });
 });

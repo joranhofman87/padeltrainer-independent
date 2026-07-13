@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { getCycle, type Cycle } from '@/lib/cycles';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
+import { personDisplayName, personKeyOf, personRefOf } from '@/lib/personIdentity';
 import {
   computeCyclusGroupPaymentStatus,
   type CyclusGroupPaymentStatus,
@@ -142,13 +143,20 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
         payment_status: b.payment_status ?? null,
         paid_externally: b.paid_externally ?? null,
       });
-      const key = b.player_id ?? b.guest_player_id;
-      const name = (b.player_id && nameLookup[b.player_id]) || (b.guest_player_id && nameLookup[b.guest_player_id]) || null;
-      if (name && key) {
+      // FAM-02 Level 1 (personIdentity.ts): a dual-keyed booking belongs to the GUEST person and
+      // shows the guest's OWN name — a linked child's seat must not be attributed to (or named
+      // after) the parent's profile, and it stays a separate roster entry from the parent's own.
+      const key = personKeyOf(b);
+      const name = personDisplayName(b, {
+        profileName: b.player_id ? nameLookup[b.player_id] : null,
+        guestName: b.guest_player_id ? nameLookup[b.guest_player_id] : null,
+      });
+      const ref = personRefOf(b);
+      if (name && key && ref) {
         (playerNamesMap[b.slot_id] ??= []).push(name);
         const existing = rosterByKey.get(key);
         if (existing) existing.sessionCount += 1;
-        else rosterByKey.set(key, { name, sessionCount: 1, playerId: b.player_id ?? null, guestPlayerId: b.guest_player_id ?? null });
+        else rosterByKey.set(key, { name, sessionCount: 1, playerId: ref.playerId, guestPlayerId: ref.guestPlayerId });
       }
     }
   }

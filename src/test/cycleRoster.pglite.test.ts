@@ -219,6 +219,30 @@ describe('swapPlayerInCycle (skipInvoices) — in-place reassign across all sess
     expect(row.guest_player_id).toBe(GA);
     expect(row.player_id).toBeNull(); // stale profile link cleared → seat belongs to GA only
   });
+
+  it('FAM-02: swapping out a linked guest never moves the profile-holder\'s OWN seat on the same slot', async () => {
+    // The parent (PROF) has their own pure-profile booking on S1; their linked child (GB, dual-keyed)
+    // sits on the same slot. Swapping the CHILD out must re-point only the dual-keyed row.
+    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, player_id, status, payment_status, payment_amount, paid_externally) VALUES
+      ('${S1}', NULL, '${PROF}','confirmed','pending', 20, false),
+      ('${S1}','${GB}','${PROF}','confirmed','pending', 20, false);`);
+
+    const res = await swapPlayerInCycle({
+      cycleId: CYCLE,
+      fromPlayer: { playerId: PROF, guestPlayerId: GB }, // dual roster pair → the GUEST person
+      toGuestPlayerId: GA,
+      skipInvoices: true,
+      client: supa,
+    });
+
+    expect(res.reassignedCount).toBe(1);
+    // The parent's own seat is untouched.
+    const parentRow = (await db.query<{ status: string }>(
+      `SELECT status FROM bookings WHERE slot_id = '${S1}' AND player_id = '${PROF}' AND guest_player_id IS NULL`,
+    )).rows[0];
+    expect(parentRow.status).toBe('confirmed');
+    expect(await activeForGuest(GA)).toEqual([S1]);
+  });
 });
 
 describe('cancelBookingsAndSync — 0-row guard (RLS-blocked / phantom-success)', () => {
