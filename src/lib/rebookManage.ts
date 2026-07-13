@@ -258,20 +258,43 @@ export function sumRebookInvoiceAmounts(
 }
 
 /**
+ * Ordered invoice-match keys for a claim identity: its guest key first, then its player key.
+ * FAM-02 Level 1: the guest key IS the person; the player key only exists on pre-#458 dual
+ * claims, whose invoices may have been minted player-keyed — kept as an ordered fallback so
+ * historical rounds keep resolving.
+ */
+export function claimInvoiceKeys(c: { player_id: string | null; guest_player_id: string | null }): string[] {
+  const keys: string[] = [];
+  if (c.guest_player_id) keys.push(`g:${c.guest_player_id}`);
+  if (c.player_id) keys.push(c.player_id);
+  return keys;
+}
+
+/**
  * Resolve rebook paid/invoiced state per player. Rebook invoices are NEVER tagged `cycle_id`:
  * single-claim invoices carry `rebook_cyclus_id` (keyed to a player identity), group invoices
  * carry `rebook_group_id` (one payment covering EVERY member of that group). So a member is
  * paid/invoiced iff their own single invoice OR their group's invoice is active/paid. Pure +
  * exported so the invariant (that the academy's "who paid?" view is correct) is unit-tested.
+ *
+ * Invoices are keyed GUEST-FIRST (FAM-02 Level 1): `guest_player_id` is only ever set at mint,
+ * from a guest-carrying booking, and the signup linker only ADDS `player_id` (never sets or
+ * clears guest_player_id) — so guest_player_id non-null ⟺ the invoice bills the GUEST person.
+ * Keying player-first flipped a paid rebooker to "unpaid" the moment they created an account
+ * (the linker re-keys the invoice to player_id while their claim stays guest-keyed), and let a
+ * profile-holder read "paid" off a linked guest's invoice.
  */
 export function buildRebookPaidResolver(
   singleInvoices: SingleInvoiceRow[],
   groupInvoices: GroupInvoiceRow[],
 ) {
+  const invoiceKey = (inv: { player_id?: string | null; guest_player_id?: string | null }) =>
+    inv.guest_player_id ? `g:${inv.guest_player_id}` : inv.player_id ?? null;
+  const toKeys = (pk: string | string[]) => (Array.isArray(pk) ? pk : [pk]);
   const paidKeys = new Set<string>();
   const invoicedKeys = new Set<string>();
   for (const inv of singleInvoices) {
-    const key = inv.player_id ?? (inv.guest_player_id ? `g:${inv.guest_player_id}` : null);
+    const key = invoiceKey(inv);
     if (!key || inv.status === 'cancelled') continue;
     invoicedKeys.add(key);
     if (inv.status === 'paid') paidKeys.add(key);
@@ -289,7 +312,7 @@ export function buildRebookPaidResolver(
   // the group's one shared invoice (any member may complete a group payment — deliberate).
   const payTokenByKey = new Map<string, string>();
   for (const inv of singleInvoices) {
-    const key = inv.player_id ?? (inv.guest_player_id ? `g:${inv.guest_player_id}` : null);
+    const key = invoiceKey(inv);
     if (!key || inv.status === 'cancelled' || inv.status === 'paid' || !inv.public_token) continue;
     payTokenByKey.set(key, inv.public_token);
   }
@@ -298,14 +321,20 @@ export function buildRebookPaidResolver(
     if (!inv.rebook_group_id || inv.status === 'cancelled' || inv.status === 'paid' || !inv.public_token) continue;
     payTokenByGroup.set(inv.rebook_group_id, inv.public_token);
   }
+  // `pk` accepts a single key or ordered candidates (see claimInvoiceKeys) — first hit wins.
   return {
-    isPaid: (pk: string, groupId: string | null) =>
-      paidKeys.has(pk) || (groupId != null && paidGroups.has(groupId)),
-    hasInvoice: (pk: string, groupId: string | null) =>
-      invoicedKeys.has(pk) || (groupId != null && invoicedGroups.has(groupId)),
+    isPaid: (pk: string | string[], groupId: string | null) =>
+      toKeys(pk).some((k) => paidKeys.has(k)) || (groupId != null && paidGroups.has(groupId)),
+    hasInvoice: (pk: string | string[], groupId: string | null) =>
+      toKeys(pk).some((k) => invoicedKeys.has(k)) || (groupId != null && invoicedGroups.has(groupId)),
     /** Public /pay token of the player's UNPAID invoice (own single first, else their group's). */
-    getPayToken: (pk: string, groupId: string | null): string | null =>
-      payTokenByKey.get(pk) ?? (groupId != null ? payTokenByGroup.get(groupId) ?? null : null),
+    getPayToken: (pk: string | string[], groupId: string | null): string | null => {
+      for (const k of toKeys(pk)) {
+        const token = payTokenByKey.get(k);
+        if (token) return token;
+      }
+      return groupId != null ? payTokenByGroup.get(groupId) ?? null : null;
+    },
   };
 }
 
@@ -490,9 +519,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         name: nameByKey.get(pk) ?? '—',
         response: resp,
         responseIntent: existing?.responseIntent ?? null,
-        paid: isPaid(pk, c.rebook_group_id),
-        hasInvoice: hasInvoiceFor(pk, c.rebook_group_id),
-        payToken: getPayToken(pk, c.rebook_group_id),
+        paid: isPaid(claimInvoiceKeys(c), c.rebook_group_id),
+        hasInvoice: hasInvoiceFor(claimInvoiceKeys(c), c.rebook_group_id),
+        payToken: getPayToken(claimInvoiceKeys(c), c.rebook_group_id),
         invited: existing?.invited ?? false,
         claimIds: existing?.claimIds ?? [],
         lastRemindedAt: existing?.lastRemindedAt ?? null,
