@@ -1243,7 +1243,21 @@
     "pageTitle": "Rebooking",
     "pageDescription": "Manage running rebooking rounds: who responded, who paid, and which spots are open.",
     "addGroups": "Add groups",
-    "editTexts": "Edit texts"
+    "editTexts": "Edit texts",
+    "deadlineLabel": "Response deadline:",
+    "deadlineVaries": "varies per group — this is the latest",
+    "editDeadline": "Change response deadline",
+    "deadlineTitle": "Change response deadline",
+    "deadlineDescription": "Applies to every group in this round, except groups you already opened to everyone. Players whose invitation had expired can respond again via their existing link after extending. Emails and reminders that were already sent are not re-sent; the members window shifts along automatically.",
+    "deadlineDateLabel": "Date",
+    "deadlineTimeLabel": "Time",
+    "deadlineTooSoon": "Pick a moment in the future.",
+    "deadlineSave": "Change deadline",
+    "deadlineSaved": "Response deadline changed for {{count}} sessions",
+    "deadlineRevived": "· {{count}} expired invitations re-opened",
+    "deadlineSkipped": "({{count}} already-released sessions skipped)",
+    "deadlinePartialFail": "{{ok}} sessions changed, {{fail}} failed — please try again.",
+    "deadlineErrSave": "Change failed. Please try again."
   },
   "rebookShared": {
     "defaultInviteSubject": "Staying with us, {first_name}? Keep your regular spot",

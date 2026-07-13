@@ -1368,7 +1368,21 @@
     "pageTitle": "Herboekingen",
     "pageDescription": "Beheer lopende herboekingsrondes: wie reageerde, wie betaalde en welke plekken open staan.",
     "addGroups": "Groepen toevoegen",
-    "editTexts": "Teksten bewerken"
+    "editTexts": "Teksten bewerken",
+    "deadlineLabel": "Reactietermijn:",
+    "deadlineVaries": "verschilt per groep — dit is de laatste",
+    "editDeadline": "Reactietermijn aanpassen",
+    "deadlineTitle": "Reactietermijn aanpassen",
+    "deadlineDescription": "Geldt voor alle groepen in deze ronde, behalve groepen die je al voor iedereen hebt opengezet. Spelers van wie de uitnodiging was verlopen, kunnen na verlengen weer reageren via hun bestaande link. Al verstuurde e-mails en herinneringen worden niet opnieuw verzonden; het venster voor vaste spelers schuift automatisch mee.",
+    "deadlineDateLabel": "Datum",
+    "deadlineTimeLabel": "Tijd",
+    "deadlineTooSoon": "Kies een moment in de toekomst.",
+    "deadlineSave": "Termijn aanpassen",
+    "deadlineSaved": "Reactietermijn aangepast voor {{count}} sessies",
+    "deadlineRevived": "· {{count}} verlopen uitnodigingen heropend",
+    "deadlineSkipped": "({{count}} al opengezette sessies overgeslagen)",
+    "deadlinePartialFail": "{{ok}} sessies aangepast, {{fail}} mislukt — probeer het opnieuw.",
+    "deadlineErrSave": "Aanpassen mislukt. Probeer het opnieuw."
   },
   "rebookShared": {
     "defaultInviteSubject": "Blijf je erbij, {first_name}? Reserveer je vaste plek",
