@@ -261,7 +261,9 @@ export default function CycleForm({
       end_time: (cycle?.settings as any)?.end_time || '10:00',
       enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
       lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group3', 'group4']),
-      show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+      // Default OFF for a NEW form: showing trainers = informational (profiles); the player only
+      // gets a preference picker when the admin explicitly turns this on.
+      show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? false,
       show_price_indication: (cycle?.settings as any)?.show_price_indication ?? true,
       max_group_size: cycle?.settings?.max_group_size || 4,
       min_group_size: cycle?.settings?.min_group_size || 1,
@@ -295,7 +297,9 @@ export default function CycleForm({
         end_time: (cycle?.settings as any)?.end_time || '10:00',
         enrollment_deadline: cycle?.enrollment_deadline ? new Date(cycle.enrollment_deadline) : undefined,
         lesson_types: cycle?.settings?.lesson_types || (isEvent ? [] : ['private', 'duo', 'group3', 'group4']),
-        show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? (ownerType === 'academy'),
+        // Default OFF for a NEW form: showing trainers = informational (profiles); the player only
+      // gets a preference picker when the admin explicitly turns this on.
+      show_preferred_trainer: cycle?.settings?.show_preferred_trainer ?? false,
         show_price_indication: (cycle?.settings as any)?.show_price_indication ?? true,
         max_group_size: cycle?.settings?.max_group_size || 4,
         min_group_size: cycle?.settings?.min_group_size || 1,
@@ -558,7 +562,8 @@ export default function CycleForm({
       const settings: CycleSettings = {
         lesson_types: isEvent ? undefined : values.lesson_types as CycleSettings['lesson_types'],
         custom_lesson_types: !isEvent && customLessonTypes.length > 0 ? customLessonTypes : undefined,
-        show_preferred_trainer: values.show_preferred_trainer,
+        // The preference picker is meaningless with no trainers shown → force it off then.
+        show_preferred_trainer: (values.applicable_trainer_ids?.length ?? 0) > 0 ? values.show_preferred_trainer : false,
         show_price_indication: values.show_price_indication,
         max_group_size: isEvent ? undefined : values.max_group_size,
         min_group_size: isEvent ? undefined : values.min_group_size,
@@ -1143,8 +1148,9 @@ export default function CycleForm({
               </div>
             )}
 
-            {/* Assigned Trainer - single select for academy */}
-            {ownerType === 'academy' && trainers.length > 0 && (() => {
+            {/* Assigned Trainer - single select for an academy TRAINING cycle (a registration form
+                uses the multi-select below: which trainers to show/offer). */}
+            {ownerType === 'academy' && !isRegistration && trainers.length > 0 && (() => {
               const selectedLocationId = form.watch('location_id');
               const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
                 ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
@@ -1183,8 +1189,9 @@ export default function CycleForm({
               );
             })()}
 
-            {/* Applicable Trainers - for clubs (multi-select) */}
-            {ownerType === 'club' && trainers.length > 0 && (() => {
+            {/* Applicable / shown Trainers — MULTI-select. Clubs (all types) + academy REGISTRATION
+                forms. For a registration this is "which trainers to show on the form" (empty = none). */}
+            {((ownerType === 'club') || (ownerType === 'academy' && isRegistration)) && trainers.length > 0 && (() => {
               const selectedLocationId = form.watch('location_id');
               const filteredTrainers = selectedLocationId && Object.keys(trainerLocationMap).length > 0
                 ? trainers.filter(tr => trainerLocationMap[selectedLocationId]?.includes(tr.id))
@@ -1192,15 +1199,22 @@ export default function CycleForm({
 
               if (!selectedLocationId && locations.length > 0) return null;
 
+              // Academy registration = "which trainers to show/offer on the public form".
+              const isShowTrainersField = ownerType === 'academy' && isRegistration;
+              const label = isShowTrainersField ? t('form.showTrainersOnForm', 'Which trainers to show on the form') : t('form.applicableTrainers');
+              const help = isShowTrainersField
+                ? t('form.showTrainersOnFormHelp', 'Leave empty to not show trainers. Selected trainers appear on the public form so players see who their trainers are.')
+                : (isRegistration ? t('form.registrationApplicableTrainersHelp') : t('form.applicableTrainersHelp'));
+
               return (
                 <FormField
                   control={form.control}
                   name="applicable_trainer_ids"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('form.applicableTrainers')}</FormLabel>
+                      <FormLabel>{label}</FormLabel>
                       <FormDescription className="text-xs">
-                        {isRegistration ? t('form.registrationApplicableTrainersHelp') : t('form.applicableTrainersHelp')}
+                        {help}
                       </FormDescription>
                       {filteredTrainers.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-2">
@@ -2323,7 +2337,8 @@ export default function CycleForm({
               </div>
             )}
 
-            {ownerType === 'academy' && isRegistration && (
+            {/* "Let players pick a preference" — only meaningful once at least one trainer is shown. */}
+            {ownerType === 'academy' && isRegistration && (form.watch('applicable_trainer_ids')?.length ?? 0) > 0 && (
               <FormField
                 control={form.control}
                 name="show_preferred_trainer"

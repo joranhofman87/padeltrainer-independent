@@ -18,6 +18,7 @@ import MarketingLayout from '@/components/marketing/MarketingLayout';
 import CycleApplicationForm from '@/components/cycles/CycleApplicationForm';
 import { getPublicCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getRegistration, registrationToCycle } from '@/lib/registrations';
+import type { RegTrainerOption } from '@/lib/registrationTrainerDisplay';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { formatCurrency } from '@/lib/format';
 import { logger } from '@/lib/logger';
@@ -47,7 +48,7 @@ export default function CycleRegistration() {
   const [owner, setOwner] = useState<OwnerInfo | null>(null);
   const [cycleLocation, setCycleLocation] = useState<CycleLocation | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
+  const [trainers, setTrainers] = useState<RegTrainerOption[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -146,23 +147,30 @@ export default function CycleRegistration() {
             const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
             const { data: trainerProfiles } = await supabase
               .from('trainer_profiles_safe')
-              .select('id, user_id')
+              .select('id, user_id, slug, specializations')
               .in('id', trainerIds);
 
             if (trainerProfiles) {
               const userIds = trainerProfiles.map(tp => tp.user_id);
               const { data: profiles } = await supabase
                 .from('profiles_public')
-                .select('user_id, full_name')
+                .select('user_id, full_name, avatar_url, location')
                 .in('user_id', userIds);
 
-              if (profiles) {
-                const trainersList = trainerProfiles.map(tp => {
-                  const prof = profiles.find(p => p.user_id === tp.user_id);
-                  return { id: tp.id, name: prof?.full_name || 'Trainer' };
-                });
-                setTrainers(trainersList);
-              }
+              // Richer options so the registration form can render trainer profile cards
+              // (avatar/location/specializations) + link to /trainer/:slug.
+              const trainersList = trainerProfiles.map(tp => {
+                const prof = (profiles ?? []).find(p => p.user_id === tp.user_id);
+                return {
+                  id: tp.id,
+                  name: prof?.full_name || 'Trainer',
+                  avatarUrl: prof?.avatar_url ?? null,
+                  location: prof?.location ?? null,
+                  slug: (tp as { slug?: string | null }).slug ?? null,
+                  specializations: (tp as { specializations?: string[] | null }).specializations ?? null,
+                };
+              });
+              setTrainers(trainersList);
             }
           }
         }
@@ -490,7 +498,7 @@ export default function CycleRegistration() {
               playerRating={profile.skill_rating ?? undefined}
               playerRatingSystem={profile.rating_system || 'knltb'}
               playerBirthDate={(profile as any).birth_date || ''}
-              trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
+              trainers={trainers}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
               isWaitlist={isWaitlistMode}
               onSuccess={handleSuccess}
@@ -507,7 +515,7 @@ export default function CycleRegistration() {
               playerEmail=""
               playerPhone=""
               isGuest={true}
-              trainers={cycle.settings?.show_preferred_trainer ? trainers.map(tr => ({ id: tr.id, name: tr.name })) : undefined}
+              trainers={trainers}
               locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
               isWaitlist={isWaitlistMode}
               onSuccess={handleSuccess}

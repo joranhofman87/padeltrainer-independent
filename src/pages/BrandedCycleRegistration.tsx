@@ -20,6 +20,7 @@ import CycleDetailDisplay from '@/components/cycles/CycleDetailDisplay';
 import { ProfileLayout } from '@/components/profiles/ProfileLayout';
 import { getPublicCycle, hasPlayerApplied, type Cycle } from '@/lib/cycles';
 import { getRegistration, registrationToCycle } from '@/lib/registrations';
+import type { RegTrainerOption } from '@/lib/registrationTrainerDisplay';
 import { getActiveLocations, type Location } from '@/lib/locations';
 import { logger } from '@/lib/logger';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
@@ -48,7 +49,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
   const [owner, setOwner] = useState<OwnerBranding | null>(null);
   const [cycleLocation, setCycleLocation] = useState<{ name: string; city: string; logo_url: string | null } | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [trainers, setTrainers] = useState<{ id: string; name: string }[]>([]);
+  const [trainers, setTrainers] = useState<RegTrainerOption[]>([]);
   const [hasApplied, setHasApplied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -148,18 +149,25 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
             const trainerIds = academyTrainers.map(at => at.trainer_profile_id);
             const { data: trainerProfiles } = await supabase
               .from('trainer_profiles_safe')
-              .select('id, user_id')
+              .select('id, user_id, slug, specializations')
               .in('id', trainerIds);
             if (!trainerProfiles) return [];
             const userIds = trainerProfiles.map(tp => tp.user_id);
             const { data: profiles } = await supabase
               .from('profiles_public')
-              .select('user_id, full_name')
+              .select('user_id, full_name, avatar_url, location')
               .in('user_id', userIds);
-            if (!profiles) return [];
+            // Richer options → the form can render trainer profile cards + link to /trainer/:slug.
             return trainerProfiles.map(tp => {
-              const prof = profiles.find(p => p.user_id === tp.user_id);
-              return { id: tp.id, name: prof?.full_name || 'Trainer' };
+              const prof = (profiles ?? []).find(p => p.user_id === tp.user_id);
+              return {
+                id: tp.id,
+                name: prof?.full_name || 'Trainer',
+                avatarUrl: prof?.avatar_url ?? null,
+                location: prof?.location ?? null,
+                slug: (tp as { slug?: string | null }).slug ?? null,
+                specializations: (tp as { specializations?: string[] | null }).specializations ?? null,
+              };
             });
           })()
         : Promise.resolve([]);
@@ -421,7 +429,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
                   playerRating={profile.skill_rating ?? undefined}
                   playerRatingSystem={profile.rating_system || 'knltb'}
                   playerBirthDate={(profile as any).birth_date || ''}
-                  trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
+                  trainers={trainers}
                   locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
                   isWaitlist={isWaitlistMode}
                   onSuccess={handleSuccess}
@@ -435,7 +443,7 @@ export default function BrandedCycleRegistration({ ownerType }: BrandedCycleRegi
                   playerEmail=""
                   playerPhone=""
                   isGuest
-                  trainers={cycle.settings?.show_preferred_trainer ? trainers : undefined}
+                  trainers={trainers}
                   locations={locations.map(l => ({ id: l.id, name: l.name, city: l.city }))}
                   isWaitlist={isWaitlistMode}
                   onSuccess={handleSuccess}

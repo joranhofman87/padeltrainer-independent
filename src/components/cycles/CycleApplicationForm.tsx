@@ -40,10 +40,10 @@ import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMeth
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-interface TrainerOption {
-  id: string;
-  name: string;
-}
+import { resolveRegistrationTrainerDisplay, type RegTrainerOption } from '@/lib/registrationTrainerDisplay';
+import { BookingTrainerCard } from '@/components/booking/BookingTrainerCard';
+
+type TrainerOption = RegTrainerOption;
 
 interface LocationOption {
   id: string;
@@ -446,7 +446,9 @@ export default function CycleApplicationForm({
   const standardAllowed = [...new Set(rawStandardAllowed.flatMap(t => t === 'group' ? ['group3', 'group4'] : [t]))];
   const customTypes = (cycle.settings.custom_lesson_types as string[] | undefined) || [];
   const allowedLessonTypes = [...standardAllowed, ...customTypes];
-  const showTrainerPreference = cycle.settings.show_preferred_trainer && trainers.length > 0;
+  // Trainers: show profiles when the admin picked a set; picker only when they allowed preferences.
+  // Legacy forms (empty set + toggle on) fall back to the old show-all-as-picker behaviour.
+  const { trainersToShow, showProfileCards, showPicker } = resolveRegistrationTrainerDisplay(cycle.settings, trainers);
 
   return (
     <Form {...form}>
@@ -711,6 +713,30 @@ export default function CycleApplicationForm({
             <CardTitle className="text-lg">{t('application.form.preferences')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Informational: who the trainers for this registration are (profiles, no picking). */}
+            {showProfileCards && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{t('application.form.yourTrainers', 'Je trainers')}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {trainersToShow.map((tr) => (
+                    <a
+                      key={tr.id}
+                      href={`/trainer/${tr.slug || tr.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-lg transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <BookingTrainerCard
+                        fullName={tr.name}
+                        avatarUrl={tr.avatarUrl ?? null}
+                        location={tr.location ?? null}
+                        specializations={tr.specializations ?? null}
+                      />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             <FormField
               control={form.control}
               name="lesson_types"
@@ -837,7 +863,7 @@ export default function CycleApplicationForm({
               )}
             />
 
-            {showTrainerPreference && (
+            {showPicker && (
               <FormField
                 control={form.control}
                 name="preferred_trainer_id"
@@ -852,7 +878,7 @@ export default function CycleApplicationForm({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="__none__">{t('application.form.noPreference')}</SelectItem>
-                        {trainers.map(trainer => (
+                        {trainersToShow.map(trainer => (
                           <SelectItem key={trainer.id} value={trainer.id}>
                             {trainer.name}
                           </SelectItem>

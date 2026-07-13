@@ -31,13 +31,16 @@ export const FORM_ONLY_SETTING_KEYS = [
   'notify_admin_on_submission',
   'notify_admin_emails',
   'pricing_note',
+  // The admin-chosen trainer set — a form-DISPLAY key: the public form shows these trainers'
+  // profiles (+ the optional preference picker). Moved from training-only when the registration
+  // trainer feature added it to _registration_form_settings (migration 20260821100000).
+  'applicable_trainer_ids',
 ] as const;
 
 /** Training/scoring keys that STAY on the cycle (read only by proposals/scheduling — never the form). */
 export const TRAINING_ONLY_SETTING_KEYS = [
   'min_skill_rating',
   'max_skill_rating',
-  'applicable_trainer_ids',
   'max_group_size',
   'min_group_size',
   'assigned_trainer_id',
@@ -77,9 +80,9 @@ export const SAMPLE_MIXED_SETTINGS: Record<string, unknown> = {
   prices_include_vat: true,
   success_message: 'Bedankt!',
   max_participants: 4,
+  applicable_trainer_ids: ['trn-1', 'trn-2'], // the shown trainer set — travels to the form
   // training-only (must NOT travel to the registration)
   min_skill_rating: 2.0,
-  applicable_trainer_ids: ['trn-1', 'trn-2'],
   scoring_weights: { time_match: 35 },
   split_payment: true,
 };
