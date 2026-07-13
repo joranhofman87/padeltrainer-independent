@@ -1384,6 +1384,14 @@
     "levelRange": "Niveaubereik:"
   },
   "cyclesTab": {
+    "kind": {
+      "column": "Type",
+      "filterAll": "Alle types",
+      "rebook": "Herboeking",
+      "cyclus": "Cyclus",
+      "registration": "Inschrijving",
+      "event": "Evenement"
+    },
     "clearSelection": "Selectie wissen",
     "noSlotsFound": "Geen slots gevonden voor geselecteerde cycli",
     "visibilityUpdated": "{{count}} slots {{state}} gemaakt",

@@ -8061,6 +8061,7 @@ export type Database = {
           has_cycle_row: boolean
           is_public: boolean
           is_registration: boolean
+          kind: string
           location_name: string
           max_booked: number
           max_participants: number
