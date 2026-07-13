@@ -5,6 +5,7 @@
 // availability_slots + slot_priority_claims + invoices.
 import { supabase } from '@/lib/supabaseClient';
 import { releaseSlotToPublic, holdSlotForReview, declineClaimAsManager, type PublicReleaseStatus } from '@/lib/priorityClaims';
+import { summariseRoundDeadline, type RoundDeadlineSummary } from '@/lib/rebookRoundDeadline';
 import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { updateCycleSettings } from '@/lib/cycleWrites';
 import type { CycleSettings } from '@/lib/cycleTypes';
@@ -188,6 +189,9 @@ export interface RebookManageData {
   /** settings.rebook_round_id — the id the "add groups to this round" wizard extends. Null for
    *  legacy single-cycle rounds (created before per-series rounds existed), which can't be extended. */
   roundId: string | null;
+  /** The round's priority deadline (latest among non-released slots) — shown + editable
+   *  in the manage header. Computed from the already-fetched slot rows (no extra query). */
+  priorityDeadline: RoundDeadlineSummary;
 }
 
 interface SlotRow {
@@ -199,6 +203,7 @@ interface SlotRow {
   is_public: boolean | null;
   public_release_status: PublicReleaseStatus | null;
   priority_window_ends_at: string | null;
+  member_window_starts_at: string | null;
   member_window_ends_at: string | null;
   cyclus_id?: string | null;
 }
@@ -367,7 +372,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   const { rows: slots } = await fetchAllPages<SlotRow>((from, to) =>
     supabase
       .from('availability_slots')
-      .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_ends_at, cyclus_id')
+      .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_starts_at, member_window_ends_at, cyclus_id')
       .in('cyclus_id', cycleIds)
       .order('id')
       .range(from, to),
@@ -400,6 +405,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     uninvitedCount: 0,
     cycleIds,
     roundId,
+    priorityDeadline: summariseRoundDeadline(slotRows),
   };
   if (slotRows.length === 0) return empty;
   const slotById = new Map(slotRows.map((s) => [s.id, s]));
@@ -643,6 +649,7 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     uninvitedCount,
     cycleIds,
     roundId,
+    priorityDeadline: summariseRoundDeadline(slotRows),
   };
 }
 

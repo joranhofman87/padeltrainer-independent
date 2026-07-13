@@ -30,6 +30,7 @@ import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
 import { formatCurrency } from '@/lib/format';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { RebookRoundTextsDialog } from '@/components/cycles/RebookRoundTextsDialog';
+import { RebookDeadlineDialog } from '@/components/cycles/RebookDeadlineDialog';
 
 const STATUS_STYLE: Record<GroupStatus, string> = {
   rebooked: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -51,10 +52,13 @@ const fmtReminded = (iso: string) => new Date(iso).toLocaleDateString('nl-NL', {
 export default function AcademyRebookManage() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const navigate = useNavigate();
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
   const { activeAcademy } = useAcademyContext();
   // Round texts editor (claim-page explanation + emails + rules, saved round-wide).
   const [textsOpen, setTextsOpen] = useState(false);
+  // Round deadline editor (priority_window_ends_at, saved round-wide, academy timezone).
+  const [deadlineOpen, setDeadlineOpen] = useState(false);
+  const academyTimezone = activeAcademy?.timezone || 'Europe/Amsterdam';
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['rebook-manage', cycleId],
@@ -317,6 +321,43 @@ export default function AcademyRebookManage() {
           onOpenChange={setTextsOpen}
           academyProfileId={activeAcademy.id}
           roundId={data.roundId}
+          onSaved={() => refetch()}
+        />
+      )}
+
+      {/* The round's priority deadline — visible + editable (date + exact time, academy tz).
+          Not gated on roundId: legacy single-cycle rounds have a deadline too. */}
+      {data?.priorityDeadline.deadline && (
+        <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap" data-testid="rebook-deadline-row">
+          {t('rebookManage.deadlineLabel', 'Reactietermijn:')}{' '}
+          <span className="font-medium text-foreground">
+            {new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-GB' : 'nl-NL', {
+              timeZone: academyTimezone, weekday: 'short', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+            }).format(new Date(data.priorityDeadline.deadline))}
+          </span>
+          {data.priorityDeadline.varies && (
+            <span>· {t('rebookManage.deadlineVaries', 'verschilt per groep — dit is de laatste')}</span>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            onClick={() => setDeadlineOpen(true)}
+            aria-label={t('rebookManage.editDeadline', 'Reactietermijn aanpassen')}
+            title={t('rebookManage.editDeadline', 'Reactietermijn aanpassen')}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </p>
+      )}
+
+      {data && (
+        <RebookDeadlineDialog
+          open={deadlineOpen}
+          onOpenChange={setDeadlineOpen}
+          cycleIds={data.cycleIds}
+          currentDeadline={data.priorityDeadline.deadline}
+          timezone={academyTimezone}
           onSaved={() => refetch()}
         />
       )}

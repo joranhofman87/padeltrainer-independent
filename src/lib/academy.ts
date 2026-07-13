@@ -26,6 +26,9 @@ export interface AcademyProfile {
   updated_at: string;
   country: string;
   price_display_mode?: 'including_vat' | 'excluding_vat';
+  /** IANA timezone of the academy (present at runtime — getUserAcademyProfiles selects `*`,
+   *  the by-id/by-slug queries select it explicitly). Fallback: 'Europe/Amsterdam'. */
+  timezone?: string | null;
 }
 
 export interface AcademyManager {
