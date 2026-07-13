@@ -42,7 +42,8 @@ beforeAll(async () => {
       max_participants int, is_public boolean, cyclus_id uuid, cyclus_name text, trainer_id uuid,
       price_per_session numeric, location_id uuid, academy_profile_id uuid);
     CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, status text,
-      player_id uuid, guest_player_id uuid, payment_status text, paid_externally boolean);
+      player_id uuid, guest_player_id uuid, payment_status text, paid_externally boolean,
+      hold_expires_at timestamptz);
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), full_name text);
     CREATE TABLE public.intake_requests (cycle_id uuid, player_id uuid, guest_player_id uuid, status text);
 
@@ -69,6 +70,9 @@ beforeAll(async () => {
       ('70000000-0000-0000-0000-0000000000d1', 'confirmed', '80000000-0000-0000-0000-0000000000d1', 'paid');
   `);
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260813100000_get_academy_cyclus_groups_academy_scope.sql'), 'utf8'));
+  // The person-key re-emit (Batch 4 FAM-02 + §4.0) must load ON TOP (CREATE OR REPLACE, identical
+  // signature) and keep every tenant-scope guarantee below intact.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260816100000_academy_cyclus_groups_person_key.sql'), 'utf8'));
 });
 
 describe('get_academy_cyclus_groups — academy_profile_id tenant scope (audit Batch 5 §4.5)', () => {
