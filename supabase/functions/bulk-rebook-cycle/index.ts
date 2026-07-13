@@ -5,7 +5,7 @@ import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
 import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
-import { canonicalizeSeriesCohort } from "../_shared/rebook-cohort.ts";
+import { canonicalizeSeriesCohort, cohortPersonKey } from "../_shared/rebook-cohort.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -495,7 +495,10 @@ serve(async (req) => {
     const includedPlayerSet = new Set<string>();
     for (const series of includedSeries) {
       for (const src of series) {
-        for (const b of bookingsBySlot.get(src.id) ?? []) includedPlayerSet.add(b.player_id ?? `g:${b.guest_player_id}`);
+        for (const b of bookingsBySlot.get(src.id) ?? []) {
+          const k = cohortPersonKey(b); // guest-first — MUST match the canonicalizer's keying
+          if (k) includedPlayerSet.add(k);
+        }
       }
     }
     // Merge the moved-to-second-bucket players into the priority list (validated below).
@@ -569,8 +572,10 @@ serve(async (req) => {
       const guestIds = new Set<string>();
       for (const arr of bookingsBySlot.values()) {
         for (const b of arr) {
-          if (b.player_id) playerIds.add(b.player_id);
-          else if (b.guest_player_id) guestIds.add(b.guest_player_id);
+          // Guest-first, mirroring the canonicalizer: a dual-keyed booking is the GUEST person,
+          // so the review must show the guest's own name + email presence, not the linked profile's.
+          if (b.guest_player_id) guestIds.add(b.guest_player_id);
+          else if (b.player_id) playerIds.add(b.player_id);
         }
       }
       const infoByKey = new Map<string, { name: string; hasEmail: boolean }>();
@@ -616,7 +621,10 @@ serve(async (req) => {
         const d = new Date(tmpl.start_time);
         const cohort = new Set<string>();
         for (const src of series) {
-          for (const b of bookingsBySlot.get(src.id) ?? []) cohort.add(b.player_id ?? `g:${b.guest_player_id}`);
+          for (const b of bookingsBySlot.get(src.id) ?? []) {
+            const k = cohortPersonKey(b); // guest-first — MUST match the canonicalizer's keying
+            if (k) cohort.add(k);
+          }
         }
         const sessions = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz, bodyEndDate).length;
         const roster = [...cohort]
