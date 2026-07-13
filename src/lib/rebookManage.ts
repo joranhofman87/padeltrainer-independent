@@ -822,3 +822,36 @@ export async function freePlayerRebookSeat(args: {
     syncError: cancel.syncError ? reasonOf(cancel.syncError) : null,
   };
 }
+
+/**
+ * The reverse of {@link freePlayerRebookSeat}: reinstate an accidentally-DECLINED player. Flips
+ * their declined claims back to 'claimed' and (re)books each seat via the reinstate_rebook_claims
+ * RPC — COVERED (paid, no new charge) when the group paid the full court upfront, else re-seated
+ * unpaid. Capacity-guarded server-side: a seat that was meanwhile taken comes back as `seatFull`.
+ */
+export interface ReinstateResult {
+  /** Re-seated as paid/covered by the group. */
+  reinstated: number;
+  /** Re-seated but still owes (per-player round / group not yet paid). */
+  reinstatedUnpaid: number;
+  /** Seat was taken in the meantime — left declined. */
+  seatFull: number;
+  /** Already had an active booking — the claim was just re-linked. */
+  alreadyActive: number;
+  error: string | null;
+}
+export async function reinstateRebookPlayer(args: { claimIds: string[] }): Promise<ReinstateResult> {
+  const empty: ReinstateResult = { reinstated: 0, reinstatedUnpaid: 0, seatFull: 0, alreadyActive: 0, error: null };
+  if (args.claimIds.length === 0) return empty;
+  const { data, error } = await supabase.rpc('reinstate_rebook_claims', { _claim_ids: args.claimIds });
+  if (error) return { ...empty, error: reasonOf(error) };
+  const rows = (data ?? []) as Array<{ claim_id: string; outcome: string }>;
+  const n = (o: string) => rows.filter((r) => r.outcome === o).length;
+  return {
+    reinstated: n('reinstated'),
+    reinstatedUnpaid: n('reinstated_unpaid'),
+    seatFull: n('seat_full'),
+    alreadyActive: n('already_active'),
+    error: null,
+  };
+}
