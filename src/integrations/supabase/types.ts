@@ -7888,6 +7888,10 @@ export type Database = {
         }
         Returns: string
       }
+      booking_occupies_seat: {
+        Args: { p_hold_expires_at: string; p_status: string }
+        Returns: boolean
+      }
       bump_rebook_reminders: {
         Args: {
           p_guest_ids: string[]
