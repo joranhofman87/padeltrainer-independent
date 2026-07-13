@@ -25,9 +25,10 @@ const columns: ColumnDef<SourceRow>[] = [
         href={s.source_url || undefined}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-1 text-primary hover:underline max-w-xs truncate"
+        className="flex max-w-xs items-center gap-1 text-primary hover:underline"
       >
-        {s.source_url} <ExternalLink className="h-3 w-3" />
+        {/* truncate must sit on a min-w-0 flex CHILD — on the flex container it never clips. */}
+        <span className="min-w-0 truncate">{s.source_url}</span> <ExternalLink className="h-3 w-3 shrink-0" />
       </a>
     ),
   },
@@ -59,6 +60,7 @@ export default function AdminBlogSources() {
       <DataTable<SourceRow>
         columns={columns}
         rows={sources}
+        compact
         desktopOnly={false}
         empty={isLoading ? 'Loading...' : 'No sources'}
       />

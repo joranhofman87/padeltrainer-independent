@@ -21,7 +21,7 @@ export default function AcademyRebook() {
         description={t('rebookManage.pageDescription', 'Beheer lopende herboekingsrondes: wie reageerde, wie betaalde en welke plekken open staan.')}
       />
       {activeAcademy ? (
-        <RebookRoundsSection academyId={activeAcademy.id} />
+        <RebookRoundsSection academyId={activeAcademy.id} timezone={activeAcademy.timezone || undefined} />
       ) : (
         <Skeleton className="h-40 w-full" />
       )}

@@ -29,6 +29,7 @@ import { ListPagination } from '@/components/ui/list-pagination';
 
 type ColKey =
   | 'start'
+  | 'deadline'
   | 'location'
   | 'series'
   | 'status'
@@ -44,10 +45,11 @@ type ColKey =
   | 'openSpots';
 
 const DEFAULT_COLUMNS: ColKey[] = [
-  'start',
   'location',
-  'series',
+  'deadline',
+  'start',
   'status',
+  'series',
   'invited',
   'rebooked',
   'noResponse',
@@ -55,10 +57,36 @@ const DEFAULT_COLUMNS: ColKey[] = [
   'outstanding',
 ];
 
+/**
+ * Canonical column ORDER (owner-chosen): identity (where/which round) → timeline (deadline/start)
+ * → state → funnel/money. Render order is pinned to this regardless of the visibility prefs'
+ * stored order, so a re-shown column lands in its logical place instead of appended at the end.
+ */
+const COLUMN_ORDER: Array<ColKey | 'name'> = [
+  'location',
+  'name',
+  'deadline',
+  'start',
+  'status',
+  'series',
+  'invited',
+  'rebooked',
+  'noResponse',
+  'paidAmount',
+  'outstanding',
+  'declined',
+  'clickedYes',
+  'paidCount',
+  'invites',
+  'openSpots',
+];
+
 const PAGE_SIZE = 25;
 
-export default function RebookRoundsSection({ academyId }: { academyId: string }) {
-  const { t } = useTranslation('cycles');
+export default function RebookRoundsSection({ academyId, timezone }: { academyId: string; timezone?: string }) {
+  const { t, i18n } = useTranslation('cycles');
+  // Deadline column formatting — the academy's wall clock (matches the manage page's strip).
+  const tz = timezone || 'Europe/Amsterdam';
   const navigate = useNavigate();
   const [rows, setRows] = useState<RebookRoundOverviewRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,10 +164,11 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = sortedData.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
-  const { visibleColumns, toggleColumn, isColVisible } = useVisibleColumns<ColKey>(
+  const { toggleColumn, isColVisible } = useVisibleColumns<ColKey>(
     columnDescriptors(t),
     DEFAULT_COLUMNS,
-    academyId ? `rebookManage:overview:cols:v2:${academyId}` : null,
+    // v3: 'deadline' joined the defaults — bump so saved column prefs pick it up (#474 lesson).
+    academyId ? `rebookManage:overview:cols:v3:${academyId}` : null,
   );
 
   const num = (r: RebookRoundOverviewRow, v: number) => (r.statsLoaded ? v : '—');
@@ -170,8 +199,24 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
       key: 'start',
       header: t('rebookManage.overview.colStart', 'Start'),
       sortKey: 'startDate',
+      // nowrap: a squeezed column otherwise wraps "24 aug. 2026" onto 3 lines and inflates
+      // EVERY row from the compact 40px to ~60px (the whole table looked oversized).
+      className: 'whitespace-nowrap',
       // start_date is a pure DATE — parse at local noon so it never shifts a day.
       renderCell: (r) => (r.startDate ? formatDate(`${r.startDate}T12:00:00`, 'd MMM yyyy') : '—'),
+    },
+    {
+      key: 'deadline',
+      header: t('rebookManage.overview.colDeadline', 'Deadline'),
+      sortKey: 'deadline', // UTC ISO sorts chronologically
+      className: 'whitespace-nowrap',
+      // Academy wall-clock, same source as the manage page's strip (latest non-released slot).
+      renderCell: (r) =>
+        r.deadline
+          ? new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-GB' : 'nl-NL', {
+              timeZone: tz, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+            }).format(new Date(r.deadline))
+          : '—',
     },
     {
       key: 'location',
@@ -252,7 +297,7 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
       <DataTable<OverviewRow>
         columns={columns}
         rows={pageRows}
-        visibleKeys={['name', ...visibleColumns]}
+        visibleKeys={COLUMN_ORDER.filter((k) => k === 'name' || isColVisible(k))}
         sortKey={sortConfig.key ? String(sortConfig.key) : null}
         sortDirection={sortConfig.direction}
         onSort={(key) => handleSort(key as keyof OverviewRow)}
@@ -285,10 +330,11 @@ export default function RebookRoundsSection({ academyId }: { academyId: string }
 
 function columnDescriptors(t: (key: string, fallback: string) => string): ColumnDescriptor<ColKey>[] {
   return [
-    { key: 'start', label: t('rebookManage.overview.colStart', 'Start'), isDefault: true },
     { key: 'location', label: t('rebookManage.overview.colLocation', 'Locatie'), isDefault: true },
-    { key: 'series', label: t('rebookManage.overview.colSeries', 'Series'), isDefault: true },
+    { key: 'deadline', label: t('rebookManage.overview.colDeadline', 'Deadline'), isDefault: true },
+    { key: 'start', label: t('rebookManage.overview.colStart', 'Start'), isDefault: true },
     { key: 'status', label: t('rebookManage.overview.colStatus', 'Status'), isDefault: true },
+    { key: 'series', label: t('rebookManage.overview.colSeries', 'Series'), isDefault: true },
     { key: 'invited', label: t('rebookManage.overview.colInvited', 'Uitgenodigd'), isDefault: true },
     { key: 'rebooked', label: t('rebookManage.overview.colRebooked', 'Herboekt'), isDefault: true },
     { key: 'noResponse', label: t('rebookManage.overview.colNoResponse', 'Geen reactie'), isDefault: true },

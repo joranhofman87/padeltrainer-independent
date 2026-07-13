@@ -15,6 +15,8 @@ export interface RebookRoundOverviewRow {
   id: string;
   name: string;
   startDate: string | null;
+  /** The round's priority deadline (UTC ISO; latest among non-released slots) — null when unknown. */
+  deadline: string | null;
   status: string; // cycle status: draft | open | closed
   archived: boolean;
   seriesCount: number; // cycles in the round (per-series split ⇒ >1)
@@ -44,6 +46,7 @@ export function toRebookRoundOverviewRow(round: RebookRound, data: RebookManageD
     id: round.id,
     name: round.name,
     startDate: round.startDate,
+    deadline: data.priorityDeadline.deadline,
     status: round.status,
     archived: round.archived,
     seriesCount: round.cycleIds.length,
@@ -71,6 +74,7 @@ function zeroRow(round: RebookRound): RebookRoundOverviewRow {
     id: round.id,
     name: round.name,
     startDate: round.startDate,
+    deadline: null,
     status: round.status,
     archived: round.archived,
     seriesCount: round.cycleIds.length,

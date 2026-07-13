@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, CalendarDays, PartyPopper, CalendarPlus } from 'lucide-react';
+import { Plus, CalendarDays, PartyPopper } from 'lucide-react';
 import { type Cycle } from '@/lib/cycles';
 import { listRegistrationCycles } from '@/lib/registrations';
 import CyclesTable from '@/components/cycles/CyclesTable';
@@ -94,10 +94,6 @@ export default function AcademyRegistrations() {
           <Button variant="outline" onClick={() => navigate('/app/academy/registrations/new?type=event')}>
             <PartyPopper className="h-4 w-4" />
             {t('createEvent', 'Create Event')}
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/app/academy/slot/generate')}>
-            <CalendarPlus className="h-4 w-4" />
-            {t('slotGenerator.cta', 'Snel sessies genereren')}
           </Button>
           </>
         }
