@@ -227,6 +227,17 @@ export default function CyclesTable({
       ),
     },
     {
+      key: 'applications',
+      header: t('stats.applications'),
+      sortKey: 'applications',
+      renderCell: (cycle) => (
+        <Badge variant="outline" className="font-normal">
+          <Users className="h-3 w-3 mr-1" />
+          {cycle._intakeCount || 0}
+        </Badge>
+      ),
+    },
+    {
       key: 'period',
       header: t('common:period', 'Period'),
       sortKey: 'start_date',
@@ -238,17 +249,6 @@ export default function CyclesTable({
       header: t('common:status', 'Status'),
       sortKey: 'status',
       renderCell: (cycle) => <CycleStatusBadge status={cycle.status} />,
-    },
-    {
-      key: 'applications',
-      header: t('stats.applications'),
-      sortKey: 'applications',
-      renderCell: (cycle) => (
-        <Badge variant="outline" className="font-normal">
-          <Users className="h-3 w-3 mr-1" />
-          {cycle._intakeCount || 0}
-        </Badge>
-      ),
     },
     {
       key: 'price',
