@@ -25,6 +25,7 @@ import { RebookClaimInfoField } from '@/components/cycles/RebookClaimInfoField';
 import { RebookReminderLeadField } from '@/components/cycles/RebookReminderLeadField';
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
+import { RebookPublicOpenModeField, type PublicOpenMode } from './RebookPublicOpenModeField';
 import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
 import {
   getRebookRoundExtendPrefill,
@@ -109,6 +110,10 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
   const [priorityMessage, setPriorityMessage] = useState('');
   const [paymentMode, setPaymentMode] = useState<RebookPaymentMode>('deferred_split');
   const [strictMollie, setStrictMollie] = useState(false);
+  // How non-rebooked sessions become bookable once they OPEN to the public. 'inherit' = copy
+  // each source court's flags (legacy default); an explicit mode overrides the whole round.
+  const [publicOpenMode, setPublicOpenMode] = useState<PublicOpenMode>('inherit');
+  const [publicOpenSplit, setPublicOpenSplit] = useState(false);
   const [requireAdminReview, setRequireAdminReview] = useState(false);
   // Automated reminder to non-responders ~24h before their priority window closes.
   const [autoReminder, setAutoReminder] = useState(true);
@@ -238,6 +243,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       memberWindowDays: enableMemberWindow ? memberWindowDays : 0,
       paymentMode,
       strictMollie: paymentMode === 'upfront' && strictMollie,
+      // 'inherit' → null so the engine keeps its per-court source copy (unchanged path).
+      publicOpenMode: publicOpenMode === 'inherit' ? null : publicOpenMode,
+      publicOpenSplit,
       requireAdminReview,
       targetCycleName: targetCycleName.trim(),
       // Date model: the round runs from newStartDate to newEndDate; the session count is derived
@@ -270,6 +278,8 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       memberWindowDays,
       paymentMode,
       strictMollie,
+      publicOpenMode,
+      publicOpenSplit,
       requireAdminReview,
       autoReminder,
       reminderLeadHours,
@@ -827,6 +837,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
         setPaymentMode={setPaymentMode}
         strictMollie={strictMollie}
         setStrictMollie={setStrictMollie}
+      />
+
+      <RebookPublicOpenModeField
+        mode={publicOpenMode}
+        setMode={setPublicOpenMode}
+        split={publicOpenSplit}
+        setSplit={setPublicOpenSplit}
+        multiSource
       />
 
       <RebookAccessWindows

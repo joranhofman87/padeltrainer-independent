@@ -3,6 +3,7 @@ import { corsHeaders, requireUser, jsonForbidden } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
+import { resolvePublicOpenOverride } from "../_shared/rebook-public-open.ts";
 import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
 import { canonicalizeSeriesCohort, cohortPersonKey } from "../_shared/rebook-cohort.ts";
@@ -175,6 +176,10 @@ serve(async (req) => {
     // STRICT pay-first (A3): only meaningful with upfront — server enforces the coupling so a
     // client can't request strict on a deferred cycle. The strict accept RPC + webhook read it.
     const strictMollie: boolean = paymentMode === "upfront" && body?.strictMollie === true;
+    // Public OPEN-UP booking mode (wizard "When sessions open to the public"). Absent/'inherit'
+    // ⇒ null ⇒ copy each source court's own flags (legacy behaviour). An explicit mode ⇒ a uniform
+    // override applied to the whole round, so a split source court can't silently open per-seat.
+    const publicOpenOverride = resolvePublicOpenOverride(body?.publicOpenMode, body?.publicOpenSplit);
     const requireAdminReview: boolean = body?.requireAdminReview === true;
     // Automated deadline reminder to non-responders (cron). Default ON; the wizard can
     // opt out. Read by rebook_claims_needing_auto_reminder() as settings.rebook_auto_reminder.
@@ -820,10 +825,11 @@ serve(async (req) => {
           // Public-booking config so a released round prices/gates exactly like ITS OWN source
           // series: split + booking-mode mirror the copied slots; allow_cyclus_booking mirrors the
           // series' source cycle (default allowed when the source slots were hand-added).
-          split_payment: tmpl.split_payment === true,
-          allow_single_booking: tmpl.allow_single_booking === true,
-          whole_slot_booking: tmpl.whole_slot_booking === true,
-          allow_cyclus_booking: srcSettings.allow_cyclus_booking !== false,
+          // publicOpenOverride (wizard) forces a uniform mode instead of the per-court copy.
+          split_payment: publicOpenOverride ? publicOpenOverride.split : tmpl.split_payment === true,
+          allow_single_booking: publicOpenOverride ? publicOpenOverride.allowSingle : tmpl.allow_single_booking === true,
+          whole_slot_booking: publicOpenOverride ? publicOpenOverride.wholeSlot : tmpl.whole_slot_booking === true,
+          allow_cyclus_booking: publicOpenOverride ? publicOpenOverride.allowCyclus : srcSettings.allow_cyclus_booking !== false,
           rebook_source_cyclus_id: tmpl.cyclus_id ?? null,
           ...sharedRebookSettings,
         },
@@ -918,8 +924,9 @@ serve(async (req) => {
           training_level: tmpl.training_level,
           price_per_session: effPrice,
           total_price: tmpl.total_price,
-          allow_single_booking: tmpl.allow_single_booking,
-          whole_slot_booking: tmpl.whole_slot_booking,
+          // publicOpenOverride forces a uniform public-open booking mode; else copy the source slot.
+          allow_single_booking: publicOpenOverride ? publicOpenOverride.allowSingle : tmpl.allow_single_booking,
+          whole_slot_booking: publicOpenOverride ? publicOpenOverride.wholeSlot : tmpl.whole_slot_booking,
           min_participants: tmpl.min_participants,
           max_participants: tmpl.max_participants,
           extra_costs: tmpl.extra_costs,
@@ -927,7 +934,7 @@ serve(async (req) => {
           min_rating: tmpl.min_rating,
           max_rating: tmpl.max_rating,
           prices_include_vat: tmpl.prices_include_vat,
-          split_payment: tmpl.split_payment,
+          split_payment: publicOpenOverride ? publicOpenOverride.split : tmpl.split_payment,
           priority_source_slot_id: tmpl.id,
           priority_window_starts_at: now.toISOString(),
           priority_window_ends_at: priorityEnd.toISOString(),
