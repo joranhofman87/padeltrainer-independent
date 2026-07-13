@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, getDay, addDays, startOfWeek } from 'date-fns';
@@ -45,6 +45,10 @@ import {
   type CyclusGroup,
   type AcademyCyclusGroupRow,
 } from '@/lib/academyCyclusGroups';
+import { listCycleCategories, setCycleCategory, type CycleCategory } from '@/lib/cycleCategories';
+import { CycleCategoryCell } from '@/components/cycles/CycleCategoryCell';
+import { ManageCycleCategoriesDialog } from '@/components/cycles/ManageCycleCategoriesDialog';
+import { getTagColorClass } from '@/components/players/playerTagColors';
 
 type TimeFilter = 'current' | 'future' | 'past' | 'all';
 
@@ -83,6 +87,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   const [filterPaid, setFilterPaid] = useState<PaidFilterValue>('all');
   const [filterVisibility, setFilterVisibility] = useState<'all' | 'public' | 'private'>('all');
   const [filterKind, setFilterKind] = useState('all'); // 'all' | 'rebook' | 'cyclus' | 'registration' | 'event'
+  const [filterCategory, setFilterCategory] = useState('all'); // 'all' | 'uncategorized' | <category id>
+  const [categories, setCategories] = useState<CycleCategory[]>([]);
+  const [manageCatOpen, setManageCatOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   // Opt-in (default off): also delete selected cycli that still have bookings, cancelling those
   // bookings first. Off = the safe legacy behaviour (booked cycli are skipped, never auto-cancelled).
@@ -112,6 +119,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         if (['all', 'paid', 'unpaid', 'no_players'].includes(s.filterPaid)) setFilterPaid(s.filterPaid);
         if (['all', 'public', 'private'].includes(s.filterVisibility)) setFilterVisibility(s.filterVisibility);
         if (['all', 'rebook', 'cyclus', 'registration', 'event'].includes(s.filterKind)) setFilterKind(s.filterKind);
+        if (typeof s.filterCategory === 'string') setFilterCategory(s.filterCategory);
         if (['current', 'future', 'past', 'all'].includes(s.timeFilter)) setTimeFilter(s.timeFilter);
         if (typeof s.filterDay === 'string' && ['all', '0', '1', '2', '3', '4', '5', '6'].includes(s.filterDay)) setFilterDay(s.filterDay);
       }
@@ -123,10 +131,10 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
     try {
       sessionStorage.setItem(
         filterStorageKey,
-        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, filterKind, timeFilter, filterDay }),
+        JSON.stringify({ search, filterTrainer, filterLocation, filterPaid, filterVisibility, filterKind, filterCategory, timeFilter, filterDay }),
       );
     } catch { /* ignore quota/serialization errors */ }
-  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, filterKind, timeFilter, filterDay]);
+  }, [filterStorageKey, filtersRestored, search, filterTrainer, filterLocation, filterPaid, filterVisibility, filterKind, filterCategory, timeFilter, filterDay]);
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -153,6 +161,25 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   useEffect(() => {
     if (activeAcademy) fetchCyclusData();
   }, [activeAcademy]);
+
+  const refreshCategories = useCallback(async () => {
+    if (!activeAcademy) return;
+    try { setCategories(await listCycleCategories(activeAcademy.id)); } catch { /* non-fatal: filter/assign degrade to empty */ }
+  }, [activeAcademy]);
+  useEffect(() => { refreshCategories(); }, [refreshCategories]);
+
+  // Assign/clear a cycle's category inline, then reflect it locally (no full reload).
+  const assignCategory = async (cyclusId: string, categoryId: string | null) => {
+    const cat = categoryId ? categories.find((c) => c.id === categoryId) : null;
+    try {
+      await setCycleCategory(cyclusId, categoryId);
+      setGroups((prev) => prev.map((g) => g.cyclus_id === cyclusId
+        ? { ...g, category_id: categoryId, category_name: cat?.name ?? null, category_color: cat?.color ?? null }
+        : g));
+    } catch {
+      toast({ title: t('cyclesTab.category.assignFailed', { defaultValue: 'Kon de categorie niet opslaan' }), variant: 'destructive' });
+    }
+  };
 
   const fetchCyclusData = async () => {
     if (!activeAcademy) return;
@@ -318,7 +345,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       // 1. Fetch cycles from cycles table (academy-owned + trainer-owned)
       const { data: academyCycles } = await supabase
         .from('cycles')
-        .select('id, name, owner_id, owner_type, status, type, settings, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+        .select('id, name, owner_id, owner_type, status, type, settings, category_id, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
         .eq('owner_type', 'academy')
         .eq('owner_id', activeAcademy.id);
 
@@ -326,7 +353,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       if (trainerIds.length > 0) {
         const { data } = await supabase
           .from('cycles')
-          .select('id, name, owner_id, owner_type, status, type, settings, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
+          .select('id, name, owner_id, owner_type, status, type, settings, category_id, start_date, end_date, price_per_session, total_price, location_id, locations:location_id(name)')
           .eq('owner_type', 'trainer')
           .in('owner_id', trainerIds);
         trainerCycles = data || [];
@@ -337,6 +364,18 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       // Deduplicate by id
       const cycleMap = new Map<string, any>();
       allCycles.forEach(c => cycleMap.set(c.id, c));
+
+      // The academy's category catalog → id lookup (name+color), for the fallback's category cells.
+      const categoryById = new Map<string, { name: string; color: string }>();
+      const { data: cats } = await supabase
+        .from('academy_cycle_categories')
+        .select('id, name, color')
+        .eq('academy_profile_id', activeAcademy.id);
+      (cats ?? []).forEach((c: { id: string; name: string; color: string }) => categoryById.set(c.id, { name: c.name, color: c.color }));
+      const catFields = (categoryId: string | null | undefined) => {
+        const c = categoryId ? categoryById.get(categoryId) : undefined;
+        return { category_id: categoryId ?? null, category_name: c?.name ?? null, category_color: c?.color ?? null };
+      };
 
       const cycleIds = Array.from(cycleMap.keys());
 
@@ -549,6 +588,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             status: cycle.status || 'draft',
             type: cycle.type || 'cyclus',
             kind: deriveCycleKind(cycle, false),
+            ...catFields(cycle.category_id),
             has_slots: false,
             has_cycle_row: true,
             is_registration: false,
@@ -652,6 +692,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               status: cycle.status || 'draft',
               type: isRegistration ? 'cyclus' : (cycle.type || 'cyclus'),
               kind: deriveCycleKind(cycle, isRegistration),
+              ...catFields(cycle.category_id),
               has_slots: true,
               has_cycle_row: true,
               is_registration: isRegistration,
@@ -715,6 +756,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             status: 'active',
             type: 'cyclus',
             kind: 'cyclus', // orphan slot group — no cycles row, so no rebook/registration/event signal
+            category_id: null, category_name: null, category_color: null, // no cycles row → no category
             has_slots: true,
             has_cycle_row: false,
             is_registration: false,
@@ -794,6 +836,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       if (filterVisibility === 'public' && !g.is_public) return false;
       if (filterVisibility === 'private' && g.is_public) return false;
       if (filterKind !== 'all' && g.kind !== filterKind) return false;
+      if (filterCategory === 'uncategorized' && g.category_id) return false;
+      if (filterCategory !== 'all' && filterCategory !== 'uncategorized' && g.category_id !== filterCategory) return false;
       if (!matchesPaidFilter(g.payment_status_summary, filterPaid)) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -805,7 +849,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       }
       return true;
     });
-  }, [timeFiltered, filterTrainer, filterDay, filterLocation, filterVisibility, filterKind, filterPaid, search]);
+  }, [timeFiltered, filterTrainer, filterDay, filterLocation, filterVisibility, filterKind, filterCategory, filterPaid, search]);
 
   const { sortedData, sortConfig, handleSort } = useTableSort(filtered);
 
@@ -1256,6 +1300,19 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               options={KIND_FILTER_OPTIONS}
               triggerClassName="w-full sm:w-[180px] h-9"
             />
+            <SelectFilter
+              value={filterCategory}
+              onValueChange={setFilterCategory}
+              allLabel={t('cyclesTab.category.filterAll', { defaultValue: 'Alle categorieën' })}
+              options={[
+                { value: 'uncategorized', label: t('cyclesTab.category.uncategorized', { defaultValue: 'Zonder categorie' }) },
+                ...categories.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              triggerClassName="w-full sm:w-[180px] h-9"
+            />
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setManageCatOpen(true)}>
+              {t('cyclesTab.category.manage', { defaultValue: 'Categorieën beheren…' })}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1331,6 +1388,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                 </TableHead>
                 <SortableTableHead sortKey="cyclus_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.name')}</SortableTableHead>
                 <SortableTableHead sortKey="kind" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.kind.column', { defaultValue: 'Type' })}</SortableTableHead>
+                <SortableTableHead sortKey="category_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.category.column', { defaultValue: 'Categorie' })}</SortableTableHead>
                 <SortableTableHead sortKey="trainer_name" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.trainer')}</SortableTableHead>
                 <TableHead className="whitespace-nowrap">{t('cyclesTab.location')}</TableHead>
                 <SortableTableHead sortKey="day_index" currentSortKey={sortConfig.key as string} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="whitespace-nowrap">{t('cyclesTab.day', { defaultValue: 'Dag' })}</SortableTableHead>
@@ -1349,7 +1407,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={15} className="text-center text-muted-foreground py-12">
                     {t('cyclesTab.noCyclesFound')}
                   </TableCell>
                 </TableRow>
@@ -1379,6 +1437,20 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{getKindBadge(group.kind)}</TableCell>
+                    <TableCell className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {group.has_cycle_row ? (
+                        <CycleCategoryCell
+                          categoryId={group.category_id}
+                          categoryName={group.category_name}
+                          categoryColor={group.category_color}
+                          categories={categories}
+                          onAssign={(id) => assignCategory(group.cyclus_id, id)}
+                          onManage={() => setManageCatOpen(true)}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap max-w-[160px] truncate" title={group.trainer_name}>{group.trainer_name}</TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap max-w-[180px] truncate" title={group.location_name || ''}>{group.location_name || '—'}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{group.day_name}</TableCell>
@@ -1457,6 +1529,9 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
                     {getStatusBadge(group)}
                     {getVisibilityBadge(group)}
                     {getKindBadge(group.kind)}
+                    {group.category_id && (
+                      <Badge variant="outline" className={`text-xs whitespace-nowrap ${getTagColorClass(group.category_color)}`}>{group.category_name}</Badge>
+                    )}
                     {group.cyclus_id && group.has_slots && (
                       <Button
                         variant="ghost"
@@ -1505,6 +1580,16 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         cyclusName={editEndDateGroup?.cyclus_name ?? ''}
         onSaved={fetchCyclusData}
       />
+
+      {activeAcademy && (
+        <ManageCycleCategoriesDialog
+          open={manageCatOpen}
+          onOpenChange={setManageCatOpen}
+          academyId={activeAcademy.id}
+          categories={categories}
+          onChanged={refreshCategories}
+        />
+      )}
 
       {/* Bulk Price Dialog */}
       <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>

@@ -34,6 +34,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      academy_cycle_categories: {
+        Row: {
+          academy_profile_id: string
+          color: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       academy_followers: {
         Row: {
           academy_profile_id: string
@@ -2487,6 +2514,7 @@ export type Database = {
       }
       cycles: {
         Row: {
+          category_id: string | null
           created_at: string
           currency: string | null
           description: string | null
@@ -2509,6 +2537,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          category_id?: string | null
           created_at?: string
           currency?: string | null
           description?: string | null
@@ -2531,6 +2560,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          category_id?: string | null
           created_at?: string
           currency?: string | null
           description?: string | null
@@ -2553,6 +2583,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cycles_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "academy_cycle_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cycles_location_id_fkey"
             columns: ["location_id"]
@@ -8052,6 +8089,9 @@ export type Database = {
       get_academy_cyclus_groups: {
         Args: { p_academy_id: string }
         Returns: {
+          category_color: string
+          category_id: string
+          category_name: string
           cycle_name: string
           cyclus_id: string
           cyclus_name_fallback: string
