@@ -55,13 +55,20 @@ export function personRefOfIds(
  * - profile person → rows keyed player_id WITH guest_player_id NULL (dual-keyed rows are NOT
  *   theirs — they belong to the guest). This is what stops a whole-cycle Remove of the
  *   profile-holder from also cancelling a linked guest's seats, and vice versa.
+ *
+ * `Q` is deliberately unconstrained: a structural constraint over supabase-js's recursive
+ * PostgrestFilterBuilder generics trips TS2589 (excessively deep instantiation) on typed
+ * clients. The eq/is call shape is pinned by unit tests instead.
  */
-export function matchBookingsToPerson<
-  Q extends { eq(column: string, value: string): Q; is(column: string, value: null): Q },
->(query: Q, ref: PersonRef): Q {
-  return ref.guestPlayerId
-    ? query.eq('guest_player_id', ref.guestPlayerId)
-    : query.eq('player_id', ref.playerId).is('guest_player_id', null);
+export function matchBookingsToPerson<Q>(query: Q, ref: PersonRef): Q {
+  const q = query as unknown as {
+    eq(column: string, value: string): unknown;
+    is(column: string, value: null): unknown;
+  };
+  const scoped = ref.guestPlayerId
+    ? q.eq('guest_player_id', ref.guestPlayerId)
+    : (q.eq('player_id', ref.playerId) as typeof q).is('guest_player_id', null);
+  return scoped as Q;
 }
 
 /**
