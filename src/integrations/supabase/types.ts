@@ -8656,7 +8656,10 @@ export type Database = {
       }
       reinstate_rebook_claims: {
         Args: { _claim_ids: string[] }
-        Returns: { claim_id: string; outcome: string }[]
+        Returns: {
+          claim_id: string
+          outcome: string
+        }[]
       }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
