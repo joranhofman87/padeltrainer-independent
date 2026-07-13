@@ -365,30 +365,79 @@ export default function AcademyRebookManage() {
         />
       )}
 
-      {/* The round's priority deadline — visible + editable (date + exact time, academy tz).
-          Not gated on roundId: legacy single-cycle rounds have a deadline too. */}
-      {data?.priorityDeadline.deadline && (
-        <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap" data-testid="rebook-deadline-row">
-          {t('rebookManage.deadlineLabel', 'Reactietermijn:')}{' '}
-          <span className="font-medium text-foreground">
-            {new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-GB' : 'nl-NL', {
-              timeZone: academyTimezone, weekday: 'short', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-            }).format(new Date(data.priorityDeadline.deadline))}
-          </span>
-          {data.priorityDeadline.varies && (
-            <span>· {t('rebookManage.deadlineVaries', 'verschilt per groep — dit is de laatste')}</span>
+      {/* Round settings at a glance — WHEN it closes, HOW it's paid, WHAT happens after the
+          deadline. One compact three-cell strip instead of stacked rows; each cell edits
+          round-wide via its pencil. Not gated on roundId: legacy rounds have these too. */}
+      {data && (
+        <div className="grid gap-x-6 gap-y-3 rounded-lg border px-4 py-2.5 sm:grid-cols-3" data-testid="rebook-settings-strip">
+          <div data-testid="rebook-deadline-row">
+            <div className="text-xs text-muted-foreground">{t('rebookManage.settingsDeadline', 'Reactietermijn')}</div>
+            <div className="flex items-center gap-1 text-sm font-medium">
+              {data.priorityDeadline.deadline
+                ? new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-GB' : 'nl-NL', {
+                    timeZone: academyTimezone, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                  }).format(new Date(data.priorityDeadline.deadline))
+                : '—'}
+              <Button
+                variant="ghost" size="sm" className="h-6 w-6 p-0"
+                onClick={() => setDeadlineOpen(true)}
+                aria-label={t('rebookManage.editDeadline', 'Reactietermijn aanpassen')}
+                title={t('rebookManage.editDeadline', 'Reactietermijn aanpassen')}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {data.priorityDeadline.varies && (
+              <div className="text-xs text-muted-foreground">{t('rebookManage.deadlineVaries', 'verschilt per groep — dit is de laatste')}</div>
+            )}
+          </div>
+
+          {activeAcademy && (
+            <div data-testid="rebook-billing-row">
+              <div className="text-xs text-muted-foreground">{t('rebookManage.settingsBilling', 'Betaling')}</div>
+              <div className="flex items-center gap-1 text-sm font-medium">
+                {data.paymentMode === 'upfront' ? t('rebookManage.payUpfrontShort', 'direct betalen') : t('rebookManage.payDeferredShort', 'factuur bij start (split)')}
+                <Button
+                  variant="ghost" size="sm" className="h-6 w-6 p-0"
+                  onClick={() => setBillingOpen(true)}
+                  aria-label={t('rebookManage.editBilling', 'Betaling aanpassen')}
+                  title={t('rebookManage.editBilling', 'Betaling aanpassen')}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t('rebookManage.payPublicShort', 'publiek:')}{' '}
+                {t(PUBLIC_OPEN_MODE_KEY[data.publicOpenMode], { ns: 'trainer' })}
+                {data.publicOpenSplit ? ' · ' + t('rebookManage.paySplitShort', 'gesplitst') : ''}
+              </div>
+            </div>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2"
-            onClick={() => setDeadlineOpen(true)}
-            aria-label={t('rebookManage.editDeadline', 'Reactietermijn aanpassen')}
-            title={t('rebookManage.editDeadline', 'Reactietermijn aanpassen')}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        </p>
+
+          <div data-testid="rebook-release-row">
+            <div className="text-xs text-muted-foreground">{t('rebookManage.settingsAfterDeadline', 'Na de deadline')}</div>
+            <div className="flex items-center gap-1 text-sm font-medium">
+              {data.releasePolicy === 'auto'
+                ? t('rebookManage.releaseValAuto', 'gaat automatisch open')
+                : data.releasePolicy === 'private'
+                  ? t('rebookManage.releaseValPrivate', 'blijft privé')
+                  : t('rebookManage.releaseValMixed', 'gemengd')}
+              <Button
+                variant="ghost" size="sm" className="h-6 w-6 p-0"
+                onClick={() => setReleaseOpen(true)}
+                aria-label={t('rebookManage.releaseTitle', 'Publiek vrijgeven')}
+                title={t('rebookManage.releaseTitle', 'Publiek vrijgeven')}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {data.releasePolicy === 'private'
+                ? t('rebookManage.releaseValPrivateHint', 'tot je vrije plekken zelf vrijgeeft')
+                : t('rebookManage.releaseValAutoHint', 'vrije plekken worden publiek boekbaar')}
+            </div>
+          </div>
+        </div>
       )}
 
       {data && (
@@ -400,54 +449,6 @@ export default function AcademyRebookManage() {
           timezone={academyTimezone}
           onSaved={() => refetch()}
         />
-      )}
-
-      {/* Payment settings (returning-player mode + how the public pays when sessions open) — editable
-          round-wide after the round was sent. */}
-      {data && activeAcademy && (
-        <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap" data-testid="rebook-billing-row">
-          {t('rebookManage.billingLabel', 'Betaling:')}{' '}
-          <span className="font-medium text-foreground">
-            {data.paymentMode === 'upfront' ? t('rebookManage.payUpfrontShort', 'direct betalen') : t('rebookManage.payDeferredShort', 'factuur bij start (split)')}
-          </span>
-          <span>
-            · {t('rebookManage.payPublicShort', 'publiek:')}{' '}
-            <span className="font-medium text-foreground">
-              {t(PUBLIC_OPEN_MODE_KEY[data.publicOpenMode], { ns: 'trainer' })}
-              {data.publicOpenSplit ? ' · ' + t('rebookManage.paySplitShort', 'gesplitst') : ''}
-            </span>
-          </span>
-          <Button
-            variant="ghost" size="sm" className="h-7 px-2"
-            onClick={() => setBillingOpen(true)}
-            aria-label={t('rebookManage.editBilling', 'Betaling aanpassen')}
-            title={t('rebookManage.editBilling', 'Betaling aanpassen')}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        </p>
-      )}
-
-      {/* Public-release policy — what happens to non-rebooked sessions at the deadline (round-wide). */}
-      {data && (
-        <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap" data-testid="rebook-release-row">
-          {t('rebookManage.releaseLabel', 'Publiek vrijgeven:')}{' '}
-          <span className="font-medium text-foreground">
-            {data.releasePolicy === 'auto'
-              ? t('rebookManage.releaseValAuto', 'automatisch na deadline')
-              : data.releasePolicy === 'private'
-                ? t('rebookManage.releaseValPrivate', 'privé (handmatig vrijgeven)')
-                : t('rebookManage.releaseValMixed', 'gemengd')}
-          </span>
-          <Button
-            variant="ghost" size="sm" className="h-7 px-2"
-            onClick={() => setReleaseOpen(true)}
-            aria-label={t('rebookManage.releaseTitle', 'Publiek vrijgeven')}
-            title={t('rebookManage.releaseTitle', 'Publiek vrijgeven')}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        </p>
       )}
 
       {data && activeAcademy && (
@@ -488,6 +489,16 @@ export default function AcademyRebookManage() {
               {t('rebookManage.summary.clickedYesUnpaid', 'klikte Ja, niet afgerond')}
             </>
           )}
+          {/* Invite delivery folded into the same line (was its own row) — saves vertical space. */}
+          {data.invitesTotal > 0 && (
+            <>
+              {' · '}
+              <span className="inline-flex items-center gap-1 whitespace-nowrap align-text-bottom">
+                <MailCheck className="h-4 w-4" />
+                {t('rebookManage.invitesSentShort', '{{sent}}/{{total}} verstuurd', { sent: data.invitesSent, total: data.invitesTotal })}
+              </span>
+            </>
+          )}
         </p>
       )}
 
@@ -523,14 +534,6 @@ export default function AcademyRebookManage() {
           {t('rebookManage.unpaid', 'Open')}: {data?.unpaidCount ?? 0}{data && data.outstandingAmount > 0 ? ` · ${formatCurrency(data.outstandingAmount)}` : ''}
         </Badge>
       </div>
-
-      {/* Invite delivery at a glance — how many of the round's invites actually went out. */}
-      {data && data.invitesTotal > 0 && (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="rebook-invites-summary">
-          <MailCheck className="h-4 w-4" />
-          {t('rebookManage.invitesSent', '{{sent}} van {{total}} uitnodigingen verstuurd', { sent: data.invitesSent, total: data.invitesTotal })}
-        </p>
-      )}
 
       {/* Filter toolbar */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
