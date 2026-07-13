@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import {
   buildClaimUrl,
+  effectiveGuestEmail,
   resolveAppBase,
   resolveRecipient,
 } from "../_shared/priority-claim-invite.ts";
@@ -78,7 +79,7 @@ interface ClaimRow {
   guest_player_id: string | null;
   rebook_group_id: string | null;
   profiles: { full_name: string | null; email: string | null } | null;
-  guest_players: { full_name: string | null; email: string | null } | null;
+  guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
 }
 
 interface SlotRow {
@@ -244,11 +245,11 @@ const handler = async (req: Request): Promise<Response> => {
       // email presence, so we can pick each (series, player)'s earliest-week claim as
       // the representative AND skip claims with no email (which can never be sent, so
       // must not be counted as "remaining" or the drain would never converge).
-      const repClaims: Array<{ id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null } | null }> = [];
+      const repClaims: Array<{ id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null }> = [];
       for (let i = 0; i < cycleSlotIds.length; i += 200) {
         const { data: rc, error: rcErr } = await supabase
           .from("slot_priority_claims")
-          .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email)")
+          .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email, linked_profile:linked_profile_id(email))")
           .in("slot_id", cycleSlotIds.slice(i, i + 200))
           .eq("status", "pending");
         if (rcErr) throw rcErr;
@@ -256,8 +257,11 @@ const handler = async (req: Request): Promise<Response> => {
         // objects. Cast through unknown (same idiom as the ClaimRow cast below).
         repClaims.push(...((rc || []) as unknown as typeof repClaims));
       }
-      const hasEmail = (c: { profiles: { email: string | null } | null; guest_players: { email: string | null } | null }) =>
-        !!(c.profiles?.email?.trim() || c.guest_players?.email?.trim());
+      // Guest emails fall back to the linked profile's address (effectiveGuestEmail) — FAM-02
+      // Level 1 keys claims to the guest person, so an email-less linked guest (e.g. a child
+      // under a parent's account) must stay reachable via the parent's inbox.
+      const hasEmail = (c: { profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null }) =>
+        !!(c.profiles?.email?.trim() || effectiveGuestEmail(c.guest_players));
       const repByKey = new Map<string, { id: string; start: string; invited: boolean; sendable: boolean }>();
       for (const c of repClaims) {
         const pkey = c.player_id ?? `g:${c.guest_player_id}`;
@@ -335,7 +339,7 @@ const handler = async (req: Request): Promise<Response> => {
     let query = supabase
       .from("slot_priority_claims")
       .select(
-        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
+        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))"
       );
     if (cycleCandidateIds) query = query.in("id", cycleCandidateIds);
     else if (authorizedIds) query = query.in("id", authorizedIds);
@@ -479,7 +483,7 @@ const handler = async (req: Request): Promise<Response> => {
         isTest,
         callerEmail,
         playerEmail: c.profiles?.email,
-        guestEmail: c.guest_players?.email,
+        guestEmail: effectiveGuestEmail(c.guest_players),
       });
       // No email on file → nothing we can send; count as skipped so the caller's
       // totals reconcile to the number of claims it asked us to invite.

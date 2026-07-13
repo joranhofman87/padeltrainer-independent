@@ -18,6 +18,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +47,7 @@ const sha256Hex = async (s: string): Promise<string> => {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-interface NameEmail { full_name?: string | null; first_name?: string | null; email?: string | null }
+interface NameEmail { full_name?: string | null; first_name?: string | null; email?: string | null; linked_profile?: { email?: string | null } | null }
 interface SlotJoin { start_time: string; end_time: string; cyclus_id: string | null; cyclus_name: string | null; academy_profile_id: string | null }
 interface ClaimRow {
   id: string;
@@ -114,7 +115,7 @@ serve(async (req: Request) => {
       .from("slot_priority_claims")
       .select(
         "id, invited_at, slot_id, player_id, guest_player_id, " +
-        "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email), " +
+        "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email, linked_profile:linked_profile_id(email)), " +
         "availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, academy_profile_id)",
       )
       .eq("rebook_group_id", groupId)
@@ -181,7 +182,9 @@ serve(async (req: Request) => {
     let sent = 0, skipped = 0, failed = 0;
 
     for (const m of members.values()) {
-      const recipientEmail = (m.rep.profiles?.email || m.rep.guest_players?.email || "").trim();
+      // Guest email falls back to the linked profile's address (FAM-02: claims are guest-keyed;
+      // an email-less linked guest — e.g. a child added by the captain — stays reachable).
+      const recipientEmail = (m.rep.profiles?.email || effectiveGuestEmail(m.rep.guest_players) || "").trim();
       if (!recipientEmail) { skipped++; continue; } // no email on file → can't send (leave unstamped)
 
       // Claim-before-send: stamp confirmation_sent_at on THIS member's still-NULL claims and only

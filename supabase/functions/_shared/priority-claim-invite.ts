@@ -15,6 +15,26 @@ export function resolveAppBase(publicAppUrl: string | undefined | null): string 
   return trimmed || "https://padeltrainer.ai";
 }
 
+/** Shape of a guest_players embed carrying the linked profile's email as fallback contact:
+ *  `guest_players:guest_player_id(..., email, linked_profile:linked_profile_id(email))`. */
+export interface GuestEmailSource {
+  email?: string | null;
+  linked_profile?: { email?: string | null } | null;
+}
+
+/**
+ * A guest person's contact email — their OWN address first; the linked profile's email ONLY
+ * when the guest has none on file. FAM-02 Level 1 keys rebook claims to the guest person, so
+ * a linked guest (e.g. a child under a parent's account) no longer inherits the profile's
+ * identity — but without an own email their invites/reminders would silently stop. The link
+ * is deprecated as an identity, yet stays valid as a CONTACT fallback (a child with their own
+ * email keeps receiving their own mail; guest-email-first deliberately diverges from the
+ * profile-first ACCOUNT-contact rule in coalesceLinkedGuestIdentity).
+ */
+export function effectiveGuestEmail(guest: GuestEmailSource | null | undefined): string | null {
+  return guest?.email?.trim() || guest?.linked_profile?.email?.trim() || null;
+}
+
 /**
  * Build the claim URL for an email. For test/preview sends we deliberately emit
  * a non-functional placeholder token so a live token is never delivered to an

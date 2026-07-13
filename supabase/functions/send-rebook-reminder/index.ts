@@ -9,7 +9,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
-import { buildClaimUrl, resolveAppBase, resolveRecipient } from "../_shared/priority-claim-invite.ts";
+import { buildClaimUrl, effectiveGuestEmail, resolveAppBase, resolveRecipient } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
@@ -92,7 +92,7 @@ serve(async (req: Request) => {
     // already opted out (only pending and claimed players get one).
     const { data: claims } = await supabase
       .from("slot_priority_claims")
-      .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)")
+      .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
       .in("slot_id", slotIds)
       .in("status", ["pending", "claimed"]);
     type ClaimRow = {
@@ -100,10 +100,12 @@ serve(async (req: Request) => {
       player_id: string | null;
       guest_player_id: string | null;
       profiles: { full_name: string | null; email: string | null } | null;
-      guest_players: { full_name: string | null; email: string | null } | null;
+      guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
     };
     const byPlayer = new Map<string, ClaimRow>();
-    for (const c of (claims ?? []) as ClaimRow[]) {
+    // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
+    // runtime values are single objects — cast through unknown (same idiom as the invite fn).
+    for (const c of (claims ?? []) as unknown as ClaimRow[]) {
       const key = c.player_id ?? (c.guest_player_id ? `g:${c.guest_player_id}` : "");
       if (!key || !targetKeys.has(key) || byPlayer.has(key)) continue;
       byPlayer.set(key, c);
@@ -119,7 +121,9 @@ serve(async (req: Request) => {
     for (const c of recipients) {
       const email = resolveRecipient({
         isTest: false, callerEmail: null,
-        playerEmail: c.profiles?.email, guestEmail: c.guest_players?.email,
+        // Guest email falls back to the linked profile's address (FAM-02: claims are
+        // guest-keyed; an email-less linked guest stays reachable via the parent's inbox).
+        playerEmail: c.profiles?.email, guestEmail: effectiveGuestEmail(c.guest_players),
       });
       if (!email) { skipped++; continue; }
       const name = c.profiles?.full_name || c.guest_players?.full_name || "";
