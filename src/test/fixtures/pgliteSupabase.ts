@@ -3,7 +3,7 @@
  * vitest can run the ACTUAL app lib (invoiceSync, bookings, …) against real SQL — not a JS mock.
  *
  * It supports ONLY the query surface those money-path functions use (verified by grepping their
- * `.from/.select/.eq/.in/.gt/.lt/.overlaps/.order/.range/.maybeSingle/.update/.rpc` calls): no `.delete/
+ * `.from/.select/.eq/.is/.in/.gt/.lt/.overlaps/.order/.range/.maybeSingle/.update/.rpc` calls): no `.delete/
  * .contains/.single` beyond what is implemented here. `.range()` maps to LIMIT/OFFSET and an
  * opt-in `maxRows` models PostgREST's per-response cap. The one embedded-resource select (bookings → availability_slots →
  * locations) is special-cased to the exact shape the recalc expects. Keep this adapter narrow: add
@@ -12,7 +12,7 @@
  */
 import type { PGlite } from '@electric-sql/pglite';
 
-type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps' | 'gte' | 'gt' | 'lt';
+type FilterKind = 'eq' | 'neq' | 'in' | 'overlaps' | 'gte' | 'gt' | 'lt' | 'is';
 interface Filter { kind: FilterKind; col: string; val: unknown; }
 interface SupaResult<T> { data: T; error: { message: string; code?: string } | null; }
 
@@ -61,6 +61,8 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
   gt(col: string, val: unknown) { this.filters.push({ kind: 'gt', col, val }); return this; }
   lt(col: string, val: unknown) { this.filters.push({ kind: 'lt', col, val }); return this; }
   in(col: string, val: unknown[]) { this.filters.push({ kind: 'in', col, val }); return this; }
+  // PostgREST .is(): NULL-safe IS comparison (only null/true/false are valid PostgREST inputs).
+  is(col: string, val: null | boolean) { this.filters.push({ kind: 'is', col, val }); return this; }
   overlaps(col: string, val: unknown[]) { this.filters.push({ kind: 'overlaps', col, val }); return this; }
   order(col: string, opts?: { ascending?: boolean }) { this.orderBy = { col, ascending: opts?.ascending !== false }; return this; }
   // PostgREST .range(from,to) is inclusive on both ends → LIMIT/OFFSET. Returns
@@ -80,6 +82,8 @@ class QueryBuilder implements PromiseLike<SupaResult<unknown>> {
   private whereClause(params: unknown[]): string {
     if (this.filters.length === 0) return '';
     const parts = this.filters.map((f) => {
+      // IS takes a SQL keyword, not a bind parameter (and only null/true/false reach it).
+      if (f.kind === 'is') return `${f.col} IS ${f.val === null ? 'NULL' : f.val === true ? 'TRUE' : 'FALSE'}`;
       params.push(f.kind === 'overlaps' || f.kind === 'in' ? f.val : f.val);
       const p = `$${params.length}`;
       if (f.kind === 'eq') return `${f.col} = ${p}`;

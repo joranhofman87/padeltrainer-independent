@@ -11,6 +11,7 @@ import {
   type InsertedBookingRow,
   type SlotForGuestBooking,
 } from "@/lib/slotBookingWrite";
+import { matchBookingsToPerson, personRefOfIds } from "@/lib/personIdentity";
 import { logger } from "@/lib/logger";
 
 /**
@@ -244,7 +245,8 @@ export async function swapPlayerInCycle(params: {
   const client = params.client ?? supabase;
   const { cycleId, fromPlayer, toGuestPlayerId, skipInvoices = false } = params;
 
-  if (!fromPlayer.playerId && !fromPlayer.guestPlayerId) {
+  const fromRef = personRefOfIds(fromPlayer.playerId, fromPlayer.guestPlayerId);
+  if (!fromRef) {
     return { error: null, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   }
 
@@ -254,17 +256,18 @@ export async function swapPlayerInCycle(params: {
     return { error: null, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   }
 
-  // The outgoing player's swappable bookings (dedup-active) across the cycle.
-  let outQuery = client
-    .from("bookings")
-    .select("id, slot_id")
-    .in("slot_id", slotIds)
-    .in("status", [...DEDUP_BOOKING_STATUSES]);
-  // Match by guest id first: the Change action is guest-initiated, and a linked (account-claimed)
-  // guest has BOTH ids on its bookings, so matching by guest_player_id reliably finds all the seats.
-  outQuery = fromPlayer.guestPlayerId
-    ? outQuery.eq("guest_player_id", fromPlayer.guestPlayerId)
-    : outQuery.eq("player_id", fromPlayer.playerId as string);
+  // The outgoing person's swappable bookings (dedup-active) across the cycle. Person scope is
+  // GUEST-FIRST (FAM-02 Level 1, personIdentity.ts): a guest ref owns every booking carrying its
+  // guest id (incl. dual-keyed rows the signup linker stamped player_id onto); a profile ref owns
+  // only pure-profile rows — swapping out a profile-holder must never move a linked guest's seats.
+  const outQuery = matchBookingsToPerson(
+    client
+      .from("bookings")
+      .select("id, slot_id")
+      .in("slot_id", slotIds)
+      .in("status", [...DEDUP_BOOKING_STATUSES]),
+    fromRef,
+  );
   const { data: outgoing, error: outErr } = await outQuery;
   if (outErr) return { error: outErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   if (!outgoing || outgoing.length === 0) {

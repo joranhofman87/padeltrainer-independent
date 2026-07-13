@@ -23,9 +23,9 @@ import { syncInvoicesAfterAddPlayer } from '@/lib/invoiceAfterAddPlayer';
 // builder, and awaiting it resolves to `result` (the terminal read).
 function makeClient(result: unknown) {
   const b: Record<string, unknown> = {};
-  for (const m of ['update', 'select', 'in', 'neq', 'eq', 'insert']) b[m] = vi.fn(() => b);
+  for (const m of ['update', 'select', 'in', 'neq', 'eq', 'is', 'insert']) b[m] = vi.fn(() => b);
   (b as { then: (r: (v: unknown) => unknown) => unknown }).then = (resolve) => resolve(result);
-  return { from: vi.fn(() => b) };
+  return { from: vi.fn(() => b), builder: b };
 }
 
 beforeEach(() => {
@@ -74,6 +74,10 @@ describe('cancelPlayerBookingsInCycle — whole-cycle remove', () => {
     expect(res.cancelledCount).toBe(2);
     expect(res.cancelError).toBeNull();
     expect(syncInvoicesAfterBookingRemoval).not.toHaveBeenCalled();
+    // FAM-02 Level 1: a profile person owns only PURE profile rows — the match must scope
+    // player_id AND guest_player_id IS NULL, so dual-keyed (linked guest) rows stay untouched.
+    expect(client.builder.eq).toHaveBeenCalledWith('player_id', 'p1');
+    expect(client.builder.is).toHaveBeenCalledWith('guest_player_id', null);
   });
 
   it('without skip: still syncs invoices for the removed bookings', async () => {
@@ -81,6 +85,16 @@ describe('cancelPlayerBookingsInCycle — whole-cycle remove', () => {
     const res = await cancelPlayerBookingsInCycle(['s1'], { guestPlayerId: 'g1' }, client as never);
     expect(res.cancelledCount).toBe(1);
     expect(syncInvoicesAfterBookingRemoval).toHaveBeenCalledWith(['b1']);
+    // A guest person owns EVERY row carrying their guest id (dual rows are theirs) — no is() scope.
+    expect(client.builder.eq).toHaveBeenCalledWith('guest_player_id', 'g1');
+    expect(client.builder.is).not.toHaveBeenCalled();
+  });
+
+  it('a dual-keyed ref resolves to the GUEST person (guest-first)', async () => {
+    const client = makeClient({ data: [{ id: 'b1' }], error: null });
+    await cancelPlayerBookingsInCycle(['s1'], { playerId: 'p1', guestPlayerId: 'g1' }, client as never);
+    expect(client.builder.eq).toHaveBeenCalledWith('guest_player_id', 'g1');
+    expect(client.builder.eq).not.toHaveBeenCalledWith('player_id', 'p1');
   });
 
   it('no matching bookings: clean no-op (no cancel, no sync)', async () => {
