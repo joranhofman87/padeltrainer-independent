@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { canonicalizeSeriesCohort, type CohortBooking } from "./rebook-cohort.ts";
+import { canonicalizeSeriesCohort, cohortPersonKey, type CohortBooking } from "./rebook-cohort.ts";
 
 const P = "11111111-1111-1111-1111-111111111111";
 const P2 = "22222222-2222-2222-2222-222222222222";
@@ -15,28 +15,38 @@ function assertNoDuplicateIdentity(cohort: CohortBooking[]) {
   assertEquals(new Set(guests).size, guests.length, "duplicate non-null guest_player_id → uq_slot_guest 23505");
 }
 
-Deno.test("23505 GUARD: a guest linked to a profile (booking with BOTH ids) + a pure-guest booking of the same guest collapse to ONE claim", () => {
+Deno.test("23505 GUARD: a linked booking (BOTH ids) + a pure-guest booking of the same guest collapse to ONE guest claim", () => {
   const cohort = canonicalizeSeriesCohort([
     { player_id: P, guest_player_id: G }, // linked booking (both ids) — the crash vector
     { player_id: null, guest_player_id: G }, // pure-guest booking of the SAME guest
   ]);
-  assertEquals(cohort, [{ player_id: P, guest_player_id: null }]);
+  assertEquals(cohort, [{ player_id: null, guest_player_id: G }]);
   assertNoDuplicateIdentity(cohort);
 });
 
-Deno.test("XOR: a booking carrying both ids yields a registered (player-only) claim, never a doubled guest", () => {
+Deno.test("a dual-keyed booking resolves to the GUEST person (FAM-02 Level 1: linked ≠ merged)", () => {
   const cohort = canonicalizeSeriesCohort([{ player_id: P, guest_player_id: G }]);
-  assertEquals(cohort, [{ player_id: P, guest_player_id: null }]);
+  assertEquals(cohort, [{ player_id: null, guest_player_id: G }]);
 });
 
-Deno.test("two DIFFERENT players sharing one guest_player_id stay two distinct registered claims (no guest collision)", () => {
+Deno.test("FAM-02 regression: a parent's own booking + their linked child's booking yield TWO claims — the child keeps their seat/invite", () => {
+  const cohort = canonicalizeSeriesCohort([
+    { player_id: P, guest_player_id: null }, // the parent, booked on their own profile
+    { player_id: P, guest_player_id: G }, // the linked child (linker stamped the parent's id)
+  ]);
+  assertEquals(cohort.length, 2);
+  assertEquals(cohort.some((c) => c.player_id === P && c.guest_player_id === null), true);
+  assertEquals(cohort.some((c) => c.player_id === null && c.guest_player_id === G), true);
+  assertNoDuplicateIdentity(cohort);
+});
+
+Deno.test("two DIFFERENT players' bookings sharing one guest_player_id are ONE person (the guest) — one claim, no guest collision", () => {
   const cohort = canonicalizeSeriesCohort([
     { player_id: P, guest_player_id: G },
     { player_id: P2, guest_player_id: G },
   ]);
-  assertEquals(cohort.length, 2);
+  assertEquals(cohort, [{ player_id: null, guest_player_id: G }]);
   assertNoDuplicateIdentity(cohort);
-  assertEquals(cohort.every((c) => c.guest_player_id === null), true);
 });
 
 Deno.test("pure guests: distinct guests kept, duplicate guest de-duped to one", () => {
@@ -64,13 +74,12 @@ Deno.test("registered players de-dupe by player_id across sessions", () => {
   ]);
 });
 
-Deno.test("link learned from ANY session applies to a pure-guest booking on a DIFFERENT session (order-independent)", () => {
-  // pure-guest booking comes FIRST, the linking booking second — the guest must still resolve to P.
+Deno.test("order-independent: bare guest booking + linked booking of the same guest → one guest claim either way", () => {
   const cohort = canonicalizeSeriesCohort([
     { player_id: null, guest_player_id: G },
     { player_id: P, guest_player_id: G },
   ]);
-  assertEquals(cohort, [{ player_id: P, guest_player_id: null }]);
+  assertEquals(cohort, [{ player_id: null, guest_player_id: G }]);
   assertNoDuplicateIdentity(cohort);
 });
 
@@ -79,13 +88,32 @@ Deno.test("rows with no identity at all are skipped; empty input → empty cohor
   assertEquals(canonicalizeSeriesCohort([{ player_id: null, guest_player_id: null }]), []);
 });
 
-Deno.test("mixed realistic series: 1 registered, 1 linked guest (both ids), 1 pure guest → 3 clean XOR claims", () => {
+Deno.test("mixed realistic series: 1 registered, 1 linked guest, 1 pure guest → 3 clean XOR claims (the linked guest keeps their own identity)", () => {
   const cohort = canonicalizeSeriesCohort([
     { player_id: P, guest_player_id: null },
     { player_id: P2, guest_player_id: G },
     { player_id: null, guest_player_id: G2 },
-    { player_id: null, guest_player_id: G }, // duplicate of the linked guest → must collapse into P2
+    { player_id: null, guest_player_id: G }, // duplicate of the linked guest → collapses into g:G
   ]);
   assertEquals(cohort.length, 3);
+  assertEquals(cohort.some((c) => c.player_id === P), true);
+  assertEquals(cohort.some((c) => c.guest_player_id === G), true);
+  assertEquals(cohort.some((c) => c.guest_player_id === G2), true);
+  // P2 no longer appears: their only booking in this series was the linked guest's.
+  assertEquals(cohort.some((c) => c.player_id === P2), false);
   assertNoDuplicateIdentity(cohort);
+});
+
+Deno.test("cohortPersonKey mirrors the canonicalizer (guest-first) — preview counts can't diverge from claims", () => {
+  assertEquals(cohortPersonKey({ player_id: P, guest_player_id: G }), `g:${G}`);
+  assertEquals(cohortPersonKey({ player_id: P, guest_player_id: null }), P);
+  assertEquals(cohortPersonKey({ player_id: null, guest_player_id: G }), `g:${G}`);
+  assertEquals(cohortPersonKey({ player_id: null, guest_player_id: null }), null);
+  // Every canonical cohort entry keys to itself.
+  for (const b of canonicalizeSeriesCohort([
+    { player_id: P, guest_player_id: null },
+    { player_id: P2, guest_player_id: G },
+  ])) {
+    assertEquals(cohortPersonKey(b) !== null, true);
+  }
 });

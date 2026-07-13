@@ -5,7 +5,8 @@ import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { computeRebookExclusion } from "../_shared/rebook-exclusion.ts";
 import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
-import { canonicalizeSeriesCohort } from "../_shared/rebook-cohort.ts";
+import { canonicalizeSeriesCohort, cohortPersonKey } from "../_shared/rebook-cohort.ts";
+import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -495,7 +496,10 @@ serve(async (req) => {
     const includedPlayerSet = new Set<string>();
     for (const series of includedSeries) {
       for (const src of series) {
-        for (const b of bookingsBySlot.get(src.id) ?? []) includedPlayerSet.add(b.player_id ?? `g:${b.guest_player_id}`);
+        for (const b of bookingsBySlot.get(src.id) ?? []) {
+          const k = cohortPersonKey(b); // guest-first — MUST match the canonicalizer's keying
+          if (k) includedPlayerSet.add(k);
+        }
       }
     }
     // Merge the moved-to-second-bucket players into the priority list (validated below).
@@ -569,24 +573,39 @@ serve(async (req) => {
       const guestIds = new Set<string>();
       for (const arr of bookingsBySlot.values()) {
         for (const b of arr) {
-          if (b.player_id) playerIds.add(b.player_id);
-          else if (b.guest_player_id) guestIds.add(b.guest_player_id);
+          // Guest-first, mirroring the canonicalizer: a dual-keyed booking is the GUEST person,
+          // so the review must show the guest's own name + email presence, not the linked profile's.
+          if (b.guest_player_id) guestIds.add(b.guest_player_id);
+          else if (b.player_id) playerIds.add(b.player_id);
         }
       }
       const infoByKey = new Map<string, { name: string; hasEmail: boolean }>();
-      const loadInfo = async (table: string, ids: string[], keyPrefix: string) => {
-        for (let i = 0; i < ids.length; i += 200) {
-          const { data } = await supabase.from(table).select("id, full_name, email").in("id", ids.slice(i, i + 200));
-          for (const r of data ?? []) {
-            infoByKey.set(`${keyPrefix}${r.id}`, {
-              name: (r.full_name ?? "").trim() || "—",
-              hasEmail: Boolean(r.email && String(r.email).trim()),
-            });
-          }
+      const playerArr = [...playerIds];
+      for (let i = 0; i < playerArr.length; i += 200) {
+        const { data } = await supabase.from("profiles").select("id, full_name, email").in("id", playerArr.slice(i, i + 200));
+        for (const r of data ?? []) {
+          infoByKey.set(String(r.id), {
+            name: (r.full_name ?? "").trim() || "—",
+            hasEmail: Boolean(r.email && String(r.email).trim()),
+          });
         }
-      };
-      await loadInfo("profiles", [...playerIds], "");
-      await loadInfo("guest_players", [...guestIds], "g:");
+      }
+      // Guest email presence mirrors the invite sender: own email first, the linked profile's
+      // as fallback (effectiveGuestEmail) — so the review's noEmailCount matches who would
+      // actually be skipped at send time.
+      const guestArr = [...guestIds];
+      for (let i = 0; i < guestArr.length; i += 200) {
+        const { data } = await supabase
+          .from("guest_players")
+          .select("id, full_name, email, linked_profile:linked_profile_id(email)")
+          .in("id", guestArr.slice(i, i + 200));
+        for (const r of (data ?? []) as unknown as Array<{ id: string; full_name: string | null; email: string | null; linked_profile: { email: string | null } | null }>) {
+          infoByKey.set(`g:${r.id}`, {
+            name: (r.full_name ?? "").trim() || "—",
+            hasEmail: Boolean(effectiveGuestEmail(r)),
+          });
+        }
+      }
 
       // Trainer display names for the review (trainer_id = trainer_profiles.id → profiles.full_name).
       const trainerIds = [...new Set(qualifyingSeries.map((s) => s[0].trainer_id).filter((x): x is string => !!x))];
@@ -616,7 +635,10 @@ serve(async (req) => {
         const d = new Date(tmpl.start_time);
         const cohort = new Set<string>();
         for (const src of series) {
-          for (const b of bookingsBySlot.get(src.id) ?? []) cohort.add(b.player_id ?? `g:${b.guest_player_id}`);
+          for (const b of bookingsBySlot.get(src.id) ?? []) {
+            const k = cohortPersonKey(b); // guest-first — MUST match the canonicalizer's keying
+            if (k) cohort.add(k);
+          }
         }
         const sessions = generateWeeklyStarts(newStartDate, tmpl.start_time, effWeeks, holidays, tz, bodyEndDate).length;
         const roster = [...cohort]
