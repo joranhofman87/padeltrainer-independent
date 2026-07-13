@@ -188,35 +188,19 @@ export default function CyclesTable({
     ).values()
   );
 
+  // Compact single-line cells (nowrap/truncate): the table horizontal-scrolls on small screens via
+  // the compact min-width — same pattern as the rebook rounds overview — replacing the old
+  // responsive column-hiding + mobile sub-line (which compact's 40px row clipping would cut off).
   const columns: ColumnDef<Cycle>[] = [
-    {
-      key: 'name',
-      header: t('form.registrationName', 'Name'),
-      sortKey: 'name',
-      linkTo: rowHref ? (cycle) => rowHref(cycle) : undefined,
-      renderCell: (cycle) => (
-        <>
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{cycle.name}</span>
-            {cycle.type === 'event' && (
-              <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
-                {t('type.event', 'Event')}
-              </Badge>
-            )}
-          </div>
-          <div className="text-sm text-muted-foreground md:hidden">{cycle.location?.name || '-'}</div>
-        </>
-      ),
-    },
     {
       key: 'location',
       header: t('common:location', 'Location'),
       sortKey: 'location',
-      headClassName: 'hidden md:table-cell',
-      className: 'hidden md:table-cell',
+      className: 'max-w-[220px]',
+      cellTitle: (cycle) => (cycle.location ? `${cycle.location.name} (${cycle.location.city})` : undefined),
       renderCell: (cycle) =>
         cycle.location ? (
-          <span className="text-sm">
+          <span className="block truncate text-sm">
             {cycle.location.name}
             <span className="text-muted-foreground ml-1">({cycle.location.city})</span>
           </span>
@@ -225,11 +209,28 @@ export default function CyclesTable({
         ),
     },
     {
+      key: 'name',
+      header: t('form.registrationName', 'Name'),
+      sortKey: 'name',
+      className: 'max-w-[260px]',
+      cellTitle: (cycle) => cycle.name || undefined,
+      linkTo: rowHref ? (cycle) => rowHref(cycle) : undefined,
+      renderCell: (cycle) => (
+        <span className="flex items-center gap-2">
+          <span className="truncate font-medium">{cycle.name}</span>
+          {cycle.type === 'event' && (
+            <Badge variant="outline" className="shrink-0 text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
+              {t('type.event', 'Event')}
+            </Badge>
+          )}
+        </span>
+      ),
+    },
+    {
       key: 'period',
       header: t('common:period', 'Period'),
       sortKey: 'start_date',
-      headClassName: 'hidden sm:table-cell',
-      className: 'hidden sm:table-cell',
+      className: 'whitespace-nowrap',
       renderCell: (cycle) => <span className="text-sm">{formatPeriod(cycle)}</span>,
     },
     {
@@ -242,8 +243,6 @@ export default function CyclesTable({
       key: 'applications',
       header: t('stats.applications'),
       sortKey: 'applications',
-      headClassName: 'hidden lg:table-cell',
-      className: 'hidden lg:table-cell',
       renderCell: (cycle) => (
         <Badge variant="outline" className="font-normal">
           <Users className="h-3 w-3 mr-1" />
@@ -254,8 +253,7 @@ export default function CyclesTable({
     {
       key: 'price',
       header: t('common:price', 'Price'),
-      headClassName: 'hidden lg:table-cell',
-      className: 'hidden lg:table-cell text-sm',
+      className: 'whitespace-nowrap text-sm',
       renderCell: (cycle) => formatPrice(cycle),
     },
   ];
@@ -361,6 +359,7 @@ export default function CyclesTable({
         onSort={(key) => handleSort(key as SortField)}
         onRowClick={onEdit}
         renderActions={renderRowActions}
+        compact
         desktopOnly={false}
         empty={cycles.length === 0 ? t('noCycles') : t('common:noResults', 'No results found')}
       />
