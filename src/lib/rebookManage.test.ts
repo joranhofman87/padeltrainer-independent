@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildRebookPaidResolver, deriveGroupStatus, slotPhase,
+  buildRebookPaidResolver, claimInvoiceKeys, deriveGroupStatus, slotPhase,
   rebookPlayerOutcome, clickedYesUnpaid, summariseRebookOutcomes,
   sumRebookInvoiceAmounts,
   type RebookManagePlayer,
@@ -114,6 +114,54 @@ describe('buildRebookPaidResolver (P1-1: rebook invoices are tagged rebook_cyclu
     expect(r.getPayToken('p3', null)).toBeNull(); // cancelled (zombie-swept)
     expect(r.getPayToken('p9', 'g1')).toBe('tok-group'); // teammate → the group's shared unpaid invoice
     expect(r.getPayToken('p9', 'g2')).toBeNull(); // no invoice anywhere
+  });
+
+  it('#6 regression (FAM-02): signup linker stamps player_id onto a PAID guest invoice — the guest claim stays paid, the profile does NOT inherit it', () => {
+    // At mint the invoice was {null, g1}; after the guest signs up, link_guest_data_to_profile
+    // re-keys it to {p1, g1} but the claim keeps guest_player_id (documented invariant).
+    const r = buildRebookPaidResolver(
+      [{ player_id: 'p1', guest_player_id: 'g1', status: 'paid' }],
+      [],
+    );
+    // The guest claim resolves via its own guest key → still paid after signup.
+    expect(r.isPaid(claimInvoiceKeys({ player_id: null, guest_player_id: 'g1' }), null)).toBe(true);
+    expect(r.hasInvoice(claimInvoiceKeys({ player_id: null, guest_player_id: 'g1' }), null)).toBe(true);
+    // The profile-holder's OWN claim must NOT read paid off the guest's invoice (false-PAID guard).
+    expect(r.isPaid(claimInvoiceKeys({ player_id: 'p1', guest_player_id: null }), null)).toBe(false);
+    expect(r.hasInvoice(claimInvoiceKeys({ player_id: 'p1', guest_player_id: null }), null)).toBe(false);
+  });
+
+  it('pre-#458 dual claim falls back to its player key when the invoice was minted player-only', () => {
+    const r = buildRebookPaidResolver(
+      [{ player_id: 'p1', guest_player_id: null, status: 'paid' }],
+      [],
+    );
+    expect(r.isPaid(claimInvoiceKeys({ player_id: 'p1', guest_player_id: 'g1' }), null)).toBe(true);
+  });
+
+  it('getPayToken with ordered keys: the guest-keyed unpaid invoice wins over the player-keyed one, group token stays the last fallback', () => {
+    const r = buildRebookPaidResolver(
+      [
+        { player_id: 'p1', guest_player_id: 'g1', status: 'sent', public_token: 'tok-guest' },
+        { player_id: 'p1', guest_player_id: null, status: 'sent', public_token: 'tok-player' },
+      ],
+      [{ rebook_group_id: 'grpA', status: 'open', public_token: 'tok-group' }],
+    );
+    const dualKeys = claimInvoiceKeys({ player_id: 'p1', guest_player_id: 'g1' });
+    expect(r.getPayToken(dualKeys, null)).toBe('tok-guest'); // ordered: guest identity first
+    expect(r.getPayToken(claimInvoiceKeys({ player_id: 'p2', guest_player_id: null }), 'grpA')).toBe('tok-group');
+  });
+});
+
+describe('claimInvoiceKeys — ordered invoice-match keys per claim identity (FAM-02 Level 1)', () => {
+  it('guest claim → guest key only', () => {
+    expect(claimInvoiceKeys({ player_id: null, guest_player_id: 'g1' })).toEqual(['g:g1']);
+  });
+  it('player claim → player key only', () => {
+    expect(claimInvoiceKeys({ player_id: 'p1', guest_player_id: null })).toEqual(['p1']);
+  });
+  it('pre-#458 dual claim → guest key first, player key as fallback', () => {
+    expect(claimInvoiceKeys({ player_id: 'p1', guest_player_id: 'g1' })).toEqual(['g:g1', 'p1']);
   });
 });
 
