@@ -7,6 +7,7 @@ import { Search, Users, Eye, EyeOff, Euro, Trash2, CalendarClock, Ticket, Layers
 import { supabase } from '@/lib/supabaseClient';
 import { setSlotVisibility } from '@/lib/slots';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
+import { personDisplayName, personKeyOf } from '@/lib/personIdentity';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -356,9 +357,13 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
         slotsByCyclus.get(cid)!.push(slot);
       });
 
-      // 3. Fetch booking data for player names and payment status
+      // 3. Fetch booking data for player names and payment status. Entries are PERSON-keyed
+      // (FAM-02 Level 1, personIdentity.ts) so two same-named distinct people stay distinct and
+      // a dual-keyed (linked guest) seat shows the guest's OWN name — mirroring the RPC
+      // (20260816100000). NOTE: this fallback's bookedCount stays hold-blind (the RPC is
+      // hold-aware); it only runs in the deploy gap when the RPC is missing.
       const slotIds = allSlots.map(s => s.id);
-      const playerNamesMap: Record<string, string[]> = {};
+      const playerNamesMap: Record<string, { key: string; name: string }[]> = {};
       const bookingCountMap: Record<string, number> = {};
       const bookingsBySlot: Record<string, { status: string; payment_status: string | null; paid_externally: boolean | null }[]> = {};
 
@@ -408,17 +413,22 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               payment_status: b.payment_status ?? null,
               paid_externally: b.paid_externally ?? null,
             });
-            const name = (b.player_id && playerNameLookup[b.player_id]) || (b.guest_player_id && guestNameLookup[b.guest_player_id]) || null;
-            if (name) {
+            const key = personKeyOf(b);
+            const name = personDisplayName(b, {
+              profileName: b.player_id ? playerNameLookup[b.player_id] : null,
+              guestName: b.guest_player_id ? guestNameLookup[b.guest_player_id] : null,
+            });
+            if (key && name) {
               if (!playerNamesMap[b.slot_id]) playerNamesMap[b.slot_id] = [];
-              playerNamesMap[b.slot_id].push(name);
+              playerNamesMap[b.slot_id].push({ key, name });
             }
           });
         }
       }
 
-      // 4. Also fetch intake requests for cycles without slots (to show registered players)
-      const intakePlayerMap: Record<string, string[]> = {};
+      // 4. Also fetch intake requests for cycles without slots (to show registered players).
+      // Person-keyed like the bookings (dedup by person, not by name).
+      const intakePlayerMap: Record<string, { key: string; name: string }[]> = {};
       if (cycleIds.length > 0) {
         for (let i = 0; i < cycleIds.length; i += 500) {
           const chunk = cycleIds.slice(i, i + 500);
@@ -454,11 +464,15 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             }
 
             intakes.forEach((ir: any) => {
-              const name = (ir.player_id && intakePlayerLookup[ir.player_id]) || (ir.guest_player_id && intakeGuestLookup[ir.guest_player_id]) || null;
-              if (name) {
+              const key = personKeyOf(ir);
+              const name = personDisplayName(ir, {
+                profileName: ir.player_id ? intakePlayerLookup[ir.player_id] : null,
+                guestName: ir.guest_player_id ? intakeGuestLookup[ir.guest_player_id] : null,
+              });
+              if (key && name) {
                 if (!intakePlayerMap[ir.cycle_id]) intakePlayerMap[ir.cycle_id] = [];
-                if (!intakePlayerMap[ir.cycle_id].includes(name)) {
-                  intakePlayerMap[ir.cycle_id].push(name);
+                if (!intakePlayerMap[ir.cycle_id].some((e) => e.key === key)) {
+                  intakePlayerMap[ir.cycle_id].push({ key, name });
                 }
               }
             });
@@ -496,7 +510,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
           const locationName = (cycle.locations as any)?.name || null;
           const periodStart = cycle.start_date || new Date().toISOString();
           const periodEnd = cycle.end_date || new Date().toISOString();
-          const intakePlayers = intakePlayerMap[cycleId] || [];
+          const intakePlayers = (intakePlayerMap[cycleId] || []).map((e) => e.name);
 
           grouped.push({
             group_key: `${cycleId}::${trainerId}`,
@@ -570,18 +584,24 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             const periodStart = first.start_time || cycle.start_date || new Date().toISOString();
             const periodEnd = last.start_time || cycle.end_date || new Date().toISOString();
 
-            const allPlayerNames = new Set<string>();
+            // Distinct PERSONS (not names) across the series; intake persons merge in unless
+            // their NAME already appears among the booked names (the historical intake↔booking
+            // merge — an intake shares no person key with its later booking, only the name).
+            const persons = new Map<string, string>();
             let maxBooked = 0;
             seriesSlots.forEach((s: any) => {
-              const names = playerNamesMap[s.id] || [];
-              names.forEach((n: string) => allPlayerNames.add(n));
+              (playerNamesMap[s.id] || []).forEach((e) => persons.set(e.key, e.name));
               const count = bookingCountMap[s.id] || 0;
               if (count > maxBooked) maxBooked = count;
             });
             if (!isRegistration) {
-              const intakePlayers = intakePlayerMap[cycleId] || [];
-              intakePlayers.forEach(n => allPlayerNames.add(n));
+              const bookedNames = new Set(persons.values());
+              (intakePlayerMap[cycleId] || []).forEach((e) => {
+                if (!persons.has(e.key) && !bookedNames.has(e.name)) persons.set(e.key, e.name);
+              });
             }
+            // An ARRAY, not a Set — two distinct same-named persons must count as 2.
+            const allPlayerNames = [...persons.values()];
 
             const pricePerSession = cycle.price_per_session ?? first.price_per_session ?? null;
 
@@ -605,8 +625,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
               period_start: periodStart,
               period_end: periodEnd,
               sessions: seriesSlots.length,
-              player_names: Array.from(allPlayerNames).sort(),
-              player_count: allPlayerNames.size,
+              player_names: [...allPlayerNames].sort(),
+              player_count: allPlayerNames.length,
               price_per_session: pricePerSession,
               max_participants: first.max_participants || 4,
               max_booked: maxBooked,
@@ -646,14 +666,15 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             dayTime = `${dayName} ${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`;
           } catch { /* ignore */ }
 
-          const allPlayerNames = new Set<string>();
+          // Distinct persons (see the series aggregation above) — an array, not a name Set.
+          const persons = new Map<string, string>();
           let maxBooked = 0;
           trainerSlots.forEach((s: any) => {
-            const names = playerNamesMap[s.id] || [];
-            names.forEach((n: string) => allPlayerNames.add(n));
+            (playerNamesMap[s.id] || []).forEach((e) => persons.set(e.key, e.name));
             const count = bookingCountMap[s.id] || 0;
             if (count > maxBooked) maxBooked = count;
           });
+          const allPlayerNames = [...persons.values()];
 
           grouped.push({
             group_key: `${cyclusId}::${trainerId}`,
@@ -666,8 +687,8 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
             period_start: first.start_time,
             period_end: last.start_time,
             sessions: trainerSlots.length,
-            player_names: Array.from(allPlayerNames).sort(),
-            player_count: allPlayerNames.size,
+            player_names: [...allPlayerNames].sort(),
+            player_count: allPlayerNames.length,
             price_per_session: first.price_per_session,
             max_participants: first.max_participants || 4,
             max_booked: maxBooked,
