@@ -31,6 +31,17 @@ import { formatCurrency } from '@/lib/format';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { RebookRoundTextsDialog } from '@/components/cycles/RebookRoundTextsDialog';
 import { RebookDeadlineDialog } from '@/components/cycles/RebookDeadlineDialog';
+import { RebookRoundBillingDialog } from '@/components/cycles/RebookRoundBillingDialog';
+import { RebookReleasePolicyDialog } from '@/components/cycles/RebookReleasePolicyDialog';
+import type { CycleBookingMode } from '@/lib/cycleBookingMode';
+
+// Map the round's public open-up booking mode to the shared (trainer-namespace) label keys.
+const PUBLIC_OPEN_MODE_KEY: Record<CycleBookingMode, string> = {
+  both: 'cyclesTab.bulkBooking.modeBoth',
+  single_only: 'cyclesTab.bulkBooking.modeSingleOnly',
+  single_only_whole_slot: 'cyclesTab.bulkBooking.modeSingleOnlyWholeSlot',
+  cyclus_only: 'cyclesTab.bulkBooking.modeCyclusOnly',
+};
 
 const STATUS_STYLE: Record<GroupStatus, string> = {
   rebooked: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -58,6 +69,8 @@ export default function AcademyRebookManage() {
   const [textsOpen, setTextsOpen] = useState(false);
   // Round deadline editor (priority_window_ends_at, saved round-wide, academy timezone).
   const [deadlineOpen, setDeadlineOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
   const academyTimezone = activeAcademy?.timezone || 'Europe/Amsterdam';
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -385,6 +398,78 @@ export default function AcademyRebookManage() {
           cycleIds={data.cycleIds}
           currentDeadline={data.priorityDeadline.deadline}
           timezone={academyTimezone}
+          onSaved={() => refetch()}
+        />
+      )}
+
+      {/* Payment settings (returning-player mode + how the public pays when sessions open) — editable
+          round-wide after the round was sent. */}
+      {data && activeAcademy && (
+        <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap" data-testid="rebook-billing-row">
+          {t('rebookManage.billingLabel', 'Betaling:')}{' '}
+          <span className="font-medium text-foreground">
+            {data.paymentMode === 'upfront' ? t('rebookManage.payUpfrontShort', 'direct betalen') : t('rebookManage.payDeferredShort', 'factuur bij start (split)')}
+          </span>
+          <span>
+            · {t('rebookManage.payPublicShort', 'publiek:')}{' '}
+            <span className="font-medium text-foreground">
+              {t(PUBLIC_OPEN_MODE_KEY[data.publicOpenMode], { ns: 'trainer' })}
+              {data.publicOpenSplit ? ' · ' + t('rebookManage.paySplitShort', 'gesplitst') : ''}
+            </span>
+          </span>
+          <Button
+            variant="ghost" size="sm" className="h-7 px-2"
+            onClick={() => setBillingOpen(true)}
+            aria-label={t('rebookManage.editBilling', 'Betaling aanpassen')}
+            title={t('rebookManage.editBilling', 'Betaling aanpassen')}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </p>
+      )}
+
+      {/* Public-release policy — what happens to non-rebooked sessions at the deadline (round-wide). */}
+      {data && (
+        <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap" data-testid="rebook-release-row">
+          {t('rebookManage.releaseLabel', 'Publiek vrijgeven:')}{' '}
+          <span className="font-medium text-foreground">
+            {data.releasePolicy === 'auto'
+              ? t('rebookManage.releaseValAuto', 'automatisch na deadline')
+              : data.releasePolicy === 'private'
+                ? t('rebookManage.releaseValPrivate', 'privé (handmatig vrijgeven)')
+                : t('rebookManage.releaseValMixed', 'gemengd')}
+          </span>
+          <Button
+            variant="ghost" size="sm" className="h-7 px-2"
+            onClick={() => setReleaseOpen(true)}
+            aria-label={t('rebookManage.releaseTitle', 'Publiek vrijgeven')}
+            title={t('rebookManage.releaseTitle', 'Publiek vrijgeven')}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </p>
+      )}
+
+      {data && activeAcademy && (
+        <RebookRoundBillingDialog
+          open={billingOpen}
+          onOpenChange={setBillingOpen}
+          cycleIds={data.cycleIds}
+          academyProfileId={activeAcademy.id}
+          currentPaymentMode={data.paymentMode}
+          currentStrictMollie={data.strictMollie}
+          currentPublicOpenMode={data.publicOpenMode}
+          currentPublicOpenSplit={data.publicOpenSplit}
+          onSaved={() => refetch()}
+        />
+      )}
+
+      {data && (
+        <RebookReleasePolicyDialog
+          open={releaseOpen}
+          onOpenChange={setReleaseOpen}
+          cycleIds={data.cycleIds}
+          currentPolicy={data.releasePolicy}
           onSaved={() => refetch()}
         />
       )}
