@@ -4,7 +4,7 @@ import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { isMissingRpc, isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { toCycle, toIntakeRequest } from './cycleMappers';
 import { updateCycle } from './cycleWrites';
-import type { Cycle } from './cycleTypes';
+import type { Cycle, CycleSettings } from './cycleTypes';
 import type { Json } from '@/integrations/supabase/types';
 export type * from './cycleTypes';
 export * from './cycleProposalSlots';
@@ -116,7 +116,6 @@ export async function countCyclesIntakesWithFallback(cycleIds: string[]): Promis
  * registration/event, the cyclus-overview/agenda manages cyclus. Without this filter a
  * published cyclus wrongly appeared as a "registration".
  */
-const PUBLIC_REGISTRATION_CYCLE_TYPES = ['registration', 'event'] as const;
 
 /**
  * Cycles to show on an owner's PUBLIC page ("Open for Registration"): open registration/
@@ -144,30 +143,52 @@ export async function attachCycleLocations(cycles: Cycle[]): Promise<Cycle[]> {
 
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   // Public/anon list (AcademyOpenCycles / TrainerOpenCycles / AcademyPublicProfile).
-  // Read through the sanitized cycles_public view (PLAIN columns, NO embed) so
-  // settings.notify_admin_emails never reaches an unauthenticated caller (P2-1),
-  // then attach locations via a JS join. The view is status='open' only, which this
-  // query already filtered to. Graceful fallback to the base table while the view
-  // migration is not yet applied (frontend deploys first).
-  const runQuery = (relation: 'cycles_public' | 'cycles') =>
-    supabase
-      .from(relation as never)
-      .select('*')
-      .eq('owner_type', ownerType)
-      .eq('owner_id', ownerId)
-      .eq('status', 'open')
-      .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
-      .order('start_date', { ascending: true, nullsFirst: true });
+  // Registration forms are STANDALONE rows post-decouple (no cycles shell), so the public
+  // "open for registration" list reads the registrations table — anon RLS exposes only
+  // status='open' rows. Column-scoped select: settings is reduced to the one harmless key
+  // the cards render (payment_methods), so notify_admin_emails can never reach anon here.
+  const { data, error } = await supabase
+    .from('registrations' as never)
+    .select(PUBLIC_REGISTRATION_LIST_COLUMNS as never)
+    .eq('owner_type', ownerType)
+    .eq('owner_id', ownerId)
+    .eq('status', 'open')
+    .order('start_date', { ascending: true, nullsFirst: true });
+  if (error) throw error;
+  return attachCycleLocations(((data ?? []) as Record<string, unknown>[]).map(publicRegistrationRowToCycle));
+}
 
-  const { data, error } = await runQuery('cycles_public');
-  if (error) {
-    if (!isMissingRelation(error)) throw error;
-    reportDeployDriftFallback('cycles_public', { path: 'getActiveCycles' });
-    const { data: baseData, error: baseErr } = await runQuery('cycles');
-    if (baseErr) throw baseErr;
-    return attachCycleLocations((baseData || []).map((r) => toCycle(r as Record<string, unknown>)));
-  }
-  return attachCycleLocations((data || []).map((r) => toCycle(r as Record<string, unknown>)));
+/**
+ * Anon-safe column set for public registration listings + the row→Cycle mapper the open-cycles
+ * cards consume. `payment_methods:settings->payment_methods` pulls exactly ONE whitelisted settings
+ * key (the event payment badge) — never the full settings object.
+ */
+const PUBLIC_REGISTRATION_LIST_COLUMNS =
+  'id, owner_type, owner_id, format, name, description, start_date, end_date, enrollment_deadline, status, total_price, currency, price_table, location_id, created_at, updated_at, payment_methods:settings->payment_methods';
+
+function publicRegistrationRowToCycle(row: Record<string, unknown>): Cycle {
+  return {
+    id: row.id,
+    owner_type: row.owner_type,
+    owner_id: row.owner_id,
+    name: row.name,
+    description: row.description ?? null,
+    start_date: row.start_date ?? null,
+    end_date: row.end_date ?? null,
+    enrollment_deadline: row.enrollment_deadline ?? null,
+    is_always_open: false,
+    settings: (row.payment_methods != null ? { payment_methods: row.payment_methods } : {}) as CycleSettings,
+    status: row.status,
+    type: row.format,
+    location_id: row.location_id ?? null,
+    price_per_session: null,
+    total_price: (row.total_price as number | null) ?? null,
+    currency: (row.currency as string) ?? 'EUR',
+    terms: null,
+    price_table: (row.price_table as Cycle['price_table']) ?? null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  } as Cycle;
 }
 
 // Fetch all open cycles for a location (from trainers, academies, and clubs at that location)
@@ -197,35 +218,22 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
 
   const clubIds = clubProfiles?.map(c => c.id) || [];
   
-  // Fetch cycles from all owner types.
-  // Public/anon page (LocationOpenCycles on locations/:slug). Read through the
-  // sanitized cycles_public view (PLAIN columns, no embed) so settings.notify_admin_emails
-  // never reaches an unauthenticated caller (P2-1). No JS location join is needed here —
-  // this query is already scoped to a single locationId and LocationOpenCycles does not
-  // read cycle.location. Graceful fallback to the base table while the view migration is
-  // not yet applied (frontend deploys first).
+  // Fetch open registration FORMS from all owner types at this location. Post-decouple these are
+  // standalone registrations rows (anon RLS: status='open' only). Same column-scoped select as
+  // getActiveCycles — settings reduced to the single payment_methods key.
   const readOpenCyclesForOwner = async (
     ownerType: 'trainer' | 'academy' | 'club',
     ownerIds: string[],
   ): Promise<Cycle[]> => {
-    const runQuery = (relation: 'cycles_public' | 'cycles') =>
-      supabase
-        .from(relation as never)
-        .select('*')
-        .eq('owner_type', ownerType)
-        .in('owner_id', ownerIds)
-        .eq('status', 'open')
-        .in('type', PUBLIC_REGISTRATION_CYCLE_TYPES as unknown as string[])
-        .eq('location_id', locationId);
-    const { data, error } = await runQuery('cycles_public');
-    if (error) {
-      if (!isMissingRelation(error)) throw error;
-      reportDeployDriftFallback('cycles_public', { path: 'getLocationCycles', ownerType });
-      const { data: baseData, error: baseErr } = await runQuery('cycles');
-      if (baseErr) throw baseErr;
-      return (baseData || []).map((r) => toCycle(r as Record<string, unknown>));
-    }
-    return (data || []).map((r) => toCycle(r as Record<string, unknown>));
+    const { data, error } = await supabase
+      .from('registrations' as never)
+      .select(PUBLIC_REGISTRATION_LIST_COLUMNS as never)
+      .eq('owner_type', ownerType)
+      .in('owner_id', ownerIds)
+      .eq('status', 'open')
+      .eq('location_id', locationId);
+    if (error) throw error;
+    return ((data ?? []) as Record<string, unknown>[]).map(publicRegistrationRowToCycle);
   };
 
   const allCycles: Cycle[] = [];
@@ -716,11 +724,12 @@ export async function deleteProposedAssignment(assignmentId: string): Promise<vo
 }
 
 // Helper: Check if player already applied to a cycle
-export async function hasPlayerApplied(cycleId: string, playerId: string): Promise<boolean> {
+export async function hasPlayerApplied(registrationId: string, playerId: string): Promise<boolean> {
+  // Applicants link to the FORM via registration_id (cycle_id is "planned into", NULL until planned).
   const { data, error } = await supabase
     .from('intake_requests')
     .select('id')
-    .eq('cycle_id', cycleId)
+    .eq('registration_id', registrationId)
     .eq('player_id', playerId)
     .maybeSingle();
 
