@@ -3280,7 +3280,7 @@ export type Database = {
           birth_date: string | null
           consent_given: boolean
           created_at: string
-          cycle_id: string
+          cycle_id: string | null
           email: string
           full_name: string
           guest_player_id: string | null
@@ -3299,7 +3299,7 @@ export type Database = {
           preferred_trainer_ids: string[] | null
           rating: number | null
           rating_system: string | null
-          registration_id: string | null
+          registration_id: string
           sessions_per_week: number | null
           skip_reason: string | null
           status: string
@@ -3309,7 +3309,7 @@ export type Database = {
           birth_date?: string | null
           consent_given?: boolean
           created_at?: string
-          cycle_id: string
+          cycle_id?: string | null
           email: string
           full_name: string
           guest_player_id?: string | null
@@ -3328,7 +3328,7 @@ export type Database = {
           preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
-          registration_id?: string | null
+          registration_id: string
           sessions_per_week?: number | null
           skip_reason?: string | null
           status?: string
@@ -3338,7 +3338,7 @@ export type Database = {
           birth_date?: string | null
           consent_given?: boolean
           created_at?: string
-          cycle_id?: string
+          cycle_id?: string | null
           email?: string
           full_name?: string
           guest_player_id?: string | null
@@ -3357,7 +3357,7 @@ export type Database = {
           preferred_trainer_ids?: string[] | null
           rating?: number | null
           rating_system?: string | null
-          registration_id?: string | null
+          registration_id?: string
           sessions_per_week?: number | null
           skip_reason?: string | null
           status?: string
@@ -4960,7 +4960,7 @@ export type Database = {
           owner_type: string
           price_table: Json | null
           settings: Json
-          source_cycle_id: string
+          source_cycle_id: string | null
           start_date: string | null
           status: string
           total_price: number | null
@@ -4980,7 +4980,7 @@ export type Database = {
           owner_type: string
           price_table?: Json | null
           settings?: Json
-          source_cycle_id: string
+          source_cycle_id?: string | null
           start_date?: string | null
           status?: string
           total_price?: number | null
@@ -5000,7 +5000,7 @@ export type Database = {
           owner_type?: string
           price_table?: Json | null
           settings?: Json
-          source_cycle_id?: string
+          source_cycle_id?: string | null
           start_date?: string | null
           status?: string
           total_price?: number | null
@@ -5012,20 +5012,6 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "registrations_source_cycle_id_fkey"
-            columns: ["source_cycle_id"]
-            isOneToOne: false
-            referencedRelation: "cycles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "registrations_source_cycle_id_fkey"
-            columns: ["source_cycle_id"]
-            isOneToOne: false
-            referencedRelation: "cycles_public"
             referencedColumns: ["id"]
           },
         ]
@@ -7983,6 +7969,13 @@ export type Database = {
           n: number
         }[]
       }
+      count_registrations_intakes: {
+        Args: { _registration_ids: string[] }
+        Returns: {
+          n: number
+          registration_id: string
+        }[]
+      }
       create_invoice_deduped: { Args: { _payload: Json }; Returns: Json }
       create_rebook_group_guest: {
         Args: {
@@ -7993,6 +7986,50 @@ export type Database = {
           _token: string
         }
         Returns: string
+      }
+      create_registration: {
+        Args: {
+          p_currency: string
+          p_description: string
+          p_end_date: string
+          p_enrollment_deadline: string
+          p_format: string
+          p_location_id: string
+          p_name: string
+          p_owner_id: string
+          p_owner_type: string
+          p_price_table: Json
+          p_settings: Json
+          p_start_date: string
+          p_status: string
+          p_total_price: number
+        }
+        Returns: {
+          created_at: string
+          currency: string
+          description: string | null
+          end_date: string | null
+          enrollment_deadline: string | null
+          format: string
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          owner_type: string
+          price_table: Json | null
+          settings: Json
+          source_cycle_id: string | null
+          start_date: string | null
+          status: string
+          total_price: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "registrations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_registration_with_cycle: {
         Args: {
@@ -8027,7 +8064,7 @@ export type Database = {
           owner_type: string
           price_table: Json | null
           settings: Json
-          source_cycle_id: string
+          source_cycle_id: string | null
           start_date: string | null
           status: string
           total_price: number | null
@@ -8771,6 +8808,49 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_registration: {
+        Args: {
+          p_currency: string
+          p_description: string
+          p_end_date: string
+          p_enrollment_deadline: string
+          p_format: string
+          p_location_id: string
+          p_name: string
+          p_price_table: Json
+          p_registration_id: string
+          p_settings: Json
+          p_start_date: string
+          p_status: string
+          p_total_price: number
+        }
+        Returns: {
+          created_at: string
+          currency: string
+          description: string | null
+          end_date: string | null
+          enrollment_deadline: string | null
+          format: string
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          owner_type: string
+          price_table: Json | null
+          settings: Json
+          source_cycle_id: string | null
+          start_date: string | null
+          status: string
+          total_price: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "registrations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_registration_with_cycle: {
         Args: {
           p_currency: string
@@ -8803,7 +8883,7 @@ export type Database = {
           owner_type: string
           price_table: Json | null
           settings: Json
-          source_cycle_id: string
+          source_cycle_id: string | null
           start_date: string | null
           status: string
           total_price: number | null
@@ -8815,6 +8895,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      user_owns_registration: {
+        Args: { _registration_id: string }
+        Returns: boolean
       }
     }
     Enums: {
