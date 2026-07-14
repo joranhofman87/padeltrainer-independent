@@ -24,6 +24,7 @@ import {
   type RebookGroupApplyResult,
 } from '@/lib/priorityClaims';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { getLocationLinkInfo } from '@/lib/locations';
 import { isBlankRichTextHtml } from '@/lib/richText';
 import { SafeHtml } from '@/components/ui/SafeHtml';
 import { formatCurrency, formatDate } from '@/lib/format';
@@ -65,7 +66,7 @@ interface ClaimData {
 }
 
 export default function PriorityClaimPage() {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
   const { token } = useParams<{ token: string }>();
   const [searchParams] = useSearchParams();
   const intent = searchParams.get('intent'); // 'accept' | 'decline' from the email buttons
@@ -87,6 +88,10 @@ export default function PriorityClaimPage() {
   // Resume-payment: the pay token of an accepted-but-UNPAID upfront rebook invoice (checkout dropped /
   // page refreshed). When set, the claimed state shows "Continue to payment" instead of deferred copy.
   const [unpaidInvoiceToken, setUnpaidInvoiceToken] = useState<string | null>(null);
+  // The slot's club (name + public-page slug) for the post-window CTA. Rebook slots are usually
+  // 'held' after the deadline, so the old "browse this trainer's open slots" page is empty —
+  // guide the player to the club's public location page instead. Best-effort (null = fallback CTA).
+  const [slotLocation, setSlotLocation] = useState<{ name: string; slug: string | null } | null>(null);
 
   const loadClaim = useCallback(() => {
     if (!token) return;
@@ -140,6 +145,23 @@ export default function PriorityClaimPage() {
   useEffect(() => {
     loadClaim();
   }, [loadClaim]);
+
+  // Resolve the slot's club name + slug for the post-window "see available spots" CTA.
+  useEffect(() => {
+    const locationId = data?.slot.location_id;
+    if (!locationId) return;
+    let active = true;
+    getLocationLinkInfo(locationId)
+      .then((loc) => {
+        if (active) setSlotLocation(loc);
+      })
+      .catch(() => {
+        /* best-effort — the CTA falls back to the trainer book page */
+      });
+    return () => {
+      active = false;
+    };
+  }, [data?.slot.location_id]);
 
   // Store WHICH button they clicked, the moment they land from an email button — even if they
   // never finish checkout. Best-effort; only stamps a still-pending claim, never changes status.
@@ -336,6 +358,9 @@ export default function PriorityClaimPage() {
   // isn't (yet) past — without this it would fall through to live Yes/No buttons that the
   // server then refuses with a confusing "already responded".
   const claimClosed = status !== 'pending' && status !== 'claimed' && status !== 'declined';
+  // Public club-page link for the post-window CTA (only en/nl exist as URL prefixes).
+  const urlLang = i18n.language?.split('-')[0] === 'en' ? 'en' : 'nl';
+  const locationHref = slotLocation?.slug ? `/${urlLang}/locations/${slotLocation.slug}` : null;
   const start = new Date(data.slot.start_time);
   const end = new Date(data.slot.end_time);
   // The player can still keep/release → show the "how it works" explainer.
@@ -516,14 +541,38 @@ export default function PriorityClaimPage() {
           ) : windowEnded ? (
             <div>
               <p className="text-sm text-muted-foreground mb-2">{t('rebooking.windowEnded', 'The reservation period has ended.')}</p>
-              <p className="text-sm text-muted-foreground mb-3">{t('rebooking.windowEndedRecovery', 'Your spot has been released to others. Still room? You can book again below. Questions? Contact the academy.')}</p>
-              <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+              {locationHref && slotLocation ? (
+                /* Post-window rebook slots are usually 'held' (not publicly bookable), so the trainer
+                   book page is empty — guide the player to the club's public page instead. */
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {t('rebooking.windowEndedSeeLocation', 'Your priority window has ended and your spot has been released. See all available spots at {{location}}.', { location: slotLocation.name })}
+                  </p>
+                  <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={locationHref}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">{t('rebooking.windowEndedRecovery', 'Your spot has been released to others. Still room? You can book again below. Questions? Contact the academy.')}</p>
+                  <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+                </>
+              )}
             </div>
           ) : claimClosed ? (
             <div>
               <p className="text-sm text-muted-foreground mb-2">{t('rebooking.claimClosed', 'This invitation is no longer active.')}</p>
-              <p className="text-sm text-muted-foreground mb-3">{t('rebooking.claimClosedRecovery', 'Your priority spot has been released. Still room? You can book again below. Questions? Contact the academy.')}</p>
-              <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+              {locationHref && slotLocation ? (
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {t('rebooking.claimClosedSeeLocation', 'Your priority spot has been released. See all available spots at {{location}}.', { location: slotLocation.name })}
+                  </p>
+                  <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={locationHref}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">{t('rebooking.claimClosedRecovery', 'Your priority spot has been released. Still room? You can book again below. Questions? Contact the academy.')}</p>
+                  <Button asChild aria-label={t('rebooking.browse', 'Browse available spots')}><Link to={`/app/book/${data.slot.trainer_id}`}>{t('rebooking.browse', 'Browse available spots')}</Link></Button>
+                </>
+              )}
             </div>
           ) : group?.group_invoice_status === 'paid' ? (
             // AUDIT FIX: the group's court is already PAID (captain's invoice) — a pending teammate
