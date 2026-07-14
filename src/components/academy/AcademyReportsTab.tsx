@@ -7,13 +7,10 @@ import {
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Download, Calendar, TrendingUp, Users, AlertTriangle, CalendarX2, Clock, CheckCircle2, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { StatTile } from '@/components/ui/stat-tile';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/lib/supabaseClient';
 import { useQuery } from '@tanstack/react-query';
@@ -203,6 +200,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const booked = tSlots.reduce((s, sl) => s + sl.booking_count, 0);
       const heldSlots = tSlots.filter(s => s.booking_count > 0);
       return {
+        id: tid,
         name: trainer?.name || 'Unknown',
         sessions: tSlots.length,
         held: heldSlots.length,
@@ -231,6 +229,7 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
       const booked = lSlots.reduce((s, sl) => s + sl.booking_count, 0);
       const heldSlots = lSlots.filter(s => s.booking_count > 0);
       return {
+        id: lid,
         name: loc?.name || t('reports.noLocation', 'No location'),
         sessions: lSlots.length,
         held: heldSlots.length,
@@ -271,6 +270,95 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
     a.click();
     URL.revokeObjectURL(url);
   }, [subTab, trainerRows, locationRows, slots, trainers, locations, rangeStart]);
+
+  // Fill-rate / confirmed-hours colour classes (identical across all three tables).
+  const fillClass = (fill: number) =>
+    fill >= 100 ? 'text-emerald-600' : fill > 0 ? 'text-amber-600' : 'text-muted-foreground';
+
+  // Overview table rows are the raw slots (sorted by start_time, on a copy so the query cache
+  // isn't mutated). getRowKey falls back to slot.id.
+  const overviewRows = useMemo(
+    () => [...slots].sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    [slots],
+  );
+
+  const overviewColumns: ColumnDef<SlotRow>[] = [
+    { key: 'date', header: t('reports.date', 'Date'), className: 'text-sm whitespace-nowrap', renderCell: (s) => format(parseISO(s.start_time), 'EEE d MMM', { locale: dateFnsLocale }) },
+    { key: 'time', header: t('reports.time', 'Time'), className: 'text-sm tabular-nums whitespace-nowrap', renderCell: (s) => `${format(parseISO(s.start_time), 'HH:mm')}–${format(parseISO(s.end_time), 'HH:mm')}` },
+    { key: 'trainer', header: t('reports.trainer', 'Trainer'), className: 'text-sm max-w-[160px]', cellTitle: (s) => trainers.find((tr) => tr.id === s.trainer_id)?.name || undefined, renderCell: (s) => <span className="block truncate">{trainers.find((tr) => tr.id === s.trainer_id)?.name || '—'}</span> },
+    { key: 'location', header: t('reports.location', 'Location'), className: 'text-sm max-w-[160px]', cellTitle: (s) => locations.find((l) => l.id === s.location_id)?.name || undefined, renderCell: (s) => <span className="block truncate">{locations.find((l) => l.id === s.location_id)?.name || '—'}</span> },
+    { key: 'booked', header: t('reports.booked', 'Booked'), align: 'right', className: 'text-sm', renderCell: (s) => s.booking_count },
+    { key: 'capacity', header: t('reports.capacity', 'Capacity'), align: 'right', className: 'text-sm', renderCell: (s) => s.max_participants },
+    {
+      key: 'fillPct',
+      header: t('reports.fillPct', 'Fill %'),
+      align: 'right',
+      className: 'text-sm font-medium',
+      renderCell: (s) => {
+        const fill = s.max_participants > 0 ? Math.round((s.booking_count / s.max_participants) * 100) : 0;
+        return <span className={fillClass(fill)}>{fill}%</span>;
+      },
+    },
+    {
+      key: 'confirmed',
+      header: t('reports.confirmed', 'Confirmed'),
+      align: 'right',
+      className: 'text-sm',
+      renderCell: (s) => (
+        <span className="inline-flex items-center justify-end gap-1.5">
+          {s.trainer_confirmed && (
+            <span title={t('reports.confirmedByTrainer', 'Trainer confirmed the session happened')}>
+              <UserCheck className="h-3.5 w-3.5 text-sky-600" />
+            </span>
+          )}
+          {s.player_confirmed && (
+            <span title={t('reports.confirmedByPlayer', 'A player confirmed the session happened')}>
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            </span>
+          )}
+          {!s.trainer_confirmed && !s.player_confirmed && <span className="text-muted-foreground">—</span>}
+        </span>
+      ),
+    },
+  ];
+
+  // By-Trainer and By-Location share one 9-column shape; only the first header differs. `id` is the
+  // trainer_id / location_id (unique) so the engine's row-key constraint is satisfied.
+  type AggRow = {
+    id: string; name: string; sessions: number; held: number; booked: number; capacity: number;
+    fillRate: number; hours: number; trainerConfirmedHours: number; confirmedHours: number;
+  };
+  const aggColumns = (firstHeader: string): ColumnDef<AggRow>[] => [
+    { key: 'name', header: firstHeader, className: 'text-sm font-medium max-w-[200px]', cellTitle: (r) => r.name, renderCell: (r) => <span className="block truncate">{r.name}</span> },
+    { key: 'sessions', header: t('reports.sessions', 'Sessions'), align: 'right', className: 'text-sm text-muted-foreground', renderCell: (r) => r.sessions },
+    { key: 'held', header: t('reports.held', 'Held'), align: 'right', className: 'text-sm font-medium', renderCell: (r) => r.held },
+    { key: 'booked', header: t('reports.booked', 'Booked'), align: 'right', className: 'text-sm', renderCell: (r) => r.booked },
+    { key: 'capacity', header: t('reports.capacity', 'Capacity'), align: 'right', className: 'text-sm', renderCell: (r) => r.capacity },
+    { key: 'fillPct', header: t('reports.fillPct', 'Fill %'), align: 'right', className: 'text-sm', renderCell: (r) => <span className={fillClass(r.fillRate)}>{r.fillRate}%</span> },
+    { key: 'hours', header: t('reports.hours', 'Hours'), align: 'right', className: 'text-sm font-medium', renderCell: (r) => `${r.hours}h` },
+    {
+      key: 'trainerHours',
+      header: t('reports.confirmedTrainerShort', 'Trainer ✓ (h)'),
+      align: 'right',
+      className: 'text-sm',
+      renderCell: (r) => (
+        <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
+          {r.trainerConfirmedHours}h
+        </span>
+      ),
+    },
+    {
+      key: 'playerHours',
+      header: t('reports.confirmedPlayersShort', 'Players ✓ (h)'),
+      align: 'right',
+      className: 'text-sm',
+      renderCell: (r) => (
+        <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
+          {r.confirmedHours}h
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -391,70 +479,15 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         <TabsContent value="overview" className="mt-4">
           {isLoading ? (
             <Skeleton className="h-[200px] w-full" />
-          ) : slots.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                {t('reports.noData', 'No sessions found for this period.')}
-              </CardContent>
-            </Card>
           ) : (
-            <Card className={flushOnMobileCardClass()}>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('reports.date', 'Date')}</TableHead>
-                      <TableHead>{t('reports.time', 'Time')}</TableHead>
-                      <TableHead>{t('reports.trainer', 'Trainer')}</TableHead>
-                      <TableHead>{t('reports.location', 'Location')}</TableHead>
-                      <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
-                      <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
-                      <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmed', 'Confirmed')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {slots
-                      .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                      .map(s => {
-                        const fill = s.max_participants > 0 ? Math.round((s.booking_count / s.max_participants) * 100) : 0;
-                        return (
-                          <TableRow key={s.id}>
-                            <TableCell className="text-sm">{format(parseISO(s.start_time), 'EEE d MMM', { locale: dateFnsLocale })}</TableCell>
-                            <TableCell className="text-sm tabular-nums">{format(parseISO(s.start_time), 'HH:mm')}–{format(parseISO(s.end_time), 'HH:mm')}</TableCell>
-                            <TableCell className="text-sm">{trainers.find(t => t.id === s.trainer_id)?.name || '—'}</TableCell>
-                            <TableCell className="text-sm">{locations.find(l => l.id === s.location_id)?.name || '—'}</TableCell>
-                            <TableCell className="text-right text-sm">{s.booking_count}</TableCell>
-                            <TableCell className="text-right text-sm">{s.max_participants}</TableCell>
-                            <TableCell className="text-right text-sm font-medium">
-                              <span className={fill >= 100 ? 'text-emerald-600' : fill > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
-                                {fill}%
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right text-sm">
-                              <span className="inline-flex items-center justify-end gap-1.5">
-                                {s.trainer_confirmed && (
-                                  <span title={t('reports.confirmedByTrainer', 'Trainer confirmed the session happened')}>
-                                    <UserCheck className="h-3.5 w-3.5 text-sky-600" />
-                                  </span>
-                                )}
-                                {s.player_confirmed && (
-                                  <span title={t('reports.confirmedByPlayer', 'A player confirmed the session happened')}>
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                  </span>
-                                )}
-                                {!s.trainer_confirmed && !s.player_confirmed && (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <DataTable<SlotRow>
+              columns={overviewColumns}
+              rows={overviewRows}
+              compact
+              desktopOnly={false}
+              cardClassName={flushOnMobileCardClass()}
+              empty={t('reports.noData', 'No sessions found for this period.')}
+            />
           )}
         </TabsContent>
 
@@ -462,59 +495,15 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         <TabsContent value="trainer" className="mt-4">
           {isLoading ? (
             <Skeleton className="h-[200px] w-full" />
-          ) : trainerRows.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                {t('reports.noData', 'No sessions found for this period.')}
-              </CardContent>
-            </Card>
           ) : (
-            <Card className={flushOnMobileCardClass()}>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('reports.trainer', 'Trainer')}</TableHead>
-                      <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
-                      <TableHead className="text-right">{t('reports.held', 'Held')}</TableHead>
-                      <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
-                      <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
-                      <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
-                      <TableHead className="text-right">{t('reports.hours', 'Hours')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmedTrainerShort', 'Trainer ✓ (h)')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmedPlayersShort', 'Players ✓ (h)')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {trainerRows.map(r => (
-                      <TableRow key={r.name}>
-                        <TableCell className="text-sm font-medium">{r.name}</TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">{r.sessions}</TableCell>
-                        <TableCell className="text-right text-sm font-medium">{r.held}</TableCell>
-                        <TableCell className="text-right text-sm">{r.booked}</TableCell>
-                        <TableCell className="text-right text-sm">{r.capacity}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.fillRate >= 100 ? 'text-emerald-600' : r.fillRate > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
-                            {r.fillRate}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium">{r.hours}h</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
-                            {r.trainerConfirmedHours}h
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
-                            {r.confirmedHours}h
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <DataTable<AggRow>
+              columns={aggColumns(t('reports.trainer', 'Trainer'))}
+              rows={trainerRows}
+              compact
+              desktopOnly={false}
+              cardClassName={flushOnMobileCardClass()}
+              empty={t('reports.noData', 'No sessions found for this period.')}
+            />
           )}
         </TabsContent>
 
@@ -522,59 +511,15 @@ export default function AcademyReportsTab({ academyId, trainers, locations }: Ac
         <TabsContent value="location" className="mt-4">
           {isLoading ? (
             <Skeleton className="h-[200px] w-full" />
-          ) : locationRows.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                {t('reports.noData', 'No sessions found for this period.')}
-              </CardContent>
-            </Card>
           ) : (
-            <Card className={flushOnMobileCardClass()}>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('reports.location', 'Location')}</TableHead>
-                      <TableHead className="text-right">{t('reports.sessions', 'Sessions')}</TableHead>
-                      <TableHead className="text-right">{t('reports.held', 'Held')}</TableHead>
-                      <TableHead className="text-right">{t('reports.booked', 'Booked')}</TableHead>
-                      <TableHead className="text-right">{t('reports.capacity', 'Capacity')}</TableHead>
-                      <TableHead className="text-right">{t('reports.fillPct', 'Fill %')}</TableHead>
-                      <TableHead className="text-right">{t('reports.hours', 'Hours')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmedTrainerShort', 'Trainer ✓ (h)')}</TableHead>
-                      <TableHead className="text-right">{t('reports.confirmedPlayersShort', 'Players ✓ (h)')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {locationRows.map(r => (
-                      <TableRow key={r.name}>
-                        <TableCell className="text-sm font-medium">{r.name}</TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">{r.sessions}</TableCell>
-                        <TableCell className="text-right text-sm font-medium">{r.held}</TableCell>
-                        <TableCell className="text-right text-sm">{r.booked}</TableCell>
-                        <TableCell className="text-right text-sm">{r.capacity}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.fillRate >= 100 ? 'text-emerald-600' : r.fillRate > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
-                            {r.fillRate}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium">{r.hours}h</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.trainerConfirmedHours >= r.hours && r.hours > 0 ? 'text-sky-600' : r.trainerConfirmedHours > 0 ? 'text-sky-500' : 'text-muted-foreground'}>
-                            {r.trainerConfirmedHours}h
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          <span className={r.confirmedHours >= r.hours && r.hours > 0 ? 'text-emerald-600' : r.confirmedHours > 0 ? 'text-amber-600' : 'text-muted-foreground'}>
-                            {r.confirmedHours}h
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <DataTable<AggRow>
+              columns={aggColumns(t('reports.location', 'Location'))}
+              rows={locationRows}
+              compact
+              desktopOnly={false}
+              cardClassName={flushOnMobileCardClass()}
+              empty={t('reports.noData', 'No sessions found for this period.')}
+            />
           )}
         </TabsContent>
       </Tabs>

@@ -5,14 +5,11 @@ import {
   differenceInMinutes,
 } from 'date-fns';
 import { nl, es, de, fr, enUS, it as itLocale, type Locale } from 'date-fns/locale';
-import { Card, CardContent } from '@/components/ui/card';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Download, Calendar, CalendarDays } from 'lucide-react';
 import { formatCurrency, formatCurrencyMaybe } from '@/lib/format';
 
@@ -92,6 +89,75 @@ export default function AcademyTrainerHours({
   const totalSessions = trainerData.reduce((s, t) => s + t.sessions, 0);
   const totalAmount = trainerData.reduce((s, t) => s + (t.amount || 0), 0);
 
+  // The generic engine has no footer slot, so the totals row rides along as a synthetic pinned
+  // row (sentinel id) styled bold via rowClassName — keeping column alignment with the data rows.
+  type HoursRow = {
+    id: string;
+    isTotal?: boolean;
+    name?: string;
+    avatar?: string | null;
+    hourly_rate?: number;
+    sessions: number;
+    hours: number;
+    amount: number | null;
+  };
+  const rows: HoursRow[] = trainerData.length
+    ? [
+        ...trainerData,
+        { id: '__total__', isTotal: true, sessions: totalSessions, hours: totalHours, amount: totalAmount },
+      ]
+    : [];
+
+  // The total row rides along as a synthetic pinned row (sentinel id); its cells are bolded inline
+  // (the generic engine has no footer slot or per-row class here).
+  const columns: ColumnDef<HoursRow>[] = [
+    {
+      key: 'trainer',
+      header: t('calendar.hours.trainer', 'Trainer'),
+      renderCell: (row) => {
+        if (row.isTotal) return <span className="font-semibold">{t('calendar.hours.total', 'Total')}</span>;
+        const initials = (row.name || '').split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+        return (
+          <div className="flex items-center gap-2">
+            <Avatar className="h-7 w-7">
+              <AvatarImage src={row.avatar || undefined} />
+              <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+            </Avatar>
+            <span className="font-medium text-sm">{row.name}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'sessions',
+      header: t('calendar.hours.sessions', 'Sessions'),
+      align: 'center',
+      renderCell: (row) =>
+        row.isTotal ? <span className="font-semibold">{row.sessions}</span> : <Badge variant="secondary" className="text-xs">{row.sessions}</Badge>,
+    },
+    {
+      key: 'hours',
+      header: t('calendar.hours.totalHours', 'Hours'),
+      align: 'center',
+      className: 'text-sm',
+      renderCell: (row) => (row.isTotal ? <span className="font-semibold">{row.hours.toFixed(1)}h</span> : `${row.hours.toFixed(1)}h`),
+    },
+    {
+      key: 'rate',
+      header: t('calendar.hours.rate', 'Rate'),
+      align: 'center',
+      className: 'text-sm text-muted-foreground',
+      renderCell: (row) => (row.isTotal ? '' : formatCurrencyMaybe(row.hourly_rate)),
+    },
+    {
+      key: 'amount',
+      header: t('calendar.hours.amount', 'Amount'),
+      align: 'right',
+      className: 'text-sm font-medium',
+      renderCell: (row) => (row.isTotal ? <span className="font-semibold">{formatCurrency(row.amount ?? 0)}</span> : formatCurrencyMaybe(row.amount)),
+    },
+  ];
+
   const handleExportCSV = () => {
     const header = 'Trainer,Sessions,Hours,Hourly Rate,Amount\n';
     const rows = trainerData.map(t =>
@@ -143,65 +209,14 @@ export default function AcademyTrainerHours({
       </div>
 
       {/* Table */}
-      <Card className={flushOnMobileCardClass()}>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('calendar.hours.trainer', 'Trainer')}</TableHead>
-                <TableHead className="text-center">{t('calendar.hours.sessions', 'Sessions')}</TableHead>
-                <TableHead className="text-center">{t('calendar.hours.totalHours', 'Hours')}</TableHead>
-                <TableHead className="text-center">{t('calendar.hours.rate', 'Rate')}</TableHead>
-                <TableHead className="text-right">{t('calendar.hours.amount', 'Amount')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {trainerData.map(trainer => {
-                const initials = trainer.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                return (
-                  <TableRow key={trainer.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-7 w-7">
-                          <AvatarImage src={trainer.avatar || undefined} />
-                          <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium text-sm">{trainer.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary" className="text-xs">{trainer.sessions}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center text-sm">{trainer.hours.toFixed(1)}h</TableCell>
-                    <TableCell className="text-center text-sm text-muted-foreground">
-                      {formatCurrencyMaybe(trainer.hourly_rate)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-medium">
-                      {formatCurrencyMaybe(trainer.amount)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {trainerData.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    {t('calendar.hours.noData', 'No sessions with bookings in this period')}
-                  </TableCell>
-                </TableRow>
-              )}
-              {trainerData.length > 0 && (
-                <TableRow className="font-semibold border-t-2">
-                  <TableCell>{t('calendar.hours.total', 'Total')}</TableCell>
-                  <TableCell className="text-center">{totalSessions}</TableCell>
-                  <TableCell className="text-center">{totalHours.toFixed(1)}h</TableCell>
-                  <TableCell />
-                  <TableCell className="text-right">{formatCurrency(totalAmount)}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable<HoursRow>
+        columns={columns}
+        rows={rows}
+        compact
+        desktopOnly={false}
+        cardClassName={flushOnMobileCardClass()}
+        empty={t('calendar.hours.noData', 'No sessions with bookings in this period')}
+      />
     </div>
   );
 }

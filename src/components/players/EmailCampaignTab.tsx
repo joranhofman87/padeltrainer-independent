@@ -13,9 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { SelectFilter } from '@/components/ui/select-filter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -573,6 +571,119 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
     }
   };
 
+  const draftCampaigns = campaigns.filter((c) => c.status === 'draft');
+  const sentCampaigns = campaigns.filter((c) => c.status !== 'draft');
+
+  const templateColumns: ColumnDef<CampaignTemplate>[] = [
+    {
+      key: 'name',
+      header: t('emailCampaign.templates.name'),
+      className: 'font-medium max-w-[220px]',
+      cellTitle: (tmpl) => tmpl.name,
+      renderCell: (tmpl) => <span className="block truncate">{tmpl.name}</span>,
+    },
+    {
+      key: 'subject',
+      header: t('emailCampaign.templates.subject'),
+      className: 'text-muted-foreground max-w-[280px]',
+      cellTitle: (tmpl) => tmpl.subject,
+      renderCell: (tmpl) => <span className="block truncate">{tmpl.subject}</span>,
+    },
+    {
+      key: 'created',
+      header: t('emailCampaign.templates.created'),
+      className: 'text-muted-foreground text-sm whitespace-nowrap',
+      renderCell: (tmpl) => format(new Date(tmpl.created_at), 'dd MMM yyyy', { locale: dateLocale }),
+    },
+  ];
+
+  const renderTemplateActions = (tmpl: CampaignTemplate) => (
+    <>
+      <Button variant="ghost" size="icon" aria-label="Edit" className="h-8 w-8" onClick={() => handleLoadTemplate(tmpl)}>
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      <Button variant="ghost" size="icon" aria-label="Delete" className="h-8 w-8 text-destructive" onClick={() => handleDeleteTemplate(tmpl.id)}>
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </>
+  );
+
+  const draftColumns: ColumnDef<Campaign>[] = [
+    {
+      key: 'subject',
+      header: t('emailCampaign.history.subject'),
+      className: 'font-medium max-w-[280px]',
+      cellTitle: (c) => c.subject || undefined,
+      renderCell: (c) =>
+        c.subject
+          ? <span className="block truncate">{c.subject}</span>
+          : <span className="text-muted-foreground italic">{t('emailCampaign.compose.subjectPlaceholder')}</span>,
+    },
+    { key: 'recipients', header: t('emailCampaign.history.recipients'), renderCell: (c) => c.total_recipients },
+    {
+      key: 'date',
+      header: t('emailCampaign.history.date'),
+      className: 'text-muted-foreground text-sm whitespace-nowrap',
+      renderCell: (c) => format(new Date(c.created_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }),
+    },
+  ];
+
+  const renderDraftActions = (c: Campaign) => (
+    <>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('emailCampaign.history.openDraft')} onClick={() => handleLoadDraft(c)}>
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label={t('emailCampaign.history.deleteDraft')} onClick={() => setConfirmDeleteDraftId(c.id)}>
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </>
+  );
+
+  const sentColumns: ColumnDef<Campaign>[] = [
+    {
+      key: 'subject',
+      header: t('emailCampaign.history.subject'),
+      className: 'font-medium max-w-[200px]',
+      cellTitle: (c) => c.subject,
+      renderCell: (c) => <span className="block truncate">{c.subject}</span>,
+    },
+    { key: 'status', header: t('emailCampaign.history.status'), renderCell: (c) => getStatusBadge(c.status) },
+    { key: 'recipients', header: t('emailCampaign.history.recipients'), renderCell: (c) => c.total_recipients },
+    {
+      key: 'sentFailed',
+      header: t('emailCampaign.history.sentFailed'),
+      className: 'whitespace-nowrap',
+      renderCell: (c) => (
+        <>
+          <span className="text-green-600">{c.sent_count}</span>
+          {c.failed_count > 0 && (
+            <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'date',
+      header: t('emailCampaign.history.date'),
+      className: 'text-muted-foreground text-sm whitespace-nowrap',
+      renderCell: (c) => (c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'),
+    },
+  ];
+
+  const renderSentActions = (c: Campaign) =>
+    c.failed_count > 0 ? (
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8"
+        disabled={retryingId === c.id || c.status === 'sending'}
+        onClick={() => handleRetryFailed(c.id)}
+      >
+        {retryingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5 mr-1" />}
+        {t('emailCampaign.history.retryFailed')}
+      </Button>
+    ) : null;
+
   return (
     <div className="space-y-4">
       <Tabs value={activeView} onValueChange={setActiveView}>
@@ -928,214 +1039,91 @@ export function EmailCampaignTab({ academyId, trainerId, trainers, locations, ta
         </TabsContent>
 
         {/* Templates View */}
-        <TabsContent value="templates" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{t('emailCampaign.templates.title')}</CardTitle>
-              <CardDescription>{t('emailCampaign.templates.description')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingTemplates ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : templates.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  {t('emailCampaign.templates.empty')}
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('emailCampaign.templates.name')}</TableHead>
-                      <TableHead>{t('emailCampaign.templates.subject')}</TableHead>
-                      <TableHead>{t('emailCampaign.templates.created')}</TableHead>
-                      <TableHead className="w-[100px]">{t('emailCampaign.templates.actions')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {templates.map((tmpl) => (
-                      <TableRow key={tmpl.id} className="cursor-pointer" onClick={() => handleLoadTemplate(tmpl)}>
-                        <TableCell className="font-medium">{tmpl.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{tmpl.subject}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {format(new Date(tmpl.created_at), 'dd MMM yyyy', { locale: dateLocale })}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon" aria-label="Edit"
-                              className="h-7 w-7"
-                              onClick={(e) => { e.stopPropagation(); handleLoadTemplate(tmpl); }}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon" aria-label="Delete"
-                              className="h-7 w-7 text-destructive"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tmpl.id); }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="templates" className="mt-4 space-y-4">
+          <div>
+            <h2 className="text-base font-semibold">{t('emailCampaign.templates.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('emailCampaign.templates.description')}</p>
+          </div>
+          {loadingTemplates ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <DataTable<CampaignTemplate>
+              columns={templateColumns}
+              rows={templates}
+              onRowClick={handleLoadTemplate}
+              renderActions={renderTemplateActions}
+              actionsHeader={t('emailCampaign.templates.actions')}
+              compact
+              desktopOnly={false}
+              empty={t('emailCampaign.templates.empty')}
+            />
+          )}
         </TabsContent>
 
         {/* History View */}
-        <TabsContent value="history" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{t('emailCampaign.history.title')}</CardTitle>
-              <CardDescription>{t('emailCampaign.history.description')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {loadingCampaigns ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : campaigns.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  {t('emailCampaign.history.empty')}
-                </p>
-              ) : (
-                <>
-                  {/* Drafts */}
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-semibold text-muted-foreground">
-                      {t('emailCampaign.history.draftsTitle')}
-                    </h3>
-                    {campaigns.filter((c) => c.status === 'draft').length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-3">
-                        {t('emailCampaign.history.noDrafts')}
-                      </p>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{t('emailCampaign.history.subject')}</TableHead>
-                            <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
-                            <TableHead>{t('emailCampaign.history.date')}</TableHead>
-                            <TableHead className="w-[100px]">{t('emailCampaign.history.actions')}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {campaigns
-                            .filter((c) => c.status === 'draft')
-                            .map((c) => (
-                              <TableRow
-                                key={c.id}
-                                className="cursor-pointer"
-                                onClick={() => handleLoadDraft(c)}
-                              >
-                                <TableCell className="font-medium max-w-[280px] truncate">
-                                  {c.subject || <span className="text-muted-foreground italic">{t('emailCampaign.compose.subjectPlaceholder')}</span>}
-                                </TableCell>
-                                <TableCell>{c.total_recipients}</TableCell>
-                                <TableCell className="text-muted-foreground text-sm">
-                                  {format(new Date(c.created_at), 'dd MMM yyyy HH:mm', { locale: dateLocale })}
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7"
-                                      aria-label={t('emailCampaign.history.openDraft')}
-                                      onClick={(e) => { e.stopPropagation(); handleLoadDraft(c); }}
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-destructive"
-                                      aria-label={t('emailCampaign.history.deleteDraft')}
-                                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteDraftId(c.id); }}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </div>
+        <TabsContent value="history" className="mt-4 space-y-6">
+          <div>
+            <h2 className="text-base font-semibold">{t('emailCampaign.history.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('emailCampaign.history.description')}</p>
+          </div>
+          {loadingCampaigns ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : campaigns.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">
+              {t('emailCampaign.history.empty')}
+            </p>
+          ) : (
+            <>
+              {/* Drafts */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-muted-foreground">
+                  {t('emailCampaign.history.draftsTitle')}
+                </h3>
+                {draftCampaigns.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-3">
+                    {t('emailCampaign.history.noDrafts')}
+                  </p>
+                ) : (
+                  <DataTable<Campaign>
+                    columns={draftColumns}
+                    rows={draftCampaigns}
+                    onRowClick={handleLoadDraft}
+                    renderActions={renderDraftActions}
+                    actionsHeader={t('emailCampaign.history.actions')}
+                    compact
+                    desktopOnly={false}
+                    empty={t('emailCampaign.history.noDrafts')}
+                  />
+                )}
+              </div>
 
-                  {/* Sent */}
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-semibold text-muted-foreground">
-                      {t('emailCampaign.history.sentTitle')}
-                    </h3>
-                    {campaigns.filter((c) => c.status !== 'draft').length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-3">
-                        {t('emailCampaign.history.empty')}
-                      </p>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{t('emailCampaign.history.subject')}</TableHead>
-                            <TableHead>{t('emailCampaign.history.status')}</TableHead>
-                            <TableHead>{t('emailCampaign.history.recipients')}</TableHead>
-                            <TableHead>{t('emailCampaign.history.sentFailed')}</TableHead>
-                            <TableHead>{t('emailCampaign.history.date')}</TableHead>
-                            <TableHead className="text-right">{t('emailCampaign.history.actions')}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {campaigns
-                            .filter((c) => c.status !== 'draft')
-                            .map((c) => (
-                              <TableRow key={c.id}>
-                                <TableCell className="font-medium max-w-[200px] truncate">{c.subject}</TableCell>
-                                <TableCell>{getStatusBadge(c.status)}</TableCell>
-                                <TableCell>{c.total_recipients}</TableCell>
-                                <TableCell>
-                                  <span className="text-green-600">{c.sent_count}</span>
-                                  {c.failed_count > 0 && (
-                                    <span className="text-destructive ml-1">/ {t('emailCampaign.history.failed', { count: c.failed_count })}</span>
-                                  )}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-sm">
-                                  {c.sent_at ? format(new Date(c.sent_at), 'dd MMM yyyy HH:mm', { locale: dateLocale }) : '—'}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  {c.failed_count > 0 && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7"
-                                      disabled={retryingId === c.id || c.status === 'sending'}
-                                      onClick={() => handleRetryFailed(c.id)}
-                                    >
-                                      {retryingId === c.id
-                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        : <RotateCcw className="h-3.5 w-3.5 mr-1" />}
-                                      {t('emailCampaign.history.retryFailed')}
-                                    </Button>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+              {/* Sent */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-muted-foreground">
+                  {t('emailCampaign.history.sentTitle')}
+                </h3>
+                {sentCampaigns.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-3">
+                    {t('emailCampaign.history.empty')}
+                  </p>
+                ) : (
+                  <DataTable<Campaign>
+                    columns={sentColumns}
+                    rows={sentCampaigns}
+                    renderActions={renderSentActions}
+                    actionsHeader={t('emailCampaign.history.actions')}
+                    compact
+                    desktopOnly={false}
+                    empty={t('emailCampaign.history.empty')}
+                  />
+                )}
+              </div>
+            </>
+          )}
         </TabsContent>
       </Tabs>
 
