@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTableCard, compactDataTableClass } from '@/components/ui/data-table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -93,8 +94,10 @@ export function RebookReviewTable({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
+      {/* Escape hatch: the shared card frame + compact header/density, but the multi-line roster
+          cell means rows must grow to content (the strict 40px clamp would clip player names). */}
+      <DataTableCard desktopOnly={false}>
+        <Table className={cn(compactDataTableClass, '[&_td]:!h-auto [&_td]:!max-h-none [&_td]:!overflow-visible [&_td]:!py-1.5 [&_td]:!align-top')}>
           <TableHeader>
             <TableRow>
               {interactive && <TableHead className="w-10">{t('rebookReview.keep', 'Mee')}</TableHead>}
@@ -178,7 +181,7 @@ export function RebookReviewTable({
             })}
           </TableBody>
         </Table>
-      </div>
+      </DataTableCard>
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="text-muted-foreground">

@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SelectFilter } from '@/components/ui/select-filter';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { compactDataTableClass } from '@/components/ui/data-table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { EditCycleEndDateDialog } from '@/components/cycles/EditCycleEndDateDialog';
 import { Label } from '@/components/ui/label';
@@ -1375,9 +1376,13 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
       </div>
 
       {/* Desktop Table */}
+      {/* Escape hatch: swap the bespoke density overrides for the shared compactDataTableClass so
+          rows land at the standard 40px. Kept the existing hidden-md:block Card + overflow-x-auto
+          wrapper (a separate mobile card list renders below) rather than DataTableCard, which would
+          leave an empty card shell on mobile. */}
       <Card className="hidden md:block">
         <div className="overflow-x-auto">
-          <Table className="[&_td]:py-1.5 [&_td]:px-3 [&_th]:py-1 [&_th]:px-3 [&_th]:h-9 text-sm">
+          <Table className={compactDataTableClass}>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead className="w-[40px] whitespace-nowrap">
