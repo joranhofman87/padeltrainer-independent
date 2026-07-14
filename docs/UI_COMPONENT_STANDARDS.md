@@ -96,7 +96,20 @@ so cell content must stay single-line and ≤36px tall or the row silently stret
 
 **Escape hatch:** only hand-roll `DataTableCard` + `<Table className={compactDataTableClass}>` when
 the engine can't express the table (expandable sub-rows, inline-edit grids — e.g. the rebook manage
-table). Even then the compact class is mandatory so the height stays standard.
+table). Even then the compact class is mandatory so the height stays standard. Current escape-hatch
+tables: `AcademyRebookManage`, `RebookReviewTable` (dual inline toggle-checkboxes; multi-line roster
+so its cells use a `!h-auto` height exception), `CycleDetailView` (sessions sub-table),
+`AcademyCyclusOverview` (bulk select + inline category dropdown), `AdminPlayerRatings` (inline-edit
+month grid + frozen-left column; keeps its own `overflow-auto max-h-[75vh]` wrapper instead of
+`DataTableCard`), and `AdminBackups` (expandable `Collapsible` file-list rows — the detail `<td>`
+takes a `!h-auto` exception so it isn't clipped).
+
+**Documented exceptions (NOT on the engine or the escape hatch — intentional):**
+`ProposalOverviewPage` is a nested trainer→day **accordion** of per-day sub-tables, not a flat list;
+the engine models flat `ColumnDef` rows and the compact class's `min-w-960` + 40px clamp would break
+those narrow, multi-line per-day tables — so it is deliberately left as-is. The same reasoning applies
+to any grouped/accordion surface. Public-facing tables (`PlayerDashboard`, `CycleDetailDisplay`,
+`PublicInvoicePay`) and modal CSV-import preview grids are also out of scope.
 
 ### The page around it
 
@@ -252,6 +265,12 @@ These are the next reuse targets, intentionally deferred to keep each slice safe
   `EmptyState variant="trainer"`; use that.
 - ✅ **List/table pages — `ListPageShell` + `ListPageState` are canonical** (see "How to build a
   list/table page" above); adopted across the admin + academy list pages.
+- ✅ **Table-consistency sweep — DONE.** Every remaining hand-rolled admin/feature table now runs on
+  the `DataTable` engine (or the sanctioned escape hatch) at the standard 40px row height: admin
+  Pricing / OnboardingEmails / Clubs / Locations, ClubPlayers, ExpensesManager, AcademyTrainerHours,
+  AcademyReportsTab, EmailCampaignTab, IntakeRequestsTable, plus the escape-hatch group listed under
+  "Escape hatch" above. `ProposalOverviewPage` is the one intentional exception (accordion — see
+  "Documented exceptions").
 - ✅ **Role-neutral components moved out of `trainer/`/`admin/` — DONE.** The role-isolation burndown
   drove the `no-restricted-imports` baseline to **0**; shared components live in neutral folders
   (`components/{ui,booking,slots,agenda,players,dashboard,invoices,cycles,email}`). **Cross-role imports

@@ -8,6 +8,7 @@ import { nl, enUS } from 'date-fns/locale';
 import { Users, Trash2, Pencil, CalendarDays, CalendarRange, AlertCircle, Loader2, Save, Euro, UserPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { compactDataTableClass } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -662,9 +663,10 @@ export function CycleDetailView({
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('detail.sessions.empty')}</p>
           ) : (
             <>
-              {/* Desktop table */}
-              <div className="hidden md:block">
-                <Table>
+              {/* Desktop table — escape hatch: compact 40px density on the existing sessions table
+                  (already inside this Card, so no DataTableCard). overflow-x-auto handles the min-width. */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table className={compactDataTableClass}>
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('detail.sessions.when')}</TableHead>

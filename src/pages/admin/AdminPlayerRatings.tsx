@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from '@/lib/supabaseClient';
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { compactDataTableClass } from "@/components/ui/data-table";
 import { toast } from "sonner";
 import { format, eachMonthOfInterval, startOfMonth, isSameMonth } from "date-fns";
 import { Search } from "lucide-react";
@@ -219,8 +220,11 @@ export default function AdminPlayerRatings() {
       {loadingPlayers ? (
         <p className="text-muted-foreground">Loading players...</p>
       ) : (
+        // Escape hatch: apply the compact 40px density to this inline-edit grid, but keep the
+        // bespoke scroll wrapper — DataTableCard is x-scroll only and can't do the sticky-column
+        // + vertical max-h-[75vh] scroll this frozen-column grid needs.
         <div className="border rounded-lg overflow-auto max-h-[75vh]">
-          <Table>
+          <Table className={compactDataTableClass}>
             <TableHeader>
               <TableRow>
                 <TableHead className="sticky left-0 z-20 bg-background min-w-[180px]">Name</TableHead>

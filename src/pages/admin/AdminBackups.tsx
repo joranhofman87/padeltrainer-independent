@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DataTableCard, compactDataTableClass } from "@/components/ui/data-table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Collapsible,
@@ -187,8 +188,8 @@ export default function AdminBackups() {
           aangemaakt.
         </div>
       ) : (
-        <div className="rounded-lg border">
-          <Table>
+        <DataTableCard desktopOnly={false}>
+          <Table className={compactDataTableClass}>
             <TableHeader>
               <TableRow>
                 <TableHead>Datum</TableHead>
@@ -231,7 +232,9 @@ export default function AdminBackups() {
                         <TableCell>
                           <Button
                             variant="ghost"
-                            size="icon" aria-label="Delete"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Delete"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeleteFolder(backup.name);
@@ -243,7 +246,9 @@ export default function AdminBackups() {
                       </TableRow>
                       <CollapsibleContent asChild>
                         <tr>
-                          <td colSpan={4} className="p-0">
+                          {/* Escape-hatch exception: the expandable file-list row must grow past the
+                              compact 40px clamp so its contents aren't clipped. */}
+                          <td colSpan={4} className="p-0 !h-auto !max-h-none !overflow-visible">
                             <div className="bg-muted/30 px-8 py-3 space-y-1">
                               {backup.files.map((file) => (
                                 <div
@@ -280,7 +285,7 @@ export default function AdminBackups() {
               })}
             </TableBody>
           </Table>
-        </div>
+        </DataTableCard>
       )}
 
       {/* Delete Confirmation */}
