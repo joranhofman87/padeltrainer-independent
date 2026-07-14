@@ -21,5 +21,6 @@ exports[`GOLDEN: registration↔cycle settings split contract > the FORM-ONLY al
   "notify_admin_on_submission",
   "notify_admin_emails",
   "pricing_note",
+  "applicable_trainer_ids",
 ]
 `;

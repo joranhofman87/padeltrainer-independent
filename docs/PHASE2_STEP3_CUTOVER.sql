@@ -112,7 +112,8 @@ SELECT
          'cyclus_options','duration_options','available_duration_minutes','price_columns',
          'prices_include_vat','success_message','confirmation_email_text','payment_methods',
          'rating_system','default_duration_minutes','available_days','max_participants',
-         'notify_admin_on_submission','notify_admin_emails','pricing_note'
+         'notify_admin_on_submission','notify_admin_emails','pricing_note',
+         'applicable_trainer_ids'
        ]) AS k
       WHERE c.settings ? k),
     '{}'::jsonb

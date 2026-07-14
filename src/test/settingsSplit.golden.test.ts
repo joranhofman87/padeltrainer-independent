@@ -26,10 +26,10 @@ describe('GOLDEN: registration↔cycle settings split contract', () => {
   it('partitions a mixed settings blob — form keys to the form, training keys stay on the cycle', () => {
     const { form, rest } = partitionSettingsByForm(SAMPLE_MIXED_SETTINGS);
     expect(Object.keys(form).sort()).toEqual(
-      ['lesson_types', 'max_participants', 'payment_methods', 'prices_include_vat', 'success_message'].sort(),
+      ['applicable_trainer_ids', 'lesson_types', 'max_participants', 'payment_methods', 'prices_include_vat', 'success_message'].sort(),
     );
     expect(Object.keys(rest).sort()).toEqual(
-      ['applicable_trainer_ids', 'min_skill_rating', 'scoring_weights', 'split_payment'].sort(),
+      ['min_skill_rating', 'scoring_weights', 'split_payment'].sort(),
     );
     // the divergence guard: training keys must NEVER leak into the form half
     expect('min_skill_rating' in form).toBe(false);
@@ -37,10 +37,12 @@ describe('GOLDEN: registration↔cycle settings split contract', () => {
   });
 
   it('the write RPC splits on the SAME form allowlist (includes every form key, references NO training key)', () => {
-    // The split now lives in SQL (create/update_registration_with_cycle → _registration_form_settings).
-    // Freeze it against the golden: a form key dropped, or a training key added, fails here.
+    // The split lives in SQL (_registration_form_settings, called by create/update_registration_
+    // with_cycle). Read the LATEST re-emission of that function (20260821100000 added
+    // applicable_trainer_ids). Freeze it against the golden: a form key dropped, or a training key
+    // added, fails here.
     const rpcSql = readFileSync(
-      join(process.cwd(), 'supabase', 'migrations', '20260630130000_registration_write_rpcs.sql'), 'utf8');
+      join(process.cwd(), 'supabase', 'migrations', '20260821100000_registration_form_settings_add_trainers.sql'), 'utf8');
     for (const k of FORM_ONLY_SETTING_KEYS) {
       expect(rpcSql, `RPC form-settings array must include ${k}`).toContain(`'${k}'`);
     }
