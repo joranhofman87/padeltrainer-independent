@@ -190,6 +190,19 @@ describe('DataTable', () => {
     expect(onRowClick).not.toHaveBeenCalled();
   });
 
+  // --- Per-row className ---
+  it('applies rowClassName to each <tr> (e.g. dimming a row)', () => {
+    renderDT(
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowClassName={(r) => (r.id === 'r2' ? 'opacity-50' : undefined)}
+      />,
+    );
+    expect(screen.getByText('Bob').closest('tr')).toHaveClass('opacity-50');
+    expect(screen.getByText('Alice').closest('tr')).not.toHaveClass('opacity-50');
+  });
+
   // --- Sticky header / column order / cell title ---
   it('stickyHeader pins the header row', () => {
     const { container } = renderDT(<DataTable columns={columns} rows={rows} stickyHeader />);

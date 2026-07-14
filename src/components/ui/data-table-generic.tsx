@@ -85,6 +85,8 @@ export interface DataTableProps<T extends { id: string }> {
   renderActions?: (row: T) => ReactNode;
   /** Header label for the trailing actions column (default: a visually-hidden "Actions"). */
   actionsHeader?: ReactNode;
+  /** Optional per-row `<TableRow>` className (e.g. dimming inactive rows). Merged via `cn`. */
+  rowClassName?: (row: T) => string | undefined;
   /** Rendered (as a single full-width cell) when there are no rows. */
   empty?: ReactNode;
   /** Mobile list rendered below the desktop table (caller-built; the desktop table is md+ only). */
@@ -125,6 +127,7 @@ export function DataTable<T extends { id: string }>({
   selection,
   renderActions,
   actionsHeader,
+  rowClassName,
   empty,
   mobile,
   compact,
@@ -224,7 +227,7 @@ export function DataTable<T extends { id: string }>({
                 <TableRow
                   key={rowKey}
                   onClick={handleRowClick}
-                  className={cn(onRowClick && 'cursor-pointer')}
+                  className={cn(onRowClick && 'cursor-pointer', rowClassName?.(row))}
                   data-state={selected ? 'selected' : undefined}
                 >
                   {selection && (
