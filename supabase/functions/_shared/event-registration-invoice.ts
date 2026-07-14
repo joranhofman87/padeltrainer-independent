@@ -227,15 +227,17 @@ export async function mintEventRegistrationInvoice(
   const recipientVal = recipient.player_id ?? recipient.guest_player_id;
   const findExistingLive = async () => {
     if (!recipientVal) return null;
-    const { data } = await admin
+    // Post-decouple the form has no cycle shell, so dedup on the registration anchor when present
+    // (cycle.id is the registration id); fall back to cycle_id only for a legacy real-cycle caller.
+    let q = admin
       .from("invoices")
       .select("id, public_token, invoice_number, status")
-      .eq("cycle_id", cycle.id)
       .eq(recipientCol, recipientVal)
       .not("status", "in", "(paid,cancelled)")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    q = registrationId ? q.eq("registration_id", registrationId) : q.eq("cycle_id", cycle.id);
+    const { data } = await q.maybeSingle();
     return data ?? null;
   };
 
@@ -251,7 +253,9 @@ export async function mintEventRegistrationInvoice(
       .insert({
         academy_profile_id: cycle.owner_id,
         trainer_id: null,
-        cycle_id: cycle.id,
+        // No cycle shell post-decouple — the invoice anchors to the form via registration_id.
+        // Fall back to cycle.id only for a legacy real-cycle caller (registrationId absent).
+        cycle_id: registrationId ? null : cycle.id,
         registration_id: registrationId ?? null,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate.toISOString().split("T")[0],

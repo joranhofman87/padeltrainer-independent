@@ -64,7 +64,7 @@ describe('GOLDEN: registration↔cycle settings split contract', () => {
       settings: { payment_methods: 'cash', lesson_types: ['duo'] },
     });
     const c = registrationToCycle(reg);
-    expect(c.id).toBe('cyc-X'); // mapped id = SOURCE cycle (drives intake.cycle_id)
+    expect(c.id).toBe(reg.id); // canonical: the registration's OWN id (decouple), not the source cycle
     expect((c.settings as Record<string, unknown>).payment_methods).toBe('cash');
     expect((c.settings as Record<string, unknown>).lesson_types).toEqual(['duo']);
   });

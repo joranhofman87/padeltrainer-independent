@@ -53,7 +53,7 @@ serve(async (req: Request) => {
 
     const { data: intake } = await admin
       .from("intake_requests")
-      .select("id, cycle_id, player_id, full_name, email, phone, birth_date, rating, rating_system, preferred_duration_minutes, sessions_per_week, location_id, notes, invoice_id, lesson_type, metadata")
+      .select("id, registration_id, player_id, full_name, email, phone, birth_date, rating, rating_system, preferred_duration_minutes, sessions_per_week, location_id, notes, invoice_id, lesson_type, metadata")
       .eq("id", intakeRequestId)
       .single();
     if (!intake) return json({ error: "Registration not found" }, 404);
@@ -85,19 +85,10 @@ serve(async (req: Request) => {
       }
     }
 
-    const { data: cycle } = await admin
-      .from("cycles")
-      .select("id, owner_type, owner_id, name, type, total_price, price_per_session, price_table, start_date, end_date, enrollment_deadline, location_id, currency, settings")
-      .eq("id", intake.cycle_id)
-      .single<RegistrationInvoiceCycle>();
-    if (!cycle) return json({ error: "Cycle not found" }, 404);
-
-    // Registration↔cycle split: prefer the canonical `registrations` form (resolved by
-    // source_cycle_id) for pricing + payment config so paid registrations keep minting after the
-    // source cycle becomes type='cyclus'; fall back to the legacy cycle pre-backfill.
+    // The FORM is a standalone registrations row (no cycle shell). Resolve it via the intake's
+    // canonical registration_id for pricing + payment config.
     type RegistrationRow = {
       id: string;
-      source_cycle_id: string;
       owner_type: string;
       owner_id: string;
       format: string;
@@ -109,35 +100,27 @@ serve(async (req: Request) => {
       start_date: string | null;
       end_date: string | null;
     };
-    let registration: RegistrationRow | null = null;
-    try {
-      const { data } = await admin
-        .from("registrations")
-        .select("id, source_cycle_id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
-        .eq("source_cycle_id", intake.cycle_id)
-        .maybeSingle();
-      registration = (data as RegistrationRow | null) ?? null;
-    } catch (regErr) {
-      console.error("registration lookup failed (non-blocking):", regErr);
-    }
-    const formForPayment: RegistrationInvoiceCycle = registration
-      ? {
-          id: registration.source_cycle_id,
-          owner_type: registration.owner_type,
-          owner_id: registration.owner_id,
-          name: registration.name,
-          type: registration.format,
-          total_price: registration.total_price ?? null,
-          price_per_session: null,
-          price_table: registration.price_table ?? null,
-          currency: registration.currency ?? null,
-          settings: (registration.settings as Record<string, unknown> | null) ?? null,
-          // The training span drives (price × weeks) per-lesson pricing — carried on the
-          // registration so the charge stays correct after the source cycle becomes type='cyclus'.
-          start_date: registration.start_date ?? null,
-          end_date: registration.end_date ?? null,
-        }
-      : cycle;
+    const { data: registration } = await admin
+      .from("registrations")
+      .select("id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
+      .eq("id", intake.registration_id)
+      .maybeSingle<RegistrationRow>();
+    if (!registration) return json({ error: "Registration not found" }, 404);
+
+    const formForPayment: RegistrationInvoiceCycle = {
+      id: registration.id,
+      owner_type: registration.owner_type,
+      owner_id: registration.owner_id,
+      name: registration.name,
+      type: registration.format,
+      total_price: registration.total_price ?? null,
+      price_per_session: null,
+      price_table: registration.price_table ?? null,
+      currency: registration.currency ?? null,
+      settings: (registration.settings as Record<string, unknown> | null) ?? null,
+      start_date: registration.start_date ?? null,
+      end_date: registration.end_date ?? null,
+    };
 
     const method = resolveEffectivePaymentMethod(
       (formForPayment.settings as Record<string, unknown> | null)?.payment_methods as
@@ -163,7 +146,7 @@ serve(async (req: Request) => {
           cyclusOptionLabel: typeof selectedOption?.label === "string" ? selectedOption.label : undefined,
           durationWeeks: md?.preferred_number_of_weeks,
         },
-        registration?.id ?? null,
+        registration.id,
       );
       if (result.ok) {
         await admin
@@ -179,11 +162,15 @@ serve(async (req: Request) => {
     // always gets an email built from the cycle's CURRENT config. An idempotent retry
     // returned earlier (intake.invoice_id set), so this never double-sends.
     try {
-      // Build the email from the SAME pricing source the invoice mint used (formForPayment = the
-      // canonical registration form when present), so the quoted price/lesson-count can never diverge
-      // from the invoice. The cycle still supplies enrollment_deadline + location_id (formForPayment
-      // omits them). When there's no registration, formForPayment === cycle (no-op).
-      await sendRegistrationConfirmationEmail(admin, { ...cycle, ...formForPayment }, intake, { payUrl, language });
+      // Build the email from the SAME pricing source the invoice mint used (the standalone form), so
+      // the quoted price/lesson-count can never diverge from the invoice. Pricing fields are spelled
+      // out (null, not undefined) to satisfy RegistrationEmailCycle.
+      await sendRegistrationConfirmationEmail(admin, {
+        ...formForPayment,
+        price_table: formForPayment.price_table ?? null,
+        start_date: formForPayment.start_date ?? null,
+        end_date: formForPayment.end_date ?? null,
+      }, intake, { payUrl, language });
     } catch (e) {
       console.error("Registration confirmation email failed (non-blocking):", String((e as Error)?.message ?? e));
     }

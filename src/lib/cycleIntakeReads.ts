@@ -7,11 +7,12 @@ import { format } from 'date-fns';
 import { toIntakeRequest } from './cycleMappers';
 import type { IntakeRequest, IntakeRequestWithProposal } from './cycleTypes';
 
-export async function getIntakeRequests(cycleId: string): Promise<IntakeRequest[]> {
+// Applicants on ONE form (registration id — the canonical link; cycle_id is "planned into").
+export async function getIntakeRequests(registrationId: string): Promise<IntakeRequest[]> {
   const { data, error } = await supabase
     .from('intake_requests')
     .select('*')
-    .eq('cycle_id', cycleId)
+    .eq('registration_id', registrationId)
     .order('created_at', { ascending: true });
 
   if (error) throw error;
@@ -23,24 +24,22 @@ export async function getIntakeRequestsByOwner(
   ownerId: string,
   status?: string
 ): Promise<IntakeRequest[]> {
-  // First get cycles for this owner
-  const cyclesQuery = supabase
-    .from('cycles')
+  // Intakes belong to a FORM, not a cycle: scope by the owner's registrations. RLS also enforces this
+  // (user_owns_registration), so the .in() is a narrowing filter, not the security boundary.
+  const { data: forms, error: formsError } = await supabase
+    .from('registrations')
     .select('id')
     .eq('owner_type', ownerType)
     .eq('owner_id', ownerId);
+  if (formsError) throw formsError;
+  if (!forms || forms.length === 0) return [];
 
-  const { data: cycles, error: cyclesError } = await cyclesQuery;
-  if (cyclesError) throw cyclesError;
-  
-  if (!cycles || cycles.length === 0) return [];
-
-  const cycleIds = cycles.map(c => c.id);
+  const registrationIds = forms.map((f) => f.id);
 
   let query = supabase
     .from('intake_requests')
     .select('*')
-    .in('cycle_id', cycleIds)
+    .in('registration_id', registrationIds)
     .order('created_at', { ascending: true });
 
   if (status) {
