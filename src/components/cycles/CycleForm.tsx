@@ -53,7 +53,7 @@ const CURRENCIES = ['EUR', 'USD', 'GBP'] as const;
 
 // U-09 draft persistence: bump the version whenever the persisted shape changes
 // so stale drafts are silently discarded instead of mis-restored.
-const CYCLE_FORM_DRAFT_VERSION = 1;
+const CYCLE_FORM_DRAFT_VERSION = 2; // v2: draft covers ALL aux editor state + auto-restores
 const CYCLE_FORM_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface CycleFormDraft {
@@ -68,6 +68,21 @@ interface CycleFormDraft {
   priceColumns?: string[];
   cyclusOptions?: CyclusOption[];
   availableDays?: DayAvailability;
+  // v2 — the aux state that previously fell OUT of the draft, so a restore silently
+  // reverted these to defaults ("information disappears"): sale/payment modes, custom
+  // lesson types, durations, VAT toggle, max participants.
+  singleSaleMode?: 'off' | 'per_seat' | 'whole_slot';
+  allowCyclusBooking?: boolean;
+  paymentTiming?: 'upfront' | 'manual';
+  splitPayment?: boolean;
+  eventPaymentMethod?: EventPaymentMethod;
+  registrationChargeMode?: 'invoice_later' | 'online' | 'both';
+  maxParticipants?: number | '';
+  durationOptions?: number[];
+  pricesIncludeVat?: boolean;
+  availableDurations?: number[];
+  customLessonType1?: string;
+  customLessonType2?: string;
 }
 
 interface CycleFormProps {
@@ -458,13 +473,28 @@ export default function CycleForm({
           priceColumns,
           cyclusOptions,
           availableDays,
+          singleSaleMode,
+          allowCyclusBooking,
+          paymentTiming,
+          splitPayment,
+          eventPaymentMethod,
+          registrationChargeMode,
+          maxParticipants,
+          durationOptions,
+          pricesIncludeVat,
+          availableDurations,
+          customLessonType1,
+          customLessonType2,
         };
         localStorage.setItem(draftKey, JSON.stringify(draft));
       } catch {
         // Storage unavailable or full — the beforeunload guard still applies
       }
     }, 1000);
-  }, [form, draftKey, terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays]);
+  }, [form, draftKey, terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays,
+      singleSaleMode, allowCyclusBooking, paymentTiming, splitPayment, eventPaymentMethod,
+      registrationChargeMode, maxParticipants, durationOptions, pricesIncludeVat, availableDurations,
+      customLessonType1, customLessonType2]);
 
   useEffect(() => {
     const subscription = form.watch(() => {
@@ -481,7 +511,12 @@ export default function CycleForm({
   useEffect(() => {
     let serialized: string;
     try {
-      serialized = JSON.stringify({ terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays });
+      serialized = JSON.stringify({
+        terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays,
+        singleSaleMode, allowCyclusBooking, paymentTiming, splitPayment, eventPaymentMethod,
+        registrationChargeMode, maxParticipants, durationOptions, pricesIncludeVat,
+        availableDurations, customLessonType1, customLessonType2,
+      });
     } catch {
       return;
     }
@@ -489,7 +524,10 @@ export default function CycleForm({
       scheduleDraftWrite();
     }
     auxSnapshotRef.current = serialized;
-  }, [terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays, scheduleDraftWrite]);
+  }, [terms, pricingNote, extraCosts, priceTable, priceColumns, cyclusOptions, availableDays,
+      singleSaleMode, allowCyclusBooking, paymentTiming, splitPayment, eventPaymentMethod,
+      registrationChargeMode, maxParticipants, durationOptions, pricesIncludeVat,
+      availableDurations, customLessonType1, customLessonType2, scheduleDraftWrite]);
 
   useEffect(() => () => {
     if (draftWriteTimer.current) clearTimeout(draftWriteTimer.current);
@@ -531,6 +569,19 @@ export default function CycleForm({
       if (pendingDraft.availableDays && typeof pendingDraft.availableDays === 'object') {
         setAvailableDays(pendingDraft.availableDays);
       }
+      // v2 aux state — without these a restore silently reverted them to defaults.
+      if (pendingDraft.singleSaleMode) setSingleSaleMode(pendingDraft.singleSaleMode);
+      if (typeof pendingDraft.allowCyclusBooking === 'boolean') setAllowCyclusBooking(pendingDraft.allowCyclusBooking);
+      if (pendingDraft.paymentTiming) setPaymentTiming(pendingDraft.paymentTiming);
+      if (typeof pendingDraft.splitPayment === 'boolean') setSplitPayment(pendingDraft.splitPayment);
+      if (pendingDraft.eventPaymentMethod) setEventPaymentMethod(pendingDraft.eventPaymentMethod);
+      if (pendingDraft.registrationChargeMode) setRegistrationChargeMode(pendingDraft.registrationChargeMode);
+      if (pendingDraft.maxParticipants !== undefined) setMaxParticipants(pendingDraft.maxParticipants);
+      if (Array.isArray(pendingDraft.durationOptions)) setDurationOptions(pendingDraft.durationOptions);
+      if (typeof pendingDraft.pricesIncludeVat === 'boolean') setPricesIncludeVat(pendingDraft.pricesIncludeVat);
+      if (Array.isArray(pendingDraft.availableDurations)) setAvailableDurations(pendingDraft.availableDurations);
+      if (typeof pendingDraft.customLessonType1 === 'string') setCustomLessonType1(pendingDraft.customLessonType1);
+      if (typeof pendingDraft.customLessonType2 === 'string') setCustomLessonType2(pendingDraft.customLessonType2);
       setHasDraftChanges(true);
     } catch {
       // Corrupt draft — drop it rather than break the form
@@ -543,14 +594,44 @@ export default function CycleForm({
     setPendingDraft(null);
   };
 
+  // Discard the (auto-restored) draft: clear storage AND put every field back to the
+  // saved server state — form values to their defaults, aux state re-derived from the
+  // cycle prop exactly like the useState initializers.
   const dismissDraft = () => {
-    try {
-      localStorage.removeItem(draftKey);
-    } catch {
-      // ignore storage errors
-    }
-    setPendingDraft(null);
+    clearDraft();
+    form.reset();
+    const s = (cycle?.settings ?? {}) as CycleSettings;
+    setSingleSaleMode(singleSaleModeFromSettings(s ?? null));
+    setAllowCyclusBooking(s?.allow_cyclus_booking !== false);
+    setPaymentTiming(s?.payment_timing === 'upfront' ? 'upfront' : (s?.payment_timing || s?.mark_as_paid) ? 'manual' : 'upfront');
+    setSplitPayment(s?.split_payment ?? false);
+    setExtraCosts(s?.extra_costs ?? []);
+    setEventPaymentMethod(s?.payment_methods ?? 'online');
+    setRegistrationChargeMode(s?.payment_methods === 'online' ? 'online' : s?.payment_methods === 'both' ? 'both' : 'invoice_later');
+    setMaxParticipants(s?.max_participants ?? '');
+    setTerms(cycle?.terms || '');
+    setPriceTable(cycle?.price_table || []);
+    setPriceColumns(s?.price_columns ?? []);
+    setCyclusOptions(s?.cyclus_options ?? []);
+    setDurationOptions(s?.duration_options ?? []);
+    setPricesIncludeVat(s?.prices_include_vat ?? true);
+    setPricingNote(s?.pricing_note ?? '');
+    setAvailableDurations(s?.available_duration_minutes ?? [...STANDARD_DURATIONS]);
+    setCustomLessonType1(s?.custom_lesson_types?.[0] ?? '');
+    setCustomLessonType2(s?.custom_lesson_types?.[1] ?? '');
+    setAvailableDays(s?.available_days ?? {});
   };
+
+  // AUTO-restore: the previous "click Herstellen to get your work back" banner was routinely
+  // missed — the editor looked wiped after a tab discard/navigation ("information disappears").
+  // Restore automatically on mount; the banner becomes an UNDO ("draft restored — discard?").
+  const autoRestoredRef = useRef(false);
+  useEffect(() => {
+    if (autoRestoredRef.current) return;
+    autoRestoredRef.current = true;
+    if (pendingDraft) restoreDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useUnsavedChangesGuard(form.formState.isDirty || hasDraftChanges);
 
@@ -730,15 +811,10 @@ export default function CycleForm({
     <div className="space-y-6">
         {pendingDraft && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
-            <span>{t('form.draftFound', 'Niet-opgeslagen concept gevonden. Wil je verdergaan waar je gebleven was?')}</span>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={dismissDraft}>
-                {t('form.draftDismiss', 'Verwijderen')}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={restoreDraft}>
-                {t('form.draftRestore', 'Herstellen')}
-              </Button>
-            </div>
+            <span>{t('form.draftAutoRestored', 'Niet-opgeslagen wijzigingen automatisch hersteld.')}</span>
+            <Button type="button" variant="ghost" size="sm" onClick={dismissDraft}>
+              {t('form.draftDiscard', 'Wijzigingen verwijderen')}
+            </Button>
           </div>
         )}
 

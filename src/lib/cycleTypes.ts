@@ -120,6 +120,8 @@ export interface CycleSettings {
   price_columns?: string[];
   // Whether the displayed prices include VAT
   prices_include_vat?: boolean;
+  // Rich-text note rendered under the price table on the public form
+  pricing_note?: string;
   // Stored trainer availability windows from the proposal wizard
   trainer_availability_windows?: TrainerAvailabilityWindow[];
   // Pre-selected days & time frames available for registration
