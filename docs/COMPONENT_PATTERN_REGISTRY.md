@@ -119,3 +119,14 @@ Each role has its own `*Layout` + `*Sidebar` + `*Navigation` (branded, role-scop
 - No copied player detail/remove form in a role folder → neutral `players/` component + wrapper.
 - No inline invoice/VAT math → `@/lib/invoiceFormTotals`.
 - Do NOT build grand abstractions (`FormField`, `EntityCombobox`) — the reuse audit flags these as over-abstraction traps. Share the presentational leaf, keep business rules at the call site.
+
+## Copy / share a link
+
+| Pattern | Component / hook | Import | Notes |
+|---|---|---|---|
+| Copy a URL to clipboard | `useCopyToClipboard()` | `@/hooks/useCopyToClipboard` | The ONE clipboard implementation (secure-context guard + `execCommand` fallback). Use inside dropdown items / custom buttons. Do NOT hand-roll `navigator.clipboard.writeText` — it silently throws off-HTTPS. |
+| A standalone "copy link" button | `<CopyLinkButton url=… />` | `@/components/ui/CopyLinkButton` | Built on the hook; Check-state + toast baked in. |
+| A registration form's share URL | `shareUrlForRegistration(...)` | `@/lib/cycleRegistrationUrl` | The single source that picks the branded `/s/<code>` short link vs the long URL. See [`SHORT_LINKS.md`](./SHORT_LINKS.md). |
+
+Backlog: ~15 other surfaces (locations, ratings, invoice pay links, quizzes, blog) still hand-roll
+`navigator.clipboard`; migrate them onto `useCopyToClipboard` incrementally.

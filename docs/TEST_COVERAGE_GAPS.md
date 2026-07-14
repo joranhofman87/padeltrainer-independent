@@ -53,3 +53,16 @@ The direct book→pay→invoice path is the most-tested surface, deliberately.
 
 ## Rule of thumb for an AI agent
 If your change is on the money path (payment/booking/rebook/invoice/split) there is almost certainly an existing PGlite test near it — extend it. If your change is in an edge-function `index.ts`, move the logic into a `_shared/` helper so it can be tested at all. If you add a migration, add a `rehearse-*`. If nothing above covers your change, you are in a gap — say so and add the first test.
+
+## Short links (`/s/<code>`) — see [`SHORT_LINKS.md`](./SHORT_LINKS.md)
+
+**Covered:** `scripts/db/rehearse-short-links.ts` (SQL: idempotency, collision retry, open-redirect
+guard, anon-cannot-mint / anon-can-resolve grants, best-effort trigger); `src/lib/cycleRegistrationUrl.test.ts`
+(URL branches + `shareUrlForRegistration` short-vs-long); `src/lib/shortLinks.test.ts` (format +
+`getShortCodesByTarget` error-resilience); `src/hooks/useCopyToClipboard.test.ts` +
+`src/components/ui/CopyLinkButton.test.tsx`; `src/test/shortLinkContract.test.ts` (the SQL
+charset/length ⊆ Worker regex contract — reads both files).
+
+**Still a gap:** `docs/cloudflare-worker.js` `/s/` branch itself (the regex, 301/302 selection, cache
+key, noindex-404) is a plain `.js` file outside the type/test gates — the contract test guards the
+charset drift, but the branch's runtime behavior is only verified by post-deploy `curl`.

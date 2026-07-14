@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { Copy, Check, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,31 +24,6 @@ interface Props {
 
 const HOST = 'padeltrainer.ai';
 
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fall through to fallback
-  }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
 export function ShareableProfileLink({
   handle,
   label = 'Your share link',
@@ -59,7 +34,7 @@ export function ShareableProfileLink({
   shortUrl,
 }: Props) {
   const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyToClipboard } = useCopyToClipboard();
 
   if (!handle) return null;
 
@@ -72,13 +47,7 @@ export function ShareableProfileLink({
 
   const copy = async () => {
     const ok = await copyToClipboard(fullUrl);
-    if (ok) {
-      setCopied(true);
-      toast({ title: 'Link copied' });
-      setTimeout(() => setCopied(false), 1500);
-    } else {
-      toast({ title: 'Could not copy', variant: 'destructive' });
-    }
+    toast(ok ? { title: 'Link copied' } : { title: 'Could not copy', variant: 'destructive' });
   };
 
   const share = async () => {

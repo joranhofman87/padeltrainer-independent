@@ -1,4 +1,4 @@
-import { getMarketingUrl } from '@/lib/domains';
+import { getMarketingUrl, getShortUrl } from '@/lib/domains';
 
 export type CycleOwnerType = 'trainer' | 'club' | 'academy';
 
@@ -26,4 +26,23 @@ export function buildRegistrationUrl(
   lang = 'nl',
 ): string {
   return getMarketingUrl(buildRegistrationPath(cycleId, ownerType, ownerSlug), lang);
+}
+
+/**
+ * The canonical share URL for a registration form — ONE place decides it so every share surface
+ * (copy button, QR, trainer/academy/club) stays in lockstep: the branded short link
+ * (padeltrainer.ai/s/<code>) when a code has been minted (registrations mint eagerly via a DB
+ * trigger), else the full registration URL as a fallback. Keep this the single source; do not
+ * re-derive the `short_code ? short : long` branch inline at call sites.
+ */
+export function shareUrlForRegistration(
+  shortCode: string | null | undefined,
+  cycleId: string,
+  ownerType: CycleOwnerType,
+  ownerSlug?: string | null,
+  lang = 'nl',
+): string {
+  return shortCode
+    ? getShortUrl(shortCode)
+    : buildRegistrationUrl(cycleId, ownerType, ownerSlug, lang);
 }

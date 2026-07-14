@@ -90,6 +90,13 @@ Migrations are forward-only. The shell DELETE is the only destructive step — b
 
 **Phase 3 (next, own design round): planning board** — pool of applicants (across forms, filter by lesson type/availability/rating) ⟷ available slots (rebook leftovers + "generate new sessions"); drag-to-assign sets `intake_requests.cycle_id` + booking; optional AI auto-suggest. Registrations stay pure collection.
 
+## Share URL (post-decouple)
+The canonical way to share a registration form is the branded short link **`padeltrainer.ai/s/<code>`**
+(minted eagerly per form via an `AFTER INSERT` trigger; resolved by the Cloudflare Worker → 301 to the
+`/register/<id>` form, preserving the per-form social preview). Build it via
+`shareUrlForRegistration(...)` (`src/lib/cycleRegistrationUrl.ts`), which falls back to the long
+`/register/:id` URL when no code is present. Full architecture: [`SHORT_LINKS.md`](./SHORT_LINKS.md).
+
 ## Verification per step
 - Local: `npm run typecheck:baseline`, `eslint`, vitest, pglite rehearsals; new tests for the new invariants.
 - Owner applies migrations (`supabase db push`) and deploys the frontend/edge functions.

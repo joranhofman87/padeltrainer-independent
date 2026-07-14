@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabaseClient';
-import { MARKETING_DOMAIN } from '@/lib/domains';
+import { getShortUrl } from '@/lib/domains';
+
+/** Re-exported for convenience; the canonical definition lives in lib/domains (pure, no supabase). */
+export { getShortUrl };
 
 /**
  * Generic branded short links (padeltrainer.ai/s/<code>). The primitive is entity-agnostic — any
@@ -7,11 +10,6 @@ import { MARKETING_DOMAIN } from '@/lib/domains';
  * Resolution (the /s/<code> → 301 hot path) lives in the Cloudflare Worker; these helpers are the
  * mint + admin-read seams. See supabase/migrations/20260825100000_short_links.sql.
  */
-
-/** Absolute short-link URL for a code. */
-export function getShortUrl(code: string): string {
-  return `${MARKETING_DOMAIN}/s/${code}`;
-}
 
 /** The canonical short-link TARGET for a registration form — slug-less so it's rename-proof, and the
  *  path render-page already serves the per-form social preview for. */
