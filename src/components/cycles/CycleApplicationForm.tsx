@@ -221,6 +221,83 @@ export default function CycleApplicationForm({
     },
   });
 
+  // ---- Auto-save draft (applicants lose everything when the browser discards the tab — common on
+  // mobile when they switch tabs to look something up). Persist the typed values to localStorage,
+  // debounced, and restore them on mount; cleared on successful submit. Mirrors the editor's
+  // cycle-form-draft pattern. `password` is NEVER stored; consent/terms acceptance is NOT restored
+  // (must be actively re-given). A prefilled (logged-in) email is never overwritten by a draft.
+  const applyDraftKey = `apply-draft:${cycle.id}`;
+  const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(applyDraftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as {
+        savedAt?: number;
+        values?: Partial<FormValues>;
+        paymentMethod?: 'online' | 'cash';
+        durationWeeks?: number | null;
+        cyclusOptionLabel?: string | null;
+      };
+      if (!draft.savedAt || Date.now() - draft.savedAt > DRAFT_MAX_AGE_MS) {
+        localStorage.removeItem(applyDraftKey);
+        return;
+      }
+      const v = draft.values ?? {};
+      delete (v as Record<string, unknown>).password;
+      delete (v as Record<string, unknown>).consent;
+      const current = form.getValues();
+      form.reset({
+        ...current,
+        ...v,
+        // Never let a stale draft clobber the logged-in user's prefilled identity fields.
+        email: current.email || v.email || '',
+        first_name: current.first_name || v.first_name || '',
+        last_name: current.last_name || v.last_name || '',
+        consent: false,
+      });
+      if (draft.paymentMethod) setSelectedPaymentMethod(draft.paymentMethod);
+      if (draft.durationWeeks != null) setSelectedDurationWeeks(draft.durationWeeks);
+      if (draft.cyclusOptionLabel) {
+        const opts = cycle.settings?.cyclus_options ?? [];
+        const match = opts.find((o) => o.label === draft.cyclusOptionLabel);
+        if (match) setSelectedCyclusOption(match);
+      }
+    } catch {
+      // A corrupt draft must never break the form.
+      try { localStorage.removeItem(applyDraftKey); } catch { /* ignore */ }
+    }
+    // Mount-only: restore once for this form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyDraftKey]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const write = () => {
+      try {
+        const { password: _pw, ...values } = form.getValues();
+        localStorage.setItem(applyDraftKey, JSON.stringify({
+          savedAt: Date.now(),
+          values,
+          paymentMethod: selectedPaymentMethod,
+          durationWeeks: selectedDurationWeeks,
+          cyclusOptionLabel: selectedCyclusOption?.label ?? null,
+        }));
+      } catch { /* storage full/unavailable — typing must keep working */ }
+    };
+    const sub = form.watch(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(write, 400);
+    });
+    // Also persist when the extra (non-RHF) selections change.
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(write, 400);
+    return () => {
+      sub.unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, [form, applyDraftKey, selectedPaymentMethod, selectedDurationWeeks, selectedCyclusOption]);
+
   const onSubmit = async (values: FormValues) => {
     if (isSubmitting) return;
     // A cycle that offers packages (e.g. Leden / Niet-leden) prices ONLY via the chosen
@@ -363,6 +440,9 @@ export default function CycleApplicationForm({
           }
         }
       }
+
+      // Submission stored — the draft has served its purpose (also before the pay redirect).
+      try { localStorage.removeItem(applyDraftKey); } catch { /* ignore */ }
 
       // Online: hand off to the existing pay page → Mollie (skip the thank-you screen).
       if (redirectPayUrl) {

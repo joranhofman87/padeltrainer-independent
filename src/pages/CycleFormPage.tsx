@@ -226,12 +226,18 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
           setCycle(cycleData ?? (reg ? registrationToCycle(reg) : null));
           setRegistration(reg);
         } else if (duplicateFromId) {
-          const cycleData = await getCycle(duplicateFromId);
-          if (cycleData) {
+          // Duplicating a registration FORM: it is a standalone registrations row (no cycle shell),
+          // so fall back to presenting the registration as a Cycle — otherwise the copy came up empty.
+          const [cycleData, regData] = await Promise.all([
+            getCycle(duplicateFromId),
+            getRegistration(duplicateFromId),
+          ]);
+          const source = cycleData ?? (regData ? registrationToCycle(regData) : null);
+          if (source) {
             setCycle({
-              ...cycleData,
+              ...source,
               id: '', // Will be generated
-              name: `${cycleData.name} (${t('common:copy', 'Copy')})`,
+              name: `${source.name} (${t('common:copy', 'Copy')})`,
               status: 'draft',
             });
           }
