@@ -31,6 +31,7 @@ import {
 import { type Cycle, updateCycle } from '@/lib/cycles';
 import { syncRegistrationStatus } from '@/lib/registrations';
 import { buildRegistrationUrl } from '@/lib/cycleRegistrationUrl';
+import { getShortUrl } from '@/lib/shortLinks';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 
 const RegistrationQrDialog = lazy(() => import('@/components/cycles/RegistrationQrDialog'));
@@ -109,9 +110,16 @@ export default function CyclesTable({
     }
   };
 
+  // Prefer the branded short link (padeltrainer.ai/s/<code>, minted eagerly per form) — falls back to
+  // the full registration URL when no code is present yet. Synchronous so clipboard copy keeps its
+  // user-gesture activation.
+  const shareUrlFor = (cycle: Cycle) =>
+    cycle.short_code
+      ? getShortUrl(cycle.short_code)
+      : buildRegistrationUrl(cycle.id, ownerType, ownerSlug, i18n.language || 'nl');
+
   const handleCopyLink = (cycle: Cycle) => {
-    const url = buildRegistrationUrl(cycle.id, ownerType, ownerSlug, i18n.language || 'nl');
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(shareUrlFor(cycle));
     toast.success(t('actions.linkCopied'));
   };
 
@@ -382,7 +390,7 @@ export default function CyclesTable({
           <RegistrationQrDialog
             open
             onOpenChange={(open) => { if (!open) setQrCycle(null); }}
-            url={buildRegistrationUrl(qrCycle.id, ownerType, ownerSlug, i18n.language || 'nl')}
+            url={shareUrlFor(qrCycle)}
             title={qrCycle.name}
             logoUrl={ownerLogoUrl}
           />

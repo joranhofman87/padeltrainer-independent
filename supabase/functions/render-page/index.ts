@@ -825,6 +825,7 @@ const RESERVED_SHORT_HANDLES = new Set([
   'manifest','favicon','sw','service-worker','share','www','mail',
   'home','index','search','contact','support','help','docs',
   'en','nl','es','de','fr','it',
+  's', // /s/<code> short-link namespace
 ]);
 
 function isReservedShortHandle(handle: string): boolean {

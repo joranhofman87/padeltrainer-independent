@@ -5309,6 +5309,39 @@ export type Database = {
           },
         ]
       }
+      short_links: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          permanent: boolean
+          target_id: string | null
+          target_params: Json
+          target_path: string
+          target_type: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          permanent?: boolean
+          target_id?: string | null
+          target_params?: Json
+          target_path: string
+          target_type: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          permanent?: boolean
+          target_id?: string | null
+          target_params?: Json
+          target_path?: string
+          target_type?: string
+        }
+        Relationships: []
+      }
       slot_priority_claims: {
         Row: {
           booked_by_guest_player_id: string | null
@@ -8116,6 +8149,7 @@ export type Database = {
       }
       fold_search_text: { Args: { _value: string }; Returns: string }
       gen_random_bytes: { Args: { len: number }; Returns: string }
+      gen_short_code: { Args: { _len?: number }; Returns: string }
       generate_location_slug: {
         Args: { city: string; name: string }
         Returns: string
@@ -8381,6 +8415,16 @@ export type Database = {
           start_time: string
         }[]
       }
+      get_or_create_short_link: {
+        Args: {
+          _permanent?: boolean
+          _target_id?: string
+          _target_params?: Json
+          _target_path: string
+          _target_type: string
+        }
+        Returns: string
+      }
       get_player_email_edit_capability: {
         Args: { _academy_profile_id: string; _profile_id: string }
         Returns: string
@@ -8476,6 +8520,13 @@ export type Database = {
         }[]
       }
       get_rebook_group_by_token: { Args: { _token: string }; Returns: Json }
+      get_short_codes: {
+        Args: { _target_ids: string[]; _target_type: string }
+        Returns: {
+          code: string
+          target_id: string
+        }[]
+      }
       get_trainer_dashboard_analytics: {
         Args: { _months?: number }
         Returns: Json
@@ -8749,6 +8800,13 @@ export type Database = {
       release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
+      resolve_short_link: {
+        Args: { _code: string }
+        Returns: {
+          permanent: boolean
+          target_path: string
+        }[]
+      }
       resolve_slot_booking_tier: { Args: { _slot_id: string }; Returns: string }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }

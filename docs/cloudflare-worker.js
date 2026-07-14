@@ -228,6 +228,64 @@ export default {
           console.error(`LLMs proxy error:`, error);
         }
       }
+
+      // --- Short-link resolver:  /s/<code>  →  301/302 to target_path ---
+      // Placed BEFORE the bot check so both humans and social crawlers get the redirect; a crawler
+      // then re-requests the destination (a bot path) and hits the prerender below, where render-page
+      // emits the per-form OG tags. Edge-cached so a viral link never touches origin/DB after the
+      // first hit; resolution on a miss is a single primary-key read via PostgREST.
+      const shortMatch = url.pathname.match(/^\/s\/([0-9A-Za-z]{4,16})$/);
+      if (shortMatch) {
+        const code = shortMatch[1];
+        const slCache = caches.default;
+        const slKey = new Request(`${url.origin}/__shortlink/${code}`, { method: 'GET' });
+        const slHit = await slCache.match(slKey);
+        if (slHit) return slHit;
+
+        try {
+          // Derive PostgREST from the render fn origin → no new Worker env var (respects keep_vars).
+          const rpcUrl = `${new URL(env.RENDER_FUNCTION_URL).origin}/rest/v1/rpc/resolve_short_link`;
+          const rpcRes = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': env.SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${env.SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ _code: code }),
+          });
+          if (rpcRes.ok) {
+            const row = (await rpcRes.json())?.[0];
+            if (row && row.target_path) {
+              // 301 (default) consolidates backlink/SEO equity on our own domain — the reason to
+              // self-host rather than use an external shortener. permanent=false → 302 for future
+              // repointable links.
+              const redirect = new Response(null, {
+                status: row.permanent === false ? 302 : 301,
+                headers: {
+                  'Location': `https://padeltrainer.ai${row.target_path}`,
+                  'Cache-Control': 'public, max-age=86400',
+                  'X-Shortlink': 'resolved',
+                },
+              });
+              // Edge-cache only permanent (301) redirects; a 302 or a miss is never cached.
+              if (row.permanent !== false) ctx.waitUntil(slCache.put(slKey, redirect.clone()));
+              return redirect;
+            }
+          }
+        } catch (error) {
+          console.error(`Short-link resolve error for /s/${code}:`, error);
+        }
+        // Unknown / failed code → short-lived noindex 404 (never a 200 homepage soft-404).
+        return new Response('Not found', {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'public, max-age=60',
+            'X-Robots-Tag': 'noindex',
+          },
+        });
+      }
     }
 
     // --- Bot pre-rendering with rate limiting + circuit breaker ---
