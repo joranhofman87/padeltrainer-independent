@@ -37,6 +37,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
 import { submitIntakeRequest, type Cycle, type TimeWindow, type EventPaymentMethod, type CyclusOption } from '@/lib/cycles';
+import { resolvePriceRowIndex } from '@/lib/registrationPriceMap';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -992,10 +993,11 @@ export default function CycleApplicationForm({
             if (selectedCyclusOption) {
               perLesson = selectedCyclusOption.price_per_session;
             } else if (cycle.price_table && cycle.price_table.length > 0) {
-              const typeIndex = orderedTypes.indexOf(lt);
-              const priceRow = typeIndex >= 0 && typeIndex < cycle.price_table.length
-                ? cycle.price_table[typeIndex]
-                : null;
+              // Match the lesson type to its price row by the label's MEANING (shared with the
+              // server's registration-pricing.ts), not array position — so the indication can't
+              // mis-map a form whose rows were entered out of lesson_types order.
+              const idx = resolvePriceRowIndex(lt, orderedTypes, cycle.price_table.map((r) => r.label ?? ''));
+              const priceRow = idx >= 0 ? cycle.price_table[idx] : null;
               if (priceRow) perLesson = priceRow.price;
             }
 

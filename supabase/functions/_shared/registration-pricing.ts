@@ -18,6 +18,30 @@ export interface RegistrationPricingCycle {
   settings: Record<string, unknown> | null;
 }
 
+// EXACT MIRROR of src/lib/registrationPriceMap.ts (golden-tested for parity). Maps a lesson type to
+// its price_table row by the label's MEANING with a positional fallback, so the invoice can never
+// diverge from the public form's price indication, and an out-of-order table is priced correctly.
+function semanticMatches(lessonType: string, label: string): boolean {
+  const l = label.toLowerCase();
+  switch (lessonType) {
+    case "private": return /priv/.test(l);
+    case "duo": return /\bduo\b/.test(l) || /(^|\D)2(\D|$)/.test(l);
+    case "group3": return /(^|\D)3(\D|$)/.test(l);
+    case "group4": return /(^|\D)4(\D|$)/.test(l);
+    default: return false;
+  }
+}
+
+export function resolvePriceRowIndex(lessonType: string, orderedTypes: string[], labels: string[]): number {
+  const matched: number[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    if (semanticMatches(lessonType, labels[i] ?? "")) matched.push(i);
+  }
+  if (matched.length === 1) return matched[0];
+  const idx = orderedTypes.indexOf(lessonType);
+  return idx >= 0 && idx < labels.length ? idx : -1;
+}
+
 export interface RegistrationSelections {
   lessonTypes: unknown;            // client-supplied; validated against settings.lesson_types
   cyclusOptionLabel?: unknown;     // client-supplied; matched against settings.cyclus_options
@@ -173,9 +197,12 @@ export function computeRegistrationCharge(
   } else {
     if (weeks == null) return null; // can't price per-lesson without a valid duration
     const selected = Array.isArray(selections.lessonTypes) ? selections.lessonTypes : [];
+    const priceLabels = priceTable.map((r) => (typeof r?.description === "string" ? r.description : ""));
     for (const lt of selected) {
       if (typeof lt !== "string" || !allowedLT.has(lt)) continue; // SECURITY: only cycle-offered types
-      const idx = orderedLT.indexOf(lt);
+      // Match by the label's MEANING (mirrors src/lib/registrationPriceMap.ts), with a positional
+      // fallback — so the invoice can't diverge from the public form's price indication.
+      const idx = resolvePriceRowIndex(lt, orderedLT, priceLabels);
       const row = idx >= 0 && idx < priceTable.length ? priceTable[idx] : null;
       let perLesson = row ? bounded(row.price) : null;
       if (perLesson == null) perLesson = pricePerSession;
