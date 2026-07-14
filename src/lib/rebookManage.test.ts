@@ -217,10 +217,18 @@ describe('rebookPlayerOutcome — the owner\'s "who said no"', () => {
   it('a paid, claimed player is not "clicked-yes-unpaid"', () => {
     expect(clickedYesUnpaid(mkPlayer({ response: 'claimed', responseIntent: 'accept', paid: true }))).toBe(false);
   });
-  it('an EXPIRED accept-intent claim is NOT clicked-yes-unpaid (can no longer be completed)', () => {
-    // Cron expires the pending claim but leaves response_intent='accept'. It must not be counted as
-    // an actionable "started but didn't pay", and must not collide with the "verlopen" chip.
-    expect(clickedYesUnpaid(mkPlayer({ response: 'expired', responseIntent: 'accept' }))).toBe(false);
+  it('an EXPIRED accept-intent claim IS clicked-yes-unpaid (the second-chance follow-up list)', () => {
+    // Cron expires the pending claim but leaves response_intent='accept'. These are the round's
+    // hottest follow-up leads and must stay visible AFTER the deadline (RL Padel first run: 24
+    // players vanished into "geen reactie"). The owner's lever exists: extending the round
+    // deadline revives expired claims. Outcome still counts as noResponse (there is no booking).
+    const p = mkPlayer({ response: 'expired', responseIntent: 'accept' });
+    expect(clickedYesUnpaid(p)).toBe(true);
+    expect(rebookPlayerOutcome(p)).toBe('noResponse');
+  });
+  it('an EXPIRED claim without accept intent is NOT clicked-yes-unpaid', () => {
+    expect(clickedYesUnpaid(mkPlayer({ response: 'expired', responseIntent: null }))).toBe(false);
+    expect(clickedYesUnpaid(mkPlayer({ response: 'expired', responseIntent: 'decline' }))).toBe(false);
   });
 });
 
@@ -263,5 +271,13 @@ describe('summariseRebookOutcomes — the assembled headline', () => {
       mkPlayer({ key: 'a', response: 'claimed' }),                            // but completed elsewhere
     ]);
     expect(s).toEqual({ invited: 1, rebooked: 1, declined: 0, noResponse: 0, clickedYesUnpaid: 0 });
+  });
+
+  it('an expired clicked-yes still counts in the headline after the deadline (second-chance list)', () => {
+    const s = summariseRebookOutcomes([
+      mkPlayer({ key: 'a', response: 'expired', responseIntent: 'accept' }), // lapsed mid-checkout
+      mkPlayer({ key: 'b', response: 'expired' }),                            // truly silent
+    ]);
+    expect(s).toEqual({ invited: 2, rebooked: 0, declined: 0, noResponse: 2, clickedYesUnpaid: 1 });
   });
 });

@@ -908,7 +908,18 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
                 ) : p.responseIntent === 'decline' ? (
                   <span className="text-rose-600">{t('rebookManage.saidNoShort', 'zei nee')}</span>
                 ) : p.response === 'expired' ? (
-                  <span className="text-muted-foreground">{t('rebookManage.expiredShort', 'verlopen')}</span>
+                  clickedYesUnpaid(p) ? (
+                    // Clicked "Yes" but the window lapsed before payment — the round's hottest
+                    // follow-up lead. Extending the round deadline revives the claim (second chance).
+                    <span
+                      className="text-amber-700"
+                      title={t('rebookManage.clickedYesExpiredHint', 'Klikte Ja maar rondde de betaling niet af voor de deadline. Verleng de deadline om een tweede kans te geven — de claim- en betaallinks werken dan weer.')}
+                    >
+                      {t('rebookManage.clickedYesShort', 'klikte Ja')} — {t('rebookManage.expiredShort', 'verlopen')}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{t('rebookManage.expiredShort', 'verlopen')}</span>
+                  )
                 ) : clickedYesUnpaid(p) ? (
                   <span className="text-amber-700">{t('rebookManage.clickedYesShort', 'klikte Ja')} — {t('rebookManage.unpaidShort', 'open')}</span>
                 ) : (
