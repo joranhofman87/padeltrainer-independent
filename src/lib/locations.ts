@@ -181,6 +181,22 @@ export async function getLocationBySlug(slug: string): Promise<Location | null> 
   return data;
 }
 
+/** Minimal public link info for a location (claim-page CTA etc.). Follows merged_into
+ *  (W-06 dedupe) so a retired duplicate resolves to the survivor's name/slug. Best-effort:
+ *  returns null on any miss so callers can fall back. */
+export async function getLocationLinkInfo(id: string): Promise<{ name: string; slug: string | null } | null> {
+  const { data } = await supabase
+    .from('locations')
+    .select('name, slug, is_active, merged_into')
+    .eq('id', id)
+    .maybeSingle();
+  if (!data) return null;
+  const row = data as { name: string; slug: string | null; is_active: boolean; merged_into: string | null };
+  if (row.merged_into) return getLocationLinkInfo(row.merged_into);
+  if (!row.is_active) return null;
+  return { name: row.name, slug: row.slug };
+}
+
 // Fetch trainers at a location (for public display - only shows trainers marked as visible)
 export async function getTrainersAtLocation(locationId: string) {
   const { data, error } = await supabase

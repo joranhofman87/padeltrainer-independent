@@ -16,7 +16,10 @@ vi.mock('@/lib/priorityClaims', () => ({
   recordRebookRulesConsent: vi.fn(),
   recordPriorityClaimIntent: vi.fn(),
 }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (_k: string, d?: string) => d ?? _k }) }));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (_k: string, d?: string) => d ?? _k, i18n: { language: 'en' } }),
+}));
+vi.mock('@/lib/locations', () => ({ getLocationLinkInfo: vi.fn().mockResolvedValue(null) }));
 vi.mock('react-helmet-async', () => ({ Helmet: () => null }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/components/cycles/RebookGroupEditor', () => ({ RebookGroupEditor: () => null }));
