@@ -153,17 +153,33 @@ Deno.test("validate: a slot without a trainer cannot route payment -> no_mollie_
 
 // ---------- priceCartItems (server-pricing parity with create-guest-slot-payment) ----------
 
-Deno.test("pricing: per-seat slot charges price/max_participants + extras (single-slot parity)", () => {
-  // allow_single_booking && maxP>1 → one seat of N: 40/4 + 2.50 extra = 12.50
+Deno.test("pricing: split_payment session charges price/max_participants + extras (paid individually)", () => {
+  // split_payment && maxP>1 → one seat of N: 40/4 + 2.50 extra = 12.50
   const perSeat = slot({
     price_per_session: 40,
     max_participants: 4,
     allow_single_booking: true,
+    split_payment: true,
     extra_costs: [{ description: "balls", price: 2.5 }],
   });
   const { itemAmounts, total } = priceCartItems([perSeat.id], [perSeat], {});
   assertEquals(itemAmounts, [12.5]);
   assertEquals(total, 12.5);
+});
+
+Deno.test("pricing: NON-split individually-bookable session charges the FULL price (paid at once) — F01", () => {
+  // allow_single_booking=true but split_payment=false → "paid at once", full price, NOT ÷ capacity.
+  // 40 + 2.50 extra = 42.50 (previously mis-divided to 12.50).
+  const perSeat = slot({
+    price_per_session: 40,
+    max_participants: 4,
+    allow_single_booking: true,
+    split_payment: false,
+    extra_costs: [{ description: "balls", price: 2.5 }],
+  });
+  const { itemAmounts, total } = priceCartItems([perSeat.id], [perSeat], {});
+  assertEquals(itemAmounts, [42.5]);
+  assertEquals(total, 42.5);
 });
 
 Deno.test("pricing: whole-slot item (allow_single_booking=false) charges the FULL session price", () => {

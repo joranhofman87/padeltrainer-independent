@@ -11,6 +11,7 @@
  */
 import { createContext, useContext } from 'react';
 import type { PublicSlot } from '@/lib/publicAvailability';
+import { perSeatSessionPrice } from '@/lib/pricing';
 
 /** Mirror of CART_MAX_ITEMS in supabase/functions/_shared/cart-payment.ts. */
 export const CART_MAX_ITEMS = 20;
@@ -71,13 +72,13 @@ export function sanitizeStoredItems(value: unknown, now = new Date()): PublicSlo
 }
 
 /**
- * Indicative per-item price — the SAME formula the slot row and booking dialog display
- * (price_per_session + extras), so the cart never shows a different number than the page
- * the guest just tapped. The server reprices authoritatively at checkout.
+ * Indicative per-item price — the SAME helper the slot row and booking dialog display
+ * (perSeatSessionPrice: the per-seat share + extras), so the cart never shows a different
+ * number than the page the guest just tapped, and none of them diverge from the server
+ * charge. The server reprices authoritatively at checkout.
  */
 export function cartItemIndicativePrice(item: PublicSlot): number | null {
-  const extras = item.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
-  return item.price_per_session != null && item.price_per_session > 0 ? item.price_per_session + extras : null;
+  return perSeatSessionPrice(item);
 }
 
 /** Indicative cart total (null-priced items count as 0 — the server total decides). */

@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
-import { formatPrice } from '@/lib/pricing';
+import { formatPrice, perSeatSessionPrice } from '@/lib/pricing';
 import { formatZonedDayLabel, formatZonedTime } from '@/lib/zonedFormat';
 import { isCartableSlot, useCartOptional } from '@/contexts/cartStore';
 import { cartRefusalMessage } from '@/components/booking/cartMessages';
@@ -155,9 +155,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const effectiveMode: 'single' | 'cyclus' = isCyclusSlot
     ? (!cyclusOffered ? 'single' : canBookSingle ? mode : 'cyclus')
     : 'single';
-  const extrasTotal = slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
-  const singlePrice =
-    slot.price_per_session != null && slot.price_per_session > 0 ? slot.price_per_session + extrasTotal : null;
+  const singlePrice = perSeatSessionPrice(slot);
   const cyclusTotal = sessions.reduce((sum, s) => sum + (s.price_per_session ?? 0), 0);
   const price = effectiveMode === 'cyclus' ? (cyclusTotal > 0 ? cyclusTotal : null) : singlePrice;
 

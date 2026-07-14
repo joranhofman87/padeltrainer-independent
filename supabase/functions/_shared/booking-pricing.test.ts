@@ -74,6 +74,24 @@ Deno.test("single-slot amount + extras: guest is charged the full session price 
   assertEquals(base + extras, 84);
 });
 
+Deno.test("F01: division is driven by split_payment, not allow_single_booking", () => {
+  // split_payment=true → per-seat share (paid individually): 80/4 = 20
+  assertEquals(
+    computeSingleSlotPaymentAmount(slot({ price_per_session: 80, max_participants: 4, split_payment: true }), null, 1),
+    20,
+  );
+  // allow_single_booking=true but split_payment=false → FULL price (paid at once), NOT divided.
+  // This is the F01 fix: the previous rule divided this to 20 and under-collected.
+  assertEquals(
+    computeSingleSlotPaymentAmount(
+      slot({ price_per_session: 80, max_participants: 4, allow_single_booking: true, split_payment: false }),
+      null,
+      1,
+    ),
+    80,
+  );
+});
+
 Deno.test("no extras → amount is unchanged (regression guard for the €0-extras case)", () => {
   const base = computeSingleSlotPaymentAmount(slot(), null, 1);
   assertEquals(base + sumSlotExtraCosts([]), 76.5);
