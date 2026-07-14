@@ -31,6 +31,8 @@ export interface Cycle {
   // Joined data (optional)
   location?: { id: string; name: string; city: string } | null;
   _intakeCount?: number;
+  /** Branded short-link code for this form's public URL (padeltrainer.ai/s/<code>), when minted. */
+  short_code?: string | null;
 }
 
 export interface ScoringWeights {

@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getMarketingUrl } from '@/lib/domains';
+import { getShortUrl, getShortCodesByTarget } from '@/lib/shortLinks';
 import {
   generateProposals,
   resetProposals,
@@ -118,6 +119,12 @@ export default function AcademyCycleDetail() {
 
   // TanStack Query — cached data
   const { data: cycle = null, isLoading: cycleLoading } = useCycleDetailQuery(cycleId);
+  // Branded short-link code for this form (eagerly minted); prefer it when sharing.
+  const { data: shortCode = null } = useQuery({
+    queryKey: ['reg-short-code', cycleId],
+    queryFn: () => getShortCodesByTarget('registration', [cycleId!]).then((m) => m.get(cycleId!) ?? null),
+    enabled: !!cycleId,
+  });
   const { data: requests = [] } = useCycleRequestsQuery('academy', academyId, cycleId);
   const { data: playerLinksData = [] } = useCyclePlayerLinksQuery(cycleId);
 
@@ -381,10 +388,11 @@ export default function AcademyCycleDetail() {
   const handleCopyLink = () => {
     if (!cycle || !activeAcademy) return;
     const lang = i18n.language || 'nl';
+    // Prefer the branded short link; fall back to the full registration URL when no code is present.
     const path = activeAcademy.slug
       ? `academies/${activeAcademy.slug}/register/${cycle.id}`
       : `register/${cycle.id}`;
-    const url = getMarketingUrl(path, lang);
+    const url = shortCode ? getShortUrl(shortCode) : getMarketingUrl(path, lang);
     navigator.clipboard.writeText(url);
     toast.success(t('actions.linkCopied'));
   };

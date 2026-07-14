@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { supabase } from '@/lib/supabaseClient';
 import { LanguageRouter, RootRedirect } from '@/components/LanguageRouter';
 import { Loader2 } from 'lucide-react';
 
@@ -399,6 +400,7 @@ export function DomainRouter() {
         {/* ===== SHORT-LINK REDIRECTS (social-friendly) ===== */}
         <Route path="/a/:slug" element={<ShortLinkRedirect kind="academy" />} />
         <Route path="/t/:slug" element={<ShortLinkRedirect kind="trainer" />} />
+        <Route path="/s/:code" element={<ShortLinkResolve />} />
 
         {/* ===== LEGACY REDIRECTS ===== */}
         <Route path="/auth" element={<Navigate to="/app/auth" replace />} />
@@ -513,4 +515,32 @@ function ShortLinkRedirect({ kind }: { kind: 'academy' | 'trainer' }) {
     ? `/${lang}/academies/${slug}`
     : `/${lang}/trainer/${slug}`;
   return <Navigate to={`${target}${window.location.search}`} replace />;
+}
+
+/**
+ * Client-side fallback for a generic short link `/s/:code`. In production the Cloudflare Worker 301s
+ * `/s/*` at the edge before the SPA ever loads; this only runs where that layer is absent (Vercel
+ * preview, localhost). Resolves the code via the resolve_short_link RPC and replaces history to the
+ * target path (a plain <Navigate>, not an HTTP 301 — fine, as those environments aren't indexed).
+ */
+function ShortLinkResolve() {
+  const { code } = useParams<{ code: string }>();
+  const [target, setTarget] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    supabase.rpc('resolve_short_link' as never, { _code: code } as never).then(
+      ({ data, error }: { data: unknown; error: unknown }) => {
+        if (!alive) return;
+        const path = (data as { target_path?: string }[] | null)?.[0]?.target_path;
+        if (error || !path) setFailed(true);
+        else setTarget(path);
+      },
+      () => { if (alive) setFailed(true); },
+    );
+    return () => { alive = false; };
+  }, [code]);
+  if (failed) return <Navigate to="/" replace />;
+  if (!target) return <PageLoader />;
+  return <Navigate to={target} replace />;
 }

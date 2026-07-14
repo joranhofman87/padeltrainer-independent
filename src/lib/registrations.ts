@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { attachCycleLocations, type Cycle, type CycleSettings, type CycleInput } from '@/lib/cycles';
+import { getShortCodesByTarget } from '@/lib/shortLinks';
 
 /**
  * The intake-FORM half of the registration↔cycle split (Phase 2).
@@ -281,9 +282,16 @@ export async function listRegistrationCycles(
   const registrations = await listRegistrations(ownerType, ownerId);
   const mapped = registrations.map(registrationToCycle);
   if (mapped.length > 0) {
-    const counts = await countRegistrationsIntakes(mapped.map((c) => c.id));
+    const ids = mapped.map((c) => c.id);
+    // Intake counts + branded short-link codes (eagerly minted per form) in parallel. The short-code
+    // fetch is best-effort (empty map on error) so the list still renders with long-URL fallbacks.
+    const [counts, shortCodes] = await Promise.all([
+      countRegistrationsIntakes(ids),
+      getShortCodesByTarget('registration', ids),
+    ]);
     mapped.forEach((c) => {
       c._intakeCount = counts.get(c.id) ?? 0;
+      c.short_code = shortCodes.get(c.id) ?? null;
     });
   }
   // registrationToCycle carries only location_id (no joined name) — attach {id,name,city}
