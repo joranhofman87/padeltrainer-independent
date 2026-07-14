@@ -393,10 +393,13 @@ export default function AcademyCycleDetail() {
     if (!cycle) return;
     const newStatus = cycle.status === 'open' ? 'closed' : 'open';
     try {
-      await updateCycle(cycle.id, { status: newStatus });
-      // A split registration's public form obeys registrations.status — keep it in lockstep so
-      // "close" actually closes the form (audit Theme 1). No-op when there is no overlay row.
-      await syncRegistrationStatus(cycle.id, newStatus);
+      // A registration/event is a STANDALONE row (no cycles record) — update it directly; only a
+      // real training cyclus goes through updateCycle (whose .single() would 0-row error here).
+      if (cycle.type === 'registration' || cycle.type === 'event') {
+        await syncRegistrationStatus(cycle.id, newStatus);
+      } else {
+        await updateCycle(cycle.id, { status: newStatus });
+      }
       toast.success(t(`status.${newStatus}`));
       refreshCycle();
     } catch (error: any) {

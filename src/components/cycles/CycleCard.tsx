@@ -74,11 +74,14 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
   const handleStatusChange = async (newStatus: Cycle['status']) => {
     setIsUpdating(true);
     try {
-      await updateCycle(cycle.id, { status: newStatus });
-      // A split registration's public form obeys registrations.status — keep it in lockstep so
-      // "close" actually closes the form and stops accepting sign-ups (audit Theme 1; the same
-      // pairing exists in CyclesTable / AcademyCycleDetail). No-op when there is no overlay row.
-      await syncRegistrationStatus(cycle.id, newStatus);
+      // A registration/event is a STANDALONE row (no cycles record) — update it directly; only a
+      // real training cyclus goes through updateCycle (whose .single() would 0-row error on a
+      // registration id).
+      if (cycle.type === 'registration' || cycle.type === 'event') {
+        await syncRegistrationStatus(cycle.id, newStatus);
+      } else {
+        await updateCycle(cycle.id, { status: newStatus });
+      }
       toast.success(t(`status.${newStatus}`));
       onDeleted?.(); // Trigger refresh
     } catch (error: any) {

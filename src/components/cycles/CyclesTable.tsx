@@ -94,10 +94,14 @@ export default function CyclesTable({
   const handleToggleStatus = async (cycle: Cycle) => {
     const newStatus = cycle.status === 'open' ? 'closed' : 'open';
     try {
-      await updateCycle(cycle.id, { status: newStatus });
-      // A split registration's public form obeys registrations.status — keep it in lockstep so
-      // "close" actually closes the form (audit Theme 1). No-op when there is no overlay row.
-      await syncRegistrationStatus(cycle.id, newStatus);
+      // A registration/event is a STANDALONE row (no cycles record) — update it directly. Only a
+      // real training cyclus goes through updateCycle (which .single()s the cycles table and would
+      // 0-row error on a registration id).
+      if (cycle.type === 'registration' || cycle.type === 'event') {
+        await syncRegistrationStatus(cycle.id, newStatus);
+      } else {
+        await updateCycle(cycle.id, { status: newStatus });
+      }
       toast.success(t(`status.${newStatus}`));
       onDeleted(); // Refresh
     } catch (error: any) {
