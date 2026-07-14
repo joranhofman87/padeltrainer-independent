@@ -1370,6 +1370,7 @@
       "clickedYesUnpaid": "klikte Ja, niet afgerond"
     },
     "clickedYesShort": "klikte Ja",
+    "clickedYesExpiredHint": "Klikte Ja maar rondde de betaling niet af voor de deadline. Verleng de deadline om een tweede kans te geven — de claim- en betaallinks werken dan weer.",
     "saidNoShort": "zei nee",
     "expiredShort": "verlopen",
     "alreadyRebookedWarning": "{{n}} van deze spelers hebben al geherboekt — zij krijgen ook deze herinnering.",

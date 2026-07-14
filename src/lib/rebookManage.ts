@@ -90,13 +90,16 @@ export function rebookPlayerOutcome(p: Pick<RebookManagePlayer, 'response' | 're
 }
 
 /**
- * Clicked "Yes" on the invite but never completed (no booking yet) AND can still act — i.e. the
- * claim is still pending. Gated on 'pending' (not merely !== 'claimed') so an EXPIRED accept-intent
- * claim, which can no longer be completed, is not counted as an actionable "started but didn't pay"
- * (and doesn't collide with the "verlopen" chip).
+ * Clicked "Yes" on the invite but never completed (no booking). Covers BOTH a still-pending claim
+ * (player can finish right now) and an EXPIRED one (window lapsed mid-checkout). Expired
+ * accept-intents used to be excluded ("can no longer be completed"), but that made the round's
+ * hottest follow-up leads vanish from the table the moment the deadline passed (RL Padel first
+ * run: 24 players) — exactly when the owner needs them for a second chance. They stay actionable
+ * for the OWNER: extending the round deadline revives expired claims (rebookRoundDeadline), after
+ * which the player's claim/pay links work again. The status chip distinguishes pending vs expired.
  */
 export function clickedYesUnpaid(p: Pick<RebookManagePlayer, 'response' | 'responseIntent'>): boolean {
-  return p.responseIntent === 'accept' && p.response === 'pending';
+  return p.responseIntent === 'accept' && (p.response === 'pending' || p.response === 'expired');
 }
 
 export interface RebookOutcomeSummary {

@@ -1245,6 +1245,7 @@
       "clickedYesUnpaid": "clicked Yes, not finished"
     },
     "clickedYesShort": "clicked Yes",
+    "clickedYesExpiredHint": "Clicked Yes but didn't complete payment before the deadline. Extend the deadline to give a second chance — their claim and payment links will work again.",
     "saidNoShort": "said no",
     "expiredShort": "expired",
     "alreadyRebookedWarning": "{{n}} of these players have already rebooked — they will also get this reminder.",
