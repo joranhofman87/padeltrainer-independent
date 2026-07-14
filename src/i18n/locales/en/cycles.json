@@ -1246,6 +1246,7 @@
     },
     "clickedYesShort": "clicked Yes",
     "clickedYesExpiredHint": "Clicked Yes but didn't complete payment before the deadline. Extend the deadline to give a second chance — their claim and payment links will work again.",
+    "clickedYesFilterHint": "Filter the table to these players",
     "saidNoShort": "said no",
     "expiredShort": "expired",
     "alreadyRebookedWarning": "{{n}} of these players have already rebooked — they will also get this reminder.",
