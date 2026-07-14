@@ -5,15 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTableSort } from '@/hooks/useTableSort';
-import { SortableTableHead } from '@/components/ui/sortable-table-head';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -59,6 +51,9 @@ interface TrainerOption {
   name: string;
 }
 
+/** Row = an intake request enriched with `_isLinked` (for the Linked-column sort). */
+type IntakeRow = IntakeRequestWithProposal & { _isLinked: boolean };
+
 interface IntakeRequestsTableProps {
   requests: IntakeRequestWithProposal[];
   allRequests?: IntakeRequestWithProposal[];
@@ -82,14 +77,15 @@ const COLUMNS_VERSION = '2';
 const VERSION_KEY = 'intake-table-columns-version';
 const NEW_IN_VERSION = ['payment'];
 
-interface ColumnDef {
+// Column-visibility metadata (renamed from ColumnDef to avoid colliding with the engine's ColumnDef).
+interface IntakeColumnMeta {
   key: string;
   labelKey: string;
   defaultVisible: boolean;
   alwaysVisible?: boolean;
 }
 
-const ALL_COLUMNS: ColumnDef[] = [
+const ALL_COLUMNS: IntakeColumnMeta[] = [
   { key: 'player', labelKey: 'intakeRequests.table.player', defaultVisible: true, alwaysVisible: true },
   { key: 'lessonType', labelKey: 'intakeRequests.table.lessonType', defaultVisible: true },
   { key: 'rating', labelKey: 'intakeRequests.table.rating', defaultVisible: true },
@@ -175,8 +171,6 @@ export default function IntakeRequestsTable({
       return next;
     });
   };
-
-  const isVisible = (key: string) => visibleColumns.has(key);
 
   // Compute suggestions for all requests
   const suggestionsMap = useMemo(() => {
@@ -583,6 +577,181 @@ export default function IntakeRequestsTable({
     );
   };
 
+  // Engine columns (keys match ALL_COLUMNS / the visibility set). Order + visibility are driven by
+  // the engine's `visibleKeys` (derived from the existing `visibleColumns` Set below), so the bespoke
+  // localStorage persistence + versioned reveal stay exactly as they were.
+  const stickyPlayer = 'sticky left-0 z-10 bg-background';
+  const columns: ColumnDef<IntakeRow>[] = [
+    {
+      key: 'player',
+      header: t('intakeRequests.table.player'),
+      sortKey: 'full_name',
+      className: `${stickyPlayer} max-w-[200px]`,
+      headClassName: stickyPlayer,
+      cellTitle: (r) => r.full_name || undefined,
+      renderCell: (r) => (
+        <div className="min-w-0 leading-tight">
+          <div className="truncate text-sm font-medium">{r.full_name}</div>
+          <div className="truncate text-xs text-muted-foreground">{r.email}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'lessonType',
+      header: t('intakeRequests.table.lessonType'),
+      renderCell: (r) => (
+        <div className="flex gap-1">
+          {(Array.isArray(r.lesson_type) ? r.lesson_type : [r.lesson_type]).map((type: string) => (
+            <Badge key={type} variant="outline" className={`${getLessonTypeBadge(type)} shrink-0`}>
+              {['private', 'duo', 'group3', 'group4', 'kids'].includes(type)
+                ? t(`application.form.lessonTypes.${type}`)
+                : type.charAt(0).toUpperCase() + type.slice(1)}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'rating',
+      header: t('intakeRequests.table.rating'),
+      sortKey: 'rating',
+      renderCell: (r) =>
+        r.rating ? (
+          <div className="flex items-center gap-1">
+            <span className="font-medium">{r.rating}</span>
+            <span className="text-xs text-muted-foreground uppercase">{r.rating_system}</span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: 'availability',
+      header: t('intakeRequests.table.availability'),
+      className: 'whitespace-nowrap',
+      renderCell: (r) => <span className="text-sm">{formatAvailability(r)}</span>,
+    },
+    {
+      key: 'preferredTrainer',
+      header: t('intakeRequests.table.preferredTrainer'),
+      renderCell: (r) => getTrainerNames(r),
+    },
+    {
+      key: 'status',
+      header: t('intakeRequests.table.status'),
+      renderCell: (r) => (
+        <Badge variant="outline" className={getStatusColor(r.status)}>
+          {t(`intakeRequests.filters.${r.status}`)}
+        </Badge>
+      ),
+    },
+    {
+      key: 'payment',
+      header: t('intakeRequests.table.payment', { defaultValue: 'Payment' }),
+      renderCell: (r) => renderPaymentBadge(r),
+    },
+    {
+      key: 'linked',
+      header: t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' }),
+      sortKey: '_isLinked',
+      renderCell: (r) => renderLinkedColumn(r),
+    },
+    {
+      key: 'proposal',
+      header: t('proposals.title'),
+      renderCell: (r) => renderProposalIndicator(r),
+    },
+    {
+      key: 'applied',
+      header: t('intakeRequests.table.applied'),
+      sortKey: 'created_at',
+      className: 'text-sm text-muted-foreground whitespace-nowrap',
+      renderCell: (r) => format(new Date(r.created_at), 'MMM d'),
+    },
+    {
+      key: 'phone',
+      header: t('intakeRequests.table.phone', { defaultValue: 'Phone' }),
+      className: 'text-sm whitespace-nowrap',
+      renderCell: (r) => r.phone || <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: 'sessionsPerWeek',
+      header: t('intakeRequests.table.sessionsPerWeek', { defaultValue: 'Sessions/wk' }),
+      className: 'text-sm',
+      renderCell: (r) => r.sessions_per_week ?? <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: 'duration',
+      header: t('intakeRequests.table.duration', { defaultValue: 'Duration' }),
+      className: 'text-sm whitespace-nowrap',
+      renderCell: (r) =>
+        r.preferred_duration_minutes ? `${r.preferred_duration_minutes} min` : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: 'birthDate',
+      header: t('intakeRequests.table.birthDate', { defaultValue: 'Birth date' }),
+      className: 'text-sm text-muted-foreground whitespace-nowrap',
+      renderCell: (r) => (r.birth_date ? format(new Date(r.birth_date), 'MMM d, yyyy') : '—'),
+    },
+    {
+      key: 'notes',
+      header: t('intakeRequests.table.notes', { defaultValue: 'Notes' }),
+      className: 'max-w-[170px]',
+      renderCell: (r) =>
+        r.notes ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-sm truncate max-w-[150px] block cursor-help">
+                  {r.notes.length > 30 ? r.notes.slice(0, 30) + '…' : r.notes}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-sm whitespace-pre-wrap">{r.notes}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <span className="text-muted-foreground text-sm">—</span>
+        ),
+    },
+  ];
+
+  // Ordered list of visible column keys → the engine renders exactly these, in ALL_COLUMNS order.
+  const visibleKeys = ALL_COLUMNS.map((c) => c.key).filter((k) => visibleColumns.has(k));
+
+  // Mobile card list (the ~15-column table is unreadable at phone width) — passed to the engine's
+  // `mobile` slot. Inner link/proposal popovers already stopPropagation.
+  const mobileCards = (
+    <div className="md:hidden divide-y">
+      {displayedRequests.map((request) => (
+        <div
+          key={request.id}
+          className="cursor-pointer px-4 py-3 transition-colors hover:bg-muted/50"
+          onClick={() => onRowClick(request)}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate font-medium">{request.full_name}</div>
+              <div className="truncate text-sm text-muted-foreground">{request.email}</div>
+            </div>
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+              {format(new Date(request.created_at), 'MMM d')}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className={getStatusColor(request.status)}>
+              {t(`intakeRequests.filters.${request.status}`)}
+            </Badge>
+            {renderPaymentBadge(request)}
+            {renderProposalIndicator(request)}
+            {renderLinkedColumn(request)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   if (requests.length === 0) {
     return (
       <Card>
@@ -637,201 +806,18 @@ export default function IntakeRequestsTable({
         </DropdownMenu>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {/* Mobile cards — the ~10-column table below is unreadable at phone
-              width; each card taps through to the same detail sheet as a row.
-              Inner link/proposal popovers already stopPropagation. */}
-          <div className="md:hidden divide-y">
-            {displayedRequests.map((request) => (
-              <div
-                key={request.id}
-                className="cursor-pointer px-4 py-3 transition-colors hover:bg-muted/50"
-                onClick={() => onRowClick(request)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{request.full_name}</div>
-                    <div className="truncate text-sm text-muted-foreground">{request.email}</div>
-                  </div>
-                  <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                    {format(new Date(request.created_at), 'MMM d')}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" className={getStatusColor(request.status)}>
-                    {t(`intakeRequests.filters.${request.status}`)}
-                  </Badge>
-                  {renderPaymentBadge(request)}
-                  {renderProposalIndicator(request)}
-                  {renderLinkedColumn(request)}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="hidden overflow-x-auto md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortableTableHead sortKey="full_name" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void} className="sticky left-0 z-10 bg-background">{t('intakeRequests.table.player')}</SortableTableHead>
-                  {isVisible('lessonType') && <TableHead>{t('intakeRequests.table.lessonType')}</TableHead>}
-                  {isVisible('rating') && <SortableTableHead sortKey="rating" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.rating')}</SortableTableHead>}
-                  {isVisible('availability') && <TableHead>{t('intakeRequests.table.availability')}</TableHead>}
-                  {isVisible('preferredTrainer') && <TableHead>{t('intakeRequests.table.preferredTrainer')}</TableHead>}
-                  {isVisible('status') && <TableHead>{t('intakeRequests.table.status')}</TableHead>}
-                  {isVisible('payment') && <TableHead>{t('intakeRequests.table.payment', { defaultValue: 'Payment' })}</TableHead>}
-                  {isVisible('linked') && <SortableTableHead sortKey="_isLinked" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.links.linkedColumn', { defaultValue: 'Linked' })}</SortableTableHead>}
-                  {isVisible('proposal') && <TableHead>{t('proposals.title')}</TableHead>}
-                  {isVisible('applied') && <SortableTableHead sortKey="created_at" currentSortKey={sortConfig.key as string | null} currentDirection={sortConfig.direction} onSort={handleSort as (key: string) => void}>{t('intakeRequests.table.applied')}</SortableTableHead>}
-                  {isVisible('phone') && <TableHead>{t('intakeRequests.table.phone', { defaultValue: 'Phone' })}</TableHead>}
-                  {isVisible('sessionsPerWeek') && <TableHead>{t('intakeRequests.table.sessionsPerWeek', { defaultValue: 'Sessions/wk' })}</TableHead>}
-                  {isVisible('duration') && <TableHead>{t('intakeRequests.table.duration', { defaultValue: 'Duration' })}</TableHead>}
-                  {isVisible('birthDate') && <TableHead>{t('intakeRequests.table.birthDate', { defaultValue: 'Birth date' })}</TableHead>}
-                  {isVisible('notes') && <TableHead>{t('intakeRequests.table.notes', { defaultValue: 'Notes' })}</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {displayedRequests.map((request) => (
-                  <TableRow 
-                    key={request.id} 
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => onRowClick(request)}
-                  >
-                    {/* Player - always visible, sticky */}
-                    <TableCell className="sticky left-0 z-10 bg-background">
-                      <div>
-                        <div className="font-medium">{request.full_name}</div>
-                        <div className="text-sm text-muted-foreground">{request.email}</div>
-                      </div>
-                    </TableCell>
-
-                    {isVisible('lessonType') && (
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {(Array.isArray(request.lesson_type) ? request.lesson_type : [request.lesson_type]).map((type: string) => (
-                            <Badge key={type} variant="outline" className={getLessonTypeBadge(type)}>
-                              {['private','duo','group3','group4','kids'].includes(type)
-                                ? t(`application.form.lessonTypes.${type}`)
-                                : type.charAt(0).toUpperCase() + type.slice(1)}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                    )}
-
-                    {isVisible('rating') && (
-                      <TableCell>
-                        {request.rating ? (
-                          <div className="flex items-center gap-1">
-                            <span className="font-medium">{request.rating}</span>
-                            <span className="text-xs text-muted-foreground uppercase">
-                              {request.rating_system}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    )}
-
-                    {isVisible('availability') && (
-                      <TableCell>
-                        <span className="text-sm whitespace-nowrap">{formatAvailability(request)}</span>
-                      </TableCell>
-                    )}
-
-                    {isVisible('preferredTrainer') && (
-                      <TableCell>
-                        {getTrainerNames(request)}
-                      </TableCell>
-                    )}
-
-                    {isVisible('status') && (
-                      <TableCell>
-                        <Badge variant="outline" className={getStatusColor(request.status)}>
-                          {t(`intakeRequests.filters.${request.status}`)}
-                        </Badge>
-                      </TableCell>
-                    )}
-
-                    {isVisible('payment') && (
-                      <TableCell>{renderPaymentBadge(request)}</TableCell>
-                    )}
-
-                    {isVisible('linked') && (
-                      <TableCell>
-                        {renderLinkedColumn(request)}
-                      </TableCell>
-                    )}
-
-                    {isVisible('proposal') && (
-                      <TableCell>
-                        {renderProposalIndicator(request)}
-                      </TableCell>
-                    )}
-
-                    {isVisible('applied') && (
-                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                        {format(new Date(request.created_at), 'MMM d')}
-                      </TableCell>
-                    )}
-
-                    {isVisible('phone') && (
-                      <TableCell className="text-sm whitespace-nowrap">
-                        {request.phone || <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                    )}
-
-                    {isVisible('sessionsPerWeek') && (
-                      <TableCell className="text-sm">
-                        {request.sessions_per_week ?? <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                    )}
-
-                    {isVisible('duration') && (
-                      <TableCell className="text-sm whitespace-nowrap">
-                        {request.preferred_duration_minutes
-                          ? `${request.preferred_duration_minutes} min`
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                    )}
-
-                    {isVisible('birthDate') && (
-                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                        {request.birth_date
-                          ? format(new Date(request.birth_date), 'MMM d, yyyy')
-                          : '—'}
-                      </TableCell>
-                    )}
-
-                    {isVisible('notes') && (
-                      <TableCell>
-                        {request.notes ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-sm truncate max-w-[150px] block cursor-help">
-                                  {request.notes.length > 30 ? request.notes.slice(0, 30) + '…' : request.notes}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p className="text-sm whitespace-pre-wrap">{request.notes}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <DataTable<IntakeRow>
+        columns={columns}
+        rows={displayedRequests}
+        visibleKeys={visibleKeys}
+        sortKey={sortConfig.key as string | null}
+        sortDirection={sortConfig.direction}
+        onSort={(k) => handleSort(k as keyof IntakeRow)}
+        onRowClick={onRowClick}
+        compact
+        mobile={mobileCards}
+        empty={t('intakeRequests.table.noMatches', { defaultValue: 'No matching requests' })}
+      />
     </div>
   );
 }
