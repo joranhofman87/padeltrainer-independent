@@ -4,14 +4,7 @@ import { useAdminClubs, useInvalidateAdminData, ClubProfileAdmin } from "@/hooks
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table-generic";
 import { SelectFilter } from "@/components/ui/select-filter";
 import {
   DropdownMenu,
@@ -40,7 +33,6 @@ import {
 import { format } from "date-fns";
 import { ClubEditDialog } from "@/components/admin/ClubEditDialog";
 import { ImpersonateUserDialog } from "@/components/admin/ImpersonateUserDialog";
-import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { useTableSort } from "@/hooks/useTableSort";
 
 // Extended type to include computed fields for sorting
@@ -140,6 +132,107 @@ export default function AdminClubs() {
     "_name"
   );
 
+  // The old two-line "Club" cell (name over city) is split into a Club column (avatar + name)
+  // and its own City column — a stacked cell would clip at the compact 40px row height.
+  const columns: ColumnDef<ClubWithComputedFields>[] = [
+    {
+      key: "club",
+      header: "Club",
+      sortKey: "_name",
+      className: "max-w-[280px]",
+      cellTitle: (club) => club.location?.name || "Unknown",
+      renderCell: (club) => (
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 shrink-0 rounded-full bg-muted flex items-center justify-center">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <span className="font-medium truncate">{club.location?.name || "Unknown"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "city",
+      header: "City",
+      className: "text-muted-foreground max-w-[160px]",
+      cellTitle: (club) => club.location?.city || "Unknown city",
+      renderCell: (club) => <span className="block truncate">{club.location?.city || "Unknown city"}</span>,
+    },
+    {
+      key: "is_verified",
+      header: "Verified",
+      sortKey: "is_verified",
+      renderCell: (club) =>
+        club.is_verified ? (
+          <CheckCircle2 className="h-5 w-5 text-green-500" />
+        ) : (
+          <XCircle className="h-5 w-5 text-muted-foreground" />
+        ),
+    },
+    {
+      key: "subscription",
+      header: "Subscription",
+      sortKey: "_subscriptionStatus",
+      className: "whitespace-nowrap",
+      renderCell: (club) => (
+        <>
+          <Badge variant={subscriptionStatusVariant(club._subscriptionStatus)}>{club._subscriptionStatus}</Badge>
+          {club.subscription_tier && (
+            <span className="ml-2 text-xs text-muted-foreground">({club.subscription_tier})</span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      sortKey: "created_at",
+      className: "text-muted-foreground whitespace-nowrap",
+      renderCell: (club) => format(new Date(club.created_at), "MMM d, yyyy"),
+    },
+  ];
+
+  const renderClubActions = (club: ClubWithComputedFields) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open actions menu" onClick={(e) => e.stopPropagation()}>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setEditingClub(club)}>
+          <CreditCard className="mr-2 h-4 w-4" />
+          Edit Club
+        </DropdownMenuItem>
+        {club.location?.slug && (
+          <DropdownMenuItem onClick={() => window.open(`/en/locations/${club.location?.slug}`, "_blank")}>
+            <ExternalLink className="mr-2 h-4 w-4" />
+            View Profile
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        {club.owner_user_id ? (
+          <DropdownMenuItem onClick={() => setImpersonatingClub(club)}>
+            <LogIn className="mr-2 h-4 w-4" />
+            Login as Manager
+          </DropdownMenuItem>
+        ) : (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuItem disabled className="opacity-50">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Login as Manager
+                </DropdownMenuItem>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>No manager assigned</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   if (clubsLoading) {
     return (
@@ -222,148 +315,18 @@ export default function AdminClubs() {
       </div>
 
       {/* Data Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <SortableTableHead
-                sortKey="_name"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
-              >
-                Club
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="is_verified"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
-              >
-                Verified
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="_subscriptionStatus"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
-              >
-                Subscription
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="created_at"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
-              >
-                Created
-              </SortableTableHead>
-              <TableHead className="w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredClubs.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No clubs found
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedData.map((club) => {
-                const status = club._subscriptionStatus;
-                return (
-                  <TableRow
-                    key={club.id}
-                    className="cursor-pointer"
-                    onClick={() => setEditingClub(club)}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {club.location?.name || "Unknown"}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {club.location?.city || "Unknown city"}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {club.is_verified ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <XCircle className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={subscriptionStatusVariant(status)}>{status}</Badge>
-                      {club.subscription_tier && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          ({club.subscription_tier})
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(new Date(club.created_at), "MMM d, yyyy")}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="Open actions menu" onClick={(e) => e.stopPropagation()}>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditingClub(club)}>
-                            <CreditCard className="mr-2 h-4 w-4" />
-                            Edit Club
-                          </DropdownMenuItem>
-                          {club.location?.slug && (
-                            <DropdownMenuItem
-                              onClick={() => window.open(`/en/locations/${club.location?.slug}`, "_blank")}
-                            >
-                              <ExternalLink className="mr-2 h-4 w-4" />
-                              View Profile
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          {club.owner_user_id ? (
-                            <DropdownMenuItem onClick={() => setImpersonatingClub(club)}>
-                              <LogIn className="mr-2 h-4 w-4" />
-                              Login as Manager
-                            </DropdownMenuItem>
-                          ) : (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <DropdownMenuItem disabled className="opacity-50">
-                                    <LogIn className="mr-2 h-4 w-4" />
-                                    Login as Manager
-                                  </DropdownMenuItem>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>No manager assigned</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable<ClubWithComputedFields>
+        columns={columns}
+        rows={sortedData}
+        sortKey={sortConfig.key as string | null}
+        sortDirection={sortConfig.direction}
+        onSort={(key) => handleSort(key as keyof ClubWithComputedFields)}
+        onRowClick={(club) => setEditingClub(club)}
+        renderActions={renderClubActions}
+        compact
+        desktopOnly={false}
+        empty="No clubs found"
+      />
 
       {/* Footer */}
       <p className="text-sm text-muted-foreground">

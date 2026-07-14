@@ -4,13 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ListPageShell, ListPageState } from '@/components/ui/list-page-shell';
 import { TableToolbar } from '@/components/ui/table-toolbar';
-import { SortableTableHead } from '@/components/ui/sortable-table-head';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useTableSort } from '@/hooks/useTableSort';
@@ -24,14 +24,6 @@ import {
 } from '@/components/ui/dialog';
 import { logger } from '@/lib/logger';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -229,6 +221,69 @@ export default function ClubPlayers() {
     </Button>
   );
 
+  const columns: ColumnDef<ClubPlayer>[] = [
+    {
+      key: 'full_name',
+      header: t('players.name'),
+      sortKey: 'full_name',
+      className: 'font-medium max-w-[220px]',
+      cellTitle: (player) => player.full_name,
+      renderCell: (player) => <span className="block truncate">{player.full_name}</span>,
+    },
+    {
+      key: 'email',
+      header: t('players.email'),
+      sortKey: 'email',
+      className: 'max-w-[240px]',
+      cellTitle: (player) => player.email,
+      renderCell: (player) => <span className="block truncate">{player.email}</span>,
+    },
+    {
+      key: 'phone',
+      header: t('players.phone'),
+      className: 'whitespace-nowrap',
+      renderCell: (player) => player.phone || '-',
+    },
+    {
+      key: 'skill_rating',
+      header: t('players.rating'),
+      sortKey: 'skill_rating',
+      renderCell: (player) => player.skill_rating || '-',
+    },
+    {
+      key: 'status',
+      header: t('players.status'),
+      renderCell: (player) =>
+        (player as { has_trained?: boolean }).has_trained === false ? (
+          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+            {t('players.prospect')}
+          </Badge>
+        ) : (
+          <Badge variant="secondary">{t('players.active')}</Badge>
+        ),
+    },
+  ];
+
+  const renderPlayerActions = (player: ClubPlayer) => (
+    <>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Edit" onClick={() => openEditDialog(player)}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label="Delete"
+        onClick={() => {
+          setDeletingPlayer(player);
+          setShowDeleteDialog(true);
+        }}
+      >
+        <Trash2 className="h-4 w-4 text-destructive" />
+      </Button>
+    </>
+  );
+
   return (
     // ClubLayout (unlike the academy/trainer layouts) does not pad its <Outlet/>,
     // so club pages carry their own padding — px-4 py-8 like every club sibling.
@@ -268,87 +323,18 @@ export default function ClubPlayers() {
           </Card>
         }
       >
-        <Card className="overflow-hidden border-border/80 shadow-sm">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableTableHead
-                      sortKey="full_name"
-                      currentSortKey={sortConfig.key as string | null}
-                      currentDirection={sortConfig.direction}
-                      onSort={(k) => handleSort(k as keyof ClubPlayer)}
-                    >
-                      {t('players.name')}
-                    </SortableTableHead>
-                    <SortableTableHead
-                      sortKey="email"
-                      currentSortKey={sortConfig.key as string | null}
-                      currentDirection={sortConfig.direction}
-                      onSort={(k) => handleSort(k as keyof ClubPlayer)}
-                    >
-                      {t('players.email')}
-                    </SortableTableHead>
-                    <TableHead>{t('players.phone')}</TableHead>
-                    <SortableTableHead
-                      sortKey="skill_rating"
-                      currentSortKey={sortConfig.key as string | null}
-                      currentDirection={sortConfig.direction}
-                      onSort={(k) => handleSort(k as keyof ClubPlayer)}
-                    >
-                      {t('players.rating')}
-                    </SortableTableHead>
-                    <TableHead>{t('players.status')}</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagedPlayers.map(player => (
-                    <TableRow key={player.id}>
-                      <TableCell className="font-medium">{player.full_name}</TableCell>
-                      <TableCell>{player.email}</TableCell>
-                      <TableCell>{player.phone || '-'}</TableCell>
-                      <TableCell>{player.skill_rating || '-'}</TableCell>
-                      <TableCell>
-                        {(player as any).has_trained === false ? (
-                          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
-                            {t('players.prospect')}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            {t('players.active')}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon" aria-label="Edit"
-                            onClick={() => openEditDialog(player)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon" aria-label="Delete"
-                            onClick={() => {
-                              setDeletingPlayer(player);
-                              setShowDeleteDialog(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <DataTable<ClubPlayer>
+          columns={columns}
+          rows={pagedPlayers}
+          sortKey={sortConfig.key as string | null}
+          sortDirection={sortConfig.direction}
+          onSort={(k) => handleSort(k as keyof ClubPlayer)}
+          renderActions={renderPlayerActions}
+          actionsHeader="Actions"
+          compact
+          desktopOnly={false}
+          empty={t('players.noResults', 'No players match your search')}
+        />
 
         <ListPagination
           page={safePage}

@@ -21,14 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { SelectFilter } from '@/components/ui/select-filter';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -39,7 +32,6 @@ import {
   getUniqueCities,
   type Location,
 } from '@/lib/locations';
-import { SortableTableHead } from '@/components/ui/sortable-table-head';
 import { useTableSort } from '@/hooks/useTableSort';
 import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabaseClient';
@@ -242,6 +234,115 @@ export default function AdminLocations() {
     }
   };
 
+  const columns: ColumnDef<LocationWithComputedFields>[] = [
+    {
+      key: "name",
+      header: "Name",
+      sortKey: "name",
+      className: "max-w-[260px]",
+      cellTitle: (location) => location.name,
+      renderCell: (location) => {
+        const enrichment = location as { enrichment_failed_at?: string; enrichment_error_msg?: string };
+        return (
+          <div className="flex items-center gap-2">
+            {location.logo_url ? (
+              <img src={location.logo_url} alt="" className="h-4 w-4 shrink-0 object-contain" />
+            ) : (
+              <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="font-medium truncate">{location.name}</span>
+            {enrichment.enrichment_failed_at && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-medium">Enrichment failed</p>
+                    <p className="text-xs">{enrichment.enrichment_error_msg || 'Unknown error'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "city",
+      header: "City",
+      sortKey: "city",
+      className: "max-w-[160px]",
+      cellTitle: (location) => location.city,
+      renderCell: (location) => <span className="block truncate">{location.city}</span>,
+    },
+    {
+      key: "number_of_courts",
+      header: "Courts",
+      sortKey: "number_of_courts",
+      align: "center",
+      className: "text-sm whitespace-nowrap",
+      renderCell: (location) => (
+        <>
+          {(location.indoor_courts || 0) > 0 && <span title="Indoor">🏠{location.indoor_courts}</span>}
+          {(location.indoor_courts || 0) > 0 && (location.outdoor_courts || 0) > 0 && ' / '}
+          {(location.outdoor_courts || 0) > 0 && <span title="Outdoor">☀️{location.outdoor_courts}</span>}
+          {!(location.indoor_courts || location.outdoor_courts) && '-'}
+        </>
+      ),
+    },
+    {
+      key: "_trainerCount",
+      header: "Trainers",
+      sortKey: "_trainerCount",
+      align: "center",
+      renderCell: (location) => <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>,
+    },
+    {
+      key: "_isVerified",
+      header: "Verified",
+      sortKey: "_isVerified",
+      align: "center",
+      renderCell: (location) =>
+        location._isVerified ? (
+          <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
+    },
+    {
+      key: "is_active",
+      header: "Status",
+      sortKey: "is_active",
+      align: "center",
+      renderCell: (location) => (
+        <Badge variant={location.is_active ? 'default' : 'outline'}>
+          {location.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+  ];
+
+  const renderLocationActions = (location: LocationWithComputedFields) => (
+    <>
+      {location.website_url && (
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open in new tab" onClick={() => window.open(location.website_url!, '_blank')}>
+          <ExternalLink className="h-4 w-4" />
+        </Button>
+      )}
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Edit" onClick={() => openEditDialog(location)}>
+        <Edit className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={location.is_active ? 'Deactivate' : 'Activate'} onClick={() => toggleActive(location)}>
+        {location.is_active ? (
+          <ToggleRight className="h-4 w-4 text-green-500" />
+        ) : (
+          <ToggleLeft className="h-4 w-4" />
+        )}
+      </Button>
+    </>
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -380,155 +481,18 @@ export default function AdminLocations() {
       </div>
 
       {/* Data Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <SortableTableHead
-                sortKey="name"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
-              >
-                Name
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="city"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
-              >
-                City
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="number_of_courts"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
-                className="text-center"
-              >
-                Courts
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="_trainerCount"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
-                className="text-center"
-              >
-                Trainers
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="_isVerified"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
-                className="text-center"
-              >
-                Verified
-              </SortableTableHead>
-              <SortableTableHead
-                sortKey="is_active"
-                currentSortKey={sortConfig.key as string}
-                currentDirection={sortConfig.direction}
-                onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
-                className="text-center"
-              >
-                Status
-              </SortableTableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredLocations.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  No locations found
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedData.map(location => {
-                return (
-                <TableRow key={location.id} className={!location.is_active ? 'opacity-50' : ''}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {location.logo_url ? (
-                        <img
-                          src={location.logo_url}
-                          alt=""
-                          className="h-4 w-4 object-contain"
-                        />
-                      ) : (
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <span className="font-medium">{location.name}</span>
-                      {(location as any).enrichment_failed_at && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <AlertTriangle className="h-4 w-4 text-destructive" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="font-medium">Enrichment failed</p>
-                              <p className="text-xs">{(location as any).enrichment_error_msg || 'Unknown error'}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{location.city}</TableCell>
-                  <TableCell className="text-center text-sm">
-                    {(location.indoor_courts || 0) > 0 && <span title="Indoor">🏠{location.indoor_courts}</span>}
-                    {(location.indoor_courts || 0) > 0 && (location.outdoor_courts || 0) > 0 && ' / '}
-                    {(location.outdoor_courts || 0) > 0 && <span title="Outdoor">☀️{location.outdoor_courts}</span>}
-                    {!(location.indoor_courts || location.outdoor_courts) && '-'}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="secondary">{trainerCounts[location.id] || 0}</Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {location._isVerified ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto" />
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant={location.is_active ? 'default' : 'outline'}>
-                      {location.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {location.website_url && (
-                        <Button
-                          variant="ghost"
-                          size="icon" aria-label="Open in new tab"
-                          onClick={() => window.open(location.website_url!, '_blank')}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEditDialog(location)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => toggleActive(location)}>
-                        {location.is_active ? (
-                          <ToggleRight className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <ToggleLeft className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable<LocationWithComputedFields>
+        columns={columns}
+        rows={sortedData}
+        sortKey={sortConfig.key as string | null}
+        sortDirection={sortConfig.direction}
+        onSort={(key) => handleSort(key as keyof LocationWithComputedFields)}
+        renderActions={renderLocationActions}
+        rowClassName={(location) => (!location.is_active ? 'opacity-50' : undefined)}
+        compact
+        desktopOnly={false}
+        empty="No locations found"
+      />
 
       {/* Footer */}
       <p className="text-sm text-muted-foreground">

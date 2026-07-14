@@ -14,8 +14,10 @@ describe('ClubPlayers shared list stack', () => {
     expect(source).toContain('<ListPageState');
     expect(source).toContain("from '@/components/ui/table-toolbar'");
     expect(source).toContain('<TableToolbar');
-    expect(source).toContain("from '@/components/ui/sortable-table-head'");
-    expect(source).toContain('<SortableTableHead');
+    // The table itself is the canonical DataTable engine (which renders SortableTableHead
+    // internally); sorting is wired to it via sortKey/onSort — see the useTableSort test below.
+    expect(source).toContain("from '@/components/ui/data-table-generic'");
+    expect(source).toContain('<DataTable');
     expect(source).toContain("from '@/components/ui/list-pagination'");
     expect(source).toContain('<ListPagination');
     expect(source).toContain("from '@/components/ui/empty-state'");
