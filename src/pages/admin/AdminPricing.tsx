@@ -5,8 +5,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useAdminData";
 import { useAllPricingPlans, useUpdatePricingPlan, useDeletePricingPlan, SubscriptionPlan } from "@/hooks/usePricingPlans";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table-generic";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -99,6 +99,72 @@ export default function AdminPricing() {
   const trainerPlans = plans?.filter((p) => p.plan_type === "trainer") || [];
   const clubPlans = plans?.filter((p) => p.plan_type === "club") || [];
 
+  // One shared column set for both the Trainer and Club plan tables (they are identical).
+  const columns: ColumnDef<SubscriptionPlan>[] = [
+    {
+      key: "plan",
+      header: "Plan",
+      className: "max-w-[240px]",
+      cellTitle: (plan) => plan.name,
+      renderCell: (plan) => (
+        <div className="flex items-center gap-2">
+          <span className="font-medium truncate">{plan.name}</span>
+          {plan.badge && (
+            <Badge variant={plan.is_highlighted ? "default" : "secondary"} className="shrink-0">
+              {plan.badge}
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "monthly",
+      header: t("pricing.monthly"),
+      className: "whitespace-nowrap",
+      renderCell: (plan) => formatCurrency(plan.monthly_price),
+    },
+    {
+      key: "yearly",
+      header: t("pricing.yearly"),
+      className: "whitespace-nowrap",
+      renderCell: (plan) => formatCurrency(plan.yearly_price),
+    },
+    {
+      key: "platformFee",
+      header: `${t("pricing.platformFee")} (€)`,
+      className: "whitespace-nowrap",
+      renderCell: (plan) => formatCurrencyMaybe(plan.platform_fee_flat),
+    },
+    {
+      key: "active",
+      header: t("pricing.active"),
+      renderCell: (plan) => (
+        <Switch
+          checked={plan.is_active}
+          onCheckedChange={() => handleToggleActive(plan)}
+          disabled={updatePlan.isPending}
+        />
+      ),
+    },
+  ];
+
+  const renderPlanActions = (plan: SubscriptionPlan) => (
+    <>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Edit" onClick={() => setEditingPlan(plan)}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-destructive hover:text-destructive"
+        aria-label="Delete"
+        onClick={() => setDeletingPlan(plan)}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -113,137 +179,32 @@ export default function AdminPricing() {
         </div>
 
         {/* Trainer Plans */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("pricing.trainerPlans")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>{t("pricing.monthly")}</TableHead>
-                  <TableHead>{t("pricing.yearly")}</TableHead>
-                  <TableHead>{t("pricing.platformFee")} (€)</TableHead>
-                  <TableHead>{t("pricing.platformFee")} (€)</TableHead>
-                  <TableHead>{t("pricing.active")}</TableHead>
-                  <TableHead className="text-right">{t("pricing.actions")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {trainerPlans.map((plan) => (
-                  <TableRow key={plan.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{plan.name}</span>
-                        {plan.badge && (
-                          <Badge variant={plan.is_highlighted ? "default" : "secondary"}>
-                            {plan.badge}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatCurrency(plan.monthly_price)}</TableCell>
-                    <TableCell>{formatCurrency(plan.yearly_price)}</TableCell>
-                    <TableCell>{formatCurrencyMaybe(plan.platform_fee_flat)}</TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={plan.is_active}
-                        onCheckedChange={() => handleToggleActive(plan)}
-                        disabled={updatePlan.isPending}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon" aria-label="Edit"
-                          onClick={() => setEditingPlan(plan)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon" aria-label="Delete"
-                          onClick={() => setDeletingPlan(plan)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">{t("pricing.trainerPlans")}</h2>
+          <DataTable<SubscriptionPlan>
+            columns={columns}
+            rows={trainerPlans}
+            renderActions={renderPlanActions}
+            actionsHeader={t("pricing.actions")}
+            compact
+            desktopOnly={false}
+            empty={t("common:noResults", "No results")}
+          />
+        </section>
 
         {/* Club Plans */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("pricing.clubPlans")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>{t("pricing.monthly")}</TableHead>
-                  <TableHead>{t("pricing.yearly")}</TableHead>
-                  <TableHead>{t("pricing.platformFee")} (€)</TableHead>
-                  <TableHead>{t("pricing.active")}</TableHead>
-                  <TableHead className="text-right">{t("pricing.actions")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clubPlans.map((plan) => (
-                  <TableRow key={plan.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{plan.name}</span>
-                        {plan.badge && (
-                          <Badge variant={plan.is_highlighted ? "default" : "secondary"}>
-                            {plan.badge}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatCurrency(plan.monthly_price)}</TableCell>
-                    <TableCell>{formatCurrency(plan.yearly_price)}</TableCell>
-                    <TableCell>{formatCurrencyMaybe(plan.platform_fee_flat)}</TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={plan.is_active}
-                        onCheckedChange={() => handleToggleActive(plan)}
-                        disabled={updatePlan.isPending}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon" aria-label="Edit"
-                          onClick={() => setEditingPlan(plan)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon" aria-label="Delete"
-                          onClick={() => setDeletingPlan(plan)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">{t("pricing.clubPlans")}</h2>
+          <DataTable<SubscriptionPlan>
+            columns={columns}
+            rows={clubPlans}
+            renderActions={renderPlanActions}
+            actionsHeader={t("pricing.actions")}
+            compact
+            desktopOnly={false}
+            empty={t("common:noResults", "No results")}
+          />
+        </section>
 
         {/* Info Card */}
         <Card>

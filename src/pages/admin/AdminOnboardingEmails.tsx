@@ -5,17 +5,9 @@ import { Button } from "@/components/ui/button";
 import { SelectFilter } from "@/components/ui/select-filter";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table-generic";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingEmailDialog } from "@/components/admin/OnboardingEmailDialog";
 import { OnboardingEmailPreview } from "@/components/admin/OnboardingEmailPreview";
@@ -32,6 +24,8 @@ import {
 } from "@/hooks/useOnboardingEmails";
 import {
   type OnboardingEmailTemplate,
+  type OnboardingEmailQueue,
+  type OnboardingEmailLog,
   type UserType,
   type TriggerType,
 } from "@/lib/onboardingEmails";
@@ -178,6 +172,145 @@ export default function AdminOnboardingEmails() {
     );
   };
 
+  const templateColumns: ColumnDef<OnboardingEmailTemplate>[] = [
+    {
+      key: "name",
+      header: t("onboardingEmails.columns.name"),
+      className: "font-medium max-w-[240px]",
+      cellTitle: (tpl) => tpl.name,
+      renderCell: (tpl) => <span className="block truncate">{tpl.name}</span>,
+    },
+    {
+      key: "userType",
+      header: t("onboardingEmails.columns.userType"),
+      renderCell: (tpl) => getUserTypeBadge(tpl.user_type),
+    },
+    {
+      key: "trigger",
+      header: t("onboardingEmails.columns.trigger"),
+      renderCell: (tpl) => getTriggerBadge(tpl.trigger_type),
+    },
+    {
+      key: "delay",
+      header: t("onboardingEmails.columns.delay"),
+      className: "whitespace-nowrap",
+      renderCell: (tpl) =>
+        tpl.delay_days === 0
+          ? t("onboardingEmails.immediately")
+          : t("onboardingEmails.daysAfter", { days: tpl.delay_days }),
+    },
+    {
+      key: "active",
+      header: t("onboardingEmails.columns.active"),
+      renderCell: (tpl) => (
+        <Switch
+          checked={tpl.is_active}
+          onCheckedChange={() => handleToggleActive(tpl)}
+          disabled={toggleMutation.isPending}
+        />
+      ),
+    },
+  ];
+
+  const renderTemplateActions = (tpl: OnboardingEmailTemplate) => (
+    <>
+      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(tpl)} title={t("onboardingEmails.preview")}>
+        <Eye className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Copy" onClick={() => handleDuplicate(tpl)} disabled={createMutation.isPending} title={t("onboardingEmails.duplicate")}>
+        <Copy className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Edit" onClick={() => handleEdit(tpl)} title={t("onboardingEmails.edit")}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Delete" onClick={() => handleDelete(tpl)} title={t("onboardingEmails.delete")}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </>
+  );
+
+  // Two-line recipient (name + email) split into two columns — a stacked cell would clip at 40px.
+  const queueColumns: ColumnDef<OnboardingEmailQueue>[] = [
+    {
+      key: "recipient",
+      header: t("onboardingEmails.columns.recipient"),
+      className: "font-medium max-w-[200px]",
+      cellTitle: (item) => item.user_name,
+      renderCell: (item) => <span className="block truncate">{item.user_name}</span>,
+    },
+    {
+      key: "email",
+      header: t("onboardingEmails.columns.email"),
+      className: "text-muted-foreground max-w-[220px]",
+      cellTitle: (item) => item.email,
+      renderCell: (item) => <span className="block truncate">{item.email}</span>,
+    },
+    {
+      key: "template",
+      header: t("onboardingEmails.columns.template"),
+      renderCell: (item) => item.template?.name || "-",
+    },
+    {
+      key: "scheduledFor",
+      header: t("onboardingEmails.columns.scheduledFor"),
+      className: "whitespace-nowrap",
+      renderCell: (item) => format(new Date(item.scheduled_for), "PPp"),
+    },
+    {
+      key: "status",
+      header: t("onboardingEmails.columns.status"),
+      renderCell: (item) => getStatusBadge(item.status),
+    },
+  ];
+
+  const renderQueueActions = (item: OnboardingEmailQueue) =>
+    item.status === "pending" ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => cancelQueueMutation.mutate(item.id)}
+        disabled={cancelQueueMutation.isPending}
+      >
+        {t("onboardingEmails.cancel")}
+      </Button>
+    ) : null;
+
+  const logColumns: ColumnDef<OnboardingEmailLog>[] = [
+    {
+      key: "email",
+      header: t("onboardingEmails.columns.email"),
+      className: "max-w-[220px]",
+      cellTitle: (log) => log.email,
+      renderCell: (log) => <span className="block truncate">{log.email}</span>,
+    },
+    {
+      key: "subject",
+      header: t("onboardingEmails.columns.subject"),
+      className: "max-w-[280px]",
+      cellTitle: (log) => log.subject,
+      renderCell: (log) => <span className="block truncate">{log.subject}</span>,
+    },
+    {
+      key: "sentAt",
+      header: t("onboardingEmails.columns.sentAt"),
+      className: "whitespace-nowrap",
+      renderCell: (log) => format(new Date(log.sent_at), "PPp"),
+    },
+    {
+      key: "status",
+      header: t("onboardingEmails.columns.status"),
+      renderCell: (log) => getStatusBadge(log.status),
+    },
+  ];
+
+  const loadingSkeleton = (
+    <div className="space-y-2">
+      {[1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-16 w-full" />
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -206,237 +339,92 @@ export default function AdminOnboardingEmails() {
         </TabsList>
 
         {/* Templates Tab */}
-        <TabsContent value="templates">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>{t("onboardingEmails.templatesTitle")}</CardTitle>
-                  <CardDescription>{t("onboardingEmails.templatesDescription")}</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <SelectFilter
-                    value={userTypeFilter}
-                    onValueChange={setUserTypeFilter}
-                    allLabel={t("onboardingEmails.allUserTypes")}
-                    options={[
-                      { value: "player", label: t("onboardingEmails.userTypes.player") },
-                      { value: "trainer", label: t("onboardingEmails.userTypes.trainer") },
-                      { value: "club", label: t("onboardingEmails.userTypes.club") },
-                      { value: "academy", label: t("onboardingEmails.userTypes.academy") },
-                    ]}
-                    placeholder={t("onboardingEmails.filterUserType")}
-                    triggerClassName="w-[140px]"
-                  />
-                  <SelectFilter
-                    value={activeFilter}
-                    onValueChange={setActiveFilter}
-                    allLabel={t("onboardingEmails.allStatuses")}
-                    options={[
-                      { value: "active", label: t("onboardingEmails.activeOnly") },
-                      { value: "inactive", label: t("onboardingEmails.inactiveOnly") },
-                    ]}
-                    placeholder={t("onboardingEmails.filterStatus")}
-                    triggerClassName="w-[120px]"
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {templatesLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : filteredTemplates.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {t("onboardingEmails.noTemplates")}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("onboardingEmails.columns.name")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.userType")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.trigger")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.delay")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.active")}</TableHead>
-                      <TableHead className="text-right">{t("onboardingEmails.columns.actions")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTemplates.map((template) => (
-                      <TableRow key={template.id}>
-                        <TableCell className="font-medium">{template.name}</TableCell>
-                        <TableCell>{getUserTypeBadge(template.user_type)}</TableCell>
-                        <TableCell>{getTriggerBadge(template.trigger_type)}</TableCell>
-                        <TableCell>
-                          {template.delay_days === 0
-                            ? t("onboardingEmails.immediately")
-                            : t("onboardingEmails.daysAfter", { days: template.delay_days })}
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            checked={template.is_active}
-                            onCheckedChange={() => handleToggleActive(template)}
-                            disabled={toggleMutation.isPending}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handlePreview(template)}
-                              title={t("onboardingEmails.preview")}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon" aria-label="Copy"
-                              onClick={() => handleDuplicate(template)}
-                              disabled={createMutation.isPending}
-                              title={t("onboardingEmails.duplicate")}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon" aria-label="Edit"
-                              onClick={() => handleEdit(template)}
-                              title={t("onboardingEmails.edit")}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon" aria-label="Delete"
-                              onClick={() => handleDelete(template)}
-                              title={t("onboardingEmails.delete")}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="templates" className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">{t("onboardingEmails.templatesTitle")}</h2>
+              <p className="text-sm text-muted-foreground">{t("onboardingEmails.templatesDescription")}</p>
+            </div>
+            <div className="flex gap-2">
+              <SelectFilter
+                value={userTypeFilter}
+                onValueChange={setUserTypeFilter}
+                allLabel={t("onboardingEmails.allUserTypes")}
+                options={[
+                  { value: "player", label: t("onboardingEmails.userTypes.player") },
+                  { value: "trainer", label: t("onboardingEmails.userTypes.trainer") },
+                  { value: "club", label: t("onboardingEmails.userTypes.club") },
+                  { value: "academy", label: t("onboardingEmails.userTypes.academy") },
+                ]}
+                placeholder={t("onboardingEmails.filterUserType")}
+                triggerClassName="w-[140px]"
+              />
+              <SelectFilter
+                value={activeFilter}
+                onValueChange={setActiveFilter}
+                allLabel={t("onboardingEmails.allStatuses")}
+                options={[
+                  { value: "active", label: t("onboardingEmails.activeOnly") },
+                  { value: "inactive", label: t("onboardingEmails.inactiveOnly") },
+                ]}
+                placeholder={t("onboardingEmails.filterStatus")}
+                triggerClassName="w-[120px]"
+              />
+            </div>
+          </div>
+          {templatesLoading ? (
+            loadingSkeleton
+          ) : (
+            <DataTable<OnboardingEmailTemplate>
+              columns={templateColumns}
+              rows={filteredTemplates}
+              renderActions={renderTemplateActions}
+              actionsHeader={t("onboardingEmails.columns.actions")}
+              compact
+              desktopOnly={false}
+              empty={t("onboardingEmails.noTemplates")}
+            />
+          )}
         </TabsContent>
 
         {/* Queue Tab */}
-        <TabsContent value="queue">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("onboardingEmails.queueTitle")}</CardTitle>
-              <CardDescription>{t("onboardingEmails.queueDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {queueLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : queue?.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {t("onboardingEmails.noQueuedEmails")}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("onboardingEmails.columns.recipient")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.template")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.scheduledFor")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.status")}</TableHead>
-                      <TableHead className="text-right">{t("onboardingEmails.columns.actions")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {queue?.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{item.user_name}</div>
-                            <div className="text-sm text-muted-foreground">{item.email}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{item.template?.name || "-"}</TableCell>
-                        <TableCell>
-                          {format(new Date(item.scheduled_for), "PPp")}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(item.status)}</TableCell>
-                        <TableCell className="text-right">
-                          {item.status === "pending" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => cancelQueueMutation.mutate(item.id)}
-                              disabled={cancelQueueMutation.isPending}
-                            >
-                              {t("onboardingEmails.cancel")}
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="queue" className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">{t("onboardingEmails.queueTitle")}</h2>
+            <p className="text-sm text-muted-foreground">{t("onboardingEmails.queueDescription")}</p>
+          </div>
+          {queueLoading ? (
+            loadingSkeleton
+          ) : (
+            <DataTable<OnboardingEmailQueue>
+              columns={queueColumns}
+              rows={queue ?? []}
+              renderActions={renderQueueActions}
+              actionsHeader={t("onboardingEmails.columns.actions")}
+              compact
+              desktopOnly={false}
+              empty={t("onboardingEmails.noQueuedEmails")}
+            />
+          )}
         </TabsContent>
 
         {/* Logs Tab */}
-        <TabsContent value="logs">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("onboardingEmails.logsTitle")}</CardTitle>
-              <CardDescription>{t("onboardingEmails.logsDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {logsLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : logs?.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {t("onboardingEmails.noLogs")}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("onboardingEmails.columns.email")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.subject")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.sentAt")}</TableHead>
-                      <TableHead>{t("onboardingEmails.columns.status")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {logs?.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell>{log.email}</TableCell>
-                        <TableCell>{log.subject}</TableCell>
-                        <TableCell>
-                          {format(new Date(log.sent_at), "PPp")}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(log.status)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="logs" className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">{t("onboardingEmails.logsTitle")}</h2>
+            <p className="text-sm text-muted-foreground">{t("onboardingEmails.logsDescription")}</p>
+          </div>
+          {logsLoading ? (
+            loadingSkeleton
+          ) : (
+            <DataTable<OnboardingEmailLog>
+              columns={logColumns}
+              rows={logs ?? []}
+              compact
+              desktopOnly={false}
+              empty={t("onboardingEmails.noLogs")}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
