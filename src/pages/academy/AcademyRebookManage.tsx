@@ -85,6 +85,9 @@ export default function AcademyRebookManage() {
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
   const [trainerFilter, setTrainerFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
+  // Toggled via the "klikte Ja, niet afgerond" summary chunk: show ONLY the players who clicked
+  // Yes but never completed payment (pending or lapsed) — the second-chance follow-up list.
+  const [clickedYesOnly, setClickedYesOnly] = useState(false);
 
   // Selection + UI state
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -121,6 +124,7 @@ export default function AcademyRebookManage() {
       if (statusFilter !== 'all' && g.status !== statusFilter) return false;
       if (trainerFilter !== 'all' && g.trainerId !== trainerFilter) return false;
       if (locationFilter !== 'all' && g.locationId !== locationFilter) return false;
+      if (clickedYesOnly && !g.players.some(clickedYesUnpaid)) return false;
       if (paymentFilter !== 'all') {
         const claimed = claimedOf(g);
         if (paymentFilter === 'unpaid' && !claimed.some((p) => !p.paid)) return false;
@@ -132,7 +136,7 @@ export default function AcademyRebookManage() {
       }
       return true;
     });
-  }, [groups, search, statusFilter, paymentFilter, trainerFilter, locationFilter]);
+  }, [groups, search, statusFilter, paymentFilter, trainerFilter, locationFilter, clickedYesOnly]);
 
   const toggleExpanded = (id: string) => setExpanded((prev) => {
     const n = new Set(prev);
@@ -485,8 +489,18 @@ export default function AcademyRebookManage() {
           {data.summary.clickedYesUnpaid > 0 && (
             <>
               {' · '}
-              <span className="font-semibold">{data.summary.clickedYesUnpaid}</span>{' '}
-              {t('rebookManage.summary.clickedYesUnpaid', 'klikte Ja, niet afgerond')}
+              {/* Clickable (like the status badges below): toggles the table down to ONLY these
+                  players — the second-chance follow-up list the owner wants to find fast. */}
+              <button
+                type="button"
+                aria-pressed={clickedYesOnly}
+                onClick={() => setClickedYesOnly((v) => !v)}
+                title={t('rebookManage.clickedYesFilterHint', 'Filter de tabel op deze spelers')}
+                className={`inline-flex items-baseline gap-1 rounded px-1 -mx-0.5 text-amber-700 underline decoration-dotted underline-offset-2 hover:bg-amber-50 ${clickedYesOnly ? 'bg-amber-100 ring-1 ring-amber-300' : ''}`}
+              >
+                <span className="font-semibold">{data.summary.clickedYesUnpaid}</span>{' '}
+                {t('rebookManage.summary.clickedYesUnpaid', 'klikte Ja, niet afgerond')}
+              </button>
             </>
           )}
           {/* Invite delivery folded into the same line (was its own row) — saves vertical space. */}
@@ -669,7 +683,9 @@ export default function AcademyRebookManage() {
               const claimed = claimedOf(g);
               const rebooked = claimed.length;
               const paid = claimed.filter((p) => p.paid).length;
-              const isOpen = expanded.has(g.groupId);
+              // The clicked-yes filter is a PLAYER search: force groups open and narrow the
+              // sub-rows to the matching players so the list reads as one flat follow-up list.
+              const isOpen = expanded.has(g.groupId) || clickedYesOnly;
               return (
                 <RebookRows
                   key={g.groupId}
@@ -682,6 +698,7 @@ export default function AcademyRebookManage() {
                   onTogglePlayer={togglePlayer}
                   onFreeSeat={(p) => setFreeTarget({ group: g, player: p })}
                   onReinstate={(p) => setReinstateTarget({ group: g, player: p })}
+                  playerFilter={clickedYesOnly ? clickedYesUnpaid : undefined}
                   t={t}
                 />
               );
@@ -782,7 +799,7 @@ export default function AcademyRebookManage() {
   );
 }
 
-function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, onFreeSeat, onReinstate, t }: {
+function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggleSelect, onToggleExpand, selectedPlayers, onTogglePlayer, onFreeSeat, onReinstate, playerFilter, t }: {
   g: RebookManageGroup;
   isOpen: boolean;
   rebooked: number;
@@ -795,6 +812,9 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
   onTogglePlayer: (key: string, target: RebookReminderTarget) => void;
   onFreeSeat: (player: RebookManagePlayer) => void;
   onReinstate: (player: RebookManagePlayer) => void;
+  /** When set, only matching players render as sub-rows (the clicked-yes follow-up filter).
+   *  Group-level counts stay computed over ALL players — the filter narrows the listing only. */
+  playerFilter?: (p: RebookManagePlayer) => boolean;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const claimedCount = g.players.filter((p) => p.response === 'claimed').length;
@@ -840,7 +860,7 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
           )}
         </TableCell>
       </TableRow>
-      {isOpen && (g.players.length === 0 ? (
+      {isOpen && ((playerFilter ? g.players.filter(playerFilter) : g.players).length === 0 ? (
         <TableRow className="bg-muted/20 hover:bg-muted/20">
           <TableCell />
           <TableCell />
@@ -851,7 +871,7 @@ function RebookRows({ g, isOpen, rebooked, paid, selected, statusLabel, onToggle
       ) : (
         // One aligned SUB-ROW per player (same compact height as the rest of the table); cells
         // mirror the header's responsive columns so counts line up at every breakpoint.
-        g.players.map((p) => {
+        (playerFilter ? g.players.filter(playerFilter) : g.players).map((p) => {
           const sel = selectedPlayers.has(p.key);
           // Outcome (not raw status) drives the icon so a "clicked No" that is still
           // technically a pending claim reads as a decline, and expired ≠ declined.
