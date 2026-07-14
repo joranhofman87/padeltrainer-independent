@@ -618,7 +618,9 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     return page(`${title} | ${lang === 'nl' ? 'Padel Racket Review' : lang === 'es' ? 'Reseña de Pala' : lang === 'de' ? 'Padel Schläger Bewertung' : lang === 'fr' ? 'Avis Raquette Padel' : 'Padel Racket Review'}`, `${verb} ${title}.`, `/gear/rackets/${racketMatch[1]}`, lang, `<h1>${esc(title)}</h1>`);
   }
 
-  // Registration routes (no DB needed — generic meta)
+  // Registration form. Per-form preview (title = form name — venue/owner; description = the form's
+  // own intro, else a built fallback), so a shared link shows what & where. Falls back to generic
+  // copy when the form can't be resolved (draft/closed/unknown id). Indexable.
   if (/^\/(academies|clubs)\/[^/]+\/register\/[^/]+$/.test(cleanPath) || /^\/register\/[^/]+$/.test(cleanPath)) {
     const regMeta: Record<string, { title: string; desc: string; h1: string; p: string }> = {
       nl: { title: 'Inschrijven voor Padeltraining | PadelTrainer.ai', desc: 'Schrijf je in voor padel trainingen. Boek je plek in een groeps- of privéles.', h1: 'Inschrijven voor Padeltraining', p: 'Boek je plek in een padeltraining.' },
@@ -627,6 +629,40 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
       fr: { title: 'Inscription au Padel | PadelTrainer.ai', desc: 'Inscrivez-vous aux cours de padel. Réservez votre place dans un cours collectif ou privé.', h1: 'Inscription au Padel', p: 'Réservez votre place dans un cours de padel.' },
     };
     const rm = regMeta[lang] || { title: 'Register for Padel Training | PadelTrainer.ai', desc: 'Sign up for padel training sessions. Book your spot in a group or private padel lesson.', h1: 'Register for Padel Training', p: 'Book your spot in a padel training session.' };
+
+    const preview = await fetchRegistrationPreview(cleanPath.split('/').pop() || '').catch(() => null);
+    if (preview) {
+      const MONTHS: Record<string, string[]> = {
+        nl: ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'],
+        en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+        es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
+        de: ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'],
+        fr: ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'],
+      };
+      const fmtDate = (iso: string | null): string => {
+        const m = iso?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${parseInt(m[3], 10)} ${(MONTHS[lang] || MONTHS.en)[parseInt(m[2], 10) - 1]}` : '';
+      };
+      const plain = (s: string | null, max: number): string => {
+        const txt = (s || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+        return txt.length > max ? `${txt.slice(0, max - 1).trimEnd()}…` : txt;
+      };
+      // Prefer the venue (what the public page shows); fall back to the operating academy/club/trainer.
+      const place = preview.locationName || preview.ownerName;
+      const title = `${preview.name}${place ? ` — ${place}` : ''} | PadelTrainer.ai`;
+      const deadline = fmtDate(preview.enrollment_deadline);
+      const at = preview.locationName || preview.ownerName;
+      const fallbackByLang: Record<string, string> = {
+        nl: `Schrijf je in voor ${preview.name}${at ? ` bij ${at}` : ''}.${deadline ? ` Aanmelden vóór ${deadline}.` : ''}`,
+        en: `Sign up for ${preview.name}${at ? ` at ${at}` : ''}.${deadline ? ` Register before ${deadline}.` : ''}`,
+        es: `Apúntate a ${preview.name}${at ? ` en ${at}` : ''}.${deadline ? ` Inscríbete antes del ${deadline}.` : ''}`,
+        de: `Melde dich für ${preview.name}${at ? ` bei ${at}` : ''} an.${deadline ? ` Anmeldung bis ${deadline}.` : ''}`,
+        fr: `Inscrivez-vous à ${preview.name}${at ? ` chez ${at}` : ''}.${deadline ? ` Inscription avant le ${deadline}.` : ''}`,
+      };
+      const desc = plain(preview.description, 160) || fallbackByLang[lang] || fallbackByLang.en;
+      return page(title, desc, cleanPath, lang, `<h1>${esc(preview.name)}</h1><p>${esc(desc)}</p>`);
+    }
+
     return page(
       rm.title, rm.desc, cleanPath, lang,
       `<h1>${esc(rm.h1)}</h1><p>${esc(rm.p)}</p>`
@@ -793,6 +829,66 @@ const RESERVED_SHORT_HANDLES = new Set([
 
 function isReservedShortHandle(handle: string): boolean {
   return RESERVED_SHORT_HANDLES.has(handle.toLowerCase());
+}
+
+// Per-form link-preview data (title/description) for a registration form. Reads the OPEN form by its
+// id OR legacy source_cycle_id alias (drafts/closed → null → generic fallback, so unpublished forms
+// don't get rich previews), plus the owner's display name. Service-role read, but scoped to
+// status='open' + a strict UUID guard on the path segment (no injection into the REST filter).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function fetchRegistrationPreview(idOrAlias: string): Promise<
+  { name: string; description: string | null; start_date: string | null; enrollment_deadline: string | null; ownerName: string; locationName: string } | null
+> {
+  if (!UUID_RE.test(idOrAlias)) return null;
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return null;
+    const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+    const regRes = await fetch(
+      `${supabaseUrl}/rest/v1/registrations?or=(id.eq.${idOrAlias},source_cycle_id.eq.${idOrAlias})&status=eq.open&select=name,description,start_date,enrollment_deadline,owner_type,owner_id,location_id&limit=1`,
+      { headers },
+    );
+    if (!regRes.ok) return null;
+    const reg = (await regRes.json())?.[0];
+    if (!reg) return null;
+
+    // Venue location name (what the public page shows under each form), when the form has one.
+    let locationName = '';
+    if (reg.location_id) {
+      try {
+        const r = await fetch(`${supabaseUrl}/rest/v1/locations?id=eq.${reg.location_id}&select=name&limit=1`, { headers });
+        locationName = (await r.json())?.[0]?.name ?? '';
+      } catch { /* location is optional */ }
+    }
+
+    // Owner display name (academy/club name, or the trainer's full name).
+    let ownerName = '';
+    try {
+      if (reg.owner_type === 'academy') {
+        const r = await fetch(`${supabaseUrl}/rest/v1/academy_profiles?id=eq.${reg.owner_id}&select=name&limit=1`, { headers });
+        ownerName = (await r.json())?.[0]?.name ?? '';
+      } else if (reg.owner_type === 'club') {
+        const r = await fetch(`${supabaseUrl}/rest/v1/club_profiles?id=eq.${reg.owner_id}&select=name&limit=1`, { headers });
+        ownerName = (await r.json())?.[0]?.name ?? '';
+      } else if (reg.owner_type === 'trainer') {
+        const tp = await fetch(`${supabaseUrl}/rest/v1/trainer_profiles?id=eq.${reg.owner_id}&select=user_id&limit=1`, { headers });
+        const userId = (await tp.json())?.[0]?.user_id;
+        if (userId) {
+          const p = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}&select=full_name&limit=1`, { headers });
+          ownerName = (await p.json())?.[0]?.full_name ?? '';
+        }
+      }
+    } catch { /* owner name is optional — the form name alone is enough */ }
+
+    return {
+      name: reg.name, description: reg.description ?? null,
+      start_date: reg.start_date ?? null, enrollment_deadline: reg.enrollment_deadline ?? null,
+      ownerName, locationName,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function resolvePublicHandle(handle: string): Promise<{ owner_type: string; slug: string } | null> {
