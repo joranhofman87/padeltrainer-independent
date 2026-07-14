@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { logger } from '@/lib/logger';
-import { reportDeployDriftFallback } from '@/lib/deployDrift';
 import { getRatingSystems, type RatingSystemConfig } from '@/lib/ratingSystems';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
@@ -19,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { createRegistration, updateRegistration, registrationToCycle, cycleInputToRegistrationInput, isMissingRegistrationRpc } from '@/lib/registrations';
+import { createRegistration, updateRegistration, registrationToCycle, cycleInputToRegistrationInput } from '@/lib/registrations';
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import {
   Form,
@@ -664,26 +663,24 @@ export default function CycleForm({
           : null,
       };
 
-      // Defensive: never mint a registration for a plain training cyclus, even if the prop says so.
-      // CycleFormPage already decides this from cycle.type; this is belt-and-braces for a future refactor.
-      const effectiveTarget = isEdit && cycle?.type === 'cyclus' ? 'cycle' : writeTarget;
+      // Route by what the PAGE resolved from OVERLAY EXISTENCE (resolveRegistrationEditTarget, #478),
+      // NOT the shell's `type`. A split registration's cycle shell is BORN `type='cyclus'` but carries a
+      // registrations overlay, so writeTarget is already 'registration' for it and 'cycle' only for a
+      // GENUINE training cyclus (no overlay). The old `cycle.type === 'cyclus' ? 'cycle'` override
+      // discarded that and sent every split-registration EDIT to the cycle row via updateCycle — freezing
+      // the public form's overlay (stale lesson types + empty price indication). Trusting writeTarget cannot
+      // adopt a plain training cyclus: resolveRegistrationEditTarget returns 'cycle' for one, and the
+      // update_registration RPC authorizes against the row's own owner.
+      const effectiveTarget = writeTarget;
       let result: Cycle;
       if (effectiveTarget === 'registration') {
-        // Canonical registration write — atomically keeps the form↔training-cycle split (the RPC).
-        // Graceful fallback: in the window where the FE has deployed but the owner hasn't applied the
-        // write-path migration, the RPC is missing (PGRST202) → use the legacy cycle write so create/
-        // edit still works. Everything else (a real error) rethrows.
+        // Canonical registration write — a STANDALONE form, no cycle shell (decouple 2c). On edit the
+        // key is the registration's own id (cycle.id === registration.id post-decouple).
         const regInput = cycleInputToRegistrationInput(input);
-        try {
-          const reg = isEdit
-            ? await updateRegistration(cycle.id, regInput)
-            : await createRegistration(regInput);
-          result = registrationToCycle(reg);
-        } catch (err) {
-          if (!isMissingRegistrationRpc(err)) throw err;
-          reportDeployDriftFallback('registration_write_rpc', { isEdit });
-          result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
-        }
+        const reg = isEdit
+          ? await updateRegistration(cycle.id, regInput)
+          : await createRegistration(regInput);
+        result = registrationToCycle(reg);
       } else {
         result = isEdit ? await updateCycle(cycle.id, input) : await createCycle(input);
       }

@@ -1365,7 +1365,7 @@
   },
   "supabase/functions/submit-guest-intake/index.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 4
+      "count": 3
     }
   },
   "supabase/functions/sync-invoice-to-bookings/index.ts": {

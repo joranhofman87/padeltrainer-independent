@@ -163,39 +163,52 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // GUARD (architecture audit 2026-07-11, V1): this endpoint attaches an intake_requests row (+ a
-    // guest + an official confirmation email) to `cycleId` with no type/status check — so a training
-    // cyclus or a live rebook round (both status='open' and form-renderable by URL) can collect phantom
-    // "registrations". Gate on the target actually being an OPEN registration/event: a `registrations`
-    // overlay row (status='open'), OR a legacy type='registration'/'event' cycle with status='open'.
-    {
-      const { data: cycleGate } = await adminClient
-        .from("cycles").select("type, status").eq("id", cycleId).maybeSingle();
-      if (!cycleGate) {
-        return new Response(
-          JSON.stringify({ error: "cycle_not_found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const { data: overlay } = await adminClient
-        .from("registrations").select("status").eq("source_cycle_id", cycleId).maybeSingle();
-      const isRegistrationForm = !!overlay || cycleGate.type === "registration" || cycleGate.type === "event";
-      const isOpen = overlay ? overlay.status === "open" : cycleGate.status === "open";
-      if (!isRegistrationForm || !isOpen) {
-        return new Response(
-          JSON.stringify({ error: "registration_not_open", message: "This registration form is not open for sign-ups." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+    // Resolve the FORM (registrations is standalone post-decouple). `cycleId` is the registration's
+    // own id; fall back to the legacy source_cycle_id alias so old /register links + QR codes work.
+    // GUARD: only an OPEN registration/event form may collect a sign-up.
+    type RegistrationRow = {
+      id: string;
+      source_cycle_id: string | null;
+      owner_type: string;
+      owner_id: string;
+      format: string;
+      status: string;
+      name: string;
+      total_price: number | null;
+      price_table: RegistrationInvoiceCycle["price_table"];
+      currency: string | null;
+      settings: Record<string, unknown> | null;
+      start_date: string | null;
+      end_date: string | null;
+      location_id: string | null;
+    };
+    const REG_COLS = "id, source_cycle_id, owner_type, owner_id, format, status, name, total_price, price_table, currency, settings, start_date, end_date, location_id";
+    let regRow: RegistrationRow | null =
+      ((await adminClient.from("registrations").select(REG_COLS).eq("id", cycleId).maybeSingle()).data as RegistrationRow | null) ?? null;
+    if (!regRow) {
+      regRow = ((await adminClient.from("registrations").select(REG_COLS).eq("source_cycle_id", cycleId).maybeSingle()).data as RegistrationRow | null) ?? null;
     }
+    if (!regRow) {
+      return new Response(
+        JSON.stringify({ error: "registration_not_found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (regRow.status !== "open") {
+      return new Response(
+        JSON.stringify({ error: "registration_not_open", message: "This registration form is not open for sign-ups." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const registrationId = regRow.id;
 
-    // Duplicate check: reject same email + cycle within 60 seconds (prevents double-clicks)
+    // Duplicate check: reject same email + form within 60 seconds (prevents double-clicks)
     const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
     const { count: dupeCount } = await adminClient
       .from("intake_requests")
       .select("*", { count: "exact", head: true })
       .eq("email", email)
-      .eq("cycle_id", cycleId)
+      .eq("registration_id", registrationId)
       .gte("created_at", sixtySecondsAgo);
 
     if (dupeCount && dupeCount >= 1) {
@@ -261,13 +274,8 @@ Deno.serve(async (req) => {
       // Existing user with profile — use their profile ID
       playerId = existingProfile.id;
     } else {
-      // Guest: create or find a guest_players record
-      // First get the cycle to determine the owner (academy/trainer/club)
-      const { data: cycleForOwner } = await adminClient
-        .from("cycles")
-        .select("owner_type, owner_id")
-        .eq("id", cycleId)
-        .single();
+      // Guest: create or find a guest_players record. The form's owner comes from the registration.
+      const cycleForOwner = { owner_type: regRow.owner_type, owner_id: regRow.owner_id };
 
       const guestData: Record<string, unknown> = {
         first_name: nameFields.first_name,
@@ -343,38 +351,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Resolve effective location: prefer explicit form value, fall back to cycle's location
-    let effectiveLocationId: string | null = locationId || null;
-    if (!effectiveLocationId) {
-      const { data: cycleLoc } = await adminClient
-        .from("cycles")
+    // Resolve effective location: prefer explicit form value, fall back to the form's location,
+    // then a club owner's location.
+    let effectiveLocationId: string | null = locationId || regRow.location_id || null;
+    if (!effectiveLocationId && regRow.owner_type === "club") {
+      const { data: club } = await adminClient
+        .from("club_profiles")
         .select("location_id")
-        .eq("id", cycleId)
+        .eq("id", regRow.owner_id)
         .maybeSingle();
-      effectiveLocationId = cycleLoc?.location_id || null;
-      // Fall back to club's location if cycle is owned by a club without its own location
-      if (!effectiveLocationId) {
-        const { data: cycleOwner } = await adminClient
-          .from("cycles")
-          .select("owner_type, owner_id")
-          .eq("id", cycleId)
-          .maybeSingle();
-        if (cycleOwner?.owner_type === "club" && cycleOwner.owner_id) {
-          const { data: club } = await adminClient
-            .from("club_profiles")
-            .select("location_id")
-            .eq("id", cycleOwner.owner_id)
-            .maybeSingle();
-          effectiveLocationId = club?.location_id || null;
-        }
-      }
+      effectiveLocationId = club?.location_id || null;
     }
 
     // Insert intake request
     const { data: intakeData, error: intakeError } = await adminClient
       .from("intake_requests")
       .insert({
-        cycle_id: cycleId,
+        registration_id: registrationId,
+        cycle_id: null,
         player_id: playerId,
         guest_player_id: guestPlayerId,
         full_name: nameFields.full_name,
@@ -407,31 +401,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Auto-follow (only for existing users with a profile)
-    let cycleData: any = null;
+    // Auto-follow (only for existing users with a profile). Owner comes from the form. cycleData
+    // carries the fields the confirmation email + admin-notify block read.
+    const cycleData = {
+      name: regRow.name,
+      settings: regRow.settings,
+      owner_type: regRow.owner_type,
+      owner_id: regRow.owner_id,
+    };
     try {
-      const { data: cycle } = await adminClient
-        .from("cycles")
-        .select("id, owner_type, owner_id, name, type, total_price, price_per_session, price_table, currency, settings, start_date, end_date, enrollment_deadline, location_id")
-        .eq("id", cycleId)
-        .single();
-
-      cycleData = cycle;
-
-      if (cycle && playerId) {
-        if (cycle.owner_type === "trainer") {
+      if (playerId) {
+        if (regRow.owner_type === "trainer") {
           await adminClient.from("trainer_followers").upsert(
-            { player_id: playerId, trainer_id: cycle.owner_id, notify_new_availability: true },
+            { player_id: playerId, trainer_id: regRow.owner_id, notify_new_availability: true },
             { onConflict: "player_id,trainer_id" }
           );
-        } else if (cycle.owner_type === "club") {
+        } else if (regRow.owner_type === "club") {
           await adminClient.from("club_followers").upsert(
-            { player_id: playerId, club_profile_id: cycle.owner_id, notify_new_availability: true },
+            { player_id: playerId, club_profile_id: regRow.owner_id, notify_new_availability: true },
             { onConflict: "player_id,club_profile_id" }
           );
-        } else if (cycle.owner_type === "academy") {
+        } else if (regRow.owner_type === "academy") {
           await adminClient.from("academy_followers").upsert(
-            { player_id: playerId, academy_profile_id: cycle.owner_id, notify_new_availability: true },
+            { player_id: playerId, academy_profile_id: regRow.owner_id, notify_new_availability: true },
             { onConflict: "player_id,academy_profile_id" }
           );
         }
@@ -440,55 +432,24 @@ Deno.serve(async (req) => {
       console.error("Auto-follow failed (non-blocking):", followErr);
     }
 
-    // Registration↔cycle split: the public FORM may now live in its own `registrations` row
-    // (the source cycle then becomes a plain training cycle, type='cyclus'). Resolve it by
-    // source_cycle_id so paid registrations keep minting and the invoice links to the
-    // registration. Pre-backfill (no row) we fall back to the legacy cycle — unchanged behaviour.
-    type RegistrationRow = {
-      id: string;
-      source_cycle_id: string;
-      owner_type: string;
-      owner_id: string;
-      format: string;
-      name: string;
-      total_price: number | null;
-      price_table: RegistrationInvoiceCycle["price_table"];
-      currency: string | null;
-      settings: Record<string, unknown> | null;
-      start_date: string | null;
-      end_date: string | null;
+    const registration = regRow;
+    // The object the payment path reads pricing + payment_methods from — the standalone form.
+    // Its `id` is the registration id (there is no cycle shell).
+    const formForPayment: RegistrationInvoiceCycle | null = {
+      id: registration.id,
+      owner_type: registration.owner_type,
+      owner_id: registration.owner_id,
+      name: registration.name,
+      type: registration.format,
+      total_price: registration.total_price ?? null,
+      price_per_session: null,
+      price_table: registration.price_table ?? null,
+      currency: registration.currency ?? null,
+      settings: (registration.settings as Record<string, unknown> | null) ?? null,
+      // The training span drives (price × weeks) per-lesson pricing — carried on the form.
+      start_date: registration.start_date ?? null,
+      end_date: registration.end_date ?? null,
     };
-    let registration: RegistrationRow | null = null;
-    try {
-      const { data } = await adminClient
-        .from("registrations")
-        .select("id, source_cycle_id, owner_type, owner_id, format, name, total_price, price_table, currency, settings, start_date, end_date")
-        .eq("source_cycle_id", cycleId)
-        .maybeSingle();
-      registration = (data as RegistrationRow | null) ?? null;
-    } catch (regErr) {
-      console.error("registration lookup failed (non-blocking):", regErr);
-    }
-    // The object the payment path reads pricing + payment_methods from: the canonical
-    // registration form when present, else the legacy cycle.
-    const formForPayment: RegistrationInvoiceCycle | null = registration
-      ? {
-          id: registration.source_cycle_id,
-          owner_type: registration.owner_type,
-          owner_id: registration.owner_id,
-          name: registration.name,
-          type: registration.format,
-          total_price: registration.total_price ?? null,
-          price_per_session: null,
-          price_table: registration.price_table ?? null,
-          currency: registration.currency ?? null,
-          settings: (registration.settings as Record<string, unknown> | null) ?? null,
-          // The training span drives (price × weeks) per-lesson pricing — carried on the
-          // registration so the charge stays correct after the source cycle becomes type='cyclus'.
-          start_date: registration.start_date ?? null,
-          end_date: registration.end_date ?? null,
-        }
-      : (cycleData as RegistrationInvoiceCycle | null);
 
     // Mint a payable invoice for paid event registrations and reuse the existing
     // Mollie invoice flow. Non-blocking: a mint failure never fails the
@@ -553,11 +514,17 @@ Deno.serve(async (req) => {
     // email matches the invoice and reflects academy edits immediately.
     if (RESEND_API_KEY && cycleData && intakeData) {
       try {
-        // Build the email from the SAME pricing source the invoice mint used (formForPayment =
-        // the canonical registration form when present), so the quoted price/lesson-count can never
-        // diverge from the invoice. The cycle still supplies enrollment_deadline + location_id, which
-        // formForPayment omits. When there's no registration, formForPayment === cycleData (no-op).
-        await sendRegistrationConfirmationEmail(adminClient, { ...cycleData, ...(formForPayment ?? {}) }, intakeData, {
+        // Build the email from the SAME pricing source the invoice mint used (the standalone form),
+        // so the quoted price/lesson-count can never diverge from the invoice. The pricing fields are
+        // spelled out (null, not undefined) to satisfy RegistrationEmailCycle.
+        await sendRegistrationConfirmationEmail(adminClient, {
+          ...cycleData,
+          ...formForPayment,
+          price_table: formForPayment.price_table ?? null,
+          start_date: formForPayment.start_date ?? null,
+          end_date: formForPayment.end_date ?? null,
+          location_id: effectiveLocationId,
+        }, intakeData, {
           payUrl: emailPayUrl,
           language,
         });

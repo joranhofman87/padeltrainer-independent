@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronRight, MapPin, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatPrice } from '@/lib/pricing';
+import { formatPrice, perSeatSessionPrice } from '@/lib/pricing';
 import { formatZonedTime } from '@/lib/zonedFormat';
 import { GUEST_PAYFIRST_ENABLED } from '@/lib/bookingFlags';
 import { isCartableSlot, useCartOptional } from '@/contexts/cartStore';
@@ -31,9 +31,7 @@ export function PublicSlotRow({
 }) {
   const { t } = useTranslation('common');
   const cart = useCartOptional();
-  const extrasTotal = slot.extra_costs.reduce((sum, ec) => sum + ec.price, 0);
-  const perSession =
-    slot.price_per_session != null && slot.price_per_session > 0 ? slot.price_per_session + extrasTotal : null;
+  const perSession = perSeatSessionPrice(slot);
   const timeLabel = `${formatZonedTime(slot.start_time, timezone)}–${formatZonedTime(slot.end_time, timezone)}`;
 
   const cartable = GUEST_PAYFIRST_ENABLED && cart != null && isCartableSlot(slot);

@@ -413,7 +413,7 @@ serve(async (req) => {
     } else {
       const { data: slot, error: slotError } = await supabase
         .from("availability_slots")
-        .select("id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, extra_costs")
+        .select("id, trainer_id, academy_profile_id, price_per_session, start_time, end_time, max_participants, allow_single_booking, split_payment, extra_costs")
         .eq("id", slotId)
         .single();
 

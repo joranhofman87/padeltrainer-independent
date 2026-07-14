@@ -367,15 +367,19 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     throw new Error('Too many applications submitted. Please try again later.');
   }
 
-  // Fetch cycle to get owner info for auto-follow
-  const { data: cycle } = await supabase
-    .from('cycles')
+  // input.cycle_id is the FORM's id (registrationToCycle exposes registration.id). Intakes link to
+  // the form via registration_id; cycle_id (the training cycle they get planned INTO) is NULL until
+  // a trainer plans them — so resolve the owner from the registration, not a cycle.
+  const registrationId = input.cycle_id;
+  const { data: reg } = await supabase
+    .from('registrations')
     .select('owner_type, owner_id')
-    .eq('id', input.cycle_id)
+    .eq('id', registrationId)
     .single();
 
   const insertData = {
-    cycle_id: input.cycle_id,
+    registration_id: registrationId,
+    cycle_id: null,
     player_id: input.player_id,
     full_name: input.full_name,
     email: input.email,
@@ -395,7 +399,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     metadata: (input.metadata || {}) as unknown as Json,
     status: 'new' as const,
   };
-  
+
   const { data, error } = await supabase
     .from('intake_requests')
     .insert(insertData)
@@ -405,10 +409,10 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
   if (error) throw error;
 
   // Auto-follow and add to student list (non-blocking - don't fail registration)
-  if (cycle) {
-    const ownerType = cycle.owner_type as 'trainer' | 'club' | 'academy';
-    await autoFollowOwner(ownerType, cycle.owner_id, input.player_id);
-    await addToStudentList(ownerType, cycle.owner_id, input);
+  if (reg) {
+    const ownerType = reg.owner_type as 'trainer' | 'club' | 'academy';
+    await autoFollowOwner(ownerType, reg.owner_id, input.player_id);
+    await addToStudentList(ownerType, reg.owner_id, input);
   }
 
   return toIntakeRequest(data);
@@ -724,12 +728,12 @@ export async function hasPlayerApplied(cycleId: string, playerId: string): Promi
   return !!data;
 }
 
-// Helper: Get intake request counts by status for a cycle
-export async function getIntakeRequestCounts(cycleId: string): Promise<Record<string, number>> {
+// Helper: Get intake request counts by status for a FORM (registration id — the canonical link).
+export async function getIntakeRequestCounts(registrationId: string): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('intake_requests')
     .select('status')
-    .eq('cycle_id', cycleId);
+    .eq('registration_id', registrationId);
 
   if (error) throw error;
 
@@ -1052,7 +1056,10 @@ export async function createManualIntakeRequest(
   input: IntakeRequestInput & { player_id?: string | null; guest_player_id?: string | null }
 ): Promise<IntakeRequest> {
   const insertData: Record<string, unknown> = {
-    cycle_id: input.cycle_id,
+    // input.cycle_id is the FORM's id (registration.id); a manually-added applicant links to the form
+    // and is not yet planned into a training cycle (cycle_id NULL).
+    registration_id: input.cycle_id,
+    cycle_id: null,
     player_id: input.player_id || null,
     guest_player_id: (input as any).guest_player_id || null,
     full_name: input.full_name,

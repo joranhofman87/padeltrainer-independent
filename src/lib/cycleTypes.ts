@@ -152,7 +152,10 @@ export interface TrainerAvailabilityWindow {
 
 export interface IntakeRequest {
   id: string;
-  cycle_id: string;
+  /** The FORM this applicant belongs to (canonical link). */
+  registration_id: string;
+  /** The training cycle they were PLANNED into — NULL until planned (decouple). */
+  cycle_id: string | null;
   player_id: string;
   full_name: string;
   email: string;

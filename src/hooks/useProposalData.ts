@@ -14,7 +14,7 @@ import {
   type SlotWithOccupancy,
   type PlayerLink,
 } from '@/lib/cycles';
-import { listRegistrationCycles } from '@/lib/registrations';
+import { listRegistrationCycles, getRegistration, registrationToCycle } from '@/lib/registrations';
 
 // ── Multi-cycle pages (AcademyIntakeRequests / TrainerIntakeRequests) ──
 
@@ -72,7 +72,15 @@ export function usePlayerLinksQuery(cycleIds: string[]) {
 export function useCycleDetailQuery(cycleId: string | undefined) {
   return useQuery<Cycle | null>({
     queryKey: ['cycle-detail', cycleId],
-    queryFn: () => (cycleId ? getCycle(cycleId) : Promise.resolve(null)),
+    // A registration form is standalone (no cycle shell) — fall back to presenting it as a Cycle so
+    // the detail page renders the form (name, dates, price) instead of "not found".
+    queryFn: async () => {
+      if (!cycleId) return null;
+      const cycle = await getCycle(cycleId);
+      if (cycle) return cycle;
+      const reg = await getRegistration(cycleId);
+      return reg ? registrationToCycle(reg) : null;
+    },
     enabled: !!cycleId,
     staleTime: 60_000,
   });
@@ -88,7 +96,8 @@ export function useCycleRequestsQuery(
     queryFn: async () => {
       if (!ownerId || !cycleId) return [];
       const all = await getIntakeRequestsWithProposals(ownerType, ownerId);
-      return all.filter(r => r.cycle_id === cycleId);
+      // cycleId here is the FORM id (registration.id); applicants link via registration_id.
+      return all.filter(r => r.registration_id === cycleId);
     },
     enabled: !!ownerId && !!cycleId,
     staleTime: 30_000,

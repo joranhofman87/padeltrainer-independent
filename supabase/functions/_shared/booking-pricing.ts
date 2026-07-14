@@ -6,6 +6,7 @@ export type SlotPricingInput = {
   price_per_session?: number | null;
   max_participants?: number | null;
   allow_single_booking?: boolean | null;
+  split_payment?: boolean | null;
 };
 
 function slotDurationMinutes(startTime: string, endTime: string): number {
@@ -29,7 +30,17 @@ export function resolveSlotUnitPrice(
   return calculateSlotPriceFromHourly(rate, slotDurationMinutes(slot.start_time, slot.end_time));
 }
 
-/** Single-slot Mollie amount (quantity defaults to 1; one booking per call). */
+/**
+ * Single-slot Mollie amount (quantity defaults to 1; one booking per call).
+ *
+ * F01 (MASTER_AUDIT): the per-seat DIVISION is driven by split_payment, NOT
+ * allow_single_booking. A split_payment session is "paid individually" → each seat pays
+ * price_per_session ÷ capacity. Every other session — including an individually-bookable
+ * NON-split cycle session, and whole-slot bookings — is "paid at once" → the full
+ * price_per_session (owner decision; the previous divide-on-allow_single_booking rule
+ * under-collected the advertised price on those non-split single sessions). The
+ * allow_single_booking flag governs only whether a single booking is OFFERED, never the amount.
+ */
 export function computeSingleSlotPaymentAmount(
   slot: SlotPricingInput,
   hourlyRate: number | null,
@@ -37,10 +48,11 @@ export function computeSingleSlotPaymentAmount(
 ): number {
   const maxP = slot.max_participants || 1;
   const slotPrice = resolveSlotUnitPrice(slot, hourlyRate);
-  const allowSingle = slot.allow_single_booking ?? false;
-  const perSpotPrice = maxP > 1 && allowSingle ? slotPrice / maxP : slotPrice;
-  const bookingQuantity = !allowSingle ? 1 : quantity;
-  return allowSingle && maxP > 1 ? perSpotPrice * bookingQuantity : slotPrice;
+  const split = slot.split_payment === true;
+  if (split && maxP > 1) {
+    return (slotPrice / maxP) * Math.max(1, quantity);
+  }
+  return slotPrice;
 }
 
 export type ExtraCost = { price?: number | null; type?: string | null; description?: string | null };

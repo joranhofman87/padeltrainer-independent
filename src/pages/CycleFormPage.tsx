@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft } from 'lucide-react';
 import { getCycle, type Cycle } from '@/lib/cycles';
-import { getRegistration, resolveRegistrationEditTarget, type Registration } from '@/lib/registrations';
+import { getRegistration, registrationToCycle, resolveRegistrationEditTarget, type Registration } from '@/lib/registrations';
 import CycleForm from '@/components/cycles/CycleForm';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { useClubContext } from '@/components/club/ClubLayout';
@@ -218,10 +218,12 @@ export default function CycleFormPage({ ownerType }: { ownerType: 'trainer' | 'c
           setTrainerLocationMap(tlMap);
         }
 
-        // Load existing cycle for editing
+        // Load existing cycle for editing. A registration form is a STANDALONE row (no cycle shell),
+        // so when getCycle finds nothing, present the registration as a Cycle to the editor — else it
+        // would treat the edit as a NEW form (cycle?.id undefined → isEdit=false).
         if (cycleId) {
           const [cycleData, reg] = await Promise.all([getCycle(cycleId), getRegistration(cycleId)]);
-          setCycle(cycleData);
+          setCycle(cycleData ?? (reg ? registrationToCycle(reg) : null));
           setRegistration(reg);
         } else if (duplicateFromId) {
           const cycleData = await getCycle(duplicateFromId);

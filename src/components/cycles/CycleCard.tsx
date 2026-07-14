@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { type Cycle, getIntakeRequestCounts, updateCycle } from '@/lib/cycles';
+import { syncRegistrationStatus } from '@/lib/registrations';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 import { toast } from 'sonner';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -74,6 +75,10 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
     setIsUpdating(true);
     try {
       await updateCycle(cycle.id, { status: newStatus });
+      // A split registration's public form obeys registrations.status — keep it in lockstep so
+      // "close" actually closes the form and stops accepting sign-ups (audit Theme 1; the same
+      // pairing exists in CyclesTable / AcademyCycleDetail). No-op when there is no overlay row.
+      await syncRegistrationStatus(cycle.id, newStatus);
       toast.success(t(`status.${newStatus}`));
       onDeleted?.(); // Trigger refresh
     } catch (error: any) {

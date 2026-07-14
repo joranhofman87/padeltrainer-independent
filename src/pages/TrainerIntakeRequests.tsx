@@ -134,7 +134,7 @@ export default function TrainerIntakeRequests() {
   useEffect(() => {
     if (statusFilter === 'proposed') {
       const cycleFiltered = selectedCycleId !== 'all'
-        ? requests.filter(r => r.cycle_id === selectedCycleId)
+        ? requests.filter(r => r.registration_id === selectedCycleId)
         : requests;
       if (cycleFiltered.some(r => r.status === 'proposed')) {
         setViewMode('schedule');
@@ -144,7 +144,7 @@ export default function TrainerIntakeRequests() {
 
   // Derived data
   const cycleFilteredRequests = selectedCycleId !== 'all' 
-    ? requests.filter(r => r.cycle_id === selectedCycleId)
+    ? requests.filter(r => r.registration_id === selectedCycleId)
     : requests;
 
   const searchQuery = searchParams.get('q') || '';

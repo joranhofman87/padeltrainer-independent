@@ -28,7 +28,8 @@ const supabaseFromMock = vi.fn((table: string) => {
       }),
     };
   }
-  if (table === 'cycles') {
+  if (table === 'registrations') {
+    // submitIntakeRequest resolves the form owner from the registration (decouple).
     return {
       select: () => ({
         eq: () => ({
