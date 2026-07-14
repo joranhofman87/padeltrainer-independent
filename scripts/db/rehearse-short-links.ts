@@ -28,6 +28,10 @@ const REG2 = '22222222-2222-2222-2222-222222222222';
 await db.exec(`
 CREATE ROLE anon;
 CREATE ROLE authenticated;
+-- Model Supabase: default privileges auto-grant EXECUTE on every NEW public function to anon +
+-- authenticated. Without this the anon-mint hole is invisible in a bare Postgres (this is exactly
+-- what let the original bug ship green). Must run BEFORE the migration creates its functions.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE FUNCTION auth.uid() RETURNS uuid
   LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('test.uid', true), '')::uuid $$;
@@ -56,6 +60,12 @@ const migration = readFileSync(
   'utf8',
 );
 await db.exec(migration);
+// The security fix (revoke anon EXECUTE on the mint/read RPCs) is part of the deployed schema.
+const revokeMigration = readFileSync(
+  join(process.cwd(), 'supabase', 'migrations', '20260825110000_short_links_revoke_anon.sql'),
+  'utf8',
+);
+await db.exec(revokeMigration);
 
 // ── 1. idempotency ──
 const c1 = (await db.query<{ get_or_create_short_link: string }>(
@@ -94,6 +104,31 @@ for (const bad of ['//evil.com', 'https://evil.com', 'ftp://x', 'evil']) {
   } catch { raised = true; }
   check(`open-redirect guard rejects ${JSON.stringify(bad)}`, raised);
 }
+
+// ── 3b. RPC execute grants: anon may RESOLVE but must NOT MINT (the Supabase default-privileges hole) ──
+await db.exec(`SET ROLE authenticated`);
+let authMint = false;
+try {
+  await db.query(`SELECT public.get_or_create_short_link('/nl/register/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'registration', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{}'::jsonb, true)`);
+  authMint = true;
+} catch { authMint = false; }
+await db.exec(`RESET ROLE`);
+check('grants: authenticated CAN mint', authMint);
+
+await db.exec(`SET ROLE anon`);
+let anonMint = true;
+try {
+  await db.query(`SELECT public.get_or_create_short_link('/nl/x', 'registration', NULL, '{}'::jsonb, true)`);
+  anonMint = true;
+} catch { anonMint = false; }
+let anonResolve = false;
+try {
+  await db.query(`SELECT * FROM public.resolve_short_link('${c1}')`);
+  anonResolve = true;
+} catch { anonResolve = false; }
+await db.exec(`RESET ROLE`);
+check('grants: anon CANNOT mint (revoked)', !anonMint);
+check('grants: anon CAN still resolve', anonResolve);
 
 // ── 4. collision recovery (deterministic gen_short_code override) ──
 // A SEQUENCE (not a table counter) is essential here: the failed first insert rolls back its
