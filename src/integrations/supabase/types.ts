@@ -4963,6 +4963,7 @@ export type Database = {
           source_cycle_id: string | null
           start_date: string | null
           status: string
+          terms: string | null
           total_price: number | null
           updated_at: string
         }
@@ -4983,6 +4984,7 @@ export type Database = {
           source_cycle_id?: string | null
           start_date?: string | null
           status?: string
+          terms?: string | null
           total_price?: number | null
           updated_at?: string
         }
@@ -5003,6 +5005,7 @@ export type Database = {
           source_cycle_id?: string | null
           start_date?: string | null
           status?: string
+          terms?: string | null
           total_price?: number | null
           updated_at?: string
         }
@@ -8002,6 +8005,7 @@ export type Database = {
           p_settings: Json
           p_start_date: string
           p_status: string
+          p_terms: string
           p_total_price: number
         }
         Returns: {
@@ -8021,6 +8025,7 @@ export type Database = {
           source_cycle_id: string | null
           start_date: string | null
           status: string
+          terms: string | null
           total_price: number | null
           updated_at: string
         }
@@ -8067,6 +8072,7 @@ export type Database = {
           source_cycle_id: string | null
           start_date: string | null
           status: string
+          terms: string | null
           total_price: number | null
           updated_at: string
         }
@@ -8822,6 +8828,7 @@ export type Database = {
           p_settings: Json
           p_start_date: string
           p_status: string
+          p_terms: string
           p_total_price: number
         }
         Returns: {
@@ -8841,6 +8848,7 @@ export type Database = {
           source_cycle_id: string | null
           start_date: string | null
           status: string
+          terms: string | null
           total_price: number | null
           updated_at: string
         }
@@ -8886,6 +8894,7 @@ export type Database = {
           source_cycle_id: string | null
           start_date: string | null
           status: string
+          terms: string | null
           total_price: number | null
           updated_at: string
         }
