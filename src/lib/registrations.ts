@@ -31,6 +31,8 @@ export interface Registration {
   price_table: unknown | null;
   location_id: string | null;
   settings: Record<string, unknown>;
+  /** Per-form terms ("Voorwaarden"/Lesreglement) shown to applicants, above the owner's general terms. */
+  terms: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -110,14 +112,16 @@ export interface RegistrationInput {
   location_id?: string | null;
   /** Settings from the editor — the RPC stores only the whitelisted FORM keys. */
   settings?: Record<string, unknown>;
+  /** Per-form terms shown to applicants (persisted on the registration). */
+  terms?: string | null;
 }
 
 /**
  * Map the `CycleInput` the editor (CycleForm) already builds → `RegistrationInput`. The shapes are
  * 1:1 except: `type` → `format` (a registration is only 'registration' | 'event');
  * `price_per_session` is dropped (registrations have no per-session price; the form already nulls it);
- * `terms`/`is_always_open` are dropped (write-only dead plumbing on the old shell — the public form
- * reads owner-level terms, and always-open is encoded as a NULL enrollment_deadline).
+ * `is_always_open` is dropped (encoded as a NULL enrollment_deadline). `terms` (the per-form
+ * "Voorwaarden"/Lesreglement) IS carried — it persists on the registration and is shown to applicants.
  */
 export function cycleInputToRegistrationInput(input: CycleInput): RegistrationInput {
   return {
@@ -135,6 +139,7 @@ export function cycleInputToRegistrationInput(input: CycleInput): RegistrationIn
     price_table: input.price_table ?? null,
     location_id: input.location_id ?? null,
     settings: (input.settings ?? {}) as Record<string, unknown>,
+    terms: input.terms ?? null,
   };
 }
 
@@ -159,6 +164,7 @@ export async function createRegistration(input: RegistrationInput): Promise<Regi
     p_price_table: (input.price_table ?? null) as never,
     p_location_id: input.location_id ?? null,
     p_settings: (input.settings ?? {}) as never,
+    p_terms: input.terms ?? null,
   } as never);
   if (error) throw error;
   return data as unknown as Registration;
@@ -192,6 +198,7 @@ export async function updateRegistration(
     p_price_table: (input.price_table ?? null) as never,
     p_location_id: input.location_id ?? null,
     p_settings: (input.settings ?? null) as never,
+    p_terms: input.terms ?? null,
   } as never);
   if (error) throw error;
   return data as unknown as Registration;
@@ -240,7 +247,7 @@ export function registrationToCycle(reg: Registration): Cycle {
     price_per_session: null,
     total_price: reg.total_price,
     currency: reg.currency,
-    terms: null,
+    terms: reg.terms ?? null,
     price_table: (reg.price_table as Cycle['price_table']) ?? null,
     created_at: reg.created_at,
     updated_at: reg.updated_at,
