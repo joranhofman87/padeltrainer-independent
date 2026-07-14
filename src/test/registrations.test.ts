@@ -73,6 +73,7 @@ const baseReg = (over: Partial<Registration> = {}): Registration => ({
   price_table: [{ label: 'Duo', price: 60 }],
   location_id: 'loc1',
   settings: { payment_methods: 'online' },
+  terms: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-02T00:00:00Z',
   ...over,
@@ -127,6 +128,19 @@ describe('registrations lib', () => {
     expect((c.settings as Record<string, unknown>).payment_methods).toBe('online');
   });
 
+  it('registrationToCycle surfaces per-form terms (Lesreglement) onto the Cycle shape', () => {
+    const c = registrationToCycle(baseReg({ terms: 'Betaling binnen 14 dagen.' }));
+    expect(c.terms).toBe('Betaling binnen 14 dagen.');
+  });
+
+  it('createRegistration passes per-form terms to the RPC', async () => {
+    rpcFn.mockResolvedValueOnce({ data: baseReg({ id: 'rT' }), error: null });
+    await createRegistration({
+      owner_type: 'academy', owner_id: 'a1', format: 'registration', name: 'F', terms: 'My rules',
+    });
+    expect(rpcFn.mock.calls[0][1]).toMatchObject({ p_terms: 'My rules' });
+  });
+
   it('registrationToCycle tolerates an event with no price_table', () => {
     const c = registrationToCycle(baseReg({ format: 'event', price_table: null }));
     expect(c.type).toBe('event');
@@ -167,10 +181,10 @@ describe('registrations lib', () => {
       p_settings: { payment_methods: 'cash', scoring_weights: { x: 1 } },
       p_status: 'draft', p_currency: 'EUR',
     }));
-    // No cycle-only params leak into the standalone write.
+    // Per-form terms persist; the cycle-only is_always_open does not.
     const args = rpcFn.mock.calls[0][1] as Record<string, unknown>;
     expect('p_is_always_open' in args).toBe(false);
-    expect('p_terms' in args).toBe(false);
+    expect('p_terms' in args).toBe(true);
     expect(r.id).toBe('rNew');
   });
 
@@ -202,11 +216,11 @@ describe('registrations lib', () => {
       .rejects.toBeTruthy();
   });
 
-  it('cycleInputToRegistrationInput maps type→format, DROPS price_per_session / terms / is_always_open', () => {
+  it('cycleInputToRegistrationInput maps type→format, keeps per-form terms, drops price_per_session / is_always_open', () => {
     const out = cycleInputToRegistrationInput(cycleInput({ type: 'registration', price_per_session: 30 }));
     expect(out.format).toBe('registration');
     expect('price_per_session' in out).toBe(false); // registrations have no per-session price
-    expect('terms' in out).toBe(false); // write-only dead plumbing on the old shell
+    expect(out.terms).toBe('terms text'); // per-form terms persist (shown to applicants)
     expect('is_always_open' in out).toBe(false);
     expect(out.settings).toEqual({ payment_methods: 'cash', scoring_weights: { x: 1 } });
     expect(out.owner_type).toBe('academy');

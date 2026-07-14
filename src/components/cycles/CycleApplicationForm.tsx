@@ -132,8 +132,14 @@ export default function CycleApplicationForm({
     async function loadTerms() {
       setTermsLoading(true);
       try {
-        const { terms } = await getTermsForCycleOwner(cycle.owner_id, cycle.owner_type);
-        setCycleTerms(terms);
+        // Per-form terms ("Voorwaarden"/Lesreglement) take precedence; fall back to the owner's
+        // general terms when the form has none.
+        if (cycle.terms && cycle.terms.trim()) {
+          setCycleTerms(cycle.terms);
+        } else {
+          const { terms } = await getTermsForCycleOwner(cycle.owner_id, cycle.owner_type);
+          setCycleTerms(terms);
+        }
       } catch (e) {
         logger.error('Error loading cycle terms', e instanceof Error ? e : new Error(String(e)), { component: 'CycleApplicationForm' });
       } finally {
@@ -141,7 +147,7 @@ export default function CycleApplicationForm({
       }
     }
     loadTerms();
-  }, [cycle.owner_id, cycle.owner_type]);
+  }, [cycle.owner_id, cycle.owner_type, cycle.terms]);
 
   const timeBlockSchema = z.object({
     start: z.string(),
