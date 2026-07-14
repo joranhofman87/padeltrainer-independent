@@ -4,12 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { DateInputField } from '@/components/ui/date-input-field';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -94,6 +93,64 @@ export default function ExpensesManager({ owner }: { owner: ExpenseOwner }) {
   const amountValid = Number(form.amount) > 0;
   const canSave = amountValid && !!form.expense_date && !!form.category && !save.isPending;
 
+  const columns: ColumnDef<Expense>[] = [
+    {
+      key: 'date',
+      header: t('expenses.colDate', 'Datum'),
+      className: 'whitespace-nowrap',
+      renderCell: (e) => fmtDate(e.expense_date),
+    },
+    {
+      key: 'category',
+      header: t('expenses.colCategory', 'Categorie'),
+      renderCell: (e) => catLabel(e.category),
+    },
+    {
+      key: 'description',
+      header: t('expenses.colDescription', 'Omschrijving'),
+      headClassName: 'hidden sm:table-cell',
+      className: 'hidden sm:table-cell text-muted-foreground max-w-[280px]',
+      cellTitle: (e) => e.description || undefined,
+      renderCell: (e) => <span className="block truncate">{e.description || '—'}</span>,
+    },
+    {
+      key: 'amount',
+      header: t('expenses.colAmount', 'Bedrag'),
+      align: 'right',
+      className: 'tabular-nums whitespace-nowrap',
+      renderCell: (e) => formatCurrency(Number(e.amount)),
+    },
+  ];
+
+  const renderExpenseActions = (e: Expense) => (
+    <>
+      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(e)} aria-label={t('expenses.edit', 'Bewerken')}>
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label={t('expenses.delete', 'Verwijderen')}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('expenses.deleteConfirmTitle', 'Uitgave verwijderen?')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('expenses.deleteConfirmBody', 'Deze uitgave wordt definitief verwijderd.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => remove.mutate(e.id)}>
+              {t('expenses.delete', 'Verwijderen')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -106,69 +163,18 @@ export default function ExpensesManager({ owner }: { owner: ExpenseOwner }) {
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-4 space-y-2"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
-          ) : expenses.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              {t('expenses.empty', 'Nog geen uitgaven. Voeg je eerste uitgave toe om je winst bij te houden.')}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="whitespace-nowrap">{t('expenses.colDate', 'Datum')}</TableHead>
-                    <TableHead>{t('expenses.colCategory', 'Categorie')}</TableHead>
-                    <TableHead className="hidden sm:table-cell">{t('expenses.colDescription', 'Omschrijving')}</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">{t('expenses.colAmount', 'Bedrag')}</TableHead>
-                    <TableHead className="w-16" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {expenses.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="whitespace-nowrap">{fmtDate(e.expense_date)}</TableCell>
-                      <TableCell>{catLabel(e.category)}</TableCell>
-                      <TableCell className="hidden sm:table-cell text-muted-foreground">{e.description || '—'}</TableCell>
-                      <TableCell className="text-right tabular-nums whitespace-nowrap">{formatCurrency(Number(e.amount))}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(e)} aria-label={t('expenses.edit', 'Bewerken')}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" aria-label={t('expenses.delete', 'Verwijderen')}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>{t('expenses.deleteConfirmTitle', 'Uitgave verwijderen?')}</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {t('expenses.deleteConfirmBody', 'Deze uitgave wordt definitief verwijderd.')}
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>{t('common:cancel', 'Annuleren')}</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => remove.mutate(e.id)}>
-                                  {t('expenses.delete', 'Verwijderen')}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <div className="space-y-2"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>
+      ) : (
+        <DataTable<Expense>
+          columns={columns}
+          rows={expenses}
+          renderActions={renderExpenseActions}
+          compact
+          desktopOnly={false}
+          empty={t('expenses.empty', 'Nog geen uitgaven. Voeg je eerste uitgave toe om je winst bij te houden.')}
+        />
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
