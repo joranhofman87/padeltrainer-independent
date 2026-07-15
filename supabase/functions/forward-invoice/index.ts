@@ -180,8 +180,13 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
+    // Prefer the invoice's stamped render_path (Theme B — survives owner deletion, where the
+    // anonymized trainer shell's user_id is NULL and derivation would point at the wrong folder);
+    // fall back to the legacy derivation for rows generated before the column existed.
     const folderKey = trainerProfile?.user_id || invoice.academy_profile_id || "custom";
-    const pdfFileName = `${folderKey}/${invoice.invoice_number}.pdf`;
+    const pdfFileName = invoice.render_path
+      ? `${invoice.render_path}.pdf`
+      : `${folderKey}/${invoice.invoice_number}.pdf`;
 
     let pdfData: Blob | null = null;
     const downloadResult = await supabase.storage.from("invoices").download(pdfFileName);
