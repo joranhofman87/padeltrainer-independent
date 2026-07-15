@@ -319,6 +319,21 @@ export async function deleteUserData(
   // 10. Delete profile
   await supabaseAdmin.from("profiles").delete().eq("user_id", targetUserId);
 
+  // 10b. Remove the user's avatar/banner objects (R06): the 'avatars' bucket is PUBLIC and these
+  // live under the user's own folder (`<user_id>/avatar.*`, `<user_id>/banner.*`) — leaving them
+  // would keep the deleted user's face publicly reachable forever. Best-effort: a storage hiccup
+  // must never block the account deletion (the objects are only reachable via the now-deleted
+  // profile's URL anyway). Org logos under 'clubs/…' etc. are untouched — not user PII.
+  try {
+    const { data: avatarObjects } = await supabaseAdmin.storage.from("avatars").list(targetUserId);
+    const avatarPaths = (avatarObjects ?? []).map((o: { name: string }) => `${targetUserId}/${o.name}`);
+    if (avatarPaths.length > 0) {
+      await supabaseAdmin.storage.from("avatars").remove(avatarPaths);
+    }
+  } catch (avatarErr) {
+    console.error("deleteUserData: avatar cleanup failed (non-blocking):", avatarErr);
+  }
+
   // 11. Delete the auth user
   const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
 

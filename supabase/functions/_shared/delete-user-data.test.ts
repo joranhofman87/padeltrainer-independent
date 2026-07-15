@@ -74,9 +74,19 @@ function makeFakeAdmin() {
     return u;
   };
 
+  // Storage stub (R06 avatar cleanup): one avatar object under the user's folder; records removes.
+  const removedStoragePaths: string[] = [];
+  const storage = {
+    from: (_bucket: string) => ({
+      list: (prefix: string) => Promise.resolve({ data: prefix === "u1" ? [{ name: "avatar.png" }] : [], error: null }),
+      remove: (paths: string[]) => { removedStoragePaths.push(...paths); return Promise.resolve({ data: null, error: null }); },
+    }),
+  };
+
   const admin = {
     _store: store,
     _callOrder: callOrder,
+    _removedStoragePaths: removedStoragePaths,
     from(t: string) {
       return {
         select: () => makeSelect(t),
@@ -84,9 +94,10 @@ function makeFakeAdmin() {
         update: (p: Row) => makeUpdate(t, p),
       };
     },
+    storage,
     auth: { admin: { deleteUser: (_id: string) => Promise.resolve({ error: null }) } },
   };
-  return admin as unknown as SupabaseClient & { _store: Record<string, Row[]>; _callOrder: string[] };
+  return admin as unknown as SupabaseClient & { _store: Record<string, Row[]>; _callOrder: string[]; _removedStoragePaths: string[] };
 }
 
 Deno.test("deleteUserData RETAINS the trainer's invoices + slots and anonymizes the trainer shell (R03)", async () => {
@@ -110,6 +121,10 @@ Deno.test("deleteUserData RETAINS the trainer's invoices + slots and anonymizes 
   // Guests are still erased; the retained invoice's guest reference is SET NULL.
   assertEquals(store.guest_players.length, 0, "guest players erased");
   assertEquals(store.invoices[0].guest_player_id, null, "retained invoice guest ref nulled");
+
+  // R06: the user's avatar objects (public bucket, user-keyed folder) are removed.
+  const removed = (admin as unknown as { _removedStoragePaths: string[] })._removedStoragePaths;
+  assertEquals(removed, ["u1/avatar.png"], "avatar objects removed on account deletion");
 });
 
 Deno.test("deleteUserData THROWS (never swallows) when the guest_players delete is FK-rejected", async () => {

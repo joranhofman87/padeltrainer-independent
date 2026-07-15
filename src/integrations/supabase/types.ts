@@ -8667,6 +8667,14 @@ export type Database = {
         Returns: boolean
       }
       invoice_booking_set_key: { Args: { _ids: string[] }; Returns: string }
+      invoice_gc_list_objects: {
+        Args: { _after?: string; _limit?: number }
+        Returns: {
+          created_at: string
+          name: string
+          updated_at: string
+        }[]
+      }
       is_academy_manager: {
         Args: { _academy_profile_id: string; _user_id: string }
         Returns: boolean
