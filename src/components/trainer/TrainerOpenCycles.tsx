@@ -65,15 +65,10 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
   return (
     <Card className={flushOnMobileCardClass()}>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
-            {t('registration.openCycles', 'Open for Registration')}
-          </CardTitle>
-          <Badge variant="secondary" className="text-sm">
-            {cycles.length} {cycles.length === 1 ? t('cycle', 'cycle') : t('cyclesCount', 'cycles')}
-          </Badge>
-        </div>
+        <CardTitle className="flex items-center gap-2">
+          <Calendar className="h-5 w-5 text-primary" />
+          {t('registration.openCycles', 'Open for Registration')}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {cycles.map(cycle => {
