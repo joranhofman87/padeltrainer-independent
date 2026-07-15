@@ -118,15 +118,10 @@ export function LocationOpenCycles({ locationId, locationName: _locationName, cl
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold flex items-center gap-2">
-          <Calendar className="h-6 w-6 text-primary" />
-          {t('registration.openCycles', 'Open for Registration')}
-        </h2>
-        <Badge variant="secondary" className="text-sm">
-          {cycles.length} {cycles.length === 1 ? t('cycle', 'cycle') : t('cyclesCount', 'cycles')}
-        </Badge>
-      </div>
+      <h2 className="text-2xl font-semibold flex items-center gap-2">
+        <Calendar className="h-6 w-6 text-primary" />
+        {t('registration.openCycles', 'Open for Registration')}
+      </h2>
 
       <div className="space-y-4">
         {cycles.map(cycle => {

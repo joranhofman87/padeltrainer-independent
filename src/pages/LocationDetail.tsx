@@ -448,7 +448,7 @@ export default function LocationDetail() {
           {location.website_url && (
             <Button
               variant="outline"
-              size="lg"
+              size="sm"
               className="w-full"
               onClick={() => {
                 const url = new URL(location.website_url!);
@@ -462,7 +462,7 @@ export default function LocationDetail() {
           )}
           <Button
             variant="outline"
-            size="lg"
+            size="sm"
             className="w-full"
             onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(`${location.street_address || ''} ${location.postal_code} ${location.city}`)}`, '_blank')}
           >
@@ -474,7 +474,7 @@ export default function LocationDetail() {
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="lg" className="w-full">
+              <Button variant="outline" size="sm" className="w-full">
                 {copied ? (
                   <>
                     <Check className="h-4 w-4 mr-2" />
@@ -501,9 +501,9 @@ export default function LocationDetail() {
           </DropdownMenu>
           {!isClaimed && (
             <Button
-              variant="default"
-              size="lg"
-              className="w-full"
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground hover:text-foreground"
               onClick={() => {
                 if (!user) {
                   navigate(localizePath('/auth'));
@@ -519,7 +519,7 @@ export default function LocationDetail() {
           {isManager && (
             <Button
               variant="secondary"
-              size="lg"
+              size="sm"
               className="w-full"
               onClick={() => navigate('/club/settings')}
             >
