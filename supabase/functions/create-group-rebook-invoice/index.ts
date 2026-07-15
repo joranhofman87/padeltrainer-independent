@@ -128,6 +128,9 @@ serve(async (req: Request) => {
     // so the double-pay guard above can't see them. The captain's full-court payment would then
     // double-collect that seat. Refuse + alert LOUDLY; staff resolves (deducting a member's share is
     // a manual money decision, not an automatic one). Fail CLOSED on a check error — this guards money.
+    // Members with a still-UNPAID invoice/checkout deliberately do NOT block the captain here (F05):
+    // the mollie-webhook group-paid branch settles them the moment the captain's payment lands —
+    // cancels their invoice, covers their seat paid-by-captain, and expires their open checkout.
     {
       const gq = admin.from("slot_priority_claims")
         .select("booking_id, player_id, guest_player_id")

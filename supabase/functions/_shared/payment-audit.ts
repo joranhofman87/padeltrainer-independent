@@ -38,6 +38,10 @@ export const PaymentAuditStatus = {
   paidHoldOverCapacity: "paid_hold_over_capacity",
   paymentForUnknownInvoice: "payment_for_unknown_invoice",
   noConnectedMollieAccount: "no_connected_mollie_account",
+  /** F05: a member's own unpaid rebook invoice cancelled because the captain's group payment covers the seat. */
+  memberInvoiceCancelledCovered: "member_invoice_cancelled_covered",
+  /** F05: a member's seat was collected twice (own payment + captain's full-court payment) — manual refund. */
+  memberSeatDoubleCollected: "member_seat_double_collected",
   paymentChargedBack: "payment_charged_back",
   paymentRefunded: "payment_refunded",
 } as const;
