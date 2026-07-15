@@ -8344,6 +8344,13 @@ export type Database = {
           state: string
         }[]
       }
+      get_cycle_roster_names: {
+        Args: { _cycle_id: string }
+        Returns: {
+          full_name: string
+          id: string
+        }[]
+      }
       get_guest_booking_by_token: {
         Args: { _token: string }
         Returns: {

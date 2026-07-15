@@ -120,21 +120,18 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
       paid_externally: boolean | null;
     }>;
 
-    const playerIds = [...new Set(rows.map((b) => b.player_id).filter(Boolean))] as string[];
-    const guestIds = [...new Set(rows.map((b) => b.guest_player_id).filter(Boolean))] as string[];
+    // Resolve participant names through a SECURITY DEFINER RPC, NOT a client-side profiles read.
+    // An academy manager cannot SELECT a player's `profiles` row under RLS (only their trainers'),
+    // so a registered player who booked as a logged-in account (player_id booking, no guest row)
+    // would resolve to a null name and get silently dropped from the roster — invisible and
+    // unmanageable, while the cycle LIST (also a definer RPC) shows them. The RPC is the single
+    // authoritative name source for BOTH profile and guest people, authorized to whoever can
+    // already see this cycle's bookings.
     const nameLookup: Record<string, string> = {};
-    if (playerIds.length > 0) {
-      const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', playerIds);
-      (profiles ?? []).forEach((p: { id: string; full_name: string | null }) => {
-        if (p.full_name) nameLookup[p.id] = p.full_name;
-      });
-    }
-    if (guestIds.length > 0) {
-      const { data: guests } = await supabase.from('guest_players').select('id, full_name').in('id', guestIds);
-      (guests ?? []).forEach((g: { id: string; full_name: string | null }) => {
-        if (g.full_name) nameLookup[g.id] = g.full_name;
-      });
-    }
+    const { data: rosterNames } = await supabase.rpc('get_cycle_roster_names', { _cycle_id: cycleId });
+    (rosterNames ?? []).forEach((n: { id: string; full_name: string | null }) => {
+      if (n.full_name) nameLookup[n.id] = n.full_name;
+    });
 
     for (const b of rows) {
       bookingCountMap[b.slot_id] = (bookingCountMap[b.slot_id] ?? 0) + 1;
