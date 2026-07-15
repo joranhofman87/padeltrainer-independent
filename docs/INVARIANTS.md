@@ -151,6 +151,14 @@ CORE hardening audit flagged this as E-009/E-010 (P2). The financial-columns tri
 service role** (`auth.uid() IS NULL`), so an edge function or admin path can still overwrite a paid invoice —
 fresh-eyes P2-6 (`recalculate-invoices` has no status guard). See backlog B-2.
 
+**Progress (2026-07-15, master-audit Theme A / R02+R03):** the biggest hard-delete *path* is closed — account
+deletion no longer erases financial rows. `delete-user-data` retains invoices + slot bookings via an
+anonymized-shell `trainer_profiles` (migration `20260826140000`: `invoices.trainer_id` +
+`trainer_profiles.user_id` CASCADE→SET NULL, `invoices.guest_player_id` NO ACTION→SET NULL) and retains
+player bookings via `bookings.anonymized_at` + `bookings.player_id` CASCADE→SET NULL (migration
+`20260826130000`). The DB-level delete guard (trigger forbidding `DELETE` of a paid invoice) is **still
+missing** — a direct service-role/SQL delete remains possible.
+
 **Risk:** P2 today (no automated path deletes paid invoices), P1 if a future delete surface is added without a guard.
 
 ## I-6 — A paid booking cannot be silently cancelled / downgraded 🟢 (P0)
