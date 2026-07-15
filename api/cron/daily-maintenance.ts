@@ -18,6 +18,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Deferred rebooking invoicing: creates DRAFT invoices (per-group split) for
     // started cycles' commitments; academies review + send. Idempotent.
     { slug: 'generate-cycle-commitment-invoices' },
+    // Invoice render GC (Theme B): REPORT-ONLY until one clean Slack report has been reviewed —
+    // then flip to { slug: 'invoice-storage-gc', body: { apply: true } }. Deletes bucket objects
+    // matched by NO invoice render_path, after a 90-day grace, capped per run.
+    { slug: 'invoice-storage-gc' },
     // Backstop for email campaigns whose autonomous resume chain never completed (e.g. a
     // first invocation hard-killed before scheduling a continuation): re-triggers any
     // campaign stuck 'sending' >15min with queued recipients. No-op when none are stuck.

@@ -163,6 +163,7 @@ All in `supabase/functions/mollie-webhook/index.ts`. **Actor:** Mollie webhook.
 | Wrong Mollie org (F3) | `payment_audit_log` recipient vs webhook | manual reconciliation/refund |
 | Guest can't see paid data | after account claim | re-run `link_guest_data_to_profile` |
 | Invoice not forwarded | `forwarded_at` null | `forward-invoice force=true` |
+| Orphaned invoice renders (renumber, pre-Theme-A deletions) | `invoice-storage-gc` (daily, report-only until flipped) — objects matching NO invoice `render_path`, 90-day grace, 200/run cap, Slack summary | auto once `{ apply: true }`; user avatars removed by `deleteUserData` (R06) |
 
 See `PAYMENT_RECOVERY_RUNBOOK.md` for step-by-step procedures.
 
