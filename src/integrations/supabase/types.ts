@@ -6108,6 +6108,7 @@ export type Database = {
       }
       trainer_profiles: {
         Row: {
+          anonymized_at: string | null
           banner_url: string | null
           bic: string | null
           btw_number: string | null
@@ -6173,6 +6174,7 @@ export type Database = {
           welcome_message: string | null
         }
         Insert: {
+          anonymized_at?: string | null
           banner_url?: string | null
           bic?: string | null
           btw_number?: string | null
@@ -6238,6 +6240,7 @@ export type Database = {
           welcome_message?: string | null
         }
         Update: {
+          anonymized_at?: string | null
           banner_url?: string | null
           bic?: string | null
           btw_number?: string | null
