@@ -40,6 +40,8 @@ terminal outcome:
 | `invoice_marked_paid` | first (claimed) invoice paid transition |
 | `booking_marked_paid` | first booking paid transition (`transitioned > 0`) |
 | `duplicate_webhook_ignored` | invoice/booking paid webhook that transitioned 0 rows |
+| `member_invoice_cancelled_covered` | group-paid member settlement (F05) — a member's own unpaid rebook invoice cancelled because the captain's full-court payment covers the seat |
+| `member_seat_double_collected` | group-paid member settlement (F05) — a member's seat was collected twice (own payment + captain's full-court payment); manual refund |
 
 No payment logic changed — every call is a standalone `await auditLog(...)` at a point that already
 logged/returned. Tested: `_shared/payment-audit.test.ts` (inserts the right shape; **never throws** on a

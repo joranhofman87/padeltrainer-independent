@@ -75,15 +75,15 @@ rebook_group_id/rebook_cyclus_id/paid_at/forwarded_at), `slot_priority_claims`, 
 
 ## 5. Rebooking — single-player deferred / manual invoice
 
-- **Entry:** same, but cycle `rebook_payment_mode='deferred'` → `acceptClaimAndStartPayment` returns `deferred` (claim accepted, no checkout). Invoice minted at cycle start (cron) or via the legacy authed `create-rebook-invoice`.
+- **Entry:** same, but cycle `rebook_payment_mode='deferred'` → `acceptClaimAndStartPayment` returns `deferred` (claim accepted, no checkout). Invoice minted at cycle start (cron: `generate-cycle-commitment-invoices`, daily) or via the legacy authed `create-rebook-invoice`. **Scan mechanics (F04):** the cron keyset-paginates cycles (`id > cursor`, page 200), stamps fully-drafted cycles `commitment_invoiced_at` so they drop out of the daily scan, stops at a 110s budget and self-reinvokes to drain the tail (alerting if the continuation can't be scheduled); `cycleId` remains an operator override that bypasses the stamp/cursor filters.
 - **Pricing:** deferred keeps the ÷headcount **split** (owner decision: full price applies only to the upfront checkout path). **Actor:** claimant.
 - **Recovery / result:** invoiced later; paid via `/pay/:token`; webhook confirms.
 
 ## 6. Group / captain rebooking
 
 - **Entry:** `PriorityClaim.tsx` group CTA → `createGroupRebookInvoice` → `create-group-rebook-invoice` (token-gated, `verify_jwt=false`, `…/create-group-rebook-invoice/index.ts`). **Actor:** any group member (whoever acts first = "captain").
-- **Flow:** `respond_to_priority_claim` books the captain's own seats (teammates stay pending) → ONE full-price invoice (`rebook_group_id`, **unique partial index** = one active invoice/group) → checkout. **Post-payment** `rebook_group_manage` links kept/added members' covered bookings onto the paid invoice.
-- **Failure modes:** two captains pay → unique index picks one, loser gets the winner's invoice; strict + no checkout → abort+reset (`:157-168`); captain hold expired → `findCancelledPaidBookings` alert.
+- **Flow:** `respond_to_priority_claim` books the captain's own seats (teammates stay pending) → ONE full-price invoice (`rebook_group_id`, **unique partial index** = one active invoice/group) → checkout. **Post-payment** `rebook_group_manage` links kept/added members' covered bookings onto the paid invoice, and the webhook's **member settlement (F05)** handles members who self-accepted "just my spot" BEFORE the captain paid: cancels their still-active untagged invoices, covers their unpaid bookings paid-by-captain, best-effort expires their open Mollie checkouts, and Slack+audit-alerts every double-collected seat (`member_invoice_cancelled_covered` / `member_seat_double_collected`).
+- **Failure modes:** two captains pay → unique index picks one, loser gets the winner's invoice; strict + no checkout → abort+reset (`:157-168`); captain hold expired → `findCancelledPaidBookings` alert; member pays a settled (cancelled) invoice's stale checkout later → existing `payment_for_cancelled_invoice` manual-refund alert.
 - **Tests:** `rebookSingleInvoiceDedup.pglite.test.ts` (structure); `rebookGroupCapacityHolds.pglite.test.ts` (F5 hold-aware capacity).
 
 ## 7. Registration / intake invoice
@@ -126,9 +126,9 @@ All in `supabase/functions/mollie-webhook/index.ts`. **Actor:** Mollie webhook.
 
 ## 15. Academy Mollie missing / not-ready
 
-- **Where:** every charge fn calls `resolveSlotRecipient` / `getAcademyMolliePaymentReadiness` (`_shared/mollie-payment-ready.ts`). Readiness = `onboarding_complete AND charges_enabled AND access_token NOT NULL` (+ org id not `pending_*`).
-- **Behavior:** academy not ready → fall back to **trainer's own Mollie** (bookings) / **400** (invoices — no trainer fallback). No account resolves → charge fn 400 `no_mollie_account` + audit + Slack; webhook → 200 + Slack refusal (M-25, never uses platform key).
-- **Reason codes:** `no_row`, `onboarding_incomplete`, `charges_disabled`, `missing_access_token`. Mollie 422 → `mollie_not_ready`.
+- **Where:** every charge fn calls `resolveSlotRecipient` / `getAcademyMolliePaymentReadiness` (`_shared/mollie-payment-ready.ts`). Readiness = `onboarding_complete AND charges_enabled AND access_token NOT NULL AND disconnected_at IS NULL` (+ org id not `pending_*`).
+- **Behavior:** academy not ready → fall back to **trainer's own Mollie** (bookings) / **400** (invoices — no trainer fallback). No account resolves → charge fn 400 `no_mollie_account` + audit + Slack; webhook → 200 + Slack refusal (M-25, never uses platform key). **Soft-disconnect (F06):** `mollie-disconnect-academy` never deletes the org row — it refuses while unpaid Mollie-linked invoices / live payment holds exist, then stamps `disconnected_at`; the row + tokens survive so late webhooks still settle, all NEW-charge paths refuse, and `mollie-callback` clears the stamp on reconnect.
+- **Reason codes:** `no_row`, `onboarding_incomplete`, `charges_disabled`, `missing_access_token`, `disconnected` (F06 soft-disconnect). Mollie 422 → `mollie_not_ready`.
 - **Tests:** `mollie-payment-ready.test.ts` (all reason codes). **Gap:** no M-25 webhook-refusal regression test.
 
 ## 16. Multi-academy trainer payment routing (Codex F3)
