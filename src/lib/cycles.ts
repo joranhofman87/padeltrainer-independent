@@ -141,6 +141,20 @@ export async function attachCycleLocations(cycles: Cycle[]): Promise<Cycle[]> {
   return cycles.map((c) => ({ ...c, location: c.location_id ? byId.get(c.location_id) ?? null : null }));
 }
 
+/**
+ * A public registration form is still open for signup when it is always-open, has no enrollment
+ * deadline, or its deadline is still in the future. Once the deadline passes the form is HIDDEN from
+ * the public "open for registration" lists (owner decision 2026-07-15) — the dedicated
+ * WaitingListCard covers ongoing interest. Same `deadline < now` boundary the cards previously used.
+ */
+export function isRegistrationOpenForSignup(
+  cycle: Pick<Cycle, 'enrollment_deadline' | 'is_always_open'>,
+): boolean {
+  if (cycle.is_always_open) return true;
+  if (!cycle.enrollment_deadline) return true;
+  return new Date(cycle.enrollment_deadline).getTime() >= Date.now();
+}
+
 export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy', ownerId: string): Promise<Cycle[]> {
   // Public/anon list (AcademyOpenCycles / TrainerOpenCycles / AcademyPublicProfile).
   // Registration forms are STANDALONE rows post-decouple (no cycles shell), so the public
@@ -155,7 +169,10 @@ export async function getActiveCycles(ownerType: 'trainer' | 'club' | 'academy',
     .eq('status', 'open')
     .order('start_date', { ascending: true, nullsFirst: true });
   if (error) throw error;
-  return attachCycleLocations(((data ?? []) as Record<string, unknown>[]).map(publicRegistrationRowToCycle));
+  const mapped = ((data ?? []) as Record<string, unknown>[])
+    .map(publicRegistrationRowToCycle)
+    .filter(isRegistrationOpenForSignup);
+  return attachCycleLocations(mapped);
 }
 
 /**
@@ -233,7 +250,9 @@ export async function getLocationCycles(locationId: string): Promise<Cycle[]> {
       .eq('status', 'open')
       .eq('location_id', locationId);
     if (error) throw error;
-    return ((data ?? []) as Record<string, unknown>[]).map(publicRegistrationRowToCycle);
+    return ((data ?? []) as Record<string, unknown>[])
+      .map(publicRegistrationRowToCycle)
+      .filter(isRegistrationOpenForSignup);
   };
 
   const allCycles: Cycle[] = [];

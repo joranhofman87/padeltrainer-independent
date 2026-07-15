@@ -98,11 +98,6 @@ export function LocationOpenCycles({ locationId, locationName: _locationName, cl
     fetchData();
   }, [locationId, user]);
 
-  const isDeadlinePassed = (cycle: Cycle) => {
-    if (cycle.is_always_open) return false;
-    return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
-  };
-
   const getRegisterPath = (cycle: Cycle) => {
     const currentLang = lang || i18n.language;
     if (cycle.owner_type === 'club' && clubSlug) {
@@ -136,7 +131,6 @@ export function LocationOpenCycles({ locationId, locationName: _locationName, cl
       <div className="space-y-4">
         {cycles.map(cycle => {
           const hasApplied = appliedCycles.has(cycle.id);
-          const deadlinePassed = isDeadlinePassed(cycle);
           const canApply = !hasApplied;
 
           return (
@@ -174,11 +168,6 @@ export function LocationOpenCycles({ locationId, locationName: _locationName, cl
                       {t('application.alreadyApplied', 'Applied')}
                     </Badge>
                   )}
-                  {deadlinePassed && !hasApplied && (
-                    <Badge variant="secondary">
-                      {t('application.waitlistBadge', 'Waiting list')}
-                    </Badge>
-                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -193,9 +182,7 @@ export function LocationOpenCycles({ locationId, locationName: _locationName, cl
                       size="sm"
                       onClick={() => navigate(getRegisterPath(cycle))}
                     >
-                      {deadlinePassed
-                        ? t('application.applyWaitlist', 'Join waiting list')
-                        : t('application.apply', 'Apply')}
+                      {t('application.apply', 'Apply')}
                       <ExternalLink className="h-4 w-4 ml-1" />
                     </Button>
                   )}

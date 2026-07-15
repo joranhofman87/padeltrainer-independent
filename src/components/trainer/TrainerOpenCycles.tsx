@@ -54,10 +54,6 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
     fetchData();
   }, [trainerId, user]);
 
-  const isDeadlinePassed = (cycle: Cycle) => {
-    return cycle.enrollment_deadline && new Date(cycle.enrollment_deadline) < new Date();
-  };
-
   const getRegisterPath = (cycleId: string) => {
     return getMarketingPath(`register/${cycleId}`, lang || i18n.language);
   };
@@ -82,7 +78,6 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
       <CardContent className="space-y-4">
         {cycles.map(cycle => {
           const hasApplied = appliedCycles.has(cycle.id);
-          const deadlinePassed = isDeadlinePassed(cycle);
           const canApply = !hasApplied;
 
           return (
@@ -110,11 +105,6 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
                       {t('application.alreadyApplied', 'Applied')}
                     </Badge>
                   )}
-                  {deadlinePassed && !hasApplied && (
-                    <Badge variant="secondary">
-                      {t('application.waitlistBadge', 'Waiting list')}
-                    </Badge>
-                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -129,9 +119,7 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
                       size="sm"
                       onClick={() => navigate(getRegisterPath(cycle.id))}
                     >
-                      {deadlinePassed
-                        ? t('application.applyWaitlist', 'Join waiting list')
-                        : t('application.apply', 'Apply')}
+                      {t('application.apply', 'Apply')}
                       <ExternalLink className="h-4 w-4 ml-1" />
                     </Button>
                   )}
