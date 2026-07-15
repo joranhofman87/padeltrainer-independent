@@ -119,6 +119,28 @@ Deno.test("resolveSlotRecipient (P1-9): academy slot + academy NOT charge-ready 
   assertEquals(r.mollieOrgId, null);
 });
 
+Deno.test("resolveSlotRecipient (F06): academy slot + SOFT-DISCONNECTED academy REFUSES new charges", async () => {
+  const fixtures = {
+    academy_trainers: [
+      { trainer_profile_id: T, status: "active", academy_profile_id: "A", academy: { platform_fee_override: null } },
+    ],
+    academy_mollie_accounts: [
+      // Charge-ready flags all true, but soft-disconnected: the row only survives so late
+      // webhooks can settle — NEW charges must refuse (same shape as not-charge-ready).
+      { academy_profile_id: "A", onboarding_complete: true, charges_enabled: true, access_token: "tok-A", mollie_organization_id: "org-A", refresh_token: null, token_expires_at: null, disconnected_at: "2026-07-15T10:00:00Z" },
+    ],
+    trainer_mollie_accounts: [
+      { trainer_id: T, onboarding_complete: true, access_token: "tok-own", mollie_organization_id: "org-own", refresh_token: null, token_expires_at: null },
+    ],
+    subscription_plans: [{ tier: "academy", plan_type: "trainer", is_active: true, platform_fee_flat: 0.5 }],
+    trainer_profiles: [{ id: T, platform_fee_override: null, subscription_status: "inactive" }],
+  };
+  const r = await resolveSlotRecipient(makeSupabase(fixtures), T, "A");
+  assertEquals(r.accessToken, null);
+  assertEquals(r.recipientType, null);
+  assertEquals(r.mollieOrgId, null);
+});
+
 Deno.test("resolveSlotRecipient (P1-9): trainer-only slot (no academy) routes to the TRAINER", async () => {
   const fixtures = {
     academy_trainers: [],

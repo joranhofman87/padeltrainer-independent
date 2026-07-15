@@ -11,7 +11,10 @@ import { join } from 'node:path';
 let db: PGlite;
 
 function readMigrations(): string {
-  return ['20260706150000_public_slot_payment_ready_rpc.sql']
+  return [
+    '20260706150000_public_slot_payment_ready_rpc.sql',
+    '20260826100000_f06_academy_mollie_soft_disconnect.sql',
+  ]
     .map((f) => readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'))
     .join('\n')
     .split('\n')
@@ -22,6 +25,7 @@ function readMigrations(): string {
 const A = (n: string) => `10000000-0000-0000-0000-0000000000${n}`; // slots
 const ACA = '20000000-0000-0000-0000-00000000000a'; // academy (ready)
 const ACX = '20000000-0000-0000-0000-00000000000b'; // academy (not ready)
+const ACD = '20000000-0000-0000-0000-00000000000c'; // academy (ready but soft-disconnected, F06)
 const TRR = '30000000-0000-0000-0000-00000000000a'; // trainer (ready)
 const TRX = '30000000-0000-0000-0000-00000000000b'; // trainer (not ready)
 
@@ -67,6 +71,14 @@ beforeAll(async () => {
       ('${A('07')}', false, '${TRR}', NULL, 25, NULL);         -- private slot → excluded from results
   `);
   await db.exec(readMigrations());
+  // F06 fixtures AFTER the migrations: the soft-disconnect column only exists once
+  // 20260826100000 has run. A fully KYC-ready but soft-disconnected academy.
+  await db.exec(`
+    INSERT INTO public.academy_mollie_accounts (academy_profile_id, onboarding_complete, charges_enabled, access_token, disconnected_at)
+      VALUES ('${ACD}', true, true, 'tok', now());
+    INSERT INTO public.availability_slots (id, is_public, trainer_id, academy_profile_id, price_per_session, total_price)
+      VALUES ('${A('08')}', true, '${TRR}', '${ACD}', 25, NULL);
+  `);
 });
 
 describe('get_public_slot_payment_ready', () => {
@@ -93,5 +105,9 @@ describe('get_public_slot_payment_ready', () => {
 
   it('never returns a private (is_public=false) slot', async () => {
     expect((await ready([A('07')]))[A('07')]).toBeUndefined();
+  });
+
+  it('academy slot: a soft-disconnected academy is NOT payment-ready even when KYC-ready (F06)', async () => {
+    expect((await ready([A('08')]))[A('08')]).toBe(false);
   });
 });

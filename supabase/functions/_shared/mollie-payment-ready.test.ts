@@ -116,6 +116,33 @@ Deno.test("academy not ready does not become ready via trainer account (separate
   assertEquals(trainer.ready, true);
 });
 
+Deno.test("academy (F06): soft-disconnected refuses NEW charges even when fully KYC-ready", () => {
+  const r = evaluateAcademyMollieReadiness({
+    access_token: "tok",
+    refresh_token: "ref",
+    charges_enabled: true,
+    onboarding_complete: true,
+    mollie_organization_id: "org_1",
+    disconnected_at: "2026-07-15T10:00:00Z",
+  });
+  assertEquals(r.ready, false);
+  assertEquals(r.reason, "disconnected");
+});
+
+Deno.test("connect status (F06): soft-disconnected reports NOT connected (settings UI offers reconnect)", () => {
+  const status = buildAcademyMollieConnectStatus({
+    mollie_organization_id: "org_1",
+    access_token: "tok",
+    refresh_token: "ref",
+    charges_enabled: true,
+    payouts_enabled: true,
+    onboarding_complete: true,
+    disconnected_at: "2026-07-15T10:00:00Z",
+  });
+  assertEquals(status.connected, false);
+  assertEquals(status.paymentReady, false);
+});
+
 Deno.test("trainer: onboarding and access_token required", () => {
   assertEquals(
     evaluateTrainerMollieReadiness({

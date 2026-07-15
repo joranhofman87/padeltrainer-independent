@@ -279,6 +279,7 @@ export type Database = {
           access_token: string | null
           charges_enabled: boolean
           created_at: string
+          disconnected_at: string | null
           id: string
           mollie_organization_id: string
           onboarding_complete: boolean
@@ -293,6 +294,7 @@ export type Database = {
           access_token?: string | null
           charges_enabled?: boolean
           created_at?: string
+          disconnected_at?: string | null
           id?: string
           mollie_organization_id: string
           onboarding_complete?: boolean
@@ -307,6 +309,7 @@ export type Database = {
           access_token?: string | null
           charges_enabled?: boolean
           created_at?: string
+          disconnected_at?: string | null
           id?: string
           mollie_organization_id?: string
           onboarding_complete?: boolean

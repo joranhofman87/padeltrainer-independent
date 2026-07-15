@@ -768,10 +768,12 @@ const handler = async (req: Request): Promise<Response> => {
     if (invoice.academy_profile_id) {
       const { data: mollieAccount } = await supabase
         .from('academy_mollie_accounts')
-        .select('charges_enabled, onboarding_complete')
+        .select('charges_enabled, onboarding_complete, disconnected_at')
         .eq('academy_profile_id', invoice.academy_profile_id)
         .maybeSingle();
-      hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete);
+      // F06: no pay link on the PDF for a soft-disconnected academy — the checkout would
+      // refuse; the invoice falls back to bank-transfer instructions.
+      hasMollie = !!(mollieAccount?.charges_enabled && mollieAccount?.onboarding_complete && !mollieAccount.disconnected_at);
     } else if (invoice.trainer_id) {
       const { data: mollieAccount } = await supabase
         .from('trainer_mollie_accounts')

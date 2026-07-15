@@ -533,12 +533,14 @@ serve(async (req) => {
         // Get academy's Mollie account (need access_token for Platform model)
         const { data: academyMollie } = await supabase
           .from("academy_mollie_accounts")
-          .select("mollie_organization_id, charges_enabled, access_token, refresh_token, token_expires_at")
+          .select("mollie_organization_id, charges_enabled, access_token, refresh_token, token_expires_at, disconnected_at")
           .eq("academy_profile_id", academyTrainer.academy_profile_id)
           .eq("onboarding_complete", true)
           .single();
 
-        if (academyMollie?.access_token && academyMollie?.charges_enabled) {
+        // F06: a soft-disconnected academy refuses NEW charges (the row only survives so
+        // late webhooks can settle) — same refusal shape as missing/not-charge-ready.
+        if (academyMollie?.access_token && academyMollie?.charges_enabled && !academyMollie.disconnected_at) {
           recipientAccessToken = await refreshTokenIfNeeded(supabase, academyMollie, 'academy', academyTrainer.academy_profile_id);
           recipientType = 'academy';
           mollieOrgId = academyMollie.mollie_organization_id;
