@@ -4,6 +4,8 @@ import {
   isOpenCommitment,
   committerKey,
   buildCommitmentInvoicePlan,
+  shouldStampCycleInvoiced,
+  COMMITMENT_SCAN_PAGE_SIZE,
   type CommitmentBooking,
 } from '../../supabase/functions/_shared/cycle-commitment-invoicing.ts';
 import { applySplitPayment } from '../../supabase/functions/_shared/booking-pricing.ts';
@@ -117,5 +119,23 @@ describe('buildCommitmentInvoicePlan', () => {
     const n = plan.batches[0].splitAmongPlayers;
     expect(n).toBe(2);
     expect(applySplitPayment(cycleTotal, n)).toBe(60);
+  });
+});
+
+// F04: the completion stamp is what lets a fully-processed cycle drop out of the daily scan so it
+// no longer re-walks every cycle ever started (the "rescanned forever" half of the finding).
+describe('shouldStampCycleInvoiced (F04)', () => {
+  it('stamps a real run that had no failed batch (cycle fully drafted → drops out of the scan)', () => {
+    expect(shouldStampCycleInvoiced({ dryRun: false, failedBatchCount: 0 })).toBe(true);
+  });
+  it('does NOT stamp when a batch failed (leaves the cycle in scope for the next run to retry)', () => {
+    expect(shouldStampCycleInvoiced({ dryRun: false, failedBatchCount: 1 })).toBe(false);
+  });
+  it('never stamps on a dry-run preview', () => {
+    expect(shouldStampCycleInvoiced({ dryRun: true, failedBatchCount: 0 })).toBe(false);
+  });
+  it('keeps the keyset page size safely under PostgREST\'s 1000-row cap', () => {
+    expect(COMMITMENT_SCAN_PAGE_SIZE).toBeGreaterThan(0);
+    expect(COMMITMENT_SCAN_PAGE_SIZE).toBeLessThan(1000);
   });
 });

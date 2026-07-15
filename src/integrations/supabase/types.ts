@@ -2518,6 +2518,7 @@ export type Database = {
       cycles: {
         Row: {
           category_id: string | null
+          commitment_invoiced_at: string | null
           created_at: string
           currency: string | null
           description: string | null
@@ -2541,6 +2542,7 @@ export type Database = {
         }
         Insert: {
           category_id?: string | null
+          commitment_invoiced_at?: string | null
           created_at?: string
           currency?: string | null
           description?: string | null
@@ -2564,6 +2566,7 @@ export type Database = {
         }
         Update: {
           category_id?: string | null
+          commitment_invoiced_at?: string | null
           created_at?: string
           currency?: string | null
           description?: string | null
