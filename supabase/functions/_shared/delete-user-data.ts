@@ -167,18 +167,14 @@ export async function deleteUserData(
       supabaseAdmin.from("proposed_assignments").delete().eq("trainer_id", trainerProfile.id),
     ]);
 
-    // FK-ordered sequential deletes. guest_players is referenced by invoices
-    // (NO ACTION) and intake_requests (NO ACTION), so BOTH must be removed
-    // before guest_players or the guest_players delete is FK-rejected.
-    // bookings.slot_id is ON DELETE CASCADE, so deleting the slots first
-    // cascades away the bookings that reference these guests.
-    await runDelete(
-      supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id),
-      "availability_slots"
-    );
+    // RETAIN financial records (R03). Previously this branch hard-deleted the trainer's
+    // availability_slots (cascading away every booking on them, paid included) and invoices —
+    // erasing legally-required financial history. Now the slots + their bookings + the invoices are
+    // KEPT; the trainer_profiles row is anonymized into a shell (below) so those FKs stay valid.
 
-    // Delete cycles owned by this trainer (and their intake_requests, which
-    // reference this trainer's guest_players via NO ACTION) BEFORE guest_players.
+    // Delete cycles owned by this trainer + their intake_requests. Cycles are programs, not
+    // financial records: availability_slots.cyclus_id and invoices.cycle_id are ON DELETE SET NULL,
+    // so removing the cycle detaches the retained slots/invoices from it rather than erasing them.
     const { data: trainerCycles } = await supabaseAdmin
       .from("cycles")
       .select("id")
@@ -197,13 +193,10 @@ export async function deleteUserData(
       );
     }
 
-    // invoices reference guest_players (NO ACTION) — must precede guest_players.
-    await runDelete(
-      supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id),
-      "invoices"
-    );
-
-    // Now safe: all NO ACTION references to these guests are gone.
+    // Erase the trainer's guest players (students). The RETAINED invoices reference them via
+    // invoices.guest_player_id, now ON DELETE SET NULL (was NO ACTION) — so this delete succeeds and
+    // the invoice keeps the customer name/address it denormalized at issue time (a legal record).
+    // bookings.guest_player_id is already SET NULL, so the retained bookings survive too.
     await runDelete(
       supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id),
       "guest_players"
@@ -222,8 +215,45 @@ export async function deleteUserData(
       .update({ trainer_id: null })
       .eq("trainer_id", trainerProfile.id);
 
-    // Delete trainer profile
-    await supabaseAdmin.from("trainer_profiles").delete().eq("user_id", targetUserId);
+    // Anonymize the trainer_profiles row into a retained SHELL instead of deleting it (R03): null the
+    // business/identity PII, hide it, detach it from the (about-to-be-deleted) auth user, and stamp
+    // anonymized_at. Keeping the row keeps invoices.trainer_id + availability_slots.trainer_id valid,
+    // so the retained invoices/slots/bookings are never cascade-erased — including by the final
+    // auth.deleteUser() (user_id is nulled here, and its FK is now ON DELETE SET NULL as a backstop).
+    // The trainer's name/email live on the profiles row, erased separately below.
+    await runDelete(
+      supabaseAdmin
+        .from("trainer_profiles")
+        .update({
+          user_id: null,
+          anonymized_at: new Date().toISOString(),
+          is_public: false,
+          is_verified: false,
+          business_name: null,
+          business_address: null,
+          kvk_number: null,
+          btw_number: null,
+          iban: null,
+          bic: null,
+          stripe_account_id: null,
+          hourly_rate: null,
+          certifications: null,
+          specializations: null,
+          experience_years: null,
+          knltb_rating: null,
+          favourite_quote: null,
+          coaching_method: null,
+          video_url: null,
+          website_url: null,
+          slug: null,
+          social_instagram: null,
+          social_tiktok: null,
+          social_youtube: null,
+          social_linkedin: null,
+        })
+        .eq("id", trainerProfile.id),
+      "trainer_profiles (anonymize shell)",
+    );
   }
 
   // 8. Handle player profile if exists

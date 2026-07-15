@@ -4,10 +4,11 @@ import { deleteUserData } from "./delete-user-data.ts";
 
 type Row = Record<string, unknown>;
 
-// Fake admin client that models the real NO ACTION FKs:
-//   invoices.guest_player_id  -> guest_players.id   (RESTRICT)
-//   intake_requests.guest_player_id -> guest_players.id (RESTRICT)
-// Deleting guest_players while any such row still references it returns an FK error.
+// Fake admin client modelling the A2 (R03) trainer-deletion schema:
+//   invoices.trainer_id      -> trainer_profiles.id (SET NULL) — invoices are RETAINED, not deleted
+//   invoices.guest_player_id -> guest_players.id    (SET NULL) — nulled when the guest is erased
+//   intake_requests.guest_player_id -> guest_players.id (NO ACTION) — still blocks until removed
+// The trainer_profiles row is anonymized (update), never deleted; its slots + invoices are retained.
 function makeFakeAdmin() {
   const store: Record<string, Row[]> = {
     trainer_profiles: [{ id: "tp1", user_id: "u1" }],
@@ -22,9 +23,8 @@ function makeFakeAdmin() {
   };
   const callOrder: string[] = [];
 
-  const remainingGuestRefs = () =>
-    (store.invoices ?? []).some((r) => r.guest_player_id === "g1") ||
-    (store.intake_requests ?? []).some((r) => r.guest_player_id === "g1");
+  // Only intake_requests (NO ACTION) can still block the guest delete; invoices are SET NULL.
+  const intakeStillRefsGuest = () => (store.intake_requests ?? []).some((r) => r.guest_player_id === "g1");
 
   const makeSelect = (t: string) => {
     const filters: Array<(r: Row) => boolean> = [];
@@ -44,10 +44,12 @@ function makeFakeAdmin() {
     const filters: Array<(r: Row) => boolean> = [];
     const run = () => {
       callOrder.push(`delete:${t}`);
-      if (t === "guest_players" && remainingGuestRefs()) {
-        return Promise.resolve({
-          error: { code: "23503", message: "update or delete on guest_players violates FK" },
-        });
+      if (t === "guest_players") {
+        if (intakeStillRefsGuest()) {
+          return Promise.resolve({ error: { code: "23503", message: "update or delete on guest_players violates FK" } });
+        }
+        // SET NULL: erasing the guest nulls the retained invoices' + bookings' guest_player_id.
+        for (const r of store.invoices ?? []) if (r.guest_player_id === "g1") r.guest_player_id = null;
       }
       store[t] = (store[t] ?? []).filter((r) => !filters.every((f) => f(r)));
       return Promise.resolve({ error: null });
@@ -59,41 +61,68 @@ function makeFakeAdmin() {
     return d;
   };
 
+  const makeUpdate = (t: string, patch: Row) => {
+    const filters: Array<(r: Row) => boolean> = [];
+    const run = () => {
+      callOrder.push(`update:${t}`);
+      for (const r of store[t] ?? []) if (filters.every((f) => f(r))) Object.assign(r, patch);
+      return Promise.resolve({ data: null, error: null });
+    };
+    const u: Record<string, unknown> = {};
+    u.eq = (c: string, v: unknown) => { filters.push((r) => r[c] === v); return run(); };
+    u.in = (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return run(); };
+    return u;
+  };
+
   const admin = {
+    _store: store,
     _callOrder: callOrder,
     from(t: string) {
       return {
         select: () => makeSelect(t),
         delete: () => makeDelete(t),
-        update: (_p: Row) => ({ eq: () => Promise.resolve({ data: null, error: null }), in: () => Promise.resolve({ data: null, error: null }) }),
+        update: (p: Row) => makeUpdate(t, p),
       };
     },
     auth: { admin: { deleteUser: (_id: string) => Promise.resolve({ error: null }) } },
   };
-  return admin as unknown as SupabaseClient & { _callOrder: string[] };
+  return admin as unknown as SupabaseClient & { _store: Record<string, Row[]>; _callOrder: string[] };
 }
 
-Deno.test("deleteUserData removes invoices + intake_requests before guest_players (no swallowed FK error)", async () => {
+Deno.test("deleteUserData RETAINS the trainer's invoices + slots and anonymizes the trainer shell (R03)", async () => {
   const admin = makeFakeAdmin();
   await deleteUserData(admin, "u1");
+  const store = (admin as unknown as { _store: Record<string, Row[]> })._store;
   const order = (admin as unknown as { _callOrder: string[] })._callOrder;
-  const gIdx = order.indexOf("delete:guest_players");
-  const invIdx = order.indexOf("delete:invoices");
-  const irIdx = order.indexOf("delete:intake_requests");
-  // guest_players must come AFTER both blocking refs.
-  assertEquals(invIdx !== -1 && invIdx < gIdx, true, "invoices deleted before guest_players");
-  assertEquals(irIdx !== -1 && irIdx < gIdx, true, "intake_requests deleted before guest_players");
+
+  // Financial records retained — never deleted in the trainer branch.
+  assertEquals(store.invoices.length, 1, "invoices retained");
+  assertEquals(store.availability_slots.length, 1, "slots retained");
+  assertEquals(order.includes("delete:invoices"), false, "invoices are not deleted");
+  assertEquals(order.includes("delete:availability_slots"), false, "trainer slots are not deleted");
+
+  // The trainer row is anonymized (updated) into a shell, not deleted.
+  assertEquals(order.includes("delete:trainer_profiles"), false, "trainer_profiles not hard-deleted");
+  assertEquals(order.includes("update:trainer_profiles"), true, "trainer_profiles anonymized");
+  assertEquals(store.trainer_profiles[0].user_id, null, "shell user_id detached");
+  assertEquals(typeof store.trainer_profiles[0].anonymized_at, "string", "shell anonymized_at stamped");
+
+  // Guests are still erased; the retained invoice's guest reference is SET NULL.
+  assertEquals(store.guest_players.length, 0, "guest players erased");
+  assertEquals(store.invoices[0].guest_player_id, null, "retained invoice guest ref nulled");
 });
 
-Deno.test("deleteUserData THROWS (never swallows) when a guest_players FK delete is rejected", async () => {
-  // Force the pre-fix ordering hazard: an extra invoice inserted mid-flight would
-  // be caught by runDelete. Here we simply assert the helper surfaces a real error.
+Deno.test("deleteUserData THROWS (never swallows) when the guest_players delete is FK-rejected", async () => {
   const admin = makeFakeAdmin();
-  // Sabotage: make invoices delete a no-op so a ref survives past guest_players.
+  // Sabotage: make intake_requests delete a no-op so a NO ACTION ref survives past guest_players.
   const orig = admin.from.bind(admin);
   (admin as unknown as { from: (t: string) => unknown }).from = (t: string) => {
-    if (t === "invoices") {
-      return { select: () => ({ eq: () => ({ then: (r: (v: { data: Row[]; error: null }) => void) => r({ data: [], error: null }) }) }), delete: () => ({ eq: () => Promise.resolve({ error: null }) }), update: () => ({ eq: () => Promise.resolve({ error: null }) }) };
+    if (t === "intake_requests") {
+      return {
+        select: () => ({ eq: () => ({ then: (r: (v: { data: Row[]; error: null }) => void) => r({ data: [], error: null }) }) }),
+        delete: () => ({ eq: () => Promise.resolve({ error: null }), in: () => Promise.resolve({ error: null }) }),
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      };
     }
     return (orig as (t: string) => unknown)(t);
   };

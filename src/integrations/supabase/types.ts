@@ -6108,6 +6108,7 @@ export type Database = {
       }
       trainer_profiles: {
         Row: {
+          anonymized_at: string | null
           banner_url: string | null
           bic: string | null
           btw_number: string | null
@@ -6166,13 +6167,14 @@ export type Database = {
           trial_started_at: string | null
           updated_at: string
           use_manual_invoicing: boolean | null
-          user_id: string
+          user_id: string | null
           video_url: string | null
           waiting_list_enabled: boolean
           website_url: string | null
           welcome_message: string | null
         }
         Insert: {
+          anonymized_at?: string | null
           banner_url?: string | null
           bic?: string | null
           btw_number?: string | null
@@ -6231,13 +6233,14 @@ export type Database = {
           trial_started_at?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
-          user_id: string
+          user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean
           website_url?: string | null
           welcome_message?: string | null
         }
         Update: {
+          anonymized_at?: string | null
           banner_url?: string | null
           bic?: string | null
           btw_number?: string | null
@@ -6296,7 +6299,7 @@ export type Database = {
           trial_started_at?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
-          user_id?: string
+          user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean
           website_url?: string | null
