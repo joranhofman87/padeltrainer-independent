@@ -3536,6 +3536,7 @@ export type Database = {
           rebook_cyclus_id: string | null
           rebook_group_id: string | null
           registration_id: string | null
+          render_path: string | null
           sent_at: string | null
           split_count: number | null
           status: string
@@ -3575,6 +3576,7 @@ export type Database = {
           rebook_cyclus_id?: string | null
           rebook_group_id?: string | null
           registration_id?: string | null
+          render_path?: string | null
           sent_at?: string | null
           split_count?: number | null
           status?: string
@@ -3614,6 +3616,7 @@ export type Database = {
           rebook_cyclus_id?: string | null
           rebook_group_id?: string | null
           registration_id?: string | null
+          render_path?: string | null
           sent_at?: string | null
           split_count?: number | null
           status?: string

@@ -895,13 +895,15 @@ const handler = async (req: Request): Promise<Response> => {
     const pdfUrl = pdfSigned.data?.signedUrl || null;
     const htmlUrl = htmlSigned.data?.signedUrl || null;
 
-    // Update invoice with the actual PDF URL (not HTML)
-    if (pdfUrl) {
-      await supabase
-        .from('invoices')
-        .update({ pdf_url: pdfUrl })
-        .eq('id', invoiceId);
-    }
+    // Stamp render_path (Theme B): the DURABLE storage key prefix of the renders just uploaded —
+    // pdf_url is only a 1h signed URL. forward-invoice reads it instead of re-deriving the folder,
+    // and the storage GC keeps exactly the objects some invoice's render_path claims. Stamped
+    // whenever the uploads succeeded (we're past the HTML failure return; PDF failure alerted
+    // above), even if signing failed — the objects exist either way.
+    await supabase
+      .from('invoices')
+      .update({ render_path: `${folderKey}/${invoice.invoice_number}`, ...(pdfUrl ? { pdf_url: pdfUrl } : {}) })
+      .eq('id', invoiceId);
 
     logStep("success", { invoiceId, invoiceNumber: invoice.invoice_number, hasPdf: !!pdfUrl });
 

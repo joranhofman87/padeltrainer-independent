@@ -23,7 +23,9 @@ docs: [`PAYMENT_INVARIANTS.md`](PAYMENT_INVARIANTS.md) (the rules these flows mu
 
 Key tables: `bookings` (status/payment_status/hold_expires_at/mollie_payment_id/paid_at), `invoices`
 (status/total/booking_ids/public_token/player_id/guest_player_id/academy_profile_id/trainer_id/cycle_id/
-rebook_group_id/rebook_cyclus_id/paid_at/forwarded_at), `slot_priority_claims`, `guest_players`,
+rebook_group_id/rebook_cyclus_id/paid_at/forwarded_at/render_path — the durable storage key prefix of the
+rendered HTML+PDF, stamped by `generate-invoice`, read by `forward-invoice`, ground truth for the storage
+GC; `pdf_url` is only a 1h signed URL), `slot_priority_claims`, `guest_players`,
 `academy_mollie_accounts` / `trainer_mollie_accounts`, `academy_trainers`, `intake_requests`,
 `payment_audit_log`, `email_delivery_events`, `rate_limits`.
 

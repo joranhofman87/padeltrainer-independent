@@ -86,7 +86,7 @@ describe('renumberDraftInvoices', () => {
     ]);
   });
 
-  it('renumbers each draft via the atomic allocator and resets pdf_url', async () => {
+  it('renumbers each draft via the atomic allocator and resets pdf_url + render_path', async () => {
     selectResult = {
       data: [
         { id: 'a', invoice_number: 'INV-2026-0001' },
@@ -105,8 +105,8 @@ describe('renumberDraftInvoices', () => {
 
     const year = new Date().getFullYear();
     expect(updateCalls).toEqual([
-      { payload: { invoice_number: `INV-${year}-0051`, pdf_url: null }, id: 'a' },
-      { payload: { invoice_number: `INV-${year}-0052`, pdf_url: null }, id: 'b' },
+      { payload: { invoice_number: `INV-${year}-0051`, pdf_url: null, render_path: null }, id: 'a' },
+      { payload: { invoice_number: `INV-${year}-0052`, pdf_url: null, render_path: null }, id: 'b' },
     ]);
     expect(result.updated).toBe(2);
     expect(result.failures).toEqual([]);

@@ -87,9 +87,13 @@ export async function renumberDraftInvoices(opts: {
         });
         nextNumber = allocation.sequence + 1;
 
+        // pdf_url + render_path both null: the number IS the storage key, so the old renders no
+        // longer belong to this invoice. Regeneration stamps the new path; the orphaned old
+        // objects are unmatched by any render_path and the storage GC reaps them after the grace
+        // period (Theme B) — a client-side caller cannot storage.remove them itself (RLS).
         const { error: updateError } = await supabase
           .from('invoices')
-          .update({ invoice_number: allocation.invoiceNumber, pdf_url: null })
+          .update({ invoice_number: allocation.invoiceNumber, pdf_url: null, render_path: null })
           .eq('id', draft.id);
 
         if (!updateError) {
