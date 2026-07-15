@@ -99,10 +99,10 @@ export function ProfileHeroCard({
     <Card className="overflow-hidden">
       <CardContent className="p-0">
         <div className="relative bg-muted/30 p-4 md:p-6">
-          <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
             {/* Avatar with video play button */}
             <div className="relative mx-auto lg:mx-0">
-              <Avatar className="h-24 w-24 ring-4 ring-background shadow-xl bg-muted">
+              <Avatar className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 ring-2 sm:ring-4 ring-background shadow-xl bg-muted">
                 <AvatarImage 
                   src={avatarUrl || undefined} 
                   alt={avatarAlt || `${name} profile photo`}
@@ -127,8 +127,8 @@ export function ProfileHeroCard({
 
             {/* Main Info */}
             <div className="flex-1 text-center lg:text-left">
-              <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-3">
-                <h1 className="text-3xl md:text-4xl font-bold">{name}</h1>
+              <div className="flex flex-col lg:flex-row lg:items-center gap-2 mb-2 sm:mb-3">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">{name}</h1>
                 {isVerified && (
                   <TooltipProvider>
                     <Tooltip>
@@ -145,7 +145,7 @@ export function ProfileHeroCard({
               </div>
 
               {/* Location & Quick Stats */}
-              <div className="flex flex-wrap gap-4 justify-center lg:justify-start mb-4">
+              <div className="flex flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start mb-3 sm:mb-4">
                 {location && (
                   <span className="text-muted-foreground flex items-center gap-1">
                     <MapPin className="h-4 w-4" />
@@ -192,9 +192,9 @@ export function ProfileHeroCard({
               )}
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons — 2-col grid on mobile (compact), vertical stack on desktop */}
             {children && (
-              <div className="flex flex-col gap-2 w-full lg:w-auto lg:min-w-[180px]">
+              <div className="grid grid-cols-2 gap-2 w-full lg:flex lg:flex-col lg:w-auto lg:min-w-[180px]">
                 {children}
               </div>
             )}

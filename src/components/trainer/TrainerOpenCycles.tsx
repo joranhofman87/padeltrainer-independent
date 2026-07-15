@@ -77,8 +77,8 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
 
           return (
             <div key={cycle.id} className="border rounded-lg p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                <div className="min-w-0 flex-1">
                   <h4 className="font-medium">{cycle.name}</h4>
                   <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
@@ -94,7 +94,7 @@ export function TrainerOpenCycles({ trainerId, trainerName: _trainerName }: Trai
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {hasApplied && (
                     <Badge variant="outline" className="text-green-600 border-green-600">
                       {t('application.alreadyApplied', 'Applied')}
