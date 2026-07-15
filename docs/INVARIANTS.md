@@ -156,8 +156,10 @@ deletion no longer erases financial rows. `delete-user-data` retains invoices + 
 anonymized-shell `trainer_profiles` (migration `20260826140000`: `invoices.trainer_id` +
 `trainer_profiles.user_id` CASCADE→SET NULL, `invoices.guest_player_id` NO ACTION→SET NULL) and retains
 player bookings via `bookings.anonymized_at` + `bookings.player_id` CASCADE→SET NULL (migration
-`20260826130000`). The DB-level delete guard (trigger forbidding `DELETE` of a paid invoice) is **still
-missing** — a direct service-role/SQL delete remains possible.
+`20260826130000`). `bulk-cleanup-users` (the admin wipe tool) now routes through the same shared
+`deleteUserData` instead of its own drifted hard-delete copy, so **every** deletion door shares the
+retained-financials semantics. The DB-level delete guard (trigger forbidding `DELETE` of a paid invoice)
+is **still missing** — a direct service-role/SQL delete remains possible.
 
 **Risk:** P2 today (no automated path deletes paid invoices), P1 if a future delete surface is added without a guard.
 
