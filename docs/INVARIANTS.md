@@ -49,6 +49,7 @@ post-fix code.
 | I-11 | Public tokens expose only their own record | token-keyed RPCs + auto-revoke | 🟡 |
 | I-12 | Payment webhooks are idempotent | atomic-claim UPDATE gates side effects | 🟢 |
 | I-13 | No live edge function depends on an unapplied migration | process + CI `db reset` gate | 🔴 (process) |
+| I-14 | A cycle/registration always has an existing owner; owners with programs cannot be deleted | owner-existence trigger + RESTRICT delete guards | 🟢 |
 
 ---
 
@@ -304,6 +305,34 @@ doesn't fail typecheck — which is exactly why the runtime dependency must be c
 See backlog B-6 and B-7.
 
 **Risk:** P0 if broken; today it holds only by discipline + the `db reset` gate.
+
+## I-14 — A cycle/registration always has an existing owner 🟢 (P1)
+
+**Why (audit R22):** `cycles.owner_id` / `registrations.owner_id` are polymorphic (`owner_type` ∈
+trainer|club|academy) and **cannot carry a real FK**. Without enforcement, an orphan owner_id was
+insertable, and deleting an owner (e.g. the admin academy-delete flow) silently orphaned its programs —
+every RLS policy filters `owner_id IN (SELECT …)`, so an orphaned cycle matches no owner and becomes an
+unmanageable zombie still carrying slots/intake data.
+
+**Enforced (migration `20260826170000`, FK-equivalent via triggers, zero app-surface change):**
+`enforce_program_owner_exists` (BEFORE INSERT/UPDATE OF owner_id, owner_type on both tables) requires the
+owner row to exist in the table `owner_type` names — FK insert-side. `guard_owner_has_no_programs`
+(BEFORE DELETE on `trainer_profiles` / `club_profiles` / `academy_profiles`) refuses deleting an owner
+that still owns programs, with an actionable count+hint — `ON DELETE RESTRICT` semantics; deleting an
+owner's programs is a **deliberate act**, never a silent orphaning (Theme A's block-don't-automate
+philosophy). Both SECURITY DEFINER (the existence check must not be defeated by RLS hiding the owner row
+from the inserting user). Constant-time at volume: PK lookup + the existing
+`idx_cycles_owner`/`idx_registrations_owner` `(owner_type, owner_id)` btrees.
+
+**Compatible by construction:** `deleteUserData` deletes an owner's cycles *before* the owner row is
+touched, and since Theme A the trainer row is anonymized (UPDATE), never deleted.
+
+**Tests:** `ownerReferentialIntegrity.pglite.test.ts` (runs the real migration: orphan insert/update
+blocked per owner type; owner delete blocked while owning programs; delete allowed after cleanup;
+trainer-shell anonymize unaffected).
+
+**Risk:** P1 (zombie data + skewed reporting, no direct money loss). Prod verified 0 orphans at
+enforcement time (2026-07-15; 533 cycles + 12 registrations, all academy-owned).
 
 ---
 
