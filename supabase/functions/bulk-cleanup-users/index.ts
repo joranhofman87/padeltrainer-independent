@@ -1,4 +1,20 @@
+// Admin-only "wipe all non-admin users" tool (dev/reset utility; UI: src/lib/admin.ts).
+//
+// B0 (audit Theme B prereq / R03+R06 leftover): this function used to carry its OWN drifted copy of
+// the per-user deletion sequence, which still HARD-DELETED the trainer's availability_slots
+// (cascading away every booking, paid included) and invoices — the exact financial-record loss
+// Theme A (R02/R03, PRs #549/#550) removed from the shared path. Its player branch had also rotted:
+// the bare bookings anonymize (no anonymized_at stamp) now trips booking_has_player, gets
+// swallowed, and the subsequent profiles delete FK-fails — stranding half-deleted users.
+//
+// Now every user goes through the SAME shared deleteUserData as delete-user and
+// request-account-deletion: financial records are retained (anonymized-shell trainer_profiles,
+// anonymized bookings/invoices), clubs/academies are preserved with created_by nulled, ordering and
+// error surfacing are maintained in ONE place. This function keeps only what is bulk-specific: the
+// admin gate, the {confirm:true} safety latch, the preserved-admins set, per-user error collection,
+// and the audit log entry.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { deleteUserData } from "../_shared/delete-user-data.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -102,101 +118,14 @@ Deno.serve(async (req) => {
 
     for (const profile of allProfiles || []) {
       const userId = profile.user_id;
-      
+
       try {
         console.log(`Processing user: ${userId}`);
-
-        // 1. Delete calendar events
-        await supabaseAdmin.from("calendar_events").delete().eq("user_id", userId);
-
-        // 2. Delete notification preferences
-        await supabaseAdmin.from("notification_preferences").delete().eq("user_id", userId);
-
-        // 3. Get and delete club profiles created by this user
-        const { data: userClubProfiles } = await supabaseAdmin
-          .from("club_profiles")
-          .select("id")
-          .eq("created_by", userId);
-
-        if (userClubProfiles && userClubProfiles.length > 0) {
-          const clubIds = userClubProfiles.map((c) => c.id);
-          await supabaseAdmin.from("club_trainer_invitations").delete().in("club_profile_id", clubIds);
-          await supabaseAdmin.from("club_players").delete().in("club_profile_id", clubIds);
-          await supabaseAdmin.from("club_mollie_accounts").delete().in("club_profile_id", clubIds);
-          await supabaseAdmin.from("club_managers").delete().in("club_profile_id", clubIds);
-          await supabaseAdmin.from("club_profiles").delete().in("id", clubIds);
-        }
-
-        // 4. Delete remaining club manager associations
-        await supabaseAdmin.from("club_managers").delete().eq("user_id", userId);
-
-        // 5. Get and delete trainer profile data
-        const { data: trainerProfile } = await supabaseAdmin
-          .from("trainer_profiles")
-          .select("id")
-          .eq("user_id", userId)
-          .single();
-
-        if (trainerProfile) {
-          await supabaseAdmin.from("trainer_locations").delete().eq("trainer_id", trainerProfile.id);
-          await supabaseAdmin.from("trainer_followers").delete().eq("trainer_id", trainerProfile.id);
-          await supabaseAdmin.from("trainer_profile_views").delete().eq("trainer_id", trainerProfile.id);
-          // FK-ordered (P2-15): availability_slots first (cascades bookings), then the
-          // NO ACTION references to guest_players (intake_requests + invoices), then
-          // guest_players. Error-check each so an FK rejection surfaces via the per-user
-          // try/catch (results.errors) instead of silently self-healing on the later
-          // trainer_profiles cascade.
-          const delSlots = await supabaseAdmin.from("availability_slots").delete().eq("trainer_id", trainerProfile.id);
-          if (delSlots.error) throw new Error(`availability_slots: ${delSlots.error.message}`);
-
-          const { data: trainerGuests } = await supabaseAdmin
-            .from("guest_players").select("id").eq("trainer_id", trainerProfile.id);
-          const guestIds = (trainerGuests ?? []).map((g: { id: string }) => g.id);
-          if (guestIds.length > 0) {
-            const delIntake = await supabaseAdmin.from("intake_requests").delete().in("guest_player_id", guestIds);
-            if (delIntake.error) throw new Error(`intake_requests: ${delIntake.error.message}`);
-          }
-
-          const delInvoices = await supabaseAdmin.from("invoices").delete().eq("trainer_id", trainerProfile.id);
-          if (delInvoices.error) throw new Error(`invoices: ${delInvoices.error.message}`);
-
-          const delGuests = await supabaseAdmin.from("guest_players").delete().eq("trainer_id", trainerProfile.id);
-          if (delGuests.error) throw new Error(`guest_players: ${delGuests.error.message}`);
-
-          await supabaseAdmin.from("trainer_profiles").delete().eq("user_id", userId);
-        }
-
-        // 6. Get and delete player profile data
-        const { data: playerProfile } = await supabaseAdmin
-          .from("profiles")
-          .select("id")
-          .eq("user_id", userId)
-          .single();
-
-        if (playerProfile) {
-          await supabaseAdmin.from("player_locations").delete().eq("profile_id", playerProfile.id);
-          await supabaseAdmin.from("player_rating_history").delete().eq("profile_id", playerProfile.id);
-          await supabaseAdmin.from("trainer_followers").delete().eq("player_id", playerProfile.id);
-          await supabaseAdmin.from("bookings").update({ player_id: null }).eq("player_id", playerProfile.id);
-          await supabaseAdmin.from("reviews").update({ is_anonymous: true }).eq("player_id", playerProfile.id);
-        }
-
-        // 7. Delete user roles
-        await supabaseAdmin.from("user_roles").delete().eq("user_id", userId);
-
-        // 8. Delete profile
-        await supabaseAdmin.from("profiles").delete().eq("user_id", userId);
-
-        // 9. Delete auth user
-        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-
-        if (deleteError) {
-          console.error(`Error deleting auth user ${userId}:`, deleteError);
-          results.errors.push(`${profile.email}: ${deleteError.message}`);
-        } else {
-          results.deleted.push(`${profile.email} (${userId})`);
-          console.log(`Deleted user: ${userId}`);
-        }
+        // The one shared deletion path (retains financial records, preserves orgs,
+        // FK-ordered, throws loudly on any failed step incl. the auth-user delete).
+        await deleteUserData(supabaseAdmin, userId);
+        results.deleted.push(`${profile.email} (${userId})`);
+        console.log(`Deleted user: ${userId}`);
       } catch (error) {
         console.error(`Error processing user ${userId}:`, error);
         results.errors.push(`${profile.email}: ${error instanceof Error ? error.message : "Unknown error"}`);
