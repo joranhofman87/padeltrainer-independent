@@ -6167,7 +6167,7 @@ export type Database = {
           trial_started_at: string | null
           updated_at: string
           use_manual_invoicing: boolean | null
-          user_id: string
+          user_id: string | null
           video_url: string | null
           waiting_list_enabled: boolean
           website_url: string | null
@@ -6233,7 +6233,7 @@ export type Database = {
           trial_started_at?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
-          user_id: string
+          user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean
           website_url?: string | null
@@ -6299,7 +6299,7 @@ export type Database = {
           trial_started_at?: string | null
           updated_at?: string
           use_manual_invoicing?: boolean | null
-          user_id?: string
+          user_id?: string | null
           video_url?: string | null
           waiting_list_enabled?: boolean
           website_url?: string | null
