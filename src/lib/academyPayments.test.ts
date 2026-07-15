@@ -45,6 +45,21 @@ describe('academyPayments auth headers', () => {
     });
   });
 
+  it('disconnectAcademyMollie surfaces the open-payments refusal message (F06)', async () => {
+    invokeMock.mockResolvedValue({
+      data: {
+        success: false,
+        reason: 'open_payments',
+        openInvoices: 2,
+        liveHolds: 1,
+        error: 'Cannot disconnect yet: 2 unpaid invoice(s) with a live Mollie payment link and 1 booking(s) mid-payment. Settle or cancel these first, then try again.',
+      },
+      error: null,
+    });
+    await expect(disconnectAcademyMollie('academy-id', 'user-jwt-token'))
+      .rejects.toThrow(/Cannot disconnect yet/);
+  });
+
   it('throws when access token is missing', async () => {
     await expect(checkAcademyConnectStatus('academy-id', '')).rejects.toThrow('Not authenticated');
     expect(invokeMock).not.toHaveBeenCalled();

@@ -4,7 +4,8 @@ export type MolliePaymentUnavailableReason =
   | "no_row"
   | "onboarding_incomplete"
   | "charges_disabled"
-  | "missing_access_token";
+  | "missing_access_token"
+  | "disconnected";
 
 export type AcademyMollieAccountRow = {
   access_token: string | null;
@@ -14,6 +15,8 @@ export type AcademyMollieAccountRow = {
   payouts_enabled?: boolean;
   onboarding_complete: boolean;
   mollie_organization_id?: string | null;
+  /** F06 soft-disconnect stamp: set → refuse all NEW charges; the row stays so late webhooks settle. */
+  disconnected_at?: string | null;
 };
 
 export type TrainerMollieAccountRow = {
@@ -37,6 +40,11 @@ export function evaluateAcademyMollieReadiness(
 ): MolliePaymentReadiness<AcademyMollieAccountRow> {
   if (!account) {
     return { ready: false, reason: "no_row" };
+  }
+  // F06: a soft-disconnected academy refuses every NEW charge, whatever the KYC flags
+  // say — the row only survives so late webhooks can settle in-flight payments.
+  if (account.disconnected_at) {
+    return { ready: false, reason: "disconnected", account };
   }
   if (!account.onboarding_complete) {
     return { ready: false, reason: "onboarding_incomplete", account };
@@ -75,7 +83,7 @@ export async function getAcademyMolliePaymentReadiness(
   const { data } = await supabase
     .from("academy_mollie_accounts")
     .select(
-      "access_token, refresh_token, token_expires_at, charges_enabled, onboarding_complete, mollie_organization_id",
+      "access_token, refresh_token, token_expires_at, charges_enabled, onboarding_complete, mollie_organization_id, disconnected_at",
     )
     .eq("academy_profile_id", academyProfileId)
     .maybeSingle();
@@ -108,7 +116,11 @@ export function isMollieOrganizationConnected(
 export function buildAcademyMollieConnectStatus(
   account: AcademyMollieAccountRow | null | undefined,
 ) {
-  const connected = isMollieOrganizationConnected(account?.mollie_organization_id);
+  // F06: a soft-disconnected academy reports NOT connected (the settings UI then offers
+  // "connect", and mollie-callback clears the stamp on reconnect) — the surviving row is
+  // a settlement artifact, not a connection.
+  const connected = isMollieOrganizationConnected(account?.mollie_organization_id) &&
+    !account?.disconnected_at;
   const readiness = evaluateAcademyMollieReadiness(account);
   return {
     connected,

@@ -226,6 +226,7 @@ serve(async (req) => {
           onboarding_complete: readiness.onboardingComplete,
           charges_enabled: readiness.chargesEnabled,
           payouts_enabled: readiness.payoutsEnabled,
+          disconnected_at: null, // F06: reconnecting clears the soft-disconnect stamp
           updated_at: new Date().toISOString(),
         }, { onConflict: 'academy_profile_id' });
 
