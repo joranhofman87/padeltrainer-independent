@@ -1471,6 +1471,7 @@ export type Database = {
       bookings: {
         Row: {
           amount_includes_extras: boolean | null
+          anonymized_at: string | null
           court_type: string | null
           created_at: string
           discount_amount: number | null
@@ -1498,6 +1499,7 @@ export type Database = {
         }
         Insert: {
           amount_includes_extras?: boolean | null
+          anonymized_at?: string | null
           court_type?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -1525,6 +1527,7 @@ export type Database = {
         }
         Update: {
           amount_includes_extras?: boolean | null
+          anonymized_at?: string | null
           court_type?: string | null
           created_at?: string
           discount_amount?: number | null

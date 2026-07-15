@@ -251,11 +251,18 @@ export async function deleteUserData(
       supabaseAdmin.from("guest_players").update({ linked_profile_id: null }).eq("linked_profile_id", playerProfile.id),
     ]);
 
-    // Anonymize bookings (keep for record-keeping)
-    await supabaseAdmin
-      .from("bookings")
-      .update({ player_id: null })
-      .eq("player_id", playerProfile.id);
+    // Anonymize bookings (keep for record-keeping): detach the player and stamp anonymized_at so
+    // booking_has_player permits the now owner-less row (R02). MUST go through runDelete — a bare
+    // await previously swallowed the 23514 the old CHECK raised, so 0 rows were anonymized and the
+    // profiles.delete() below then cascaded these paid/completed bookings away. player_id's FK is
+    // now ON DELETE SET NULL, so this also degrades safely if the stamp write ever regressed.
+    await runDelete(
+      supabaseAdmin
+        .from("bookings")
+        .update({ player_id: null, anonymized_at: new Date().toISOString() })
+        .eq("player_id", playerProfile.id),
+      "bookings (anonymize)",
+    );
 
     // Anonymize reviews by this player
     await supabaseAdmin
