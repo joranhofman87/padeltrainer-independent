@@ -39,6 +39,25 @@ export function isCycleDueForInvoicing(
   return start <= now.getTime();
 }
 
+/**
+ * F04 scan bounds. The platform-wide cycle scan is keyset-paginated (id > cursor, ORDER BY id) so
+ * it never hits PostgREST's 1000-row cap, and each invocation stops at COMMITMENT_TIME_BUDGET_MS and
+ * hands the tail to a self-reinvoke continuation (mirrors send-campaign-emails) so it always
+ * completes despite the isolate wall-clock limit.
+ */
+export const COMMITMENT_SCAN_PAGE_SIZE = 200;
+export const COMMITMENT_TIME_BUDGET_MS = 110_000;
+
+/**
+ * F04: whether to stamp `cycles.commitment_invoiced_at` so a fully-processed cycle drops out of the
+ * daily scan. Stamp only on a real run (never a dry-run preview) and only when the cycle had NO
+ * failed batch this pass — a failure leaves it unstamped so the next run retries it. A cycle with no
+ * pending work (already drafted, upfront-mode, or no commitments) has failedBatchCount 0 → stamped.
+ */
+export function shouldStampCycleInvoiced(opts: { dryRun: boolean; failedBatchCount: number }): boolean {
+  return !opts.dryRun && opts.failedBatchCount === 0;
+}
+
 /** Stable per-player key (registered player or guest). */
 export function committerKey(b: CommitmentBooking): string | null {
   return b.player_id ?? b.guest_player_id ?? null;
