@@ -17,6 +17,12 @@ import {
   detectPaymentReversal,
   evaluateInvoicePayment,
   findCancelledPaidBookings,
+  type MemberBookingRow,
+  type MemberInvoiceRow,
+  memberSettlementBookingIds,
+  openMemberCheckoutPaymentIds,
+  partitionMemberInvoices,
+  selfPaidMemberBookingIds,
   shouldRunBookingPaidSideEffects,
 } from "../_shared/mollie-webhook-payment.ts";
 
@@ -538,7 +544,7 @@ serve(async (req) => {
                 const groupId = invoiceData.rebook_group_id;
                 const { data: capClaim } = await supabase
                   .from("slot_priority_claims")
-                  .select("claim_token")
+                  .select("claim_token, player_id, guest_player_id")
                   .eq("rebook_group_id", groupId)
                   .eq("status", "claimed")
                   .in("booking_id", invoiceData.booking_ids)
@@ -573,6 +579,187 @@ serve(async (req) => {
                       { paymentId, invoiceId: invoiceIdFromMetadata, groupId, error: coverErr?.message ?? coverRes.reason },
                     );
                   }
+                }
+
+                // F05 (audit): the captain's payment covers the FULL court — including members who
+                // had already accepted "just my spot" BEFORE the captain paid. Those members carry
+                // their own unpaid booking + bank-fallback invoice + possibly an open Mollie
+                // checkout, none of it tagged to the group, so nothing above touches it and the
+                // member's invoice stays payable for 14 days → the academy collects the seat TWICE.
+                // Settle them now: cancel their still-active invoices, cover their unpaid bookings
+                // (paid-by-captain, the same stamp rebook_group_manage puts on covered inserts),
+                // and expire their open checkouts. Residue paths stay loud: a payment landing on an
+                // invoice cancelled here trips the existing cancelled-invoice manual-refund alert,
+                // and a member who managed to PAY before this webhook (mint-guard TOCTOU) is
+                // alerted for a manual refund — deducting money is never automatic.
+                try {
+                  const { data: memberClaims } = await supabase
+                    .from("slot_priority_claims")
+                    .select("booking_id")
+                    .eq("rebook_group_id", groupId)
+                    .eq("status", "claimed")
+                    .not("booking_id", "is", null);
+                  const memberBookingIds = memberSettlementBookingIds(
+                    (memberClaims ?? []) as { booking_id: string | null }[],
+                    invoiceData.booking_ids,
+                  );
+                  if (memberBookingIds.length > 0) {
+                    // Snapshot BEFORE covering: the paid-state + checkout ids drive the checkout
+                    // expiry and the double-collect detection below.
+                    const { data: memberRows } = await supabase
+                      .from("bookings")
+                      .select("id, payment_status, status, mollie_payment_id, paid_by_player_id, paid_by_guest_player_id")
+                      .in("id", memberBookingIds);
+                    const memberSnapshot = (memberRows ?? []) as MemberBookingRow[];
+
+                    // Best-effort checkout expiry — probe→DELETE, the same idiom
+                    // create-invoice-payment uses to kill a stale open payment. Only an 'open'
+                    // payment is cancelled; anything mid-flight lands later and hits the
+                    // cancelled-invoice / already-paid guards instead.
+                    const cancelTestParam = isTestMode ? "?testmode=true" : "";
+                    const cancelOpenMolliePayment = async (molliePaymentId: string) => {
+                      try {
+                        const probe = await fetch(`${MOLLIE_API_BASE}/v2/payments/${molliePaymentId}${cancelTestParam}`, {
+                          headers: { Authorization: `Bearer ${recipientAccessToken}` },
+                        });
+                        if (!probe.ok) return;
+                        const p = await probe.json();
+                        if (p?.status !== "open") return;
+                        await fetch(`${MOLLIE_API_BASE}/v2/payments/${molliePaymentId}${cancelTestParam}`, {
+                          method: "DELETE",
+                          headers: { Authorization: `Bearer ${recipientAccessToken}` },
+                        });
+                      } catch (e) {
+                        logStep("member_checkout_cancel_failed", { molliePaymentId, error: String(e) });
+                      }
+                    };
+
+                    // 1) The members' own still-active invoices: cancel unpaid ones (atomic guard —
+                    //    losing the race to the member's own payment falls through to the
+                    //    double-collect alert below), collect paid ones for that alert.
+                    const { data: memberInvoices } = await supabase
+                      .from("invoices")
+                      .select("id, status, total, mollie_payment_id, booking_ids")
+                      .overlaps("booking_ids", memberBookingIds)
+                      .neq("id", invoiceIdFromMetadata)
+                      .neq("status", "cancelled");
+                    const { alreadyPaid, toCancel } = partitionMemberInvoices(
+                      (memberInvoices ?? []) as MemberInvoiceRow[],
+                    );
+                    const doubleCollected: MemberInvoiceRow[] = [...alreadyPaid];
+                    let cancelledInvoices = 0;
+                    for (const inv of toCancel) {
+                      const { data: cancelledRows, error: cancelErr } = await supabase
+                        .from("invoices")
+                        .update({ status: "cancelled" })
+                        .eq("id", inv.id)
+                        .neq("status", "paid")
+                        .neq("status", "cancelled")
+                        .select("id");
+                      if (cancelErr) {
+                        await notifySlackError(
+                          "mollie-webhook",
+                          "Rebook group paid: cancelling a member's own invoice failed — cancel it manually or the seat collects twice",
+                          { paymentId, groupId, memberInvoiceId: inv.id, error: cancelErr.message },
+                        );
+                        continue;
+                      }
+                      if ((cancelledRows ?? []).length === 0) {
+                        // Lost the race — the member's payment landed between our read and this
+                        // cancel. Re-read; paid = the seat was collected twice.
+                        const { data: recheck } = await supabase
+                          .from("invoices")
+                          .select("id, status, total, mollie_payment_id, booking_ids")
+                          .eq("id", inv.id)
+                          .maybeSingle();
+                        if ((recheck as MemberInvoiceRow | null)?.status === "paid") {
+                          doubleCollected.push(recheck as MemberInvoiceRow);
+                        }
+                        continue;
+                      }
+                      cancelledInvoices++;
+                      await auditLog(supabase, {
+                        function_name: "mollie-webhook",
+                        status: AUDIT.memberInvoiceCancelledCovered,
+                        mollie_payment_id: paymentId,
+                        invoice_id: inv.id,
+                        amount: Number(inv.total) || null,
+                        metadata: { groupId, groupInvoiceId: invoiceIdFromMetadata },
+                      });
+                      if (inv.mollie_payment_id) await cancelOpenMolliePayment(inv.mollie_payment_id);
+                    }
+
+                    // 2) Cover the members' unpaid seats (guarded: never resurrects a cancelled
+                    //    booking, never overwrites an already-paid one).
+                    const captainIdent = capClaim as { player_id?: string | null; guest_player_id?: string | null } | null;
+                    const covered = await applyBookingPaymentWriteback(supabase, memberBookingIds, {
+                      payment_status: "paid",
+                      status: "confirmed",
+                      paid_at: new Date().toISOString(),
+                      hold_expires_at: null,
+                      paid_by_player_id: captainIdent?.player_id ?? null,
+                      paid_by_guest_player_id: captainIdent?.guest_player_id ?? null,
+                    });
+
+                    // 3) Expire the members' own open BOOKING checkouts (their invoice checkouts
+                    //    were handled in step 1) so a stale hosted-checkout link can no longer
+                    //    collect a covered seat a second time.
+                    const openCheckouts = openMemberCheckoutPaymentIds(memberSnapshot);
+                    for (const pid of openCheckouts) await cancelOpenMolliePayment(pid);
+
+                    // 4) Double-collect alerts: paid member invoices + self-paid bookings. One
+                    //    alert per seat — invoice-covered seats are excluded from the booking list.
+                    const selfPaid = selfPaidMemberBookingIds(
+                      memberSnapshot,
+                      doubleCollected.flatMap((inv) => inv.booking_ids ?? []),
+                    );
+                    for (const inv of doubleCollected) {
+                      await notifySlackError(
+                        "mollie-webhook",
+                        "Rebook group paid: a member had ALREADY PAID their own seat invoice — seat collected twice, manual refund needed",
+                        { paymentId, groupId, groupInvoiceId: invoiceIdFromMetadata, memberInvoiceId: inv.id, memberTotal: inv.total },
+                      );
+                      await auditLog(supabase, {
+                        function_name: "mollie-webhook",
+                        status: AUDIT.memberSeatDoubleCollected,
+                        mollie_payment_id: paymentId,
+                        invoice_id: inv.id,
+                        amount: Number(inv.total) || null,
+                        metadata: { groupId, groupInvoiceId: invoiceIdFromMetadata, via: "member_invoice" },
+                      });
+                    }
+                    if (selfPaid.length > 0) {
+                      await notifySlackError(
+                        "mollie-webhook",
+                        "Rebook group paid: member seat(s) were ALREADY self-paid via checkout — collected twice, manual refund needed",
+                        { paymentId, groupId, groupInvoiceId: invoiceIdFromMetadata, bookingIds: selfPaid },
+                      );
+                      await auditLog(supabase, {
+                        function_name: "mollie-webhook",
+                        status: AUDIT.memberSeatDoubleCollected,
+                        mollie_payment_id: paymentId,
+                        booking_id: selfPaid[0],
+                        metadata: { groupId, groupInvoiceId: invoiceIdFromMetadata, bookingIds: selfPaid, via: "member_booking_checkout" },
+                      });
+                    }
+
+                    logStep("rebook_group_member_settlement", {
+                      groupId,
+                      invoiceId: invoiceIdFromMetadata,
+                      memberBookings: memberBookingIds.length,
+                      covered: covered.length,
+                      cancelledInvoices,
+                      expiredCheckouts: openCheckouts.length,
+                      doubleCollected: doubleCollected.length + selfPaid.length,
+                    });
+                  }
+                } catch (settleEx) {
+                  logStep("rebook_group_member_settlement_exception", { error: String(settleEx), paymentId, invoiceId: invoiceIdFromMetadata });
+                  await notifySlackError(
+                    "mollie-webhook",
+                    "Rebook group paid: settling members' own invoices/checkouts threw — check for double-collected seats manually",
+                    { paymentId, invoiceId: invoiceIdFromMetadata, error: String(settleEx) },
+                  );
                 }
               } catch (coverEx) {
                 logStep("rebook_group_cover_exception", { error: String(coverEx), paymentId, invoiceId: invoiceIdFromMetadata });

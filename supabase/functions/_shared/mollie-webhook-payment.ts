@@ -296,3 +296,88 @@ export function findCancelledPaidBookings(
     .filter((b) => b.status === "cancelled" && b.payment_status !== "paid")
     .map((b) => b.id);
 }
+
+/**
+ * F05 (group rebook): the booking ids of GROUP MEMBERS whose seats the captain's full-court
+ * payment now covers — every 'claimed' claim's booking in the group EXCEPT the captain's own
+ * (the group invoice's booking_ids). A member who accepted "just my spot" BEFORE the captain
+ * paid carries exactly such a booking, with its own untagged invoice/checkout the group-level
+ * dedup can't see. Deduped; null booking_ids dropped.
+ */
+export function memberSettlementBookingIds(
+  claimRows: { booking_id: string | null }[],
+  captainBookingIds: string[],
+): string[] {
+  const captain = new Set(captainBookingIds);
+  return [...new Set(
+    claimRows
+      .map((r) => r.booking_id)
+      .filter((id): id is string => !!id && !captain.has(id)),
+  )];
+}
+
+export interface MemberInvoiceRow {
+  id: string;
+  status: string | null;
+  total?: number | string | null;
+  mollie_payment_id?: string | null;
+  booking_ids?: string[] | null;
+}
+
+/**
+ * F05: split a member's own rebook invoices (overlapping the covered member bookings) into the
+ * ones to CANCEL (still unpaid — the captain's full-court payment covers those seats now) and
+ * the ones already PAID (the seat was collected twice → manual-refund alert; deducting money is
+ * a manual decision, never automatic).
+ */
+export function partitionMemberInvoices(rows: MemberInvoiceRow[]): {
+  alreadyPaid: MemberInvoiceRow[];
+  toCancel: MemberInvoiceRow[];
+} {
+  const alreadyPaid: MemberInvoiceRow[] = [];
+  const toCancel: MemberInvoiceRow[] = [];
+  for (const r of rows) (r.status === "paid" ? alreadyPaid : toCancel).push(r);
+  return { alreadyPaid, toCancel };
+}
+
+export interface MemberBookingRow {
+  id: string;
+  payment_status: string | null;
+  status: string | null;
+  mollie_payment_id?: string | null;
+  paid_by_player_id?: string | null;
+  paid_by_guest_player_id?: string | null;
+}
+
+/**
+ * F05: distinct Mollie payment ids of the members' own still-live checkouts (unpaid,
+ * non-cancelled bookings carrying a mollie_payment_id) — expired best-effort once the captain's
+ * payment covers the seats, so a stale hosted-checkout link can no longer collect a seat twice.
+ */
+export function openMemberCheckoutPaymentIds(rows: MemberBookingRow[]): string[] {
+  return [...new Set(
+    rows
+      .filter((r) => r.payment_status !== "paid" && r.status !== "cancelled" && !!r.mollie_payment_id)
+      .map((r) => r.mollie_payment_id as string),
+  )];
+}
+
+/**
+ * F05 TOCTOU mirror: member bookings that were SELF-paid (payment_status='paid' with no
+ * paid_by_* covering stamp) before the captain's payment landed — the create-group-rebook-invoice
+ * mint guard only sees payments that already LANDED at mint time, so a member checkout completing
+ * between that check and this webhook slips through it. Seats already reported via a PAID member
+ * invoice are excluded (one alert per seat).
+ */
+export function selfPaidMemberBookingIds(
+  rows: MemberBookingRow[],
+  paidInvoiceBookingIds: string[],
+): string[] {
+  const viaInvoice = new Set(paidInvoiceBookingIds);
+  return rows
+    .filter((r) =>
+      r.payment_status === "paid" &&
+      !r.paid_by_player_id && !r.paid_by_guest_player_id &&
+      !viaInvoice.has(r.id))
+    .map((r) => r.id);
+}
