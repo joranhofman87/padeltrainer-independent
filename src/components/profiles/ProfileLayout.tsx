@@ -105,14 +105,14 @@ export function ProfileLayout({
                     const isMiddle = breadcrumbs.length > 3 && index > 0 && index < breadcrumbs.length - 2;
                     return (
                       <React.Fragment key={index}>
-                        {index > 0 && <BreadcrumbSeparator className={isMiddle ? 'hidden sm:flex' : ''} />}
-                        <BreadcrumbItem className={isMiddle ? 'hidden sm:flex' : ''}>
+                        {index > 0 && <BreadcrumbSeparator className={isMiddle ? 'hidden sm:flex' : 'shrink-0'} />}
+                        <BreadcrumbItem className={`min-w-0 ${isMiddle ? 'hidden sm:flex' : ''}`}>
                           {crumb.path ? (
                             <BreadcrumbLink asChild>
-                              <LocalizedLink to={crumb.path}>{crumb.label}</LocalizedLink>
+                              <LocalizedLink to={crumb.path} className="whitespace-nowrap">{crumb.label}</LocalizedLink>
                             </BreadcrumbLink>
                           ) : (
-                            <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                            <BreadcrumbPage className="truncate max-w-[52vw] sm:max-w-none">{crumb.label}</BreadcrumbPage>
                           )}
                         </BreadcrumbItem>
                       </React.Fragment>
