@@ -60,6 +60,16 @@ export function getTrainerShortUrl(slug: string): string {
 }
 
 /**
+ * Absolute URL for a GENERIC short link (padeltrainer.ai/s/<code>), resolved by the Cloudflare Worker
+ * → 301 to the target. Distinct from the /t/ /a/ PROFILE slug links above: this is the code-based
+ * short_links system (src/lib/shortLinks.ts). The code charset/length must stay within the worker's
+ * `^/s/([0-9A-Za-z]{4,16})$` regex — see src/test/shortLinkContract.test.ts.
+ */
+export function getShortUrl(code: string): string {
+  return `${MARKETING_DOMAIN}/s/${code}`;
+}
+
+/**
  * Get the appropriate auth redirect URL based on environment.
  * Always returns a full URL for OAuth/email redirects.
  */

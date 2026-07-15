@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
-import { Download, Copy } from 'lucide-react';
+import { Download } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { CopyLinkButton } from '@/components/ui/CopyLinkButton';
 
 /**
  * Shows a QR code for a cycle's public registration URL so the academy can put
@@ -71,11 +72,6 @@ export default function RegistrationQrDialog({
     URL.revokeObjectURL(objectUrl);
   };
 
-  const copyUrl = () => {
-    navigator.clipboard.writeText(url);
-    toast.success(t('actions.linkCopied'));
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -102,9 +98,13 @@ export default function RegistrationQrDialog({
               <Download className="h-4 w-4" /> {t('qr.svg', 'SVG')}
             </Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={copyUrl} className="gap-1.5">
-            <Copy className="h-4 w-4" /> {t('actions.shareLink', 'Copy link')}
-          </Button>
+          <CopyLinkButton
+            url={url}
+            label={t('actions.shareLink', 'Copy link')}
+            toastLabel={t('actions.linkCopied')}
+            errorLabel={t('actions.linkCopyError', 'Could not copy the link.')}
+            variant="ghost"
+          />
         </div>
 
         {/* Off-screen high-res canvas used only for the print-quality PNG export. */}

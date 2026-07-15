@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { CycleStatusBadge } from './CycleStatusBadge';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -20,6 +20,8 @@ import {
   PartyPopper,
   Banknote,
   CreditCard,
+  Share2,
+  QrCode,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +38,10 @@ import { syncRegistrationStatus } from '@/lib/registrations';
 import DeleteCycleDialog from '@/components/cycles/DeleteCycleDialog';
 import { toast } from 'sonner';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { shareUrlForRegistration } from '@/lib/cycleRegistrationUrl';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+
+const RegistrationQrDialog = lazy(() => import('@/components/cycles/RegistrationQrDialog'));
 
 interface CycleCardProps {
   cycle: Cycle;
@@ -45,11 +51,24 @@ interface CycleCardProps {
 }
 
 export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true }: CycleCardProps) {
-  const { t } = useTranslation('cycles');
+  const { t, i18n } = useTranslation('cycles');
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+
+  // Registration/event forms are shareable (the /register page). Share URL resolved centrally: the
+  // branded /s/<code> short link when minted, else the long registration URL. This is the trainer
+  // surface's ONLY share affordance (trainer lists render CycleCard, not CyclesTable).
+  const { copy } = useCopyToClipboard();
+  const isRegistration = cycle.type === 'registration' || cycle.type === 'event';
+  const shareUrl = shareUrlForRegistration(cycle.short_code, cycle.id, cycle.owner_type, undefined, i18n.language || 'nl');
+  const handleCopyLink = async () => {
+    const ok = await copy(shareUrl);
+    if (ok) toast.success(t('actions.linkCopied'));
+    else toast.error(t('genericError', 'Something went wrong. Please try again.'));
+  };
 
   const getBasePath = () => {
     if (location.pathname.startsWith('/club')) return '/club';
@@ -160,8 +179,20 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
                     <FileText className="mr-2 h-4 w-4" />
                     {t('actions.viewRequests')}
                   </DropdownMenuItem>
-                  
-                  
+
+                  {isRegistration && (
+                    <>
+                      <DropdownMenuItem onClick={handleCopyLink}>
+                        <Share2 className="mr-2 h-4 w-4" />
+                        {t('actions.shareLink', 'Copy link')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowQr(true)}>
+                        <QrCode className="mr-2 h-4 w-4" />
+                        {t('actions.qrCode', 'QR code')}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+
                   <DropdownMenuSeparator />
                   
                   {cycle.status === 'draft' && (
@@ -252,6 +283,17 @@ export default function CycleCard({ cycle, onEdit, onDeleted, showActions = true
       onOpenChange={setShowDeleteConfirm}
       onDeleted={() => onDeleted?.()}
     />
+
+    {showQr && (
+      <Suspense fallback={null}>
+        <RegistrationQrDialog
+          open
+          onOpenChange={(open) => { if (!open) setShowQr(false); }}
+          url={shareUrl}
+          title={cycle.name}
+        />
+      </Suspense>
+    )}
     </>
   );
 }

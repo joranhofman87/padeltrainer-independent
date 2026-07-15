@@ -37,8 +37,9 @@ import {
   Clock,
 } from 'lucide-react';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
-import { getMarketingUrl } from '@/lib/domains';
-import { getShortUrl, getShortCodesByTarget } from '@/lib/shortLinks';
+import { getShortCodesByTarget } from '@/lib/shortLinks';
+import { shareUrlForRegistration } from '@/lib/cycleRegistrationUrl';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import {
   generateProposals,
   resetProposals,
@@ -385,16 +386,14 @@ export default function AcademyCycleDetail() {
     }
   };
 
-  const handleCopyLink = () => {
+  const { copy } = useCopyToClipboard();
+  const handleCopyLink = async () => {
     if (!cycle || !activeAcademy) return;
-    const lang = i18n.language || 'nl';
-    // Prefer the branded short link; fall back to the full registration URL when no code is present.
-    const path = activeAcademy.slug
-      ? `academies/${activeAcademy.slug}/register/${cycle.id}`
-      : `register/${cycle.id}`;
-    const url = shortCode ? getShortUrl(shortCode) : getMarketingUrl(path, lang);
-    navigator.clipboard.writeText(url);
-    toast.success(t('actions.linkCopied'));
+    // Branded short link when minted, else the full academy registration URL — resolved centrally.
+    const url = shareUrlForRegistration(shortCode, cycle.id, 'academy', activeAcademy.slug, i18n.language || 'nl');
+    const ok = await copy(url);
+    if (ok) toast.success(t('actions.linkCopied'));
+    else toast.error(t('genericError', { defaultValue: 'Something went wrong. Please try again.' }));
   };
 
   const handleToggleStatus = async () => {

@@ -86,6 +86,7 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [DATA_HEALTH_CHECKS.md](DATA_HEALTH_CHECKS.md) | UNU | Read-only slots/cycles health SQL | ref | mostly historical | Cleanup shipped (see CYCLE_SERIES_SPLIT) |
 | [CYCLE_SERIES_SPLIT_RUNBOOK.md](archive/CYCLE_SERIES_SPLIT_RUNBOOK.md) | OA | One-time mega-cycle split (APPLIED to prod 2026-06-29) | no | done | Archive |
 | [SCHEDULING_ARCHITECTURE.md](SCHEDULING_ARCHITECTURE.md) | UNU | Academy-first scheduling strategy note | yes | partial | Overlaps [DOMAIN_MODEL.md](DOMAIN_MODEL.md) |
+| [SHORT_LINKS.md](SHORT_LINKS.md) | CC | Branded `/s/<code>` short-link primitive (schema, worker, seams, invariants) | yes | yes | Distinct from `/t/` `/a/` profile slugs |
 | [COMPONENT_REUSE_AUDIT.md](COMPONENT_REUSE_AUDIT.md) | HAO | 2026-06-30 reuse audit + plan | ref | plan | [technical-debt/COMPONENT_REUSE_BACKLOG.md](technical-debt/COMPONENT_REUSE_BACKLOG.md) |
 | [EDGE_FUNCTIONS_FICWB_AUDIT.md](EDGE_FUNCTIONS_FICWB_AUDIT.md) | HAO | 2026-05-31 edge-fn deploy-status audit | ref | dated | — |
 | [FICWB_SECRETS_AUDIT.md](FICWB_SECRETS_AUDIT.md) | HAO | 2026-06-02 edge secrets audit | ref | dated | — |

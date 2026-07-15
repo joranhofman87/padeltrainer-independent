@@ -247,3 +247,18 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
   (`tsc -p tsconfig.app.json` ratcheted vs `scripts/tsc-app.baseline.json`).
 - See [`EXTENDING_THE_DOMAIN.md`](./EXTENDING_THE_DOMAIN.md) for the full gate list, PR checklist, and
   critical-flow test matrix.
+
+## Short links (`/s/<code>`)
+
+Generic branded short-link primitive — full architecture in [`SHORT_LINKS.md`](./SHORT_LINKS.md).
+- **Tables:** `short_links` (RLS ON, no policies — reached only via RPCs).
+- **RPCs:** `get_or_create_short_link` (mint, idempotent, `authenticated` only, open-redirect-guarded),
+  `resolve_short_link` (read, `anon`, no writes), `get_short_codes` (batch reverse lookup).
+- **lib:** `shortLinks.ts` (mint/read), `cycleRegistrationUrl.ts#shareUrlForRegistration` (the single
+  share-URL decision), `domains.ts#getShortUrl`.
+- **Edge:** Cloudflare Worker `/s/` branch (301) — deploys via `wrangler`, separate from Vercel/Supabase.
+- **Invariants:** mint is `authenticated`-only (Supabase default-privileges auto-grant anon — must
+  `REVOKE … FROM anon` explicitly); the SQL code charset/length must stay within the Worker regex
+  (`src/test/shortLinkContract.test.ts`); `resolve_short_link` must never write (edge-cacheable).
+- **Distinct from** the `/t/` `/a/` profile slug links (`slug_redirects` + `resolve_public_handle`) —
+  do not conflate; use `/s/` for new surfaces.
