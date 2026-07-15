@@ -61,8 +61,26 @@ function builder(table: string) {
   return api;
 }
 
+/**
+ * Built-in defaults for definer RPCs that stand in for an RLS-blocked client read, so tests can
+ * keep feeding the underlying table fixtures. get_cycle_roster_names resolves participant names
+ * server-side (bypassing the academy manager's inability to read `profiles`) — model it as the
+ * union of the profiles + guest_players fixtures, exactly what the SQL returns. An explicitly
+ * passed `_rpc` handler still overrides this.
+ */
+function defaultRpc(name: string): { data?: any; error?: any } | null {
+  if (name === 'get_cycle_roster_names') {
+    const rows = [...(_data.profiles ?? []), ...(_data.guest_players ?? [])].map((r) => ({
+      id: r.id,
+      full_name: r.full_name ?? null,
+    }));
+    return { data: rows, error: null };
+  }
+  return null;
+}
+
 export const supabaseMock = {
   from: (table: string) => builder(table),
   rpc: (name: string, args: any) =>
-    Promise.resolve(_rpc[name] ? _rpc[name](args) : { data: null, error: null }),
+    Promise.resolve(_rpc[name] ? _rpc[name](args) : (defaultRpc(name) ?? { data: null, error: null })),
 };
