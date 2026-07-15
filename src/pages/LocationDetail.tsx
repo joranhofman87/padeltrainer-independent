@@ -529,10 +529,16 @@ export default function LocationDetail() {
           )}
         </ProfileHeroCard>
 
-        {/* Bookable availability at this venue — FULL WIDTH so the calendar has room. Same green
-            calendar + guest pay-first as the academy/trainer pages; an academy-trainer's charge
-            routes to the academy's Mollie. Always shown, even with no open sessions yet. */}
-        <div className="mb-6">
+        {/* Open registration forms ABOVE the calendar (mirrors the public academy page), then the
+            bookable-availability calendar. space-y collapses cleanly when there are no open forms
+            (LocationOpenCycles renders null). Same green calendar + guest pay-first as the
+            academy/trainer pages; an academy-trainer's charge routes to the academy's Mollie. */}
+        <div className="space-y-6 mb-6">
+          <LocationOpenCycles
+            locationId={location.id}
+            locationName={location.name}
+            clubSlug={clubProfile?.id}
+          />
           <PublicAvailabilitySection owner={{ type: 'location', locationId: location.id }} alwaysShow />
         </div>
 
@@ -553,13 +559,6 @@ export default function LocationDetail() {
                 )}
               </CardContent>
             </Card>
-
-            {/* Open Cycles for Registration - from trainers and academies at this location */}
-            <LocationOpenCycles
-              locationId={location.id}
-              locationName={location.name}
-              clubSlug={clubProfile?.id}
-            />
 
             {/* Waiting List Card */}
             <WaitingListCard

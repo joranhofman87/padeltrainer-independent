@@ -31,7 +31,7 @@ vi.mock('@/lib/deployDrift', () => ({
   reportDeployDriftFallback: vi.fn(),
 }));
 
-import { getActiveCycles, hasPlayerApplied } from '@/lib/cycles';
+import { getActiveCycles, hasPlayerApplied, isRegistrationOpenForSignup } from '@/lib/cycles';
 
 describe('getActiveCycles (public open-registrations list)', () => {
   beforeEach(() => {
@@ -44,7 +44,7 @@ describe('getActiveCycles (public open-registrations list)', () => {
       data: [{
         id: 'r1', owner_type: 'academy', owner_id: 'a1', format: 'registration',
         name: 'Najaar', description: 'd', start_date: '2026-08-24', end_date: '2026-12-04',
-        enrollment_deadline: '2026-08-01T10:00:00Z', status: 'open', total_price: null,
+        enrollment_deadline: null, status: 'open', total_price: null,
         currency: 'EUR', price_table: [{ label: 'Duo', price: 38 }], location_id: 'loc1',
         created_at: '2026-07-13', updated_at: '2026-07-14', payment_methods: 'online',
       }],
@@ -69,6 +69,46 @@ describe('getActiveCycles (public open-registrations list)', () => {
   it('propagates a query error', async () => {
     order.mockResolvedValueOnce({ data: null, error: { message: 'boom' } });
     await expect(getActiveCycles('trainer', 't1')).rejects.toBeTruthy();
+  });
+});
+
+describe('isRegistrationOpenForSignup (deadline gate)', () => {
+  const soon = new Date(Date.now() + 30 * 864e5).toISOString();
+  const past = new Date(Date.now() - 30 * 864e5).toISOString();
+
+  it('open with a FUTURE deadline → shown', () => {
+    expect(isRegistrationOpenForSignup({ enrollment_deadline: soon, is_always_open: false })).toBe(true);
+  });
+  it('PAST deadline → hidden', () => {
+    expect(isRegistrationOpenForSignup({ enrollment_deadline: past, is_always_open: false })).toBe(false);
+  });
+  it('NO deadline → shown', () => {
+    expect(isRegistrationOpenForSignup({ enrollment_deadline: null, is_always_open: false })).toBe(true);
+  });
+  it('always-open ignores a past deadline → shown', () => {
+    expect(isRegistrationOpenForSignup({ enrollment_deadline: past, is_always_open: true })).toBe(true);
+  });
+});
+
+describe('getActiveCycles hides past-deadline forms', () => {
+  beforeEach(() => { calls.length = 0; vi.clearAllMocks(); });
+
+  it('drops forms whose enrollment deadline has passed, keeps future/no-deadline', async () => {
+    const soon = new Date(Date.now() + 30 * 864e5).toISOString();
+    const past = new Date(Date.now() - 30 * 864e5).toISOString();
+    const mkRow = (id: string, enrollment_deadline: string | null) => ({
+      id, owner_type: 'academy', owner_id: 'a1', format: 'registration', name: id,
+      description: null, start_date: '2026-08-24', end_date: '2026-12-04', enrollment_deadline,
+      status: 'open', total_price: null, currency: 'EUR', price_table: null, location_id: null,
+      created_at: '2026-07-13', updated_at: '2026-07-14', payment_methods: null,
+    });
+    order.mockResolvedValueOnce({
+      data: [mkRow('future', soon), mkRow('past', past), mkRow('nodeadline', null)],
+      error: null,
+    });
+
+    const rows = await getActiveCycles('academy', 'a1');
+    expect(rows.map((r) => r.id).sort()).toEqual(['future', 'nodeadline']);
   });
 });
 
