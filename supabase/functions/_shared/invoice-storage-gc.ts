@@ -30,6 +30,22 @@ export type InvoiceGcClassification = {
   orphans: string[];
 };
 
+/**
+ * The safety-critical gate between "found orphans" and "delete objects". Report-only runs
+ * (apply=false) delete NOTHING — they only surface the count for review before the cron is flipped
+ * to apply mode. Apply runs delete at most `max` per invocation (a matching bug costs one visible,
+ * capped batch per day, never the whole bucket at once); `capped` flags when orphans were held back
+ * for the next run. Pure so the report-vs-apply and cap behavior is unit-tested without the runtime.
+ */
+export function planInvoiceGcDeletion(
+  orphans: readonly string[],
+  apply: boolean,
+  max: number = INVOICE_GC_MAX_DELETE,
+): { toDelete: string[]; capped: boolean } {
+  if (!apply) return { toDelete: [], capped: false };
+  return { toDelete: orphans.slice(0, max), capped: orphans.length > max };
+}
+
 /** `folder/INV-001.pdf` → `folder/INV-001`; non-render suffixes return null (never GC'd). */
 export function renderPrefixOf(objectName: string): string | null {
   const m = objectName.match(/^(.+)\.(pdf|html)$/);

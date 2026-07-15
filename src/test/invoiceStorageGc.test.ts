@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyInvoiceRenderObjects,
+  planInvoiceGcDeletion,
   renderPrefixOf,
   INVOICE_GC_GRACE_DAYS,
   INVOICE_GC_MAX_DELETE,
@@ -90,5 +91,35 @@ describe('classifyInvoiceRenderObjects', () => {
   it('constants match the owner decisions (90d grace, 200 cap)', () => {
     expect(INVOICE_GC_GRACE_DAYS).toBe(90);
     expect(INVOICE_GC_MAX_DELETE).toBe(200);
+  });
+});
+
+// The safety gate: report-only must delete nothing; apply must respect the per-run cap. This is the
+// mechanism that lets the cron run unattended before the owner flips it to { apply: true }.
+describe('planInvoiceGcDeletion', () => {
+  const orphans = ['a/1.pdf', 'b/2.pdf', 'c/3.pdf'];
+
+  it('report-only (apply=false) deletes NOTHING regardless of how many orphans exist', () => {
+    expect(planInvoiceGcDeletion(orphans, false)).toEqual({ toDelete: [], capped: false });
+    // Even 10k orphans in report mode: still deletes nothing.
+    const many = Array.from({ length: 10_000 }, (_, i) => `f/${i}.pdf`);
+    expect(planInvoiceGcDeletion(many, false)).toEqual({ toDelete: [], capped: false });
+  });
+
+  it('apply under the cap deletes them all, uncapped', () => {
+    expect(planInvoiceGcDeletion(orphans, true, 200)).toEqual({ toDelete: orphans, capped: false });
+  });
+
+  it('apply over the cap deletes exactly `max` and flags capped (remainder waits for next run)', () => {
+    const r = planInvoiceGcDeletion(orphans, true, 2);
+    expect(r.toDelete).toEqual(['a/1.pdf', 'b/2.pdf']);
+    expect(r.capped).toBe(true);
+  });
+
+  it('defaults to the 200 owner-decision cap', () => {
+    const many = Array.from({ length: 250 }, (_, i) => `f/${i}.pdf`);
+    const r = planInvoiceGcDeletion(many, true);
+    expect(r.toDelete.length).toBe(INVOICE_GC_MAX_DELETE);
+    expect(r.capped).toBe(true);
   });
 });

@@ -67,6 +67,12 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 ### `invoice-health-check` edge fn
 - `supabase/functions/invoice-health-check/index.ts` — cron-run (daily-maintenance), single-flight locked. Scans for invoice anomalies via `_shared/invoice-health-checks.ts`; self-alerts to Slack (`:166`) with `status: anomalies_found | healthy`.
 
+### `invoice-storage-gc` edge fn (Theme B / storage lifecycle)
+- `supabase/functions/invoice-storage-gc/index.ts` — cron-run (daily-maintenance), service-role/admin only. Reaps orphaned objects from the private `invoices` bucket: an object is LIVE iff its key prefix matches some invoice's `render_path` (stamped by `generate-invoice`, B1); unmatched objects are deleted only after a **90-day grace** on `updated_at`, **capped at 200/run**. Report-vs-apply gate + the cap are the pure `planInvoiceGcDeletion` helper (`_shared/invoice-storage-gc.ts`).
+- **Report-only by DEFAULT** — the cron ships without `apply`, so it lists orphans to Slack but deletes nothing. After one clean report, flip the `daily-maintenance` entry to `body: { apply: true }` to enable deletion. Self-alerts whenever orphans are found or deleted; quiet when there's nothing to do.
+- Walks `storage.objects` via the service-role-only `invoice_gc_list_objects` RPC (the `storage` schema is not PostgREST-exposed). Keyset-paginated both sides with a 110s budget. Any classification doubt (unknown suffix, missing/invalid timestamp, fresh upload) → KEEP.
+- Related: account deletion (`_shared/delete-user-data.ts`) also removes the deleted user's avatar/banner objects from the public `avatars` bucket (R06); org logos under `clubs/…` are a separate follow-up sweep.
+
 ### CI data-integrity gates (PGlite)
 `npm run db:rehearse:all` runs the real money-path libs against real Postgres and asserts invariants (players, coaching, email, trainer-invoices, invoices-delivery, invoice-status, registration-write, list-partition). This is the **pre-merge** counterpart to the runtime reconciliation checks.
 

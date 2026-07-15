@@ -21,7 +21,7 @@ import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
   classifyInvoiceRenderObjects,
   INVOICE_GC_GRACE_DAYS,
-  INVOICE_GC_MAX_DELETE,
+  planInvoiceGcDeletion,
   type StorageObjectRow,
 } from "../_shared/invoice-storage-gc.ts";
 
@@ -90,8 +90,9 @@ serve(async (req) => {
       if (page.length < PAGE_SIZE) break;
     }
 
-    // 3) Delete (apply mode only), capped per run, in remove()-sized chunks.
-    const toDelete = apply ? orphans.slice(0, INVOICE_GC_MAX_DELETE) : [];
+    // 3) Delete (apply mode only), capped per run, in remove()-sized chunks. The report-vs-apply
+    //    gate + the per-run cap live in a pure helper so their safety behavior is unit-tested.
+    const { toDelete, capped } = planInvoiceGcDeletion(orphans, apply);
     let deleted = 0;
     const deleteErrors: string[] = [];
     for (let i = 0; i < toDelete.length; i += 100) {
@@ -105,7 +106,6 @@ serve(async (req) => {
       deleted += chunk.length;
     }
 
-    const capped = apply && orphans.length > INVOICE_GC_MAX_DELETE;
     const report = {
       ok: true,
       mode: apply ? "apply" : "report-only",
