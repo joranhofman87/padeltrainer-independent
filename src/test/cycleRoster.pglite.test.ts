@@ -368,3 +368,81 @@ describe('insertGuestsIntoSlots — split rebalance math', () => {
     expect(await amountOnSlot(GB, S1)).toBe(30); // untouched — owner reconciles billing manually
   });
 });
+
+// Person-unification Phase 0: cross-identity dedup. When a REGISTERED player is added/swapped via
+// their guest twin, the twin's profile id must let the dedup see a seat that human already holds as
+// a pure-profile (player_id-only) booking — a duplicate no single-column unique index can catch.
+describe('cross-identity dedup (Phase 0 person twin)', () => {
+  it('addPlayersToCycle skips a session where the twin\'s PROFILE already holds a pure-profile seat', async () => {
+    // The human already sits on S1 as a registered (player_id-only) booking — the PR #557 shape.
+    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${PROF}','confirmed','pending', false);`);
+
+    const res = await addPlayersToCycle({
+      cycleId: CYCLE,
+      guestPlayerIds: [GA],                       // GA is PROF's freshly-minted guest twin
+      twinProfileIdByGuestId: { [GA]: PROF },
+      skipInvoices: true,
+      client: supa,
+    });
+
+    expect(res.insertedCount).toBe(2);            // SP + S2 only
+    expect(res.alreadyBookedSlotIds).toContain(S1);
+    // No duplicate: S1 still has exactly the one profile booking, no guest twin row added.
+    const onS1 = (await db.query<{ n: string }>(`SELECT count(*)::text n FROM bookings WHERE slot_id = $1 AND status <> 'cancelled'`, [S1])).rows[0];
+    expect(Number(onS1.n)).toBe(1);
+    expect(await activeForGuest(GA)).toEqual([SP, S2].sort());
+  });
+
+  it('addPlayersToCycle does NOT let a DUAL-keyed row (a linked guest) block the profile person', async () => {
+    // A DIFFERENT person (guest GC) is account-linked to the same profile PROF → dual-keyed row.
+    // FAM-02: that row belongs to the guest, not to PROF-as-a-profile, so it must not block.
+    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${GC}','${PROF}','confirmed','pending', false);`);
+
+    const res = await addPlayersToCycle({
+      cycleId: CYCLE,
+      guestPlayerIds: [GA],
+      twinProfileIdByGuestId: { [GA]: PROF },
+      skipInvoices: true,
+      client: supa,
+    });
+
+    expect(res.insertedCount).toBe(3);            // dual-keyed row did not block S1
+    expect(await activeForGuest(GA)).toEqual([SP, S1, S2].sort());
+  });
+
+  it('addPlayersToCycle without a twin id is byte-identical to today (no profile dedup)', async () => {
+    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${PROF}','confirmed','pending', false);`);
+
+    const res = await addPlayersToCycle({ cycleId: CYCLE, guestPlayerIds: [GA], skipInvoices: true, client: supa });
+
+    expect(res.insertedCount).toBe(3);            // no twin mapping → profile seat ignored, as before
+  });
+
+  it('swapPlayerInCycle collision-cancels where the incoming twin\'s PROFILE already holds a seat', async () => {
+    // GB is on SP + S1; the incoming person (twin GA / profile PROF) already sits on S1 as a
+    // pure-profile booking → S1 is a collision (cancel GB there), SP re-points to GA.
+    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, payment_amount, paid_externally) VALUES
+      ('${SP}','${GB}','confirmed','pending', 20, false),
+      ('${S1}','${GB}','confirmed','pending', 20, false);`);
+    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${PROF}','confirmed','pending', false);`);
+
+    const res = await swapPlayerInCycle({
+      cycleId: CYCLE,
+      fromPlayer: { guestPlayerId: GB },
+      toGuestPlayerId: GA,
+      toProfileId: PROF,
+      skipInvoices: true,
+      client: supa,
+    });
+
+    expect(res.reassignedCount).toBe(1);          // SP re-pointed to GA
+    expect(res.cancelledCollisionCount).toBe(1);  // GB's S1 seat cancelled (incoming already there as profile)
+    expect(await activeForGuest(GB)).toEqual([]);
+    // S1 keeps the incoming person's own pre-existing profile booking; GA got SP.
+    expect(await activeForGuest(GA)).toEqual([SP]);
+  });
+});

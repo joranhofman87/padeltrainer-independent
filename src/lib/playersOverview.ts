@@ -269,6 +269,54 @@ export async function fetchBookableGuestPlayers(
     }));
 }
 
+/**
+ * A bookable person for the roster pickers — person-unification Phase 0. Unlike
+ * {@link fetchBookableGuestPlayers} (guest rows only; five other surfaces depend on `id ===
+ * guest_player_id`), this returns BOTH guests and registered players, each with a namespaced
+ * `comboboxId` so the picker can tell them apart. A registered (`p_`) selection is resolved to a
+ * guest twin at the call site before booking; the money chain stays guest-keyed.
+ */
+export interface BookablePerson {
+  /** `g_<guestPlayerId>` for a guest, `p_<profileId>` for a registered player. Stable picker key. */
+  comboboxId: string;
+  guestPlayerId: string | null;
+  /** Set only on registered (`p_`) rows; FAM-02: guest rows carry profile_id NULL. */
+  profileId: string | null;
+  full_name: string;
+  email: string;
+  phone: string;
+  skill_rating: number | null;
+  rating_system: string;
+  birth_date: string | null;
+}
+
+/**
+ * Bookable people (guests + registered) for the cycle/slot roster pickers, from the same
+ * SECURITY DEFINER overview RPC as the players table (so an academy manager sees names/emails they
+ * cannot RLS-read from `profiles` directly). Registered players surface here so they can be added
+ * as participants; the caller mints/reuses their guest twin.
+ */
+export async function fetchBookablePersons(scope: PlayerScope): Promise<BookablePerson[]> {
+  const rows = await fetchAllPlayersOverview(scope);
+  return rows
+    .filter((row) => Boolean(row.guest_player_id) || Boolean(row.profile_id))
+    .map((row) => {
+      const guestPlayerId = row.guest_player_id ?? null;
+      const profileId = guestPlayerId ? null : (row.profile_id ?? null);
+      return {
+        comboboxId: guestPlayerId ? `g_${guestPlayerId}` : `p_${profileId}`,
+        guestPlayerId,
+        profileId,
+        full_name: row.full_name,
+        email: row.email,
+        phone: row.phone,
+        skill_rating: row.skill_rating ?? null,
+        rating_system: row.rating_system,
+        birth_date: row.birth_date ?? null,
+      };
+    });
+}
+
 export function usePlayersOverview(
   scope: { kind: PlayerScope['kind']; id: string | undefined | null },
   params: PlayersOverviewParams = {},

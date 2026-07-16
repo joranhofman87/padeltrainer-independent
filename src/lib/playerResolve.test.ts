@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { findExistingGuestPlayerIdByEmail, resolveOrCreateGuestPlayer } from './playerResolve';
+import {
+  findExistingGuestPlayerIdByEmail,
+  resolveOrCreateGuestPlayer,
+  resolveOrCreateGuestTwinForRegisteredPlayer,
+} from './playerResolve';
 
 const insertMock = vi.fn();
 const updateMock = vi.fn();
@@ -365,5 +369,60 @@ describe('resolveOrCreateGuestPlayer', () => {
     });
     expect(id).toBe('existing-by-email');
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveOrCreateGuestTwinForRegisteredPlayer (person-unification Phase 0)', () => {
+  it('normalizes email to lower(trim) and REUSES an existing twin on exact-email match', async () => {
+    academyTrainersResult = [{ trainer_profile_id: 't1' }];
+    emailLookupResults = [[{ id: 'twin-existing', full_name: 'Mark Jan Alewijn' }]];
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: 'a1' },
+      { profileId: 'p1', fullName: 'Mark Jan Alewijn', email: '  MarkJan@Test.COM ' },
+    );
+    expect(id).toBe('twin-existing');
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('CREATES an academy-owned twin with the twin source, has_trained, and NO linked_profile_id', async () => {
+    academyTrainersResult = [];
+    emailLookupResults = [[]]; // no existing match
+    insertResult = { data: { id: 'twin-new' }, error: null };
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: 'a1' },
+      { profileId: 'p1', fullName: 'Nieuwe Speler', email: 'NEW@test.com', phone: '06', skillRating: 3, ratingSystem: 'NGR', birthDate: '2000-01-01' },
+    );
+    expect(id).toBe('twin-new');
+    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.email).toBe('new@test.com');               // lowercased
+    expect(payload.academy_profile_id).toBe('a1');            // academy owner branch (RETURNING-safe)
+    expect(payload.trainer_id).toBeUndefined();
+    expect(payload.source).toBe('roster_registered_twin');
+    expect(payload.has_trained).toBe(true);
+    expect(payload.linked_profile_id).toBeUndefined();        // the DB trigger sets it, never us
+    expect(payload.skill_rating).toBe(3);
+    expect(payload.birth_date).toBe('2000-01-01');
+  });
+
+  it('an emailless registered player mints a fresh twin without a dedup lookup', async () => {
+    insertResult = { data: { id: 'twin-emailless' }, error: null };
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: 'a1' },
+      { profileId: 'p1', fullName: 'Geen Email', email: null },
+    );
+    expect(id).toBe('twin-emailless');
+    expect(emailLookupMock).not.toHaveBeenCalled();
+    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.email).toBeUndefined();
+  });
+
+  it('returns null (HARD failure) when the twin insert fails', async () => {
+    emailLookupResults = [[]];
+    insertResult = { data: null, error: { code: '42501', message: 'denied' } };
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: 'a1' },
+      { profileId: 'p1', fullName: 'Faalt', email: 'x@test.com' },
+    );
+    expect(id).toBeNull();
   });
 });
