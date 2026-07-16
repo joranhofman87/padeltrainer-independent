@@ -139,10 +139,17 @@ coexist. Keep it as the choke point.
   people with namespaced `comboboxId`s; and `addPlayersToCycle`/`swapPlayerInCycle`
   (`src/lib/cycleRoster.ts`) gained cross-identity dedup (`twinProfileIdByGuestId` / `toProfileId`)
   that closes a latent duplicate-seat hole no single-column unique index can catch. No UI change yet
-  → no behaviour change. **Phase 0b (UI wiring)** flips the capability on: `CycleRosterInlinePicker`
-  → person-keys, `CycleDetailView` resolves a `p_` pick to its twin before add/swap and relaxes the
-  Change gate. Owner decision surfaced at 0b: emailless registered players mint an un-dedupable twin
-  each add (reconciled later via `merge_guest_players`) — accept or block.
+  → no behaviour change.
+
+  **Progress — Phase 0b (UI wiring) SHIPPED:** `CycleRosterInlinePicker` now searches
+  `fetchBookablePersons` (guests **and** registered players, `g_`/`p_` keys) and emits the selected
+  `BookablePerson`; `CycleDetailView` lifts the selection to a person, resolves a `p_` pick to its
+  guest twin at add/swap (abort + toast on failure, threading `twinProfileIdByGuestId`/`toProfileId`
+  into the 0a dedup) and relaxes the Change gate so registered rows are manageable too. **Closes the
+  "add a registered app-account holder as a cycle participant" gap** (the PR #557 follow-up).
+  Owner-accepted default: an emailless registered player mints an un-dedupable twin per add (rare —
+  accounts almost always carry an email; reconciled later via `merge_guest_players`). **Phases 1–4**
+  (the real `persons` table) remain per §5 below.
 
 ### Phase 1 — EXPAND (additive, zero behavior change)
 - Migration: create `persons`; add nullable `person_id` to the 9 tables (+ the paid_by/booked_by/

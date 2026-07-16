@@ -28,6 +28,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, representativeSlotPrice, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
 import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { addPlayersToCycle, swapPlayerInCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
+import { resolveOrCreateGuestTwinForRegisteredPlayer } from '@/lib/playerResolve';
+import { type BookablePerson } from '@/lib/playersOverview';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
 import { CycleRosterInlinePicker } from '@/components/cycles/CycleRosterInlinePicker';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -163,12 +165,14 @@ export function CycleDetailView({
   const [removeTarget, setRemoveTarget] = useState<CycleRosterEntry | null>(null);
   const [removingFromCycle, setRemovingFromCycle] = useState(false);
 
-  // Whole-cycle add / change-player (academy roster actions) — inline, like the slot page.
+  // Whole-cycle add / change-player (academy roster actions) — inline, like the slot page. The
+  // selection is a full BookablePerson (guest OR registered) so a registered pick can be resolved
+  // to its guest twin at confirm time (person-unification Phase 0).
   const [addPanelOpen, setAddPanelOpen] = useState(false);
-  const [addSelectedId, setAddSelectedId] = useState('');
+  const [addSelectedPerson, setAddSelectedPerson] = useState<BookablePerson | null>(null);
   // Which roster row is expanded for inline edit (change / remove), keyed by its stable id.
   const [expandedRosterKey, setExpandedRosterKey] = useState<string | null>(null);
-  const [changeSelectedId, setChangeSelectedId] = useState('');
+  const [changeSelectedPerson, setChangeSelectedPerson] = useState<BookablePerson | null>(null);
   const [rosterBusy, setRosterBusy] = useState(false);
   // Sent/paid-invoice confirmation after an add/change that touched invoices.
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
@@ -420,18 +424,53 @@ export function CycleDetailView({
     return false;
   };
 
+  // Resolve a picked person to the guest id the roster writes book against. A guest is itself; a
+  // REGISTERED player (person-unification Phase 0) is resolved to their guest twin so the
+  // guest-keyed booking/invoice chain seats them — the twin's profile id rides along so the roster
+  // dedup catches a seat that human already holds under their player_id. Returns null = abort
+  // (twin mint failed, or no academy scope to own the twin).
+  const resolvePersonToGuest = async (
+    person: BookablePerson,
+  ): Promise<{ guestPlayerId: string; twinProfileId: string | null } | null> => {
+    if (person.guestPlayerId) return { guestPlayerId: person.guestPlayerId, twinProfileId: null };
+    if (person.profileId && academyProfileId) {
+      const twinId = await resolveOrCreateGuestTwinForRegisteredPlayer(
+        { kind: 'academy', academyProfileId },
+        {
+          profileId: person.profileId,
+          fullName: person.full_name,
+          email: person.email || null,
+          phone: person.phone || null,
+          skillRating: person.skill_rating,
+          ratingSystem: person.rating_system,
+          birthDate: person.birth_date,
+        },
+      );
+      return twinId ? { guestPlayerId: twinId, twinProfileId: person.profileId } : null;
+    }
+    return null;
+  };
+
   // Add one player to EVERY session of the cycle (skips sessions where they're already booked or
   // that are full). Honours the sticky "Don't update invoices" toggle.
-  const handleAddPlayer = async (guestPlayerId: string) => {
+  const handleAddPlayer = async (person: BookablePerson) => {
     setRosterBusy(true);
     try {
+      const resolved = await resolvePersonToGuest(person);
+      if (!resolved) {
+        toast.error(t('detail.roster.registeredTwinFailed', 'Could not add this player. Please try again.'));
+        return; // keep the panel open so they can retry
+      }
       const res = await addPlayersToCycle({
         cycleId,
-        guestPlayerIds: [guestPlayerId],
+        guestPlayerIds: [resolved.guestPlayerId],
+        twinProfileIdByGuestId: resolved.twinProfileId
+          ? { [resolved.guestPlayerId]: resolved.twinProfileId }
+          : undefined,
         skipInvoices: skipInvoiceUpdates,
       });
       setAddPanelOpen(false);
-      setAddSelectedId('');
+      setAddSelectedPerson(null);
       if (res.insertedCount === 0) {
         toast(t('detail.roster.addNone'));
       } else {
@@ -450,18 +489,24 @@ export function CycleDetailView({
   // Replace one enrolled player with another across EVERY session by re-pointing the outgoing
   // player's bookings to the incoming guest IN PLACE (keeps amount/paid state — no €0 sessions, no
   // orphaned draft). Invoices reconcile only when the sticky toggle is off.
-  const handleSwapPlayer = async (entry: CycleRosterEntry, toGuestPlayerId: string) => {
+  const handleSwapPlayer = async (entry: CycleRosterEntry, person: BookablePerson) => {
     setRosterBusy(true);
     try {
+      const resolved = await resolvePersonToGuest(person);
+      if (!resolved) {
+        toast.error(t('detail.roster.registeredTwinFailed', 'Could not add this player. Please try again.'));
+        return; // keep the row open so they can retry
+      }
       const res = await swapPlayerInCycle({
         cycleId,
         fromPlayer: { playerId: entry.playerId, guestPlayerId: entry.guestPlayerId },
-        toGuestPlayerId,
+        toGuestPlayerId: resolved.guestPlayerId,
+        toProfileId: resolved.twinProfileId,
         skipInvoices: skipInvoiceUpdates,
       });
       if (res.error) throw res.error;
       setExpandedRosterKey(null);
-      setChangeSelectedId('');
+      setChangeSelectedPerson(null);
       if (res.reassignedCount + res.cancelledCollisionCount === 0) {
         toast(t('detail.roster.changeNone'));
       } else {
@@ -780,7 +825,7 @@ export function CycleDetailView({
                 variant="outline"
                 size="sm"
                 className="shrink-0 gap-1.5"
-                onClick={() => { setAddPanelOpen((o) => !o); setAddSelectedId(''); }}
+                onClick={() => { setAddPanelOpen((o) => !o); setAddSelectedPerson(null); }}
               >
                 <UserPlus className="h-3.5 w-3.5" />
                 {t('detail.roster.addPlayer')}
@@ -796,7 +841,10 @@ export function CycleDetailView({
               {roster.map((p, i) => {
                 const rowKey = p.guestPlayerId ?? p.playerId ?? `${p.name}-${i}`;
                 const expanded = expandedRosterKey === rowKey;
-                const canChange = canManageRoster && !!p.guestPlayerId;
+                // Registered (player_id) rows are now changeable too (person-unification Phase 0):
+                // the row carries a person ref the swap scopes correctly.
+                const canChange = canManageRoster && (!!p.guestPlayerId || !!p.playerId);
+                const personKey = p.guestPlayerId ? `g_${p.guestPlayerId}` : p.playerId ? `p_${p.playerId}` : '';
                 const interactive = canChange || canRemoveFromCycle;
                 return (
                   <div key={rowKey}>
@@ -804,7 +852,7 @@ export function CycleDetailView({
                       type="button"
                       disabled={!interactive}
                       className="w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors enabled:hover:bg-accent/50 disabled:cursor-default"
-                      onClick={() => { setExpandedRosterKey(expanded ? null : rowKey); setChangeSelectedId(''); }}
+                      onClick={() => { setExpandedRosterKey(expanded ? null : rowKey); setChangeSelectedPerson(null); }}
                     >
                       <Avatar className="h-8 w-8">
                         <AvatarFallback className="text-[10px]">{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -827,17 +875,17 @@ export function CycleDetailView({
                             <div className="flex items-center gap-2">
                               <CycleRosterInlinePicker
                                 academyProfileId={academyProfileId}
-                                value={changeSelectedId}
-                                onValueChange={setChangeSelectedId}
-                                excludeGuestPlayerIds={p.guestPlayerId ? [p.guestPlayerId] : []}
+                                value={changeSelectedPerson?.comboboxId ?? ''}
+                                onSelect={setChangeSelectedPerson}
+                                excludePersonKeys={personKey ? [personKey] : []}
                                 disabled={rosterBusy}
                                 namespace={namespace}
                               />
                               <Button
                                 size="sm"
                                 className="shrink-0"
-                                disabled={!changeSelectedId || rosterBusy}
-                                onClick={() => void handleSwapPlayer(p, changeSelectedId)}
+                                disabled={!changeSelectedPerson || rosterBusy}
+                                onClick={() => changeSelectedPerson && void handleSwapPlayer(p, changeSelectedPerson)}
                               >
                                 {rosterBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
                                 {t('detail.roster.changeConfirm')}
@@ -875,8 +923,8 @@ export function CycleDetailView({
                   <p className="text-xs font-medium text-muted-foreground">{t('detail.roster.addDescription')}</p>
                   <CycleRosterInlinePicker
                     academyProfileId={academyProfileId}
-                    value={addSelectedId}
-                    onValueChange={setAddSelectedId}
+                    value={addSelectedPerson?.comboboxId ?? ''}
+                    onSelect={setAddSelectedPerson}
                     disabled={rosterBusy}
                     namespace={namespace}
                   />
@@ -886,11 +934,11 @@ export function CycleDetailView({
                     disabled={rosterBusy}
                   />
                   <div className="flex gap-2">
-                    <Button size="sm" disabled={!addSelectedId || rosterBusy} onClick={() => void handleAddPlayer(addSelectedId)}>
+                    <Button size="sm" disabled={!addSelectedPerson || rosterBusy} onClick={() => addSelectedPerson && void handleAddPlayer(addSelectedPerson)}>
                       {rosterBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
                       {t('detail.roster.addConfirm')}
                     </Button>
-                    <Button size="sm" variant="ghost" disabled={rosterBusy} onClick={() => { setAddPanelOpen(false); setAddSelectedId(''); }}>
+                    <Button size="sm" variant="ghost" disabled={rosterBusy} onClick={() => { setAddPanelOpen(false); setAddSelectedPerson(null); }}>
                       {t('detail.delete.cancel')}
                     </Button>
                   </div>
