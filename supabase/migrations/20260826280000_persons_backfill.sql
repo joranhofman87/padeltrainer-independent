@@ -216,7 +216,18 @@ BEGIN
   INTO g
   FROM public.person_links pl
   JOIN public.guest_players gp ON gp.id = pl.guest_player_id
-  WHERE pl.person_id = _person AND pl.guest_player_id IS NOT NULL;
+  WHERE pl.person_id = _person AND pl.guest_player_id IS NOT NULL
+    -- FREEZE (external re-audit round 4): a guest under an unresolved split review may describe
+    -- a DIFFERENT human — while a PROFILE shares this person, that guest's fields must not enter
+    -- the aggregate, no matter WHICH path triggered the rederive (source edits, H4 deletes,
+    -- manual calls, backfill re-runs). Guests-only persons still derive from all their guests
+    -- (nothing to pollute — the person IS the guest cluster; never blank a person out).
+    AND NOT (
+      p.id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM public.person_merge_review r
+                  WHERE r.guest_player_id = gp.id AND r.status = 'pending'
+                    AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved'))
+    );
 
   UPDATE public.persons pe SET
     user_id               = p.user_id,
@@ -992,16 +1003,8 @@ BEGIN
      (OLD.full_name, OLD.first_name, OLD.last_name, OLD.email, OLD.phone, OLD.birth_date,
       OLD.skill_rating, OLD.rating_system, OLD.billing_business_name, OLD.billing_address,
       OLD.billing_btw_number) THEN
-    -- FREEZE while a split is pending (external re-audit round 3): a guest that just triggered
-    -- twin_detached_needs_split / merged_guest_email_moved may now describe a DIFFERENT human —
-    -- its edits must not keep gap-filling the shared person until the owner resolves the split.
-    -- Wrong-person data is the unrecoverable failure class; staleness is not (resolution tooling
-    -- re-derives). Guests without pending split rows are unaffected.
-    IF EXISTS (SELECT 1 FROM public.person_merge_review r
-               WHERE r.guest_player_id = NEW.id AND r.status = 'pending'
-                 AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')) THEN
-      RETURN NEW;
-    END IF;
+    -- (the split-pending freeze lives INSIDE rederive_person — round 4 — so it holds on every
+    -- rederive path, not just this one)
     PERFORM public.rederive_person(pl.person_id)
     FROM public.person_links pl WHERE pl.guest_player_id = NEW.id;
   END IF;

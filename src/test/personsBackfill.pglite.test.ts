@@ -489,16 +489,26 @@ describe('H5 — source edits keep persons fresh (re-audit P1) + live gap-fill (
     expect(r.rows[0].full_name).toBe('Tessa Twin'); // profile still wins the name
   });
 
-  it('a SPLIT-PENDING guest is FROZEN: its edits stop feeding the shared person (re-audit round 3)', async () => {
-    // G_TWIN was detached (repurpose-rename) earlier — it has a pending twin_detached_needs_split
-    // row and may now describe a DIFFERENT human. Its edits must not gap-fill P_TWIN's person.
-    const before = await db.query<{ phone: string | null }>(
-      `SELECT phone FROM persons WHERE id = '${P_TWIN}'`);
+  it('a SPLIT-PENDING guest is FROZEN on EVERY rederive path, not just its own edits (round 4)', async () => {
+    // G_TWIN was detached (repurpose-rename) earlier — pending twin_detached_needs_split row; it
+    // may now describe a DIFFERENT human. Its fields must never enter P_TWIN's person again.
+    const phoneOf = async () =>
+      (await db.query<{ phone: string | null }>(`SELECT phone FROM persons WHERE id = '${P_TWIN}'`))
+        .rows[0].phone;
+    const before = await phoneOf();
+
+    // (1) the guest's OWN edit
     await db.exec(`UPDATE guest_players SET phone = '0600000666' WHERE id = '${G_TWIN}';`);
-    const after = await db.query<{ phone: string | null }>(
-      `SELECT phone FROM persons WHERE id = '${P_TWIN}'`);
-    expect(after.rows[0].phone).toBe(before.rows[0].phone); // untouched while the split is pending
-    expect(after.rows[0].phone).not.toBe('0600000666');
+    expect(await phoneOf()).toBe(before);
+
+    // (2) a PROFILE edit triggering a full rederive of the shared person
+    await db.exec(`UPDATE profiles SET bio = 'nieuwe bio' WHERE id = '${P_TWIN}';`);
+    expect(await phoneOf()).toBe(before);
+
+    // (3) a DIRECT rederive call (the manual/backfill path)
+    await db.exec(`SELECT public.rederive_person('${P_TWIN}');`);
+    expect(await phoneOf()).toBe(before);
+    expect(before).not.toBe('0600000666');
   });
 
   it('a live H2 merge gap-fills the profile person at INSERT (re-audit P2)', async () => {
