@@ -161,8 +161,20 @@ coexist. Keep it as the choke point.
   case-SENSITIVELY vs the lowercased twin email → duplicate twin + double invoice + defeated the link
   trigger → fixed with a case-folded RPC (migration `20260826190000`) + escaped-`ilike` in the code
   branches. (#5) dedup now keys on the seat-occupancy union so `pending_approval` seats count. **0b
-  therefore needs a `db push`** (the RPC migration), not just a frontend deploy. **Phases 1–4**
-  (the real `persons` table) remain per §5 below.
+  therefore needs a `db push`** (the RPC migration), not just a frontend deploy.
+
+  **A SECOND adversarial pass (verifying the fixes) caught a HIGH bug in the first fix** and it was
+  corrected: the #3/#4/#6/#7 fix originally resolved each incoming guest's `linked_profile_id`
+  server-side to make the dedup call-path independent. But `link_guest_data_to_profile` sets that
+  column on **email match with no name guard**, so a child's guest is mislinked to the parent's
+  profile — using it would over-block an add and, worse, on **swap cancel the parent's PAID seats**.
+  Reverted to **hint-only** cross-identity dedup: it uses ONLY the profile the manager EXPLICITLY
+  selected (the `p_` pick, reliable), never the guest's `linked_profile_id`. Consequence: a `g_` pick
+  of a person who ALSO holds a `player_id` booking is **not** cross-identity-deduped — a rare,
+  recoverable pre-existing gap of the guest/profile split (a duplicate seat, never a wrong-person or
+  data loss), which the full `persons` unification (Phases 1–4) closes properly. Lesson: **never
+  drive dedup off `linked_profile_id`** — it conflates shared-email families. **Phases 1–4** remain
+  per §5 below.
 
 ### Phase 1 — EXPAND (additive, zero behavior change)
 - Migration: create `persons`; add nullable `person_id` to the 9 tables (+ the paid_by/booked_by/

@@ -126,21 +126,15 @@ export async function addPlayersToCycle(params: {
 
   const slotIds = slots.map((s) => s.id);
 
-  // Cross-identity dedup must be call-path independent (audit #3/#6): the person being added may
-  // already sit in the cycle as a pure-profile (player_id-only) booking whether the manager picked
-  // their registered (`p_`) row OR their guest (`g_`) row. So resolve each incoming guest's own
-  // linked_profile_id server-side and fold it into the profile dedup — never trust the UI to pass
-  // twinProfileId only on the p_ path.
-  const { data: incomingGuests } = await client
-    .from("guest_players")
-    .select("id, linked_profile_id")
-    .in("id", guestPlayerIds);
-  const profileIdForGuest = new Map<string, string | null>();
-  for (const g of (incomingGuests ?? []) as Array<{ id: string; linked_profile_id: string | null }>) {
-    profileIdForGuest.set(g.id, g.linked_profile_id ?? null);
-  }
-  const effectiveProfileId = (guestId: string): string | null =>
-    twinProfileIdByGuestId?.[guestId] ?? profileIdForGuest.get(guestId) ?? null;
+  // Cross-identity dedup uses ONLY the caller's twin hint — the profile the manager EXPLICITLY
+  // selected (the `p_` pick). We deliberately do NOT fall back to the guest's own
+  // linked_profile_id: that column is set by link_guest_data_to_profile on email match with NO name
+  // guard, so in a shared-household-email family a child's guest is mislinked to the parent's
+  // profile — using it here would conflate them (over-block an add, and on swap CANCEL the parent's
+  // paid seats). The reliable signal is the explicit p_ selection. A `g_` pick of a person who also
+  // holds a player_id booking is therefore NOT cross-identity-deduped here — a rare, recoverable
+  // pre-existing gap of the guest/profile split (the full persons unification, Phases 1–4, closes
+  // it properly). See docs/PERSON_UNIFICATION_PLAN.md Phase 0b audit notes.
 
   // Pull both the dedup-active rows (any of pending/confirmed/completed) and the
   // capacity-occupying rows in one query, then bucket them.
@@ -183,14 +177,13 @@ export async function addPlayersToCycle(params: {
   let rebalanceFailed = false;
 
   for (const guestId of guestPlayerIds) {
-    const profileId = effectiveProfileId(guestId);
+    const twinProfileId = twinProfileIdByGuestId?.[guestId] ?? null;
     for (const slot of slots) {
       // Skip if the person already holds a seat on this session under EITHER identity — the guest
-      // id, or (cross-identity) the profile it maps to (from the caller's twin hint OR the guest's
-      // own linked_profile_id).
+      // id, or (cross-identity) the profile the manager EXPLICITLY selected (the twin hint).
       if (
         guestSlotSet.has(`${slot.id}:${guestId}`) ||
-        (profileId && profileSlotSet.has(`${slot.id}:${profileId}`))
+        (twinProfileId && profileSlotSet.has(`${slot.id}:${twinProfileId}`))
       ) {
         alreadyBookedSlotIds.add(slot.id);
         continue;
@@ -333,26 +326,19 @@ export async function swapPlayerInCycle(params: {
   if (inErr) return { error: inErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   const incomingSlots = new Set((incoming ?? []).map((b) => b.slot_id));
 
-  // Cross-identity (Phase 0): the incoming person's pure-profile (player_id-only) seats are the SAME
-  // human too — treat those as collisions as well, so we cancel the outgoing seat there rather than
-  // minting a duplicate. Call-path independent (audit #4/#7): a guest (`g_`) pick carries no profile
-  // id, so recover the incoming guest's own linked_profile_id when the caller didn't hint one.
-  let effectiveToProfileId = toProfileId;
-  if (!effectiveToProfileId) {
-    const { data: inGuest } = await client
-      .from("guest_players")
-      .select("linked_profile_id")
-      .eq("id", toGuestPlayerId)
-      .maybeSingle();
-    effectiveToProfileId = (inGuest as { linked_profile_id: string | null } | null)?.linked_profile_id ?? null;
-  }
-  if (effectiveToProfileId) {
+  // Cross-identity (Phase 0): when the manager EXPLICITLY picked the incoming person's registered
+  // (`p_`) row, toProfileId is their own profile — their pure-profile seats are the SAME human, so
+  // treat those as collisions too (cancel the outgoing seat there rather than minting a duplicate).
+  // We use ONLY that explicit hint, never the incoming guest's linked_profile_id: that column is a
+  // shared-email trigger link with no name guard, so recovering it would let a family-mislinked
+  // guest collide with the OUTGOING profile-holder's OWN seats and cancel their (paid) bookings.
+  if (toProfileId) {
     const { data: incomingProfile, error: inpErr } = await client
       .from("bookings")
       .select("slot_id")
       .in("slot_id", slotIds)
       .in("status", [...DEDUP_BOOKING_STATUSES])
-      .eq("player_id", effectiveToProfileId)
+      .eq("player_id", toProfileId)
       .is("guest_player_id", null);
     if (inpErr) return { error: inpErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
     for (const b of incomingProfile ?? []) incomingSlots.add(b.slot_id);

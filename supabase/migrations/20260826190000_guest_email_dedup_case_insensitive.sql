@@ -21,6 +21,8 @@ AS $$
   FROM public.guest_players gp
   WHERE lower(btrim(gp.email)) = lower(btrim(_email))
     AND btrim(_email) <> ''
+    -- match the partial index predicate below so the planner can use it
+    AND gp.email IS NOT NULL AND btrim(gp.email) <> ''
     -- caller must actually manage the academy they claim to dedup within
     AND _academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid()))
     AND (

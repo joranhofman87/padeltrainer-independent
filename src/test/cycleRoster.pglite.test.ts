@@ -447,25 +447,48 @@ describe('cross-identity dedup (Phase 0 person twin)', () => {
   });
 });
 
-// Audit fixes: the cross-identity dedup must be CALL-PATH INDEPENDENT (works whether the manager
-// picked the person's guest row or their registered row), and must catch pending_approval seats.
-describe('cross-identity dedup — call-path independent + pending_approval (audit #3/#5/#6/#7)', () => {
-  it('addPlayersToCycle dedups via the guest\'s OWN linked_profile_id (g_ pick, no twin hint passed)', async () => {
-    // GA is a twin linked to PROF; PROF already holds a pure-profile seat on S1. Adding GA with NO
-    // twinProfileIdByGuestId (the g_-pick path) must still skip S1 by reading GA.linked_profile_id.
+// Fix-verify follow-up: cross-identity dedup must use ONLY the explicit twin hint, NEVER the guest's
+// linked_profile_id — that column is a shared-email trigger link with no name guard, so relying on
+// it CONFLATES family members (a child mislinked to the parent's profile). These tests pin the SAFE
+// behaviour: a family-mislinked guest is neither over-blocked on add nor made to cancel the profile
+// -holder's paid seats on swap. (The pending_approval seat-union fix, audit #5, is also pinned.)
+describe('family-mislink safety + pending_approval (fix-verify)', () => {
+  it('add does NOT over-block a family-mislinked guest against the parent\'s pure-profile seat', async () => {
+    // GA is mislinked to PROF (shared household email) but is a DIFFERENT human. PROF holds a
+    // pure-profile seat on S1. Adding GA (g_ pick, no twin hint) must NOT skip S1 — GA is booked on
+    // every session (never excluded because of someone else's seat).
     await db.exec(`UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';`);
     await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
       ('${S1}','${PROF}','confirmed','pending', false);`);
 
     const res = await addPlayersToCycle({ cycleId: CYCLE, guestPlayerIds: [GA], skipInvoices: true, client: supa });
 
-    expect(res.insertedCount).toBe(2);            // SP + S2 only — S1 skipped cross-identity
-    expect(res.alreadyBookedSlotIds).toContain(S1);
-    const onS1 = (await db.query<{ n: string }>(`SELECT count(*)::text n FROM bookings WHERE slot_id = $1 AND status <> 'cancelled'`, [S1])).rows[0];
-    expect(Number(onS1.n)).toBe(1);
+    expect(res.insertedCount).toBe(3);              // all sessions — NOT over-blocked on S1
+    expect(await activeForGuest(GA)).toEqual([SP, S1, S2].sort());
   });
 
-  it('addPlayersToCycle skips a pending_approval seat the person already holds (guest side)', async () => {
+  it('swap does NOT cancel the OUTGOING profile-holder\'s paid seats when the incoming guest is family-mislinked (no data loss)', async () => {
+    // Outgoing = pure-profile PROF (holds paid seats). Incoming = guest GA mislinked to PROF. The
+    // swap (no toProfileId hint) must REASSIGN PROF's seats to GA, NOT classify them as self-
+    // collisions and cancel them.
+    await db.exec(`UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, payment_amount, paid_externally) VALUES
+      ('${SP}','${PROF}','confirmed','paid', 20, false),
+      ('${S1}','${PROF}','confirmed','paid', 20, false);`);
+
+    const res = await swapPlayerInCycle({
+      cycleId: CYCLE, fromPlayer: { playerId: PROF }, toGuestPlayerId: GA, skipInvoices: true, client: supa,
+    });
+
+    expect(res.error).toBeNull();
+    expect(res.reassignedCount).toBe(2);            // both seats moved to GA
+    expect(res.cancelledCollisionCount).toBe(0);    // NONE cancelled (the data-loss bug is gone)
+    expect(await activeForGuest(GA)).toEqual([SP, S1].sort());
+    const cancelled = (await db.query<{ n: string }>(`SELECT count(*)::text n FROM bookings WHERE status = 'cancelled'`)).rows[0];
+    expect(Number(cancelled.n)).toBe(0);
+  });
+
+  it('addPlayersToCycle skips a pending_approval seat the person already holds (audit #5)', async () => {
     await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, paid_externally) VALUES
       ('${S1}','${GA}','pending_approval','pending', false);`);
 
@@ -474,22 +497,5 @@ describe('cross-identity dedup — call-path independent + pending_approval (aud
     expect(res.alreadyBookedSlotIds).toContain(S1); // pending_approval now counts as an occupied seat
     const onS1 = (await db.query<{ n: string }>(`SELECT count(*)::text n FROM bookings WHERE slot_id = $1 AND guest_player_id = $2 AND status <> 'cancelled'`, [S1, GA])).rows[0];
     expect(Number(onS1.n)).toBe(1);                 // not doubled
-  });
-
-  it('swapPlayerInCycle collision-cancels via the incoming guest\'s linked_profile_id (no toProfileId passed)', async () => {
-    await db.exec(`UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';`);
-    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, payment_amount, paid_externally) VALUES
-      ('${SP}','${GB}','confirmed','pending', 20, false),
-      ('${S1}','${GB}','confirmed','pending', 20, false);`);
-    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
-      ('${S1}','${PROF}','confirmed','pending', false);`); // incoming GA (via PROF) already on S1
-
-    const res = await swapPlayerInCycle({
-      cycleId: CYCLE, fromPlayer: { guestPlayerId: GB }, toGuestPlayerId: GA, skipInvoices: true, client: supa,
-    });
-
-    expect(res.reassignedCount).toBe(1);            // SP re-pointed
-    expect(res.cancelledCollisionCount).toBe(1);    // GB's S1 cancelled — GA already there as PROF
-    expect(await activeForGuest(GA)).toEqual([SP]);
   });
 });
