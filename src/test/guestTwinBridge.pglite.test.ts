@@ -138,6 +138,21 @@ beforeAll(async () => {
   // verbatim, so weakening the migration DDL fails these tests.
   const fs = await import('node:fs/promises');
   const stripGrants = (sql: string) => sql.replace(/^(REVOKE|GRANT)[^;]*;$/gm, '');
+  // Phase 3.1 deps: the display readers are re-emitted person-first in 20260826290000 — these
+  // tests must run against the LIVE bodies (the twin-precedence bridge is kept verbatim there).
+  await db.exec(`
+    CREATE TABLE public.persons (id uuid PRIMARY KEY, full_name text);
+    CREATE TABLE public.person_links (person_id uuid, profile_id uuid, guest_player_id uuid);
+    CREATE TABLE public.person_merge_review (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      kind text NOT NULL, status text NOT NULL DEFAULT 'pending',
+      guest_player_id uuid, profile_id uuid, person_id uuid, email text,
+      details jsonb NOT NULL DEFAULT '{}'::jsonb
+    );
+    ALTER TABLE public.bookings ADD COLUMN person_id uuid;
+    ALTER TABLE public.invoices ADD COLUMN person_id uuid;
+    ALTER TABLE public.slot_priority_claims ADD COLUMN person_id uuid;
+  `);
   for (const file of [
     'supabase/migrations/20260826200000_harden_guest_dedup_rpc.sql',
     'supabase/migrations/20260826210000_guest_twin_bridge.sql',
@@ -145,6 +160,7 @@ beforeAll(async () => {
     'supabase/migrations/20260826230000_twin_visibility_rebook_readers.sql',
     'supabase/migrations/20260826240000_twin_reader_precedence_and_lock.sql',
     'supabase/migrations/20260826250000_repurpose_trigger_definer.sql',
+    'supabase/migrations/20260826290000_phase31_person_display_readers.sql',
   ]) {
     await db.exec(stripGrants(await fs.readFile(file, 'utf8')));
   }
@@ -192,7 +208,7 @@ beforeEach(async () => {
     TRUNCATE profiles, guest_players, academy_managers, academy_trainers, trainer_profiles,
              locations, availability_slots, cycles, bookings, invoices, intake_requests,
              slot_priority_claims, academy_player_metadata, session_player_notes,
-             academy_player_locations CASCADE;
+             academy_player_locations, persons, person_links, person_merge_review CASCADE;
     INSERT INTO profiles (id, user_id, email, full_name) VALUES
       ('${PROF}', '${PLAYER_USER}', 'fam@example.com', 'Jan Jansen'),
       ('${PROF2}', '${PARENT_USER}', 'other@example.com', 'Piet Peters');
@@ -694,5 +710,63 @@ describe('rebook readers include twin-stamped guests (verification follow-up)', 
     const r = await db.query<{ ok: boolean }>(
       `SELECT public.can_book_member_window($1, $2) AS ok`, [PLAYER_USER, CYCLE]);
     expect(r.rows[0].ok).toBe(true);
+  });
+});
+
+describe('Phase 3.1 — the person arm of the display readers', () => {
+  it('a person-MERGED guest with NO twin/linked stamp is visible via person_id (invisible to the bridge)', async () => {
+    const PERSON = '90000000-0000-0000-0000-000000000031';
+    await db.exec(`
+      INSERT INTO persons (id, full_name) VALUES ('${PERSON}', 'Jan Jansen');
+      INSERT INTO person_links (person_id, profile_id) VALUES ('${PERSON}', '${PROF}');
+      INSERT INTO person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GA}');
+      INSERT INTO locations (id, name) VALUES ('${LOC}', 'Padel Arena')
+        ON CONFLICT (id) DO NOTHING;
+      INSERT INTO availability_slots (id, start_time, end_time)
+        VALUES ('${SLOT}', now(), now() + interval '1 hour') ON CONFLICT (id) DO NOTHING;
+      INSERT INTO bookings (slot_id, guest_player_id, person_id, status, payment_status)
+        VALUES ('${SLOT}', '${GA}', '${PERSON}', 'confirmed', 'pending');
+    `);
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const r = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect((r.rows[0].j as Array<unknown>).length).toBeGreaterThanOrEqual(1); // via the person arm — GA has NO twin/linked stamp
+    const claims = await db.query(`
+      INSERT INTO slot_priority_claims (slot_id, guest_player_id, person_id, status, claim_token)
+      VALUES ('${SLOT}', '${GA}', '${PERSON}', 'pending', 'tok-person') RETURNING id`);
+    expect(claims.rows).toHaveLength(1);
+    const pending = await db.query<{ claim_token: string }>(`SELECT * FROM public.get_my_pending_priority_claims()`);
+    expect(pending.rows.map((x) => x.claim_token)).toContain('tok-person');
+
+    // paid invoices via the person arm (the invoice's guest is unstamped/unlinked)
+    const b2 = await db.query<{ id: string }>(`
+      INSERT INTO bookings (slot_id, guest_player_id, person_id, status, payment_status)
+      VALUES ('${SLOT}', '${GA}', '${PERSON}', 'confirmed', 'paid') RETURNING id`);
+    await db.query(
+      `INSERT INTO invoices (status, booking_ids, guest_player_id, person_id) VALUES ('paid', $1, $2, $3)`,
+      [[b2.rows[0].id], GA, PERSON],
+    );
+    const paid = await db.query<{ booking_id: string }>(`SELECT * FROM public.get_my_paid_booking_ids()`);
+    expect(paid.rows.map((x) => x.booking_id)).toContain(b2.rows[0].id);
+    await db.exec(`SELECT set_config('test.uid', '', false)`);
+  });
+
+  it('the split-pending FREEZE holds on the person arms: a repurposed guest\'s rows vanish from the profile holder\'s app', async () => {
+    const PERSON = '90000000-0000-0000-0000-000000000032';
+    await db.exec(`
+      INSERT INTO persons (id, full_name) VALUES ('${PERSON}', 'Jan Jansen');
+      INSERT INTO person_links (person_id, profile_id) VALUES ('${PERSON}', '${PROF}');
+      INSERT INTO person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GA}');
+      INSERT INTO availability_slots (id, start_time, end_time)
+        VALUES ('${SLOT}', now(), now() + interval '1 hour') ON CONFLICT (id) DO NOTHING;
+      INSERT INTO bookings (slot_id, guest_player_id, person_id, status, payment_status)
+        VALUES ('${SLOT}', '${GA}', '${PERSON}', 'confirmed', 'pending');
+      -- the guest is now under an unresolved split review (repurposed to a different human)
+      INSERT INTO person_merge_review (kind, status, guest_player_id, person_id)
+      VALUES ('twin_detached_needs_split', 'pending', '${GA}', '${PERSON}');
+    `);
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const r = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(r.rows[0].j as Array<unknown>).toHaveLength(0); // frozen — never the wrong human's rows
+    await db.exec(`SELECT set_config('test.uid', '', false)`);
   });
 });

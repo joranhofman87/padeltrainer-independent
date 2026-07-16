@@ -386,6 +386,27 @@ coexist. Keep it as the choke point.
 ### Phase 3 — MIGRATE READERS, cluster by cluster (the bulk of the work)
 One domain per PR, each with tests + live-verify, in dependency order:
 1. **Roster/display** (cycle detail, players-overview, pickers) → read `person_id`.
+
+   **Progress — 3.1 SHIPPED (migration `20260826290000`):** the CYCLE-DETAIL chain + the three
+   player-side DISPLAY readers are person-keyed. (a) `personIdentity.ts` gains
+   `unifiedPersonKeyOf` — person_id-first with a CONGRUENT raw-uuid fallback (deterministic ids +
+   guest-side-first derivation make stamped and unstamped rows of the same person key
+   identically; a merged twin's unstamped row degrades to today's split — never worse). (b)
+   `getCycleDetail` selects `bookings.person_id`, groups the roster by the unified key;
+   `CycleRosterEntry` gains `personId` + `refs: PersonRef[]` (ALL old-world refs the person's
+   seats span; the XOR pair stays as the guest-preferred primary). (c) `CycleDetailView`:
+   row keys + picker exclusions cover every ref; **Remove/Change iterate refs** — the one
+   deliberate behavior change: a merged human is managed as ONE entry, so no half stays silently
+   seated (swap-per-ref reuses swap's existing collision handling for duplicate seats). (d)
+   `get_cycle_roster_names` gains a person-keyed arm (old arms + auth block + grants verbatim —
+   deterministic ids do NOT make them sufficient: a merged guest's person id is the profile's id,
+   absent from the profile arm without a player_id booking). (e) `get_my_person_id()` = the "who
+   am I in the new world" choke point; the three player display readers
+   (`get_my_linked_guest_bookings`, `get_my_paid_booking_ids`, `get_my_pending_priority_claims`)
+   go person-first with the Phase-0c twin-precedence bridge kept VERBATIM (covers the
+   linked-but-unmerged guests pending P-B). Explicitly deferred: `can_book_member_window`
+   (booking-path auth gate → 3.3), `get_players_overview` re-key + picker person-dedup (→ 3.2),
+   every write-path person predicate (→ 3.3).
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;

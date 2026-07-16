@@ -17,6 +17,8 @@
 export interface PersonIdRow {
   player_id?: string | null;
   guest_player_id?: string | null;
+  /** Phase 1+ dual-write stamp: the row's person in the unified world (persons.id). */
+  person_id?: string | null;
 }
 
 /** A resolved person: exactly ONE of the two ids — guest wins on dual-keyed rows. */
@@ -32,6 +34,21 @@ export function personKeyOf(row: PersonIdRow): string | null {
   if (row.guest_player_id) return `g:${row.guest_player_id}`;
   if (row.player_id) return `p:${row.player_id}`;
   return null;
+}
+
+/**
+ * Phase 3.1 unified person key — person_id-FIRST, raw-uuid fallback for unstamped rows.
+ *
+ * The fallback is CONGRUENT with the stamp by construction: person ids are deterministic (= the
+ * source row's uuid — the profile id for account holders and merged twins, the guest id for
+ * guest-only persons) and the dual-write triggers derive guest-side-first, exactly like the
+ * fallback below. So a stamped row and an unstamped row of the SAME person produce the SAME key,
+ * and a merged twin's unstamped guest row degrades to today's split view — never worse than the
+ * old keying, usually strictly better (one human = one key across both old columns).
+ */
+export function unifiedPersonKeyOf(row: PersonIdRow): string | null {
+  const id = row.person_id ?? row.guest_player_id ?? row.player_id ?? null;
+  return id ? `person:${id}` : null;
 }
 
 /** Resolve a row to its XOR person ref — guest wins on dual-keyed rows. Null when no identity. */

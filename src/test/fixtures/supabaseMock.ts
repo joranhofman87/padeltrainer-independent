@@ -70,7 +70,9 @@ function builder(table: string) {
  */
 function defaultRpc(name: string): { data?: any; error?: any } | null {
   if (name === 'get_cycle_roster_names') {
-    const rows = [...(_data.profiles ?? []), ...(_data.guest_players ?? [])].map((r) => ({
+    // Phase 3.1: the real RPC also emits a PERSON-keyed arm (persons.id → persons.full_name) so
+    // the roster can name merged humans by their person id — model it from a `persons` fixture.
+    const rows = [...(_data.profiles ?? []), ...(_data.guest_players ?? []), ...(_data.persons ?? [])].map((r) => ({
       id: r.id,
       full_name: r.full_name ?? null,
     }));

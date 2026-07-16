@@ -8827,6 +8827,7 @@ export type Database = {
           start_time: string
         }[]
       }
+      get_my_person_id: { Args: never; Returns: string }
       get_or_create_short_link: {
         Args: {
           _permanent?: boolean

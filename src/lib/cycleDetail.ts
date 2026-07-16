@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { getCycle, type Cycle } from '@/lib/cycles';
 import { CAPACITY_OCCUPYING_STATUSES } from '@/lib/lessons';
-import { personDisplayName, personKeyOf, personRefOf } from '@/lib/personIdentity';
+import { personDisplayName, personRefOf, unifiedPersonKeyOf, type PersonRef } from '@/lib/personIdentity';
 import {
   computeCyclusGroupPaymentStatus,
   type CyclusGroupPaymentStatus,
@@ -52,9 +52,20 @@ export interface CycleDetailSlot {
 export interface CycleRosterEntry {
   name: string;
   sessionCount: number;
-  /** Stable identity for whole-cycle roster actions (XOR — exactly one is set). */
+  /**
+   * Stable identity for whole-cycle roster actions (XOR — exactly one is set). Phase 3.1: this is
+   * the entry's PRIMARY old-world ref (guest-preferred); a merged person's other refs are in
+   * `refs` and every roster write must cover all of them.
+   */
   playerId: string | null;
   guestPlayerId: string | null;
+  /** Phase 3.1: the unified person id (persons.id) — null only for unstamped legacy rows. */
+  personId: string | null;
+  /**
+   * ALL distinct old-world refs observed on this person's bookings in the cycle. A merged human
+   * can hold seats under BOTH old keys; Remove/Change iterate these so no half stays seated.
+   */
+  refs: PersonRef[];
 }
 
 export interface CycleDetail {
@@ -100,14 +111,23 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
   const playerNamesMap: Record<string, string[]> = {};
   const bookingCountMap: Record<string, number> = {};
   const bookingsBySlot: Record<string, BookingPaymentFields[]> = {};
-  // Roster keyed by the player's stable id (profile or guest) so two players with the same name stay
-  // distinct; the name is just for display.
-  const rosterByKey = new Map<string, { name: string; sessionCount: number; playerId: string | null; guestPlayerId: string | null }>();
+  // Phase 3.1: roster keyed by the UNIFIED person key (person_id-first) so one human is one entry
+  // regardless of which old key their bookings carry; each entry collects every old-world ref it
+  // spans (the writes still speak old-world until cluster 3.3).
+  const rosterByKey = new Map<string, {
+    name: string;
+    sessionCount: number;
+    playerId: string | null;
+    guestPlayerId: string | null;
+    personId: string | null;
+    refs: PersonRef[];
+    refKeys: Set<string>;
+  }>();
 
   if (slotIds.length > 0) {
     const { data: bookings, error: bErr } = await supabase
       .from('bookings')
-      .select('slot_id, player_id, guest_player_id, status, payment_status, paid_externally')
+      .select('slot_id, player_id, guest_player_id, person_id, status, payment_status, paid_externally')
       .in('slot_id', slotIds)
       .in('status', CAPACITY_OCCUPYING_STATUSES as unknown as string[]);
     if (bErr) throw bErr;
@@ -115,6 +135,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
       slot_id: string;
       player_id: string | null;
       guest_player_id: string | null;
+      person_id: string | null;
       status: string;
       payment_status: string | null;
       paid_externally: boolean | null;
@@ -140,20 +161,45 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
         payment_status: b.payment_status ?? null,
         paid_externally: b.paid_externally ?? null,
       });
-      // FAM-02 Level 1 (personIdentity.ts): a dual-keyed booking belongs to the GUEST person and
-      // shows the guest's OWN name — a linked child's seat must not be attributed to (or named
-      // after) the parent's profile, and it stays a separate roster entry from the parent's own.
-      const key = personKeyOf(b);
-      const name = personDisplayName(b, {
-        profileName: b.player_id ? nameLookup[b.player_id] : null,
-        guestName: b.guest_player_id ? nameLookup[b.guest_player_id] : null,
-      });
+      // Phase 3.1 (personIdentity.ts): group by the UNIFIED person key — a merged human's seats
+      // under BOTH old keys collapse into ONE roster entry. FAM-02 stays intact for unmerged rows
+      // (the fallback keys guest-side-first, and family clusters never merge), so a linked child's
+      // seat is still never attributed to the parent. Name preference: the person's own name (the
+      // merged, profile-wins identity via rederive), then the old guest-first display rule.
+      const key = unifiedPersonKeyOf(b);
+      const name =
+        (b.person_id ? nameLookup[b.person_id] : null) ??
+        personDisplayName(b, {
+          profileName: b.player_id ? nameLookup[b.player_id] : null,
+          guestName: b.guest_player_id ? nameLookup[b.guest_player_id] : null,
+        });
       const ref = personRefOf(b);
       if (name && key && ref) {
         (playerNamesMap[b.slot_id] ??= []).push(name);
+        const refKey = `${ref.playerId ?? ''}:${ref.guestPlayerId ?? ''}`;
         const existing = rosterByKey.get(key);
-        if (existing) existing.sessionCount += 1;
-        else rosterByKey.set(key, { name, sessionCount: 1, playerId: ref.playerId, guestPlayerId: ref.guestPlayerId });
+        if (existing) {
+          existing.sessionCount += 1;
+          if (!existing.refKeys.has(refKey)) {
+            existing.refKeys.add(refKey);
+            existing.refs.push(ref);
+            // keep the PRIMARY XOR ref guest-preferred (bookable side; matches the old keying)
+            if (ref.guestPlayerId && !existing.guestPlayerId) {
+              existing.guestPlayerId = ref.guestPlayerId;
+              existing.playerId = null;
+            }
+          }
+        } else {
+          rosterByKey.set(key, {
+            name,
+            sessionCount: 1,
+            playerId: ref.playerId,
+            guestPlayerId: ref.guestPlayerId,
+            personId: b.person_id ?? null,
+            refs: [ref],
+            refKeys: new Set([refKey]),
+          });
+        }
       }
     }
   }
@@ -172,9 +218,9 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
     paymentStatus: computeCyclusGroupPaymentStatus(bookingsBySlot[s.id] ?? []),
   }));
 
-  const roster: CycleRosterEntry[] = [...rosterByKey.values()].sort(
-    (a, b) => b.sessionCount - a.sessionCount || a.name.localeCompare(b.name),
-  );
+  const roster: CycleRosterEntry[] = [...rosterByKey.values()]
+    .map(({ refKeys: _refKeys, ...entry }) => entry)
+    .sort((a, b) => b.sessionCount - a.sessionCount || a.name.localeCompare(b.name));
 
   return {
     cycle,
