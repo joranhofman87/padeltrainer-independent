@@ -2,6 +2,10 @@ import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
 
 const TABLES_TO_BACKUP = [
   "profiles",
+  // person-unification (Phase 1+): the canonical humans and the old→new identity map — a restore
+  // without these would leave every stamped person_id on bookings/invoices dangling.
+  "persons",
+  "person_links",
   "trainer_profiles",
   "academy_profiles",
   "club_profiles",

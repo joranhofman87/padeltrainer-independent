@@ -359,6 +359,7 @@ export type Database = {
           guest_player_id: string | null
           id: string
           location_id: string
+          person_id: string | null
           profile_id: string | null
           updated_at: string
         }
@@ -370,6 +371,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           location_id: string
+          person_id?: string | null
           profile_id?: string | null
           updated_at?: string
         }
@@ -381,6 +383,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           location_id?: string
+          person_id?: string | null
           profile_id?: string | null
           updated_at?: string
         }
@@ -428,6 +431,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "academy_player_locations_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "academy_player_locations_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
@@ -465,6 +475,7 @@ export type Database = {
           guest_player_id: string | null
           id: string
           notes: string | null
+          person_id: string | null
           preferred_location_id: string | null
           profile_id: string | null
           remove_reason: string | null
@@ -481,6 +492,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           notes?: string | null
+          person_id?: string | null
           preferred_location_id?: string | null
           profile_id?: string | null
           remove_reason?: string | null
@@ -497,6 +509,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           notes?: string | null
+          person_id?: string | null
           preferred_location_id?: string | null
           profile_id?: string | null
           remove_reason?: string | null
@@ -512,6 +525,13 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_metadata_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
@@ -1486,10 +1506,12 @@ export type Database = {
           original_amount: number | null
           paid_at: string | null
           paid_by_guest_player_id: string | null
+          paid_by_person_id: string | null
           paid_by_player_id: string | null
           paid_externally: boolean | null
           payment_amount: number | null
           payment_status: string
+          person_id: string | null
           player_id: string | null
           public_token: string | null
           reminder_sent_at: string | null
@@ -1514,10 +1536,12 @@ export type Database = {
           original_amount?: number | null
           paid_at?: string | null
           paid_by_guest_player_id?: string | null
+          paid_by_person_id?: string | null
           paid_by_player_id?: string | null
           paid_externally?: boolean | null
           payment_amount?: number | null
           payment_status?: string
+          person_id?: string | null
           player_id?: string | null
           public_token?: string | null
           reminder_sent_at?: string | null
@@ -1542,10 +1566,12 @@ export type Database = {
           original_amount?: number | null
           paid_at?: string | null
           paid_by_guest_player_id?: string | null
+          paid_by_person_id?: string | null
           paid_by_player_id?: string | null
           paid_externally?: boolean | null
           payment_amount?: number | null
           payment_status?: string
+          person_id?: string | null
           player_id?: string | null
           public_token?: string | null
           reminder_sent_at?: string | null
@@ -1576,6 +1602,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "bookings_paid_by_person_id_fkey"
+            columns: ["paid_by_person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "bookings_paid_by_player_id_fkey"
             columns: ["paid_by_player_id"]
             isOneToOne: false
@@ -1601,6 +1634,13 @@ export type Database = {
             columns: ["paid_by_player_id"]
             isOneToOne: false
             referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
@@ -3331,6 +3371,7 @@ export type Database = {
           metadata: Json | null
           notes: string | null
           payment_method: string | null
+          person_id: string | null
           phone: string | null
           player_id: string | null
           preferred_days: string[]
@@ -3360,6 +3401,7 @@ export type Database = {
           metadata?: Json | null
           notes?: string | null
           payment_method?: string | null
+          person_id?: string | null
           phone?: string | null
           player_id?: string | null
           preferred_days: string[]
@@ -3389,6 +3431,7 @@ export type Database = {
           metadata?: Json | null
           notes?: string | null
           payment_method?: string | null
+          person_id?: string | null
           phone?: string | null
           player_id?: string | null
           preferred_days?: string[]
@@ -3437,6 +3480,13 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_requests_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
@@ -3556,6 +3606,7 @@ export type Database = {
           notes: string | null
           paid_at: string | null
           pdf_url: string | null
+          person_id: string | null
           player_address: string | null
           player_btw_number: string | null
           player_business_name: string | null
@@ -3596,6 +3647,7 @@ export type Database = {
           notes?: string | null
           paid_at?: string | null
           pdf_url?: string | null
+          person_id?: string | null
           player_address?: string | null
           player_btw_number?: string | null
           player_business_name?: string | null
@@ -3636,6 +3688,7 @@ export type Database = {
           notes?: string | null
           paid_at?: string | null
           pdf_url?: string | null
+          person_id?: string | null
           player_address?: string | null
           player_btw_number?: string | null
           player_business_name?: string | null
@@ -3707,6 +3760,13 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
@@ -4541,6 +4601,145 @@ export type Database = {
         }
         Relationships: []
       }
+      person_links: {
+        Row: {
+          created_at: string
+          guest_player_id: string | null
+          id: string
+          person_id: string
+          profile_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          guest_player_id?: string | null
+          id?: string
+          person_id: string
+          profile_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          guest_player_id?: string | null
+          id?: string
+          person_id?: string
+          profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_links_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: true
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_links_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_links_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_links_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_links_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_links_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      persons: {
+        Row: {
+          avatar_url: string | null
+          billing_address: string | null
+          billing_btw_number: string | null
+          billing_business_name: string | null
+          bio: string | null
+          birth_date: string | null
+          created_at: string
+          email: string | null
+          first_name: string | null
+          full_name: string | null
+          id: string
+          last_name: string | null
+          location: string | null
+          phone: string | null
+          preferred_language: string | null
+          rating_member_id: string | null
+          rating_system: string | null
+          skill_rating: number | null
+          stripe_customer_id: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
+          bio?: string | null
+          birth_date?: string | null
+          created_at?: string
+          email?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          id?: string
+          last_name?: string | null
+          location?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          rating_member_id?: string | null
+          rating_system?: string | null
+          skill_rating?: number | null
+          stripe_customer_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          billing_address?: string | null
+          billing_btw_number?: string | null
+          billing_business_name?: string | null
+          bio?: string | null
+          birth_date?: string | null
+          created_at?: string
+          email?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          id?: string
+          last_name?: string | null
+          location?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          rating_member_id?: string | null
+          rating_system?: string | null
+          skill_rating?: number | null
+          stripe_customer_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       player_links: {
         Row: {
           created_at: string
@@ -5230,6 +5429,7 @@ export type Database = {
           media: Json | null
           slot_id: string
           subject_guest_player_id: string | null
+          subject_person_id: string | null
           subject_profile_id: string | null
           updated_at: string
           visibility: string
@@ -5243,6 +5443,7 @@ export type Database = {
           media?: Json | null
           slot_id: string
           subject_guest_player_id?: string | null
+          subject_person_id?: string | null
           subject_profile_id?: string | null
           updated_at?: string
           visibility?: string
@@ -5256,6 +5457,7 @@ export type Database = {
           media?: Json | null
           slot_id?: string
           subject_guest_player_id?: string | null
+          subject_person_id?: string | null
           subject_profile_id?: string | null
           updated_at?: string
           visibility?: string
@@ -5273,6 +5475,13 @@ export type Database = {
             columns: ["subject_guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_player_notes_subject_person_id_fkey"
+            columns: ["subject_person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
@@ -5388,6 +5597,7 @@ export type Database = {
       slot_priority_claims: {
         Row: {
           booked_by_guest_player_id: string | null
+          booked_by_person_id: string | null
           booked_by_player_id: string | null
           booking_id: string | null
           claim_token: string
@@ -5397,6 +5607,7 @@ export type Database = {
           guest_player_id: string | null
           id: string
           invited_at: string | null
+          person_id: string | null
           player_id: string | null
           rebook_group_id: string | null
           reminded_at: string | null
@@ -5412,6 +5623,7 @@ export type Database = {
         }
         Insert: {
           booked_by_guest_player_id?: string | null
+          booked_by_person_id?: string | null
           booked_by_player_id?: string | null
           booking_id?: string | null
           claim_token?: string
@@ -5421,6 +5633,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           invited_at?: string | null
+          person_id?: string | null
           player_id?: string | null
           rebook_group_id?: string | null
           reminded_at?: string | null
@@ -5436,6 +5649,7 @@ export type Database = {
         }
         Update: {
           booked_by_guest_player_id?: string | null
+          booked_by_person_id?: string | null
           booked_by_player_id?: string | null
           booking_id?: string | null
           claim_token?: string
@@ -5445,6 +5659,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           invited_at?: string | null
+          person_id?: string | null
           player_id?: string | null
           rebook_group_id?: string | null
           reminded_at?: string | null
@@ -5464,6 +5679,13 @@ export type Database = {
             columns: ["booked_by_guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_booked_by_person_id_fkey"
+            columns: ["booked_by_person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
@@ -5506,6 +5728,13 @@ export type Database = {
             columns: ["guest_player_id"]
             isOneToOne: false
             referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_priority_claims_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
           {
