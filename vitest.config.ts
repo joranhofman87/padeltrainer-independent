@@ -13,6 +13,10 @@ export default defineConfig({
     // ~1.5s isolated but timed out at 5s in CI). Headroom keeps the go/no-go gate
     // deterministic.
     testTimeout: 15000,
+    // The pglite suites' beforeAll hooks boot a WASM Postgres AND replay the real person-
+    // unification migration chain (up to 7 files) — well past vitest's 10s default under CI
+    // pool load, while finishing in ~2s locally. Same headroom rationale as testTimeout.
+    hookTimeout: 30000,
     // Hermetic Supabase env: the client module throws at import time without a
     // URL, and CI has no .env since it was untracked (ENV-01). Tests are fully
     // mocked and must never depend on a real project.
