@@ -125,6 +125,23 @@ export async function addPlayersToCycle(params: {
   if (slots.length === 0) return { ...EMPTY_ADD_RESULT };
 
   const slotIds = slots.map((s) => s.id);
+
+  // Cross-identity dedup must be call-path independent (audit #3/#6): the person being added may
+  // already sit in the cycle as a pure-profile (player_id-only) booking whether the manager picked
+  // their registered (`p_`) row OR their guest (`g_`) row. So resolve each incoming guest's own
+  // linked_profile_id server-side and fold it into the profile dedup — never trust the UI to pass
+  // twinProfileId only on the p_ path.
+  const { data: incomingGuests } = await client
+    .from("guest_players")
+    .select("id, linked_profile_id")
+    .in("id", guestPlayerIds);
+  const profileIdForGuest = new Map<string, string | null>();
+  for (const g of (incomingGuests ?? []) as Array<{ id: string; linked_profile_id: string | null }>) {
+    profileIdForGuest.set(g.id, g.linked_profile_id ?? null);
+  }
+  const effectiveProfileId = (guestId: string): string | null =>
+    twinProfileIdByGuestId?.[guestId] ?? profileIdForGuest.get(guestId) ?? null;
+
   // Pull both the dedup-active rows (any of pending/confirmed/completed) and the
   // capacity-occupying rows in one query, then bucket them.
   const { data: existing, error: exErr } = await client
@@ -135,20 +152,23 @@ export async function addPlayersToCycle(params: {
   if (exErr) throw exErr;
 
   const capacityCountBySlot = new Map<string, number>();
-  const guestSlotSet = new Set<string>(); // `${slotId}:${guestId}` for dedup-active rows
-  // `${slotId}:${profileId}` for PURE-profile (player_id set, guest_player_id NULL) dedup-active
+  const guestSlotSet = new Set<string>(); // `${slotId}:${guestId}` for seat-occupying rows
+  // `${slotId}:${profileId}` for PURE-profile (player_id set, guest_player_id NULL) seat-occupying
   // rows. Dual-keyed rows are deliberately excluded: FAM-02 says they belong to the GUEST, and a
   // linked guest is a DIFFERENT person from the profile — it must never block adding the profile.
   const profileSlotSet = new Set<string>();
   const capacityStatuses = new Set<string>(CAPACITY_OCCUPYING_STATUSES);
-  const dedupStatuses = new Set<string>(DEDUP_BOOKING_STATUSES);
+  // "Already holds a seat here" must key on the SEAT-OCCUPANCY union, not just the M-17 dedup set —
+  // else a pending_approval seat (in the capacity set but NOT the dedup set) slips the skip and
+  // duplicates (audit #5). Applies to both the guest and the profile side.
+  const seatStatuses = new Set<string>([...DEDUP_BOOKING_STATUSES, ...CAPACITY_OCCUPYING_STATUSES]);
   for (const b of existing ?? []) {
     if (capacityStatuses.has(b.status)) {
       capacityCountBySlot.set(b.slot_id, (capacityCountBySlot.get(b.slot_id) ?? 0) + 1);
     }
-    if (b.guest_player_id && dedupStatuses.has(b.status)) {
+    if (b.guest_player_id && seatStatuses.has(b.status)) {
       guestSlotSet.add(`${b.slot_id}:${b.guest_player_id}`);
-    } else if (b.player_id && !b.guest_player_id && dedupStatuses.has(b.status)) {
+    } else if (b.player_id && !b.guest_player_id && seatStatuses.has(b.status)) {
       profileSlotSet.add(`${b.slot_id}:${b.player_id}`);
     }
   }
@@ -163,13 +183,14 @@ export async function addPlayersToCycle(params: {
   let rebalanceFailed = false;
 
   for (const guestId of guestPlayerIds) {
-    const twinProfileId = twinProfileIdByGuestId?.[guestId] ?? null;
+    const profileId = effectiveProfileId(guestId);
     for (const slot of slots) {
       // Skip if the person already holds a seat on this session under EITHER identity — the guest
-      // twin, or (cross-identity) the profile the twin represents.
+      // id, or (cross-identity) the profile it maps to (from the caller's twin hint OR the guest's
+      // own linked_profile_id).
       if (
         guestSlotSet.has(`${slot.id}:${guestId}`) ||
-        (twinProfileId && profileSlotSet.has(`${slot.id}:${twinProfileId}`))
+        (profileId && profileSlotSet.has(`${slot.id}:${profileId}`))
       ) {
         alreadyBookedSlotIds.add(slot.id);
         continue;
@@ -312,16 +333,26 @@ export async function swapPlayerInCycle(params: {
   if (inErr) return { error: inErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   const incomingSlots = new Set((incoming ?? []).map((b) => b.slot_id));
 
-  // Cross-identity (Phase 0): when the incoming person is a registered player's twin, their
-  // pure-profile (player_id-only) seats are the SAME human too — treat those as collisions as well,
-  // so we cancel the outgoing seat there rather than minting a duplicate for one person.
-  if (toProfileId) {
+  // Cross-identity (Phase 0): the incoming person's pure-profile (player_id-only) seats are the SAME
+  // human too — treat those as collisions as well, so we cancel the outgoing seat there rather than
+  // minting a duplicate. Call-path independent (audit #4/#7): a guest (`g_`) pick carries no profile
+  // id, so recover the incoming guest's own linked_profile_id when the caller didn't hint one.
+  let effectiveToProfileId = toProfileId;
+  if (!effectiveToProfileId) {
+    const { data: inGuest } = await client
+      .from("guest_players")
+      .select("linked_profile_id")
+      .eq("id", toGuestPlayerId)
+      .maybeSingle();
+    effectiveToProfileId = (inGuest as { linked_profile_id: string | null } | null)?.linked_profile_id ?? null;
+  }
+  if (effectiveToProfileId) {
     const { data: incomingProfile, error: inpErr } = await client
       .from("bookings")
       .select("slot_id")
       .in("slot_id", slotIds)
       .in("status", [...DEDUP_BOOKING_STATUSES])
-      .eq("player_id", toProfileId)
+      .eq("player_id", effectiveToProfileId)
       .is("guest_player_id", null);
     if (inpErr) return { error: inpErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
     for (const b of incomingProfile ?? []) incomingSlots.add(b.slot_id);

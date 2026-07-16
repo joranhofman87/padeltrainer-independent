@@ -25,6 +25,7 @@ function thenableBuilder(resolved: unknown) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
+    ilike: () => builder,
     or: () => builder,
     in: () => builder,
     order: () => builder,
@@ -424,5 +425,34 @@ describe('resolveOrCreateGuestTwinForRegisteredPlayer (person-unification Phase 
       { profileId: 'p1', fullName: 'Faalt', email: 'x@test.com' },
     );
     expect(id).toBeNull();
+  });
+});
+
+describe('resolveOrCreateGuestTwinForRegisteredPlayer — wrong-person guard (audit #1)', () => {
+  it('does NOT reuse a lone household-email match whose NAME differs → mints a fresh twin for the right person', async () => {
+    academyTrainersResult = [{ trainer_profile_id: 't1' }];
+    // The ONLY guest with this shared family email is the CHILD "Sofie de Vries" — the parent
+    // "Mark de Vries" is the registered player being added. Single match, but a different human.
+    emailLookupResults = [[{ id: 'child-sofie', full_name: 'Sofie de Vries' }]];
+    insertResult = { data: { id: 'new-twin-mark' }, error: null };
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: 'a1' },
+      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
+    );
+    expect(id).toBe('new-twin-mark');          // fresh twin, NOT Sofie's guest
+    expect(insertMock).toHaveBeenCalled();
+    // And the child's PII is never patched (we never reused her row).
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses a lone email match when the NAME matches (the real twin)', async () => {
+    academyTrainersResult = [{ trainer_profile_id: 't1' }];
+    emailLookupResults = [[{ id: 'marks-twin', full_name: 'Mark de Vries' }]];
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: 'a1' },
+      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
+    );
+    expect(id).toBe('marks-twin');
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });

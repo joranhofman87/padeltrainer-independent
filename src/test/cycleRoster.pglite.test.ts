@@ -63,7 +63,7 @@ beforeAll(async () => {
       payment_amount numeric, original_amount numeric, discount_amount numeric,
       discount_reason text, paid_externally boolean, notes text
     );
-    CREATE TABLE guest_players (id uuid PRIMARY KEY, has_trained boolean);
+    CREATE TABLE guest_players (id uuid PRIMARY KEY, has_trained boolean, linked_profile_id uuid);
     -- Minimal shape of the rebook-claim table the V6 stuck-claim fix touches.
     CREATE TABLE slot_priority_claims (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -443,6 +443,53 @@ describe('cross-identity dedup (Phase 0 person twin)', () => {
     expect(res.cancelledCollisionCount).toBe(1);  // GB's S1 seat cancelled (incoming already there as profile)
     expect(await activeForGuest(GB)).toEqual([]);
     // S1 keeps the incoming person's own pre-existing profile booking; GA got SP.
+    expect(await activeForGuest(GA)).toEqual([SP]);
+  });
+});
+
+// Audit fixes: the cross-identity dedup must be CALL-PATH INDEPENDENT (works whether the manager
+// picked the person's guest row or their registered row), and must catch pending_approval seats.
+describe('cross-identity dedup — call-path independent + pending_approval (audit #3/#5/#6/#7)', () => {
+  it('addPlayersToCycle dedups via the guest\'s OWN linked_profile_id (g_ pick, no twin hint passed)', async () => {
+    // GA is a twin linked to PROF; PROF already holds a pure-profile seat on S1. Adding GA with NO
+    // twinProfileIdByGuestId (the g_-pick path) must still skip S1 by reading GA.linked_profile_id.
+    await db.exec(`UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${PROF}','confirmed','pending', false);`);
+
+    const res = await addPlayersToCycle({ cycleId: CYCLE, guestPlayerIds: [GA], skipInvoices: true, client: supa });
+
+    expect(res.insertedCount).toBe(2);            // SP + S2 only — S1 skipped cross-identity
+    expect(res.alreadyBookedSlotIds).toContain(S1);
+    const onS1 = (await db.query<{ n: string }>(`SELECT count(*)::text n FROM bookings WHERE slot_id = $1 AND status <> 'cancelled'`, [S1])).rows[0];
+    expect(Number(onS1.n)).toBe(1);
+  });
+
+  it('addPlayersToCycle skips a pending_approval seat the person already holds (guest side)', async () => {
+    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${GA}','pending_approval','pending', false);`);
+
+    const res = await addPlayersToCycle({ cycleId: CYCLE, guestPlayerIds: [GA], skipInvoices: true, client: supa });
+
+    expect(res.alreadyBookedSlotIds).toContain(S1); // pending_approval now counts as an occupied seat
+    const onS1 = (await db.query<{ n: string }>(`SELECT count(*)::text n FROM bookings WHERE slot_id = $1 AND guest_player_id = $2 AND status <> 'cancelled'`, [S1, GA])).rows[0];
+    expect(Number(onS1.n)).toBe(1);                 // not doubled
+  });
+
+  it('swapPlayerInCycle collision-cancels via the incoming guest\'s linked_profile_id (no toProfileId passed)', async () => {
+    await db.exec(`UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`INSERT INTO bookings (slot_id, guest_player_id, status, payment_status, payment_amount, paid_externally) VALUES
+      ('${SP}','${GB}','confirmed','pending', 20, false),
+      ('${S1}','${GB}','confirmed','pending', 20, false);`);
+    await db.exec(`INSERT INTO bookings (slot_id, player_id, status, payment_status, paid_externally) VALUES
+      ('${S1}','${PROF}','confirmed','pending', false);`); // incoming GA (via PROF) already on S1
+
+    const res = await swapPlayerInCycle({
+      cycleId: CYCLE, fromPlayer: { guestPlayerId: GB }, toGuestPlayerId: GA, skipInvoices: true, client: supa,
+    });
+
+    expect(res.reassignedCount).toBe(1);            // SP re-pointed
+    expect(res.cancelledCollisionCount).toBe(1);    // GB's S1 cancelled — GA already there as PROF
     expect(await activeForGuest(GA)).toEqual([SP]);
   });
 });

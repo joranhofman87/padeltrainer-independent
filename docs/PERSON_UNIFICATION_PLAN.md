@@ -148,7 +148,20 @@ coexist. Keep it as the choke point.
   into the 0a dedup) and relaxes the Change gate so registered rows are manageable too. **Closes the
   "add a registered app-account holder as a cycle participant" gap** (the PR #557 follow-up).
   Owner-accepted default: an emailless registered player mints an un-dedupable twin per add (rare —
-  accounts almost always carry an email; reconciled later via `merge_guest_players`). **Phases 1–4**
+  accounts almost always carry an email; reconciled later via `merge_guest_players`).
+
+  **Audit + fixes (2026-07-16, adversarial multi-agent review before merge):** the review confirmed
+  11 defects; all fixed in the 0b PR. The important ones: (#1 wrong-person) `pickGuestIdByName`
+  reused a LONE household-email match without a name check → a parent could resolve to their child's
+  guest row and be seated/invoiced as the child + overwrite the child's PII → fixed with a
+  `requireNameMatch` gate on the twin path. (#3/#4/#6/#7 duplicate seat / double charge) the
+  cross-identity dedup only engaged on the `p_` pick → now `addPlayersToCycle`/`swapPlayerInCycle`
+  resolve each incoming guest's `linked_profile_id` **server-side** so the dedup is authoritative and
+  call-path independent. (#2/#8/#9 duplicate twin) the academy dedup RPC matched email
+  case-SENSITIVELY vs the lowercased twin email → duplicate twin + double invoice + defeated the link
+  trigger → fixed with a case-folded RPC (migration `20260826190000`) + escaped-`ilike` in the code
+  branches. (#5) dedup now keys on the seat-occupancy union so `pending_approval` seats count. **0b
+  therefore needs a `db push`** (the RPC migration), not just a frontend deploy. **Phases 1–4**
   (the real `persons` table) remain per §5 below.
 
 ### Phase 1 — EXPAND (additive, zero behavior change)

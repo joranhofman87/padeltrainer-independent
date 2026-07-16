@@ -825,6 +825,7 @@ export function CycleDetailView({
                 variant="outline"
                 size="sm"
                 className="shrink-0 gap-1.5"
+                disabled={rosterBusy}
                 onClick={() => { setAddPanelOpen((o) => !o); setAddSelectedPerson(null); }}
               >
                 <UserPlus className="h-3.5 w-3.5" />
