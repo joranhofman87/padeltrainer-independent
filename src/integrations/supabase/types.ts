@@ -4668,6 +4668,116 @@ export type Database = {
           },
         ]
       }
+      person_merge_review: {
+        Row: {
+          created_at: string
+          details: Json
+          email: string | null
+          guest_player_id: string | null
+          id: string
+          kind: string
+          person_id: string | null
+          profile_id: string | null
+          status: string
+          suggested_profile_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          email?: string | null
+          guest_player_id?: string | null
+          id?: string
+          kind: string
+          person_id?: string | null
+          profile_id?: string | null
+          status?: string
+          suggested_profile_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          email?: string | null
+          guest_player_id?: string | null
+          id?: string
+          kind?: string
+          person_id?: string | null
+          profile_id?: string | null
+          status?: string
+          suggested_profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_merge_review_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_suggested_profile_id_fkey"
+            columns: ["suggested_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_suggested_profile_id_fkey"
+            columns: ["suggested_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_suggested_profile_id_fkey"
+            columns: ["suggested_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_merge_review_suggested_profile_id_fkey"
+            columns: ["suggested_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       persons: {
         Row: {
           avatar_url: string | null
@@ -8281,6 +8391,14 @@ export type Database = {
         Args: { _club_profile_id: string }
         Returns: boolean
       }
+      collapse_guest_person_into: {
+        Args: {
+          _guest_id: string
+          _guest_person: string
+          _target_person: string
+        }
+        Returns: boolean
+      }
       count_cycles_intakes: {
         Args: { _cycle_ids: string[] }
         Returns: {
@@ -9091,6 +9209,7 @@ export type Database = {
         Args: { _intent: string; _token: string }
         Returns: undefined
       }
+      rederive_person: { Args: { _person: string }; Returns: undefined }
       reinstate_rebook_claims: {
         Args: { _claim_ids: string[] }
         Returns: {

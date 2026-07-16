@@ -321,6 +321,68 @@ coexist. Keep it as the choke point.
 - Verify: `count(distinct person)` reconciles; every non-cancelled booking/invoice has a `person_id`;
   no money row loses its person. Rehearsed in pglite against the real migration first.
 
+  **Progress — BUILT (migration `20260826280000`), pglite-rehearsed:** the backfill executes the
+  locked rules exactly (B1 twin-trust incl. the emailless roster twin, B2 unique email-pair — both
+  case/whitespace-insensitive), gives every remaining guest its OWN person, gap-fills merged
+  persons (profile wins), writes the `person_merge_review` report (pending = owner sign-off queue:
+  `shared_email_cluster`, `no_email_guest`, `twin_trust_failure`, `linked_mismatch` suggestions;
+  applied = audit trail of the auto-merges), sweeps all 9 pairs (user triggers disabled per table
+  so `updated_at` is preserved; the SET is the trigger's own derivation), and ends with a HARD
+  verification DO block — any invariant violation rolls the whole migration back. **Deterministic
+  person ids:** a person REUSES its source row's uuid (profile id for account holders — surviving
+  Phase 4 as their person id — guest id for guest-only persons), which makes the backfill
+  idempotent and trivially debuggable. **Live map maintenance (the dual-write promise):** AFTER
+  INSERT triggers mint the person at creation (profiles → H1; guests → H2 with B1/B2-at-insert,
+  same-email inserts serialized by an advisory lock so a race can't defeat the uniqueness rule);
+  H3 collapses a live-claimed twin into the profile's person ONLY when the trust rule passes AND
+  the collapse is provably safe (sole-source, no login) — re-pointing the link, re-stamping the
+  guest's rows, dropping the orphan person; anything else (unsafe collapse, stamp cleared on a
+  merged guest via the repurpose guard) files a `twin_detached_needs_split` review row. H3 fires
+  on ALL updates (not `UPDATE OF twin` — the repurpose guard clears the stamp inside statements
+  whose SET list never mentions it). Prod dry-run (2026-07-16 re-measure): 81 profiles + 453
+  guests − 46 unique-pair merges − 0 pre-existing twins ⇒ **488 persons, 534 links, ~106 pending
+  review rows** (27 guests in 13 clusters — incl. the 2 profile-matching ambiguous ones, with
+  `suggested_profile_id` set — 76 no-email, 1 stale mislink). `person_merge_review` +
+  `persons`/`person_links` in the backup allow-list (owner decisions must survive a restore).
+
+  **Phase-2 adversarial verification (5 agents, 21 confirmed findings — all fixed pre-PR):**
+  (1 critical) review rows retained PII after source hard-deletes → the source-delete cleanup now
+  DELETES pending rows and SCRUBS applied audit rows (email + name payload; the merge fact
+  survives, the who does not). (highs) a surviving merged person kept the deleted account's
+  profile-only PII → the keep-branch now clears account fields (incl. `user_id`, freeing
+  re-signup) and re-derives identity from the remaining sources; the **guest-then-signup account
+  claim** (the flow behind 47/81 pre-backfill matches) silently split persons → H1 now applies the
+  reverse unique-pair rule at signup (safe-collapse or pending `signup_pair_needs_review`); a
+  B2-merged guest repurposed by EMAIL move kept stamping the wrong person → watched, files
+  `merged_guest_email_moved`; multi-profile emails fell through every report → `multi_profile_email`
+  kind (backfill + live). (mediums) H4 concurrent last-two-source deletes race → person row
+  FOR UPDATE; the live collapse tripped the invoice guard's unconditional paid-lock for
+  owner-operators → the guard now exempts person-column-only updates (everything else
+  byte-identical); a source-row INSERT slipping between verification and trigger installation →
+  `LOCK TABLE profiles, guest_players IN SHARE ROW EXCLUSIVE`. (observability) H2 now writes the
+  same audit/review rows live that the backfill writes one-time (auto-merge audits, live clusters,
+  live trust failures); E1 excludes already-merged guests from the pending queue. Review kinds:
+  `auto_merged_email_pair` / `auto_merged_twin_trust` (applied) · `shared_email_cluster` /
+  `no_email_guest` / `multi_profile_email` / `twin_trust_failure` / `linked_mismatch` /
+  `twin_detached_needs_split` / `signup_pair_needs_review` / `merged_guest_email_moved` (pending).
+  **External re-audit (Codex) round 2 — the freshness layer (P1/P2, both adopted):** persons
+  would have gone STALE the moment a profile/guest was edited (the write surfaces stay old-world
+  until Phase 3/4), and live merges/deletes each had bespoke field logic that could drift from the
+  backfill's. Fix: **ONE central `rederive_person(uuid)`** (profile wins every field it has;
+  guests fill gaps PER FIELD, oldest first; account-only fields from the profile or NULL; keyless
+  new-world persons never touched) — used by the backfill (D is now a rederive-all loop, so
+  backfill and live semantics provably cannot diverge and the backfill is SELF-HEALING on re-run),
+  the live collapse, H2 merges-at-insert, H4's keep-branches (which drop the dying source's link
+  first so rederive sees only survivors — also fixing the dropped-gap-fields case), and the new
+  **H5 sync triggers**: any derivation-relevant edit on profiles/guest_players re-derives the
+  person (fast-path guarded; twin/link churn never fires it). `rederive_person` is
+  client-REVOKEd like the collapse helper.
+  Rehearsal: `personsBackfill.pglite.test.ts` (32 tests, prod-mirroring FKs) runs the REAL
+  migrations over every rule + the verification-flagged mutation survivors: multi-profile emails,
+  twin-in-cluster, agreeing links, both-keyed divergent rows on EVERY money pair, gap-fill email
+  precedence, content-level idempotency, live H1/H2 trust behavior, the GDPR scrubs, the invoice
+  guard interaction, and a NEGATIVE test proving the hard verification fires and rolls back.
+
 ### Phase 3 — MIGRATE READERS, cluster by cluster (the bulk of the work)
 One domain per PR, each with tests + live-verify, in dependency order:
 1. **Roster/display** (cycle detail, players-overview, pickers) → read `person_id`.

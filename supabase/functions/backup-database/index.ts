@@ -6,6 +6,7 @@ const TABLES_TO_BACKUP = [
   // without these would leave every stamped person_id on bookings/invoices dangling.
   "persons",
   "person_links",
+  "person_merge_review",
   "trainer_profiles",
   "academy_profiles",
   "club_profiles",
