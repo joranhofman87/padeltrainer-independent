@@ -35,8 +35,11 @@ function pickGuestIdByName(
     return rows[0].id;
   }
   if (wanted) {
-    const match = rows.find((row) => normalize(row.full_name ?? '') === normalize(wanted));
-    if (match) return match.id;
+    // EXACTLY one name match, or nothing (audit H3): with several same-email SAME-NAME rows there
+    // is no signal that distinguishes them — picking the first is a guess, and a wrong guess books/
+    // patches a different person's record. Ambiguity yields null → the caller creates a new player.
+    const matches = rows.filter((row) => normalize(row.full_name ?? '') === normalize(wanted));
+    if (matches.length === 1) return matches[0].id;
   }
   return null;
 }
@@ -189,6 +192,30 @@ async function patchExistingGuestEmptyFields(
  * Returns the guest_players id, or null when there is nothing to create or
  * the write failed (callers treat this as non-blocking).
  */
+/** Build the guest_players insert payload from resolve args (shared by the generic + twin paths). */
+function buildGuestInsertPayload(
+  args: ResolveOrCreateGuestPlayerArgs,
+  fullName: string,
+  email: string,
+): TablesInsert<'guest_players'> {
+  const { first_name, last_name } = splitFullName(fullName);
+  const nameFields = buildGuestPlayerDbFields(first_name, last_name);
+  const ownerFields =
+    args.scope.kind === 'academy'
+      ? { academy_profile_id: args.scope.academyProfileId }
+      : { trainer_id: args.scope.trainerId };
+
+  const insertPayload: TablesInsert<'guest_players'> = { ...nameFields, ...ownerFields };
+  if (email) insertPayload.email = email;
+  if (args.phone) insertPayload.phone = args.phone;
+  if (args.skillRating != null) insertPayload.skill_rating = args.skillRating;
+  if (args.ratingSystem) insertPayload.rating_system = args.ratingSystem;
+  if (args.birthDate) insertPayload.birth_date = args.birthDate;
+  if (args.source) insertPayload.source = args.source;
+  if (args.hasTrained !== undefined) insertPayload.has_trained = args.hasTrained;
+  return insertPayload;
+}
+
 export async function resolveOrCreateGuestPlayer(
   args: ResolveOrCreateGuestPlayerArgs,
 ): Promise<string | null> {
@@ -212,32 +239,24 @@ export async function resolveOrCreateGuestPlayer(
     }
   }
 
-  const { first_name, last_name } = splitFullName(fullName);
-  const nameFields = buildGuestPlayerDbFields(first_name, last_name);
-  const ownerFields =
-    scope.kind === 'academy'
-      ? { academy_profile_id: scope.academyProfileId }
-      : { trainer_id: scope.trainerId };
-
-  const insertPayload: TablesInsert<'guest_players'> = { ...nameFields, ...ownerFields };
-  if (email) insertPayload.email = email;
-  if (args.phone) insertPayload.phone = args.phone;
-  if (args.skillRating != null) insertPayload.skill_rating = args.skillRating;
-  if (args.ratingSystem) insertPayload.rating_system = args.ratingSystem;
-  if (args.birthDate) insertPayload.birth_date = args.birthDate;
-  if (args.source) insertPayload.source = args.source;
-  if (args.hasTrained !== undefined) insertPayload.has_trained = args.hasTrained;
-
   const { data, error } = await supabase
     .from('guest_players')
-    .insert(insertPayload)
+    .insert(buildGuestInsertPayload(args, fullName, email))
     .select('id')
     .single();
 
   if (error) {
-    // Unique violation: a concurrent writer created the same email — reuse it.
+    // Unique violation: a concurrent writer created the same email — reuse it. The recovery
+    // re-select carries the SAME name gate as the primary lookup (audit fix-verify): without it, a
+    // requireNameMatch caller racing on a shared household email would reuse the WRONG family
+    // member's row here.
     if (error.code === '23505' && email) {
-      const racedId = await findExistingGuestPlayerIdByEmail(email, scope);
+      const racedId = await findExistingGuestPlayerIdByEmail(
+        email,
+        scope,
+        args.fullName,
+        args.requireNameMatch,
+      );
       if (racedId) return racedId;
     }
     logger.error(
@@ -267,15 +286,42 @@ export type RegisteredPlayerSnapshot = {
 };
 
 /**
+ * Look up the profile's EXPLICIT twin (guest_players.twin_of_profile_id) within the academy's
+ * dedup scope, via the SECURITY DEFINER RPC (the scope may include trainer-owned rows the manager
+ * cannot SELECT directly). `ok:false` means the bridge RPCs are not deployed (new client against a
+ * not-yet-pushed DB) — callers fall back to the legacy email+name flow.
+ */
+async function findGuestTwinByProfileId(
+  academyProfileId: string,
+  profileId: string,
+): Promise<{ ok: true; id: string | null } | { ok: false }> {
+  const { data, error } = await supabase.rpc('find_guest_twin_for_academy' as never, {
+    _academy_profile_id: academyProfileId,
+    _profile_id: profileId,
+  } as never);
+  if (error) return { ok: false };
+  return { ok: true, id: (data as string | null) ?? null };
+}
+
+/**
  * Phase 0 of person-unification (docs/PERSON_UNIFICATION_PLAN.md): resolve-or-create the GUEST TWIN
  * for a registered player so the guest-keyed roster/booking/invoice chain can seat them without
  * touching any money math. Bridges the two identity worlds at the UI seam until the full `persons`
  * table lands.
  *
- * The canonical merge key is `lower(trim(email))` — the plan's exact-email person rule (also what
- * the DB link trigger uses). Deliberately does NOT set `linked_profile_id`: the `guest_players`
- * INSERT trigger (`link_guest_data_to_profile`) sets it itself iff this is the single unlinked email
- * match and backfills the twin's bookings — callers must not depend on it being present.
+ * Phase 0c (external-audit hardening) made the bridge EXPLICIT — `twin_of_profile_id`:
+ *   1. resolve by profile id first (deterministic; no name heuristics on repeat adds; works for
+ *      emailless people — they now get ONE twin total, not one per add);
+ *   2. else claim the person's pre-existing guest row (email + exact-name match) by compare-and-set
+ *      inside a SECURITY DEFINER RPC — a row that is already someone ELSE's twin is never reused;
+ *   3. else mint a fresh twin STAMPED with the profile id — the partial unique index
+ *      (academy_profile_id, twin_of_profile_id) turns concurrent double-mints into a 23505 the
+ *      loser recovers from by re-reading the winner (audit H2: no duplicate seats/invoices).
+ *
+ * The email merge key stays `lower(trim(email))` and a lone household-email match is only reused on
+ * an exact name match (audit #1 — never seat the wrong human). Deliberately does NOT touch
+ * `linked_profile_id`: that column is email-inferred by the `link_guest_data_to_profile` trigger
+ * and must never drive identity decisions.
  *
  * Unlike the invoice-side {@link resolveOrCreateGuestPlayer} (which returns null as a non-blocking
  * skip), a null here is a HARD failure the roster caller must ABORT on — never silently seat nobody.
@@ -288,7 +334,7 @@ export async function resolveOrCreateGuestTwinForRegisteredPlayer(
   snapshot: RegisteredPlayerSnapshot,
 ): Promise<string | null> {
   const email = (snapshot.email ?? '').trim().toLowerCase() || null;
-  return resolveOrCreateGuestPlayer({
+  const legacyArgs: ResolveOrCreateGuestPlayerArgs = {
     scope,
     fullName: snapshot.fullName,
     email,
@@ -299,8 +345,83 @@ export async function resolveOrCreateGuestTwinForRegisteredPlayer(
     source: 'roster_registered_twin',
     hasTrained: true,
     patchExistingEmptyFields: true,
-    // A lone household-email match may be a DIFFERENT family member — only reuse it when the name
-    // matches too, else mint a fresh twin for THIS person (audit #1: never seat the wrong human).
     requireNameMatch: true,
-  });
+  };
+
+  // Phase 0 only wires the academy flow; any future trainer-scope caller gets the legacy behavior.
+  if (scope.kind !== 'academy') return resolveOrCreateGuestPlayer(legacyArgs);
+  const academyProfileId = scope.academyProfileId;
+  const fullName = snapshot.fullName.trim();
+  if (!fullName) return null;
+
+  // (1) Explicit twin — deterministic, race-free, email-independent.
+  const twinLookup = await findGuestTwinByProfileId(academyProfileId, snapshot.profileId);
+  if (!twinLookup.ok) {
+    // Bridge RPCs not deployed yet → pre-bridge behavior (modulo the global name-gating
+    // hardenings in the shared helpers, which only ever narrow reuse — never widen it).
+    return resolveOrCreateGuestPlayer(legacyArgs);
+  }
+  if (twinLookup.id) {
+    await patchExistingGuestEmptyFields(twinLookup.id, legacyArgs);
+    return twinLookup.id;
+  }
+
+  // (2) Claim the person's pre-existing guest row (email + EXACT name, ambiguity ⇒ no candidate).
+  if (email) {
+    const candidateId = await findExistingGuestPlayerIdByEmail(email, scope, fullName, true);
+    if (candidateId) {
+      const { data: claimedBy, error: claimError } = await supabase.rpc(
+        'claim_guest_twin_for_academy' as never,
+        {
+          _academy_profile_id: academyProfileId,
+          _guest_player_id: candidateId,
+          _profile_id: snapshot.profileId,
+        } as never,
+      );
+      if (claimError) {
+        // Claim RPC unavailable (same migration as the lookup, so effectively unreachable) —
+        // degrade to the pre-bridge behavior: reuse the name-matched candidate unstamped.
+        await patchExistingGuestEmptyFields(candidateId, legacyArgs);
+        return candidateId;
+      }
+      if ((claimedBy as string | null) === snapshot.profileId) {
+        await patchExistingGuestEmptyFields(candidateId, legacyArgs);
+        return candidateId;
+      }
+      // Claimed by ANOTHER profile (someone else's twin — never reuse it), or NULL (unique
+      // conflict: OUR twin exists elsewhere / row went out of scope). Re-read and converge.
+      const retry = await findGuestTwinByProfileId(academyProfileId, snapshot.profileId);
+      if (retry.ok && retry.id) {
+        await patchExistingGuestEmptyFields(retry.id, legacyArgs);
+        return retry.id;
+      }
+      // Fall through: mint a fresh twin for THIS person.
+    }
+  }
+
+  // (3) Mint a fresh twin stamped with the profile id.
+  const insertPayload: TablesInsert<'guest_players'> = {
+    ...buildGuestInsertPayload(legacyArgs, fullName, email ?? ''),
+    twin_of_profile_id: snapshot.profileId,
+  };
+  const { data, error } = await supabase
+    .from('guest_players')
+    .insert(insertPayload)
+    .select('id')
+    .single();
+  if (!error) return data?.id ?? null;
+
+  if (error.code === '23505') {
+    // Lost a mint race on uniq_guest_twin_per_academy — reuse the winner's twin.
+    const winner = await findGuestTwinByProfileId(academyProfileId, snapshot.profileId);
+    if (winner.ok && winner.id) return winner.id;
+    // Some OTHER unique index: name-gated email recovery (never a blind reuse).
+    if (email) return findExistingGuestPlayerIdByEmail(email, scope, fullName, true);
+  }
+  logger.error(
+    'resolveOrCreateGuestTwinForRegisteredPlayer insert failed',
+    new Error(error.message),
+    { errorCode: error.code },
+  );
+  return null;
 }

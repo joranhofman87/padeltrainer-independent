@@ -147,34 +147,80 @@ coexist. Keep it as the choke point.
   guest twin at add/swap (abort + toast on failure, threading `twinProfileIdByGuestId`/`toProfileId`
   into the 0a dedup) and relaxes the Change gate so registered rows are manageable too. **Closes the
   "add a registered app-account holder as a cycle participant" gap** (the PR #557 follow-up).
-  Owner-accepted default: an emailless registered player mints an un-dedupable twin per add (rare —
-  accounts almost always carry an email; reconciled later via `merge_guest_players`).
+  **Audit + fixes (2026-07-16, adversarial multi-agent review before merge — FINAL state):** the
+  review confirmed 11 defects; all fixed in the 0b PR (#561). As shipped: (#1 wrong-person)
+  `pickGuestIdByName` reused a LONE household-email match without a name check → a parent could
+  resolve to their child's guest row and be seated/invoiced as the child + overwrite the child's
+  PII → fixed with a `requireNameMatch` gate on the twin path. (#3/#4/#6/#7 duplicate seat / double
+  charge) cross-identity dedup in `addPlayersToCycle`/`swapPlayerInCycle` uses **ONLY the explicit
+  twin hint** — the profile the manager EXPLICITLY selected on a `p_` pick (`twinProfileIdByGuestId`
+  / `toProfileId`). (#2/#8/#9 duplicate twin) the academy dedup RPC matched email case-SENSITIVELY
+  vs the lowercased twin email → duplicate twin + double invoice + defeated the link trigger → fixed
+  with a case-folded RPC (migration `20260826190000`) + escaped-`ilike` in the code branches. (#5)
+  dedup keys on the seat-occupancy union so `pending_approval` seats count.
 
-  **Audit + fixes (2026-07-16, adversarial multi-agent review before merge):** the review confirmed
-  11 defects; all fixed in the 0b PR. The important ones: (#1 wrong-person) `pickGuestIdByName`
-  reused a LONE household-email match without a name check → a parent could resolve to their child's
-  guest row and be seated/invoiced as the child + overwrite the child's PII → fixed with a
-  `requireNameMatch` gate on the twin path. (#3/#4/#6/#7 duplicate seat / double charge) the
-  cross-identity dedup only engaged on the `p_` pick → now `addPlayersToCycle`/`swapPlayerInCycle`
-  resolve each incoming guest's `linked_profile_id` **server-side** so the dedup is authoritative and
-  call-path independent. (#2/#8/#9 duplicate twin) the academy dedup RPC matched email
-  case-SENSITIVELY vs the lowercased twin email → duplicate twin + double invoice + defeated the link
-  trigger → fixed with a case-folded RPC (migration `20260826190000`) + escaped-`ilike` in the code
-  branches. (#5) dedup now keys on the seat-occupancy union so `pending_approval` seats count. **0b
-  therefore needs a `db push`** (the RPC migration), not just a frontend deploy.
+  **⚠ HARD RULE (learned via a second verify-the-fixes pass): never key identity/dedup decisions on
+  `guest_players.linked_profile_id`.** An earlier draft of the #3/#4/#6/#7 fix resolved each
+  incoming guest's `linked_profile_id` server-side for call-path independence — but that column is
+  set by `link_guest_data_to_profile` on **bare email match with no name guard**, so shared-email
+  families are mislinked (a child's guest → the parent's profile). Trusting it would over-block adds
+  and, on swap, **cancel the parent's PAID seats**. It was reverted to hint-only before merge.
+  Historical note only — the dangerous variant never shipped.
 
-  **A SECOND adversarial pass (verifying the fixes) caught a HIGH bug in the first fix** and it was
-  corrected: the #3/#4/#6/#7 fix originally resolved each incoming guest's `linked_profile_id`
-  server-side to make the dedup call-path independent. But `link_guest_data_to_profile` sets that
-  column on **email match with no name guard**, so a child's guest is mislinked to the parent's
-  profile — using it would over-block an add and, worse, on **swap cancel the parent's PAID seats**.
-  Reverted to **hint-only** cross-identity dedup: it uses ONLY the profile the manager EXPLICITLY
-  selected (the `p_` pick, reliable), never the guest's `linked_profile_id`. Consequence: a `g_` pick
-  of a person who ALSO holds a `player_id` booking is **not** cross-identity-deduped — a rare,
-  recoverable pre-existing gap of the guest/profile split (a duplicate seat, never a wrong-person or
-  data loss), which the full `persons` unification (Phases 1–4) closes properly. Lesson: **never
-  drive dedup off `linked_profile_id`** — it conflates shared-email families. **Phases 1–4** remain
-  per §5 below.
+### Phase 0c — Hardening after the external (Codex) audit (SHIPPED with 0b follow-up PR)
+  An independent post-merge audit confirmed the 0b fixes and found 3 further defects (+1 doc issue),
+  all fixed by the **explicit twin bridge — `guest_players.twin_of_profile_id`** (manager-initiated
+  person assertion; deliberately a NEW column, since `linked_profile_id` is banned for identity by
+  the hard rule above):
+
+  - **H1 (security, pre-existing since P2-2):** `find_guest_players_by_email_for_academy` trusted
+    the caller-supplied `_trainer_ids` → any academy manager could use the SECURITY DEFINER fn as a
+    cross-tenant email oracle. Fixed (migration `20260826200000`): the trainer set is derived
+    INSIDE the fn from `academy_trainers` (status='active'); the parameter is kept but ignored.
+  - **H2 (race):** twin resolution was select-then-insert with NO DB backstop → two managers adding
+    the same registered player concurrently could mint two twins (duplicate seats + double
+    invoice). Fixed (migration `20260826210000`): partial UNIQUE index
+    `uniq_guest_twin_per_academy (academy_profile_id, twin_of_profile_id)`; the resolve flow is now
+    (1) lookup by profile id → (2) compare-and-set CLAIM of the email+name-matched candidate via
+    `claim_guest_twin_for_academy` → (3) mint stamped with the profile id, where every race
+    converges (23505 → re-read the winner via `find_guest_twin_for_academy`). Bonus: an emailless
+    registered player now mints ONE twin total (found by profile id on later adds), retiring the
+    old "un-dedupable twin per add" accepted default. The generic 23505 recovery also now honors
+    `requireNameMatch` (was a blind email re-select — a wrong-person landmine).
+  - **H3 (ambiguity):** with several same-email SAME-NAME rows the client picked the first —
+    a guess. Now ambiguity yields no candidate → fresh stamped twin (never the wrong human; the
+    duplicate is Phase-2-mergeable). Repeat adds bypass name heuristics entirely via the stamp.
+  - **M4 (visibility):** a shared-email family member's twin never gets `linked_profile_id` (the
+    trigger requires a SINGLE unlinked match), so the registered player couldn't see those bookings
+    in their own app. Fixed across ALL FOUR player-side readers: `get_my_linked_guest_bookings` +
+    `get_my_paid_booking_ids` (migration `20260826210000`) and `get_my_pending_priority_claims` +
+    `can_book_member_window` clauses (d)/(e) (migration `20260826230000` — the rebook dashboard
+    card and the member-window auth gate; without these the family twin saw their sessions but got
+    no rebook invite and was denied member-window self-booking).
+  - `merge_guest_players` (migration `20260826220000`) now refuses to merge rows referencing two
+    DIFFERENT persons and carries the twin stamp to the surviving row. Per ROW the explicit twin
+    OUTRANKS the email-inferred `linked_profile_id` (a stale family mislink must not dead-end an
+    explicitly twinned row); across rows two different effective references still refuse.
+  - **Repurpose guard:** the guest-edit surfaces write name fields only, so renaming a stamped twin
+    row to a DIFFERENT human would have silently redirected every future add of the original person
+    onto that row (and the Phase-2 email rule can't catch it — a rename keeps the email). The
+    `trg_clear_guest_twin_on_rename` trigger (migration `20260826210000`) detaches the stamp on any
+    name change that doesn't explicitly rewrite it; a same-person typo fix self-heals (the next add
+    re-claims the same row via email+exact-name).
+
+  0c itself went through the same two-pass discipline: a 5-agent adversarial verification of the
+  hardening confirmed the core design (RPC security + client orchestration clean, all race
+  interleavings converge) and surfaced the rename-repurpose vector, the two missed rebook readers,
+  and the merge dead-end above — all fixed before merge. The pglite suite executes the REAL
+  migration files (only GRANT/REVOKE stripped), so weakening the shipped DDL fails tests.
+
+  **Phase 2 trust rule (forward-looking):** managers can row-level UPDATE their own guests (same
+  pre-existing surface as `linked_profile_id`), so the backfill may auto-consume
+  `twin_of_profile_id` as person ground truth ONLY where the guest's email matches the profile's
+  (case-insensitive) or the guest is emailless with `source='roster_registered_twin'`; anything
+  else goes to the `person_merge_review` report. Residual accepted gap (unchanged): a `g_` pick of
+  a person who ALSO holds a `player_id` booking is not cross-identity-deduped (duplicate seat at
+  worst, never wrong-person/data loss) — Phases 1–4 close it. **Phases 1–4** remain per §5 below.
 
 ### Phase 1 — EXPAND (additive, zero behavior change)
 - Migration: create `persons`; add nullable `person_id` to the 9 tables (+ the paid_by/booked_by/

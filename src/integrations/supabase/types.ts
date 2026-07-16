@@ -3149,6 +3149,7 @@ export type Database = {
           skill_rating: number | null
           source: string | null
           trainer_id: string | null
+          twin_of_profile_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3172,6 +3173,7 @@ export type Database = {
           skill_rating?: number | null
           source?: string | null
           trainer_id?: string | null
+          twin_of_profile_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3195,6 +3197,7 @@ export type Database = {
           skill_rating?: number | null
           source?: string | null
           trainer_id?: string | null
+          twin_of_profile_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3280,6 +3283,34 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_twin_of_profile_id_fkey"
+            columns: ["twin_of_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_twin_of_profile_id_fkey"
+            columns: ["twin_of_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_twin_of_profile_id_fkey"
+            columns: ["twin_of_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_players_twin_of_profile_id_fkey"
+            columns: ["twin_of_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -7992,6 +8023,14 @@ export type Database = {
       }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
+      claim_guest_twin_for_academy: {
+        Args: {
+          _academy_profile_id: string
+          _guest_player_id: string
+          _profile_id: string
+        }
+        Returns: string
+      }
       claim_onboarding_email_queue_item: {
         Args: { p_from_status: string; p_queue_id: string }
         Returns: boolean
@@ -8161,6 +8200,10 @@ export type Database = {
           full_name: string
           id: string
         }[]
+      }
+      find_guest_twin_for_academy: {
+        Args: { _academy_profile_id: string; _profile_id: string }
+        Returns: string
       }
       fold_search_text: { Args: { _value: string }; Returns: string }
       gen_random_bytes: { Args: { len: number }; Returns: string }
