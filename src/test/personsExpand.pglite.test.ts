@@ -79,11 +79,15 @@ beforeAll(async () => {
     BEGIN NEW.updated_at = now(); RETURN NEW; END $fn$;
   `);
 
-  // --- the REAL Phase 1 migration, executed as-is (PGlite has no roles → strip grants only) ---
+  // --- the REAL Phase 1 migrations, executed as-is (PGlite has no roles → strip grants only) ---
   const fs = await import('node:fs/promises');
-  const sql = (await fs.readFile('supabase/migrations/20260826260000_persons_expand.sql', 'utf8'))
-    .replace(/^(REVOKE|GRANT)[^;]*;$/gm, '');
-  await db.exec(sql);
+  for (const file of [
+    'supabase/migrations/20260826260000_persons_expand.sql',
+    'supabase/migrations/20260826270000_person_links_one_profile_per_person.sql',
+  ]) {
+    const sql = (await fs.readFile(file, 'utf8')).replace(/^(REVOKE|GRANT)[^;]*;$/gm, '');
+    await db.exec(sql);
+  }
 
   // RLS-restricted writer environment (round-3 doctrine test): can write bookings, cannot read
   // person_links/persons (RLS enabled, no policies).
@@ -149,6 +153,19 @@ describe('schema contract', () => {
     await expect(
       db.query(`INSERT INTO persons (user_id) VALUES ($1)`, [USER_P]),
     ).rejects.toThrow(/duplicate key/);
+  });
+
+  it('a person can absorb at most ONE profile — but N guests (external-audit P1 invariant)', async () => {
+    // PERSON_1 already absorbs PROF (+ guest GA). A SECOND profile for the same person would
+    // conflate two login accounts (persons.user_id can only represent one of them) — refused.
+    await expect(
+      db.query(`INSERT INTO person_links (person_id, profile_id) VALUES ($1, $2)`, [PERSON_1, PROF2]),
+    ).rejects.toThrow(/person_links_one_profile_per_person/);
+    // N guests per person stays allowed (a person's duplicate guest rows all collapse into them).
+    await db.query(`INSERT INTO person_links (person_id, guest_player_id) VALUES ($1, $2)`, [PERSON_1, GC]);
+    const r = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM person_links WHERE person_id = $1`, [PERSON_1]);
+    expect(Number(r.rows[0].n)).toBe(3); // 1 profile + 2 guests
   });
 
   it('persons + person_links are invisible to client roles (RLS, no policies)', async () => {
