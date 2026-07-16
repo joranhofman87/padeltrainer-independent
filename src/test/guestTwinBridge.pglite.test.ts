@@ -26,9 +26,10 @@ const MGR_B = '50000000-0000-0000-0000-0000000000b2'; // manager user of B
 const TR_A = '60000000-0000-0000-0000-0000000000a3'; // active trainer of A
 const TR_A_OLD = '60000000-0000-0000-0000-0000000000a4'; // INACTIVE trainer of A
 const TR_B = '60000000-0000-0000-0000-0000000000b3'; // trainer of B (victim)
-const PROF = '10000000-0000-0000-0000-000000000001'; // registered person P
-const PROF2 = '10000000-0000-0000-0000-000000000002'; // a different person
+const PROF = '10000000-0000-0000-0000-000000000001'; // registered person P (the child in family cases)
+const PROF2 = '10000000-0000-0000-0000-000000000002'; // a different person (the parent in family cases)
 const PLAYER_USER = '10000000-0000-0000-0000-0000000000fe'; // auth user of PROF
+const PARENT_USER = '10000000-0000-0000-0000-0000000000fd'; // auth user of PROF2
 const GA = '20000000-0000-0000-0000-0000000000a0'; // academy-A-owned guest
 const GTA = '20000000-0000-0000-0000-0000000000a1'; // trainer-A-owned guest
 const GTAOLD = '20000000-0000-0000-0000-0000000000a2'; // inactive-trainer-owned guest
@@ -142,8 +143,32 @@ beforeAll(async () => {
     'supabase/migrations/20260826210000_guest_twin_bridge.sql',
     'supabase/migrations/20260826220000_merge_guest_players_twin_aware.sql',
     'supabase/migrations/20260826230000_twin_visibility_rebook_readers.sql',
+    'supabase/migrations/20260826240000_twin_reader_precedence_and_lock.sql',
   ]) {
     await db.exec(stripGrants(await fs.readFile(file, 'utf8')));
+  }
+});
+
+// PGlite has no anon/authenticated roles, so the grant state itself is untestable here (the CI
+// `supabase db reset` job replays it for real). Pin the SECURITY-critical revoke TEXTUALLY: the raw
+// arbitrary-_user_id can_book_member_window must stay locked to service_role (20260717100000; the
+// re-grant regression shipped in 20260731100000 and was closed again in 20260826240000).
+it('the raw can_book_member_window stays revoked from anon/authenticated (textual pin)', async () => {
+  const fs = await import('node:fs/promises');
+  const sql = await fs.readFile('supabase/migrations/20260826240000_twin_reader_precedence_and_lock.sql', 'utf8');
+  expect(sql).toContain(
+    'REVOKE EXECUTE ON FUNCTION public.can_book_member_window(uuid, uuid) FROM PUBLIC, anon, authenticated;',
+  );
+  expect(sql).toContain(
+    'GRANT EXECUTE ON FUNCTION public.can_book_member_window(uuid, uuid) TO service_role;',
+  );
+  // and no LATER migration may re-grant it to clients (this catches the 20260731100000 mistake class)
+  const dir = await fs.readdir('supabase/migrations');
+  const later = dir.filter((f) => f > '20260826240000').sort();
+  for (const f of later) {
+    const text = await fs.readFile(`supabase/migrations/${f}`, 'utf8');
+    const regrant = /GRANT[^;]*ON FUNCTION public\.can_book_member_window\(uuid, uuid\)[^;]*(anon|authenticated)/.test(text);
+    expect(regrant, `${f} re-grants the raw can_book_member_window to clients`).toBe(false);
   }
 });
 
@@ -155,7 +180,7 @@ beforeEach(async () => {
              academy_player_locations CASCADE;
     INSERT INTO profiles (id, user_id, email, full_name) VALUES
       ('${PROF}', '${PLAYER_USER}', 'fam@example.com', 'Jan Jansen'),
-      ('${PROF2}', gen_random_uuid(), 'other@example.com', 'Piet Peters');
+      ('${PROF2}', '${PARENT_USER}', 'other@example.com', 'Piet Peters');
     INSERT INTO academy_managers (user_id, academy_profile_id) VALUES
       ('${MGR_A}', '${ACAD_A}'), ('${MGR_B}', '${ACAD_B}');
     INSERT INTO academy_trainers (academy_profile_id, trainer_profile_id, status) VALUES
@@ -294,16 +319,42 @@ describe('H2 — uniq_guest_twin_per_academy + claim compare-and-set', () => {
   });
 });
 
-describe('rename detaches the twin stamp (repurpose guard — trg_clear_guest_twin_on_rename)', () => {
+describe('repurpose detaches the twin stamp (trg_clear_guest_twin_on_repurpose)', () => {
   it('renaming a stamped row CLEARS the stamp (row repurposed to a different human)', async () => {
     await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
     await db.exec(`UPDATE guest_players SET full_name = 'Bram Jansen', first_name = 'Bram' WHERE id = '${GA}';`);
     expect(await twinOf(GA)).toBeNull();
   });
 
-  it('non-name updates KEEP the stamp', async () => {
+  it('phone/notes updates KEEP the stamp', async () => {
     await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
-    await db.exec(`UPDATE guest_players SET phone = '0612345678', email = 'new@example.com' WHERE id = '${GA}';`);
+    await db.exec(`UPDATE guest_players SET phone = '0612345678', notes = 'x' WHERE id = '${GA}';`);
+    expect(await twinOf(GA)).toBe(PROF);
+  });
+
+  it('moving the email AWAY from the twin profile\'s email CLEARS the stamp (email-only repurpose)', async () => {
+    await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`UPDATE guest_players SET email = 'someone.else@x.nl' WHERE id = '${GA}';`);
+    expect(await twinOf(GA)).toBeNull();
+  });
+
+  it('correcting the email TOWARD the profile\'s email KEEPS the stamp (case/whitespace-insensitive)', async () => {
+    // GA starts as 'Fam@Example.com'; PROF's profile email is 'fam@example.com'.
+    await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`UPDATE guest_players SET email = ' fam@example.com ' WHERE id = '${GA}';`);
+    expect(await twinOf(GA)).toBe(PROF);
+  });
+
+  it('emptying the email KEEPS the stamp (removal is not a repurpose signal)', async () => {
+    await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`UPDATE guest_players SET email = NULL WHERE id = '${GA}';`);
+    expect(await twinOf(GA)).toBe(PROF);
+  });
+
+  it('a twin of an EMAILLESS profile keeps the stamp on email changes (nothing to validate against)', async () => {
+    await db.exec(`UPDATE profiles SET email = NULL WHERE id = '${PROF}';`);
+    await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+    await db.exec(`UPDATE guest_players SET email = 'enriched@later.nl' WHERE id = '${GA}';`);
     expect(await twinOf(GA)).toBe(PROF);
   });
 
@@ -452,6 +503,85 @@ describe('merge_guest_players — twin-aware guard + carry', () => {
     `);
     await merge(GTA, GA);
     expect(await twinOf(GA)).toBe(PROF);
+    // Round-2 audit: the conflicting STALE link must NOT be carried onto the survivor — a row
+    // that is explicitly Emma's must never also grant the parent visibility into her data.
+    const r = await db.query<{ linked_profile_id: string | null }>(
+      `SELECT linked_profile_id FROM guest_players WHERE id = '${GA}'`,
+    );
+    expect(r.rows[0].linked_profile_id).toBeNull();
+  });
+});
+
+describe('read-time precedence: an explicit twin OUTRANKS a stale inferred link (round-2 audit)', () => {
+  // The conflicted-row shape: the CHILD's guest row, email-mislinked to the PARENT (PROF2) by the
+  // no-name-guard trigger, then explicitly twinned to the child's own profile (PROF) by a manager
+  // claim. Every player-side reader must show it ONLY to the child.
+  beforeEach(async () => {
+    await db.exec(`
+      UPDATE guest_players SET linked_profile_id = '${PROF2}', twin_of_profile_id = '${PROF}' WHERE id = '${GA}';
+      INSERT INTO locations (id, name) VALUES ('${LOC}', 'Padel Arena');
+      INSERT INTO availability_slots (id, start_time, end_time, location_id, source_cycle_id)
+      VALUES ('${SLOT}', now(), now() + interval '1 hour', '${LOC}', '30000000-0000-0000-0000-0000000000dd');
+      INSERT INTO cycles (id) VALUES ('30000000-0000-0000-0000-0000000000dd');
+      INSERT INTO bookings (slot_id, guest_player_id, status, payment_status) VALUES
+        ('${SLOT}', '${GA}', 'confirmed', 'pending');
+      INSERT INTO slot_priority_claims (slot_id, guest_player_id, status, claim_token)
+      VALUES ('${SLOT}', '${GA}', 'pending', 'tok-conflicted');
+    `);
+  });
+
+  it('the CHILD (twin) sees the bookings; the PARENT (stale link) does NOT', async () => {
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const child = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(child.rows[0].j as Array<unknown>).toHaveLength(1);
+
+    await db.exec(`SELECT set_config('test.uid', '${PARENT_USER}', false)`);
+    const parent = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(parent.rows[0].j as Array<unknown>).toHaveLength(0);
+  });
+
+  it('the rebook-claims card follows the same precedence', async () => {
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const child = await db.query(`SELECT * FROM public.get_my_pending_priority_claims()`);
+    expect(child.rows).toHaveLength(1);
+
+    await db.exec(`SELECT set_config('test.uid', '${PARENT_USER}', false)`);
+    const parent = await db.query(`SELECT * FROM public.get_my_pending_priority_claims()`);
+    expect(parent.rows).toHaveLength(0);
+  });
+
+  it('the member-window gate follows the same precedence', async () => {
+    const CYCLE = '30000000-0000-0000-0000-0000000000dd';
+    const child = await db.query<{ ok: boolean }>(
+      `SELECT public.can_book_member_window($1, $2) AS ok`, [PLAYER_USER, CYCLE]);
+    expect(child.rows[0].ok).toBe(true);
+    const parent = await db.query<{ ok: boolean }>(
+      `SELECT public.can_book_member_window($1, $2) AS ok`, [PARENT_USER, CYCLE]);
+    expect(parent.rows[0].ok).toBe(false);
+  });
+
+  it('paid-invoice visibility follows the same precedence', async () => {
+    const b = await db.query<{ id: string }>(
+      `SELECT id FROM bookings WHERE guest_player_id = '${GA}' LIMIT 1`);
+    await db.query(
+      `INSERT INTO invoices (status, booking_ids, guest_player_id) VALUES ('paid', $1, $2)`,
+      [[b.rows[0].id], GA],
+    );
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const child = await db.query(`SELECT * FROM public.get_my_paid_booking_ids()`);
+    expect(child.rows).toHaveLength(1);
+    await db.exec(`SELECT set_config('test.uid', '${PARENT_USER}', false)`);
+    const parent = await db.query(`SELECT * FROM public.get_my_paid_booking_ids()`);
+    expect(parent.rows).toHaveLength(0);
+  });
+
+  it('an UNstamped linked row still shows to the linked profile (no regression for real links)', async () => {
+    await db.exec(`
+      UPDATE guest_players SET linked_profile_id = '${PROF}', twin_of_profile_id = NULL WHERE id = '${GA}';
+    `);
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const r = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(r.rows[0].j as Array<unknown>).toHaveLength(1);
   });
 });
 

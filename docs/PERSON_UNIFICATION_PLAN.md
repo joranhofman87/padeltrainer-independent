@@ -214,6 +214,23 @@ coexist. Keep it as the choke point.
   and the merge dead-end above — all fixed before merge. The pglite suite executes the REAL
   migration files (only GRANT/REVOKE stripped), so weakening the shipped DDL fails tests.
 
+  **Round 2 (second external audit of 0c → migration `20260826240000`):** three confirmed findings,
+  all fixed. (1) The raw `can_book_member_window(_user_id, _cycle_id)` was granted to
+  anon/authenticated — an eligibility oracle. The lock (`20260717100000`, service_role only +
+  `can_current_user_book_member_window` wrapper for clients) had ALREADY been undone by
+  `20260731100000` re-granting on re-create, and `20260826230000` copied it forward — re-locked,
+  plus a textual test that pins the revoke AND fails if any later migration re-grants (the exact
+  mistake class that shipped in 0731). (2) A conflicted row (linked = parent via the no-name-guard
+  email trigger, twin = child via an explicit claim) leaked the child's bookings/invoices/rebook
+  eligibility to the parent via the linked path. **Read-time precedence rule (now doctrine): a
+  row's explicit `twin_of_profile_id` OUTRANKS its `linked_profile_id` in every player-side reader**
+  (`twin = me OR (twin IS NULL AND linked = me)`) — closes the leak for every conflicted row
+  however it arises (claim on a mislinked row, trigger re-inference, merge). The merge additionally
+  no longer CARRIES a conflicting stale link onto the survivor. (3) The repurpose guard also
+  detaches the stamp when a row's email moves AWAY from the twin profile's email (corrections
+  toward it, case/whitespace changes, emptying, and emailless profiles keep it) — closing the
+  same-name email-only repurpose the rename rule missed.
+
   **Phase 2 trust rule (forward-looking):** managers can row-level UPDATE their own guests (same
   pre-existing surface as `linked_profile_id`), so the backfill may auto-consume
   `twin_of_profile_id` as person ground truth ONLY where the guest's email matches the profile's
