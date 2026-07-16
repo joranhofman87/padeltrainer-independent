@@ -8391,6 +8391,10 @@ export type Database = {
         Args: { _club_profile_id: string }
         Returns: boolean
       }
+      collapse_guest_person_into: {
+        Args: { _guest_id: string; _guest_person: string; _target_person: string }
+        Returns: boolean
+      }
       count_cycles_intakes: {
         Args: { _cycle_ids: string[] }
         Returns: {

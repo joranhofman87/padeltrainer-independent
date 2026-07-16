@@ -916,3 +916,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- The collapse helper re-points identity links — DEFINER-internal only (H1/H3 call it as the
+-- function owner). Never client-callable: default privileges would have exposed it via PostgREST.
+REVOKE ALL ON FUNCTION public.collapse_guest_person_into(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
