@@ -144,9 +144,24 @@ beforeAll(async () => {
     'supabase/migrations/20260826220000_merge_guest_players_twin_aware.sql',
     'supabase/migrations/20260826230000_twin_visibility_rebook_readers.sql',
     'supabase/migrations/20260826240000_twin_reader_precedence_and_lock.sql',
+    'supabase/migrations/20260826250000_repurpose_trigger_definer.sql',
   ]) {
     await db.exec(stripGrants(await fs.readFile(file, 'utf8')));
   }
+
+  // RLS environment for the round-3 regression test: an `authenticated` role that can edit guest
+  // rows (like the client edit paths) but can only read its OWN profiles row (the PII lockdown) —
+  // the twin profile is INVISIBLE to it, so the repurpose trigger's profile-email check only works
+  // because the function is SECURITY DEFINER.
+  await db.exec(`
+    CREATE ROLE authenticated;
+    GRANT USAGE ON SCHEMA public TO authenticated;
+    GRANT SELECT, UPDATE ON public.guest_players TO authenticated;
+    GRANT SELECT ON public.profiles TO authenticated;
+    ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY profiles_own_row ON public.profiles
+      FOR SELECT TO authenticated USING (user_id = auth.uid());
+  `);
 });
 
 // PGlite has no anon/authenticated roles, so the grant state itself is untestable here (the CI
@@ -356,6 +371,47 @@ describe('repurpose detaches the twin stamp (trg_clear_guest_twin_on_repurpose)'
     await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
     await db.exec(`UPDATE guest_players SET email = 'enriched@later.nl' WHERE id = '${GA}';`);
     expect(await twinOf(GA)).toBe(PROF);
+  });
+
+  // Round-3 regression (third external audit): the email-away branch reads profiles.email, and the
+  // common edit path is a CLIENT-side UPDATE under RLS where the twin profile row is INVISIBLE to
+  // the editor. Without SECURITY DEFINER on the trigger fn the EXISTS silently returned false and
+  // the guard no-oped. These run the UPDATE as the restricted `authenticated` role for real.
+  describe('under RLS (editor cannot read the twin profile row) — needs SECURITY DEFINER', () => {
+    const asManager = async (sql: string) => {
+      // MGR_A is not PROF's user → the profiles_own_row policy hides the twin profile entirely.
+      await db.exec(`SET test.uid = '${MGR_A}'; SET ROLE authenticated;`);
+      try {
+        await db.exec(sql);
+      } finally {
+        await db.exec(`RESET ROLE; SET test.uid = '';`);
+      }
+    };
+
+    it('sanity: the restricted role really cannot see the twin profile', async () => {
+      await db.exec(`SET test.uid = '${MGR_A}'; SET ROLE authenticated;`);
+      const r = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM profiles WHERE id = '${PROF}'`);
+      await db.exec(`RESET ROLE; SET test.uid = '';`);
+      expect(Number(r.rows[0].n)).toBe(0);
+    });
+
+    it('email moved AWAY still CLEARS the stamp when the editor is RLS-restricted', async () => {
+      await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+      await asManager(`UPDATE guest_players SET email = 'hijack@elders.nl' WHERE id = '${GA}';`);
+      expect(await twinOf(GA)).toBeNull();
+    });
+
+    it('correcting TOWARD the profile email still KEEPS the stamp when RLS-restricted', async () => {
+      await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+      await asManager(`UPDATE guest_players SET email = 'fam@example.com' WHERE id = '${GA}';`);
+      expect(await twinOf(GA)).toBe(PROF);
+    });
+
+    it('rename still CLEARS the stamp when RLS-restricted (no profiles read needed)', async () => {
+      await db.exec(`UPDATE guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${GA}';`);
+      await asManager(`UPDATE guest_players SET full_name = 'Bram Jansen' WHERE id = '${GA}';`);
+      expect(await twinOf(GA)).toBeNull();
+    });
   });
 
   it('rewriting the stamp TOGETHER with the name keeps the new stamp (explicit re-assertion)', async () => {

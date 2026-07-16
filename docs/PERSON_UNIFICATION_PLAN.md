@@ -214,6 +214,18 @@ coexist. Keep it as the choke point.
   and the merge dead-end above — all fixed before merge. The pglite suite executes the REAL
   migration files (only GRANT/REVOKE stripped), so weakening the shipped DDL fails tests.
 
+  **Round 3 (third external audit → migration `20260826250000`):** one confirmed finding — the
+  repurpose trigger read `profiles.email` WITHOUT `SECURITY DEFINER`, so on the common client edit
+  path (manager under RLS, twin profile row invisible — the same asymmetry behind PR #557) the
+  email-away check silently no-oped; it only worked via merge's DEFINER context, and the superuser
+  pglite harness couldn't see it. Fixed (DEFINER + same body; leaks nothing — no data returned, and
+  managers already see registered emails via `get_players_overview`). The pglite suite now has an
+  RLS-role environment (`SET ROLE authenticated` + own-row-only profiles policy) proving the clear
+  fires for an editor who cannot read the profile row — verified to FAIL without the fix. Lesson:
+  **any trigger/function that reads OTHER tables must be SECURITY DEFINER or it silently degrades
+  under the caller's RLS** — and superuser test harnesses can't catch that class; test under a
+  restricted role.
+
   **Round 2 (second external audit of 0c → migration `20260826240000`):** three confirmed findings,
   all fixed. (1) The raw `can_book_member_window(_user_id, _cycle_id)` was granted to
   anon/authenticated — an eligibility oracle. The lock (`20260717100000`, service_role only +
