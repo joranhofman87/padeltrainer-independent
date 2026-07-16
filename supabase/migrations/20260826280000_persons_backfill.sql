@@ -31,7 +31,14 @@
 -- between section G's verification snapshot and the H trigger installation would be neither
 -- backfilled nor live-minted — a permanent map hole. SHARE ROW EXCLUSIVE blocks writes (reads
 -- continue); writers queue and re-run against the installed triggers after commit.
-LOCK TABLE public.profiles, public.guest_players IN SHARE ROW EXCLUSIVE MODE;
+-- Wrapped in DO because `supabase db reset` (local/CI) applies statements individually — there
+-- the lock is an instant no-op (fresh DB, no concurrency), while `supabase db push` (prod, the
+-- run that matters) executes the whole migration in ONE transaction, so the lock taken here is
+-- held until commit.
+DO $$
+BEGIN
+  LOCK TABLE public.profiles, public.guest_players IN SHARE ROW EXCLUSIVE MODE;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- E0) the review/audit table (owner sign-off happens here — P-B)
