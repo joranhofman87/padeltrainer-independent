@@ -267,7 +267,12 @@ coexist. Keep it as the choke point.
   **Progress — SHIPPED (migration `20260826260000`):** `persons` (plan §4.1 schema, RLS enabled
   with NO policies → client-invisible until Phase 3) + **`person_links`** — the old→new identity
   map (one row per absorbed profile/guest, UNIQUE per source, exactly-one-source CHECK; Phase 2
-  populates it; sources CASCADE so a deleted guest stops mapping). Nullable person columns on the
+  populates it; sources CASCADE so a deleted guest stops mapping). **Post-merge external audit
+  (finding P1) added the missing shape invariant (migration `20260826270000`): at most ONE profile
+  per person** — `person_links_one_profile_per_person` partial unique index — since a person
+  absorbing two profiles would conflate two login accounts while `persons.user_id` can only
+  represent one; N guests per person remains allowed (that IS the merge). Phase 2's backfill can
+  now not violate the model even with a bug. Nullable person columns on the
   7 dual-keyed tables (9 pairs: `bookings.person_id`+`paid_by_person_id`, `invoices.person_id`,
   `intake_requests.person_id`, `slot_priority_claims.person_id`+`booked_by_person_id`,
   `session_player_notes.subject_person_id`, `academy_player_locations.person_id`,
