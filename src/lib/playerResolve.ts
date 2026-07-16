@@ -214,3 +214,54 @@ export async function resolveOrCreateGuestPlayer(
 
   return data?.id ?? null;
 }
+
+/**
+ * Snapshot of a REGISTERED player (a `profiles`-backed person) sourced from the
+ * `get_players_overview` RPC — NEVER from a direct `profiles` read (academy managers cannot
+ * RLS-read arbitrary profile rows; the overview RPC is SECURITY DEFINER and the sanctioned source).
+ */
+export type RegisteredPlayerSnapshot = {
+  profileId: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  skillRating?: number | null;
+  ratingSystem?: string | null;
+  birthDate?: string | null;
+};
+
+/**
+ * Phase 0 of person-unification (docs/PERSON_UNIFICATION_PLAN.md): resolve-or-create the GUEST TWIN
+ * for a registered player so the guest-keyed roster/booking/invoice chain can seat them without
+ * touching any money math. Bridges the two identity worlds at the UI seam until the full `persons`
+ * table lands.
+ *
+ * The canonical merge key is `lower(trim(email))` — the plan's exact-email person rule (also what
+ * the DB link trigger uses). Deliberately does NOT set `linked_profile_id`: the `guest_players`
+ * INSERT trigger (`link_guest_data_to_profile`) sets it itself iff this is the single unlinked email
+ * match and backfills the twin's bookings — callers must not depend on it being present.
+ *
+ * Unlike the invoice-side {@link resolveOrCreateGuestPlayer} (which returns null as a non-blocking
+ * skip), a null here is a HARD failure the roster caller must ABORT on — never silently seat nobody.
+ * Scope MUST be `academy` for Phase 0: the academy-owner INSERT branch is the one whose RETURNING
+ * passes the own-column SELECT policy (a trainer_id-owned insert by a manager can pass WITH CHECK
+ * yet fail RETURNING).
+ */
+export async function resolveOrCreateGuestTwinForRegisteredPlayer(
+  scope: GuestResolveScope,
+  snapshot: RegisteredPlayerSnapshot,
+): Promise<string | null> {
+  const email = (snapshot.email ?? '').trim().toLowerCase() || null;
+  return resolveOrCreateGuestPlayer({
+    scope,
+    fullName: snapshot.fullName,
+    email,
+    phone: snapshot.phone ?? null,
+    skillRating: snapshot.skillRating ?? null,
+    ratingSystem: snapshot.ratingSystem ?? null,
+    birthDate: snapshot.birthDate ?? null,
+    source: 'roster_registered_twin',
+    hasTrained: true,
+    patchExistingEmptyFields: true,
+  });
+}

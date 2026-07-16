@@ -104,10 +104,18 @@ export async function addPlayersToCycle(params: {
   guestPlayerIds: string[];
   skipInvoices?: boolean;
   notes?: string | null;
+  /**
+   * Person-unification Phase 0: for a guest that is the TWIN of a registered player, the profile id
+   * the twin represents. Lets the cross-identity dedup below skip a session where that same human
+   * already sits as a pure-profile (player_id-only) booking — a duplicate no single-column unique
+   * index can catch (`uniq_active_booking_per_slot_guest` keys on guest id, `..._player` on
+   * player_id; the same person under both keys evades both).
+   */
+  twinProfileIdByGuestId?: Record<string, string>;
   client?: SupabaseClient;
 }): Promise<AddPlayersToCycleResult> {
   const client = params.client ?? supabase;
-  const { cycleId, guestPlayerIds, skipInvoices = false, notes = null } = params;
+  const { cycleId, guestPlayerIds, skipInvoices = false, notes = null, twinProfileIdByGuestId } = params;
   if (guestPlayerIds.length === 0) return { ...EMPTY_ADD_RESULT };
 
   const [slots, pricing] = await Promise.all([
@@ -121,13 +129,17 @@ export async function addPlayersToCycle(params: {
   // capacity-occupying rows in one query, then bucket them.
   const { data: existing, error: exErr } = await client
     .from("bookings")
-    .select("id, slot_id, guest_player_id, status")
+    .select("id, slot_id, guest_player_id, player_id, status")
     .in("slot_id", slotIds)
     .in("status", Array.from(new Set([...DEDUP_BOOKING_STATUSES, ...CAPACITY_OCCUPYING_STATUSES])));
   if (exErr) throw exErr;
 
   const capacityCountBySlot = new Map<string, number>();
   const guestSlotSet = new Set<string>(); // `${slotId}:${guestId}` for dedup-active rows
+  // `${slotId}:${profileId}` for PURE-profile (player_id set, guest_player_id NULL) dedup-active
+  // rows. Dual-keyed rows are deliberately excluded: FAM-02 says they belong to the GUEST, and a
+  // linked guest is a DIFFERENT person from the profile — it must never block adding the profile.
+  const profileSlotSet = new Set<string>();
   const capacityStatuses = new Set<string>(CAPACITY_OCCUPYING_STATUSES);
   const dedupStatuses = new Set<string>(DEDUP_BOOKING_STATUSES);
   for (const b of existing ?? []) {
@@ -136,6 +148,8 @@ export async function addPlayersToCycle(params: {
     }
     if (b.guest_player_id && dedupStatuses.has(b.status)) {
       guestSlotSet.add(`${b.slot_id}:${b.guest_player_id}`);
+    } else if (b.player_id && !b.guest_player_id && dedupStatuses.has(b.status)) {
+      profileSlotSet.add(`${b.slot_id}:${b.player_id}`);
     }
   }
 
@@ -149,8 +163,14 @@ export async function addPlayersToCycle(params: {
   let rebalanceFailed = false;
 
   for (const guestId of guestPlayerIds) {
+    const twinProfileId = twinProfileIdByGuestId?.[guestId] ?? null;
     for (const slot of slots) {
-      if (guestSlotSet.has(`${slot.id}:${guestId}`)) {
+      // Skip if the person already holds a seat on this session under EITHER identity — the guest
+      // twin, or (cross-identity) the profile the twin represents.
+      if (
+        guestSlotSet.has(`${slot.id}:${guestId}`) ||
+        (twinProfileId && profileSlotSet.has(`${slot.id}:${twinProfileId}`))
+      ) {
         alreadyBookedSlotIds.add(slot.id);
         continue;
       }
@@ -239,11 +259,18 @@ export async function swapPlayerInCycle(params: {
   cycleId: string;
   fromPlayer: { playerId?: string | null; guestPlayerId?: string | null };
   toGuestPlayerId: string;
+  /**
+   * Person-unification Phase 0: when the incoming person is a registered player's guest TWIN, the
+   * profile id it represents — so the collision check also catches a session where that same human
+   * already sits as a pure-profile (player_id-only) booking (cross-identity duplicate). Omit for a
+   * plain guest → byte-identical to the prior behaviour.
+   */
+  toProfileId?: string | null;
   skipInvoices?: boolean;
   client?: SupabaseClient;
 }): Promise<SwapPlayerInCycleResult> {
   const client = params.client ?? supabase;
-  const { cycleId, fromPlayer, toGuestPlayerId, skipInvoices = false } = params;
+  const { cycleId, fromPlayer, toGuestPlayerId, toProfileId = null, skipInvoices = false } = params;
 
   const fromRef = personRefOfIds(fromPlayer.playerId, fromPlayer.guestPlayerId);
   if (!fromRef) {
@@ -274,8 +301,8 @@ export async function swapPlayerInCycle(params: {
     return { error: null, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   }
 
-  // Sessions where the incoming guest is already booked — a reassign there would
-  // collide with M-17, so cancel the outgoing booking on those instead.
+  // Sessions where the incoming person is already booked — a reassign there would collide with
+  // M-17, so cancel the outgoing booking on those instead.
   const { data: incoming, error: inErr } = await client
     .from("bookings")
     .select("slot_id")
@@ -284,6 +311,21 @@ export async function swapPlayerInCycle(params: {
     .eq("guest_player_id", toGuestPlayerId);
   if (inErr) return { error: inErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   const incomingSlots = new Set((incoming ?? []).map((b) => b.slot_id));
+
+  // Cross-identity (Phase 0): when the incoming person is a registered player's twin, their
+  // pure-profile (player_id-only) seats are the SAME human too — treat those as collisions as well,
+  // so we cancel the outgoing seat there rather than minting a duplicate for one person.
+  if (toProfileId) {
+    const { data: incomingProfile, error: inpErr } = await client
+      .from("bookings")
+      .select("slot_id")
+      .in("slot_id", slotIds)
+      .in("status", [...DEDUP_BOOKING_STATUSES])
+      .eq("player_id", toProfileId)
+      .is("guest_player_id", null);
+    if (inpErr) return { error: inpErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
+    for (const b of incomingProfile ?? []) incomingSlots.add(b.slot_id);
+  }
 
   const reassignIds = outgoing.filter((b) => !incomingSlots.has(b.slot_id)).map((b) => b.id);
   const collisionIds = outgoing.filter((b) => incomingSlots.has(b.slot_id)).map((b) => b.id);

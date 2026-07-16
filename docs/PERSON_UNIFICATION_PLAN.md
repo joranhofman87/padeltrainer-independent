@@ -132,6 +132,18 @@ coexist. Keep it as the choke point.
   data is created while we migrate. (Also unblocks the "add a registered account as participant"
   need directly.) Optional but recommended first — it stops the bleeding.
 
+  **Progress — Phase 0a (lib layer) SHIPPED:** `resolveOrCreateGuestTwinForRegisteredPlayer`
+  (`src/lib/playerResolve.ts`) mints/reuses a registered player's guest twin (exact-`lower(trim)`-email
+  merge rule, `source:'roster_registered_twin'`, never sets `linked_profile_id` — the DB trigger
+  does); `fetchBookablePersons` (`src/lib/playersOverview.ts`) returns guests **and** registered
+  people with namespaced `comboboxId`s; and `addPlayersToCycle`/`swapPlayerInCycle`
+  (`src/lib/cycleRoster.ts`) gained cross-identity dedup (`twinProfileIdByGuestId` / `toProfileId`)
+  that closes a latent duplicate-seat hole no single-column unique index can catch. No UI change yet
+  → no behaviour change. **Phase 0b (UI wiring)** flips the capability on: `CycleRosterInlinePicker`
+  → person-keys, `CycleDetailView` resolves a `p_` pick to its twin before add/swap and relaxes the
+  Change gate. Owner decision surfaced at 0b: emailless registered players mint an un-dedupable twin
+  each add (reconciled later via `merge_guest_players`) — accept or block.
+
 ### Phase 1 — EXPAND (additive, zero behavior change)
 - Migration: create `persons`; add nullable `person_id` to the 9 tables (+ the paid_by/booked_by/
   subject variants); add nullable `person_id`-shaped columns nowhere read yet.
