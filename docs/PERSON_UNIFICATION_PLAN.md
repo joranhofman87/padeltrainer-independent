@@ -37,9 +37,14 @@ divergences. Each past fix patched one crack; this plan removes the seam.
 1. **One table.** A single `persons` table holds identity **and** account fields. "Has a login
    account" is simply **`persons.user_id IS NOT NULL`**. `profiles` is absorbed; `guest_players` and
    the dead `club_players` (0 rows) go away.
-2. **Auto-merge on exact email.** A profile and a guest sharing an *identical* email collapse into
-   one person automatically. Ambiguous cases (shared-email families, no-email guests) are **reported
-   for manual review**, not auto-merged.
+2. **Auto-merge only on UNAMBIGUOUS evidence** (wording tightened after Phase 0c — see the trust
+   rule + hard rule in §5). Two auto-merge keys, in order of strength: (a) an explicit
+   `twin_of_profile_id` stamp that passes the Phase-2 trust rule; (b) an exact (case-insensitive,
+   non-empty) email match **only when that email maps to exactly ONE profile and ONE guest** —
+   never inside a shared-email cluster. Everything ambiguous (shared-email families, no-email
+   guests, name-only matches) is **reported for manual review**, not auto-merged.
+   **`linked_profile_id` is NEVER identity truth** (bare-email trigger link, no name guard): at
+   most it seeds *suggestions* in the review report.
 3. Ship via **strangler** (expand → backfill+merge → migrate readers cluster-by-cluster → contract).
 
 ## 3. Measured reality (prod, 2026-07-16 — re-measure before executing)
@@ -53,7 +58,7 @@ divergences. Each past fix patched one crack; this plan removes the seam.
 | guests with no email | 76 |
 | **profiles that also exist as a guest (same email)** | **47** |
 | guest pairs sharing an email with another guest (families) | 28 |
-| tables carrying BOTH a player_id and guest_player_id column | 9 |
+| dual-keyed person column-pairs (across 7 tables — bookings + slot_priority_claims carry two) | 9 |
 | code refs to the guest identity | ~1,246 across ~197 src files + 42 edge fns |
 | DB functions / RLS policies / migrations touching guest_players | 48 / 8 / 96 |
 
@@ -105,7 +110,7 @@ memberships — recommended) vs per-owner-scoped (today's guest behavior). Recom
 
 ### 4.3 The collapse: every `(player_id | guest_player_id)` → `person_id`
 
-The 9 dual-keyed tables (each gets a single `person_id`, plus `paid_by`/`booked_by`/`subject`
+The 7 dual-keyed tables / 9 column-pairs (each pair gets a person column; `paid_by`/`booked_by`/`subject`
 variants where present):
 
 `bookings` (player_id, guest_player_id, paid_by_player_id, paid_by_guest_player_id) ·
@@ -252,22 +257,62 @@ coexist. Keep it as the choke point.
   worst, never wrong-person/data loss) — Phases 1–4 close it. **Phases 1–4** remain per §5 below.
 
 ### Phase 1 — EXPAND (additive, zero behavior change)
-- Migration: create `persons`; add nullable `person_id` to the 9 tables (+ the paid_by/booked_by/
-  subject variants); add nullable `person_id`-shaped columns nowhere read yet.
+- Migration: create `persons`; add nullable person columns to the 7 dual-keyed tables (9 pairs,
+  incl. the paid_by/booked_by/subject variants); nothing reads them yet.
 - Triggers: dual-write — any insert/update that sets a `player_id`/`guest_player_id` also sets the
   matching `person_id` once persons exists (Phase 2 backfills the existing rows).
 - CI: pglite test proving the new columns + triggers exist and don't change any read.
 - **Reversible:** drop the columns; nothing read them.
 
+  **Progress — SHIPPED (migration `20260826260000`):** `persons` (plan §4.1 schema, RLS enabled
+  with NO policies → client-invisible until Phase 3) + **`person_links`** — the old→new identity
+  map (one row per absorbed profile/guest, UNIQUE per source, exactly-one-source CHECK; Phase 2
+  populates it; sources CASCADE so a deleted guest stops mapping). Nullable person columns on the
+  7 dual-keyed tables (9 pairs: `bookings.person_id`+`paid_by_person_id`, `invoices.person_id`,
+  `intake_requests.person_id`, `slot_priority_claims.person_id`+`booked_by_person_id`,
+  `session_player_notes.subject_person_id`, `academy_player_locations.person_id`,
+  `academy_player_metadata.person_id`) with partial indexes. Dual-write BEFORE triggers (one per
+  table, **SECURITY DEFINER** per the 0c round-3 doctrine — person_links is RLS-locked, a
+  non-DEFINER trigger would silently stamp NULL for RLS-restricted writers). **Stamping rule
+  (hardened after the Phase-1 adversarial verification): the person columns are PURE DERIVED DATA
+  on any row that carries — or carried — an old-world key.** Recomputed from person_links whenever
+  the trigger fires; a writer-supplied value on a keyed row is re-derived (unforgeable — the 7
+  tables are client-UPDATEable and the financial-column guards don't cover the new columns, so
+  writer-wins would have been a forgery hole once persons is populated); keys removed
+  (anonymization) → derives NULL; only keyless rows (Phase-3 new-world writers) are
+  writer-managed. **Lookup is GUEST-side first** (verification finding): the guest key is the
+  row's original subject — player_id on both-keyed rows is only ever added later by the email
+  linkers via `linked_profile_id`, the banned inference, so profile-first would let it overwrite
+  the correct subject on divergent rows. The trigger OF-lists include the person columns
+  DELIBERATELY (a forged person-only PATCH fires the trigger and gets re-derived); hot-path
+  status/payment updates still never fire them. With `person_links` empty (until Phase 2) every
+  stamp is NULL — literally zero behavior change. `persons` + `person_links` added to the backup
+  allow-list (a restore must never recover stamped rows without the map). pglite suite
+  `personsExpand.pglite.test.ts` runs the REAL migration, table-driven over ALL 9 pairs:
+  constraints, derivation, forge-neutralization, divergent-both-keyed guest-wins, merge-repoint,
+  anonymization-to-NULL, keyless writer-managed, RLS-restricted-writer stamping per table, and
+  client-invisibility. **Phase 3 decision to record (P-D): new-world writers should go through
+  RPCs, not direct column writes — when the first Phase-3 writer lands, either guard the person
+  columns (extend the protect-financial-columns triggers) or route all person-column writes
+  through SECURITY DEFINER RPCs.**
+
 ### Phase 2 — BACKFILL + MERGE (data, one-time, verified)
-- Build `persons`: one row per profile; one row per guest that is NOT an exact-email duplicate of a
-  profile or another already-inserted guest.
-- **Merge rule (locked):** profile.email == guest.email (case-insensitive, non-empty) → same person
-  (profile wins for account fields; guest contributes non-null identity gaps). Carry
-  `linked_profile_id` links too.
-- **Report, do not auto-merge:** shared-email guest families (28), no-email guests (76), and any
-  fuzzy name-only matches → written to a `person_merge_review` table for owner sign-off.
-- Stamp `person_id` on every existing row of the 9 tables from its old FK.
+- Build `persons`: one row per profile; one row per guest that is NOT auto-merged into a profile's
+  person by the rules below.
+- **Merge rule (LOCKED, updated post-0c):** a guest collapses into a profile's person ONLY on
+  (a) an explicit `twin_of_profile_id` stamp passing the **Phase-2 trust rule** (guest email
+  matches the profile's case-insensitively, OR guest is emailless with
+  `source='roster_registered_twin'`), or (b) an exact (case-insensitive, non-empty) email match
+  where that email maps to **exactly ONE profile and ONE guest** system-wide (never inside a
+  shared-email cluster). Profile wins for account fields; guest contributes non-null identity gaps.
+  **`linked_profile_id` is NEVER consumed as identity truth** (hard rule, §5 Phase 0): it may only
+  SEED suggestions in the review report, and a link that conflicts with an explicit twin is
+  reported as a stale mislink, not carried.
+- **Report, do not auto-merge:** shared-email guest families (28), no-email guests (76), trust-rule
+  failures, linked-vs-twin conflicts, and any fuzzy name-only matches → written to a
+  `person_merge_review` table for owner sign-off.
+- Stamp the person columns on every existing row of the 7 dual-keyed tables (9 pairs) from the
+  old FKs — same derivation the Phase 1 triggers use (guest-side first).
 - Verify: `count(distinct person)` reconciles; every non-cancelled booking/invoice has a `person_id`;
   no money row loses its person. Rehearsed in pglite against the real migration first.
 
