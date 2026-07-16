@@ -480,13 +480,25 @@ describe('H5 — source edits keep persons fresh (re-audit P1) + live gap-fill (
   });
 
   it('editing a guest re-derives its person — and profile-won fields stay profile-won', async () => {
-    // G_TWIN is merged into P_TWIN's person. A guest edit updates gap fields but can never
-    // overwrite what the profile provides.
-    await db.exec(`UPDATE guest_players SET phone = '0612312312' WHERE id = '${G_TWIN}';`);
+    // G_TWIN_NOEMAIL is merged into P_TWIN2's person (and has NO pending split rows). A guest
+    // edit updates gap fields but can never overwrite what the profile provides.
+    await db.exec(`UPDATE guest_players SET phone = '0612312312' WHERE id = '${G_TWIN_NOEMAIL}';`);
     const r = await db.query<{ full_name: string; phone: string }>(
-      `SELECT full_name, phone FROM persons WHERE id = '${P_TWIN}'`);
-    expect(r.rows[0].phone).toBe('0612312312');   // gap filled live
-    expect(r.rows[0].full_name).toBe('Tom Twin'); // profile still wins the name
+      `SELECT full_name, phone FROM persons WHERE id = '${P_TWIN2}'`);
+    expect(r.rows[0].phone).toBe('0612312312');     // gap filled live
+    expect(r.rows[0].full_name).toBe('Tessa Twin'); // profile still wins the name
+  });
+
+  it('a SPLIT-PENDING guest is FROZEN: its edits stop feeding the shared person (re-audit round 3)', async () => {
+    // G_TWIN was detached (repurpose-rename) earlier — it has a pending twin_detached_needs_split
+    // row and may now describe a DIFFERENT human. Its edits must not gap-fill P_TWIN's person.
+    const before = await db.query<{ phone: string | null }>(
+      `SELECT phone FROM persons WHERE id = '${P_TWIN}'`);
+    await db.exec(`UPDATE guest_players SET phone = '0600000666' WHERE id = '${G_TWIN}';`);
+    const after = await db.query<{ phone: string | null }>(
+      `SELECT phone FROM persons WHERE id = '${P_TWIN}'`);
+    expect(after.rows[0].phone).toBe(before.rows[0].phone); // untouched while the split is pending
+    expect(after.rows[0].phone).not.toBe('0600000666');
   });
 
   it('a live H2 merge gap-fills the profile person at INSERT (re-audit P2)', async () => {
@@ -590,7 +602,7 @@ describe('the HARD verification actually fires (negative test — run last)', ()
     const sql = (await fs.readFile('supabase/migrations/20260826280000_persons_backfill.sql', 'utf8'))
       .replace(/^(REVOKE|GRANT)[^;]*;$/gm, '');
     // extract the REAL G verification block (the DO block carrying the invariant messages)
-    const gBlock = sql.match(/DO \$\$\nDECLARE\n  v_profiles bigint;[\s\S]*?END \$\$;/)?.[0];
+    const gBlock = sql.match(/DO \$\$\nDECLARE\n\s+v_profiles bigint;[\s\S]*?END \$\$;/)?.[0];
     expect(gBlock).toBeTruthy();
 
     // corrupt: point a linked person's user_id at a different auth user

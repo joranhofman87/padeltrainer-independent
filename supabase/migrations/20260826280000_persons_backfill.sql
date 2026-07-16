@@ -185,6 +185,13 @@ DECLARE
   p public.profiles%ROWTYPE;
   g record;
 BEGIN
+  -- Serialize per person BEFORE reading sources (external re-audit round 3): two concurrent
+  -- source edits would otherwise each derive from a different snapshot and the later UPDATE
+  -- could overwrite fresher fields with stale ones. The lock queues the second rederive until
+  -- the first commits; its source reads (READ COMMITTED, fresh snapshot per statement) then see
+  -- the predecessor's changes.
+  PERFORM 1 FROM public.persons WHERE id = _person FOR UPDATE;
+
   IF NOT EXISTS (SELECT 1 FROM public.person_links pl WHERE pl.person_id = _person) THEN
     RETURN;  -- keyless new-world person: writer-managed
   END IF;
@@ -985,6 +992,16 @@ BEGIN
      (OLD.full_name, OLD.first_name, OLD.last_name, OLD.email, OLD.phone, OLD.birth_date,
       OLD.skill_rating, OLD.rating_system, OLD.billing_business_name, OLD.billing_address,
       OLD.billing_btw_number) THEN
+    -- FREEZE while a split is pending (external re-audit round 3): a guest that just triggered
+    -- twin_detached_needs_split / merged_guest_email_moved may now describe a DIFFERENT human —
+    -- its edits must not keep gap-filling the shared person until the owner resolves the split.
+    -- Wrong-person data is the unrecoverable failure class; staleness is not (resolution tooling
+    -- re-derives). Guests without pending split rows are unaffected.
+    IF EXISTS (SELECT 1 FROM public.person_merge_review r
+               WHERE r.guest_player_id = NEW.id AND r.status = 'pending'
+                 AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')) THEN
+      RETURN NEW;
+    END IF;
     PERFORM public.rederive_person(pl.person_id)
     FROM public.person_links pl WHERE pl.guest_player_id = NEW.id;
   END IF;
