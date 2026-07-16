@@ -470,6 +470,69 @@ describe('live map maintenance (H1/H2/H3)', () => {
   });
 });
 
+describe('H5 — source edits keep persons fresh (re-audit P1) + live gap-fill (P2)', () => {
+  it('editing a profile re-derives its person (the EditProfile flow)', async () => {
+    await db.exec(`UPDATE profiles SET full_name = 'Solo Hernoemd', phone = '0699999999' WHERE id = '${P_SOLO}';`);
+    const r = await db.query<{ full_name: string; phone: string }>(
+      `SELECT full_name, phone FROM persons WHERE id = '${P_SOLO}'`);
+    expect(r.rows[0].full_name).toBe('Solo Hernoemd');
+    expect(r.rows[0].phone).toBe('0699999999');
+  });
+
+  it('editing a guest re-derives its person — and profile-won fields stay profile-won', async () => {
+    // G_TWIN is merged into P_TWIN's person. A guest edit updates gap fields but can never
+    // overwrite what the profile provides.
+    await db.exec(`UPDATE guest_players SET phone = '0612312312' WHERE id = '${G_TWIN}';`);
+    const r = await db.query<{ full_name: string; phone: string }>(
+      `SELECT full_name, phone FROM persons WHERE id = '${P_TWIN}'`);
+    expect(r.rows[0].phone).toBe('0612312312');   // gap filled live
+    expect(r.rows[0].full_name).toBe('Tom Twin'); // profile still wins the name
+  });
+
+  it('a live H2 merge gap-fills the profile person at INSERT (re-audit P2)', async () => {
+    const PG = '10000000-0000-0000-0000-000000000089';
+    const NG10 = '20000000-0000-0000-0000-000000000087';
+    await db.exec(`
+      INSERT INTO auth.users (id) VALUES ('${uid(89)}');
+      INSERT INTO profiles (id, user_id, email, full_name) VALUES ('${PG}', '${uid(89)}', 'gapvul@x.nl', 'Gea Gapvul');
+      INSERT INTO guest_players (id, full_name, email, phone, birth_date)
+      VALUES ('${NG10}', 'Gea Gapvul', 'gapvul@x.nl', '0644444444', '1985-05-05');
+    `);
+    expect(await personOfGuest(NG10)).toBe(PG); // B2-at-insert merge
+    const r = await db.query<{ phone: string; birth_date: string }>(
+      `SELECT phone, birth_date FROM persons WHERE id = '${PG}'`);
+    expect(r.rows[0].phone).toBe('0644444444');   // the merging guest filled the gaps
+    expect(r.rows[0].birth_date).not.toBeNull();
+  });
+
+  it("deleting ONE guest of a two-guest person keeps the OTHER guest's gap contributions (re-audit P2)", async () => {
+    const GA1 = '20000000-0000-0000-0000-000000000086';
+    const GA2 = '20000000-0000-0000-0000-000000000085';
+    await db.exec(`
+      INSERT INTO guest_players (id, full_name, email, phone) VALUES
+        ('${GA1}', 'Twee Gasten', 'tweegasten@x.nl', NULL);
+      INSERT INTO guest_players (id, full_name, email, birth_date) VALUES
+        ('${GA2}', 'Twee Gasten', 'tweegasten2@x.nl', '1970-07-07');
+      UPDATE guest_players SET phone = '0655555555' WHERE id = '${GA1}';
+      -- hand-merge GA2 into GA1's person (two-guest person)
+      UPDATE person_links SET person_id = '${GA1}' WHERE guest_player_id = '${GA2}';
+      DELETE FROM persons WHERE id = '${GA2}';
+      SELECT public.rederive_person('${GA1}');
+    `);
+    let r = await db.query<{ phone: string | null; birth_date: string | null }>(
+      `SELECT phone, birth_date FROM persons WHERE id = '${GA1}'`);
+    expect(r.rows[0].phone).toBe('0655555555');
+    expect(r.rows[0].birth_date).not.toBeNull(); // GA2's contribution
+    // delete GA1 (the older gap source): the person must KEEP GA2's birth_date, not reset it
+    await db.exec(`DELETE FROM guest_players WHERE id = '${GA1}';`);
+    r = await db.query<{ phone: string | null; birth_date: string | null }>(
+      `SELECT phone, birth_date FROM persons WHERE id = '${GA1}'`);
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0].birth_date).not.toBeNull(); // aggregated across remaining sources
+    expect(r.rows[0].phone).toBeNull();          // the deleted guest's PII is gone
+  });
+});
+
 describe('H4 + GDPR — no orphaned PII copies anywhere', () => {
   it('hard-deleting a sole-source guest removes its person, NULLs stamps, and scrubs its review rows', async () => {
     const NG7 = '20000000-0000-0000-0000-000000000092';
@@ -522,17 +585,24 @@ describe('H4 + GDPR — no orphaned PII copies anywhere', () => {
 });
 
 describe('the HARD verification actually fires (negative test — run last)', () => {
-  it('a user_id integrity violation makes the backfill RAISE (and restoring it heals the re-run)', async () => {
+  it('G RAISES on a user_id integrity violation, and the FULL backfill self-heals it (rederive)', async () => {
+    const fs = await import('node:fs/promises');
+    const sql = (await fs.readFile('supabase/migrations/20260826280000_persons_backfill.sql', 'utf8'))
+      .replace(/^(REVOKE|GRANT)[^;]*;$/gm, '');
+    // extract the REAL G verification block (the DO block carrying the invariant messages)
+    const gBlock = sql.match(/DO \$\$\nDECLARE\n  v_profiles bigint;[\s\S]*?END \$\$;/)?.[0];
+    expect(gBlock).toBeTruthy();
+
     // corrupt: point a linked person's user_id at a different auth user
     await db.exec(`
       INSERT INTO auth.users (id) VALUES ('${uid(77)}');
       UPDATE persons SET user_id = '${uid(77)}' WHERE id = '${P_SOLO}';
     `);
-    const fs = await import('node:fs/promises');
-    const sql = (await fs.readFile('supabase/migrations/20260826280000_persons_backfill.sql', 'utf8'))
-      .replace(/^(REVOKE|GRANT)[^;]*;$/gm, '');
-    await expect(db.exec(sql)).rejects.toThrow(/user_id mismatching/);
-    await db.exec(`UPDATE persons SET user_id = '${uid(1)}' WHERE id = '${P_SOLO}';`);
-    await db.exec(sql); // green again
+    // (1) the verification check itself fires on the corrupted state
+    await expect(db.exec(gBlock!)).rejects.toThrow(/user_id mismatching/);
+    // (2) the FULL backfill self-heals the corruption (rederive-all runs before G) and ends green
+    await db.exec(sql);
+    const healed = await db.query<{ user_id: string }>(`SELECT user_id FROM persons WHERE id = '${P_SOLO}'`);
+    expect(healed.rows[0].user_id).toBe(uid(1)); // re-derived from the profile — corruption gone
   });
 });

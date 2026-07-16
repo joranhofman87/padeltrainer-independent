@@ -9209,6 +9209,7 @@ export type Database = {
         Args: { _intent: string; _token: string }
         Returns: undefined
       }
+      rederive_person: { Args: { _person: string }; Returns: undefined }
       reinstate_rebook_claims: {
         Args: { _claim_ids: string[] }
         Returns: {

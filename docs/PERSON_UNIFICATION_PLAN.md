@@ -365,7 +365,19 @@ coexist. Keep it as the choke point.
   `auto_merged_email_pair` / `auto_merged_twin_trust` (applied) · `shared_email_cluster` /
   `no_email_guest` / `multi_profile_email` / `twin_trust_failure` / `linked_mismatch` /
   `twin_detached_needs_split` / `signup_pair_needs_review` / `merged_guest_email_moved` (pending).
-  Rehearsal: `personsBackfill.pglite.test.ts` (28 tests, prod-mirroring FKs) runs the REAL
+  **External re-audit (Codex) round 2 — the freshness layer (P1/P2, both adopted):** persons
+  would have gone STALE the moment a profile/guest was edited (the write surfaces stay old-world
+  until Phase 3/4), and live merges/deletes each had bespoke field logic that could drift from the
+  backfill's. Fix: **ONE central `rederive_person(uuid)`** (profile wins every field it has;
+  guests fill gaps PER FIELD, oldest first; account-only fields from the profile or NULL; keyless
+  new-world persons never touched) — used by the backfill (D is now a rederive-all loop, so
+  backfill and live semantics provably cannot diverge and the backfill is SELF-HEALING on re-run),
+  the live collapse, H2 merges-at-insert, H4's keep-branches (which drop the dying source's link
+  first so rederive sees only survivors — also fixing the dropped-gap-fields case), and the new
+  **H5 sync triggers**: any derivation-relevant edit on profiles/guest_players re-derives the
+  person (fast-path guarded; twin/link churn never fires it). `rederive_person` is
+  client-REVOKEd like the collapse helper.
+  Rehearsal: `personsBackfill.pglite.test.ts` (32 tests, prod-mirroring FKs) runs the REAL
   migrations over every rule + the verification-flagged mutation survivors: multi-profile emails,
   twin-in-cluster, agreeing links, both-keyed divergent rows on EVERY money pair, gap-fill email
   precedence, content-level idempotency, live H1/H2 trust behavior, the GDPR scrubs, the invoice

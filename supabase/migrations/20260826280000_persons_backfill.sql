@@ -169,30 +169,79 @@ FROM public.guest_players g
 WHERE NOT EXISTS (SELECT 1 FROM public.person_links pl WHERE pl.guest_player_id = g.id);
 
 -- ---------------------------------------------------------------------------
--- D) merged persons: profile won the account fields at mint; guests fill non-null identity gaps
+-- D) person attribute derivation — ONE function, used by the backfill AND every live path
+--    (external re-audit P1/P2: bespoke per-path field logic would drift; this cannot).
+--    Rule: the profile (if any) wins every field it has; guests fill the gaps PER FIELD,
+--    oldest guest first; account-only fields come from the profile or are NULL. A person
+--    with NO links (a future Phase-3 new-world person) is writer-managed — never touched.
 -- ---------------------------------------------------------------------------
-UPDATE public.persons pe
-SET
-  full_name             = COALESCE(pe.full_name, g.full_name),
-  first_name            = COALESCE(pe.first_name, g.first_name),
-  last_name             = COALESCE(pe.last_name, g.last_name),
-  email                 = COALESCE(pe.email, g.email),
-  phone                 = COALESCE(pe.phone, g.phone),
-  birth_date            = COALESCE(pe.birth_date, g.birth_date),
-  skill_rating          = COALESCE(pe.skill_rating, g.skill_rating),
-  rating_system         = COALESCE(pe.rating_system, g.rating_system),
-  billing_business_name = COALESCE(pe.billing_business_name, g.billing_business_name),
-  billing_address       = COALESCE(pe.billing_address, g.billing_address),
-  billing_btw_number    = COALESCE(pe.billing_btw_number, g.billing_btw_number)
-FROM (
-  SELECT DISTINCT ON (pl.person_id) pl.person_id, gp.*
+CREATE OR REPLACE FUNCTION public.rederive_person(_person uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  p public.profiles%ROWTYPE;
+  g record;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.person_links pl WHERE pl.person_id = _person) THEN
+    RETURN;  -- keyless new-world person: writer-managed
+  END IF;
+
+  SELECT pr.* INTO p
+  FROM public.person_links pl
+  JOIN public.profiles pr ON pr.id = pl.profile_id
+  WHERE pl.person_id = _person AND pl.profile_id IS NOT NULL;
+
+  SELECT
+    (array_remove(array_agg(gp.full_name ORDER BY gp.created_at), NULL))[1] AS full_name,
+    (array_remove(array_agg(gp.first_name ORDER BY gp.created_at), NULL))[1] AS first_name,
+    (array_remove(array_agg(gp.last_name ORDER BY gp.created_at), NULL))[1] AS last_name,
+    (array_remove(array_agg(gp.email ORDER BY gp.created_at), NULL))[1] AS email,
+    (array_remove(array_agg(gp.phone ORDER BY gp.created_at), NULL))[1] AS phone,
+    (array_remove(array_agg(gp.birth_date ORDER BY gp.created_at), NULL))[1] AS birth_date,
+    (array_remove(array_agg(gp.skill_rating ORDER BY gp.created_at), NULL))[1] AS skill_rating,
+    (array_remove(array_agg(gp.rating_system ORDER BY gp.created_at), NULL))[1] AS rating_system,
+    (array_remove(array_agg(gp.billing_business_name ORDER BY gp.created_at), NULL))[1] AS billing_business_name,
+    (array_remove(array_agg(gp.billing_address ORDER BY gp.created_at), NULL))[1] AS billing_address,
+    (array_remove(array_agg(gp.billing_btw_number ORDER BY gp.created_at), NULL))[1] AS billing_btw_number
+  INTO g
   FROM public.person_links pl
   JOIN public.guest_players gp ON gp.id = pl.guest_player_id
-  WHERE EXISTS (SELECT 1 FROM public.person_links pl2
-                WHERE pl2.person_id = pl.person_id AND pl2.profile_id IS NOT NULL)
-  ORDER BY pl.person_id, gp.created_at ASC
-) g
-WHERE pe.id = g.person_id;
+  WHERE pl.person_id = _person AND pl.guest_player_id IS NOT NULL;
+
+  UPDATE public.persons pe SET
+    user_id               = p.user_id,
+    full_name             = COALESCE(p.full_name, g.full_name),
+    first_name            = COALESCE(p.first_name, g.first_name),
+    last_name             = COALESCE(p.last_name, g.last_name),
+    email                 = COALESCE(p.email, g.email),
+    phone                 = COALESCE(p.phone, g.phone),
+    birth_date            = COALESCE(p.birth_date, g.birth_date),
+    skill_rating          = COALESCE(p.skill_rating, g.skill_rating),
+    rating_system         = COALESCE(p.rating_system, g.rating_system),
+    billing_business_name = COALESCE(p.billing_business_name, g.billing_business_name),
+    billing_address       = COALESCE(p.billing_address, g.billing_address),
+    billing_btw_number    = COALESCE(p.billing_btw_number, g.billing_btw_number),
+    rating_member_id      = p.rating_member_id,
+    avatar_url            = p.avatar_url,
+    bio                   = p.bio,
+    location              = p.location,
+    preferred_language    = p.preferred_language,
+    stripe_customer_id    = p.stripe_customer_id
+  WHERE pe.id = _person;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.rederive_person(uuid) FROM PUBLIC, anon, authenticated;
+
+-- backfill: derive every person through the SAME function the live paths use
+DO $$
+BEGIN
+  PERFORM public.rederive_person(x.person_id)
+  FROM (SELECT DISTINCT person_id FROM public.person_links) x;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- E) the review report (pending rows = the owner's sign-off queue — P-B)
@@ -419,6 +468,7 @@ BEGIN
     RETURN false;
   END IF;
   UPDATE public.person_links SET person_id = _target_person WHERE guest_player_id = _guest_id;
+  PERFORM public.rederive_person(_target_person);  -- the merged guest now fills the target's gaps
   UPDATE public.bookings SET person_id = _target_person
     WHERE guest_player_id = _guest_id AND person_id = _guest_person;
   UPDATE public.bookings SET paid_by_person_id = _target_person
@@ -589,6 +639,10 @@ BEGIN
   END IF;
 
   INSERT INTO public.person_links (person_id, guest_player_id) VALUES (v_person, NEW.id);
+
+  IF v_merged_kind IS NOT NULL THEN
+    PERFORM public.rederive_person(v_person);  -- the new guest may fill gaps on the merged person
+  END IF;
 
   -- observability parity with the backfill's E report
   IF v_merged_kind IS NOT NULL THEN
@@ -779,56 +833,16 @@ BEGIN
     DELETE FROM public.persons WHERE id = v_person;
   ELSE
     -- The person SURVIVES on other sources — the deleted source's PII must not linger on it.
+    -- Drop the dying source's link NOW (the FK cascade would do it anyway, but AFTER this
+    -- trigger) so rederive_person sees only the remaining sources: account-only fields go NULL
+    -- when the profile dies (user_id freed for re-signup — persons.user_id is UNIQUE), and gap
+    -- fields aggregate across ALL remaining guests, not one arbitrary survivor.
     IF TG_TABLE_NAME = 'profiles' THEN
-      -- account deletion: clear the account-only fields (user_id also unblocks a future
-      -- re-signup — persons.user_id is UNIQUE) and re-derive the shared identity fields from
-      -- the OLDEST remaining guest source
-      UPDATE public.persons pe SET
-        user_id = NULL, stripe_customer_id = NULL, avatar_url = NULL, bio = NULL,
-        location = NULL, preferred_language = NULL, rating_member_id = NULL,
-        full_name = g.full_name, first_name = g.first_name, last_name = g.last_name,
-        email = g.email, phone = g.phone, birth_date = g.birth_date,
-        skill_rating = g.skill_rating, rating_system = g.rating_system,
-        billing_business_name = g.billing_business_name, billing_address = g.billing_address,
-        billing_btw_number = g.billing_btw_number
-      FROM (
-        SELECT gp.* FROM public.person_links pl
-        JOIN public.guest_players gp ON gp.id = pl.guest_player_id
-        WHERE pl.person_id = v_person AND pl.guest_player_id IS NOT NULL
-        ORDER BY gp.created_at ASC LIMIT 1
-      ) g
-      WHERE pe.id = v_person;
+      DELETE FROM public.person_links WHERE profile_id = OLD.id;
     ELSE
-      -- guest deletion: re-derive from the profile source (drops the guest's gap-fills)…
-      UPDATE public.persons pe SET
-        full_name = p.full_name, first_name = p.first_name, last_name = p.last_name,
-        email = p.email, phone = p.phone, birth_date = p.birth_date,
-        skill_rating = p.skill_rating, rating_system = p.rating_system,
-        rating_member_id = p.rating_member_id, avatar_url = p.avatar_url, bio = p.bio,
-        location = p.location, preferred_language = p.preferred_language,
-        billing_business_name = p.billing_business_name, billing_address = p.billing_address,
-        billing_btw_number = p.billing_btw_number, stripe_customer_id = p.stripe_customer_id
-      FROM public.person_links pl
-      JOIN public.profiles p ON p.id = pl.profile_id
-      WHERE pe.id = v_person AND pl.person_id = v_person AND pl.profile_id IS NOT NULL;
-      -- …or, for a guests-only person, from the oldest OTHER remaining guest
-      UPDATE public.persons pe SET
-        full_name = g.full_name, first_name = g.first_name, last_name = g.last_name,
-        email = g.email, phone = g.phone, birth_date = g.birth_date,
-        skill_rating = g.skill_rating, rating_system = g.rating_system,
-        billing_business_name = g.billing_business_name, billing_address = g.billing_address,
-        billing_btw_number = g.billing_btw_number
-      FROM (
-        SELECT gp.* FROM public.person_links pl
-        JOIN public.guest_players gp ON gp.id = pl.guest_player_id
-        WHERE pl.person_id = v_person AND pl.guest_player_id IS NOT NULL
-          AND pl.guest_player_id IS DISTINCT FROM OLD.id
-        ORDER BY gp.created_at ASC LIMIT 1
-      ) g
-      WHERE pe.id = v_person
-        AND NOT EXISTS (SELECT 1 FROM public.person_links pl2
-                        WHERE pl2.person_id = v_person AND pl2.profile_id IS NOT NULL);
+      DELETE FROM public.person_links WHERE guest_player_id = OLD.id;
     END IF;
+    PERFORM public.rederive_person(v_person);
   END IF;
   RETURN OLD;
 END;
@@ -920,3 +934,66 @@ $$;
 -- The collapse helper re-points identity links — DEFINER-internal only (H1/H3 call it as the
 -- function owner). Never client-callable: default privileges would have exposed it via PostgREST.
 REVOKE ALL ON FUNCTION public.collapse_guest_person_into(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H5: SOURCE-EDIT SYNC (external re-audit P1) — profiles/guest_players are still the write
+--     surfaces until Phase 3/4, so every edit (EditProfile, trainer/academy player edits, edge
+--     fns) must re-derive the person or Phase-3 readers would serve stale names/phones/ratings.
+--     Fast-path guarded: only fires rederive when a derivation-relevant field actually changed
+--     (twin/link/ownership churn never re-derives).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sync_person_from_profile()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF (NEW.user_id, NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone,
+      NEW.birth_date, NEW.skill_rating, NEW.rating_system, NEW.rating_member_id, NEW.avatar_url,
+      NEW.bio, NEW.location, NEW.preferred_language, NEW.billing_business_name,
+      NEW.billing_address, NEW.billing_btw_number, NEW.stripe_customer_id)
+     IS DISTINCT FROM
+     (OLD.user_id, OLD.full_name, OLD.first_name, OLD.last_name, OLD.email, OLD.phone,
+      OLD.birth_date, OLD.skill_rating, OLD.rating_system, OLD.rating_member_id, OLD.avatar_url,
+      OLD.bio, OLD.location, OLD.preferred_language, OLD.billing_business_name,
+      OLD.billing_address, OLD.billing_btw_number, OLD.stripe_customer_id) THEN
+    PERFORM public.rederive_person(pl.person_id)
+    FROM public.person_links pl WHERE pl.profile_id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_person_from_profile ON public.profiles;
+CREATE TRIGGER trg_sync_person_from_profile
+  AFTER UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.sync_person_from_profile();
+
+CREATE OR REPLACE FUNCTION public.sync_person_from_guest()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF (NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone, NEW.birth_date,
+      NEW.skill_rating, NEW.rating_system, NEW.billing_business_name, NEW.billing_address,
+      NEW.billing_btw_number)
+     IS DISTINCT FROM
+     (OLD.full_name, OLD.first_name, OLD.last_name, OLD.email, OLD.phone, OLD.birth_date,
+      OLD.skill_rating, OLD.rating_system, OLD.billing_business_name, OLD.billing_address,
+      OLD.billing_btw_number) THEN
+    PERFORM public.rederive_person(pl.person_id)
+    FROM public.person_links pl WHERE pl.guest_player_id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_person_from_guest ON public.guest_players;
+CREATE TRIGGER trg_sync_person_from_guest
+  AFTER UPDATE ON public.guest_players
+  FOR EACH ROW
+  EXECUTE FUNCTION public.sync_person_from_guest();
