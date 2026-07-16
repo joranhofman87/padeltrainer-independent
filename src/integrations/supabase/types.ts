@@ -8392,7 +8392,11 @@ export type Database = {
         Returns: boolean
       }
       collapse_guest_person_into: {
-        Args: { _guest_id: string; _guest_person: string; _target_person: string }
+        Args: {
+          _guest_id: string
+          _guest_person: string
+          _target_person: string
+        }
         Returns: boolean
       }
       count_cycles_intakes: {
