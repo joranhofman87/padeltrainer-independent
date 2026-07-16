@@ -18,10 +18,22 @@ export type GuestResolveScope =
 function pickGuestIdByName(
   rows: Array<{ id: string; full_name: string | null }>,
   fullName?: string | null,
+  /**
+   * When true, even a SINGLE email match must also match the name before it is reused. Household
+   * emails are shared (a parent registered-account and a child guest can carry the same address),
+   * so a lone match is NOT proof of same-person — reusing it blindly seats/invoices the WRONG human
+   * (audit #1). The registered-player twin path sets this; name-less invoice dedup keeps the shortcut.
+   */
+  requireNameMatch = false,
 ): string | null {
   if (rows.length === 0) return null;
-  if (rows.length === 1) return rows[0].id;
   const wanted = (fullName ?? '').trim();
+  if (rows.length === 1) {
+    if (requireNameMatch && wanted) {
+      return normalize(rows[0].full_name ?? '') === normalize(wanted) ? rows[0].id : null;
+    }
+    return rows[0].id;
+  }
   if (wanted) {
     const match = rows.find((row) => normalize(row.full_name ?? '') === normalize(wanted));
     if (match) return match.id;
@@ -40,10 +52,23 @@ function pickGuestIdByName(
  * matches, the optional fullName disambiguates (diacritic/case-insensitive).
  * Without a unique pick this returns null so callers create a new player.
  */
+/**
+ * Escape a literal string for a case-insensitive EXACT `ilike` match: emails legitimately contain
+ * `_` (and could contain `%`), which `ilike` would treat as wildcards — escaping them (backslash is
+ * the default LIKE escape) makes `ilike` an exact, case-folded compare. Every other email path in
+ * the system folds case (the link trigger, intake backfill, invoice matching); guest_players.email
+ * is NOT lowercased on write, so a case-sensitive `.eq` misses a mixed-case legacy row → duplicate
+ * identity (audit #2/#8).
+ */
+function ilikeExact(s: string): string {
+  return s.replace(/([\\%_])/g, '\\$1');
+}
+
 export async function findExistingGuestPlayerIdByEmail(
   email: string,
   scope: GuestResolveScope,
   fullName?: string | null,
+  requireNameMatch = false,
 ): Promise<string | null> {
   const trimmed = email.trim();
   if (!trimmed) return null;
@@ -53,10 +78,10 @@ export async function findExistingGuestPlayerIdByEmail(
       .from('guest_players')
       .select('id, full_name')
       .eq('trainer_id', scope.trainerId)
-      .eq('email', trimmed)
+      .ilike('email', ilikeExact(trimmed))
       .order('created_at')
       .limit(10);
-    return pickGuestIdByName(data ?? [], fullName);
+    return pickGuestIdByName(data ?? [], fullName, requireNameMatch);
   }
 
   const { data: academyTrainers } = await supabase
@@ -88,17 +113,18 @@ export async function findExistingGuestPlayerIdByEmail(
     return pickGuestIdByName(
       (rpcRows as Array<{ id: string; full_name: string | null }> | null) ?? [],
       fullName,
+      requireNameMatch,
     );
   }
 
   const { data } = await supabase
     .from('guest_players')
     .select('id, full_name')
-    .eq('email', trimmed)
+    .ilike('email', ilikeExact(trimmed))
     .eq('academy_profile_id', scope.academyProfileId)
     .order('created_at')
     .limit(10);
-  return pickGuestIdByName(data ?? [], fullName);
+  return pickGuestIdByName(data ?? [], fullName, requireNameMatch);
 }
 
 export type ResolveOrCreateGuestPlayerArgs = {
@@ -113,6 +139,11 @@ export type ResolveOrCreateGuestPlayerArgs = {
   hasTrained?: boolean;
   /** When reusing an existing row, fill optional fields that are still null/empty. */
   patchExistingEmptyFields?: boolean;
+  /**
+   * Require the name to match even on a SINGLE email hit before reusing it (audit #1). Set by the
+   * registered-player twin path, where a lone household-email match may be a DIFFERENT family member.
+   */
+  requireNameMatch?: boolean;
 };
 
 function isEmptyValue(value: unknown): boolean {
@@ -148,11 +179,11 @@ async function patchExistingGuestEmptyFields(
 /**
  * Resolve-or-create a guest player within a trainer/academy scope.
  *
- * Select-by-email-then-insert — NEVER upsert: the guest_players unique email
- * indexes are PARTIAL (WHERE email <> '' ..., migration 20260224171306) and
- * PostgREST upserts cannot target partial indexes (Postgres 42P10). On an
- * insert unique-violation (23505, a concurrent writer won the race) the email
- * is re-selected and that id returned.
+ * Select-by-email-then-insert — NEVER upsert. NOTE: the guest_players partial unique EMAIL indexes
+ * were DROPPED in migration 20260611220000 (families legitimately share an address), so there is no
+ * DB uniqueness backstop on email anymore — dedup relies entirely on the case-insensitive select
+ * below. The 23505 recovery branch is now defensive-only (a race on some OTHER unique index, e.g. the
+ * M-17 active-booking indexes aren't on this table); it can no longer fire on an email collision.
  *
  * Emailless guests are allowed: no email means no dedup, plain insert.
  * Returns the guest_players id, or null when there is nothing to create or
@@ -167,7 +198,12 @@ export async function resolveOrCreateGuestPlayer(
   const email = (args.email ?? '').trim();
 
   if (email) {
-    const existingId = await findExistingGuestPlayerIdByEmail(email, scope, args.fullName);
+    const existingId = await findExistingGuestPlayerIdByEmail(
+      email,
+      scope,
+      args.fullName,
+      args.requireNameMatch,
+    );
     if (existingId) {
       if (args.patchExistingEmptyFields) {
         await patchExistingGuestEmptyFields(existingId, args);
@@ -263,5 +299,8 @@ export async function resolveOrCreateGuestTwinForRegisteredPlayer(
     source: 'roster_registered_twin',
     hasTrained: true,
     patchExistingEmptyFields: true,
+    // A lone household-email match may be a DIFFERENT family member — only reuse it when the name
+    // matches too, else mint a fresh twin for THIS person (audit #1: never seat the wrong human).
+    requireNameMatch: true,
   });
 }

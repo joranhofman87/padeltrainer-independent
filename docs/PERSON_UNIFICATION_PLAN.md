@@ -139,10 +139,42 @@ coexist. Keep it as the choke point.
   people with namespaced `comboboxId`s; and `addPlayersToCycle`/`swapPlayerInCycle`
   (`src/lib/cycleRoster.ts`) gained cross-identity dedup (`twinProfileIdByGuestId` / `toProfileId`)
   that closes a latent duplicate-seat hole no single-column unique index can catch. No UI change yet
-  → no behaviour change. **Phase 0b (UI wiring)** flips the capability on: `CycleRosterInlinePicker`
-  → person-keys, `CycleDetailView` resolves a `p_` pick to its twin before add/swap and relaxes the
-  Change gate. Owner decision surfaced at 0b: emailless registered players mint an un-dedupable twin
-  each add (reconciled later via `merge_guest_players`) — accept or block.
+  → no behaviour change.
+
+  **Progress — Phase 0b (UI wiring) SHIPPED:** `CycleRosterInlinePicker` now searches
+  `fetchBookablePersons` (guests **and** registered players, `g_`/`p_` keys) and emits the selected
+  `BookablePerson`; `CycleDetailView` lifts the selection to a person, resolves a `p_` pick to its
+  guest twin at add/swap (abort + toast on failure, threading `twinProfileIdByGuestId`/`toProfileId`
+  into the 0a dedup) and relaxes the Change gate so registered rows are manageable too. **Closes the
+  "add a registered app-account holder as a cycle participant" gap** (the PR #557 follow-up).
+  Owner-accepted default: an emailless registered player mints an un-dedupable twin per add (rare —
+  accounts almost always carry an email; reconciled later via `merge_guest_players`).
+
+  **Audit + fixes (2026-07-16, adversarial multi-agent review before merge):** the review confirmed
+  11 defects; all fixed in the 0b PR. The important ones: (#1 wrong-person) `pickGuestIdByName`
+  reused a LONE household-email match without a name check → a parent could resolve to their child's
+  guest row and be seated/invoiced as the child + overwrite the child's PII → fixed with a
+  `requireNameMatch` gate on the twin path. (#3/#4/#6/#7 duplicate seat / double charge) the
+  cross-identity dedup only engaged on the `p_` pick → now `addPlayersToCycle`/`swapPlayerInCycle`
+  resolve each incoming guest's `linked_profile_id` **server-side** so the dedup is authoritative and
+  call-path independent. (#2/#8/#9 duplicate twin) the academy dedup RPC matched email
+  case-SENSITIVELY vs the lowercased twin email → duplicate twin + double invoice + defeated the link
+  trigger → fixed with a case-folded RPC (migration `20260826190000`) + escaped-`ilike` in the code
+  branches. (#5) dedup now keys on the seat-occupancy union so `pending_approval` seats count. **0b
+  therefore needs a `db push`** (the RPC migration), not just a frontend deploy.
+
+  **A SECOND adversarial pass (verifying the fixes) caught a HIGH bug in the first fix** and it was
+  corrected: the #3/#4/#6/#7 fix originally resolved each incoming guest's `linked_profile_id`
+  server-side to make the dedup call-path independent. But `link_guest_data_to_profile` sets that
+  column on **email match with no name guard**, so a child's guest is mislinked to the parent's
+  profile — using it would over-block an add and, worse, on **swap cancel the parent's PAID seats**.
+  Reverted to **hint-only** cross-identity dedup: it uses ONLY the profile the manager EXPLICITLY
+  selected (the `p_` pick, reliable), never the guest's `linked_profile_id`. Consequence: a `g_` pick
+  of a person who ALSO holds a `player_id` booking is **not** cross-identity-deduped — a rare,
+  recoverable pre-existing gap of the guest/profile split (a duplicate seat, never a wrong-person or
+  data loss), which the full `persons` unification (Phases 1–4) closes properly. Lesson: **never
+  drive dedup off `linked_profile_id`** — it conflates shared-email families. **Phases 1–4** remain
+  per §5 below.
 
 ### Phase 1 — EXPAND (additive, zero behavior change)
 - Migration: create `persons`; add nullable `person_id` to the 9 tables (+ the paid_by/booked_by/

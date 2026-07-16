@@ -125,6 +125,17 @@ export async function addPlayersToCycle(params: {
   if (slots.length === 0) return { ...EMPTY_ADD_RESULT };
 
   const slotIds = slots.map((s) => s.id);
+
+  // Cross-identity dedup uses ONLY the caller's twin hint — the profile the manager EXPLICITLY
+  // selected (the `p_` pick). We deliberately do NOT fall back to the guest's own
+  // linked_profile_id: that column is set by link_guest_data_to_profile on email match with NO name
+  // guard, so in a shared-household-email family a child's guest is mislinked to the parent's
+  // profile — using it here would conflate them (over-block an add, and on swap CANCEL the parent's
+  // paid seats). The reliable signal is the explicit p_ selection. A `g_` pick of a person who also
+  // holds a player_id booking is therefore NOT cross-identity-deduped here — a rare, recoverable
+  // pre-existing gap of the guest/profile split (the full persons unification, Phases 1–4, closes
+  // it properly). See docs/PERSON_UNIFICATION_PLAN.md Phase 0b audit notes.
+
   // Pull both the dedup-active rows (any of pending/confirmed/completed) and the
   // capacity-occupying rows in one query, then bucket them.
   const { data: existing, error: exErr } = await client
@@ -135,20 +146,23 @@ export async function addPlayersToCycle(params: {
   if (exErr) throw exErr;
 
   const capacityCountBySlot = new Map<string, number>();
-  const guestSlotSet = new Set<string>(); // `${slotId}:${guestId}` for dedup-active rows
-  // `${slotId}:${profileId}` for PURE-profile (player_id set, guest_player_id NULL) dedup-active
+  const guestSlotSet = new Set<string>(); // `${slotId}:${guestId}` for seat-occupying rows
+  // `${slotId}:${profileId}` for PURE-profile (player_id set, guest_player_id NULL) seat-occupying
   // rows. Dual-keyed rows are deliberately excluded: FAM-02 says they belong to the GUEST, and a
   // linked guest is a DIFFERENT person from the profile — it must never block adding the profile.
   const profileSlotSet = new Set<string>();
   const capacityStatuses = new Set<string>(CAPACITY_OCCUPYING_STATUSES);
-  const dedupStatuses = new Set<string>(DEDUP_BOOKING_STATUSES);
+  // "Already holds a seat here" must key on the SEAT-OCCUPANCY union, not just the M-17 dedup set —
+  // else a pending_approval seat (in the capacity set but NOT the dedup set) slips the skip and
+  // duplicates (audit #5). Applies to both the guest and the profile side.
+  const seatStatuses = new Set<string>([...DEDUP_BOOKING_STATUSES, ...CAPACITY_OCCUPYING_STATUSES]);
   for (const b of existing ?? []) {
     if (capacityStatuses.has(b.status)) {
       capacityCountBySlot.set(b.slot_id, (capacityCountBySlot.get(b.slot_id) ?? 0) + 1);
     }
-    if (b.guest_player_id && dedupStatuses.has(b.status)) {
+    if (b.guest_player_id && seatStatuses.has(b.status)) {
       guestSlotSet.add(`${b.slot_id}:${b.guest_player_id}`);
-    } else if (b.player_id && !b.guest_player_id && dedupStatuses.has(b.status)) {
+    } else if (b.player_id && !b.guest_player_id && seatStatuses.has(b.status)) {
       profileSlotSet.add(`${b.slot_id}:${b.player_id}`);
     }
   }
@@ -166,7 +180,7 @@ export async function addPlayersToCycle(params: {
     const twinProfileId = twinProfileIdByGuestId?.[guestId] ?? null;
     for (const slot of slots) {
       // Skip if the person already holds a seat on this session under EITHER identity — the guest
-      // twin, or (cross-identity) the profile the twin represents.
+      // id, or (cross-identity) the profile the manager EXPLICITLY selected (the twin hint).
       if (
         guestSlotSet.has(`${slot.id}:${guestId}`) ||
         (twinProfileId && profileSlotSet.has(`${slot.id}:${twinProfileId}`))
@@ -312,9 +326,12 @@ export async function swapPlayerInCycle(params: {
   if (inErr) return { error: inErr, reassignedCount: 0, cancelledCollisionCount: 0, syncFailed: false };
   const incomingSlots = new Set((incoming ?? []).map((b) => b.slot_id));
 
-  // Cross-identity (Phase 0): when the incoming person is a registered player's twin, their
-  // pure-profile (player_id-only) seats are the SAME human too — treat those as collisions as well,
-  // so we cancel the outgoing seat there rather than minting a duplicate for one person.
+  // Cross-identity (Phase 0): when the manager EXPLICITLY picked the incoming person's registered
+  // (`p_`) row, toProfileId is their own profile — their pure-profile seats are the SAME human, so
+  // treat those as collisions too (cancel the outgoing seat there rather than minting a duplicate).
+  // We use ONLY that explicit hint, never the incoming guest's linked_profile_id: that column is a
+  // shared-email trigger link with no name guard, so recovering it would let a family-mislinked
+  // guest collide with the OUTGOING profile-holder's OWN seats and cancel their (paid) bookings.
   if (toProfileId) {
     const { data: incomingProfile, error: inpErr } = await client
       .from("bookings")

@@ -17,6 +17,7 @@ function chainable(resolved?: unknown) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
+    ilike: () => builder,
     or: () => builder,
     in: () => builder,
     limit: () => builder,
