@@ -19,6 +19,15 @@ describe('toPriorityPerson', () => {
     expect(p).toEqual({ id: 'g2', player_type: 'guest', full_name: 'Cara', email: null });
   });
 
+  it('Phase 3.3e: a login holder with an OUT-OF-SCOPE profile (registered + profile_id null + guest ref) → guest-keyed, not dropped', () => {
+    // Since get_players_overview player_type became person-level, such a person is 'registered' with
+    // profile_id null but a guest ref — they must still be grantable priority (via the guest id),
+    // not silently vanish from the picker.
+    expect(
+      toPriorityPerson({ player_type: 'registered', profile_id: null, guest_player_id: 'g9', full_name: 'Dana', email: 'd@x.com' }),
+    ).toEqual({ id: 'g9', player_type: 'guest', full_name: 'Dana', email: 'd@x.com' });
+  });
+
   it('drops rows that cannot be granted priority', () => {
     expect(toPriorityPerson({ player_type: 'registered', profile_id: null, guest_player_id: null, full_name: 'X', email: null })).toBeNull();
     expect(toPriorityPerson({ player_type: 'guest', profile_id: null, guest_player_id: null, full_name: 'X', email: null })).toBeNull();
