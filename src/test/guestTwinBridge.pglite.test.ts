@@ -750,6 +750,42 @@ describe('Phase 3.1 — the person arm of the display readers', () => {
     await db.exec(`SELECT set_config('test.uid', '', false)`);
   });
 
+  it('the FREEZE holds through the LINKED-PROFILE BRIDGE too (re-audit: the merged_guest_email_moved shape)', async () => {
+    // The exact leak Codex reproduced: NO twin stamp, linked_profile_id still pointing at the
+    // profile, a pending merged_guest_email_moved review — the bridge arm must not resurface the
+    // guest's rows in ANY of the three readers.
+    const PERSON = '90000000-0000-0000-0000-000000000033';
+    await db.exec(`
+      INSERT INTO persons (id, full_name) VALUES ('${PERSON}', 'Jan Jansen');
+      INSERT INTO person_links (person_id, profile_id) VALUES ('${PERSON}', '${PROF}');
+      INSERT INTO person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GA}');
+      UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';
+      INSERT INTO availability_slots (id, start_time, end_time)
+        VALUES ('${SLOT}', now(), now() + interval '1 hour') ON CONFLICT (id) DO NOTHING;
+      INSERT INTO person_merge_review (kind, status, guest_player_id, person_id)
+      VALUES ('merged_guest_email_moved', 'pending', '${GA}', '${PERSON}');
+    `);
+    const b = await db.query<{ id: string }>(`
+      INSERT INTO bookings (slot_id, guest_player_id, person_id, status, payment_status)
+      VALUES ('${SLOT}', '${GA}', '${PERSON}', 'confirmed', 'paid') RETURNING id`);
+    await db.query(
+      `INSERT INTO invoices (status, booking_ids, guest_player_id, person_id) VALUES ('paid', $1, $2, $3)`,
+      [[b.rows[0].id], GA, PERSON],
+    );
+    await db.exec(`
+      INSERT INTO slot_priority_claims (slot_id, guest_player_id, person_id, status, claim_token)
+      VALUES ('${SLOT}', '${GA}', '${PERSON}', 'pending', 'tok-frozen');
+    `);
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const bookings = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(bookings.rows[0].j as Array<unknown>).toHaveLength(0);
+    const paid = await db.query(`SELECT * FROM public.get_my_paid_booking_ids()`);
+    expect(paid.rows).toHaveLength(0);
+    const claims = await db.query<{ claim_token: string }>(`SELECT * FROM public.get_my_pending_priority_claims()`);
+    expect(claims.rows.map((x) => x.claim_token)).not.toContain('tok-frozen');
+    await db.exec(`SELECT set_config('test.uid', '', false)`);
+  });
+
   it('the split-pending FREEZE holds on the person arms: a repurposed guest\'s rows vanish from the profile holder\'s app', async () => {
     const PERSON = '90000000-0000-0000-0000-000000000032';
     await db.exec(`

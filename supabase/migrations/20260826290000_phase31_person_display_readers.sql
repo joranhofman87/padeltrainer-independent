@@ -154,15 +154,17 @@ BEGIN
   LEFT JOIN public.availability_slots s ON s.id = b.slot_id
   LEFT JOIN public.locations l ON l.id = s.location_id
   WHERE b.player_id IS NULL
+    -- split-pending freeze OUTSIDE the arms (external re-audit round 2): a repurposed guest's
+    -- rows may describe a DIFFERENT human until the owner resolves the split — they must not
+    -- reach the profile holder via ANY arm. The linked-profile bridge below is exactly how the
+    -- merged_guest_email_moved shape (no twin, link still set) would otherwise leak through.
+    AND NOT EXISTS (SELECT 1 FROM public.person_merge_review r
+                    WHERE r.guest_player_id = b.guest_player_id AND r.status = 'pending'
+                      AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved'))
     AND (
       -- Phase 3.1: the identity map is the primary key — covers every merge, including the ones
       -- with no twin/linked stamp at all (invisible to the bridge below).
-      (v_person IS NOT NULL AND b.person_id = v_person
-        -- split-pending freeze (Phase 2 doctrine, display side): a repurposed guest's rows keep
-        -- the merged person's stamp until the owner resolves the split — never show them here
-        AND NOT EXISTS (SELECT 1 FROM public.person_merge_review r
-                        WHERE r.guest_player_id = b.guest_player_id AND r.status = 'pending'
-                          AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')))
+      (v_person IS NOT NULL AND b.person_id = v_person)
       -- Phase 0c twin-precedence bridge (verbatim): linked-but-unmerged guests pending P-B review.
       OR b.guest_player_id IN (
         SELECT gp.id FROM public.guest_players gp
@@ -205,12 +207,16 @@ BEGIN
   FROM public.invoices i
   CROSS JOIN LATERAL unnest(coalesce(i.booking_ids, '{}'::uuid[])) AS bid
   WHERE i.status = 'paid'
+    -- split-pending freeze OUTSIDE the arms (see get_my_linked_guest_bookings). Applies to the
+    -- player arm too: a both-keyed invoice's player_id was added by the email linker (inference),
+    -- so while its guest is split-pending the whole row is withheld.
+    AND (i.guest_player_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM public.person_merge_review r
+      WHERE r.guest_player_id = i.guest_player_id AND r.status = 'pending'
+        AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')))
     AND (
       i.player_id = v_profile
-      OR (v_person IS NOT NULL AND i.person_id = v_person
-        AND NOT EXISTS (SELECT 1 FROM public.person_merge_review r
-                        WHERE r.guest_player_id = i.guest_player_id AND r.status = 'pending'
-                          AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')))
+      OR (v_person IS NOT NULL AND i.person_id = v_person)
       OR i.guest_player_id IN (
         SELECT gp.id FROM public.guest_players gp
         WHERE gp.twin_of_profile_id = v_profile
@@ -269,12 +275,14 @@ BEGIN
   FROM public.slot_priority_claims c
   JOIN public.availability_slots s ON s.id = c.slot_id
   WHERE c.status = 'pending'
+    -- split-pending freeze OUTSIDE the arms (see get_my_linked_guest_bookings)
+    AND (c.guest_player_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM public.person_merge_review r
+      WHERE r.guest_player_id = c.guest_player_id AND r.status = 'pending'
+        AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')))
     AND (
       c.player_id = v_profile
-      OR (v_person IS NOT NULL AND c.person_id = v_person
-        AND NOT EXISTS (SELECT 1 FROM public.person_merge_review r
-                        WHERE r.guest_player_id = c.guest_player_id AND r.status = 'pending'
-                          AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')))
+      OR (v_person IS NOT NULL AND c.person_id = v_person)
       OR c.guest_player_id IN (
         SELECT gp.id
         FROM public.guest_players gp
