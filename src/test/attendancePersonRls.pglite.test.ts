@@ -17,8 +17,12 @@ const SLOT = '50000000-0000-0000-0000-000000000001';
 const OTHERSLOT = '50000000-0000-0000-0000-000000000002';
 const P2SLOT = '50000000-0000-0000-0000-000000000003'; // only seat is a guest stamped to PERSON2
 const CANCELSLOT = '50000000-0000-0000-0000-000000000004'; // U's only seat here is CANCELLED
+const DUALFROZEN = '50000000-0000-0000-0000-000000000005'; // U's only seat: DUAL-KEYED (player_id=P, guest FROZEN)
+const DUALOTHER = '50000000-0000-0000-0000-000000000006'; // U's only seat: DUAL-KEYED (player_id=P, guest of PERSON2)
 const GX = '70000000-0000-0000-0000-000000000004'; // guest of PERSON2, seated on P2SLOT
 const GXC = '70000000-0000-0000-0000-000000000005'; // U's guest, cancelled seat on CANCELSLOT
+const GDF = '70000000-0000-0000-0000-000000000006'; // frozen guest on the DUAL-KEYED DUALFROZEN seat
+const GDO = '70000000-0000-0000-0000-000000000007'; // PERSON2's guest on the DUAL-KEYED DUALOTHER seat
 // merged person: profile P + guest G (linked via person_links), booking on SLOT is guest-seated
 const P = 'a0000000-0000-0000-0000-000000000001';
 const U = 'b0000000-0000-0000-0000-000000000001';
@@ -93,7 +97,8 @@ beforeAll(async () => {
       USING (session_reports.reporter_id = public.get_profile_id_for_user(auth.uid()));
 
     INSERT INTO public.availability_slots VALUES
-      ('${SLOT}', NULL), ('${OTHERSLOT}', NULL), ('${P2SLOT}', NULL), ('${CANCELSLOT}', NULL);
+      ('${SLOT}', NULL), ('${OTHERSLOT}', NULL), ('${P2SLOT}', NULL), ('${CANCELSLOT}', NULL),
+      ('${DUALFROZEN}', NULL), ('${DUALOTHER}', NULL);
     INSERT INTO public.profiles VALUES ('${P}','${U}'),('${P2}','${U2}'),('${P3}','${U3}'),('${P9}','${U9}');
     INSERT INTO public.persons VALUES ('${PERSON}'),('${PERSON2}');
     INSERT INTO public.guest_players (id) VALUES ('${G}');
@@ -120,6 +125,17 @@ beforeAll(async () => {
     INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GXC}');
     INSERT INTO public.bookings (slot_id, guest_player_id, person_id, status)
       VALUES ('${CANCELSLOT}', '${GXC}', '${PERSON}', 'cancelled');
+    -- DUALFROZEN: U's only seat is DUAL-KEYED (player_id=P AND guest_player_id=GDF, a FROZEN guest).
+    -- FAM-02: this row is the guest's — the pure-profile guard must stop the profile arm granting it.
+    INSERT INTO public.guest_players (id) VALUES ('${GDF}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GDF}');
+    INSERT INTO public.bookings (slot_id, player_id, guest_player_id, person_id, status)
+      VALUES ('${DUALFROZEN}', '${P}', '${GDF}', '${PERSON}', 'confirmed');
+    -- DUALOTHER: U's only seat is DUAL-KEYED (player_id=P AND guest_player_id=GDO, PERSON2's guest).
+    INSERT INTO public.guest_players (id) VALUES ('${GDO}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON2}', '${GDO}');
+    INSERT INTO public.bookings (slot_id, player_id, guest_player_id, person_id, status)
+      VALUES ('${DUALOTHER}', '${P}', '${GDO}', '${PERSON2}', 'confirmed');
     -- a pre-existing TRAINER report on SLOT (for the summaries-view test)
     INSERT INTO public.session_reports (slot_id, reporter_id, reporter_role, session_happened, public_notes, notes)
       VALUES ('${SLOT}', '${P9}', 'trainer', true, 'good session', 'private trainer note');
@@ -176,6 +192,33 @@ describe('session_reports player RLS — Phase 3.3-attendance', () => {
 
   it('a user NOT seated on the slot is refused (no dead-grant)', async () => {
     expect(await failed(asUser(U9, () => insertReport(SLOT, P9)))).toBe(true);
+  });
+
+  it('FAM-02 dual-keyed bypass (FROZEN guest): the profile arm must NOT grant on a both-keyed frozen-guest seat', async () => {
+    // DUALFROZEN's only seat is player_id=P AND guest_player_id=GDF (frozen). Pre-fix the bare
+    // b.player_id=me profile arm granted, bypassing the freeze. Pure-profile guard → refused.
+    await db.exec(`INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id)
+      VALUES ('merged_guest_email_moved', 'pending', '${GDF}', '${PERSON}');`);
+    expect(await failed(asUser(U, () => insertReport(DUALFROZEN, P)))).toBe(true);
+    // and the summaries view must not surface a trainer note for it either
+    await db.exec(`INSERT INTO public.session_reports (slot_id, reporter_id, reporter_role, session_happened, public_notes)
+      VALUES ('${DUALFROZEN}', '${P9}', 'trainer', true, 'frozen dual summary');`);
+    const view = await asUser(U, async () =>
+      (await db.query(`SELECT id FROM public.session_reports_player_summaries WHERE slot_id='${DUALFROZEN}'`)).rows);
+    expect(view).toHaveLength(0);
+    await db.exec(`DELETE FROM public.session_reports WHERE slot_id='${DUALFROZEN}';`);
+  });
+
+  it('FAM-02 dual-keyed bypass (DIFFERENT person): the profile arm must NOT grant on a both-keyed other-person seat', async () => {
+    // DUALOTHER's only seat is player_id=P AND guest_player_id=GDO (PERSON2's guest). FAM-02: the
+    // row is PERSON2's; U must be refused even though player_id = their profile.
+    expect(await failed(asUser(U, () => insertReport(DUALOTHER, P)))).toBe(true);
+    await db.exec(`INSERT INTO public.session_reports (slot_id, reporter_id, reporter_role, session_happened, public_notes)
+      VALUES ('${DUALOTHER}', '${P9}', 'trainer', true, 'other dual summary');`);
+    const view = await asUser(U, async () =>
+      (await db.query(`SELECT id FROM public.session_reports_player_summaries WHERE slot_id='${DUALOTHER}'`)).rows);
+    expect(view).toHaveLength(0);
+    await db.exec(`DELETE FROM public.session_reports WHERE slot_id='${DUALOTHER}';`);
   });
 
   it('PERSON-ARM EQUALITY: a person-holding player is refused on a seat stamped to a DIFFERENT person', async () => {

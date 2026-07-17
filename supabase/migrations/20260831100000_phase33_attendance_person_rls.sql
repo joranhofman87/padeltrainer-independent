@@ -49,8 +49,12 @@ AS $$
       AND (NOT _require_active
            OR COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap'))
       AND (
-        -- my own profile seat (verbatim original predicate — account holders unchanged)
-        b.player_id = ctx.profile
+        -- my own PURE-PROFILE seat. FAM-02 (same rule as the 3.1 r3 player bookings policies): a
+        -- DUAL-KEYED row (player_id = me AND guest_player_id set) belongs to the GUEST person, so
+        -- it must flow ONLY through the frozen/person-checked guest arm below — never grant here,
+        -- or a both-keyed row whose guest is split-frozen / a DIFFERENT person would bypass those
+        -- checks. (The old policy's bare b.player_id = me predated FAM-02 and had this bypass.)
+        (b.player_id = ctx.profile AND b.guest_player_id IS NULL)
         -- OR a linked-GUEST seat that is MY person — mirrors get_my_linked_guest_bookings:
         -- split-frozen guests (uncertain identity) excluded; person-stamp arm OR the
         -- Phase-0c twin-precedence bridge for linked-but-unmerged guests pending owner review.
