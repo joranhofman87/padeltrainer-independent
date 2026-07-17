@@ -327,6 +327,21 @@ describe('create_invoice_deduped', () => {
         expect(second.deduped).toBe(false);
         expect(await activeCount()).toBe(2);
       });
+
+      // A frozen dual-key recipient is the GUEST as its own person — a repeat/overlapping
+      // create for it must still dedup (P1-6's double-bill guard) via the FAM-02 guest-key
+      // arm. The pure-profile-arm fix alone would leave this shape with NO dedup arm.
+      it('FROZEN dual-key repeat create dedups onto its own prior dual-key invoice (no double-bill)', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        await freezeGuest(GUEST_G);
+        const first = await createDeduped(dualKeyPayload('INV-1', PROFILE_P, GUEST_G, [BK_A]));
+        expect(first.deduped).toBe(false);
+        const second = await createDeduped(dualKeyPayload('INV-2', PROFILE_P, GUEST_G, [BK_A, BK_B]));
+        expect(second.deduped).toBe(true);
+        expect(second.id).toBe(first.id);
+        expect(await activeCount()).toBe(1);
+      });
     });
   });
 });

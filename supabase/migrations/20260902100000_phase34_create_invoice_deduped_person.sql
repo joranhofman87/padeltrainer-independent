@@ -120,7 +120,14 @@ BEGIN
       -- dedup only via the (guest-first, freeze-aware) person arm below.
       AND ((v_player_id IS NOT NULL AND v_guest_player_id IS NULL
               AND i.player_id = v_player_id AND i.guest_player_id IS NULL)
-        OR (v_player_id IS NULL AND v_guest_player_id IS NOT NULL AND i.guest_player_id = v_guest_player_id)
+        -- FAM-02 guest arm: fires whenever the inbound has a guest ref (guest-only OR
+        -- dual-key — the guest is the recipient in both), matching any invoice on the
+        -- same guest key. This keeps the pre-3.4 double-bill guard alive for a frozen
+        -- dual-key recipient (which no longer uses the pure-profile arm and whose person
+        -- arm is frozen-inert): its repeat/concurrent create still dedups onto its own
+        -- prior invoice via the guest key. (Was `v_player_id IS NULL AND ...`, which
+        -- wrongly excluded dual-key inbound.)
+        OR (v_guest_player_id IS NOT NULL AND i.guest_player_id = v_guest_player_id)
         -- Phase 3.4: sibling under the person's OTHER key, same bookings. Freeze
         -- applies to the candidate ROW too (not just the caller): a sibling invoice
         -- addressed to a split-frozen guest may belong to a DIFFERENT human, so it
