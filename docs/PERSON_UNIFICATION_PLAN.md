@@ -487,12 +487,16 @@ One domain per PR, each with tests + live-verify, in dependency order:
    (optionally active) booking here?" — profile seat OR linked-guest seat, resolved EXACTLY like
    `get_my_linked_guest_bookings` (person-stamp arm OR Phase-0c twin/link bridge, split-frozen
    excluded) so every session the player can SEE is one they can WRITE (no surface-vs-write skew).
-   The profile arm is verbatim → strict SUPERSET for account holders. INSERT + UPDATE policies +
-   the summaries view re-emitted with the helper; the reporter-based SELECT policy is unchanged.
-   **NO frontend change here** — this only ENABLES guest-seated reporting; deliberately SPLIT so
-   the PendingAttendanceCard surfacing re-lands in PART 2 (after this deploys), avoiding any
-   Vercel-before-`db push` window where a surfaced prompt would dead-end. pglite (9) drives the
-   real policies under `SET ROLE authenticated`.
+   The profile arm is PURE-PROFILE — `b.player_id = me AND guest_player_id IS NULL` — NOT the old
+   policy's bare `b.player_id = me` (which predated FAM-02 and let a DUAL-KEYED row bypass the
+   freeze/person checks — Codex P1, fixed). It stays a superset for account holders (a pure-profile
+   seat still grants; a dual-keyed row that is genuinely my merged person still grants via the guest
+   arm's `b.person_id = my person`). INSERT + UPDATE policies + the summaries view re-emitted with
+   the helper; the reporter-based SELECT policy is unchanged. **NO frontend change here** — this
+   only ENABLES guest-seated reporting; deliberately SPLIT so the PendingAttendanceCard surfacing
+   re-lands in PART 2 (after this deploys), avoiding any Vercel-before-`db push` window where a
+   surfaced prompt would dead-end. pglite (14) drives the real policies under `SET ROLE authenticated`
+   incl. two FAM-02 dual-keyed bypass pins (frozen-guest + different-person seat).
 
    **Progress — 3.3b BUILT (migration `20260829100000`):** the player DETAIL page reaches the
    whole PERSON. (a) new SECURITY DEFINER RPC `get_person_refs_for_scope(scope, scope_id,
