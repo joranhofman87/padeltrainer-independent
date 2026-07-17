@@ -258,13 +258,29 @@ describe('create_invoice_deduped', () => {
     // arm merges a guest-owned row onto the profile person's invoice (cross-human) and the
     // lock keys on the profile person instead of the guest (a static double-bill vs a
     // guest-only create for the same guest).
-    it('UNLINKED guest in a dual-key payload does NOT borrow the linked profile person', async () => {
+    it('UNLINKED guest in a dual-key payload does NOT borrow the linked profile person (inbound side)', async () => {
       await link(PERSON_X, 'profile_id', PROFILE_P); // guest G deliberately NOT linked
       const first = await createDeduped(basePayload('INV-1', PROFILE_P, [BK_A]));
       expect(first.deduped).toBe(false);
       // Dual-key (P + unlinked G), overlapping booking. COALESCE(guest,profile) would
       // resolve v_person_id to X and dedup onto P's invoice; guest-exclusive → NULL → inert.
       const second = await createDeduped(dualKeyPayload('INV-2', PROFILE_P, GUEST_G, [BK_A, BK_B]));
+      expect(second.deduped).toBe(false);
+      expect(await activeCount()).toBe(2);
+    });
+
+    // Reverse of the above (the CANDIDATE side): an existing dual-key invoice whose guest
+    // is UNLINKED is stamped with the PROFILE's person by the trigger's COALESCE fallthrough.
+    // A later pure-profile create must NOT borrow that stamped person via the person arm —
+    // the candidate side resolves guest-exclusively too (guest-link only for a guest-bearing
+    // candidate). (Cross-shape rows never share a booking in prod; this pins the symmetry.)
+    it('existing dual-key invoice with an UNLINKED guest is NOT borrowed by a pure-profile create (candidate side)', async () => {
+      await link(PERSON_X, 'profile_id', PROFILE_P); // guest G NOT linked
+      const first = await createDeduped(dualKeyPayload('INV-1', PROFILE_P, GUEST_G, [BK_A]));
+      expect(first.deduped).toBe(false);
+      // Pure-profile create for P, overlapping booking. Without the candidate guard, arm C
+      // matches i.person_id=X (stamped via fallthrough) and dedups onto the guest-owned invoice.
+      const second = await createDeduped(basePayload('INV-2', PROFILE_P, [BK_A, BK_B]));
       expect(second.deduped).toBe(false);
       expect(await activeCount()).toBe(2);
     });

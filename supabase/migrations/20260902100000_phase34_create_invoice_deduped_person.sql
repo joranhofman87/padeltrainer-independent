@@ -173,13 +173,24 @@ BEGIN
         -- prior invoice via the guest key. (Was `v_player_id IS NULL AND ...`, which
         -- wrongly excluded dual-key inbound.)
         OR (v_guest_player_id IS NOT NULL AND i.guest_player_id = v_guest_player_id)
-        -- Phase 3.4: sibling under the person's OTHER key, same bookings. Freeze
-        -- applies to the candidate ROW too (not just the caller): a sibling invoice
-        -- addressed to a split-frozen guest may belong to a DIFFERENT human, so it
-        -- is excluded from the person match. is_guest_split_frozen(NULL) is false, so
-        -- a profile-addressed sibling still matches.
-        OR (v_person_id IS NOT NULL AND i.person_id = v_person_id
-            AND NOT public.is_guest_split_frozen(i.guest_player_id)))
+        -- Phase 3.4: sibling under the person's OTHER key, same bookings. The
+        -- candidate's person is resolved GUEST-EXCLUSIVELY too (symmetric with the
+        -- inbound, FAM-02): a candidate WITH a guest contributes its GUEST's link, NOT
+        -- its stamped i.person_id (the stamp trigger still COALESCEs guest→profile, so a
+        -- dual-key row with an UNLINKED guest is stamped with the PROFILE's person — a
+        -- pure-profile create must not borrow that). A candidate WITHOUT a guest uses
+        -- i.person_id (= its profile person, no fallthrough). Split-frozen candidate
+        -- guests are excluded (may be a DIFFERENT human). is_guest_split_frozen(NULL) is
+        -- false. [Cross-shape pairs never share a booking (single-recipient-per-booking),
+        -- so this only ever governs the same-shape same-person case; it stays symmetric
+        -- with the inbound resolution rather than trusting the stamp's fallthrough.]
+        OR (v_person_id IS NOT NULL
+            AND NOT public.is_guest_split_frozen(i.guest_player_id)
+            AND CASE
+                  WHEN i.guest_player_id IS NOT NULL
+                    THEN (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = i.guest_player_id)
+                  ELSE i.person_id
+                END = v_person_id))
     ORDER BY i.created_at ASC LIMIT 1;
     IF FOUND THEN
       RETURN jsonb_build_object('id', v_winner.id, 'invoice_number', v_winner.invoice_number,
