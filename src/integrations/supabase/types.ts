@@ -8839,6 +8839,19 @@ export type Database = {
         }
         Returns: string
       }
+      get_person_refs_for_scope: {
+        Args: {
+          p_guest_id?: string
+          p_profile_id?: string
+          p_scope: string
+          p_scope_id: string
+        }
+        Returns: {
+          guest_ids: string[]
+          person_id: string
+          profile_id: string
+        }[]
+      }
       get_player_email_edit_capability: {
         Args: { _academy_profile_id: string; _profile_id: string }
         Returns: string
@@ -8916,19 +8929,6 @@ export type Database = {
           tag_ids: string[]
           total_count: number
           trainer_ids: string[]
-        }[]
-      }
-      get_person_refs_for_scope: {
-        Args: {
-          p_guest_id?: string
-          p_profile_id?: string
-          p_scope: string
-          p_scope_id: string
-        }
-        Returns: {
-          guest_ids: string[]
-          person_id: string
-          profile_id: string
         }[]
       }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
