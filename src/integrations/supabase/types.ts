@@ -8852,6 +8852,7 @@ export type Database = {
         }
         Returns: {
           guest_ids: string[]
+          has_login: boolean
           profile_id: string
         }[]
       }

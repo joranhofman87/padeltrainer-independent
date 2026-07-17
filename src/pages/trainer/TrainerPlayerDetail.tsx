@@ -94,6 +94,9 @@ export default function TrainerPlayerDetail() {
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [player, setPlayer] = useState<PlayerCore | null>(null);
+  // Phase 3.3d: person-level login (from get_person_refs_for_scope) drives the type badge so a
+  // merged account holder clicked via their guest side reads 'Registered'. undefined → seat fallback.
+  const [personHasLogin, setPersonHasLogin] = useState<boolean | undefined>(undefined);
   const [tags, setTags] = useState<PlayerTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [locationNames, setLocationNames] = useState<string[]>([]);
@@ -258,6 +261,7 @@ export default function TrainerPlayerDetail() {
         { kind: 'trainer', id: trainerId! },
         { kind: parsed.kind, id: parsed.id },
       );
+      setPersonHasLogin(personRefs.hasLogin); // Phase 3.3d: person-level login for the type badge
       const slotIds = await fetchPersonBookingSlotIds(personRefs);
 
       let cyclusItems: CyclusItem[] = [];
@@ -436,7 +440,8 @@ export default function TrainerPlayerDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{player.full_name}</h1>
               <Badge variant="outline">
-                {player.type === 'registered'
+                {/* Phase 3.3d: the HUMAN's account status, not the clicked seat (see AcademyPlayerDetail). */}
+                {(personHasLogin ?? player.type === 'registered')
                   ? t('players.detail.registered', 'Registered')
                   : t('players.detail.guest', 'Guest')}
               </Badge>

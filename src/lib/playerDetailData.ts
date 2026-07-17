@@ -34,6 +34,10 @@ export interface PersonRefSet {
   guestIds: string[];
   /** The person's profile, only when the caller can already see it (in-scope booking/invoice). */
   profileId: string | null;
+  /** Phase 3.3d: does the PERSON have a login (persons.user_id)? Drives the detail-page type badge
+   *  so a merged account holder clicked via their guest side reads 'Registered', not 'Guest'.
+   *  `undefined` until the extended RPC is deployed — the page falls back to the seat-based type. */
+  hasLogin?: boolean;
 }
 
 /**
@@ -72,6 +76,7 @@ export async function fetchPersonRefSet(
     return {
       guestIds: ((row.guest_ids as string[] | null) ?? []).filter(Boolean),
       profileId: (row.profile_id as string | null) ?? null,
+      hasLogin: typeof row.has_login === 'boolean' ? row.has_login : undefined,
     };
   } catch (e) {
     logger.warn('get_person_refs_for_scope threw; showing single-ref detail', {

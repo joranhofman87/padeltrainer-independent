@@ -93,6 +93,9 @@ export default function AcademyPlayerDetail() {
 
   const [loading, setLoading] = useState(true);
   const [player, setPlayer] = useState<PlayerCore | null>(null);
+  // Phase 3.3d: person-level login (from get_person_refs_for_scope). Drives the type badge so a
+  // merged account holder clicked via their guest side reads 'Registered'. undefined → seat fallback.
+  const [personHasLogin, setPersonHasLogin] = useState<boolean | undefined>(undefined);
   const [tags, setTags] = useState<PlayerTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [academyLocations, setAcademyLocations] = useState<{ id: string; name: string }[]>([]);
@@ -245,6 +248,7 @@ export default function AcademyPlayerDetail() {
         { kind: 'academy', id: activeAcademy!.id },
         { kind: parsed.kind, id: parsed.id },
       );
+      setPersonHasLogin(personRefs.hasLogin); // Phase 3.3d: person-level login for the type badge
       const slotIds = await fetchPersonBookingSlotIds(personRefs);
 
       let cycluses: CyclusItem[] = [];
@@ -399,7 +403,10 @@ export default function AcademyPlayerDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{player.full_name}</h1>
               <Badge variant="outline">
-                {player.type === 'registered'
+                {/* Phase 3.3d: the HUMAN's account status, not the clicked seat — a merged account
+                    holder opened via their guest link reads 'Registered'. Falls back to the
+                    seat-based type until the has_login RPC field is deployed. */}
+                {(personHasLogin ?? player.type === 'registered')
                   ? t('players.detail.registered', 'Registered')
                   : t('players.detail.guest', 'Guest')}
               </Badge>

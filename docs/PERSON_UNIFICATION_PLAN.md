@@ -599,3 +599,6 @@ One domain per PR, each with tests + live-verify, in dependency order:
 Phase 0 (consistent person provisioning on the roster/add paths) OR Phase 1 (Expand) — both are
 safe, additive, and independently valuable. Recommend Phase 0 first: it also delivers the
 "add a registered account as a cycle participant" capability the owner asked for, immediately.
+
+
+   **Progress — 3.3d BUILT (migration `20260901100000`):** the player DETAIL-page type badge tells LOGINS, not the clicked seat (owner-reported after the 3.3 deploy: Adri Govers — a merged account holder — showed 'Guest' on his contact page because the badge keyed on parsed.kind=g_). `get_person_refs_for_scope` gains a person-level `has_login` boolean (resolved person's persons.user_id; a boolean, not PII; frozen clicked guest → own accountless person → false); both AcademyPlayerDetail + TrainerPlayerDetail badge on `refs.hasLogin ?? seat-type` (fallback = old seat-based until deployed). The players-LIST type column was already correct (get_players_overview returns player_type='registered' — verified in prod; a stale bundle explains the reported list symptom). Deferred still: the fuller detail-page identity person-keying (name/linked_profile_id) → Phase-4 prep.
