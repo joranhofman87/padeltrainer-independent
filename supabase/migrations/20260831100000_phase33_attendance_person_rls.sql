@@ -124,3 +124,19 @@ WHERE sr.reporter_role = 'trainer'
 
 REVOKE ALL ON public.session_reports_player_summaries FROM anon;
 GRANT SELECT ON public.session_reports_player_summaries TO authenticated;
+
+-- Install assertion (re-emitted from 20260713100000): the player-facing view must expose EXACTLY
+-- the 6 public columns — the private `notes` + `attendees` must never slip in via a CREATE OR
+-- REPLACE (this re-emit included). A tripwire, no data mutation.
+DO $$
+DECLARE
+  v_cols text[];
+BEGIN
+  SELECT array_agg(attname::text ORDER BY attname) INTO v_cols
+  FROM pg_attribute
+  WHERE attrelid = 'public.session_reports_player_summaries'::regclass
+    AND attnum > 0 AND NOT attisdropped;
+  IF v_cols IS DISTINCT FROM ARRAY['created_at','id','public_notes','reporter_role','session_happened','slot_id'] THEN
+    RAISE EXCEPTION 'session_reports_player_summaries exposes unexpected columns: %', v_cols;
+  END IF;
+END $$;

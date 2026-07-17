@@ -8360,6 +8360,10 @@ export type Database = {
         Args: { _slot_id: string; _user_id: string }
         Returns: boolean
       }
+      can_report_attendance_on_slot: {
+        Args: { _require_active?: boolean; _slot_id: string }
+        Returns: boolean
+      }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
       claim_guest_twin_for_academy: {

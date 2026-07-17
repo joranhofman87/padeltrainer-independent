@@ -15,6 +15,10 @@ let db: PGlite;
 
 const SLOT = '50000000-0000-0000-0000-000000000001';
 const OTHERSLOT = '50000000-0000-0000-0000-000000000002';
+const P2SLOT = '50000000-0000-0000-0000-000000000003'; // only seat is a guest stamped to PERSON2
+const CANCELSLOT = '50000000-0000-0000-0000-000000000004'; // U's only seat here is CANCELLED
+const GX = '70000000-0000-0000-0000-000000000004'; // guest of PERSON2, seated on P2SLOT
+const GXC = '70000000-0000-0000-0000-000000000005'; // U's guest, cancelled seat on CANCELSLOT
 // merged person: profile P + guest G (linked via person_links), booking on SLOT is guest-seated
 const P = 'a0000000-0000-0000-0000-000000000001';
 const U = 'b0000000-0000-0000-0000-000000000001';
@@ -88,7 +92,8 @@ beforeAll(async () => {
       FOR SELECT TO authenticated
       USING (session_reports.reporter_id = public.get_profile_id_for_user(auth.uid()));
 
-    INSERT INTO public.availability_slots VALUES ('${SLOT}', NULL), ('${OTHERSLOT}', NULL);
+    INSERT INTO public.availability_slots VALUES
+      ('${SLOT}', NULL), ('${OTHERSLOT}', NULL), ('${P2SLOT}', NULL), ('${CANCELSLOT}', NULL);
     INSERT INTO public.profiles VALUES ('${P}','${U}'),('${P2}','${U2}'),('${P3}','${U3}'),('${P9}','${U9}');
     INSERT INTO public.persons VALUES ('${PERSON}'),('${PERSON2}');
     INSERT INTO public.guest_players (id) VALUES ('${G}');
@@ -105,6 +110,16 @@ beforeAll(async () => {
     -- SLOT: P3 is seated as their twin-bridge guest G3
     INSERT INTO public.bookings (slot_id, guest_player_id, status)
       VALUES ('${SLOT}', '${G3}', 'confirmed');
+    -- P2SLOT: the ONLY seat is GX, a guest stamped to PERSON2 (a DIFFERENT person than U's PERSON)
+    INSERT INTO public.guest_players (id) VALUES ('${GX}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON2}', '${GX}');
+    INSERT INTO public.bookings (slot_id, guest_player_id, person_id, status)
+      VALUES ('${P2SLOT}', '${GX}', '${PERSON2}', 'confirmed');
+    -- CANCELSLOT: U's only seat is a CANCELLED guest booking (their own person, GXC)
+    INSERT INTO public.guest_players (id) VALUES ('${GXC}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GXC}');
+    INSERT INTO public.bookings (slot_id, guest_player_id, person_id, status)
+      VALUES ('${CANCELSLOT}', '${GXC}', '${PERSON}', 'cancelled');
     -- a pre-existing TRAINER report on SLOT (for the summaries-view test)
     INSERT INTO public.session_reports (slot_id, reporter_id, reporter_role, session_happened, public_notes, notes)
       VALUES ('${SLOT}', '${P9}', 'trainer', true, 'good session', 'private trainer note');
@@ -163,6 +178,26 @@ describe('session_reports player RLS — Phase 3.3-attendance', () => {
     expect(await failed(asUser(U9, () => insertReport(SLOT, P9)))).toBe(true);
   });
 
+  it('PERSON-ARM EQUALITY: a person-holding player is refused on a seat stamped to a DIFFERENT person', async () => {
+    // P2SLOT's only seat is GX, stamped person_id=PERSON2. U has a person (PERSON) but no seat here.
+    // Pins  b.person_id = ctx.person  — a mutation to  b.person_id IS NOT NULL  would wrongly grant.
+    expect(await failed(asUser(U, () => insertReport(P2SLOT, P)))).toBe(true);
+  });
+
+  it('_require_active: a CANCELLED-only seat still allows INSERT (require_active=false) but the view denies it', async () => {
+    // U's only CANCELSLOT seat is cancelled. INSERT (require_active default false) is allowed…
+    await asUser(U, () => insertReport(CANCELSLOT, P));
+    const { rows: n } = await db.query(`SELECT count(*)::int AS n FROM session_reports WHERE slot_id='${CANCELSLOT}' AND reporter_id='${P}'`);
+    expect((n[0] as { n: number }).n).toBe(1);
+    // …but the summaries view (require_active=true) shows nothing for a cancelled-only seat.
+    await db.exec(`INSERT INTO public.session_reports (slot_id, reporter_id, reporter_role, session_happened, public_notes)
+      VALUES ('${CANCELSLOT}', '${P9}', 'trainer', true, 'cancel-slot summary');`);
+    const view = await asUser(U, async () =>
+      (await db.query(`SELECT id FROM public.session_reports_player_summaries WHERE slot_id='${CANCELSLOT}'`)).rows);
+    expect(view).toHaveLength(0);
+    await db.exec(`DELETE FROM public.session_reports WHERE slot_id='${CANCELSLOT}';`);
+  });
+
   it('a guest-seated player cannot report on a slot they are NOT on', async () => {
     expect(await failed(asUser(U, () => insertReport(OTHERSLOT, P)))).toBe(true);
   });
@@ -177,5 +212,16 @@ describe('session_reports player RLS — Phase 3.3-attendance', () => {
       (await db.query(`SELECT id, public_notes FROM public.session_reports_player_summaries WHERE slot_id='${SLOT}'`)).rows);
     expect(rows).toHaveLength(1);
     expect((rows[0] as { public_notes: string }).public_notes).toBe('good session');
+  });
+
+  it('PRIVACY: the summaries view does NOT expose the private notes / attendees columns', async () => {
+    // the trainer report has notes='private trainer note' — the view must never surface it.
+    expect(await failed(db.query(`SELECT notes FROM public.session_reports_player_summaries LIMIT 1`))).toBe(true);
+    expect(await failed(db.query(`SELECT attendees FROM public.session_reports_player_summaries LIMIT 1`))).toBe(true);
+    // and the view's exact column set is the 6 public ones (mirrors the migration's install guard)
+    const { rows } = await db.query<{ c: string }>(
+      `SELECT attname AS c FROM pg_attribute WHERE attrelid='public.session_reports_player_summaries'::regclass
+       AND attnum > 0 AND NOT attisdropped ORDER BY attname`);
+    expect(rows.map((r) => r.c)).toEqual(['created_at', 'id', 'public_notes', 'reporter_role', 'session_happened', 'slot_id']);
   });
 });
