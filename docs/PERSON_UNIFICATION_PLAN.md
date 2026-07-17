@@ -659,7 +659,16 @@ locked on the guest — the two didn't serialize, and since arm B now cross-matc
 double-bill race was reopened for mixed shapes. Lock key is now guest-first (`COALESCE(v_person_id,
 v_guest_player_id, v_player_id)`) = the recipient rule, so every same-recipient shape serializes on one
 lock. +2 mixed-shape recheck pins (lock serialization isn't exercisable in single-connection PGlite).
-Four audit rounds on this one migration; the lock↔recheck-key coherence is the general lesson. **SECURITY (external audit P1, folded in): locked the RPC to service_role
+Four audit rounds on this one migration; the lock↔recheck-key coherence is the general lesson.
+**Freeze-transition follow-up (round 5, my own verify): the lock must use a FREEZE-INDEPENDENT
+recipient id.** Arm B is freeze-blind, but the lock followed the freeze-gated `v_person_id`, so a
+twin-split/email-move review committing between two concurrent same-guest creates split them onto
+`trainer:person` vs `trainer:guest` → double-insert. Fixed by keying the lock on a separate raw
+`v_lock_person_id` (no freeze gate); the recheck keeps the freeze-gated `v_person_id`. The lock now
+only ever OVER-serializes (harmless), never under-serializes. Residual (~P4, accepted): a
+`person_links` mutation in the same window — advisory-locked in the merge paths, far rarer, resyncs
+via rederive; tracked for a broader freeze/lock-coherence pass. DOCTRINE: when a guard pairs an
+advisory lock with a freeze-gated recheck, the lock key must be the freeze-INDEPENDENT recipient id. **SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
 calls it with the service-role client (`requireUser()` hands every caller a service client), so the
