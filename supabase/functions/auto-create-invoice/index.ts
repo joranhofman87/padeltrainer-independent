@@ -11,6 +11,7 @@ import {
   splitAmongPlayersForInvoiceCreate,
 } from "../_shared/invoice-split-pricing.ts";
 import { resolveSplitDivisorFromSlots, shouldSkipExtrasForPaidExtrasBookings } from "../_shared/booking-pricing.ts";
+import { applyDedupRecipientScope, type RecipientScopableQuery } from "../_shared/invoice-dedupe-recipient.ts";
 
 const corsHeaders = sharedCors;
 
@@ -777,11 +778,10 @@ serve(async (req) => {
         // When the winner isn't the create's own recipient the collision is
         // cross-recipient (a shape-change data inconsistency): no `winner` is found and
         // we fall through to throw + Slack-alert rather than mis-attribute + paid-flip.
-        if (guestPlayerId) {
-          dupeFetch.eq("guest_player_id", guestPlayerId);
-        } else if (playerId) {
-          dupeFetch.eq("player_id", playerId).is("guest_player_id", null);
-        }
+        // Recipient scope is the shared, unit-tested guest-first helper. Cast to the
+        // minimal query shape — the supabase-js builder's own type is too deep to pass
+        // through a typed param (TS2589); it is mutated by reference in place.
+        applyDedupRecipientScope(dupeFetch as unknown as RecipientScopableQuery, playerId, guestPlayerId);
         // overlaps can match >1 row; take the first so maybeSingle never throws.
         const { data: winner } = await dupeFetch.limit(1).maybeSingle();
         if (winner) {

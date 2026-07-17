@@ -680,9 +680,20 @@ rounds total; the function is now provably sound under the single-shape-booking 
 fast-path + 23505 fallback were player-first, so a dual-key booking could dedup onto a profile invoice
 and RETURN before the hardened RPC ran. Fixed: dual-key recipients skip the fast-path (→ RPC
 authority); pure-profile fast-path == RPC arm A (`.is(guest_player_id, null)`), guest-only == arm B;
-23505 fallback recipient-agnostic. Verify proved the single-key fast-path match set is a strict SUBSET
-of the RPC's → never a wrong dedup/flip. DOCTRINE: hardening a dedup RPC is incomplete while a
-client/edge fast-path can short-circuit it — person-key the RPC AND every caller's pre-check/fallback.
+the 23505 race-fallback is recipient-scoped GUEST-FIRST (round 9 — see below; round 8 first made it
+recipient-agnostic, which round 9 corrected). Verify proved the single-key fast-path match set is a
+strict SUBSET of the RPC's → never a wrong dedup/flip. DOCTRINE: hardening a dedup RPC is incomplete
+while a client/edge fast-path can short-circuit it — person-key the RPC AND every caller's
+pre-check/fallback (happy path AND error/23505 path).
+**Round 9 (Codex): the 23505 fallback must be recipient-scoped, not agnostic.** The legacy
+`uniq_invoice_active_player_bookings` index has predicate `player_id IS NOT NULL`, so it covers
+DUAL-KEY rows — a dual-key create for a pure-profile invoice's exact booking set raises 23505 after the
+RPC correctly refuses to dedup, and round 8's recipient-agnostic fallback then returned + paid-flipped
+that profile invoice. Fixed: the fallback scopes GUEST-FIRST (guest-bearing → `guest_player_id`;
+pure-profile → `player_id AND guest_player_id IS NULL`) via the shared `dedupRecipientMatch` helper; no
+same-recipient winner → throw + Slack alert (surface the shape-change inconsistency), never
+mis-attribute. The pglite harness now loads the legacy exact-set unique indexes (they were missing —
+CI was blind to this class) + a Deno unit test pins the guest-first helper.
 **SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
