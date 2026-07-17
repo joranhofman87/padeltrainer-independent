@@ -275,7 +275,7 @@
   },
   "src/components/dashboard/PendingAttendanceCard.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 6
+      "count": 5
     }
   },
   "src/components/featured/FeaturedSection.tsx": {
