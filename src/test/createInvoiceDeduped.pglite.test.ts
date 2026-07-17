@@ -253,6 +253,22 @@ describe('create_invoice_deduped', () => {
       expect(await activeCount()).toBe(2);
     });
 
+    // FAM-02 guest-exclusive resolution: a dual-key payload whose GUEST is UNLINKED but
+    // whose PROFILE is linked must NOT borrow the profile's person — otherwise the person
+    // arm merges a guest-owned row onto the profile person's invoice (cross-human) and the
+    // lock keys on the profile person instead of the guest (a static double-bill vs a
+    // guest-only create for the same guest).
+    it('UNLINKED guest in a dual-key payload does NOT borrow the linked profile person', async () => {
+      await link(PERSON_X, 'profile_id', PROFILE_P); // guest G deliberately NOT linked
+      const first = await createDeduped(basePayload('INV-1', PROFILE_P, [BK_A]));
+      expect(first.deduped).toBe(false);
+      // Dual-key (P + unlinked G), overlapping booking. COALESCE(guest,profile) would
+      // resolve v_person_id to X and dedup onto P's invoice; guest-exclusive → NULL → inert.
+      const second = await createDeduped(dualKeyPayload('INV-2', PROFILE_P, GUEST_G, [BK_A, BK_B]));
+      expect(second.deduped).toBe(false);
+      expect(await activeCount()).toBe(2);
+    });
+
     describe('split-freeze (a pending twin/email-move review keys the guest as its own person)', () => {
       it('FROZEN inbound guest is NOT merged onto the profile-person invoice — creates its own (pre-3.4 per-key)', async () => {
         await link(PERSON_X, 'profile_id', PROFILE_P);

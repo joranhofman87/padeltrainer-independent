@@ -86,8 +86,8 @@ BEGIN
   SELECT COALESCE(array_agg(elem::uuid), '{}'::uuid[]) INTO v_booking_ids
   FROM jsonb_array_elements_text(COALESCE(_payload->'booking_ids', '[]'::jsonb)) AS elem;
 
-  -- Phase 3.4: resolve the recipient to a PERSON, guest-first (byte-identical to
-  -- stamp_person_id_invoices). person_links.profile_id / .guest_player_id are both
+  -- Phase 3.4: resolve the recipient to a PERSON (guest-EXCLUSIVE per FAM-02 — see
+  -- below). person_links.profile_id / .guest_player_id are both
   -- UNIQUE, so each subquery yields at most one row. NULL = unlinked recipient ->
   -- lock + recheck degrade to the exact pre-3.4 per-key behaviour.
   --
@@ -102,13 +102,28 @@ BEGIN
   -- could flip that human's invoice to paid, while the guest is never billed.
   -- is_guest_split_frozen(NULL) is false, so a pure-profile recipient is unaffected.
   --
-  -- v_lock_person_id = the RAW (freeze-INDEPENDENT) person resolution; v_person_id is
-  -- the freeze-gated one used by the recheck. They differ ONLY while frozen. See the
-  -- lock comment below for why the LOCK must use the freeze-independent id.
-  v_lock_person_id := COALESCE(
-    (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v_guest_player_id),
-    (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = v_player_id)
-  );
+  -- GUEST-EXCLUSIVE resolution (FAM-02): a guest-bearing payload (guest-only OR
+  -- dual-key) belongs to the GUEST, so its person is the GUEST's link ONLY — it must
+  -- NOT fall through to the profile link. A COALESCE(guest-link, profile-link) would,
+  -- for an UNLINKED guest with a LINKED profile, resolve to the PROFILE's person: (a)
+  -- the recheck's person arm would then dedup the guest-owned row onto the profile
+  -- person's invoice (cross-human), and (b) the lock would key on the profile person
+  -- while a guest-only create for the same guest keys on the raw guest id — different
+  -- locks, no serialization, a static double-bill (no interleaving needed). With the
+  -- guest-exclusive rule an unlinked guest yields NULL, so v_lock_person_id/v_person_id
+  -- fall to the raw guest id (lock) / go inert (person arm), and the row dedups only
+  -- via the guest arm — exactly as a guest recipient should. A pure-profile payload
+  -- (no guest) resolves via the profile link, unchanged. (Differs from the stamp
+  -- trigger's COALESCE, deliberately: the stamp is Phase-2 attribution, this is the
+  -- FAM-02 dedup key.)
+  --
+  -- v_lock_person_id = the RAW (freeze-INDEPENDENT) resolution; v_person_id is the
+  -- freeze-gated one used by the recheck. They differ ONLY while frozen.
+  v_lock_person_id := CASE
+    WHEN v_guest_player_id IS NOT NULL
+      THEN (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v_guest_player_id)
+    ELSE (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = v_player_id)
+  END;
   v_person_id := CASE
     WHEN public.is_guest_split_frozen(v_guest_player_id) THEN NULL
     ELSE v_lock_person_id
