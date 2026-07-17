@@ -498,6 +498,15 @@ One domain per PR, each with tests + live-verify, in dependency order:
    surfaced prompt would dead-end. pglite (14) drives the real policies under `SET ROLE authenticated`
    incl. two FAM-02 dual-keyed bypass pins (frozen-guest + different-person seat).
 
+   **Progress — 3.3-attendance PART 2 (card) BUILT:** re-landed the PendingAttendanceCard
+   person-keying pulled from 3.3a — now safe because PART 1 (RLS) makes guest-seated sessions
+   writable. `src/lib/pendingAttendance.ts` (extracted, testable): the direct read is PURE-PROFILE
+   (`player_id = me AND guest_player_id IS NULL`, FAM-02) merged with `fetchLinkedGuestBookingRows`
+   (the frozen linked-guest RPC), same 14-day/status window applied to the merged rows, ONE prompt
+   per slot (a merged person can hold both keys on one session), session_reports dedup. The card
+   uses the lib. 6 unit tests. **This CLOSES the 3.1 tracked attendance gap** — a guest-seated
+   session now both surfaces AND is reportable.
+
    **Progress — 3.3b BUILT (migration `20260829100000`):** the player DETAIL page reaches the
    whole PERSON. (a) new SECURITY DEFINER RPC `get_person_refs_for_scope(scope, scope_id,
    guest_id, profile_id)` resolves a clicked g_/p_ ref → the person's IN-SCOPE ref set —

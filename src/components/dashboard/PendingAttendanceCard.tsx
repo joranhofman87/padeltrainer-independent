@@ -14,7 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Save, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { fetchTrainerSlotSummaries, upsertSessionReport } from '@/lib/sessionReports';
+import { upsertSessionReport } from '@/lib/sessionReports';
+// Phase 3.3-attendance part 2: player-side pending slots are PERSON-KEYED (pure-profile
+// read + the frozen linked-guest RPC merge) — extracted for testability.
+import { fetchPendingPlayerSlots } from '@/lib/pendingAttendance';
 import { PlayerSessionReport } from '@/components/attendance/PlayerSessionReport';
 
 interface PendingSlot {
@@ -107,56 +110,6 @@ async function fetchPendingTrainerSlots(trainerId: string): Promise<PendingSlot[
         cyclusName: slot.cyclus_name,
         locationName: (slot.locations as any)?.name || null,
         players,
-      };
-    });
-}
-
-async function fetchPendingPlayerSlots(profileId: string): Promise<PendingSlot[]> {
-  const fourteenDaysAgo = new Date();
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-  const now = new Date();
-
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select(`
-      id, status, slot_id,
-      availability_slots!inner (id, start_time, cyclus_name, location_id, locations:location_id (name))
-    `)
-    .eq('player_id', profileId)
-    .in('status', ['confirmed', 'completed'])
-    .gte('availability_slots.start_time', fourteenDaysAgo.toISOString())
-    .lt('availability_slots.start_time', now.toISOString())
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  if (!bookings || bookings.length === 0) return [];
-
-  // Check which slots already have player's report
-  const slotIds = bookings.map(b => b.slot_id);
-  const { data: reports } = await supabase
-    .from('session_reports')
-    .select('slot_id')
-    .in('slot_id', slotIds)
-    .eq('reporter_id', profileId);
-
-  const reportedSlotIds = new Set(reports?.map(r => r.slot_id) || []);
-
-  // Fetch trainer summaries for unreported slots (player-safe view, see sessionReports)
-  const unreportedSlotIds = slotIds.filter(id => !reportedSlotIds.has(id));
-  const trainerSummaryMap = await fetchTrainerSlotSummaries(unreportedSlotIds);
-
-  return bookings
-    .filter(b => !reportedSlotIds.has(b.slot_id))
-    .map(b => {
-      const slot = b.availability_slots as any;
-      return {
-        slotId: b.slot_id,
-        startTime: slot.start_time,
-        cyclusName: slot.cyclus_name,
-        locationName: slot.locations?.name || null,
-        players: [],
-        bookingId: b.id,
-        trainerSummary: trainerSummaryMap.get(b.slot_id) || null,
       };
     });
 }
