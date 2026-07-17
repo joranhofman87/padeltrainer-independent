@@ -419,6 +419,11 @@ One domain per PR, each with tests + live-verify, in dependency order:
    reach the player view-only through the frozen RPC, and split-pending rows are invisible on
    BOTH paths (pglite pins under `SET ROLE authenticated`). Doctrine: a freeze or ownership rule
    is only real once every path — RPC arms, RLS policies, AND direct client reads — enforces it.
+   Known r3 consequence to fold into the 3.3 booking/session-report reader pass (Codex
+   non-blocking note, confirmed): `PendingAttendanceCard.fetchPendingPlayerSlots` still reads
+   bookings via plain `.eq('player_id', me)`, so it now surfaces only pure-profile sessions —
+   a both-keyed (guest-person) session no longer triggers the account holder's attendance
+   prompt until that surface goes person-keyed.
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;
