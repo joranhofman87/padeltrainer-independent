@@ -65,6 +65,7 @@ type OverviewRow = {
   trainer_ids: string[] | null;
   has_active_cyclus: boolean;
   has_overdue_payment: boolean;
+  email_undeliverable: boolean;
   total_count: string | number;
 };
 
@@ -321,23 +322,76 @@ describe('get_players_overview — one row per person (Phase 3.2)', () => {
     expect(filtered.some((r) => r.person_id === PERSON4)).toBe(true);
   });
 
-  it('metadata joins person-wide: tags UNION, metadata_id/notes guest-first', async () => {
+  it('metadata is ONE guest-first row: id + tags + notes from the SAME row (read = write target)', async () => {
     const TAG_A = '99000000-0000-0000-0000-00000000000a';
     const TAG_B = '99000000-0000-0000-0000-00000000000b';
     await db.exec(`
       INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, tag_ids, notes, created_at)
-        VALUES ('${ACADEMY}', '${GA}', ARRAY['${TAG_A}']::uuid[], 'guest meta note', now() - interval '1 day');
+        VALUES ('${ACADEMY}', '${GA}', ARRAY['${TAG_A}']::uuid[], NULL, now() - interval '1 day');
       INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id, tag_ids, notes)
         VALUES ('${ACADEMY}', '${P1}', ARRAY['${TAG_B}']::uuid[], 'profile meta note');
     `);
     const rows = await overview(MGR_USER);
     const bram = rows.find((r) => r.person_id === PERSON1)!;
-    expect([...(bram.tag_ids ?? [])].sort()).toEqual([TAG_A, TAG_B]);
-    expect(bram.academy_notes).toBe('guest meta note');
-    // tag filter matches through either side's tag
-    const byTagB = await overview(MGR_USER, { filters: { tag_id: TAG_B } });
-    expect(byTagB.some((r) => r.person_id === PERSON1)).toBe(true);
+    // strictly the guest-side row — a union display would make the profile-side tag/notes
+    // unremovable (edits via metadata_id write the guest row)
+    expect(bram.tag_ids ?? []).toEqual([TAG_A]);
+    expect(bram.academy_notes).toBeNull(); // NOT 'profile meta note' from the other row
+    const metaRow = await db.query<{ id: string }>(
+      `SELECT id FROM public.academy_player_metadata WHERE guest_player_id = '${GA}'`);
+    expect(bram.metadata_id).toBe(metaRow.rows[0].id);
+    // the tag filter sees exactly what the row displays
+    expect((await overview(MGR_USER, { filters: { tag_id: TAG_A } })).some((r) => r.person_id === PERSON1)).toBe(true);
+    expect((await overview(MGR_USER, { filters: { tag_id: TAG_B } })).some((r) => r.person_id === PERSON1)).toBe(false);
     await db.exec(`DELETE FROM public.academy_player_metadata WHERE guest_player_id = '${GA}' OR profile_id = '${P1}';`);
+  });
+
+  it('REMOVAL is person-level: removing one side of a merged person removes the human', async () => {
+    await db.exec(`
+      INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, removed_at)
+        VALUES ('${ACADEMY}', '${GA}', now());
+    `);
+    const rows = await overview(MGR_USER);
+    // no re-render under the profile side — the person is gone entirely
+    expect(rows.some((r) => r.person_id === PERSON1)).toBe(false);
+    expect(rows.some((r) => r.profile_id === P1)).toBe(false);
+    await db.exec(`DELETE FROM public.academy_player_metadata WHERE guest_player_id = '${GA}';`);
+  });
+
+  it('the losing-side (guest) identity stays searchable and its email still flags deliverability', async () => {
+    // give the guest side its own roster email, distinct from the displayed profile one
+    await db.exec(`
+      UPDATE public.guest_players SET email = 'roster-bram@club.nl' WHERE id = '${GA}';
+      INSERT INTO public.email_address_state (email, state) VALUES ('roster-bram@club.nl', 'hard_bounced');
+    `);
+    // display = in-scope profile identity…
+    const rows = await overview(MGR_USER);
+    const bram = rows.find((r) => r.person_id === PERSON1)!;
+    expect(bram.email).toBe('bram@x.nl');
+    // …but the guest-side email still finds the person AND still badges delivery issues
+    const bySideEmail = await overview(MGR_USER, { search: 'roster-bram' });
+    expect(bySideEmail.some((r) => r.person_id === PERSON1)).toBe(true);
+    expect(bram.email_undeliverable).toBe(true);
+    await db.exec(`
+      UPDATE public.guest_players SET email = 'bram@x.nl' WHERE id = '${GA}';
+      DELETE FROM public.email_address_state WHERE email = 'roster-bram@club.nl';
+    `);
+  });
+
+  it('a multi-guest person is filterable by EVERY owning trainer, not just the primary ref\'s', async () => {
+    const TR2 = 'aa000000-0000-0000-0000-000000000072';
+    const TR2_USER = 'aa000000-0000-0000-0000-0000000000a8';
+    await db.exec(`
+      INSERT INTO public.trainer_profiles VALUES ('${TR2}', '${TR2_USER}');
+      INSERT INTO public.academy_trainers VALUES ('${ACADEMY}', '${TR2}', 'active');
+      -- the SECONDARY guest (GE) is owned by TR2; GD (primary) stays academy-level
+      UPDATE public.guest_players SET trainer_id = '${TR2}' WHERE id = '${GE}';
+    `);
+    const byTr2 = await overview(MGR_USER, { filters: { trainer_id: TR2 } });
+    expect(byTr2.some((r) => r.person_id === PERSON4)).toBe(true);
+    const row = (await overview(MGR_USER)).find((r) => r.person_id === PERSON4)!;
+    expect(row.trainer_ids).toContain(TR2);
+    await db.exec(`UPDATE public.guest_players SET trainer_id = NULL WHERE id = '${GE}';`);
   });
 
   it('total_count counts PERSONS and pagination stays stable', async () => {
@@ -359,6 +413,110 @@ describe('get_players_overview — one row per person (Phase 3.2)', () => {
 
   it('rejects a non-manager (auth gate intact)', async () => {
     expect(await failed(overview(OTHER_USER))).toBe(true);
+  });
+});
+
+describe('get_players_overview — contract carried forward onto the rewritten pipeline', () => {
+  it('diacritic folding + phone-digit search still match', async () => {
+    await db.exec(`
+      INSERT INTO public.guest_players (id, academy_profile_id, full_name, email, phone)
+      VALUES ('98000000-0000-0000-0000-000000000001', '${ACADEMY}', 'René Müller', 'rene@x.nl', '+31 6 1234 5678');
+    `);
+    expect((await overview(MGR_USER, { search: 'rené' })).some((r) => r.full_name === 'René Müller')).toBe(true);
+    expect((await overview(MGR_USER, { search: 'muller' })).some((r) => r.full_name === 'René Müller')).toBe(true);
+    expect((await overview(MGR_USER, { search: '612345' })).some((r) => r.full_name === 'René Müller')).toBe(true);
+    await db.exec(`DELETE FROM public.guest_players WHERE id = '98000000-0000-0000-0000-000000000001';`);
+  });
+
+  it('level bands are half-open (gt, max] and unrated selects NULL ratings; merged uses profile-first skill', async () => {
+    // PERSON1 merged skill = 6.5 (in-scope profile side outranks guest 6.1)
+    const advanced = await overview(MGR_USER, { filters: { level_gt: 6, level_max: 9 } });
+    expect(advanced.some((r) => r.person_id === PERSON1)).toBe(true);
+    const intermediate = await overview(MGR_USER, { filters: { level_gt: 3, level_max: 6 } });
+    expect(intermediate.some((r) => r.person_id === PERSON1)).toBe(false); // 6.5 > 6, and 6.1 must not leak
+    const unrated = await overview(MGR_USER, { filters: { level_unrated: true } });
+    expect(unrated.every((r) => r.skill_rating === null)).toBe(true);
+    expect(unrated.some((r) => r.player_key === `g_${GB}`)).toBe(true);
+  });
+
+  it("tag 'untagged' matches persons without tags", async () => {
+    const untagged = await overview(MGR_USER, { filters: { tag_id: 'untagged' } });
+    expect(untagged.some((r) => r.player_key === `g_${GB}`)).toBe(true);
+    expect(Number(untagged[0].total_count)).toBe(untagged.length);
+  });
+
+  it('the payment FILTER agrees with the badge (both invoice predicates, incl. the addressee exemption)', async () => {
+    await db.exec(`
+      INSERT INTO public.invoices (academy_profile_id, player_id, guest_player_id, status, due_date)
+      VALUES ('${ACADEMY}', '${P5}', '${GF}', 'overdue', current_date - 10);
+    `);
+    const overdue = await overview(MGR_USER, { filters: { payment: 'overdue' } });
+    expect(overdue.some((r) => r.player_key === `g_${GF}`)).toBe(true);
+    expect(overdue.some((r) => r.player_key === `p_${P5}`)).toBe(true); // addressee exemption in the FILTER too
+    const ok = await overview(MGR_USER, { filters: { payment: 'ok' } });
+    expect(ok.some((r) => r.player_key === `g_${GF}`)).toBe(false);
+    await db.exec(`DELETE FROM public.invoices WHERE player_id = '${P5}';`);
+  });
+
+  it('location filter + chips: merged person trained at the slot location; unmerged parent shows none', async () => {
+    const byLoc = await overview(MGR_USER, { filters: { location_id: LOC1 } });
+    expect(byLoc.some((r) => r.person_id === PERSON1)).toBe(true);
+    const all = await overview(MGR_USER);
+    const bram = all.find((r) => r.person_id === PERSON1)! as OverviewRow & { location_names: string[] };
+    expect(bram.location_names).toEqual(['Club Noord']);
+    // the parent's only booking is dual-keyed → the guard keeps the location off their row
+    expect(byLoc.some((r) => r.player_key === `p_${P5}`)).toBe(false);
+  });
+
+  it('sort by skill desc puts the merged 6.5 first among rated rows', async () => {
+    await db.exec(`SET test.uid = '${MGR_USER}';`);
+    const { rows } = await db.query<{ person_id: string; skill_rating: string | null }>(
+      `SELECT person_id, skill_rating FROM public.get_players_overview('academy', $1, NULL, '{}'::jsonb, 'skill', 'desc', 50, 0)`,
+      [ACADEMY],
+    );
+    await db.exec(`SET test.uid = '';`);
+    expect(rows[0].person_id).toBe(PERSON1);
+  });
+});
+
+describe('get_players_overview — trainer scope', () => {
+  const TGUEST = '60000000-0000-0000-0000-000000000001';
+  const TP = '60000000-0000-0000-0000-000000000002';
+  const trainerOverview = async () => {
+    await db.exec(`SET test.uid = '${TR1_USER}';`);
+    try {
+      const { rows } = await db.query<OverviewRow>(
+        `SELECT * FROM public.get_players_overview('trainer', $1)`, [TR1]);
+      return rows;
+    } finally {
+      await db.exec(`SET test.uid = '';`);
+    }
+  };
+
+  it('a trainer sees their own guests + registered bookers, merged pairs deduped', async () => {
+    await db.exec(`
+      INSERT INTO public.guest_players (id, trainer_id, full_name, email)
+        VALUES ('${TGUEST}', '${TR1}', 'Trainer Guest', 'tg@x.nl');
+      INSERT INTO public.profiles (id, full_name, email) VALUES ('${TP}', 'Trainer Registered', 'tp@x.nl');
+      INSERT INTO public.persons (id, full_name, email) VALUES ('${TP}', 'Trainer Registered', 'tp@x.nl');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${TP}', '${TGUEST}');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${TP}', '${TP}');
+      INSERT INTO public.bookings (slot_id, player_id, status) VALUES ('${SLOT1}', '${TP}', 'confirmed');
+    `);
+    const rows = await trainerOverview();
+    const merged = rows.filter((r) => r.person_id === TP);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].player_key).toBe(`g_${TGUEST}`);
+    expect(merged[0].player_type).toBe('registered');
+    // ACADEMY-scope guests that aren't the trainer's stay invisible in trainer scope
+    expect(rows.some((r) => r.player_key === `g_${GB}`)).toBe(false);
+  });
+
+  it("rejects a user who isn't that trainer", async () => {
+    await db.exec(`SET test.uid = '${MGR_USER}';`);
+    const rejected = await failed(db.query(`SELECT * FROM public.get_players_overview('trainer', $1)`, [TR1]));
+    await db.exec(`SET test.uid = '';`);
+    expect(rejected).toBe(true);
   });
 });
 
@@ -399,6 +557,46 @@ describe('get_academy_cyclus_groups — person-keyed roster names (Phase 3.2)', 
     const g = (await groups(MGR_USER)).find((r) => r.cyclus_id === CYCLE)!;
     expect(g.player_names.filter((n) => n.startsWith('Bram'))).toHaveLength(1);
     await db.exec(`DELETE FROM public.intake_requests WHERE player_id = '${P1}';`);
+  });
+
+  it("an UNLINKED duplicate's intake still suppresses against a linked booking (side-name equality)", async () => {
+    // G2 carries the guest-side spelling of PERSON1's booked seat. The booked row now DISPLAYS
+    // the persons spelling ('Bram Van Laarhoven'), so name-only suppression would miss — the
+    // kept side_name must still dedup the intake.
+    const G2 = '70000000-0000-0000-0000-000000000001';
+    await db.exec(`
+      INSERT INTO public.guest_players (id, academy_profile_id, full_name)
+        VALUES ('${G2}', '${ACADEMY}', 'Bram van laarhoven');
+      INSERT INTO public.intake_requests (cycle_id, guest_player_id, status)
+        VALUES ('${CYCLE}', '${G2}', 'pending');
+    `);
+    const g = (await groups(MGR_USER)).find((r) => r.cyclus_id === CYCLE)!;
+    expect(g.player_names.filter((n) => n.toLowerCase().startsWith('bram'))).toHaveLength(1);
+    await db.exec(`DELETE FROM public.intake_requests WHERE guest_player_id = '${G2}';
+                   DELETE FROM public.guest_players WHERE id = '${G2}';`);
+  });
+
+  it('a FROZEN guest intake keys as itself and dedups against its own booking', async () => {
+    await db.exec(`
+      INSERT INTO public.intake_requests (cycle_id, guest_player_id, status)
+        VALUES ('${CYCLE}', '${GC}', 'confirmed');
+    `);
+    const g = (await groups(MGR_USER)).find((r) => r.cyclus_id === CYCLE)!;
+    expect(g.player_names.filter((n) => n === 'Frozen Guest')).toHaveLength(1); // not merged, not doubled
+    await db.exec(`DELETE FROM public.intake_requests WHERE guest_player_id = '${GC}';`);
+  });
+
+  it('the no-slot cycle arm renders intake persons (person-keyed)', async () => {
+    const CYCLE2 = 'cc000000-0000-0000-0000-000000000002';
+    await db.exec(`
+      INSERT INTO public.cycles (id, name, owner_type, owner_id, status, type)
+        VALUES ('${CYCLE2}', 'Winter', 'academy', '${ACADEMY}', 'draft', 'cyclus');
+      INSERT INTO public.intake_requests (cycle_id, player_id, status) VALUES ('${CYCLE2}', '${P1}', 'pending');
+    `);
+    const g = (await groups(MGR_USER)).find((r) => r.cyclus_id === CYCLE2)!;
+    expect(g.player_names).toEqual(['Bram Van Laarhoven']); // persons name via the profile link
+    await db.exec(`DELETE FROM public.intake_requests WHERE cycle_id = '${CYCLE2}';
+                   DELETE FROM public.cycles WHERE id = '${CYCLE2}';`);
   });
 
   it('rejects a non-manager (auth gate intact)', async () => {

@@ -29,14 +29,22 @@
 --      • `player_key` stays old-world-parseable ('g_…' preferred, else 'p_…')
 --        because invoiceCustomer + the player-detail routes parse it; the NEW
 --        `person_id` column is the person-unification key;
---      • merged rows take their identity fields from PERSONS — the rederive
---        choke point already implements profile-first precedence + the freeze;
---        re-deriving per-field precedence here is exactly the call-site
---        duplication three audits punished. Single-side rows keep today's
---        expressions verbatim (zero churn for unmerged people);
---      • metadata joins person-wide: tag_ids = the UNION across the person's
---        in-scope metadata rows, metadata_id/academy_notes = guest-side-first
---        pick (edits keep landing on the roster-managed guest row);
+--      • merged rows render the person's identity SCOPE-SAFELY: full_name from
+--        persons (the same name the 3.1 cycle-detail roster shows); every other
+--        identity field prefers the IN-SCOPE profile side over the guest-first
+--        pick. Deliberately NOT the persons row's contact/billing fields — the
+--        persons row aggregates sides SYSTEM-WIDE, and this reader must never
+--        surface contact data the scope could not already see on its own rows
+--        (cross-tenant guest fallback / never-in-scope profile). Single-side
+--        rows keep today's expressions verbatim (zero churn for unmerged
+--        people). Both side identities stay SEARCHABLE and every side email
+--        still counts for the deliverability badge;
+--      • metadata: ONE guest-side-first row supplies metadata_id + tags +
+--        notes together — read and write target the SAME row (a union display
+--        made tags/notes edited via metadata_id unremovable);
+--      • REMOVAL is person-level: removing ANY in-scope side of a merged
+--        person removes the human (no re-render under a secondary guest ref);
+--        unmerged rows keep per-side removal exactly as before;
 --      • activity matching (trainer/location/cyclus filters + chips) is
 --        REF-SET based: a booking/intake row counts for the person iff its
 --        guest belongs to the person's non-frozen in-scope refs, or it is a
@@ -250,38 +258,81 @@ BEGIN
     JOIN public.profiles p ON p.id = rv.pid
     LEFT JOIN public.person_links pl ON pl.profile_id = p.id
   ),
+  -- Person-level REMOVAL: for a merged person, removing ANY in-scope side removes the HUMAN
+  -- (one row = one human, so "Delete" must not leave the person re-rendering under a secondary
+  -- ref). Unmerged rows are unaffected: their removed side never enters `sided` anyway.
+  removed_persons AS (
+    -- rp_person_id: the OUT column person_id would make a bare reference ambiguous in plpgsql
+    SELECT CASE WHEN pl.person_id IS NOT NULL AND NOT public.is_guest_split_frozen(rm.gid)
+                THEN pl.person_id ELSE rm.gid END AS rp_person_id
+    FROM removed_meta rm
+    LEFT JOIN public.person_links pl ON pl.guest_player_id = rm.gid
+    WHERE rm.gid IS NOT NULL
+    UNION
+    SELECT coalesce(pl.person_id, rm.pid)
+    FROM removed_meta rm
+    LEFT JOIN public.person_links pl ON pl.profile_id = rm.pid
+    WHERE rm.pid IS NOT NULL
+  ),
   -- PERSON rollup: one row per person. Side-field picks are guest-first (for a single-side
-  -- person this IS that side's value, so unmerged rows render exactly as before).
+  -- person this IS that side's value, so unmerged rows render exactly as before). Every pick
+  -- ends its ORDER BY on a unique column — created_at ties are real (bulk imports share one
+  -- transaction timestamp) and would otherwise make player_key/identity plan-dependent.
   rolled AS (
     SELECT
       s.s_person_id                                               AS b_person_id,
       (count(*) > 1)                                              AS b_merged,
       bool_or(s.s_profile_id IS NOT NULL)                         AS b_has_login,
-      (array_agg(s.s_guest_player_id ORDER BY s.s_created_at)
+      (array_agg(s.s_guest_player_id ORDER BY s.s_created_at, s.s_guest_player_id)
          FILTER (WHERE s.s_guest_player_id IS NOT NULL))[1]       AS b_guest_player_id,
       array_remove(array_agg(s.s_guest_player_id), NULL)          AS b_guest_ids,
       -- at most one profile per person (one-profile-per-person index); no max(uuid) in PG
       (array_remove(array_agg(s.s_profile_id), NULL))[1]          AS b_profile_id,
-      (array_agg(s.s_full_name  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at))[1] AS b_full_name,
-      coalesce((array_remove(array_agg(nullif(s.s_email, '')  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1], '') AS b_email,
-      coalesce((array_remove(array_agg(nullif(s.s_phone, '')  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1], '') AS b_phone,
-      (array_remove(array_agg(s.s_billing_business_name ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_billing_business_name,
-      (array_remove(array_agg(s.s_billing_address       ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_billing_address,
-      (array_remove(array_agg(s.s_billing_btw_number    ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_billing_btw_number,
-      (array_remove(array_agg(s.s_skill_rating          ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_skill_rating,
-      (array_agg(s.s_rating_system ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at))[1] AS b_rating_system,
-      (array_remove(array_agg(s.s_notes  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_notes,
-      (array_remove(array_agg(s.s_source ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_source,
-      (array_remove(array_agg(s.s_birth_date ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_birth_date,
+      (array_agg(s.s_full_name  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id))[1] AS b_full_name,
+      coalesce((array_remove(array_agg(nullif(s.s_email, '')  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1], '') AS b_email,
+      coalesce((array_remove(array_agg(nullif(s.s_phone, '')  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1], '') AS b_phone,
+      (array_remove(array_agg(s.s_billing_business_name ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_billing_business_name,
+      (array_remove(array_agg(s.s_billing_address       ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_billing_address,
+      (array_remove(array_agg(s.s_billing_btw_number    ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_billing_btw_number,
+      (array_remove(array_agg(s.s_skill_rating          ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_skill_rating,
+      (array_agg(s.s_rating_system ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id))[1] AS b_rating_system,
+      (array_remove(array_agg(s.s_notes  ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_notes,
+      (array_remove(array_agg(s.s_source ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_source,
+      (array_remove(array_agg(s.s_birth_date ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_birth_date,
       bool_or(s.s_has_trained)                                    AS b_has_trained,
       min(s.s_created_at)                                         AS b_created_at,
-      (array_remove(array_agg(s.s_owner_trainer_id ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at), NULL))[1] AS b_owner_trainer_id
+      (array_remove(array_agg(s.s_owner_trainer_id ORDER BY (s.s_guest_player_id IS NULL), s.s_created_at, s.s_guest_player_id), NULL))[1] AS b_owner_trainer_id,
+      -- ALL owner trainers across the person's in-scope guests — the trainer filter and the
+      -- trainer_ids chips must see every ref's owner, not just the primary's
+      (SELECT coalesce(array_agg(DISTINCT t), '{}'::uuid[])
+         FROM unnest(array_remove(array_agg(s.s_owner_trainer_id), NULL)) t) AS b_owner_trainer_ids,
+      -- the IN-SCOPE PROFILE side's identity (merged rows prefer it below — profile-first
+      -- precedence like rederive, but strictly from data THIS SCOPE already sees)
+      (array_remove(array_agg(nullif(s.s_email, '') ) FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_email,
+      (array_remove(array_agg(nullif(s.s_phone, '') ) FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_phone,
+      (array_remove(array_agg(s.s_billing_business_name) FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_billing_business_name,
+      (array_remove(array_agg(s.s_billing_address)       FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_billing_address,
+      (array_remove(array_agg(s.s_billing_btw_number)    FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_billing_btw_number,
+      (array_remove(array_agg(s.s_skill_rating)          FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_skill_rating,
+      (array_remove(array_agg(nullif(s.s_rating_system, '')) FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_rating_system,
+      (array_remove(array_agg(s.s_birth_date)            FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_birth_date,
+      -- every side identity stays SEARCHABLE (a trainer who only knows the roster-side
+      -- name/email must still find the merged human) …
+      string_agg(s.s_full_name || ' ' || s.s_email || ' ' || s.s_phone
+                 || ' ' || coalesce(s.s_billing_business_name, ''), ' ') AS b_search_sides,
+      -- … and every side email still counts for deliverability (invoices to the guest seat
+      -- keep going to the guest-side address)
+      array_remove(array_agg(nullif(lower(btrim(s.s_email)), '')), NULL) AS b_all_emails
     FROM sided s
+    WHERE s.s_person_id NOT IN (SELECT rp.rp_person_id FROM removed_persons rp)
     GROUP BY s.s_person_id
   ),
-  -- merged rows take their IDENTITY from persons — the rederive choke point (profile-first
-  -- precedence + the freeze already applied there). Rollup values remain the fallback so a
-  -- blank persons field never blanks the row.
+  -- Merged rows render the person's identity: full_name from persons (the rederive choke
+  -- point — the SAME name the cycle-detail roster shows since 3.1); all OTHER identity fields
+  -- prefer the IN-SCOPE profile side over the guest-first pick. Deliberately NOT the persons
+  -- row's contact/billing fields: persons aggregates sides SYSTEM-WIDE, and a reader keyed to
+  -- one academy's scope must never surface a profile's (or another tenant's guest's) contact
+  -- data that this scope could not already see on its own rows.
   base AS (
     SELECT
       r.b_person_id,
@@ -293,53 +344,45 @@ BEGIN
       r.b_guest_ids,
       r.b_profile_id,
       CASE WHEN r.b_merged THEN coalesce(nullif(btrim(pe.full_name), ''), r.b_full_name) ELSE r.b_full_name END AS b_full_name,
-      CASE WHEN r.b_merged THEN coalesce(nullif(pe.email, ''), r.b_email)   ELSE r.b_email END  AS b_email,
-      CASE WHEN r.b_merged THEN coalesce(nullif(pe.phone, ''), r.b_phone)   ELSE r.b_phone END  AS b_phone,
-      CASE WHEN r.b_merged THEN coalesce(pe.billing_business_name, r.b_billing_business_name) ELSE r.b_billing_business_name END AS b_billing_business_name,
-      CASE WHEN r.b_merged THEN coalesce(pe.billing_address,       r.b_billing_address)       ELSE r.b_billing_address END       AS b_billing_address,
-      CASE WHEN r.b_merged THEN coalesce(pe.billing_btw_number,    r.b_billing_btw_number)    ELSE r.b_billing_btw_number END    AS b_billing_btw_number,
-      CASE WHEN r.b_merged THEN coalesce(pe.skill_rating, r.b_skill_rating) ELSE r.b_skill_rating END AS b_skill_rating,
-      CASE WHEN r.b_merged THEN coalesce(nullif(pe.rating_system, ''), r.b_rating_system) ELSE r.b_rating_system END AS b_rating_system,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_email, r.b_email)   ELSE r.b_email END  AS b_email,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_phone, r.b_phone)   ELSE r.b_phone END  AS b_phone,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_billing_business_name, r.b_billing_business_name) ELSE r.b_billing_business_name END AS b_billing_business_name,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_billing_address,       r.b_billing_address)       ELSE r.b_billing_address END       AS b_billing_address,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_billing_btw_number,    r.b_billing_btw_number)    ELSE r.b_billing_btw_number END    AS b_billing_btw_number,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_skill_rating, r.b_skill_rating) ELSE r.b_skill_rating END AS b_skill_rating,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_rating_system, r.b_rating_system) ELSE r.b_rating_system END AS b_rating_system,
       r.b_notes,
       r.b_source,
-      CASE WHEN r.b_merged THEN coalesce(pe.birth_date, r.b_birth_date) ELSE r.b_birth_date END AS b_birth_date,
+      CASE WHEN r.b_merged THEN coalesce(r.b_prof_birth_date, r.b_birth_date) ELSE r.b_birth_date END AS b_birth_date,
       r.b_has_trained,
       r.b_created_at,
-      r.b_owner_trainer_id
+      r.b_owner_trainer_id,
+      r.b_owner_trainer_ids,
+      r.b_search_sides,
+      r.b_all_emails
     FROM rolled r
     LEFT JOIN public.persons pe ON r.b_merged AND pe.id = r.b_person_id
   ),
-  -- metadata joins PERSON-WIDE: tags union across the person's in-scope metadata rows;
-  -- metadata_id + academy_notes are guest-side-first picks (edits keep landing on the
-  -- roster-managed guest row, exactly where they landed before).
+  -- metadata: ONE guest-side-first row per person supplies id + tags + notes TOGETHER.
+  -- Read and write must target the same row — a union/other-row fallback here made tags and
+  -- notes edited via metadata_id unremovable (the displayed value survived on a row the
+  -- client never writes). A merged person's profile-side metadata row is dormant until the
+  -- membership layer (3.5) unifies metadata person-wide.
   with_meta AS (
     SELECT b.*,
-           md.meta_id  AS b_metadata_id,
-           coalesce(md.meta_tags, '{}'::uuid[]) AS b_tag_ids,
-           md.meta_notes AS b_academy_notes
+           md.id AS b_metadata_id,
+           coalesce(md.tag_ids, '{}'::uuid[]) AS b_tag_ids,
+           md.notes AS b_academy_notes
     FROM base b
     LEFT JOIN LATERAL (
-      SELECT
-        (SELECT m.id FROM public.academy_player_metadata m
-          WHERE ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
-              OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
-            AND (m.guest_player_id = ANY (b.b_guest_ids)
-              OR (b.b_profile_id IS NOT NULL AND m.profile_id = b.b_profile_id))
-          ORDER BY (m.guest_player_id IS NULL), m.created_at LIMIT 1) AS meta_id,
-        (SELECT array_agg(DISTINCT t ORDER BY t)
-           FROM public.academy_player_metadata m,
-                LATERAL unnest(coalesce(m.tag_ids, '{}'::uuid[])) t
-          WHERE ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
-              OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
-            AND (m.guest_player_id = ANY (b.b_guest_ids)
-              OR (b.b_profile_id IS NOT NULL AND m.profile_id = b.b_profile_id))) AS meta_tags,
-        (SELECT m.notes FROM public.academy_player_metadata m
-          WHERE ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
-              OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
-            AND (m.guest_player_id = ANY (b.b_guest_ids)
-              OR (b.b_profile_id IS NOT NULL AND m.profile_id = b.b_profile_id))
-            AND m.notes IS NOT NULL
-          ORDER BY (m.guest_player_id IS NULL), m.created_at LIMIT 1) AS meta_notes
+      SELECT m.id, m.tag_ids, m.notes
+      FROM public.academy_player_metadata m
+      WHERE ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
+          OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
+        AND (m.guest_player_id = ANY (b.b_guest_ids)
+          OR (b.b_profile_id IS NOT NULL AND m.profile_id = b.b_profile_id))
+      ORDER BY (m.guest_player_id IS NULL), m.created_at, m.id
+      LIMIT 1
     ) md ON true
   ),
   filtered AS (
@@ -347,7 +390,9 @@ BEGIN
     FROM with_meta w
     WHERE
       -- search: every token must match folded name/email/business/phone text,
-      -- or (>= 3 digits) the digits-normalized phone
+      -- or (>= 3 digits) the digits-normalized phone. b_search_sides keeps EVERY side
+      -- identity searchable — a trainer who only knows the roster-side (guest) name or email
+      -- must still find the merged human even though the row displays the profile identity.
       (v_tokens IS NULL OR NOT EXISTS (
         SELECT 1 FROM unnest(v_tokens) tok
         WHERE tok <> ''
@@ -355,9 +400,11 @@ BEGIN
             public.fold_search_text(
               w.b_full_name || ' ' || w.b_email || ' '
               || coalesce(w.b_billing_business_name, '') || ' ' || w.b_phone
+              || ' ' || coalesce(w.b_search_sides, '')
             ) LIKE '%' || tok || '%'
             OR (length(public.digits_only(tok)) >= 3
-                AND public.digits_only(w.b_phone) LIKE '%' || public.digits_only(tok) || '%')
+                AND public.digits_only(w.b_phone || ' ' || coalesce(w.b_search_sides, ''))
+                    LIKE '%' || public.digits_only(tok) || '%')
           )
       ))
       -- level band: half-open (level_gt, level_max], or unrated
@@ -378,7 +425,7 @@ BEGIN
       -- PURE-PROFILE row of the person's profile — FAM-02: a dual-keyed row is the GUEST
       -- person's activity (mirrors the 3.1 r3 pure-profile player policies).
       AND (v_filter_trainer IS NULL
-        OR w.b_owner_trainer_id = v_filter_trainer
+        OR v_filter_trainer = ANY (w.b_owner_trainer_ids)
         OR EXISTS (
           SELECT 1 FROM public.bookings b JOIN scope_slots ss ON ss.id = b.slot_id
           WHERE ss.trainer_id = v_filter_trainer
@@ -488,7 +535,7 @@ BEGIN
     c.b_skill_rating, c.b_rating_system, c.b_notes, c.b_source, c.b_birth_date,
     c.b_has_trained, c.b_created_at, c.b_owner_trainer_id,
     c.b_metadata_id, c.b_tag_ids, c.b_academy_notes,
-    coalesce(enr.trainer_ids, CASE WHEN c.b_owner_trainer_id IS NULL THEN '{}'::uuid[] ELSE ARRAY[c.b_owner_trainer_id] END),
+    coalesce(enr.trainer_ids, c.b_owner_trainer_ids),
     coalesce(enr.location_ids, '{}'::uuid[]),
     coalesce(enr.location_names, '{}'::text[]),
     coalesce(enr.has_active_cyclus, false),
@@ -509,7 +556,7 @@ BEGIN
       (SELECT coalesce(array_agg(DISTINCT t.tid), '{}'::uuid[])
          FROM (SELECT pb.trainer_id AS tid FROM pb WHERE pb.trainer_id IS NOT NULL
                UNION
-               SELECT c.b_owner_trainer_id WHERE c.b_owner_trainer_id IS NOT NULL) t)
+               SELECT unnest(c.b_owner_trainer_ids)) t)
         AS trainer_ids,
       loc.location_ids,
       loc.location_names,
@@ -585,9 +632,12 @@ BEGIN
     ) AS has_overdue_payment
   ) pay ON true
   LEFT JOIN LATERAL (
+    -- deliverability across EVERY side email: invoices to a merged person's guest seat keep
+    -- going to the guest-side address, so a bounce there must still badge the (profile-
+    -- identity) row. Unmerged rows have exactly one side email — behavior unchanged.
     SELECT EXISTS (
       SELECT 1 FROM public.email_address_state s
-      WHERE s.email = lower(btrim(c.b_email))
+      WHERE (s.email = lower(btrim(c.b_email)) OR s.email = ANY (c.b_all_emails))
         AND s.state IN ('hard_bounced','complained')
     ) AS email_undeliverable
   ) eb ON true;
@@ -714,7 +764,7 @@ sb AS (
 -- source uuid (congruent with deterministic person ids). A linked row's display name is
 -- the persons row's (same source the cycle-detail roster shows), side name as fallback.
 snames AS (
-  SELECT DISTINCT x.cyclus_id, x.group_suffix, x.person_key, x.name FROM (
+  SELECT DISTINCT x.cyclus_id, x.group_suffix, x.person_key, x.name, x.side_name FROM (
     SELECT
       s.cyclus_id,
       s.group_suffix,
@@ -726,7 +776,11 @@ snames AS (
            THEN CASE WHEN plg.person_id IS NOT NULL AND NOT public.is_guest_split_frozen(b.guest_player_id)
                      THEN COALESCE(NULLIF(BTRIM(peg.full_name), ''), gp.full_name, pp.full_name)
                      ELSE COALESCE(gp.full_name, pp.full_name) END
-           ELSE COALESCE(NULLIF(BTRIM(pep.full_name), ''), pp.full_name) END AS name
+           ELSE COALESCE(NULLIF(BTRIM(pep.full_name), ''), pp.full_name) END AS name,
+      -- the RAW side name, kept ONLY for the intake name-equality suppression: an UNLINKED
+      -- intake row still carries the side spelling, so it must dedup against either spelling
+      CASE WHEN b.guest_player_id IS NOT NULL THEN COALESCE(gp.full_name, pp.full_name)
+           ELSE pp.full_name END AS side_name
     FROM public.bookings b
     JOIN s ON s.id = b.slot_id
     LEFT JOIN public.profiles pp ON pp.id = b.player_id
@@ -809,7 +863,7 @@ gnames AS (
           SELECT 1 FROM snames sn
           WHERE sn.cyclus_id = g.cyclus_id
             AND sn.group_suffix = g.group_suffix
-            AND sn.name = i.name
+            AND (sn.name = i.name OR sn.side_name = i.name)
         )
     ) u
   ) d

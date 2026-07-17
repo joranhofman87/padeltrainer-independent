@@ -95,9 +95,13 @@ export function mapPlayersOverviewRow(row: PlayersOverviewRow, opts: MapPlayerOp
         ? row.owner_trainer_id
           ? map.get(row.owner_trainer_id) || '—'
           : academyLabel
-        : row.trainer_ids?.length
-          ? map.get(row.trainer_ids[0]) || '—'
-          : '—';
+        : row.owner_trainer_id
+          ? // a MERGED person (registered type, guest side owned by a trainer): show the
+            // OWNING trainer, not whichever uuid sorts first in trainer_ids
+            map.get(row.owner_trainer_id) || '—'
+          : row.trainer_ids?.length
+            ? map.get(row.trainer_ids[0]) || '—'
+            : '—';
     player.training_location_ids = row.location_ids ?? [];
   }
   return player;

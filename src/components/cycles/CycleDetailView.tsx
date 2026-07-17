@@ -431,7 +431,13 @@ export function CycleDetailView({
   const resolvePersonToGuest = async (
     person: BookablePerson,
   ): Promise<{ guestPlayerId: string; twinProfileId: string | null } | null> => {
-    if (person.guestPlayerId) return { guestPlayerId: person.guestPlayerId, twinProfileId: null };
+    // Since Phase 3.2 a MERGED person is one guest-preferred picker row carrying BOTH ids — the
+    // profile must ride along as the twin hint, or the dedup misses seats the human self-booked
+    // under their player_id (double seat + double invoice). This profileId comes from
+    // person_links (one-profile-per-person, freeze-respected), never linked_profile_id.
+    if (person.guestPlayerId) {
+      return { guestPlayerId: person.guestPlayerId, twinProfileId: person.profileId ?? null };
+    }
     if (person.profileId && academyProfileId) {
       const twinId = await resolveOrCreateGuestTwinForRegisteredPlayer(
         { kind: 'academy', academyProfileId },
