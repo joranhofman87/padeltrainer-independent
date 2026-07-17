@@ -539,12 +539,24 @@ serve(async (req) => {
       logStep("Deduped invoice synced to paid", { invoiceId: existing.id });
     };
 
-    // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings
-    const recipientFilter = playerId
-      ? { player_id: playerId }
-      : guestPlayerId
-        ? { guest_player_id: guestPlayerId }
-        : null;
+    // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings.
+    //
+    // DUAL-KEY recipients (both ids set) are DELIBERATELY skipped here and routed to
+    // create_invoice_deduped, the single authority. A dual-keyed row belongs to the GUEST
+    // (FAM-02) and may be split-frozen; only the RPC resolves that correctly (guest-exclusive,
+    // freeze-aware, candidate-side guarded). A player-first fast-path would dedup a guest-owned
+    // dual-key booking onto a PROFILE invoice and bypass every one of those protections.
+    // Single-key recipients (pure-profile OR guest-only) are unambiguous — this filter matches
+    // exactly the RPC's arm A / arm B (arm B is same-guest, freeze-blind, so a guest-only dedup
+    // is identical under freeze) — so keep the fast-path for them (it avoids an invoice-number
+    // gap on the common re-invoice dedup, which the RPC path cannot).
+    const recipientFilter = (playerId && guestPlayerId)
+      ? null
+      : playerId
+        ? { player_id: playerId }
+        : guestPlayerId
+          ? { guest_player_id: guestPlayerId }
+          : null;
 
     if (recipientFilter) {
       const dupeQuery = supabase
@@ -744,14 +756,17 @@ serve(async (req) => {
     if (insertError || !invoice) {
       // Race condition lost: unique index rejected the duplicate. Return the winning invoice.
       if (insertError && insertError.code === "23505") {
+        // Recipient-AGNOSTIC winner lookup: a booking is billed by at most one active
+        // invoice, so the invoice that overlaps these bookings IS the race winner —
+        // regardless of its player/guest key. A player-first `.eq("player_id", …)` here
+        // would repeat the same dual-key bypass the fast-path above avoids (matching a
+        // profile invoice for a guest-owned booking), so it is deliberately omitted.
         const dupeFetch = supabase
           .from("invoices")
           .select("id, invoice_number, status, sent_at, booking_ids, total")
           .eq("trainer_id", trainerId)
           .not("status", "eq", "cancelled")
           .overlaps("booking_ids", bookingIds);
-        if (playerId) dupeFetch.eq("player_id", playerId);
-        else if (guestPlayerId) dupeFetch.eq("guest_player_id", guestPlayerId);
         // overlaps can match >1 row; take the first so maybeSingle never throws.
         const { data: winner } = await dupeFetch.limit(1).maybeSingle();
         if (winner) {
