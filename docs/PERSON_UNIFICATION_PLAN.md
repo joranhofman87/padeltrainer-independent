@@ -591,9 +591,10 @@ One domain per PR, each with tests + live-verify, in dependency order:
   global + memberships (reuse `academy_player_metadata`).
 - **P-B (Phase 2):** disposition of the 76 no-email guests and 28 shared-email families after the
   review report — merge, keep, or manual case-by-case.
-- **P-C (Phase 3.4):** does unification let us drop the guest-keyed assumption in pricing/invoicing,
-  or do we keep person_id purely as the identity key and leave amount math untouched? (Recommended:
-  identity-only; do not touch amount math in the same PRs.)
+- **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math
+  UNCHANGED". 3.4 (migration `20260902100000`) person-keys `create_invoice_deduped`'s double-bill
+  guard and nothing else. The two headcount/recipient-count divisors (`split-invoice` N,
+  `cycle-commitment` `group.size`) are deferred to a future explicit money-amount phase.
 
 ## 8. First actionable step
 Phase 0 (consistent person provisioning on the roster/add paths) OR Phase 1 (Expand) — both are
@@ -612,3 +613,26 @@ PERSON has a login (persons.user_id of b_person_id); a 'registered' row may carr
 on guest/profile ids independently, so nothing downstream breaks. CREATE OR REPLACE (signature
 unchanged → no drift), everything else verbatim from 20260827100000. Diagnosed in prod: 375/419
 players genuinely accountless ('almost all guest' is correct), only 6 mislabelled → now 'registered'.
+
+**3.4 (migration `20260902100000`): person-key the invoice double-bill guard — AMOUNT-NEUTRAL.**
+Resolves open decision **P-C = identity-only** (§7): dedup/grouping only, amount math untouched.
+`create_invoice_deduped` (the atomic P1-6 per-recipient create guard; the sole invoice-INSERT path,
+called only by `auto-create-invoice`) keyed its advisory lock + overlap recheck on the OLD-WORLD ref
+(player_id XOR guest_player_id). After unification a person can hold BOTH a profile ref and a guest
+ref, so two creates for the SAME bookings under the two keys took DIFFERENT locks and the per-key
+recheck missed the sibling → a SECOND active invoice = cross-key double charge (P1-6 closed only
+same-key concurrency). Fix: resolve the recipient to a PERSON guest-first (byte-identical to
+`stamp_person_id_invoices`) and (a) key the advisory lock on the person so cross-key concurrent
+creates serialize on ONE lock, (b) add a person arm `i.person_id = v_person_id` to the overlap
+recheck so the serialized second create FINDS + returns the sibling (deduped=true). The
+booking-overlap gate is UNCHANGED, so it only ever returns a pre-existing invoice billing the SAME
+bookings — never merges distinct charges, never divides, never restates a total. Congruent
+degradation: an unlinked / pre-backfill recipient → v_person_id NULL → exact pre-3.4 per-key
+behaviour; unstamped invoices still caught by the retained per-key arms. CREATE OR REPLACE (signature
+unchanged → no types.ts drift). Adversarial verify: 0 confirmed findings (3 P3s refuted as
+congruent/self-healing). **Deferred (amount-affecting divisors, need an explicit money-amount
+phase):** `split-invoice`'s `Object.keys(playerBookings).length` (that grouping count IS the split
+divisor N = `floor(total/N)`) and `_shared/cycle-commitment-invoicing.ts` `group.size` — both are
+recipient-COUNT math, not recipient dedup. The client `groupChargeableBookingsByRecipient` add-player
+partition is a per-operation single-key-per-person no-op (new bookings carry one key) fully
+backstopped by the atomic RPC guard.
