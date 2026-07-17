@@ -161,8 +161,8 @@ const sampleDetail: CycleDetail = {
     { id: 's2', start_time: '2099-07-13T18:00:00Z', end_time: '2099-07-13T19:00:00Z', trainer_id: 't1', max_participants: 4, is_public: true, cyclus_name: 'Zomercyclus', price_per_session: 50, playerNames: [], bookedCount: 0, paymentStatus: 'no_players' },
   ],
   roster: [
-    { name: 'Alice', sessionCount: 2, playerId: 'p-alice', guestPlayerId: null, personId: 'p-alice', refs: [{ playerId: 'p-alice', guestPlayerId: null }] },
-    { name: 'Bob', sessionCount: 1, playerId: null, guestPlayerId: 'g-bob', personId: 'g-bob', refs: [{ playerId: null, guestPlayerId: 'g-bob' }] },
+    { name: 'Alice', sessionCount: 2, playerId: 'p-alice', guestPlayerId: null, personId: 'p-alice', hasLogin: true, refs: [{ playerId: 'p-alice', guestPlayerId: null }] },
+    { name: 'Bob', sessionCount: 1, playerId: null, guestPlayerId: 'g-bob', personId: 'g-bob', hasLogin: false, refs: [{ playerId: null, guestPlayerId: 'g-bob' }] },
   ],
   totalSlots: 2,
   totalPlayers: 2,
@@ -213,6 +213,32 @@ describe('CycleDetailView (inline edit)', () => {
     expect(screen.getAllByText('No players').length).toBeGreaterThan(0);
     expect(screen.getByText('2×')).toBeInTheDocument();
     expect(screen.getByText('1×')).toBeInTheDocument();
+  });
+
+  it('roster Guest badge tells LOGINS, not seats: a merged (guest-keyed) human with a login gets NO badge', () => {
+    // The exact owner-reported bug: Bram is a merged human whose PRIMARY ref is the guest side
+    // (guestPlayerId set) but who HAS a login (hasLogin true) → must NOT wear the Guest badge;
+    // an accountless guest still does.
+    mockUseCycleDetail.mockReturnValue({
+      data: {
+        ...sampleDetail,
+        roster: [
+          { name: 'Bram', sessionCount: 1, playerId: null, guestPlayerId: 'g-bram', personId: 'per-bram', hasLogin: true, refs: [{ playerId: null, guestPlayerId: 'g-bram' }] },
+          { name: 'Gast', sessionCount: 1, playerId: null, guestPlayerId: 'g-gast', personId: 'g-gast', hasLogin: false, refs: [{ playerId: null, guestPlayerId: 'g-gast' }] },
+        ],
+        totalPlayers: 2,
+      },
+      isLoading: false,
+      isError: false,
+    });
+    renderView(<CycleDetailView cycleId="cy1" onOpenSlot={() => {}} />);
+    // exactly ONE Guest badge in the whole roster (the accountless one)…
+    expect(screen.getAllByText('Guest')).toHaveLength(1);
+    // …and it belongs to Gast's row, not Bram's.
+    const bramRow = screen.getByText('Bram').closest('button')!;
+    const gastRow = screen.getByText('Gast').closest('button')!;
+    expect(within(bramRow).queryByText('Guest')).not.toBeInTheDocument();
+    expect(within(gastRow).getByText('Guest')).toBeInTheDocument();
   });
 
   it('is read-only by default — no inline edit cards / actions without canEdit or canEditPrice', () => {

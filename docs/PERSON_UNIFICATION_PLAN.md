@@ -458,6 +458,26 @@ One domain per PR, each with tests + live-verify, in dependency order:
    detail page is unreachable from the list (row links g_; person-keyed detail = 3.3 scope), and
    is_guest_split_frozen is a per-row definer call in the two list RPCs (bounded scopes, tiny
    review table — accepted until profiling says otherwise).
+   **Progress — 3.3a BUILT (migration `20260828100000`), BADGE-ONLY scope:** the roster badge
+   tells LOGINS, not seats (owner-reported after 3.2: a merged human read 'registered' on the
+   Players page but 'Guest' inside a cycle). (a) `get_cycle_roster_names` gains `has_login` per
+   row — person arm from `persons.user_id`, profile arm from `profiles.user_id`, guest arm
+   through person_links ONLY (never linked_profile_id) and suspended while split-frozen; DISTINCT
+   ON keeps the person arm's verdict. (b) `CycleRosterEntry.hasLogin` + the badge flips to
+   `!hasLogin`, with a primary-ref fallback that reproduces the old badge exactly until the
+   extended RPC is deployed (Vercel ships before `db push`). (c) hardening: `get_academy_cyclus_
+   groups` REVOKEd from PUBLIC/anon (was default-executable; its auth gate already rejected anon).
+   **Adversarial verify (16 findings, 3 confirmed test-gaps fixed + 1 real bug caught):** the
+   render test found the badge condition had been left as `p.hasLogin` (inverted) — fixed to
+   `!p.hasLogin`; the pglite matrix now pins the guest-arm `profile_id IS NOT NULL` join (a guest
+   linked only to its own profile-less person → false) and the profile arm's TRUE direction.
+   **PULLED from 3.3a → its own slice (3.3-attendance):** the `PendingAttendanceCard` player-side
+   person-keying. Surfacing a guest-seated session for attendance is a DEAD-END until the
+   `session_reports` INSERT/UPDATE/SELECT RLS policies (which require a `player_id = me` booking
+   on the slot) are person-keyed — that write-path RLS change belongs with the booking-path work,
+   not a badge fix. The 3.1 tracked gap (attendance card sees only pure-profile sessions) stays
+   open until then.
+
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;

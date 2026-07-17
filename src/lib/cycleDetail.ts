@@ -66,6 +66,13 @@ export interface CycleRosterEntry {
    * can hold seats under BOTH old keys; Remove/Change iterate these so no half stays seated.
    */
   refs: PersonRef[];
+  /**
+   * Phase 3.3a: does this HUMAN have a login (persons.user_id / person_links profile side)?
+   * Drives the Guest badge — a merged person's seats are guest-keyed by design, so the old
+   * "has a guest ref" condition can never be right for them. Falls back to the primary-ref
+   * heuristic (profile-primary → true) while the extended RPC isn't deployed yet.
+   */
+  hasLogin: boolean;
 }
 
 export interface CycleDetail {
@@ -121,8 +128,13 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
     guestPlayerId: string | null;
     personId: string | null;
     refs: PersonRef[];
+    hasLogin: boolean;
     refKeys: Set<string>;
   }>();
+  // Phase 3.3a: id → does that PERSON have a login (badge source; filled from the roster-names
+  // RPC below). has_login is undefined until the extended function is deployed — entries then
+  // fall back to the primary-ref heuristic at finalization, which is exactly the old badge rule.
+  const hasLoginLookup: Record<string, boolean> = {};
 
   if (slotIds.length > 0) {
     const { data: bookings, error: bErr } = await supabase
@@ -150,8 +162,9 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
     // already see this cycle's bookings.
     const nameLookup: Record<string, string> = {};
     const { data: rosterNames } = await supabase.rpc('get_cycle_roster_names', { _cycle_id: cycleId });
-    (rosterNames ?? []).forEach((n: { id: string; full_name: string | null }) => {
+    (rosterNames ?? []).forEach((n: { id: string; full_name: string | null; has_login?: boolean | null }) => {
       if (n.full_name) nameLookup[n.id] = n.full_name;
+      if (typeof n.has_login === 'boolean') hasLoginLookup[n.id] = n.has_login;
     });
 
     for (const b of rows) {
@@ -197,6 +210,7 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
             guestPlayerId: ref.guestPlayerId,
             personId: b.person_id ?? null,
             refs: [ref],
+            hasLogin: false, // finalized below once ALL refs are known
             refKeys: new Set([refKey]),
           });
         }
@@ -219,7 +233,18 @@ export async function getCycleDetail(cycleId: string): Promise<CycleDetail> {
   }));
 
   const roster: CycleRosterEntry[] = [...rosterByKey.values()]
-    .map(({ refKeys: _refKeys, ...entry }) => entry)
+    .map(({ refKeys: _refKeys, ...entry }) => {
+      // person verdict first, then any ref's verdict; fallback = the primary-ref heuristic
+      // (profile-primary → login), which is exactly the pre-3.3a badge behavior — congruent
+      // while the extended RPC isn't deployed or for unstamped legacy rows.
+      const verdicts = [
+        entry.personId ? hasLoginLookup[entry.personId] : undefined,
+        ...entry.refs.map((r) => (r.playerId ? hasLoginLookup[r.playerId] : undefined)),
+        ...entry.refs.map((r) => (r.guestPlayerId ? hasLoginLookup[r.guestPlayerId] : undefined)),
+      ];
+      const known = verdicts.find((v) => typeof v === 'boolean');
+      return { ...entry, hasLogin: known ?? entry.playerId != null };
+    })
     .sort((a, b) => b.sessionCount - a.sessionCount || a.name.localeCompare(b.name));
 
   return {

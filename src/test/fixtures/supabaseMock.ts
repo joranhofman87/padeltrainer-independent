@@ -77,10 +77,24 @@ function defaultRpc(name: string): { data?: any; error?: any } | null {
   if (name === 'get_cycle_roster_names') {
     // Phase 3.1: the real RPC also emits a PERSON-keyed arm (persons.id → persons.full_name) so
     // the roster can name merged humans by their person id — model it from a `persons` fixture.
-    const rows = [...(_data.profiles ?? []), ...(_data.guest_players ?? []), ...(_data.persons ?? [])].map((r) => ({
-      id: r.id,
-      full_name: r.full_name ?? null,
-    }));
+    // Phase 3.3a: it also reports has_login — profiles/persons rows follow their user_id (like
+    // the SQL); guest rows report whether a person_links fixture maps them to a profile side.
+    const links = _data.person_links ?? [];
+    const reviews = _data.person_merge_review ?? [];
+    const isFrozen = (gid: string): boolean =>
+      reviews.some((r) => r.guest_player_id === gid && r.status === 'pending'
+        && ['twin_detached_needs_split', 'merged_guest_email_moved'].includes(r.kind));
+    const guestHasLogin = (gid: string): boolean => {
+      if (isFrozen(gid)) return false; // link suspended while split-frozen (SQL parity)
+      const link = links.find((l) => l.guest_player_id === gid);
+      if (!link) return false;
+      return links.some((l) => l.person_id === link.person_id && l.profile_id != null);
+    };
+    const rows = [
+      ...(_data.profiles ?? []).map((r) => ({ id: r.id, full_name: r.full_name ?? null, has_login: r.user_id !== undefined ? r.user_id != null : true })),
+      ...(_data.guest_players ?? []).map((r) => ({ id: r.id, full_name: r.full_name ?? null, has_login: guestHasLogin(r.id) })),
+      ...(_data.persons ?? []).map((r) => ({ id: r.id, full_name: r.full_name ?? null, has_login: r.user_id !== undefined ? r.user_id != null : true })),
+    ];
     return { data: rows, error: null };
   }
   return null;
