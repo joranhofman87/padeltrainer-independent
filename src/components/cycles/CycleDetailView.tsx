@@ -870,7 +870,9 @@ export function CycleDetailView({
                         <p className="text-sm font-medium truncate">{p.name}</p>
                         <p className="text-xs text-muted-foreground">{t('detail.roster.sessionCount', { count: p.sessionCount })}</p>
                       </div>
-                      {p.guestPlayerId && (
+                      {/* Phase 3.3a: badge the HUMAN's account status, not the seat's key — a
+                          merged person's seats are guest-keyed by design (FAM-02). */}
+                      {!p.hasLogin && (
                         <Badge variant="outline" className="text-[10px] h-5 px-1.5">{t('detail.roster.guest', 'Guest')}</Badge>
                       )}
                       {interactive && <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}

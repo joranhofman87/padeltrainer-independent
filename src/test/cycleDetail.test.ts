@@ -54,10 +54,10 @@ describe('getCycleDetail (Slice 9 data layer)', () => {
     const d = await getCycleDetail('cy1');
     expect(d.totalPlayers).toBe(4);
     expect(d.roster).toEqual([
-      { name: 'Alice', sessionCount: 2, playerId: 'PA', guestPlayerId: null, personId: null, refs: [{ playerId: 'PA', guestPlayerId: null }] }, // s1 + s2
-      { name: 'Bob', sessionCount: 1, playerId: 'PB', guestPlayerId: null, personId: null, refs: [{ playerId: 'PB', guestPlayerId: null }] },
-      { name: 'Charlie', sessionCount: 1, playerId: null, guestPlayerId: 'G1', personId: null, refs: [{ playerId: null, guestPlayerId: 'G1' }] },
-      { name: 'Dave', sessionCount: 1, playerId: 'PD', guestPlayerId: null, personId: null, refs: [{ playerId: 'PD', guestPlayerId: null }] },
+      { name: 'Alice', sessionCount: 2, playerId: 'PA', guestPlayerId: null, personId: null, hasLogin: true, refs: [{ playerId: 'PA', guestPlayerId: null }] }, // s1 + s2
+      { name: 'Bob', sessionCount: 1, playerId: 'PB', guestPlayerId: null, personId: null, hasLogin: true, refs: [{ playerId: 'PB', guestPlayerId: null }] },
+      { name: 'Charlie', sessionCount: 1, playerId: null, guestPlayerId: 'G1', personId: null, hasLogin: false, refs: [{ playerId: null, guestPlayerId: 'G1' }] },
+      { name: 'Dave', sessionCount: 1, playerId: 'PD', guestPlayerId: null, personId: null, hasLogin: true, refs: [{ playerId: 'PD', guestPlayerId: null }] },
     ]);
   });
 
@@ -89,8 +89,8 @@ describe('getCycleDetail (Slice 9 data layer)', () => {
     expect(d.slots[0].playerNames.sort()).toEqual(['Kid', 'Parent']); // child shows their OWN name
     expect(d.totalPlayers).toBe(2);
     expect(d.roster).toEqual([
-      { name: 'Kid', sessionCount: 1, playerId: null, guestPlayerId: 'G1', personId: null, refs: [{ playerId: null, guestPlayerId: 'G1' }] }, // XOR — guest person
-      { name: 'Parent', sessionCount: 1, playerId: 'PA', guestPlayerId: null, personId: null, refs: [{ playerId: 'PA', guestPlayerId: null }] },
+      { name: 'Kid', sessionCount: 1, playerId: null, guestPlayerId: 'G1', personId: null, hasLogin: false, refs: [{ playerId: null, guestPlayerId: 'G1' }] }, // XOR — guest person
+      { name: 'Parent', sessionCount: 1, playerId: 'PA', guestPlayerId: null, personId: null, hasLogin: true, refs: [{ playerId: 'PA', guestPlayerId: null }] },
     ]);
   });
 
@@ -107,7 +107,7 @@ describe('getCycleDetail (Slice 9 data layer)', () => {
     });
     const d = await getCycleDetail('cy1');
     expect(d.roster).toEqual([
-      { name: 'Parent', sessionCount: 1, playerId: null, guestPlayerId: 'G1', personId: null, refs: [{ playerId: null, guestPlayerId: 'G1' }] }, // still the guest's entry
+      { name: 'Parent', sessionCount: 1, playerId: null, guestPlayerId: 'G1', personId: null, hasLogin: false, refs: [{ playerId: null, guestPlayerId: 'G1' }] }, // still the guest's entry
     ]);
   });
 });
@@ -199,5 +199,70 @@ describe('getCycleDetail — merged-person edge shapes (verification pins)', () 
     expect(d.roster[0].guestPlayerId).toBe('G1'); // promoted — bookable side wins as primary
     expect(d.roster[0].playerId).toBeNull();
     expect(d.roster[0].refs).toHaveLength(2);
+  });
+});
+
+describe('getCycleDetail — Phase 3.3a hasLogin (the badge tells LOGINS, not seats)', () => {
+  it('a merged person with an account reads hasLogin=true even though their primary ref is the guest side', async () => {
+    setMockData({
+      cycles: [],
+      availability_slots: [
+        { id: 's1', cyclus_id: 'cy1', start_time: '2026-07-06T09:00:00Z', end_time: '2026-07-06T10:00:00Z', trainer_id: 'tr1', max_participants: 4, is_public: true, cyclus_name: 'Zomer' },
+      ],
+      bookings: [
+        { slot_id: 's1', player_id: null, guest_player_id: 'G1', person_id: 'PERSON1', status: 'confirmed', payment_status: 'paid', paid_externally: null },
+      ],
+      guest_players: [{ id: 'G1', full_name: 'Bram (gast)' }],
+      persons: [{ id: 'PERSON1', full_name: 'Bram Van Laarhoven', user_id: 'U1' }],
+    });
+    const d = await getCycleDetail('cy1');
+    expect(d.roster).toHaveLength(1);
+    expect(d.roster[0].guestPlayerId).toBe('G1'); // seat stays guest-keyed (FAM-02)
+    expect(d.roster[0].hasLogin).toBe(true);      // …but the HUMAN has an account → no badge
+  });
+
+  it('an accountless guest and a frozen-style unlinked guest read hasLogin=false', async () => {
+    setMockData({
+      cycles: [],
+      availability_slots: [
+        { id: 's1', cyclus_id: 'cy1', start_time: '2026-07-06T09:00:00Z', end_time: '2026-07-06T10:00:00Z', trainer_id: 'tr1', max_participants: 4, is_public: true, cyclus_name: 'Zomer' },
+      ],
+      bookings: [
+        { slot_id: 's1', player_id: null, guest_player_id: 'G1', person_id: null, status: 'confirmed', payment_status: 'paid', paid_externally: null },
+      ],
+      guest_players: [{ id: 'G1', full_name: 'Plain Guest' }],
+    });
+    const d = await getCycleDetail('cy1');
+    expect(d.roster[0].hasLogin).toBe(false);
+  });
+
+  it('falls back to the primary-ref heuristic when the RPC has no has_login yet (pre-deploy congruence)', async () => {
+    setMockData(
+      {
+        cycles: [],
+        availability_slots: [
+          { id: 's1', cyclus_id: 'cy1', start_time: '2026-07-06T09:00:00Z', end_time: '2026-07-06T10:00:00Z', trainer_id: 'tr1', max_participants: 4, is_public: true, cyclus_name: 'Zomer' },
+        ],
+        bookings: [
+          { slot_id: 's1', player_id: 'PA', guest_player_id: null, person_id: null, status: 'confirmed', payment_status: 'paid', paid_externally: null },
+          { slot_id: 's1', player_id: null, guest_player_id: 'G1', person_id: null, status: 'confirmed', payment_status: 'paid', paid_externally: null },
+        ],
+      },
+      {
+        // the OLD deployed function shape: names only, no has_login column
+        get_cycle_roster_names: () => ({
+          data: [
+            { id: 'PA', full_name: 'Registered' },
+            { id: 'G1', full_name: 'Guest' },
+          ],
+          error: null,
+        }),
+      },
+    );
+    const d = await getCycleDetail('cy1');
+    const reg = d.roster.find((r) => r.playerId === 'PA')!;
+    const guest = d.roster.find((r) => r.guestPlayerId === 'G1')!;
+    expect(reg.hasLogin).toBe(true);   // profile-primary → old badge rule (no badge)
+    expect(guest.hasLogin).toBe(false); // guest-primary → old badge rule (badge)
   });
 });

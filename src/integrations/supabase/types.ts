@@ -8738,6 +8738,7 @@ export type Database = {
         Args: { _cycle_id: string }
         Returns: {
           full_name: string
+          has_login: boolean
           id: string
         }[]
       }
