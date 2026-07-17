@@ -642,7 +642,16 @@ billed. Fixed exactly like the 3.3-attendance guard: inbound `v_person_id` → N
 `is_guest_split_frozen(guest)` (collapses to pre-3.4 per-key), and the person arm also excludes a
 sibling invoice addressed to a frozen guest (`is_guest_split_frozen(NULL)`=false so profiles/
 profile-addressed siblings are unaffected). +3 pins, mutation-checked (the 2 freeze pins fail on the
-pre-freeze migration). **SECURITY (external audit P1, folded in): locked the RPC to service_role
+pre-freeze migration). **FAM-02 dual-key follow-up (audit round 3, folded in): re-derived the WHOLE
+recheck arm-set from the FAM-02 recipient rule (a dual-keyed row belongs to the GUEST).** Freezing
+`v_person_id` alone wasn't enough for a dual-key payload (reachable — auto-create-invoice passes both
+keys from `bookings[0]`): P1-6's bare profile arm still deduped a frozen dual-key create onto the other
+human's profile invoice. Final 3 arms = A pure-profile (`v_guest_player_id IS NULL AND i.guest_player_id
+IS NULL` on both sides) | B guest-recipient (`v_guest_player_id IS NOT NULL AND i.guest_player_id =
+v_guest_player_id` — fires for guest-only AND dual-key, keeps the double-bill guard alive for a frozen
+dual-key recipient, freeze-safe by construction) | C person cross-key (freeze-guarded both sides).
++3 dual-key pins, each mutation-checked. Lesson: person-keying a predicate = re-derive the whole
+arm-set, don't narrow one arm (narrowing A silently broke B's coverage → a double-insert). **SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
 calls it with the service-role client (`requireUser()` hands every caller a service client), so the
