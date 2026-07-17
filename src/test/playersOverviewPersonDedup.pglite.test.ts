@@ -109,7 +109,7 @@ beforeAll(async () => {
       has_trained boolean, preferred_location_id uuid, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.persons (
       id uuid PRIMARY KEY, full_name text, email text, phone text, birth_date date,
-      skill_rating numeric, rating_system text,
+      skill_rating numeric, rating_system text, user_id uuid,
       billing_business_name text, billing_address text, billing_btw_number text);
     CREATE TABLE public.person_links (person_id uuid, profile_id uuid, guest_player_id uuid);
     CREATE TABLE public.person_merge_review (
@@ -189,8 +189,8 @@ beforeAll(async () => {
       VALUES ('${GA}', '${ACADEMY}', 'Bram van laarhoven', 'bram@x.nl', 6.1, 'guest-side note', 'roster', true);
     INSERT INTO public.profiles (id, full_name, email, skill_rating)
       VALUES ('${P1}', 'Bram Van Laarhoven', 'bram@x.nl', 6.5);
-    INSERT INTO public.persons (id, full_name, email, skill_rating)
-      VALUES ('${PERSON1}', 'Bram Van Laarhoven', 'bram@x.nl', 6.5);
+    INSERT INTO public.persons (id, full_name, email, skill_rating, user_id)
+      VALUES ('${PERSON1}', 'Bram Van Laarhoven', 'bram@x.nl', 6.5, '${P1}');
     INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PERSON1}', '${P1}');
     INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON1}', '${GA}');
     -- the guest seat (dual-keyed, as the email-linker leaves it) + a pure-profile booking
@@ -202,13 +202,14 @@ beforeAll(async () => {
     INSERT INTO public.guest_players (id, academy_profile_id, full_name, email)
       VALUES ('${GB}', '${ACADEMY}', 'Plain Guest', 'gb@x.nl');
     INSERT INTO public.profiles (id, full_name, email) VALUES ('${P2}', 'Plain Registered', 'p2@x.nl');
+    INSERT INTO public.persons (id, full_name, user_id) VALUES ('${P2}', 'Plain Registered', '${P2}'); -- profile-person has a login
     INSERT INTO public.bookings (slot_id, player_id, status) VALUES ('${SLOT1}', '${P2}', 'confirmed');
 
     -- split-frozen pair: GC linked to P3's person but a review is pending
     INSERT INTO public.guest_players (id, academy_profile_id, full_name, email)
       VALUES ('${GC}', '${ACADEMY}', 'Frozen Guest', 'family@x.nl');
     INSERT INTO public.profiles (id, full_name, email) VALUES ('${P3}', 'Frozen Profile', 'family@x.nl');
-    INSERT INTO public.persons (id, full_name, email) VALUES ('${PERSON3}', 'Frozen Profile', 'family@x.nl');
+    INSERT INTO public.persons (id, full_name, email, user_id) VALUES ('${PERSON3}', 'Frozen Profile', 'family@x.nl', '${P3}');
     INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PERSON3}', '${P3}');
     INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSON3}', '${GC}');
     INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id)
@@ -222,6 +223,7 @@ beforeAll(async () => {
     INSERT INTO public.guest_players (id, academy_profile_id, full_name, email)
       VALUES ('${GF}', '${ACADEMY}', 'Child Guest', 'parent@x.nl');
     INSERT INTO public.profiles (id, full_name, email) VALUES ('${P5}', 'Parent Profile', 'parent@x.nl');
+    INSERT INTO public.persons (id, full_name, user_id) VALUES ('${P5}', 'Parent Profile', '${P5}');
     INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status)
       VALUES ('${SLOT1}', '${P5}', '${GF}', 'confirmed');
 
@@ -237,10 +239,15 @@ beforeAll(async () => {
   `);
 
   // The migration under test — REAL file, only top-level GRANT/REVOKE stripped.
-  await db.exec(
-    readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260827100000_phase32_players_overview_person_dedup.sql'), 'utf8')
-      .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n'),
-  );
+  for (const f of [
+    '20260827100000_phase32_players_overview_person_dedup.sql',
+    '20260901110000_phase33e_overview_type_has_login.sql', // 3.3e: player_type = person has-login
+  ]) {
+    await db.exec(
+      readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8')
+        .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n'),
+    );
+  }
 });
 
 describe('get_players_overview — one row per person (Phase 3.2)', () => {
@@ -270,6 +277,32 @@ describe('get_players_overview — one row per person (Phase 3.2)', () => {
     expect(p2!.person_id).toBe(P2);
     expect(p2!.player_type).toBe('registered');
     expect(p2!.guest_player_id).toBeNull();
+  });
+
+  it("player_type = person LOGIN (3.3e): a login holder who only attended as a GUEST reads 'registered'", async () => {
+    // PL has a login but NO in-scope player_id booking — only a guest seat (GL). Under the old
+    // 'profile side in scope' rule this showed 'guest' (the owner-reported mislabel); now it's
+    // 'registered' because the PERSON has an account. A row can be 'registered' with profile_id NULL.
+    const PL = '80000000-0000-0000-0000-000000000001';
+    const GL = '80000000-0000-0000-0000-000000000002';
+    await db.exec(`
+      INSERT INTO public.profiles (id, full_name, email) VALUES ('${PL}', 'Login No Selfbook', 'pl@x.nl');
+      INSERT INTO public.persons (id, full_name, user_id) VALUES ('${PL}', 'Login No Selfbook', '${PL}');
+      INSERT INTO public.guest_players (id, academy_profile_id, full_name, email)
+        VALUES ('${GL}', '${ACADEMY}', 'Login No Selfbook', 'pl@x.nl');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PL}', '${PL}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PL}', '${GL}');
+      INSERT INTO public.bookings (slot_id, guest_player_id, person_id, status)
+        VALUES ('${SLOT1}', '${GL}', '${PL}', 'confirmed');
+    `);
+    const row = (await overview(MGR_USER)).find((r) => r.person_id === PL)!;
+    expect(row.player_type).toBe('registered'); // person has a login, though only guest-seated
+    expect(row.player_key).toBe(`g_${GL}`);      // still guest-preferred key
+    await db.exec(`DELETE FROM public.bookings WHERE guest_player_id = '${GL}';
+                   DELETE FROM public.person_links WHERE person_id = '${PL}';
+                   DELETE FROM public.persons WHERE id = '${PL}';
+                   DELETE FROM public.guest_players WHERE id = '${GL}';
+                   DELETE FROM public.profiles WHERE id = '${PL}';`);
   });
 
   it('a SPLIT-FROZEN pair stays TWO rows, the guest as its own person with its own name', async () => {
@@ -498,7 +531,7 @@ describe('get_players_overview — trainer scope', () => {
       INSERT INTO public.guest_players (id, trainer_id, full_name, email)
         VALUES ('${TGUEST}', '${TR1}', 'Trainer Guest', 'tg@x.nl');
       INSERT INTO public.profiles (id, full_name, email) VALUES ('${TP}', 'Trainer Registered', 'tp@x.nl');
-      INSERT INTO public.persons (id, full_name, email) VALUES ('${TP}', 'Trainer Registered', 'tp@x.nl');
+      INSERT INTO public.persons (id, full_name, email, user_id) VALUES ('${TP}', 'Trainer Registered', 'tp@x.nl', '${TP}');
       INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${TP}', '${TGUEST}');
       INSERT INTO public.person_links (person_id, profile_id) VALUES ('${TP}', '${TP}');
       INSERT INTO public.bookings (slot_id, player_id, status) VALUES ('${SLOT1}', '${TP}', 'confirmed');
