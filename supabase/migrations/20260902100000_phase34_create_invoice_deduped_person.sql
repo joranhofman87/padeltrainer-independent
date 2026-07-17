@@ -23,11 +23,24 @@
 --   already bills the SAME bookings — it never merges distinct charges, never
 --   changes a total, and never divides. Amount math is untouched.
 --
+-- SPLIT-FREEZE (external audit P2, folded in — the doctrine applied on every person
+--   arm since 3.1): a guest with a pending twin_detached_needs_split /
+--   merged_guest_email_moved review may be a DIFFERENT human, so the person arm must
+--   NOT act on its link. Both the inbound resolution AND the candidate sibling are
+--   gated by is_guest_split_frozen(): a frozen inbound guest resolves v_person_id to
+--   NULL (per-key create, never merged onto the other human's invoice), and a sibling
+--   invoice addressed to a frozen guest is excluded from the person match. Without
+--   this, a frozen guest's create would dedup onto the other human's invoice and
+--   auto-create-invoice's syncDedupedInvoiceToPaid could flip that invoice to paid
+--   while the guest is silently never billed.
+--
 -- CONGRUENT DEGRADATION: an unlinked / pre-backfill recipient resolves v_person_id
 --   to NULL, the lock key falls back to the exact pre-3.4 per-key string, and the
 --   person arm is inert (v_person_id IS NOT NULL is false) — behaviour is
---   byte-identical to P1-6. An unstamped existing invoice (person_id NULL) is still
---   caught by the retained per-key arms. Never weaker than today.
+--   byte-identical to P1-6. A split-frozen guest ALSO resolves to NULL, so it too
+--   degrades to the exact pre-3.4 per-key create. An unstamped existing invoice
+--   (person_id NULL) is still caught by the retained per-key arms. Never weaker than
+--   today — in ANY case (unlinked, frozen, or unstamped).
 --
 -- NOT IN THIS PHASE (amount-affecting divisors, deferred to an explicit money-amount
 --   phase per the owner's "amounts unchanged" bar):
@@ -59,10 +72,24 @@ BEGIN
   -- stamp_person_id_invoices). person_links.profile_id / .guest_player_id are both
   -- UNIQUE, so each subquery yields at most one row. NULL = unlinked recipient ->
   -- lock + recheck degrade to the exact pre-3.4 per-key behaviour.
-  v_person_id := COALESCE(
-    (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v_guest_player_id),
-    (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = v_player_id)
-  );
+  --
+  -- SPLIT-FREEZE (mandatory on EVERY person arm, per the 3.1+ doctrine): while a
+  -- twin_detached_needs_split / merged_guest_email_moved review is pending, the
+  -- guest's person link may describe a DIFFERENT human, so nothing may act on it —
+  -- the guest keys as its OWN person. If the inbound guest is frozen we resolve
+  -- v_person_id to NULL, collapsing the lock + recheck back to the exact pre-3.4
+  -- per-key behaviour (a per-key invoice, never merged onto the sibling person's
+  -- invoice). Without this the person arm would dedup a frozen guest's create onto
+  -- the other human's invoice and auto-create-invoice's syncDedupedInvoiceToPaid
+  -- could flip that human's invoice to paid, while the guest is never billed.
+  -- is_guest_split_frozen(NULL) is false, so a pure-profile recipient is unaffected.
+  v_person_id := CASE
+    WHEN public.is_guest_split_frozen(v_guest_player_id) THEN NULL
+    ELSE COALESCE(
+      (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v_guest_player_id),
+      (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = v_player_id)
+    )
+  END;
 
   -- Person-keyed lock (falls back to the old per-key string when unlinked) so that
   -- cross-key concurrent creates for ONE person serialize on the same lock.
@@ -74,8 +101,13 @@ BEGIN
     WHERE i.trainer_id = v_trainer_id AND i.status <> 'cancelled' AND i.booking_ids && v_booking_ids
       AND ((v_player_id IS NOT NULL AND i.player_id = v_player_id)
         OR (v_player_id IS NULL AND v_guest_player_id IS NOT NULL AND i.guest_player_id = v_guest_player_id)
-        -- Phase 3.4: sibling under the person's OTHER key, same bookings.
-        OR (v_person_id IS NOT NULL AND i.person_id = v_person_id))
+        -- Phase 3.4: sibling under the person's OTHER key, same bookings. Freeze
+        -- applies to the candidate ROW too (not just the caller): a sibling invoice
+        -- addressed to a split-frozen guest may belong to a DIFFERENT human, so it
+        -- is excluded from the person match. is_guest_split_frozen(NULL) is false, so
+        -- a profile-addressed sibling still matches.
+        OR (v_person_id IS NOT NULL AND i.person_id = v_person_id
+            AND NOT public.is_guest_split_frozen(i.guest_player_id)))
     ORDER BY i.created_at ASC LIMIT 1;
     IF FOUND THEN
       RETURN jsonb_build_object('id', v_winner.id, 'invoice_number', v_winner.invoice_number,

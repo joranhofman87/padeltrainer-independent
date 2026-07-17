@@ -137,12 +137,35 @@ beforeAll(async () => {
     CREATE TRIGGER trg_stamp_person_id_invoices
       BEFORE INSERT OR UPDATE OF player_id, guest_player_id, person_id
       ON public.invoices FOR EACH ROW EXECUTE FUNCTION public.stamp_person_id_invoices();
+    -- Split-freeze dependency (deployed in 20260827100000; the 3.4 migration calls it,
+    -- so it must exist before that migration loads). Faithful copy incl. the
+    -- NULL-guest short-circuit that makes is_guest_split_frozen(NULL) = false.
+    CREATE TABLE public.person_merge_review (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      guest_player_id uuid,
+      status text NOT NULL,
+      kind text NOT NULL
+    );
+    CREATE FUNCTION public.is_guest_split_frozen(_guest_player_id uuid)
+    RETURNS boolean LANGUAGE sql STABLE AS $$
+      SELECT _guest_player_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.person_merge_review r
+        WHERE r.guest_player_id = _guest_player_id
+          AND r.status = 'pending'
+          AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')
+      );
+    $$;
   `);
   await db.exec(readMigrations()); // the REAL migration files — a hotfix to either fails this suite
 });
 
+// Freeze a guest with a pending split review (the exact predicate is_guest_split_frozen checks).
+const freezeGuest = async (guest: string, kind = 'merged_guest_email_moved'): Promise<void> => {
+  await db.query(`INSERT INTO public.person_merge_review(guest_player_id, status, kind) VALUES ($1, 'pending', $2)`, [guest, kind]);
+};
+
 beforeEach(async () => {
-  await db.exec(`DELETE FROM public.invoices; DELETE FROM public.person_links; DELETE FROM public.persons;`);
+  await db.exec(`DELETE FROM public.invoices; DELETE FROM public.person_links; DELETE FROM public.persons; DELETE FROM public.person_merge_review;`);
 });
 
 describe('create_invoice_deduped', () => {
@@ -221,6 +244,50 @@ describe('create_invoice_deduped', () => {
       const second = await createDeduped(basePayload('INV-2', PROFILE_P, [BK_B]));
       expect(second.deduped).toBe(false);
       expect(await activeCount()).toBe(2);
+    });
+
+    describe('split-freeze (a pending twin/email-move review keys the guest as its own person)', () => {
+      it('FROZEN inbound guest is NOT merged onto the profile-person invoice — creates its own (pre-3.4 per-key)', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        // Invoice exists for the profile side (person-stamped X).
+        const first = await createDeduped(basePayload('INV-1', PROFILE_P, [BK_A]));
+        expect(first.deduped).toBe(false);
+        // G is frozen (pending split review) → its link to X is suspect.
+        await freezeGuest(GUEST_G);
+        // A create for the frozen guest, overlapping booking, must NOT dedup onto
+        // X's invoice (which could flip a different human's invoice to paid).
+        const second = await createDeduped(guestPayload('INV-2', GUEST_G, [BK_A, BK_B]));
+        expect(second.deduped).toBe(false);
+        expect(await activeCount()).toBe(2);
+      });
+
+      it('FROZEN sibling invoice is skipped by the person arm — a non-frozen caller does not merge onto it', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        // Existing invoice addressed to guest G (person-stamped X); then G is frozen.
+        const first = await createDeduped(guestPayload('INV-1', GUEST_G, [BK_A]));
+        expect(first.deduped).toBe(false);
+        await freezeGuest(GUEST_G);
+        // Non-frozen caller (profile P, person X). The person arm WOULD match X's
+        // sibling, but that sibling is addressed to the frozen guest → excluded.
+        const second = await createDeduped(basePayload('INV-2', PROFILE_P, [BK_A, BK_B]));
+        expect(second.deduped).toBe(false);
+        expect(await activeCount()).toBe(2);
+      });
+
+      it('once the review is resolved (no longer pending) the cross-key dedup works again', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        const first = await createDeduped(basePayload('INV-1', PROFILE_P, [BK_A]));
+        await freezeGuest(GUEST_G);
+        await db.query(`UPDATE public.person_merge_review SET status = 'resolved' WHERE guest_player_id = $1`, [GUEST_G]);
+        // No longer frozen → the guest resolves to X and dedups onto the sibling.
+        const second = await createDeduped(guestPayload('INV-2', GUEST_G, [BK_A, BK_B]));
+        expect(second.deduped).toBe(true);
+        expect(second.id).toBe(first.id);
+        expect(await activeCount()).toBe(1);
+      });
     });
   });
 });
