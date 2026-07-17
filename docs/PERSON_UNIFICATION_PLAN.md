@@ -526,10 +526,13 @@ One domain per PR, each with tests + live-verify, in dependency order:
    uncertain-identity guests from BOTH arms. The union is a strict SUPERSET of prior behavior — no
    eligibility lost, person-merged guests gain coverage; the freeze is the one deliberate
    subtraction (a pending-split guest no longer grants eligibility — correct: identity uncertain).
-   Function is service_role-only (not in client types → no drift); signature unchanged. The client
-   twin-hint (CycleDetailView.resolvePersonToGuest) was already person-sourced in 3.2. **Twin/link
-   column RETIREMENT stays for Phase 4** (drop twin_of_profile_id/linked_profile_id once the review
-   queue is drained and nothing reads them).
+   No types-drift because the SIGNATURE is unchanged (NOT because of the grant — Supabase generates
+   types for every function regardless of grants, so `can_book_member_window` does appear in
+   types.ts; the service_role lock is a runtime guard, not a type-gen exclusion). The function is
+   service_role-only at runtime; clients only ever call the `can_current_user_book_member_window`
+   wrapper. The client twin-hint (CycleDetailView.resolvePersonToGuest) was already person-sourced
+   in 3.2. **Twin/link column RETIREMENT stays for Phase 4** (drop twin_of_profile_id/
+   linked_profile_id once the review queue is drained and nothing reads them).
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;
    golden + mock-Mollie e2e must stay green.
 5. **RLS + helpers** (`get_user_academy_ids`, `is_player_of_trainer`, the 8 guest policies, 48 fns) →
