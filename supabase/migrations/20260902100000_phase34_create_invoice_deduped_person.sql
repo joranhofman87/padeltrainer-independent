@@ -105,11 +105,18 @@ BEGIN
 END; $$;
 
 COMMENT ON FUNCTION public.create_invoice_deduped(jsonb) IS
-  'P1-6 + Phase 3.4: atomic per-(trainer,PERSON) invoice create. Advisory-locked overlap dedup + insert in one txn; the lock + overlap recheck are person-keyed (guest-first via person_links) so a merged person cannot be double-billed across their profile/guest keys, degrading to per-key when unlinked. Auth-gated caller only (auto-create-invoice runs the caller ownership checks); not for anon.';
+  'P1-6 + Phase 3.4: atomic per-(trainer,PERSON) invoice create. Advisory-locked overlap dedup + insert in one txn; the lock + overlap recheck are person-keyed (guest-first via person_links) so a merged person cannot be double-billed across their profile/guest keys, degrading to per-key when unlinked. SERVICE-ROLE ONLY: the edge fn auto-create-invoice is the authorization boundary (validates admin / slot trainer / academy manager, else 403) and then calls this with the service-role client; no client/authenticated caller may invoke it directly.';
 
--- SECURITY DEFINER: re-assert the P1-6 grants (CREATE OR REPLACE preserves them,
--- re-emitting is idempotent). authenticated MUST keep EXECUTE (auto-create-invoice
--- calls it as the trainer/academy user); cron/service paths use service_role.
+-- SECURITY (Phase 3.4, audit P1): this SECURITY DEFINER function INSERTs into
+-- invoices with NO internal caller-ownership check — auto-create-invoice is the
+-- authorization boundary (admin / the slot's trainer / the academy manager, else
+-- 403) and only THEN calls this RPC. requireUser() (_shared/auth.ts) hands EVERY
+-- caller a service-role client, so the sole caller does NOT need (and never used)
+-- the `authenticated` grant. The pre-3.4 grant to `authenticated` let ANY logged-in
+-- user call this RPC directly via PostgREST and mint an arbitrary invoice (any
+-- trainer_id / amount / status), bypassing those checks — a money-path IDOR. Lock
+-- it to service_role only (mirrors the can_book_member_window service-role lock).
 REVOKE ALL ON FUNCTION public.create_invoice_deduped(jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.create_invoice_deduped(jsonb) FROM anon;
-GRANT EXECUTE ON FUNCTION public.create_invoice_deduped(jsonb) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.create_invoice_deduped(jsonb) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.create_invoice_deduped(jsonb) TO service_role;

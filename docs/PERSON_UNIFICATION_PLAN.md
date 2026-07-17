@@ -616,8 +616,10 @@ players genuinely accountless ('almost all guest' is correct), only 6 mislabelle
 
 **3.4 (migration `20260902100000`): person-key the invoice double-bill guard — AMOUNT-NEUTRAL.**
 Resolves open decision **P-C = identity-only** (§7): dedup/grouping only, amount math untouched.
-`create_invoice_deduped` (the atomic P1-6 per-recipient create guard; the sole invoice-INSERT path,
-called only by `auto-create-invoice`) keyed its advisory lock + overlap recheck on the OLD-WORLD ref
+`create_invoice_deduped` (the atomic P1-6 per-recipient create guard; the auto-create-invoice dedup
+insert path — NOT the only way an invoice row is inserted: event-registration, public-rebook, and the
+manual custom-invoice flows insert directly, out of 3.4's scope) keyed its advisory lock + overlap
+recheck on the OLD-WORLD ref
 (player_id XOR guest_player_id). After unification a person can hold BOTH a profile ref and a guest
 ref, so two creates for the SAME bookings under the two keys took DIFFERENT locks and the per-key
 recheck missed the sibling → a SECOND active invoice = cross-key double charge (P1-6 closed only
@@ -630,7 +632,14 @@ bookings — never merges distinct charges, never divides, never restates a tota
 degradation: an unlinked / pre-backfill recipient → v_person_id NULL → exact pre-3.4 per-key
 behaviour; unstamped invoices still caught by the retained per-key arms. CREATE OR REPLACE (signature
 unchanged → no types.ts drift). Adversarial verify: 0 confirmed findings (3 P3s refuted as
-congruent/self-healing). **Deferred (amount-affecting divisors, need an explicit money-amount
+congruent/self-healing). **SECURITY (external audit P1, folded in): locked the RPC to service_role
+only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
+`auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
+calls it with the service-role client (`requireUser()` hands every caller a service client), so the
+pre-3.4 `GRANT … TO authenticated` was pure attack surface — any logged-in user could mint an
+arbitrary invoice directly via PostgREST. `REVOKE … FROM authenticated`; `GRANT … TO service_role`
+(mirrors the `can_book_member_window` service-role lock). No caller breaks (verified sole caller +
+service client). **Deferred (amount-affecting divisors, need an explicit money-amount
 phase):** `split-invoice`'s `Object.keys(playerBookings).length` (that grouping count IS the split
 divisor N = `floor(total/N)`) and `_shared/cycle-commitment-invoicing.ts` `group.size` — both are
 recipient-COUNT math, not recipient dedup. The client `groupChargeableBookingsByRecipient` add-player
