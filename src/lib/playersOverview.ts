@@ -41,6 +41,9 @@ export interface UnifiedPlayer {
   profile_id?: string | null;
   has_overdue_payment?: boolean;
   email_undeliverable?: boolean;
+  /** Person-unification key (Phase 3.2): the row IS the person — guest + profile sides of a
+   * merged human arrive as ONE row whose guest_player_id/profile_id are both set. */
+  person_id?: string | null;
   // Academy-only (undefined in trainer mode):
   trainer_id?: string;
   trainer_ids?: string[];
@@ -79,6 +82,7 @@ export function mapPlayersOverviewRow(row: PlayersOverviewRow, opts: MapPlayerOp
     internal_notes: row.academy_notes ?? '',
     guest_player_id: row.guest_player_id,
     profile_id: row.profile_id,
+    person_id: row.person_id,
     has_overdue_payment: row.has_overdue_payment,
     email_undeliverable: row.email_undeliverable,
   };
@@ -277,11 +281,14 @@ export async function fetchBookableGuestPlayers(
  * guest twin at the call site before booking; the money chain stays guest-keyed.
  */
 export interface BookablePerson {
-  /** `g_<guestPlayerId>` for a guest, `p_<profileId>` for a registered player. Stable picker key. */
+  /** `g_<guestPlayerId>` (guest-preferred) or `p_<profileId>`. Stable picker key. */
   comboboxId: string;
   guestPlayerId: string | null;
-  /** Set only on registered (`p_`) rows; FAM-02: guest rows carry profile_id NULL. */
+  /** The person's profile, when they have a login. Since Phase 3.2 a MERGED person carries BOTH
+   * ids on one row (the overview dedups server-side); booking still prefers the guest side. */
   profileId: string | null;
+  /** Person-unification key — one picker row per person since Phase 3.2. */
+  personId: string | null;
   full_name: string;
   email: string;
   phone: string;
@@ -301,12 +308,16 @@ export async function fetchBookablePersons(scope: PlayerScope): Promise<Bookable
   return rows
     .filter((row) => Boolean(row.guest_player_id) || Boolean(row.profile_id))
     .map((row) => {
+      // Since Phase 3.2 the overview is ONE ROW PER PERSON — a merged human carries both ids on
+      // one row, so the picker no longer shows them twice. comboboxId stays guest-preferred (the
+      // booking pipeline books by guest_player_id where one exists).
       const guestPlayerId = row.guest_player_id ?? null;
-      const profileId = guestPlayerId ? null : (row.profile_id ?? null);
+      const profileId = row.profile_id ?? null;
       return {
         comboboxId: guestPlayerId ? `g_${guestPlayerId}` : `p_${profileId}`,
         guestPlayerId,
         profileId,
+        personId: row.person_id ?? null,
         full_name: row.full_name,
         email: row.email,
         phone: row.phone,

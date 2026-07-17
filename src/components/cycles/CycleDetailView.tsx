@@ -881,6 +881,7 @@ export function CycleDetailView({
                                 value={changeSelectedPerson?.comboboxId ?? ''}
                                 onSelect={setChangeSelectedPerson}
                                 excludePersonKeys={excludeKeys}
+                                excludePersonIds={p.personId ? [p.personId] : []}
                                 disabled={rosterBusy}
                                 namespace={namespace}
                               />
