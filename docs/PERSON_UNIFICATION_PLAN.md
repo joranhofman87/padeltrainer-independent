@@ -591,9 +591,10 @@ One domain per PR, each with tests + live-verify, in dependency order:
   global + memberships (reuse `academy_player_metadata`).
 - **P-B (Phase 2):** disposition of the 76 no-email guests and 28 shared-email families after the
   review report — merge, keep, or manual case-by-case.
-- **P-C (Phase 3.4):** does unification let us drop the guest-keyed assumption in pricing/invoicing,
-  or do we keep person_id purely as the identity key and leave amount math untouched? (Recommended:
-  identity-only; do not touch amount math in the same PRs.)
+- **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math
+  UNCHANGED". 3.4 (migration `20260902100000`) person-keys `create_invoice_deduped`'s double-bill
+  guard and nothing else. The two headcount/recipient-count divisors (`split-invoice` N,
+  `cycle-commitment` `group.size`) are deferred to a future explicit money-amount phase.
 
 ## 8. First actionable step
 Phase 0 (consistent person provisioning on the roster/add paths) OR Phase 1 (Expand) — both are
@@ -612,3 +613,97 @@ PERSON has a login (persons.user_id of b_person_id); a 'registered' row may carr
 on guest/profile ids independently, so nothing downstream breaks. CREATE OR REPLACE (signature
 unchanged → no drift), everything else verbatim from 20260827100000. Diagnosed in prod: 375/419
 players genuinely accountless ('almost all guest' is correct), only 6 mislabelled → now 'registered'.
+
+**3.4 (migration `20260902100000`): person-key the invoice double-bill guard — AMOUNT-NEUTRAL.**
+Resolves open decision **P-C = identity-only** (§7): dedup/grouping only, amount math untouched.
+`create_invoice_deduped` (the atomic P1-6 per-recipient create guard; the auto-create-invoice dedup
+insert path — NOT the only way an invoice row is inserted: event-registration, public-rebook, and the
+manual custom-invoice flows insert directly, out of 3.4's scope) keyed its advisory lock + overlap
+recheck on the OLD-WORLD ref
+(player_id XOR guest_player_id). After unification a person can hold BOTH a profile ref and a guest
+ref, so two creates for the SAME bookings under the two keys took DIFFERENT locks and the per-key
+recheck missed the sibling → a SECOND active invoice = cross-key double charge (P1-6 closed only
+same-key concurrency). Fix: resolve the recipient to a PERSON guest-first (byte-identical to
+`stamp_person_id_invoices`) and (a) key the advisory lock on the person so cross-key concurrent
+creates serialize on ONE lock, (b) add a person arm `i.person_id = v_person_id` to the overlap
+recheck so the serialized second create FINDS + returns the sibling (deduped=true). The
+booking-overlap gate is UNCHANGED, so it only ever returns a pre-existing invoice billing the SAME
+bookings — never merges distinct charges, never divides, never restates a total. Congruent
+degradation: an unlinked / pre-backfill recipient → v_person_id NULL → exact pre-3.4 per-key
+behaviour; unstamped invoices still caught by the retained per-key arms. CREATE OR REPLACE (signature
+unchanged → no types.ts drift). Adversarial verify: 0 confirmed findings (3 P3s refuted as
+congruent/self-healing). **SPLIT-FREEZE (external audit P2, folded in — a real money-path
+regression my verify + one auditor MISSED): the 3.4 person arm had no freeze handling.** While a
+`twin_detached_needs_split`/`merged_guest_email_moved` review is pending the guest's link may be a
+DIFFERENT human, so nothing may act on it (doctrine since 3.1). The dedup did: a frozen guest's create
+resolved to the sibling person and deduped onto that human's invoice → auto-create-invoice's
+`syncDedupedInvoiceToPaid` (M-27) could flip the other human's invoice to paid AND the guest was never
+billed. Fixed exactly like the 3.3-attendance guard: inbound `v_person_id` → NULL when
+`is_guest_split_frozen(guest)` (collapses to pre-3.4 per-key), and the person arm also excludes a
+sibling invoice addressed to a frozen guest (`is_guest_split_frozen(NULL)`=false so profiles/
+profile-addressed siblings are unaffected). +3 pins, mutation-checked (the 2 freeze pins fail on the
+pre-freeze migration). **FAM-02 dual-key follow-up (audit round 3, folded in): re-derived the WHOLE
+recheck arm-set from the FAM-02 recipient rule (a dual-keyed row belongs to the GUEST).** Freezing
+`v_person_id` alone wasn't enough for a dual-key payload (reachable — auto-create-invoice passes both
+keys from `bookings[0]`): P1-6's bare profile arm still deduped a frozen dual-key create onto the other
+human's profile invoice. Final 3 arms = A pure-profile (`v_guest_player_id IS NULL AND i.guest_player_id
+IS NULL` on both sides) | B guest-recipient (`v_guest_player_id IS NOT NULL AND i.guest_player_id =
+v_guest_player_id` — fires for guest-only AND dual-key, keeps the double-bill guard alive for a frozen
+dual-key recipient, freeze-safe by construction) | C person cross-key (freeze-guarded both sides).
++3 dual-key pins, each mutation-checked. Lesson: person-keying a predicate = re-derive the whole
+arm-set, don't narrow one arm (narrowing A silently broke B's coverage → a double-insert).
+**Lock-key follow-up (audit round 4): the advisory lock must use the SAME guest-first recipient rule
+as the recheck.** It was profile-first (`COALESCE(v_person_id, v_player_id, v_guest_player_id)`), so a
+frozen/unlinked dual-key payload locked on the profile while a guest-only create for the same guest
+locked on the guest — the two didn't serialize, and since arm B now cross-matches them the P1-6
+double-bill race was reopened for mixed shapes. Lock key is now guest-first (`COALESCE(v_person_id,
+v_guest_player_id, v_player_id)`) = the recipient rule, so every same-recipient shape serializes on one
+lock. +2 mixed-shape recheck pins (lock serialization isn't exercisable in single-connection PGlite).
+Four audit rounds on this one migration; the lock↔recheck-key coherence is the general lesson.
+**Freeze-transition follow-up (round 5, my own verify): the lock must use a FREEZE-INDEPENDENT
+recipient id.** Arm B is freeze-blind, but the lock followed the freeze-gated `v_person_id`, so a
+twin-split/email-move review committing between two concurrent same-guest creates split them onto
+`trainer:person` vs `trainer:guest` → double-insert. Fixed by keying the lock on a separate raw
+`v_lock_person_id` (no freeze gate); the recheck keeps the freeze-gated `v_person_id`. The lock now
+only ever OVER-serializes (harmless), never under-serializes. Residual (~P4, accepted): a
+`person_links` mutation in the same window — advisory-locked in the merge paths, far rarer, resyncs
+via rederive; tracked for a broader freeze/lock-coherence pass. DOCTRINE: when a guard pairs an
+advisory lock with a freeze-gated recheck, the lock key must be the freeze-INDEPENDENT recipient id.
+**Candidate-side follow-up (round 7, Codex): the person arm must be guest-exclusive on BOTH sides.**
+The inbound was guest-exclusive (round 6) but arm C still trusted the candidate's stamped `i.person_id`
+(the stamp trigger COALESCEs guest→profile, so a dual-key-unlinked-guest invoice is stamped with the
+profile person). Fixed by resolving the candidate person guest-exclusively too. Inert in production —
+the single-shape-booking invariant means a pure-profile create can never share a booking with a
+dual-key invoice — so it changes no real dedup; it removes the stamp-trust asymmetry. Seven audit
+rounds total; the function is now provably sound under the single-shape-booking invariant. **Round 8
+(Codex): the RPC's SOLE CALLER had to be person-keyed too.** auto-create-invoice's pre-RPC JS
+fast-path + 23505 fallback were player-first, so a dual-key booking could dedup onto a profile invoice
+and RETURN before the hardened RPC ran. Fixed: dual-key recipients skip the fast-path (→ RPC
+authority); pure-profile fast-path == RPC arm A (`.is(guest_player_id, null)`), guest-only == arm B;
+the 23505 race-fallback is recipient-scoped GUEST-FIRST (round 9 — see below; round 8 first made it
+recipient-agnostic, which round 9 corrected). Verify proved the single-key fast-path match set is a
+strict SUBSET of the RPC's → never a wrong dedup/flip. DOCTRINE: hardening a dedup RPC is incomplete
+while a client/edge fast-path can short-circuit it — person-key the RPC AND every caller's
+pre-check/fallback (happy path AND error/23505 path).
+**Round 9 (Codex): the 23505 fallback must be recipient-scoped, not agnostic.** The legacy
+`uniq_invoice_active_player_bookings` index has predicate `player_id IS NOT NULL`, so it covers
+DUAL-KEY rows — a dual-key create for a pure-profile invoice's exact booking set raises 23505 after the
+RPC correctly refuses to dedup, and round 8's recipient-agnostic fallback then returned + paid-flipped
+that profile invoice. Fixed: the fallback scopes GUEST-FIRST (guest-bearing → `guest_player_id`;
+pure-profile → `player_id AND guest_player_id IS NULL`) via the shared `dedupRecipientMatch` helper; no
+same-recipient winner → throw + Slack alert (surface the shape-change inconsistency), never
+mis-attribute. The pglite harness now loads the legacy exact-set unique indexes (they were missing —
+CI was blind to this class) + a Deno unit test pins the guest-first helper.
+**SECURITY (external audit P1, folded in): locked the RPC to service_role
+only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
+`auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
+calls it with the service-role client (`requireUser()` hands every caller a service client), so the
+pre-3.4 `GRANT … TO authenticated` was pure attack surface — any logged-in user could mint an
+arbitrary invoice directly via PostgREST. `REVOKE … FROM authenticated`; `GRANT … TO service_role`
+(mirrors the `can_book_member_window` service-role lock). No caller breaks (verified sole caller +
+service client). **Deferred (amount-affecting divisors, need an explicit money-amount
+phase):** `split-invoice`'s `Object.keys(playerBookings).length` (that grouping count IS the split
+divisor N = `floor(total/N)`) and `_shared/cycle-commitment-invoicing.ts` `group.size` — both are
+recipient-COUNT math, not recipient dedup. The client `groupChargeableBookingsByRecipient` add-player
+partition is a per-operation single-key-per-person no-op (new bookings carry one key) fully
+backstopped by the atomic RPC guard.

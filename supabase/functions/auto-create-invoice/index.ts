@@ -11,6 +11,7 @@ import {
   splitAmongPlayersForInvoiceCreate,
 } from "../_shared/invoice-split-pricing.ts";
 import { resolveSplitDivisorFromSlots, shouldSkipExtrasForPaidExtrasBookings } from "../_shared/booking-pricing.ts";
+import { applyDedupRecipientScope, type RecipientScopableQuery } from "../_shared/invoice-dedupe-recipient.ts";
 
 const corsHeaders = sharedCors;
 
@@ -539,12 +540,24 @@ serve(async (req) => {
       logStep("Deduped invoice synced to paid", { invoiceId: existing.id });
     };
 
-    // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings
-    const recipientFilter = playerId
-      ? { player_id: playerId }
-      : guestPlayerId
-        ? { guest_player_id: guestPlayerId }
-        : null;
+    // Duplicate guard: check if an active invoice already exists for same trainer + recipient + bookings.
+    //
+    // DUAL-KEY recipients (both ids set) are DELIBERATELY skipped here and routed to
+    // create_invoice_deduped, the single authority. A dual-keyed row belongs to the GUEST
+    // (FAM-02) and may be split-frozen; only the RPC resolves that correctly (guest-exclusive,
+    // freeze-aware, candidate-side guarded). A player-first fast-path would dedup a guest-owned
+    // dual-key booking onto a PROFILE invoice and bypass every one of those protections.
+    // Single-key recipients (pure-profile OR guest-only) are unambiguous — this filter matches
+    // exactly the RPC's arm A / arm B (arm B is same-guest, freeze-blind, so a guest-only dedup
+    // is identical under freeze) — so keep the fast-path for them (it avoids an invoice-number
+    // gap on the common re-invoice dedup, which the RPC path cannot).
+    const recipientFilter = (playerId && guestPlayerId)
+      ? null
+      : playerId
+        ? { player_id: playerId }
+        : guestPlayerId
+          ? { guest_player_id: guestPlayerId }
+          : null;
 
     if (recipientFilter) {
       const dupeQuery = supabase
@@ -558,8 +571,13 @@ serve(async (req) => {
         .overlaps("booking_ids", bookingIds);
 
       if (recipientFilter.player_id) {
-        dupeQuery.eq("player_id", recipientFilter.player_id);
+        // PURE-profile candidate only (== RPC arm A): a dual-key invoice (player_id=P
+        // AND guest set) belongs to the GUEST, so a pure-profile create must not dedup
+        // onto it. Moot under the single-shape-booking invariant, but keeps this
+        // fast-path byte-equal to the RPC's arm A rather than broader.
+        dupeQuery.eq("player_id", recipientFilter.player_id).is("guest_player_id", null);
       } else if (recipientFilter.guest_player_id) {
+        // == RPC arm B: any active invoice on this guest key (guest-only OR dual-key).
         dupeQuery.eq("guest_player_id", recipientFilter.guest_player_id);
       }
 
@@ -750,8 +768,20 @@ serve(async (req) => {
           .eq("trainer_id", trainerId)
           .not("status", "eq", "cancelled")
           .overlaps("booking_ids", bookingIds);
-        if (playerId) dupeFetch.eq("player_id", playerId);
-        else if (guestPlayerId) dupeFetch.eq("guest_player_id", guestPlayerId);
+        // Recipient-scoped GUEST-FIRST — the SAME recipient rule as the RPC / the
+        // fast-path above (dual-key belongs to the guest). This must NOT be
+        // recipient-agnostic: the legacy uniq_invoice_active_player_bookings index
+        // covers dual-key rows (its predicate is only `player_id IS NOT NULL`), so a
+        // dual-key create can raise 23505 against a PROFILE invoice for the same exact
+        // booking set — an agnostic lookup would then return + syncToPaid that
+        // guest-owned booking onto the profile invoice the RPC deliberately refused.
+        // When the winner isn't the create's own recipient the collision is
+        // cross-recipient (a shape-change data inconsistency): no `winner` is found and
+        // we fall through to throw + Slack-alert rather than mis-attribute + paid-flip.
+        // Recipient scope is the shared, unit-tested guest-first helper. Cast to the
+        // minimal query shape — the supabase-js builder's own type is too deep to pass
+        // through a typed param (TS2589); it is mutated by reference in place.
+        applyDedupRecipientScope(dupeFetch as unknown as RecipientScopableQuery, playerId, guestPlayerId);
         // overlaps can match >1 row; take the first so maybeSingle never throws.
         const { data: winner } = await dupeFetch.limit(1).maybeSingle();
         if (winner) {
