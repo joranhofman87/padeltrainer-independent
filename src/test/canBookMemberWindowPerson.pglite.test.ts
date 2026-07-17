@@ -24,6 +24,12 @@ const LINKED = { p: 'a0000000-0000-0000-0000-000000000003', u: 'b0000000-0000-00
 const REG = { p: 'a0000000-0000-0000-0000-000000000004', u: 'b0000000-0000-0000-0000-000000000004' };    // cohort (clause b)
 const PRIO = { p: 'a0000000-0000-0000-0000-000000000005', u: 'b0000000-0000-0000-0000-000000000005' };   // priority list (clause c)
 const RANDOM = { p: 'a0000000-0000-0000-0000-000000000006', u: 'b0000000-0000-0000-0000-000000000006' };
+// EONLY: eligible ONLY via clause (e) — owns EGUEST (on the priority-guest list, NO claim in the round)
+const EONLY = { p: 'a0000000-0000-0000-0000-000000000007', u: 'b0000000-0000-0000-0000-000000000007', per: 'e0000000-0000-0000-0000-000000000007' };
+const EGUEST = '70000000-0000-0000-0000-000000000003';
+// OTHER: a DIFFERENT person entirely — must never gain eligibility from another person's guest
+const OTHER = { p: 'a0000000-0000-0000-0000-000000000008', u: 'b0000000-0000-0000-0000-000000000008', per: 'e0000000-0000-0000-0000-000000000008' };
+const NO_PROFILE_USER = 'b0000000-0000-0000-0000-0000000000ff'; // an auth uid with no profiles row
 
 const canBook = async (userId: string) =>
   (await db.query<{ ok: boolean }>(
@@ -59,17 +65,19 @@ beforeAll(async () => {
 
     INSERT INTO public.profiles (id, user_id) VALUES
       ('${MERGED.p}','${MERGED.u}'), ('${TWIN.p}','${TWIN.u}'), ('${LINKED.p}','${LINKED.u}'),
-      ('${REG.p}','${REG.u}'), ('${PRIO.p}','${PRIO.u}'), ('${RANDOM.p}','${RANDOM.u}');
+      ('${REG.p}','${REG.u}'), ('${PRIO.p}','${PRIO.u}'), ('${RANDOM.p}','${RANDOM.u}'),
+      ('${EONLY.p}','${EONLY.u}'), ('${OTHER.p}','${OTHER.u}');
     INSERT INTO public.cycles (id, settings) VALUES
       ('${CYCLE}', jsonb_build_object(
         'rebook_priority_people', jsonb_build_array('${PRIO.p}'),
-        'rebook_priority_guests', jsonb_build_array('${PGUEST}')));
+        'rebook_priority_guests', jsonb_build_array('${PGUEST}', '${EGUEST}')));
     INSERT INTO public.availability_slots (id, source_cycle_id, cyclus_id) VALUES ('${SLOT}', '${CYCLE}', '${CYCLE}');
 
     -- clause (d) guest with a claim: MERGED person owns it via person_links (NO twin/linked stamp)
     INSERT INTO public.guest_players (id) VALUES ('${GUEST}');
-    INSERT INTO public.persons (id) VALUES ('${MERGED.per}');
-    INSERT INTO public.person_links (person_id, profile_id) VALUES ('${MERGED.per}', '${MERGED.p}');
+    INSERT INTO public.persons (id) VALUES ('${MERGED.per}'), ('${EONLY.per}'), ('${OTHER.per}');
+    INSERT INTO public.person_links (person_id, profile_id) VALUES
+      ('${MERGED.per}', '${MERGED.p}'), ('${EONLY.per}', '${EONLY.p}'), ('${OTHER.per}', '${OTHER.p}');
     INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${MERGED.per}', '${GUEST}');
     INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status) VALUES
       ('${SLOT}', NULL, '${GUEST}', 'declined'),
@@ -78,6 +86,10 @@ beforeAll(async () => {
     -- clause (e) priority-guest: also owned by the MERGED person
     INSERT INTO public.guest_players (id) VALUES ('${PGUEST}');
     INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${MERGED.per}', '${PGUEST}');
+
+    -- EONLY's ONLY route is clause (e): EGUEST is on the priority-guest list with NO claim in the round
+    INSERT INTO public.guest_players (id) VALUES ('${EGUEST}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${EONLY.per}', '${EGUEST}');
   `);
   await db.exec(
     readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260830100000_phase33c_can_book_member_window_person.sql'), 'utf8')
@@ -98,10 +110,16 @@ describe('can_book_member_window — Phase 3.3c person arm + bridge + freeze', (
     expect(await canBook(MERGED.u)).toBe(true);
   });
 
-  it('PERSON ARM (e): a priority-guest merged to my person → eligible', async () => {
-    // MERGED is also eligible via (e); prove the person arm covers the priority-guest list too by
-    // removing the (d) claim path is unnecessary — assert the merged user is eligible.
-    expect(await canBook(MERGED.u)).toBe(true);
+  it('PERSON ARM (e) IN ISOLATION: a priority-guest merged to my person, with NO round claim → eligible', async () => {
+    // EONLY's only route is (e): EGUEST is on rebook_priority_guests and owned by EONLY's person,
+    // but has no slot_priority_claim in the round — so this proves the (e) person arm specifically.
+    expect(await canBook(EONLY.u)).toBe(true);
+  });
+
+  it('cross-person FALSE-POSITIVE guard: a different person is NOT eligible via my guest', async () => {
+    // GUEST (a round claim) + PGUEST (priority list) are owned by MERGED's person, NOT OTHER's.
+    // OTHER has their own person and profile but no claim/priority/link → must be refused.
+    expect(await canBook(OTHER.u)).toBe(false);
   });
 
   it('BRIDGE (d): a linked-but-unmerged guest with twin_of_profile_id=me → eligible', async () => {
@@ -130,8 +148,19 @@ describe('can_book_member_window — Phase 3.3c person arm + bridge + freeze', (
     expect(await canBook(TWIN.u)).toBe(false);
   });
 
+  it('FREEZE granularity: freezing ONE of the person\'s guests does NOT over-refuse (the other still grants)', async () => {
+    // freeze only the (d) claim guest → MERGED still eligible via the non-frozen (e) priority guest
+    await db.exec(`INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id)
+      VALUES ('merged_guest_email_moved', 'pending', '${GUEST}', '${MERGED.per}');`);
+    expect(await canBook(MERGED.u)).toBe(true);
+  });
+
   it('NEGATIVE: a random user sharing neither person nor twin/link is refused', async () => {
     expect(await canBook(RANDOM.u)).toBe(false);
+  });
+
+  it('NEGATIVE: a user with no profiles row (me → NULL) is refused, not spuriously granted', async () => {
+    expect(await canBook(NO_PROFILE_USER)).toBe(false);
   });
 
   it('regression (b): a registered cohort member is still eligible', async () => {
