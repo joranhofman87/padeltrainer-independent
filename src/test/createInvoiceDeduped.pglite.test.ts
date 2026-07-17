@@ -342,6 +342,35 @@ describe('create_invoice_deduped', () => {
         expect(second.id).toBe(first.id);
         expect(await activeCount()).toBe(1);
       });
+
+      // MIXED SHAPES, same frozen guest: arm B keys on the guest, so a guest-only and a
+      // dual-key create for the same guest dedup in BOTH directions. This is the recheck
+      // coverage the guest-first advisory-lock key serializes (the lock fix ensures both
+      // shapes take the SAME lock so the recheck actually runs on the sibling; the
+      // single-connection PGlite harness can't exercise the concurrency, only the recheck).
+      it('FROZEN mixed shapes: guest-only invoice then dual-key create for the same guest dedup (arm B)', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        await freezeGuest(GUEST_G);
+        const first = await createDeduped(guestPayload('INV-1', GUEST_G, [BK_A]));
+        expect(first.deduped).toBe(false);
+        const second = await createDeduped(dualKeyPayload('INV-2', PROFILE_P, GUEST_G, [BK_A, BK_B]));
+        expect(second.deduped).toBe(true);
+        expect(second.id).toBe(first.id);
+        expect(await activeCount()).toBe(1);
+      });
+
+      it('FROZEN mixed shapes: dual-key invoice then guest-only create for the same guest dedup (arm B, reverse)', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        await freezeGuest(GUEST_G);
+        const first = await createDeduped(dualKeyPayload('INV-1', PROFILE_P, GUEST_G, [BK_A]));
+        expect(first.deduped).toBe(false);
+        const second = await createDeduped(guestPayload('INV-2', GUEST_G, [BK_A, BK_B]));
+        expect(second.deduped).toBe(true);
+        expect(second.id).toBe(first.id);
+        expect(await activeCount()).toBe(1);
+      });
     });
   });
 });

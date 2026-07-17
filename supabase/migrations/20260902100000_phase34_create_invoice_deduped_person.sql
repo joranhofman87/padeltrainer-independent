@@ -45,13 +45,19 @@
 --   AND i.guest_player_id IS NULL); dual-key recipients dedup only via the guest-first,
 --   freeze-aware person arm. (Same pure-profile-guard lesson as 3.1 r3 / 3.3-attendance.)
 --
--- CONGRUENT DEGRADATION: an unlinked / pre-backfill recipient resolves v_person_id
---   to NULL, the lock key falls back to the exact pre-3.4 per-key string, and the
---   person arm is inert (v_person_id IS NOT NULL is false) — behaviour is
---   byte-identical to P1-6. A split-frozen guest ALSO resolves to NULL, so it too
---   degrades to the exact pre-3.4 per-key create. An unstamped existing invoice
---   (person_id NULL) is still caught by the retained per-key arms. Never weaker than
---   today — in ANY case (unlinked, frozen, or unstamped).
+-- CONGRUENT DEGRADATION: an unlinked / pre-backfill or split-frozen recipient
+--   resolves v_person_id to NULL and the person arm is inert; the lock key falls back
+--   to the guest-first per-key recipient, and each same-recipient shape (pure-profile,
+--   guest-only, dual-key) keeps its own P1-6 double-bill guard via arm A / arm B. An
+--   unstamped existing invoice (person_id NULL) is still caught by those per-key arms.
+--   ONE deliberate narrowing vs P1-6: for an UNLINKED recipient, a dual-key create no
+--   longer dedups onto a pure-profile invoice of the same profile id (P1-6's bare
+--   i.player_id match did — the pre-FAM-02 conflation that treated a guest-owned
+--   dual-key row as the profile). Since the two are provably the same human only once
+--   linked, that match is intentionally dropped; the worst case is a catchable
+--   duplicate INSERT for a backfill-missed same-person pair (rederive/reconcile,
+--   Phase-2), NEVER a wrong-human merge or paid-flip. So: never weaker in any way that
+--   loses money-safety; strictly SAFER on the cross-human axis.
 --
 -- NOT IN THIS PHASE (amount-affecting divisors, deferred to an explicit money-amount
 --   phase per the owner's "amounts unchanged" bar):
@@ -102,10 +108,17 @@ BEGIN
     )
   END;
 
-  -- Person-keyed lock (falls back to the old per-key string when unlinked) so that
-  -- cross-key concurrent creates for ONE person serialize on the same lock.
+  -- Lock key = the SAME recipient rule the recheck uses, so concurrent creates for
+  -- one recipient always serialize on one lock. It MUST be guest-first (person →
+  -- guest → profile): a frozen/unlinked dual-key payload (v_person_id NULL) has the
+  -- GUEST as its recipient (FAM-02) and dedups via the guest arm, so it must lock on
+  -- the guest — a profile-first fallback would lock it on the profile while a
+  -- guest-only create for the same guest locks on the guest, and the two would NOT
+  -- serialize, reopening the P1-6 overlapping-but-unequal double-bill race for mixed
+  -- legacy shapes. (person-first keeps linked merged persons person-keyed; a
+  -- pure-profile recipient has no guest ref so it still locks on the profile.)
   v_recipient_key := v_trainer_id::text || ':' ||
-    COALESCE(v_person_id::text, v_player_id::text, v_guest_player_id::text, 'none');
+    COALESCE(v_person_id::text, v_guest_player_id::text, v_player_id::text, 'none');
   PERFORM pg_advisory_xact_lock(hashtextextended(v_recipient_key, 0));
   IF array_length(v_booking_ids, 1) > 0 THEN
     SELECT i.* INTO v_winner FROM public.invoices i
