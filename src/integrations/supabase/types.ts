@@ -8918,6 +8918,19 @@ export type Database = {
           trainer_ids: string[]
         }[]
       }
+      get_person_refs_for_scope: {
+        Args: {
+          p_guest_id?: string
+          p_profile_id?: string
+          p_scope: string
+          p_scope_id: string
+        }
+        Returns: {
+          guest_ids: string[]
+          person_id: string
+          profile_id: string
+        }[]
+      }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
       get_public_slot_occupancy: {
