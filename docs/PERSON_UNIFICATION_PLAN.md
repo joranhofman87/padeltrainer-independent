@@ -503,9 +503,10 @@ One domain per PR, each with tests + live-verify, in dependency order:
    ref was in-scope (IDOR — any manager could dereference an arbitrary guest/profile uuid to its
    PII), (b) resolved the profile side with no scope gate, (c) sourced identity from persons.*
    contact fields, which aggregate SYSTEM-WIDE (the exact leak 3.2's overview already forbids).
-   Fix: the RPC now returns REFS ONLY (person_id, guest_ids, profile_id — no name/email/phone),
-   validates the clicked ref is in-scope (a clicked guest must be a scope guest; a clicked profile
-   must have an in-scope confirmed/completed booking), and returns profile_id only when the caller
+   Fix: the RPC now returns REFS ONLY (guest_ids, profile_id — no name/email/phone, and no
+   person_id since it equals the profile id for account holders and would leak a gated profile
+   uuid), validates the clicked ref is in-scope (a clicked guest must be a scope guest; a clicked
+   profile must have an in-scope confirmed/completed booking), and returns profile_id only when the caller
    can already see it (in-scope booking OR invoice). DOCTRINE (re-confirmed): a person-resolution
    reader must expose no ref/PII the caller couldn't already see in its scope, and identity NEVER
    comes from persons.* contact fields.

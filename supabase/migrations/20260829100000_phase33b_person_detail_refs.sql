@@ -11,7 +11,9 @@
 -- SECURITY DEFINER resolver).
 --
 --   get_person_refs_for_scope(p_scope, p_scope_id, p_guest_id, p_profile_id)
---     → RETURNS (person_id, guest_ids[], profile_id) — REFS ONLY, no identity/PII.
+--     → RETURNS (guest_ids[], profile_id) — REFS ONLY, no identity/PII, no person_id
+--       (person_id equals the profile id for account holders, so echoing it would
+--       disclose a gated profile's uuid; the client unions on guest_ids + profile_id).
 --
 --   Security (the whole RPC is a scope gate; adversarial verify found the first cut
 --   leaked cross-tenant PII, so this cut returns nothing but uuids the caller can
