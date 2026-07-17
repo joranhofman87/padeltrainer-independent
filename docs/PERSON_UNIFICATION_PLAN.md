@@ -424,6 +424,40 @@ One domain per PR, each with tests + live-verify, in dependency order:
    bookings via plain `.eq('player_id', me)`, so it now surfaces only pure-profile sessions —
    a both-keyed (guest-person) session no longer triggers the account holder's attendance
    prompt until that surface goes person-keyed.
+
+   **Progress — 3.2 BUILT (migration `20260827100000`):** the PLAYERS OVERVIEW + CYCLUS GROUPS
+   render persons. (a) `is_guest_split_frozen(uuid)` — the split-pending freeze as a NAMED
+   choke point (DEFINER, client-REVOKEd, spliced); both list RPCs use it instead of hand-copied
+   EXISTS blocks. (b) `get_players_overview` returns ONE ROW PER PERSON: sides resolve through
+   person_links (frozen/unlinked → self), merged rows carry BOTH ids + a new `person_id`
+   column, identity comes from the persons row (the rederive choke point — precedence is NOT
+   re-derived per field in the reader), `player_key` stays g_/p_-parseable (guest-preferred;
+   invoiceCustomer + detail routes parse it), metadata joins person-wide (tag UNION,
+   guest-first metadata_id/notes), and ALL booking/intake activity matching is ref-set based
+   with the FAM-02 pure-profile guard — an unmerged parent stays LISTED (membership predicate
+   deliberately unchanged this phase) but no longer wears the child's activity chips; invoices
+   keep the 3.1-r3 addressee exemption. (c) `get_academy_cyclus_groups` roster names key by
+   person uuid (guest-first, frozen-as-self, congruent fallback), names from persons; a person
+   intaken via profile + booked via guest seat dedups by KEY, not just name equality.
+   (d) client: `BookablePerson.personId` + merged rows carry both ids; the roster picker gains
+   `excludePersonIds` (closes the profile-only-entry vs guest-keyed-picker-row exclusion gap).
+   pglite suite (27) runs the REAL migration incl. a frozen guest with a deliberately STALE
+   person stamp — readers must resolve links, never trust stamps for identity.
+
+   **Adversarial verify pass on 3.2 (81 agents, 25 raw → 18 confirmed, all fixed or tracked):**
+   headline fixes — (r1) resolvePersonToGuest now passes the merged row's profileId as the twin
+   hint (person_links-sourced, NOT linked_profile_id), restoring the cross-identity roster dedup
+   that prevented double seats + double invoices; (r2) metadata editors write exactly-one key
+   (the CHECK constraint) and the overview reads tags/notes from THE SAME guest-first row it
+   exposes as metadata_id; (r3) merged-row identity is SCOPE-SAFE — in-scope-profile-first, not
+   persons contact/billing fields (which aggregate cross-tenant); only full_name comes from
+   persons; (r4) removal is person-level for merged persons; (r5) all owner trainers of a
+   multi-guest person filter/chip; (r6) side identities stay searchable + side emails still
+   badge deliverability; (r7) deterministic pick tiebreakers; (r8) groups intake suppression
+   compares BOTH display and side names. Tracked, not fixed here: a merged person's PROFILE-side
+   detail page is unreachable from the list (row links g_; person-keyed detail = 3.3 scope), and
+   is_guest_split_frozen is a per-row definer call in the two list RPCs (bounded scopes, tiny
+   review table — accepted until profiling says otherwise).
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;

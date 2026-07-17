@@ -76,10 +76,26 @@ describe('mapPlayersOverviewRow', () => {
   it('resolves a registered player trainer name from the first trainer id', () => {
     const map = new Map([['trA', 'Coach A']]);
     const p = mapPlayersOverviewRow(
-      makeRow({ guest_player_id: null, profile_id: 'p1', player_type: 'registered', trainer_ids: ['trA'] }),
+      // a PLAIN registered row carries no owner_trainer_id (that comes only from a guest side)
+      makeRow({
+        guest_player_id: null, profile_id: 'p1', player_type: 'registered',
+        owner_trainer_id: null, trainer_ids: ['trA'],
+      }),
       { trainerNames: { map, academyLabel: 'Academy' } },
     );
     expect(p.trainer_name).toBe('Coach A');
+  });
+
+  it('a MERGED registered row (guest side trainer-owned) shows the OWNING trainer, not trainer_ids[0]', () => {
+    const map = new Map([['trOwner', 'Owner Coach'], ['trOther', 'Other Coach']]);
+    const p = mapPlayersOverviewRow(
+      makeRow({
+        guest_player_id: 'g1', profile_id: 'p1', person_id: 'p1', player_type: 'registered',
+        owner_trainer_id: 'trOwner', trainer_ids: ['trOther', 'trOwner'],
+      }),
+      { trainerNames: { map, academyLabel: 'Academy' } },
+    );
+    expect(p.trainer_name).toBe('Owner Coach');
   });
 
   it('shows an em dash when a trainer id is missing from the name map', () => {

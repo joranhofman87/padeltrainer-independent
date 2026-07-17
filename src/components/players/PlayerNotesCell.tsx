@@ -61,8 +61,10 @@ export function PlayerNotesCell({ academyId, trainerId, playerKey, notes, onChan
           .from('academy_player_metadata')
           .insert({
             [ownerCol]: ownerId,
+            // CHECK constraint: exactly one key — a merged person's row carries BOTH ids
+            // since Phase 3.2; the metadata row is guest-keyed when a guest side exists.
             guest_player_id: playerKey.guest_player_id,
-            profile_id: playerKey.profile_id,
+            profile_id: playerKey.guest_player_id ? null : playerKey.profile_id,
             notes: trimmed,
           } as any);
         if (error) throw error;

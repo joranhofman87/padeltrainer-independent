@@ -8904,6 +8904,7 @@ export type Database = {
           metadata_id: string
           notes: string
           owner_trainer_id: string
+          person_id: string
           phone: string
           player_key: string
           player_type: string
@@ -9105,6 +9106,10 @@ export type Database = {
         Returns: boolean
       }
       is_email_suppressed: { Args: { p_email: string }; Returns: boolean }
+      is_guest_split_frozen: {
+        Args: { _guest_player_id: string }
+        Returns: boolean
+      }
       is_player: { Args: { _user_id: string }; Returns: boolean }
       is_player_of_academy: {
         Args: { p_academy_profile_id: string; p_player_id: string }

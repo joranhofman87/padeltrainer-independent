@@ -19,6 +19,9 @@ interface CycleRosterInlinePickerProps {
   onSelect: (person: BookablePerson | null) => void;
   /** People that must not be selectable (e.g. the row being replaced), by `comboboxId`. */
   excludePersonKeys?: string[];
+  /** Same, by person id — closes the gap where a roster entry's refs are profile-only while the
+   * (merged) person's picker row is keyed by their guest side. */
+  excludePersonIds?: string[];
   disabled?: boolean;
   namespace?: string;
 }
@@ -34,6 +37,7 @@ export function CycleRosterInlinePicker({
   value,
   onSelect,
   excludePersonKeys = [],
+  excludePersonIds = [],
   disabled = false,
   namespace = "cycles",
 }: CycleRosterInlinePickerProps) {
@@ -66,6 +70,16 @@ export function CycleRosterInlinePicker({
   // The combobox is id-agnostic (keys on player.id) — feed it person-keyed rows so guests and
   // registered players are both selectable, and map the chosen key back to its BookablePerson.
   const byKey = useMemo(() => new Map(persons.map((p) => [p.comboboxId, p])), [persons]);
+  const disabledKeys = useMemo(() => {
+    const keys = new Set(excludePersonKeys);
+    if (excludePersonIds.length > 0) {
+      const ids = new Set(excludePersonIds);
+      for (const p of persons) {
+        if (p.personId && ids.has(p.personId)) keys.add(p.comboboxId);
+      }
+    }
+    return Array.from(keys);
+  }, [persons, excludePersonKeys, excludePersonIds]);
   const comboboxPlayers = useMemo<GuestPlayerSlotComboboxPlayer[]>(
     () =>
       persons.map((p) => ({
@@ -93,6 +107,8 @@ export function CycleRosterInlinePicker({
       comboboxId: `g_${player.id}`,
       guestPlayerId: player.id,
       profileId: null,
+      // deterministic person ids: a fresh guest's person IS its own uuid
+      personId: player.id,
       full_name: player.full_name,
       email: player.email,
       phone: player.phone,
@@ -117,7 +133,7 @@ export function CycleRosterInlinePicker({
             : t("detail.roster.picker.select", "Select a player")
         }
         emptyLabel={t("detail.roster.picker.empty", "No player found.")}
-        disabledPlayerIds={excludePersonKeys}
+        disabledPlayerIds={disabledKeys}
         showEmail
         className="flex-1"
       />

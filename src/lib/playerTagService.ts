@@ -71,10 +71,13 @@ export async function persistPlayerTagIds(
     return { error: error?.message ?? null };
   }
 
+  // CHECK constraint: exactly one of guest_player_id/profile_id. A merged person's row carries
+  // BOTH ids since Phase 3.2 — the metadata row is guest-keyed when a guest side exists (the
+  // same guest-first row the overview reads back).
   const { error } = await client.from('academy_player_metadata').insert({
     ...buildTagOwnerInsert(scope),
     guest_player_id: playerKey.guest_player_id,
-    profile_id: playerKey.profile_id,
+    profile_id: playerKey.guest_player_id ? null : playerKey.profile_id,
     tag_ids: tagIds,
   } as Record<string, unknown>);
 
