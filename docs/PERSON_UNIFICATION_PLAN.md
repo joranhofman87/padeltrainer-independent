@@ -478,6 +478,22 @@ One domain per PR, each with tests + live-verify, in dependency order:
    not a badge fix. The 3.1 tracked gap (attendance card sees only pure-profile sessions) stays
    open until then.
 
+   **Progress — 3.3-attendance PART 1 (RLS) BUILT (migration `20260831100000`):** a guest-seated
+   session is now REPORTABLE. The player attendance write path (session_reports INSERT/UPDATE) +
+   the player trainer-summary view gated on `b.player_id = me` (pure-profile), so a player seated
+   under their linked guest twin (guest_player_id set, player_id NULL) hit a DEAD-END on submit —
+   exactly why the PendingAttendanceCard surfacing was PULLED from 3.3a. New SECURITY DEFINER
+   `can_report_attendance_on_slot(slot, require_active)` answers "does the caller's PERSON hold a
+   (optionally active) booking here?" — profile seat OR linked-guest seat, resolved EXACTLY like
+   `get_my_linked_guest_bookings` (person-stamp arm OR Phase-0c twin/link bridge, split-frozen
+   excluded) so every session the player can SEE is one they can WRITE (no surface-vs-write skew).
+   The profile arm is verbatim → strict SUPERSET for account holders. INSERT + UPDATE policies +
+   the summaries view re-emitted with the helper; the reporter-based SELECT policy is unchanged.
+   **NO frontend change here** — this only ENABLES guest-seated reporting; deliberately SPLIT so
+   the PendingAttendanceCard surfacing re-lands in PART 2 (after this deploys), avoiding any
+   Vercel-before-`db push` window where a surfaced prompt would dead-end. pglite (9) drives the
+   real policies under `SET ROLE authenticated`.
+
    **Progress — 3.3b BUILT (migration `20260829100000`):** the player DETAIL page reaches the
    whole PERSON. (a) new SECURITY DEFINER RPC `get_person_refs_for_scope(scope, scope_id,
    guest_id, profile_id)` resolves a clicked g_/p_ ref → the person's IN-SCOPE ref set —
