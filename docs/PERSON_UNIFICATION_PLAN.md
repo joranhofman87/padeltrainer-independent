@@ -668,7 +668,14 @@ twin-split/email-move review committing between two concurrent same-guest create
 only ever OVER-serializes (harmless), never under-serializes. Residual (~P4, accepted): a
 `person_links` mutation in the same window — advisory-locked in the merge paths, far rarer, resyncs
 via rederive; tracked for a broader freeze/lock-coherence pass. DOCTRINE: when a guard pairs an
-advisory lock with a freeze-gated recheck, the lock key must be the freeze-INDEPENDENT recipient id. **SECURITY (external audit P1, folded in): locked the RPC to service_role
+advisory lock with a freeze-gated recheck, the lock key must be the freeze-INDEPENDENT recipient id.
+**Candidate-side follow-up (round 7, Codex): the person arm must be guest-exclusive on BOTH sides.**
+The inbound was guest-exclusive (round 6) but arm C still trusted the candidate's stamped `i.person_id`
+(the stamp trigger COALESCEs guest→profile, so a dual-key-unlinked-guest invoice is stamped with the
+profile person). Fixed by resolving the candidate person guest-exclusively too. Inert in production —
+the single-shape-booking invariant means a pure-profile create can never share a booking with a
+dual-key invoice — so it changes no real dedup; it removes the stamp-trust asymmetry. Seven audit
+rounds total; the function is now provably sound under the single-shape-booking invariant. **SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
 calls it with the service-role client (`requireUser()` hands every caller a service client), so the
