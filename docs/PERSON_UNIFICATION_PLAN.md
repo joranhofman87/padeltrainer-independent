@@ -407,6 +407,18 @@ One domain per PR, each with tests + live-verify, in dependency order:
    linked-but-unmerged guests pending P-B). Explicitly deferred: `can_book_member_window`
    (booking-path auth gate → 3.3), `get_players_overview` re-key + picker person-dedup (→ 3.2),
    every write-path person predicate (→ 3.3).
+
+   **External audit (Codex) hardening rounds on 3.1:** (r1) the claims reader's bridge had lost
+   twin-precedence — restored VERBATIM. (r2) the split-pending freeze was person-arm-only —
+   hoisted OUTSIDE every OR arm of all three readers (a frozen guest is invisible on ALL paths,
+   not just the person path). (r3) **the direct player path is now PURE-PROFILE**: dual-keyed
+   rows are the GUEST person's (FAM-02), so the four player bookings RLS policies gain
+   `AND guest_player_id IS NULL`, the three client `.eq('player_id', me)` reads add
+   `.is('guest_player_id', null)`, and `get_my_linked_guest_bookings` re-partitions from
+   `player_id IS NULL` to `guest_player_id IS NOT NULL` — legitimately-merged both-keyed rows
+   reach the player view-only through the frozen RPC, and split-pending rows are invisible on
+   BOTH paths (pglite pins under `SET ROLE authenticated`). Doctrine: a freeze or ownership rule
+   is only real once every path — RPC arms, RLS policies, AND direct client reads — enforces it.
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;
