@@ -119,6 +119,20 @@ beforeAll(async () => {
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT unique_invoice_number_per_trainer UNIQUE (trainer_id, invoice_number)
     );
+    -- Legacy exact-set unique indexes (20260503101100), loaded because the RPC relies
+    -- on them as the double-bill backstop and the PLAYER index covers dual-key rows
+    -- (predicate is only player_id IS NOT NULL) — so a dual-key create can 23505 against
+    -- a pure-profile invoice for the same booking set (Codex round-9 case).
+    CREATE OR REPLACE FUNCTION public.invoice_booking_set_key(_ids uuid[])
+    RETURNS text LANGUAGE sql IMMUTABLE AS $$
+      SELECT md5(array_to_string((SELECT array_agg(x ORDER BY x) FROM unnest(_ids) AS x), ','))
+    $$;
+    CREATE UNIQUE INDEX uniq_invoice_active_player_bookings
+      ON public.invoices (trainer_id, player_id, public.invoice_booking_set_key(booking_ids))
+      WHERE status <> 'cancelled' AND player_id IS NOT NULL AND array_length(booking_ids, 1) > 0;
+    CREATE UNIQUE INDEX uniq_invoice_active_guest_bookings
+      ON public.invoices (trainer_id, guest_player_id, public.invoice_booking_set_key(booking_ids))
+      WHERE status <> 'cancelled' AND guest_player_id IS NOT NULL AND array_length(booking_ids, 1) > 0;
     -- Person model (minimal, prod-shaped): profile_id + guest_player_id are UNIQUE,
     -- matching person_links so the guest-first resolution yields at most one row.
     CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid UNIQUE);
@@ -283,6 +297,25 @@ describe('create_invoice_deduped', () => {
       const second = await createDeduped(basePayload('INV-2', PROFILE_P, [BK_A, BK_B]));
       expect(second.deduped).toBe(false);
       expect(await activeCount()).toBe(2);
+    });
+
+    // Codex round-9: the legacy uniq_invoice_active_player_bookings index covers dual-key rows
+    // (predicate is player_id IS NOT NULL), so a dual-key create for the EXACT booking set of a
+    // pure-profile invoice raises 23505 — the RPC's person arms correctly REFUSE to dedup
+    // cross-recipient, then the INSERT collides. This pins WHY the edge 23505 fallback must be
+    // recipient-scoped (guest-first): a recipient-agnostic winner lookup would return + paid-flip
+    // that guest-owned booking onto the profile invoice the RPC refused.
+    it('legacy exact-set index: a dual-key create for the SAME booking set as a pure-profile invoice raises 23505', async () => {
+      await link(PERSON_X, 'profile_id', PROFILE_P); // guest G unlinked
+      const first = await createDeduped(basePayload('INV-1', PROFILE_P, [BK_A]));
+      expect(first.deduped).toBe(false);
+      // Dual-key (P + unlinked G) for the EXACT same [BK_A]: no person-arm dedup → INSERT →
+      // collides with the pure-profile invoice on (trainer, player_id=P, md5([BK_A])).
+      await expect(
+        createDeduped(dualKeyPayload('INV-2', PROFILE_P, GUEST_G, [BK_A])),
+      ).rejects.toThrow(/23505|unique|uniq_invoice_active_player_bookings|duplicate key/i);
+      // Only the original pure-profile invoice remains — no double-bill of BK_A.
+      expect(await activeCount()).toBe(1);
     });
 
     describe('split-freeze (a pending twin/email-move review keys the guest as its own person)', () => {

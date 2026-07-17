@@ -761,17 +761,27 @@ serve(async (req) => {
     if (insertError || !invoice) {
       // Race condition lost: unique index rejected the duplicate. Return the winning invoice.
       if (insertError && insertError.code === "23505") {
-        // Recipient-AGNOSTIC winner lookup: a booking is billed by at most one active
-        // invoice, so the invoice that overlaps these bookings IS the race winner —
-        // regardless of its player/guest key. A player-first `.eq("player_id", …)` here
-        // would repeat the same dual-key bypass the fast-path above avoids (matching a
-        // profile invoice for a guest-owned booking), so it is deliberately omitted.
         const dupeFetch = supabase
           .from("invoices")
           .select("id, invoice_number, status, sent_at, booking_ids, total")
           .eq("trainer_id", trainerId)
           .not("status", "eq", "cancelled")
           .overlaps("booking_ids", bookingIds);
+        // Recipient-scoped GUEST-FIRST — the SAME recipient rule as the RPC / the
+        // fast-path above (dual-key belongs to the guest). This must NOT be
+        // recipient-agnostic: the legacy uniq_invoice_active_player_bookings index
+        // covers dual-key rows (its predicate is only `player_id IS NOT NULL`), so a
+        // dual-key create can raise 23505 against a PROFILE invoice for the same exact
+        // booking set — an agnostic lookup would then return + syncToPaid that
+        // guest-owned booking onto the profile invoice the RPC deliberately refused.
+        // When the winner isn't the create's own recipient the collision is
+        // cross-recipient (a shape-change data inconsistency): no `winner` is found and
+        // we fall through to throw + Slack-alert rather than mis-attribute + paid-flip.
+        if (guestPlayerId) {
+          dupeFetch.eq("guest_player_id", guestPlayerId);
+        } else if (playerId) {
+          dupeFetch.eq("player_id", playerId).is("guest_player_id", null);
+        }
         // overlaps can match >1 row; take the first so maybeSingle never throws.
         const { data: winner } = await dupeFetch.limit(1).maybeSingle();
         if (winner) {
