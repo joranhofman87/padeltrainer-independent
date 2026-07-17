@@ -153,7 +153,11 @@ BEGIN
   FROM public.bookings b
   LEFT JOIN public.availability_slots s ON s.id = b.slot_id
   LEFT JOIN public.locations l ON l.id = s.location_id
-  WHERE b.player_id IS NULL
+  WHERE b.guest_player_id IS NOT NULL
+    -- ^ the dedup partition vs the client's direct player_id read (re-audit round 3): the direct
+    -- path and the player RLS policies are now PURE-PROFILE (player_id = me AND guest IS NULL —
+    -- FAM-02: a dual-keyed row belongs to the GUEST person), so every guest-carrying row of mine,
+    -- including historical BOTH-KEYED rows, reaches me only through this frozen reader.
     -- split-pending freeze OUTSIDE the arms (external re-audit round 2): a repurposed guest's
     -- rows may describe a DIFFERENT human until the owner resolves the split — they must not
     -- reach the profile holder via ANY arm. The linked-profile bridge below is exactly how the
@@ -295,3 +299,36 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_my_pending_priority_claims() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_pending_priority_claims() TO authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 4) FAM-02 made enforceable on the DIRECT player path (external re-audit round 3): the signup
+--    linker created both-keyed bookings (guest seat + inferred player_id), and the player RLS
+--    policies accepted `player_id = me` alone — so a split-pending guest's rows bypassed the
+--    frozen readers above and showed as normal CANCELLABLE rows in the player app. A dual-keyed
+--    row belongs to the GUEST person (personIdentity.ts doctrine): the player policies become
+--    pure-profile, and guest-side rows (merged or bridged) flow ONLY through the frozen RPC.
+-- ---------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Players can view their own bookings" ON public.bookings;
+CREATE POLICY "Players can view their own bookings"
+ON public.bookings FOR SELECT
+TO authenticated
+USING (player_id = public.get_profile_id_for_user(auth.uid()) AND guest_player_id IS NULL);
+
+DROP POLICY IF EXISTS "Players can create bookings" ON public.bookings;
+CREATE POLICY "Players can create bookings"
+ON public.bookings FOR INSERT
+TO authenticated
+WITH CHECK (player_id = public.get_profile_id_for_user(auth.uid()) AND guest_player_id IS NULL);
+
+DROP POLICY IF EXISTS "Players can update their own bookings" ON public.bookings;
+CREATE POLICY "Players can update their own bookings"
+ON public.bookings FOR UPDATE
+TO authenticated
+USING (player_id = public.get_profile_id_for_user(auth.uid()) AND guest_player_id IS NULL);
+
+DROP POLICY IF EXISTS "Players can delete their own bookings" ON public.bookings;
+CREATE POLICY "Players can delete their own bookings"
+ON public.bookings FOR DELETE
+TO authenticated
+USING (player_id = public.get_profile_id_for_user(auth.uid()) AND guest_player_id IS NULL);

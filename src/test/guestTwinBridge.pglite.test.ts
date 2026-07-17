@@ -152,7 +152,10 @@ beforeAll(async () => {
     ALTER TABLE public.bookings ADD COLUMN person_id uuid;
     ALTER TABLE public.invoices ADD COLUMN person_id uuid;
     ALTER TABLE public.slot_priority_claims ADD COLUMN person_id uuid;
+    -- the pure-profile player policies (re-created by 20260826290000) are under test here
+    ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
   `);
+  await db.exec(`CREATE ROLE authenticated;`);
   for (const file of [
     'supabase/migrations/20260826200000_harden_guest_dedup_rpc.sql',
     'supabase/migrations/20260826210000_guest_twin_bridge.sql',
@@ -170,7 +173,6 @@ beforeAll(async () => {
   // the twin profile is INVISIBLE to it, so the repurpose trigger's profile-email check only works
   // because the function is SECURITY DEFINER.
   await db.exec(`
-    CREATE ROLE authenticated;
     GRANT USAGE ON SCHEMA public TO authenticated;
     GRANT SELECT, UPDATE ON public.guest_players TO authenticated;
     GRANT SELECT ON public.profiles TO authenticated;
@@ -803,6 +805,63 @@ describe('Phase 3.1 — the person arm of the display readers', () => {
     await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
     const r = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
     expect(r.rows[0].j as Array<unknown>).toHaveLength(0); // frozen — never the wrong human's rows
+    await db.exec(`SELECT set_config('test.uid', '', false)`);
+  });
+});
+
+describe('Phase 3.1 round 3 — the DIRECT player path is pure-profile (FAM-02 enforceable)', () => {
+  it('a BOTH-KEYED row is invisible to the direct player read but reaches a merged person via the frozen RPC', async () => {
+    const PERSON = '90000000-0000-0000-0000-000000000034';
+    await db.exec(`
+      GRANT SELECT ON public.bookings TO authenticated;
+      INSERT INTO persons (id, full_name) VALUES ('${PERSON}', 'Jan Jansen');
+      INSERT INTO person_links (person_id, profile_id) VALUES ('${PERSON}', '${PROF}');
+      INSERT INTO person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GA}');
+      INSERT INTO availability_slots (id, start_time, end_time)
+        VALUES ('${SLOT}', now(), now() + interval '1 hour') ON CONFLICT (id) DO NOTHING;
+      -- the signup-linker shape: guest seat + inferred player_id (both keys set)
+      INSERT INTO bookings (slot_id, player_id, guest_player_id, person_id, status, payment_status)
+        VALUES ('${SLOT}', '${PROF}', '${GA}', '${PERSON}', 'confirmed', 'pending');
+      -- plus one pure-profile row (the player's own booking)
+      INSERT INTO bookings (slot_id, player_id, person_id, status, payment_status)
+        VALUES ('${SLOT}', '${PROF}', '${PERSON}', 'confirmed', 'pending');
+    `);
+    // direct read as the player: ONLY the pure-profile row (the dual-keyed one is the guest's)
+    await db.exec(`SET test.uid = '${PLAYER_USER}'; SET ROLE authenticated;`);
+    const direct = await db.query<{ guest_player_id: string | null }>(
+      `SELECT guest_player_id FROM bookings WHERE player_id = '${PROF}'`);
+    await db.exec(`RESET ROLE;`);
+    expect(direct.rows).toHaveLength(1);
+    expect(direct.rows[0].guest_player_id).toBeNull();
+    // …and the both-keyed row arrives via the frozen RPC instead (partition: guest-carrying rows)
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const rpc = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(rpc.rows[0].j as Array<unknown>).toHaveLength(1);
+    await db.exec(`SELECT set_config('test.uid', '', false)`);
+  });
+
+  it('a split-pending BOTH-KEYED row is invisible on BOTH paths (the round-3 leak, closed)', async () => {
+    const PERSON = '90000000-0000-0000-0000-000000000035';
+    await db.exec(`
+      GRANT SELECT ON public.bookings TO authenticated;
+      INSERT INTO persons (id, full_name) VALUES ('${PERSON}', 'Jan Jansen');
+      INSERT INTO person_links (person_id, profile_id) VALUES ('${PERSON}', '${PROF}');
+      INSERT INTO person_links (person_id, guest_player_id) VALUES ('${PERSON}', '${GA}');
+      UPDATE guest_players SET linked_profile_id = '${PROF}' WHERE id = '${GA}';
+      INSERT INTO availability_slots (id, start_time, end_time)
+        VALUES ('${SLOT}', now(), now() + interval '1 hour') ON CONFLICT (id) DO NOTHING;
+      INSERT INTO bookings (slot_id, player_id, guest_player_id, person_id, status, payment_status)
+        VALUES ('${SLOT}', '${PROF}', '${GA}', '${PERSON}', 'confirmed', 'pending');
+      INSERT INTO person_merge_review (kind, status, guest_player_id, person_id)
+      VALUES ('merged_guest_email_moved', 'pending', '${GA}', '${PERSON}');
+    `);
+    await db.exec(`SET test.uid = '${PLAYER_USER}'; SET ROLE authenticated;`);
+    const direct = await db.query(`SELECT 1 FROM bookings WHERE player_id = '${PROF}'`);
+    await db.exec(`RESET ROLE;`);
+    expect(direct.rows).toHaveLength(0); // pure-profile policy hides the dual-keyed row
+    await db.exec(`SELECT set_config('test.uid', '${PLAYER_USER}', false)`);
+    const rpc = await db.query<{ j: unknown }>(`SELECT public.get_my_linked_guest_bookings() AS j`);
+    expect(rpc.rows[0].j as Array<unknown>).toHaveLength(0); // frozen
     await db.exec(`SELECT set_config('test.uid', '', false)`);
   });
 });

@@ -40,6 +40,11 @@ function builder(table: string) {
       filters.push((r) => r[col] !== val);
       return api;
     },
+    is: (col: string, val: unknown) => {
+      // `.is(col, null)`: rows that omit the column count as NULL, like the DB would
+      filters.push((r) => (val === null ? r[col] == null : r[col] === val));
+      return api;
+    },
     in: (col: string, vals: unknown[]) => {
       const set = new Set(vals);
       filters.push((r) => set.has(r[col]));
