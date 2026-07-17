@@ -34,6 +34,17 @@
 --   auto-create-invoice's syncDedupedInvoiceToPaid could flip that invoice to paid
 --   while the guest is silently never billed.
 --
+-- FAM-02 PURE-PROFILE ARM (external audit follow-up P1, folded in): freezing
+--   v_person_id to NULL is NOT sufficient for a DUAL-KEYED payload (player_id AND
+--   guest_player_id both set — a real shape: auto-create-invoice passes both from
+--   bookings[0]). Such a row belongs to the GUEST person, but P1-6's profile arm
+--   (v_player_id IS NOT NULL AND i.player_id = v_player_id) is pre-FAM-02 and would
+--   still dedup a frozen dual-key create onto the profile invoice (and a pure-profile
+--   create onto a frozen dual-key invoice) — reopening the SAME money bug for dual-key
+--   rows. The profile arm is now PURE profile on both sides (v_guest_player_id IS NULL
+--   AND i.guest_player_id IS NULL); dual-key recipients dedup only via the guest-first,
+--   freeze-aware person arm. (Same pure-profile-guard lesson as 3.1 r3 / 3.3-attendance.)
+--
 -- CONGRUENT DEGRADATION: an unlinked / pre-backfill recipient resolves v_person_id
 --   to NULL, the lock key falls back to the exact pre-3.4 per-key string, and the
 --   person arm is inert (v_person_id IS NOT NULL is false) — behaviour is
@@ -99,7 +110,16 @@ BEGIN
   IF array_length(v_booking_ids, 1) > 0 THEN
     SELECT i.* INTO v_winner FROM public.invoices i
     WHERE i.trainer_id = v_trainer_id AND i.status <> 'cancelled' AND i.booking_ids && v_booking_ids
-      AND ((v_player_id IS NOT NULL AND i.player_id = v_player_id)
+      -- FAM-02 pure-profile arm: a dual-keyed row (player_id AND guest_player_id both
+      -- set) belongs to the GUEST person, so the profile arm must be PURE profile on
+      -- BOTH the inbound payload and the candidate row (AND ... guest_player_id IS
+      -- NULL). Without the guard, a frozen dual-key create dedups onto a profile
+      -- invoice (and vice-versa) via this arm even though v_person_id was frozen to
+      -- NULL — the same syncDedupedInvoiceToPaid money bug as the guest-only case,
+      -- just carried forward from P1-6's pre-FAM-02 predicate. Dual-key recipients
+      -- dedup only via the (guest-first, freeze-aware) person arm below.
+      AND ((v_player_id IS NOT NULL AND v_guest_player_id IS NULL
+              AND i.player_id = v_player_id AND i.guest_player_id IS NULL)
         OR (v_player_id IS NULL AND v_guest_player_id IS NOT NULL AND i.guest_player_id = v_guest_player_id)
         -- Phase 3.4: sibling under the person's OTHER key, same bookings. Freeze
         -- applies to the candidate ROW too (not just the caller): a sibling invoice

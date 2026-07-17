@@ -71,6 +71,13 @@ const guestPayload = (num: string, guest: string, bookingIds: string[]) => {
   return { ...rest, invoice_number: num, guest_player_id: guest };
 };
 
+// DUAL-KEY payload: both player_id AND guest_player_id set (FAM-02: the row belongs
+// to the guest person). auto-create-invoice passes both from bookings[0], so this shape is real.
+const dualKeyPayload = (num: string, player: string, guest: string, bookingIds: string[]) => ({
+  ...basePayload(num, player, bookingIds),
+  guest_player_id: guest,
+});
+
 const activeCount = async (): Promise<number> =>
   Number((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.invoices WHERE status <> 'cancelled'`)).rows[0].n);
 
@@ -287,6 +294,38 @@ describe('create_invoice_deduped', () => {
         expect(second.deduped).toBe(true);
         expect(second.id).toBe(first.id);
         expect(await activeCount()).toBe(1);
+      });
+
+      // FAM-02: a dual-keyed row (player_id AND guest_player_id both set) belongs to the
+      // GUEST person, so the profile arm must be pure-profile. A frozen guest must not let
+      // a dual-key create/invoice dedup onto the OTHER human's profile invoice.
+      it('FROZEN inbound DUAL-KEY payload does NOT dedup onto a profile invoice (FAM-02 pure-profile arm)', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        // Existing PURE-PROFILE invoice for P.
+        const first = await createDeduped(basePayload('INV-1', PROFILE_P, [BK_A]));
+        expect(first.deduped).toBe(false);
+        await freezeGuest(GUEST_G);
+        // Dual-key create (P + frozen G). v_person_id → NULL (frozen); the bare profile
+        // arm would still match i.player_id=P without the pure-profile guard.
+        const second = await createDeduped(dualKeyPayload('INV-2', PROFILE_P, GUEST_G, [BK_A, BK_B]));
+        expect(second.deduped).toBe(false);
+        expect(await activeCount()).toBe(2);
+      });
+
+      it('FROZEN existing DUAL-KEY invoice is NOT found by a pure-profile create (FAM-02 pure-profile arm)', async () => {
+        await link(PERSON_X, 'profile_id', PROFILE_P);
+        await link(PERSON_X, 'guest_player_id', GUEST_G);
+        // Existing DUAL-KEY invoice (P + G), created before the freeze.
+        const first = await createDeduped(dualKeyPayload('INV-1', PROFILE_P, GUEST_G, [BK_A]));
+        expect(first.deduped).toBe(false);
+        await freezeGuest(GUEST_G);
+        // Pure-profile create for P. The bare profile arm would match the dual-key
+        // invoice's i.player_id=P; the pure-profile guard (i.guest_player_id IS NULL)
+        // excludes it, and the person arm excludes it via the frozen candidate guard.
+        const second = await createDeduped(basePayload('INV-2', PROFILE_P, [BK_A, BK_B]));
+        expect(second.deduped).toBe(false);
+        expect(await activeCount()).toBe(2);
       });
     });
   });
