@@ -75,6 +75,7 @@ DECLARE
   v_trainer_id uuid := (_payload->>'trainer_id')::uuid;
   v_player_id uuid := NULLIF(_payload->>'player_id', '')::uuid;
   v_guest_player_id uuid := NULLIF(_payload->>'guest_player_id', '')::uuid;
+  v_lock_person_id uuid;
   v_person_id uuid;
   v_booking_ids uuid[];
   v_recipient_key text;
@@ -100,25 +101,41 @@ BEGIN
   -- the other human's invoice and auto-create-invoice's syncDedupedInvoiceToPaid
   -- could flip that human's invoice to paid, while the guest is never billed.
   -- is_guest_split_frozen(NULL) is false, so a pure-profile recipient is unaffected.
+  --
+  -- v_lock_person_id = the RAW (freeze-INDEPENDENT) person resolution; v_person_id is
+  -- the freeze-gated one used by the recheck. They differ ONLY while frozen. See the
+  -- lock comment below for why the LOCK must use the freeze-independent id.
+  v_lock_person_id := COALESCE(
+    (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v_guest_player_id),
+    (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = v_player_id)
+  );
   v_person_id := CASE
     WHEN public.is_guest_split_frozen(v_guest_player_id) THEN NULL
-    ELSE COALESCE(
-      (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v_guest_player_id),
-      (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = v_player_id)
-    )
+    ELSE v_lock_person_id
   END;
 
-  -- Lock key = the SAME recipient rule the recheck uses, so concurrent creates for
-  -- one recipient always serialize on one lock. It MUST be guest-first (person →
-  -- guest → profile): a frozen/unlinked dual-key payload (v_person_id NULL) has the
-  -- GUEST as its recipient (FAM-02) and dedups via the guest arm, so it must lock on
-  -- the guest — a profile-first fallback would lock it on the profile while a
-  -- guest-only create for the same guest locks on the guest, and the two would NOT
-  -- serialize, reopening the P1-6 overlapping-but-unequal double-bill race for mixed
-  -- legacy shapes. (person-first keeps linked merged persons person-keyed; a
-  -- pure-profile recipient has no guest ref so it still locks on the profile.)
+  -- Lock key = the recipient rule, resolved FREEZE-INDEPENDENTLY (v_lock_person_id,
+  -- NOT v_person_id), guest-first: person → guest → profile. Two things drive this:
+  --   (1) guest-first: a frozen/unlinked dual-key payload has the GUEST as its
+  --       recipient (FAM-02) and dedups via the guest arm, so it must lock on the
+  --       guest — a profile-first fallback would split it from a guest-only create
+  --       for the same guest and reopen the P1-6 overlapping-but-unequal race.
+  --   (2) freeze-INDEPENDENT: the guest arm dedups two same-guest creates regardless
+  --       of freeze state, so they must SERIALIZE regardless of freeze. If the lock
+  --       followed v_person_id (freeze-gated → NULL), a twin-split/email-move review
+  --       committing BETWEEN two concurrent same-guest creates would move the lock
+  --       (trainer:person ↔ trainer:guest) and defeat serialization → both INSERT a
+  --       duplicate for overlapping-but-unequal bookings (the exact-set unique index
+  --       can't catch that). Using the freeze-independent id keeps both creates on
+  --       the same lock across the freeze transition. It only ever OVER-serializes
+  --       (e.g. two different frozen guests of one person briefly block) — never
+  --       under-serializes, so it can never cause a missed-dedup double-insert.
+  -- RESIDUAL (accepted, ~P4): a person_links insert/delete for the guest committing in
+  -- the same window still moves v_lock_person_id; person_links mutations are themselves
+  -- advisory-locked in the merge/claim paths and are far rarer than review inserts, and
+  -- such a change also resyncs via rederive — tracked for the broader freeze/lock pass.
   v_recipient_key := v_trainer_id::text || ':' ||
-    COALESCE(v_person_id::text, v_guest_player_id::text, v_player_id::text, 'none');
+    COALESCE(v_lock_person_id::text, v_guest_player_id::text, v_player_id::text, 'none');
   PERFORM pg_advisory_xact_lock(hashtextextended(v_recipient_key, 0));
   IF array_length(v_booking_ids, 1) > 0 THEN
     SELECT i.* INTO v_winner FROM public.invoices i
