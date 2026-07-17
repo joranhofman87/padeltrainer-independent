@@ -675,7 +675,15 @@ The inbound was guest-exclusive (round 6) but arm C still trusted the candidate'
 profile person). Fixed by resolving the candidate person guest-exclusively too. Inert in production —
 the single-shape-booking invariant means a pure-profile create can never share a booking with a
 dual-key invoice — so it changes no real dedup; it removes the stamp-trust asymmetry. Seven audit
-rounds total; the function is now provably sound under the single-shape-booking invariant. **SECURITY (external audit P1, folded in): locked the RPC to service_role
+rounds total; the function is now provably sound under the single-shape-booking invariant. **Round 8
+(Codex): the RPC's SOLE CALLER had to be person-keyed too.** auto-create-invoice's pre-RPC JS
+fast-path + 23505 fallback were player-first, so a dual-key booking could dedup onto a profile invoice
+and RETURN before the hardened RPC ran. Fixed: dual-key recipients skip the fast-path (→ RPC
+authority); pure-profile fast-path == RPC arm A (`.is(guest_player_id, null)`), guest-only == arm B;
+23505 fallback recipient-agnostic. Verify proved the single-key fast-path match set is a strict SUBSET
+of the RPC's → never a wrong dedup/flip. DOCTRINE: hardening a dedup RPC is incomplete while a
+client/edge fast-path can short-circuit it — person-key the RPC AND every caller's pre-check/fallback.
+**SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
 calls it with the service-role client (`requireUser()` hands every caller a service client), so the
