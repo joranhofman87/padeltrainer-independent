@@ -5,6 +5,7 @@ const calls: { method: string; args: unknown[] }[] = [];
 let bookingsData: unknown[] = [];
 let reportsData: { slot_id: string }[] = [];
 let linkedRows: unknown[] = [];
+let summariesMap = new Map<string, string>();
 
 function makeChain(table: string) {
   const result = () => ({ data: table === 'bookings' ? bookingsData : reportsData, error: null });
@@ -26,7 +27,7 @@ vi.mock('@/lib/playerBookings', () => ({
   fetchLinkedGuestBookingRows: vi.fn(() => Promise.resolve(linkedRows)),
 }));
 vi.mock('@/lib/sessionReports', () => ({
-  fetchTrainerSlotSummaries: vi.fn(() => Promise.resolve(new Map<string, string>())),
+  fetchTrainerSlotSummaries: vi.fn(() => Promise.resolve(summariesMap)),
 }));
 
 import { fetchPendingPlayerSlots } from './pendingAttendance';
@@ -52,6 +53,7 @@ beforeEach(() => {
   bookingsData = [];
   reportsData = [];
   linkedRows = [];
+  summariesMap = new Map();
 });
 
 describe('fetchPendingPlayerSlots — person-keyed (Phase 3.3-attendance part 2)', () => {
@@ -93,6 +95,18 @@ describe('fetchPendingPlayerSlots — person-keyed (Phase 3.3-attendance part 2)
     reportsData = [{ slot_id: 's1' }];
     const slots = await fetchPendingPlayerSlots('P1');
     expect(slots.map((s) => s.slotId)).toEqual(['s2']);
+  });
+
+  it('populates trainerSummary keyed by SLOT id (not booking id) for guest-side + direct rows', async () => {
+    bookingsData = [directRow('bDIRECT', 's1', daysAgo(3))];
+    linkedRows = [linkedRow('bGUEST', 's2', daysAgo(4))];
+    summariesMap = new Map([['s1', 'direct summary'], ['s2', 'guest summary']]);
+    const slots = await fetchPendingPlayerSlots('P1');
+    // keyed by slot_id — a regression to .get(booking.id) would yield null and this would fail
+    expect(slots.find((s) => s.slotId === 's1')?.trainerSummary).toBe('direct summary');
+    expect(slots.find((s) => s.slotId === 's2')?.trainerSummary).toBe('guest summary');
+    // and the map is queried for the UNREPORTED slots only
+    expect(calls.some((c) => c.method === 'session_reports.eq')).toBe(true);
   });
 
   it('returns [] when there is nothing pending', async () => {
