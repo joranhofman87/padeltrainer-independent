@@ -570,8 +570,13 @@ serve(async (req) => {
         .overlaps("booking_ids", bookingIds);
 
       if (recipientFilter.player_id) {
-        dupeQuery.eq("player_id", recipientFilter.player_id);
+        // PURE-profile candidate only (== RPC arm A): a dual-key invoice (player_id=P
+        // AND guest set) belongs to the GUEST, so a pure-profile create must not dedup
+        // onto it. Moot under the single-shape-booking invariant, but keeps this
+        // fast-path byte-equal to the RPC's arm A rather than broader.
+        dupeQuery.eq("player_id", recipientFilter.player_id).is("guest_player_id", null);
       } else if (recipientFilter.guest_player_id) {
+        // == RPC arm B: any active invoice on this guest key (guest-only OR dual-key).
         dupeQuery.eq("guest_player_id", recipientFilter.guest_player_id);
       }
 
