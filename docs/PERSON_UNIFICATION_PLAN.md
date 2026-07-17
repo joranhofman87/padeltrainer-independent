@@ -632,7 +632,17 @@ bookings — never merges distinct charges, never divides, never restates a tota
 degradation: an unlinked / pre-backfill recipient → v_person_id NULL → exact pre-3.4 per-key
 behaviour; unstamped invoices still caught by the retained per-key arms. CREATE OR REPLACE (signature
 unchanged → no types.ts drift). Adversarial verify: 0 confirmed findings (3 P3s refuted as
-congruent/self-healing). **SECURITY (external audit P1, folded in): locked the RPC to service_role
+congruent/self-healing). **SPLIT-FREEZE (external audit P2, folded in — a real money-path
+regression my verify + one auditor MISSED): the 3.4 person arm had no freeze handling.** While a
+`twin_detached_needs_split`/`merged_guest_email_moved` review is pending the guest's link may be a
+DIFFERENT human, so nothing may act on it (doctrine since 3.1). The dedup did: a frozen guest's create
+resolved to the sibling person and deduped onto that human's invoice → auto-create-invoice's
+`syncDedupedInvoiceToPaid` (M-27) could flip the other human's invoice to paid AND the guest was never
+billed. Fixed exactly like the 3.3-attendance guard: inbound `v_person_id` → NULL when
+`is_guest_split_frozen(guest)` (collapses to pre-3.4 per-key), and the person arm also excludes a
+sibling invoice addressed to a frozen guest (`is_guest_split_frozen(NULL)`=false so profiles/
+profile-addressed siblings are unaffected). +3 pins, mutation-checked (the 2 freeze pins fail on the
+pre-freeze migration). **SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
 calls it with the service-role client (`requireUser()` hands every caller a service client), so the
