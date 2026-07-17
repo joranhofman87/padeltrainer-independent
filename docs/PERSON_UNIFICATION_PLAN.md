@@ -600,5 +600,15 @@ Phase 0 (consistent person provisioning on the roster/add paths) OR Phase 1 (Exp
 safe, additive, and independently valuable. Recommend Phase 0 first: it also delivers the
 "add a registered account as a cycle participant" capability the owner asked for, immediately.
 
-
    **Progress — 3.3d BUILT (migration `20260901100000`):** the player DETAIL-page type badge tells LOGINS, not the clicked seat (owner-reported after the 3.3 deploy: Adri Govers — a merged account holder — showed 'Guest' on his contact page because the badge keyed on parsed.kind=g_). `get_person_refs_for_scope` gains a person-level `has_login` boolean (resolved person's persons.user_id; a boolean, not PII; frozen clicked guest → own accountless person → false); both AcademyPlayerDetail + TrainerPlayerDetail badge on `refs.hasLogin ?? seat-type` (fallback = old seat-based until deployed). The players-LIST type column was already correct (get_players_overview returns player_type='registered' — verified in prod; a stale bundle explains the reported list symptom). Deferred still: the fuller detail-page identity person-keying (name/linked_profile_id) → Phase-4 prep.
+
+**3.3e (migration `20260901110000`): the players-overview TYPE column tells LOGINS.** Owner
+saw 6 RL Padel account holders labelled 'Guest' in the list Type column — `get_players_overview`
+computed `player_type` from `b_has_login = bool_or(profile side IN SCOPE)`, so a login holder who
+only ever attended as a GUEST (no in-scope player_id booking → no profile side in `sided`) showed
+'guest'. Same seat-vs-login bug as the roster (3.3a) + detail (3.3d). player_type now = the resolved
+PERSON has a login (persons.user_id of b_person_id); a 'registered' row may carry profile_id NULL
+(profile out of scope) — the Type/Status badges only read player_type and detail links/edit flows key
+on guest/profile ids independently, so nothing downstream breaks. CREATE OR REPLACE (signature
+unchanged → no drift), everything else verbatim from 20260827100000. Diagnosed in prod: 375/419
+players genuinely accountless ('almost all guest' is correct), only 6 mislabelled → now 'registered'.
