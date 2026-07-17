@@ -513,6 +513,26 @@ One domain per PR, each with tests + live-verify, in dependency order:
 
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
+
+   **Progress — 3.3c BUILT (migration `20260830100000`):** the booking ELIGIBILITY gate is
+   person-keyed. The scout confirmed every booking WRITER already keys seats on
+   player_id/guest_player_id and inherits `person_id` from the Phase-1 stamp trigger — so the
+   only booking-path function still inferring identity from twin/link was `can_book_member_window`
+   (its guest clauses (d)/(e): "is this priority guest the same human as me?"). Those clauses now
+   carry a PERSON ARM (guest and my profile resolve to the same person via person_links — catches
+   merges with no twin stamp) UNIONed with the Phase-0c twin-precedence bridge kept VERBATIM
+   (linked-but-unmerged guests are still pending in the P-B owner queue, so the twin/link reads
+   can't be hard-removed until Phase 4 after the queue drains), and the split-freeze now excludes
+   uncertain-identity guests from BOTH arms. The union is a strict SUPERSET of prior behavior — no
+   eligibility lost, person-merged guests gain coverage; the freeze is the one deliberate
+   subtraction (a pending-split guest no longer grants eligibility — correct: identity uncertain).
+   No types-drift because the SIGNATURE is unchanged (NOT because of the grant — Supabase generates
+   types for every function regardless of grants, so `can_book_member_window` does appear in
+   types.ts; the service_role lock is a runtime guard, not a type-gen exclusion). The function is
+   service_role-only at runtime; clients only ever call the `can_current_user_book_member_window`
+   wrapper. The client twin-hint (CycleDetailView.resolvePersonToGuest) was already person-sourced
+   in 3.2. **Twin/link column RETIREMENT stays for Phase 4** (drop twin_of_profile_id/
+   linked_profile_id once the review queue is drained and nothing reads them).
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;
    golden + mock-Mollie e2e must stay green.
 5. **RLS + helpers** (`get_user_academy_ids`, `is_player_of_trainer`, the 8 guest policies, 48 fns) →
