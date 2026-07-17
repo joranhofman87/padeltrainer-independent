@@ -40,6 +40,12 @@
 -- Non-goal: rating history stays untouched — player_rating_history has only a
 -- self-view RLS policy, so it is dormant on the manager/trainer detail page today
 -- regardless of person-keying (a separate concern, not a unification gap).
+--
+-- Intentional asymmetry with get_players_overview: this resolver does NOT exclude
+-- academy_player_metadata-removed players. The overview hides them from the LIST,
+-- but a removed player's detail page must stay openable (to view history / restore),
+-- and their refs are already RLS-readable by the caller — so accepting them is
+-- correct here, not a leak.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.get_person_refs_for_scope(
@@ -49,7 +55,10 @@ CREATE OR REPLACE FUNCTION public.get_person_refs_for_scope(
   p_profile_id uuid DEFAULT NULL  -- the clicked p_<id>
 )
 RETURNS TABLE (
-  person_id uuid,
+  -- REFS ONLY, and only refs the caller can already see. person_id is deliberately NOT returned:
+  -- for an account holder persons.id equals the profile id, so echoing it would disclose a gated
+  -- profile's uuid even when profile_id is (correctly) withheld — a bare-uuid the client never uses
+  -- anyway. The detail page unions on guest_ids + profile_id only.
   guest_ids uuid[],
   profile_id uuid
 )
@@ -174,7 +183,7 @@ BEGIN
       )
     END AS pid
   )
-  SELECT v_person, eg.ids, ep.pid
+  SELECT eg.ids, ep.pid
   FROM eff_guests eg CROSS JOIN eff_profile ep;
 END;
 $$;

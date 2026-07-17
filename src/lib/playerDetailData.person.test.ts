@@ -9,22 +9,22 @@ import {
 describe('fetchPersonRefSet (Phase 3.3b)', () => {
   it('maps the RPC row to the ref set (refs only — no identity/PII)', async () => {
     const rpc = vi.fn().mockResolvedValue({
-      data: [{ person_id: 'per1', guest_ids: ['g1', 'g2'], profile_id: 'p1' }],
+      data: [{ guest_ids: ['g1', 'g2'], profile_id: 'p1' }],
       error: null,
     });
     const refs = await fetchPersonRefSet({ kind: 'academy', id: 'a1' }, { kind: 'guest', id: 'g1' }, { rpc });
     expect(rpc).toHaveBeenCalledWith('get_person_refs_for_scope', {
       p_scope: 'academy', p_scope_id: 'a1', p_guest_id: 'g1', p_profile_id: undefined,
     });
-    expect(refs).toEqual({ personId: 'per1', guestIds: ['g1', 'g2'], profileId: 'p1' });
+    expect(refs).toEqual({ guestIds: ['g1', 'g2'], profileId: 'p1' });
   });
 
   it('falls back to the single clicked ref when the RPC is undeployed (PGRST202) — never blanks', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST202' } });
     const g = await fetchPersonRefSet({ kind: 'academy', id: 'a1' }, { kind: 'guest', id: 'g9' }, { rpc });
-    expect(g).toEqual({ personId: 'g9', guestIds: ['g9'], profileId: null });
+    expect(g).toEqual({ guestIds: ['g9'], profileId: null });
     const p = await fetchPersonRefSet({ kind: 'trainer', id: 't1' }, { kind: 'profile', id: 'p9' }, { rpc });
-    expect(p).toEqual({ personId: 'p9', guestIds: [], profileId: 'p9' });
+    expect(p).toEqual({ guestIds: [], profileId: 'p9' });
   });
 
   it('falls back on a thrown error too', async () => {
@@ -61,14 +61,14 @@ describe('fetchPersonBookingSlotIds (Phase 3.3b)', () => {
       'g:g1,g2': [{ slot_id: 's1' }, { slot_id: 's2' }, { slot_id: null }],
       'p:p1': [{ slot_id: 's2' }, { slot_id: 's3' }],
     });
-    const refs: PersonRefSet = { personId: 'per1', guestIds: ['g1', 'g2'], profileId: 'p1' };
+    const refs: PersonRefSet = { guestIds: ['g1', 'g2'], profileId: 'p1' };
     const slots = await fetchPersonBookingSlotIds(refs, client);
     expect([...slots].sort()).toEqual(['s1', 's2', 's3']);
   });
 
   it('a guest-only person queries only the guest side', async () => {
     const client = bookingsClient({ 'g:g1': [{ slot_id: 's1' }] });
-    const refs: PersonRefSet = { personId: 'g1', guestIds: ['g1'], profileId: null };
+    const refs: PersonRefSet = { guestIds: ['g1'], profileId: null };
     expect(await fetchPersonBookingSlotIds(refs, client)).toEqual(['s1']);
     expect(client.calls).toEqual(['g:g1']); // no profile query
   });
@@ -89,7 +89,7 @@ describe('fetchPersonInvoices (Phase 3.3b)', () => {
       };
       return chain;
     };
-    const refs: PersonRefSet = { personId: 'per1', guestIds: ['g1'], profileId: 'p1' };
+    const refs: PersonRefSet = { guestIds: ['g1'], profileId: 'p1' };
     const invoices = await fetchPersonInvoices({ kind: 'academy', id: 'a1' }, refs, { from: from as never });
     expect(invoices.map((i) => i.id)).toEqual(['i2', 'i1']); // deduped, newest first
   });

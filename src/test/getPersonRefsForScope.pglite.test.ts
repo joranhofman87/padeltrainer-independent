@@ -34,7 +34,7 @@ const P_NOBOOK = '30000000-0000-0000-0000-000000000002'; // linked to PERSON1 wo
 // registered player with an in-scope booking but NO login-side merge (plain profile click)
 const P2 = '40000000-0000-0000-0000-000000000002';
 
-type RefsRow = { person_id: string; guest_ids: string[] | null; profile_id: string | null };
+type RefsRow = { guest_ids: string[] | null; profile_id: string | null };
 
 async function refs(
   uid: string, scope: 'academy' | 'trainer', scopeId: string,
@@ -124,37 +124,32 @@ beforeAll(async () => {
 });
 
 describe('get_person_refs_for_scope (Phase 3.3b) — refs only, scope-gated', () => {
-  it('merged person via the GUEST side: person id, both in-scope guests (frozen sibling excluded), profile', async () => {
+  it('merged person via the GUEST side: both in-scope guests (frozen sibling excluded) + profile', async () => {
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GA });
-    expect(r.person_id).toBe(PERSON1);
     expect([...(r.guest_ids ?? [])].sort()).toEqual([GA, GB].sort()); // GC frozen → excluded
-    expect(r.profile_id).toBe(P1); // P1 has an in-scope booking → caller-visible
+    expect(r.profile_id).toBe(P1); // P1 has an in-scope booking → caller-visible (proves person resolution)
   });
 
   it('the SAME person via the PROFILE side', async () => {
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { profile: P1 });
-    expect(r.person_id).toBe(PERSON1);
     expect(r.profile_id).toBe(P1);
-    expect([...(r.guest_ids ?? [])].sort()).toEqual([GA, GB].sort());
+    expect([...(r.guest_ids ?? [])].sort()).toEqual([GA, GB].sort()); // resolves to the same person's guests
   });
 
   it('a FROZEN clicked guest is its OWN person: just itself, no profile', async () => {
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GC });
-    expect(r.person_id).toBe(GC);
     expect(r.profile_id).toBeNull();
-    expect(r.guest_ids).toEqual([GC]);
+    expect(r.guest_ids).toEqual([GC]); // frozen → its own person, no expansion
   });
 
   it('a plain unmerged guest resolves to just itself (congruent)', async () => {
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GP });
-    expect(r.person_id).toBe(GP);
     expect(r.profile_id).toBeNull();
     expect(r.guest_ids).toEqual([GP]);
   });
 
   it('a plain unlinked registered player (profile click) returns itself — congruent, not empty', async () => {
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { profile: P2 });
-    expect(r.person_id).toBe(P2);
     expect(r.profile_id).toBe(P2); // the clicked profile is always in the ref set
     expect(r.guest_ids).toEqual([]);
   });
@@ -162,7 +157,6 @@ describe('get_person_refs_for_scope (Phase 3.3b) — refs only, scope-gated', ()
   it('TRAINER scope sees only its own guest ref (GB); the profile is included only if caller-visible', async () => {
     // P1 has an in-scope booking under SLOT_A (TR1's slot), so the trainer CAN see the profile ref.
     const [r] = await refs(TR1_USER, 'trainer', TR1, { guest: GB });
-    expect(r.person_id).toBe(PERSON1);
     expect(r.guest_ids).toEqual([GB]); // GA is academy-only, out of this trainer's scope
     expect(r.profile_id).toBe(P1);
   });

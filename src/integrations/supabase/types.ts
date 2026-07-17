@@ -8848,7 +8848,6 @@ export type Database = {
         }
         Returns: {
           guest_ids: string[]
-          person_id: string
           profile_id: string
         }[]
       }

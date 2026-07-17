@@ -480,10 +480,14 @@ One domain per PR, each with tests + live-verify, in dependency order:
 
    **Progress — 3.3b BUILT (migration `20260829100000`):** the player DETAIL page reaches the
    whole PERSON. (a) new SECURITY DEFINER RPC `get_person_refs_for_scope(scope, scope_id,
-   guest_id, profile_id)` resolves a clicked g_/p_ ref → the person's IN-SCOPE ref set (guest ids
-   + profile id) + identity + has_login; authorized exactly like get_players_overview;
-   split-freeze aware (frozen clicked guest = its own person; frozen siblings excluded); exposes
-   no ref the caller couldn't already see. person_links is RLS-locked, hence DEFINER. (b) client
+   guest_id, profile_id)` resolves a clicked g_/p_ ref → the person's IN-SCOPE ref set —
+   `(guest_ids, profile_id)`, REFS ONLY, no identity/PII (do NOT copy the dangerous first-cut
+   model that returned name/email/has_login; see the verify note below). person_id is deliberately
+   not returned either (it equals the profile id for account holders, so echoing it would disclose
+   a gated profile uuid). Authorized exactly like get_players_overview; the clicked ref is
+   validated in-scope (IDOR guard); split-freeze aware (frozen clicked guest = its own person;
+   frozen siblings excluded); the profile id is released only when the caller can already see it
+   (in-scope booking or invoice). person_links is RLS-locked, hence DEFINER. (b) client
    (`playerDetailData.ts`): `fetchPersonRefSet` (falls back to the single clicked ref on
    PGRST202/error — pre-deploy congruence), `fetchPersonBookingSlotIds` (unions bookings across
    refs, FAM-02 pure-profile guard on the profile side, RLS-scoped to the caller's slots),

@@ -30,7 +30,6 @@ export interface ParsedPlayerRef {
  * sourcing identity from the clicked row as before.
  */
 export interface PersonRefSet {
-  personId: string;
   /** In-scope, non-split-frozen guest ids of the person (includes the clicked guest). */
   guestIds: string[];
   /** The person's profile, only when the caller can already see it (in-scope booking/invoice). */
@@ -49,7 +48,6 @@ export async function fetchPersonRefSet(
   client: Pick<SupabaseClient, 'rpc'> = supabase,
 ): Promise<PersonRefSet> {
   const fallback: PersonRefSet = {
-    personId: clicked.id,
     guestIds: clicked.kind === 'guest' ? [clicked.id] : [],
     profileId: clicked.kind === 'profile' ? clicked.id : null,
   };
@@ -72,7 +70,6 @@ export async function fetchPersonRefSet(
     const row = (data as unknown as Array<Record<string, unknown>>)?.[0];
     if (!row) return fallback;
     return {
-      personId: (row.person_id as string) ?? clicked.id,
       guestIds: ((row.guest_ids as string[] | null) ?? []).filter(Boolean),
       profileId: (row.profile_id as string | null) ?? null,
     };
