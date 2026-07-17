@@ -651,7 +651,15 @@ IS NULL` on both sides) | B guest-recipient (`v_guest_player_id IS NOT NULL AND 
 v_guest_player_id` — fires for guest-only AND dual-key, keeps the double-bill guard alive for a frozen
 dual-key recipient, freeze-safe by construction) | C person cross-key (freeze-guarded both sides).
 +3 dual-key pins, each mutation-checked. Lesson: person-keying a predicate = re-derive the whole
-arm-set, don't narrow one arm (narrowing A silently broke B's coverage → a double-insert). **SECURITY (external audit P1, folded in): locked the RPC to service_role
+arm-set, don't narrow one arm (narrowing A silently broke B's coverage → a double-insert).
+**Lock-key follow-up (audit round 4): the advisory lock must use the SAME guest-first recipient rule
+as the recheck.** It was profile-first (`COALESCE(v_person_id, v_player_id, v_guest_player_id)`), so a
+frozen/unlinked dual-key payload locked on the profile while a guest-only create for the same guest
+locked on the guest — the two didn't serialize, and since arm B now cross-matches them the P1-6
+double-bill race was reopened for mixed shapes. Lock key is now guest-first (`COALESCE(v_person_id,
+v_guest_player_id, v_player_id)`) = the recipient rule, so every same-recipient shape serializes on one
+lock. +2 mixed-shape recheck pins (lock serialization isn't exercisable in single-connection PGlite).
+Four audit rounds on this one migration; the lock↔recheck-key coherence is the general lesson. **SECURITY (external audit P1, folded in): locked the RPC to service_role
 only.** It is SECURITY DEFINER and INSERTs invoices with no internal ownership check;
 `auto-create-invoice` is the authz boundary (admin / slot trainer / academy manager, else 403) and
 calls it with the service-role client (`requireUser()` hands every caller a service client), so the
