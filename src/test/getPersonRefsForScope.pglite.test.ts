@@ -33,8 +33,14 @@ const GB_OTHER = '30000000-0000-0000-0000-000000000001';
 const P_NOBOOK = '30000000-0000-0000-0000-000000000002'; // linked to PERSON1 world but no in-scope booking
 // registered player with an in-scope booking but NO login-side merge (plain profile click)
 const P2 = '40000000-0000-0000-0000-000000000002';
+// DECOUPLING case: a person WITH a login whose profile PL has NO in-scope booking/invoice (so
+// profile_id is withheld) but is reached via an in-scope guest GL → has_login must still be true,
+// proving has_login reads persons.user_id, not the returned profile ref.
+const PERSONL = '50000000-0000-0000-0000-000000000001';
+const PL = '50000000-0000-0000-0000-000000000002';
+const GL = '50000000-0000-0000-0000-000000000003';
 
-type RefsRow = { guest_ids: string[] | null; profile_id: string | null };
+type RefsRow = { guest_ids: string[] | null; profile_id: string | null; has_login: boolean };
 
 async function refs(
   uid: string, scope: 'academy' | 'trainer', scopeId: string,
@@ -65,7 +71,7 @@ beforeAll(async () => {
     CREATE TABLE public.academy_trainers (academy_profile_id uuid, trainer_profile_id uuid, status text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid);
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, trainer_id uuid, academy_profile_id uuid);
-    CREATE TABLE public.persons (id uuid PRIMARY KEY);
+    CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid);
     CREATE TABLE public.person_links (person_id uuid, profile_id uuid, guest_player_id uuid);
     CREATE TABLE public.person_merge_review (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       kind text, status text, guest_player_id uuid, person_id uuid);
@@ -93,7 +99,7 @@ beforeAll(async () => {
 
     -- merged: profile P1 (WITH an in-scope booking) + academy guest GA + trainer guest GB
     INSERT INTO public.profiles VALUES ('${P1}', 'aa000000-0000-0000-0000-0000000000f1');
-    INSERT INTO public.persons VALUES ('${PERSON1}');
+    INSERT INTO public.persons VALUES ('${PERSON1}', '10000000-0000-0000-0000-0000000000f1'); -- has login
     INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${GA}', '${ACADEMY}');
     INSERT INTO public.guest_players (id, trainer_id) VALUES ('${GB}', '${TR1}');
     INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${GC}', '${ACADEMY}');
@@ -116,9 +122,18 @@ beforeAll(async () => {
     -- a plain registered player with an in-scope booking (unlinked → its own person)
     INSERT INTO public.profiles VALUES ('${P2}', 'aa000000-0000-0000-0000-0000000000f2');
     INSERT INTO public.bookings (slot_id, player_id, status) VALUES ('${SLOT_A}', '${P2}', 'confirmed');
+
+    -- DECOUPLING: PERSONL has a login (persons.user_id) + profile PL that has NO in-scope booking/
+    -- invoice, reached via the in-scope academy guest GL. Clicking GL → profile_id withheld (null)
+    -- yet has_login must be true — decouples has_login from the profile ref.
+    INSERT INTO public.persons (id, user_id) VALUES ('${PERSONL}', 'aa000000-0000-0000-0000-0000000000b5');
+    INSERT INTO public.profiles VALUES ('${PL}', 'aa000000-0000-0000-0000-0000000000f5');
+    INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${GL}', '${ACADEMY}');
+    INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PERSONL}', '${PL}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PERSONL}', '${GL}');
   `);
   await db.exec(
-    readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260829100000_phase33b_person_detail_refs.sql'), 'utf8')
+    readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260901100000_phase33d_person_refs_has_login.sql'), 'utf8')
       .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n'),
   );
 });
@@ -128,6 +143,7 @@ describe('get_person_refs_for_scope (Phase 3.3b) — refs only, scope-gated', ()
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GA });
     expect([...(r.guest_ids ?? [])].sort()).toEqual([GA, GB].sort()); // GC frozen → excluded
     expect(r.profile_id).toBe(P1); // P1 has an in-scope booking → caller-visible (proves person resolution)
+    expect(r.has_login).toBe(true); // merged account holder → Registered, even clicked via the guest side
   });
 
   it('the SAME person via the PROFILE side', async () => {
@@ -140,12 +156,14 @@ describe('get_person_refs_for_scope (Phase 3.3b) — refs only, scope-gated', ()
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GC });
     expect(r.profile_id).toBeNull();
     expect(r.guest_ids).toEqual([GC]); // frozen → its own person, no expansion
+    expect(r.has_login).toBe(false); // frozen clicked guest = its own accountless person
   });
 
   it('a plain unmerged guest resolves to just itself (congruent)', async () => {
     const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GP });
     expect(r.profile_id).toBeNull();
     expect(r.guest_ids).toEqual([GP]);
+    expect(r.has_login).toBe(false); // plain unmerged guest = accountless
   });
 
   it('a plain unlinked registered player (profile click) returns itself — congruent, not empty', async () => {
@@ -167,6 +185,15 @@ describe('get_person_refs_for_scope (Phase 3.3b) — refs only, scope-gated', ()
 
   it('IDOR guard: a clicked profile with NO in-scope booking is rejected', async () => {
     expect(await failed(refs(MGR_USER, 'academy', ACADEMY, { profile: P_NOBOOK }))).toBe(true);
+  });
+
+  it('has_login DECOUPLED from profile_id: a logged-in person via a guest whose profile is out-of-scope', async () => {
+    // GL → PERSONL; PL has no in-scope booking/invoice → profile_id withheld, but the person HAS a
+    // login. If has_login were derived from the returned profile ref it would be false here (wrong).
+    const [r] = await refs(MGR_USER, 'academy', ACADEMY, { guest: GL });
+    expect(r.profile_id).toBeNull();  // profile out of scope → withheld
+    expect(r.has_login).toBe(true);   // …yet the person has an account
+    expect(r.guest_ids).toEqual([GL]);
   });
 
   it('rejects a manager of a different academy (auth gate)', async () => {

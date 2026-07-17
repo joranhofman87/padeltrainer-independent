@@ -9,22 +9,22 @@ import {
 describe('fetchPersonRefSet (Phase 3.3b)', () => {
   it('maps the RPC row to the ref set (refs only — no identity/PII)', async () => {
     const rpc = vi.fn().mockResolvedValue({
-      data: [{ guest_ids: ['g1', 'g2'], profile_id: 'p1' }],
+      data: [{ guest_ids: ['g1', 'g2'], profile_id: 'p1', has_login: true }],
       error: null,
     });
     const refs = await fetchPersonRefSet({ kind: 'academy', id: 'a1' }, { kind: 'guest', id: 'g1' }, { rpc });
     expect(rpc).toHaveBeenCalledWith('get_person_refs_for_scope', {
       p_scope: 'academy', p_scope_id: 'a1', p_guest_id: 'g1', p_profile_id: undefined,
     });
-    expect(refs).toEqual({ guestIds: ['g1', 'g2'], profileId: 'p1' });
+    expect(refs).toEqual({ guestIds: ['g1', 'g2'], profileId: 'p1', hasLogin: true });
   });
 
   it('falls back to the single clicked ref when the RPC is undeployed (PGRST202) — never blanks', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST202' } });
     const g = await fetchPersonRefSet({ kind: 'academy', id: 'a1' }, { kind: 'guest', id: 'g9' }, { rpc });
-    expect(g).toEqual({ guestIds: ['g9'], profileId: null });
+    expect(g).toEqual({ guestIds: ['g9'], profileId: null, hasLogin: undefined });
     const p = await fetchPersonRefSet({ kind: 'trainer', id: 't1' }, { kind: 'profile', id: 'p9' }, { rpc });
-    expect(p).toEqual({ guestIds: [], profileId: 'p9' });
+    expect(p).toEqual({ guestIds: [], profileId: 'p9', hasLogin: undefined });
   });
 
   it('falls back on a thrown error too', async () => {
