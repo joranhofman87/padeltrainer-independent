@@ -6,6 +6,7 @@
 // cross-tenant isolation characterization (a trainer/academy only ever sees invoices it owns).
 import { supabase } from '@/lib/supabaseClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 /** The owning tenant: a trainer (`trainer_id`) or an academy (`academy_profile_id`). */
 export interface PlayerDetailScope {
@@ -18,6 +19,118 @@ export interface PlayerDetailScope {
 export interface ParsedPlayerRef {
   kind: 'guest' | 'profile';
   id: string;
+}
+
+/**
+ * Phase 3.3b: the IN-SCOPE ref set of the person behind a clicked g_/p_ ref. A merged human's
+ * detail page unions bookings/invoices across ALL these refs so their self-booked sessions and
+ * profile-addressed invoices show alongside their guest-seated ones. Resolved by the SECURITY
+ * DEFINER RPC get_person_refs_for_scope (person_links is RLS-locked). REFS ONLY — the RPC carries
+ * no identity/PII (it must never become a cross-tenant identity oracle); the detail header keeps
+ * sourcing identity from the clicked row as before.
+ */
+export interface PersonRefSet {
+  /** In-scope, non-split-frozen guest ids of the person (includes the clicked guest). */
+  guestIds: string[];
+  /** The person's profile, only when the caller can already see it (in-scope booking/invoice). */
+  profileId: string | null;
+}
+
+/**
+ * Resolve a clicked g_/p_ ref to the person's in-scope ref set. Falls back to a SINGLE-REF set (the
+ * clicked ref only) if the RPC is not yet deployed (PGRST202) or errors — that reproduces the exact
+ * pre-3.3b behavior, so the detail page never blanks while the migration rolls out (Vercel ships the
+ * client before `db push`).
+ */
+export async function fetchPersonRefSet(
+  scope: PlayerDetailScope,
+  clicked: ParsedPlayerRef,
+  client: Pick<SupabaseClient, 'rpc'> = supabase,
+): Promise<PersonRefSet> {
+  const fallback: PersonRefSet = {
+    guestIds: clicked.kind === 'guest' ? [clicked.id] : [],
+    profileId: clicked.kind === 'profile' ? clicked.id : null,
+  };
+  try {
+    const { data, error } = await client.rpc('get_person_refs_for_scope', {
+      p_scope: scope.kind,
+      p_scope_id: scope.id,
+      p_guest_id: clicked.kind === 'guest' ? clicked.id : undefined,
+      p_profile_id: clicked.kind === 'profile' ? clicked.id : undefined,
+    });
+    if (error) {
+      if (error.code !== 'PGRST202') {
+        logger.warn('get_person_refs_for_scope failed; showing single-ref detail', {
+          component: 'playerDetailData',
+          code: error.code,
+        });
+      }
+      return fallback;
+    }
+    const row = (data as unknown as Array<Record<string, unknown>>)?.[0];
+    if (!row) return fallback;
+    return {
+      guestIds: ((row.guest_ids as string[] | null) ?? []).filter(Boolean),
+      profileId: (row.profile_id as string | null) ?? null,
+    };
+  } catch (e) {
+    logger.warn('get_person_refs_for_scope threw; showing single-ref detail', {
+      component: 'playerDetailData',
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return fallback;
+  }
+}
+
+/**
+ * The distinct slot ids of every booking belonging to the PERSON across the ref set, under the
+ * caller's own slots (RLS-scoped). FAM-02: a dual-keyed row is the guest person's, so the profile
+ * side matches only PURE-profile rows (guest_player_id IS NULL) — the same guard the overview uses.
+ */
+export async function fetchPersonBookingSlotIds(
+  refs: PersonRefSet,
+  client: Pick<SupabaseClient, 'from'> = supabase,
+): Promise<string[]> {
+  const slotIds = new Set<string>();
+  const queries: Promise<{ data: Array<{ slot_id: string | null }> | null }>[] = [];
+  if (refs.guestIds.length > 0) {
+    queries.push(
+      client.from('bookings').select('slot_id').in('guest_player_id', refs.guestIds) as unknown as
+        Promise<{ data: Array<{ slot_id: string | null }> | null }>,
+    );
+  }
+  if (refs.profileId) {
+    queries.push(
+      client.from('bookings').select('slot_id').eq('player_id', refs.profileId).is('guest_player_id', null) as unknown as
+        Promise<{ data: Array<{ slot_id: string | null }> | null }>,
+    );
+  }
+  for (const res of await Promise.all(queries)) {
+    for (const b of res.data ?? []) if (b.slot_id) slotIds.add(b.slot_id);
+  }
+  return [...slotIds];
+}
+
+/** The PERSON's invoices across the ref set (guest-addressed + profile-addressed), newest first,
+ *  deduped by id. Profile-addressed invoices are the person's to pay (addressee exemption — no
+ *  pure-profile guard, matching the overview's overdue rule). */
+export async function fetchPersonInvoices(
+  scope: PlayerDetailScope,
+  refs: PersonRefSet,
+  client: Pick<SupabaseClient, 'from'> = supabase,
+): Promise<PlayerInvoiceRow[]> {
+  const parts: PlayerInvoiceRow[] = [];
+  if (refs.guestIds.length > 0) {
+    for (const gid of refs.guestIds) {
+      parts.push(...(await fetchPlayerInvoices(scope, { kind: 'guest', id: gid }, client)));
+    }
+  }
+  if (refs.profileId) {
+    parts.push(...(await fetchPlayerInvoices(scope, { kind: 'profile', id: refs.profileId }, client)));
+  }
+  const byId = new Map<string, PlayerInvoiceRow>();
+  for (const inv of parts) if (!byId.has(inv.id)) byId.set(inv.id, inv);
+  return [...byId.values()].sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? ''));
 }
 
 export interface PlayerInvoiceRow {

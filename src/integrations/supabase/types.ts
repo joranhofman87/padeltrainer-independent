@@ -8839,6 +8839,18 @@ export type Database = {
         }
         Returns: string
       }
+      get_person_refs_for_scope: {
+        Args: {
+          p_guest_id?: string
+          p_profile_id?: string
+          p_scope: string
+          p_scope_id: string
+        }
+        Returns: {
+          guest_ids: string[]
+          profile_id: string
+        }[]
+      }
       get_player_email_edit_capability: {
         Args: { _academy_profile_id: string; _profile_id: string }
         Returns: string

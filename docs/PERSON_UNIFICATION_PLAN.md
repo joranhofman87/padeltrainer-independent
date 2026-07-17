@@ -478,6 +478,39 @@ One domain per PR, each with tests + live-verify, in dependency order:
    not a badge fix. The 3.1 tracked gap (attendance card sees only pure-profile sessions) stays
    open until then.
 
+   **Progress — 3.3b BUILT (migration `20260829100000`):** the player DETAIL page reaches the
+   whole PERSON. (a) new SECURITY DEFINER RPC `get_person_refs_for_scope(scope, scope_id,
+   guest_id, profile_id)` resolves a clicked g_/p_ ref → the person's IN-SCOPE ref set —
+   `(guest_ids, profile_id)`, REFS ONLY, no identity/PII (do NOT copy the dangerous first-cut
+   model that returned name/email/has_login; see the verify note below). person_id is deliberately
+   not returned either (it equals the profile id for account holders, so echoing it would disclose
+   a gated profile uuid). Authorized exactly like get_players_overview; the clicked ref is
+   validated in-scope (IDOR guard); split-freeze aware (frozen clicked guest = its own person;
+   frozen siblings excluded); the profile id is released only when the caller can already see it
+   (in-scope booking or invoice). person_links is RLS-locked, hence DEFINER. (b) client
+   (`playerDetailData.ts`): `fetchPersonRefSet` (falls back to the single clicked ref on
+   PGRST202/error — pre-deploy congruence), `fetchPersonBookingSlotIds` (unions bookings across
+   refs, FAM-02 pure-profile guard on the profile side, RLS-scoped to the caller's slots),
+   `fetchPersonInvoices` (unions guest- + profile-addressed invoices, addressee exemption, deduped).
+   Both AcademyPlayerDetail + TrainerPlayerDetail now show a merged human's full session +
+   invoice history. **Scope note:** identity/edit machinery + `linked_profile_id` reads left
+   UNCHANGED (write behavior untouched); rating history left as-is (player_rating_history has
+   only a self-view RLS policy → already dormant on the manager/trainer detail page, a separate
+   pre-existing non-feature, not a unification gap). linked_profile_id retirement stays for the
+   Phase-4 prep sweep.
+   **Adversarial verify (8 confirmed, all fixed) — the RPC's first cut was a cross-tenant PII
+   oracle:** it returned identity fields the client never uses AND (a) never validated the CLICKED
+   ref was in-scope (IDOR — any manager could dereference an arbitrary guest/profile uuid to its
+   PII), (b) resolved the profile side with no scope gate, (c) sourced identity from persons.*
+   contact fields, which aggregate SYSTEM-WIDE (the exact leak 3.2's overview already forbids).
+   Fix: the RPC now returns REFS ONLY (guest_ids, profile_id — no name/email/phone, and no
+   person_id since it equals the profile id for account holders and would leak a gated profile
+   uuid), validates the clicked ref is in-scope (a clicked guest must be a scope guest; a clicked
+   profile must have an in-scope confirmed/completed booking), and returns profile_id only when the caller
+   can already see it (in-scope booking OR invoice). DOCTRINE (re-confirmed): a person-resolution
+   reader must expose no ref/PII the caller couldn't already see in its scope, and identity NEVER
+   comes from persons.* contact fields.
+
 2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;

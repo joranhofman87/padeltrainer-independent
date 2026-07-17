@@ -16,7 +16,7 @@ import { resolveTrainerCyclusPricingRoute } from '@/lib/trainerCyclusPricingRout
 import { downloadInvoicePdf } from '@/lib/downloadInvoicePdf';
 import { coalesceLinkedGuestIdentity, fetchLinkedProfileIdentity } from '@/lib/academyPlayerDetails';
 import { fetchTrainerLocationOptions, type TrainerPlayerDetailsValues } from '@/lib/trainerPlayerDetails';
-import { fetchPlayerInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
+import { fetchPersonRefSet, fetchPersonBookingSlotIds, fetchPersonInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
 import { fetchTrainerPlayerTrainingLocations } from '@/lib/trainerPlayerTrainingLocations';
 import { trainerPlayersQueryKey } from '@/lib/trainerPlayersQuery';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
@@ -251,12 +251,14 @@ export default function TrainerPlayerDetail() {
       });
       setLocationNames(trainingLocations.map((l) => l.location_name));
 
-      const bookingFilter =
-        parsed.kind === 'guest'
-          ? supabase.from('bookings').select('id, slot_id, status').eq('guest_player_id', parsed.id)
-          : supabase.from('bookings').select('id, slot_id, status').eq('player_id', parsed.id);
-      const { data: bookingsData } = await bookingFilter;
-      const slotIds = Array.from(new Set((bookingsData || []).map((b) => b.slot_id))).filter(Boolean);
+      // Person-complete bookings (Phase 3.3b): union a merged human's seats across BOTH old keys.
+      // Bookings RLS already scopes to this trainer's slots, and the availability_slots read below
+      // re-applies .eq('trainer_id') — so a person's sessions under OTHER trainers never leak in.
+      const personRefs = await fetchPersonRefSet(
+        { kind: 'trainer', id: trainerId! },
+        { kind: parsed.kind, id: parsed.id },
+      );
+      const slotIds = await fetchPersonBookingSlotIds(personRefs);
 
       let cyclusItems: CyclusItem[] = [];
       if (slotIds.length) {
@@ -286,9 +288,9 @@ export default function TrainerPlayerDetail() {
       }
       setCycluses(cyclusItems);
 
-      const invoiceRows = (await fetchPlayerInvoices(
+      const invoiceRows = (await fetchPersonInvoices(
         { kind: 'trainer', id: trainerId! },
-        { kind: parsed.kind, id: parsed.id },
+        personRefs,
       )) as unknown as InvoiceItem[];
       setInvoices(invoiceRows);
 

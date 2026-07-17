@@ -29,7 +29,7 @@ import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDeta
 import { PlayerLocationsControl } from '@/components/academy/PlayerLocationsControl';
 import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
-import { fetchPlayerInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
+import { fetchPersonRefSet, fetchPersonBookingSlotIds, fetchPersonInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
 import { coalesceLinkedGuestIdentity, fetchLinkedProfileIdentity, type AcademyPlayerDetailsValues } from '@/lib/academyPlayerDetails';
 import { buildInvoiceEmailEvents, filterInvoicesForAcademy, mapCampaignEmailEvents, mergePlayerEmailHistory, type AcademyPlayerEmailHistoryItem } from '@/lib/academyPlayerEmailHistory';
 import { academyPlayersQueryKey } from '@/lib/academyPlayersQuery';
@@ -237,12 +237,15 @@ export default function AcademyPlayerDetail() {
             : meta?.notes ?? null,
       });
 
-      // Bookings (cycluses)
-      const bookingFilter = parsed.kind === 'guest'
-        ? supabase.from('bookings').select('id, slot_id, status').eq('guest_player_id', parsed.id)
-        : supabase.from('bookings').select('id, slot_id, status').eq('player_id', parsed.id);
-      const { data: bookingsData } = await bookingFilter;
-      const slotIds = Array.from(new Set((bookingsData || []).map((b: any) => b.slot_id))).filter(Boolean);
+      // Bookings (cycluses) — person-complete (Phase 3.3b): a merged human's sessions under BOTH
+      // old keys (their guest seats AND their self-booked player_id sessions) are unioned, so the
+      // detail page no longer hides half their history. Reads stay under the academy's own slots
+      // (RLS-scoped). Falls back to the single clicked ref if the resolver RPC isn't deployed yet.
+      const personRefs = await fetchPersonRefSet(
+        { kind: 'academy', id: activeAcademy!.id },
+        { kind: parsed.kind, id: parsed.id },
+      );
+      const slotIds = await fetchPersonBookingSlotIds(personRefs);
 
       let cycluses: CyclusItem[] = [];
       if (slotIds.length) {
@@ -267,10 +270,10 @@ export default function AcademyPlayerDetail() {
       }
       setCycluses(cycluses);
 
-      // Invoices (scoped to current academy)
-      const invoiceRows = (await fetchPlayerInvoices(
+      // Invoices (scoped to current academy) — person-complete across the ref set (Phase 3.3b).
+      const invoiceRows = (await fetchPersonInvoices(
         { kind: 'academy', id: activeAcademy!.id },
-        { kind: parsed.kind, id: parsed.id },
+        personRefs,
       )) as unknown as InvoiceItem[];
       setInvoices(invoiceRows);
 
