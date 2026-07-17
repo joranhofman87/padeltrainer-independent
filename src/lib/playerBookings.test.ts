@@ -7,7 +7,7 @@ let bookingsData: unknown[] = [];
 function makeChain(getData: () => unknown[]) {
   const result = () => ({ data: getData(), error: null });
   const chain: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'neq', 'in', 'not', 'gte', 'order', 'range']) {
+  for (const m of ['select', 'eq', 'neq', 'in', 'is', 'not', 'gte', 'order', 'range']) {
     chain[m] = (...args: unknown[]) => {
       calls.push({ method: m, args });
       return chain;

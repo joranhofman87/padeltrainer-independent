@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   personKeyOf,
   personRefOf,
+  unifiedPersonKeyOf,
   personRefOfIds,
   matchBookingsToPerson,
   personDisplayName,
@@ -106,5 +107,35 @@ describe('personDisplayName — guest person shows their OWN name', () => {
   it('nothing usable → null (caller drops the row, matching current roster behavior)', () => {
     expect(personDisplayName({ player_id: 'p1' }, {})).toBeNull();
     expect(personDisplayName({ guest_player_id: 'g1' }, { guestName: '' })).toBeNull();
+  });
+});
+
+describe('unifiedPersonKeyOf — Phase 3.1 person_id-first key with congruent fallback', () => {
+  it('stamped row keys on person_id regardless of old keys', () => {
+    expect(unifiedPersonKeyOf({ person_id: 'P', player_id: 'x', guest_player_id: 'y' })).toBe('person:P');
+  });
+
+  it('unstamped fallback is guest-side-first — congruent with the dual-write derivation', () => {
+    expect(unifiedPersonKeyOf({ player_id: 'x', guest_player_id: 'y' })).toBe('person:y');
+    expect(unifiedPersonKeyOf({ player_id: 'x' })).toBe('person:x');
+  });
+
+  it('deterministic ids make a stamped and an unstamped row of the SAME person key identically', () => {
+    // guest-only person: person id = the guest uuid
+    expect(unifiedPersonKeyOf({ person_id: 'g1', guest_player_id: 'g1' }))
+      .toBe(unifiedPersonKeyOf({ guest_player_id: 'g1' }));
+    // account holder: person id = the profile uuid
+    expect(unifiedPersonKeyOf({ person_id: 'p1', player_id: 'p1' }))
+      .toBe(unifiedPersonKeyOf({ player_id: 'p1' }));
+  });
+
+  it('a merged twin unifies rows under BOTH old keys onto one key', () => {
+    const guestRow = { person_id: 'prof-uuid', guest_player_id: 'guest-uuid' };
+    const profileRow = { person_id: 'prof-uuid', player_id: 'prof-uuid' };
+    expect(unifiedPersonKeyOf(guestRow)).toBe(unifiedPersonKeyOf(profileRow));
+  });
+
+  it('no identity → null', () => {
+    expect(unifiedPersonKeyOf({})).toBeNull();
   });
 });

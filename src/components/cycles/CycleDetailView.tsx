@@ -26,8 +26,8 @@ import { CycleEndDateFields, type CycleEndDatePlan } from '@/components/cycles/C
 import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/components/slots/SlotEditForm';
 import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, representativeSlotPrice, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
-import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
-import { addPlayersToCycle, swapPlayerInCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
+import { pickerExcludeKeysFor, removePersonFromCycle, swapPersonInCycle } from '@/lib/cycleRosterPerson';
+import { addPlayersToCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
 import { resolveOrCreateGuestTwinForRegisteredPlayer } from '@/lib/playerResolve';
 import { type BookablePerson } from '@/lib/playersOverview';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
@@ -386,14 +386,13 @@ export function CycleDetailView({
         setRemoveTarget(null);
         return;
       }
-      const res = await cancelPlayerBookingsInCycle(
-        allSlotIds,
-        { playerId: removeTarget.playerId, guestPlayerId: removeTarget.guestPlayerId },
-        supabase,
-        { skipInvoiceSync: skipInvoiceUpdates, declineClaims: true },
-      );
-      if (res.cancelError) throw res.cancelError;
-      if (res.syncError) logger.error('Invoice sync after whole-cycle remove failed', res.syncError);
+      // Phase 3.1: a merged person's roster entry spans EVERY old-world ref they hold seats
+      // under — removePersonFromCycle covers all of them or half the person stays silently seated.
+      const res = await removePersonFromCycle(allSlotIds, removeTarget, supabase, {
+        skipInvoiceSync: skipInvoiceUpdates,
+        declineClaims: true,
+      });
+      if (res.syncError) logger.error('Invoice sync after whole-cycle remove failed', res.syncError as Error);
       setRemoveTarget(null);
       toast.success(t('detail.roster.removedFromCycle', { count: res.cancelledCount }));
       void queryClient.invalidateQueries({ queryKey: ['cycle-detail', cycleId] });
@@ -497,14 +496,15 @@ export function CycleDetailView({
         toast.error(t('detail.roster.registeredTwinFailed', 'Could not add this player. Please try again.'));
         return; // keep the row open so they can retry
       }
-      const res = await swapPlayerInCycle({
+      // Phase 3.1: swap out EVERY old-world ref the outgoing person holds seats under (one swap
+      // per ref, same incoming person; duplicate seats resolve via swap's collision handling).
+      const res = await swapPersonInCycle({
         cycleId,
-        fromPlayer: { playerId: entry.playerId, guestPlayerId: entry.guestPlayerId },
+        fromEntry: entry,
         toGuestPlayerId: resolved.guestPlayerId,
         toProfileId: resolved.twinProfileId,
         skipInvoices: skipInvoiceUpdates,
       });
-      if (res.error) throw res.error;
       setExpandedRosterKey(null);
       setChangeSelectedPerson(null);
       if (res.reassignedCount + res.cancelledCollisionCount === 0) {
@@ -840,12 +840,14 @@ export function CycleDetailView({
           ) : (
             <div className="space-y-1">
               {roster.map((p, i) => {
-                const rowKey = p.guestPlayerId ?? p.playerId ?? `${p.name}-${i}`;
+                const rowKey = p.personId ?? p.guestPlayerId ?? p.playerId ?? `${p.name}-${i}`;
                 const expanded = expandedRosterKey === rowKey;
                 // Registered (player_id) rows are now changeable too (person-unification Phase 0):
                 // the row carries a person ref the swap scopes correctly.
                 const canChange = canManageRoster && (!!p.guestPlayerId || !!p.playerId);
-                const personKey = p.guestPlayerId ? `g_${p.guestPlayerId}` : p.playerId ? `p_${p.playerId}` : '';
+                // Exclude EVERY picker row of this person (a merged human has both a g_ and a p_
+                // row until the 3.2 picker dedup) — not just the primary ref's side.
+                const excludeKeys = pickerExcludeKeysFor(p);
                 const interactive = canChange || canRemoveFromCycle;
                 return (
                   <div key={rowKey}>
@@ -878,7 +880,7 @@ export function CycleDetailView({
                                 academyProfileId={academyProfileId}
                                 value={changeSelectedPerson?.comboboxId ?? ''}
                                 onSelect={setChangeSelectedPerson}
-                                excludePersonKeys={personKey ? [personKey] : []}
+                                excludePersonKeys={excludeKeys}
                                 disabled={rosterBusy}
                                 namespace={namespace}
                               />

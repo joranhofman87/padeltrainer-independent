@@ -228,6 +228,7 @@ export async function fetchPlayerBookings(playerId: string): Promise<PlayerBooki
       .from('bookings')
       .select(slotSelect(''))
       .eq('player_id', playerId)
+      .is('guest_player_id', null) // FAM-02: dual-keyed rows are the GUEST person's — they arrive via the frozen RPC
       .order('created_at', { ascending: false }),
     fetchLinkedGuestBookingRows(),
   ]);
@@ -250,6 +251,7 @@ export async function fetchUpcomingPlayerBookings(playerId: string): Promise<Pla
       .from('bookings')
       .select(slotSelect('!inner'))
       .eq('player_id', playerId)
+      .is('guest_player_id', null) // FAM-02: dual-keyed rows are the GUEST person's — they arrive via the frozen RPC
       .neq('status', 'cancelled')
       .gte('availability_slots.start_time', nowISO)
       .order('start_time', { ascending: true, referencedTable: 'availability_slots' }),
@@ -284,7 +286,8 @@ export async function fetchPlayerBookingsPage(
   let query = supabase
     .from('bookings')
     .select(slotSelect(''))
-    .eq('player_id', playerId);
+    .eq('player_id', playerId)
+    .is('guest_player_id', null); // FAM-02: dual-keyed rows are the GUEST person's — they arrive via the frozen RPC
   if (excludeIds.length > 0) {
     query = query.not('id', 'in', `(${excludeIds.join(',')})`);
   }
