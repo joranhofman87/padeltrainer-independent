@@ -9309,8 +9309,8 @@ export type Database = {
           p_verified?: boolean
         }
         Returns: {
-          average_rating: number
           avatar_url: string
+          average_rating: number
           bio: string
           certifications: string[]
           experience_years: number
