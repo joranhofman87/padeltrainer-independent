@@ -177,6 +177,18 @@ describe('get_player_locations (Phase 3.5d)', () => {
     await db.query(`DELETE FROM public.guest_players WHERE id = $1`, [GB]);
   });
 
+  it('CROSS-TENANT (Codex P1): the PROFILE side is not expanded — another academy\'s pure-profile booking cannot leak in via a guest-opened page', async () => {
+    // Caller opens the detail page via the GUEST ref only; the person's PROFILE has a
+    // pure-profile booking at ANOTHER academy's slot at a club this academy also lists.
+    const OTHER_TR = '30000000-0000-0000-0000-000000000009';
+    const OTHER_SLOT = '50000000-0000-0000-0000-000000000009';
+    await db.query(`INSERT INTO public.availability_slots VALUES ($1, NULL, '2026-09-03T10:00:00Z', $2)`, [OTHER_SLOT, LOC2]);
+    await db.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'confirmed')`, [OTHER_SLOT, PA]);
+    expect(await locations(null, GA1)).toEqual([]); // profile ref NOT expanded from the guest
+    await db.exec(`DELETE FROM public.bookings`);
+    void OTHER_TR;
+  });
+
   it('FAM-02: a dual-keyed booking does not credit the profile arm', async () => {
     const SLOT2 = '50000000-0000-0000-0000-000000000002';
     await db.query(`INSERT INTO public.availability_slots VALUES ($1, '${CYC}', '2026-09-02T10:00:00Z', $2)`, [SLOT2, LOC2]);

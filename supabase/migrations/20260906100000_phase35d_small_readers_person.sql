@@ -148,11 +148,12 @@ BEGIN
   -- ACADEMY'S SCOPE (the get_players_overview guests-CTE predicate: owned by the
   -- academy, or owned by one of its active trainers). The PASSED refs keep the
   -- original behavior untouched.
-  v_profile_ids := ARRAY(
-    SELECT DISTINCT x FROM unnest(ARRAY[p_profile_id] || COALESCE(ARRAY(
-      SELECT pl.profile_id FROM public.person_links pl
-      WHERE v_person IS NOT NULL AND pl.person_id = v_person AND pl.profile_id IS NOT NULL
-    ), '{}'::uuid[])) AS x WHERE x IS NOT NULL);
+  -- PROFILE side is NOT expanded (verify r3 / Codex P1): profiles are global (not
+  -- tenant-owned) and the bookings/intake arms below carry no tenant predicate, so
+  -- an expanded profile would surface ANOTHER academy's pure-profile bookings at a
+  -- shared club on this academy's page. The passed profile keeps the original
+  -- behavior; only GUEST refs (tenant-scopable) are expanded.
+  v_profile_ids := CASE WHEN p_profile_id IS NULL THEN '{}'::uuid[] ELSE ARRAY[p_profile_id] END;
   v_guest_ids := ARRAY(
     SELECT DISTINCT x FROM unnest(ARRAY[p_guest_player_id] || COALESCE(ARRAY(
       SELECT pl.guest_player_id FROM public.person_links pl
