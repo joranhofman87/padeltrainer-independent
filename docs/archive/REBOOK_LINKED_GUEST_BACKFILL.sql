@@ -1,4 +1,15 @@
 -- ============================================================================
+-- ⚠️  ARCHIVED 2026-07-18 — DO NOT RERUN
+-- ============================================================================
+-- One-time script, executed at rebook go-live. It keys on
+-- `guest_players.linked_profile_id`, which the person doctrine
+-- (docs/PERSON_UNIFICATION_PLAN.md) bans as identity truth — `person_links`
+-- is the only identity map. Re-running this after person unification could
+-- stamp `player_id` from a stale/wrong email-inferred link and corrupt the
+-- person map. Kept for the evidence trail only.
+-- ============================================================================
+--
+-- ============================================================================
 -- REBOOK GO-LIVE · Workstream B, Slice B4 — one-time linked-guest backfill
 -- ============================================================================
 -- Owner-run, idempotent, EXPLICIT-LINK-ONLY (never email).

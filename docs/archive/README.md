@@ -6,7 +6,7 @@ superseded). They are preserved as an evidence trail — do **not** treat them a
 guidance, and do not follow their runbooks against prod.
 
 Audience / AI-read: **no** (historical only)
-Status: archived | moved 2026-07-02
+Status: archived | moved 2026-07-02 · additions 2026-07-18
 
 For current, canonical guidance start at [`../DOCUMENTATION_INDEX.md`](../DOCUMENTATION_INDEX.md)
 and [`../AI_DEVELOPMENT_GUIDE.md`](../AI_DEVELOPMENT_GUIDE.md).
@@ -25,6 +25,10 @@ and [`../AI_DEVELOPMENT_GUIDE.md`](../AI_DEVELOPMENT_GUIDE.md).
 | `CYCLE_SERIES_SPLIT_RUNBOOK.md` | One-time mega-cycle split (applied to prod 2026-06-29) | — |
 | `test-summary.md` | "Lisa Loops" test-automation run report (abandoned run) | [TEST_COVERAGE_GAPS](../TEST_COVERAGE_GAPS.md) |
 | `testability-report.md` | "Lisa Loops" Stage-0 setup report (stale, lovable.app URLs) | [TESTING_STRATEGY](../TESTING_STRATEGY.md) |
+| `AUDIT-2026-06.md` | June-2026 consolidated pre-launch audit (97 findings, generated 2026-06-12) | [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](../audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) — the audit of record |
+| `REBOOK_LINKED_GUEST_BACKFILL.sql` | One-time linked-guest backfill, executed at rebook go-live. **DO NOT RERUN** — keys on `linked_profile_id`, banned as identity truth by the person doctrine | [PERSON_UNIFICATION_PLAN](../PERSON_UNIFICATION_PLAN.md) |
 
 > Point-in-time audit reports live under [`../audits/`](../audits/) instead — those are **not**
-> archived here; they remain the evidence trail for findings and fixes.
+> archived here; they remain the evidence trail for findings and fixes. (One exception:
+> `AUDIT-2026-06.md` predates the `audits/` convention and is fully superseded by the 2026-07-02
+> fresh-eyes audit, so it lives here.)

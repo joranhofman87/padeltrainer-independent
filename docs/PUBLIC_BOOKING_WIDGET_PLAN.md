@@ -1,6 +1,13 @@
 # Public, embeddable, pay-first booking widget — audit + plan
 
 **Status:** plan (not started). Audited 2026-07-01 via a 7-agent read-only audit.
+
+> ⚠️ **RE-BASE REQUIRED before execution** (noted 2026-07-18). The guest-identity design in this
+> plan — resolve-or-create `guest_players`, the email+name family rule, and everything downstream
+> of it — uses the **old-world identity keys** and predates **person unification**: `persons` +
+> `person_links` are now the identity truth (see
+> [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md)). Re-design the identity/dedup pieces
+> against `persons`/`person_links` first; do not build from this plan as written.
 **Goal:** a visual, mobile-first, ideally **embeddable** availability + booking widget so a
 non-tech-savvy person can, on any academy/trainer/club page (or an academy's own external site),
 **see when they can book a training and with whom**, pick a single slot or a whole cyclus, **pay
