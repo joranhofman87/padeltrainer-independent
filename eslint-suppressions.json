@@ -906,14 +906,6 @@
       "count": 1
     }
   },
-  "src/pages/Trainers.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 2
-    }
-  },
   "src/pages/TrainersCity.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2

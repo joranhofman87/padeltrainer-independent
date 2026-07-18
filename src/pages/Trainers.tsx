@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -12,18 +12,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Star, ArrowLeft, TrendingUp, ChevronDown, CalendarCheck, CheckCircle } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Search, Star, ArrowLeft, TrendingUp, CalendarCheck, CheckCircle } from 'lucide-react';
 import { TrainerFilters, TrainerFiltersState, DEFAULT_FILTERS } from '@/components/trainers/TrainerFilters';
-import { getBatchTrainerRatings } from '@/lib/reviews';
-import { getTrainerIdsInPaidAcademies } from '@/lib/academy';
+import { searchPublicTrainers, getPublicTrainerDirectoryFacets } from '@/lib/publicTrainerDirectory';
 import { useMarketingNamespace } from '@/hooks/useMarketingNamespace';
 import { SEO } from '@/components/SEO';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { logger } from '@/lib/logger';
 import { getPopularCities } from '@/lib/cities';
 import { Location } from '@/lib/locations';
-import { shuffleArray } from '@/components/featured/FeaturedSection';
 import {
   Pagination,
   PaginationContent,
@@ -35,7 +31,6 @@ import {
 } from '@/components/ui/pagination';
 
 const TRAINERS_PER_PAGE = 48;
-const MAX_FEATURED = 6;
 
 type SortOption = 'rating' | 'experience';
 
@@ -47,7 +42,6 @@ export default function Trainers() {
   const { lang } = useParams<{ lang: string }>();
   const currentLang = lang || 'en';
   const [searchParams, setSearchParams] = useSearchParams();
-  const [featuredOpen, setFeaturedOpen] = useState(true);
   const navigate = useNavigate();
   const { user } = useAuth();
   const localizePath = useLocalizedPathFn();
@@ -197,91 +191,9 @@ export default function Trainers() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Main trainers data query
-  const { data: trainersData, isLoading: loading } = useQuery({
-    queryKey: ['trainers-page-data'],
-    queryFn: async () => {
-      const { data: allPublicTrainers, error: trainerError } = await supabase
-        .from('trainer_profiles_safe')
-        .select('id, user_id, slug, experience_years, certifications, specializations, is_verified, is_public, is_active_subscription')
-        .eq('is_public', true);
-      
-      if (trainerError) {
-        logger.error('Error fetching trainers', new Error(trainerError.message), { component: 'Trainers' });
-        return { trainers: [], clubLocations: [], trainerLocationMap: new Map<string, string[]>(), allSpecializations: [], allCertifications: [] };
-      }
-
-      const allTrainerIds = (allPublicTrainers as any[]).map(t => t.id);
-      const paidAcademyTrainerIds = await getTrainerIdsInPaidAcademies(allTrainerIds);
-
-      const trainerProfiles = (allPublicTrainers as any[]).filter(t =>
-        t.is_active_subscription ||
-        paidAcademyTrainerIds.has(t.id)
-      );
-
-      const userIds = trainerProfiles.map(t => t.user_id);
-      const trainerIds = trainerProfiles.map(t => t.id);
-
-      const [profilesResult, trainerLocationResult, ratingsMap, availabilityResult] = await Promise.all([
-        supabase.from('profiles_public').select('user_id, full_name, avatar_url, bio, location, skill_rating, rating_system').in('user_id', userIds),
-        supabase.from('trainer_locations').select('trainer_id, location:locations(id, name, city, country, slug)').in('trainer_id', trainerIds),
-        getBatchTrainerRatings(trainerIds),
-        supabase.from('availability_slots').select('trainer_id').in('trainer_id', trainerIds).gt('start_time', new Date().toISOString()).eq('is_public', true),
-      ]);
-
-      const profiles = profilesResult.data;
-      const trainerLocationData = trainerLocationResult.data;
-
-      // Build location map
-      const locationMap = new Map<string, string[]>();
-      const uniqueLocationsMap = new Map<string, Location>();
-      trainerLocationData?.forEach(tl => {
-        if (tl.location) {
-          const loc = tl.location as unknown as Location;
-          const existing = locationMap.get(tl.trainer_id) || [];
-          existing.push(loc.id);
-          locationMap.set(tl.trainer_id, existing);
-          uniqueLocationsMap.set(loc.id, loc);
-        }
-      });
-
-      const trainersWithAvailability = new Set(availabilityResult.data?.map(a => a.trainer_id) || []);
-
-      const trainers = trainerProfiles.map(trainer => {
-        const ratings = ratingsMap.get(trainer.id) || { average: 0, count: 0 };
-        return {
-          ...trainer,
-          profile: (profiles || []).find(p => p.user_id === trainer.user_id) || null,
-          averageRating: ratings.average,
-          reviewCount: ratings.count,
-          hasAvailability: trainersWithAvailability.has(trainer.id),
-        };
-      });
-
-      const specs = trainerProfiles.flatMap(t => t.specializations || []);
-      const certs = trainerProfiles.flatMap(t => t.certifications || []);
-
-      return {
-        trainers,
-        clubLocations: Array.from(uniqueLocationsMap.values()).sort((a, b) => a.city.localeCompare(b.city) || a.name.localeCompare(b.name)),
-        trainerLocationMap: locationMap,
-        allSpecializations: [...new Set(specs)].sort(),
-        allCertifications: [...new Set(certs)].sort(),
-      };
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const trainers = trainersData?.trainers || [];
-  const clubLocations = trainersData?.clubLocations || [];
-  const trainerLocationMap = trainersData?.trainerLocationMap || new Map<string, string[]>();
-  const allSpecializations = trainersData?.allSpecializations || [];
-  const allCertifications = trainersData?.allCertifications || [];
-
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.locationId !== 'all') count++;
-    
     if (filters.minRating > 0) count++;
     if (filters.minExperience > 0) count++;
     if (filters.specializations.length > 0) count++;
@@ -293,101 +205,71 @@ export default function Trainers() {
     return count;
   }, [filters]);
 
-  const filteredAndSortedTrainers = useMemo(() => {
-    const result = trainers.filter(trainer => {
-      // Search query
-      const matchesSearch = !searchQuery || 
-        trainer.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        trainer.profile?.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        trainer.specializations?.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
-      
-      // Location filter - now matches trainer_locations
-      const matchesLocation = filters.locationId === 'all' || 
-        trainerLocationMap.get(trainer.id)?.includes(filters.locationId);
-      
-      // Rating filter
-      const matchesRating = trainer.averageRating >= filters.minRating;
-      
-      // Experience filter
-      const experience = trainer.experience_years || 0;
-      const matchesExperience = experience >= filters.minExperience;
-      
-      // Specializations filter
-      const matchesSpecializations = filters.specializations.length === 0 ||
-        filters.specializations.some(s => trainer.specializations?.includes(s));
-      
-      // Certifications filter
-      const matchesCertifications = filters.certifications.length === 0 ||
-        filters.certifications.some(c => trainer.certifications?.includes(c));
-      
-      // Trainer rating system filter (now uses profile.rating_system and profile.skill_rating)
-      let matchesTrainerRating = true;
-      if (filters.ratingSystem && filters.minTrainerRating > 0) {
-        // Only apply if trainer uses the selected rating system
-        if (trainer.profile?.rating_system === filters.ratingSystem) {
-          const trainerRating = trainer.profile?.skill_rating || 0;
-          const ratingSystemDef = ratingSystems.find(rs => rs.code === filters.ratingSystem);
-          if (ratingSystemDef?.lower_is_better) {
-            // Lower is better (e.g., KNLTB): trainer rating should be <= filter value
-            matchesTrainerRating = trainerRating > 0 && trainerRating <= filters.minTrainerRating;
-          } else {
-            // Higher is better: trainer rating should be >= filter value
-            matchesTrainerRating = trainerRating >= filters.minTrainerRating;
-          }
-        } else {
-          matchesTrainerRating = false; // Trainer doesn't use selected system
-        }
-      } else if (filters.ratingSystem && !filters.minTrainerRating) {
-        // Just filter by system, any rating
-        matchesTrainerRating = trainer.profile?.rating_system === filters.ratingSystem;
-      }
-      
-      // Verified filter
-      const matchesVerified = !filters.verifiedOnly || trainer.is_verified;
+  // Filter OPTIONS (distinct locations / specializations / certifications) come
+  // from a single bounded aggregate RPC — not derived from a full trainer scan.
+  const { data: facets } = useQuery({
+    queryKey: ['trainer-directory-facets'],
+    queryFn: () => getPublicTrainerDirectoryFacets(),
+    staleTime: 10 * 60 * 1000,
+  });
+  const clubLocations = useMemo<Location[]>(
+    () => [...(facets?.locations ?? [])].sort((a, b) => a.city.localeCompare(b.city) || a.name.localeCompare(b.name)) as Location[],
+    [facets],
+  );
+  const allSpecializations = facets?.specializations ?? [];
+  const allCertifications = facets?.certifications ?? [];
 
-      // Availability filter
-      const matchesAvailability = !filters.hasAvailability || trainer.hasAvailability;
-      
-      return matchesSearch && matchesLocation && matchesRating && 
-             matchesExperience && matchesSpecializations && matchesCertifications && matchesTrainerRating && matchesVerified && matchesAvailability;
-    });
+  // The directory itself is a BOUNDED, server-side query: one page + total_count.
+  // All filtering, sorting and pagination happen in the DB (search_public_trainers),
+  // keyed on the URL params so results are cached per distinct view.
+  const { data: searchResult, isLoading: loading } = useQuery({
+    queryKey: ['public-trainers', searchQuery, sortBy, currentPage, filters],
+    queryFn: () => searchPublicTrainers({
+      search: searchQuery,
+      locationId: filters.locationId,
+      minRating: filters.minRating,
+      minExperience: filters.minExperience,
+      specializations: filters.specializations,
+      certifications: filters.certifications,
+      verified: filters.verifiedOnly,
+      ratingSystem: filters.ratingSystem,
+      minTrainerRating: filters.minTrainerRating,
+      hasAvailability: filters.hasAvailability,
+      sort: sortBy,
+      page: currentPage,
+      pageSize: TRAINERS_PER_PAGE,
+    }),
+    staleTime: 60 * 1000,
+    placeholderData: (prev) => prev, // keep the old page visible while the next loads
+  });
 
-    // Sort
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case 'rating':
-          return b.averageRating - a.averageRating;
-        case 'experience':
-          return (b.experience_years || 0) - (a.experience_years || 0);
-        default:
-          return 0;
-      }
-    });
+  const totalCount = searchResult?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / TRAINERS_PER_PAGE));
 
-    return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainers, searchQuery, filters, sortBy, trainerLocationMap]);
+  // The server already returns exactly one page, shaped to the card's needs.
+  const paginatedTrainers = useMemo(
+    () => (searchResult?.trainers ?? []).map((c) => ({
+      id: c.trainer_profile_id,
+      slug: c.slug,
+      is_verified: c.is_verified,
+      experience_years: c.experience_years,
+      averageRating: c.average_rating,
+      reviewCount: c.review_count,
+      hasAvailability: c.has_availability,
+      profile: { full_name: c.full_name, avatar_url: c.avatar_url, bio: c.bio, location: c.location },
+    })),
+    [searchResult],
+  );
 
-  // Featured trainers (paid/active subscription)
-  const featuredTrainers = useMemo(() => {
-    const featured = trainers.filter(t => t.subscription_status === 'active');
-    return shuffleArray(featured).slice(0, MAX_FEATURED);
-  }, [trainers]);
-
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredAndSortedTrainers.length / TRAINERS_PER_PAGE);
-  
-  const paginatedTrainers = useMemo(() => {
-    const startIndex = (currentPage - 1) * TRAINERS_PER_PAGE;
-    return filteredAndSortedTrainers.slice(startIndex, startIndex + TRAINERS_PER_PAGE);
-  }, [filteredAndSortedTrainers, currentPage]);
-
-  // Reset to page 1 when filters change and current page is out of bounds
+  // Reset to page 1 when the current page falls out of bounds (e.g. after a filter
+  // change). Gated on a RESOLVED result so a bookmarked deep-page URL isn't snapped
+  // to page 1 during the initial load (when totalCount is still 0).
   useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
+    if (searchResult && currentPage > totalPages) {
       setCurrentPage(1);
     }
-  }, [filteredAndSortedTrainers.length, totalPages, currentPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchResult, totalPages, currentPage]);
 
   const getInitials = (name: string | null) => {
     if (!name) return 'T';
@@ -399,8 +281,8 @@ export default function Trainers() {
     "@type": "ItemList",
     "name": t('marketing:trainersDirectory.listName', 'Padel Trainers'),
     "description": t('marketing:trainersDirectory.listDescription', 'Find certified padel trainers worldwide. Browse profiles, compare rates, and book lessons.'),
-    "numberOfItems": filteredAndSortedTrainers.length,
-    "itemListElement": filteredAndSortedTrainers.slice(0, 10).map((trainer, index) => ({
+    "numberOfItems": totalCount,
+    "itemListElement": paginatedTrainers.slice(0, 10).map((trainer, index) => ({
       "@type": "ListItem",
       "position": index + 1,
       "item": {
@@ -458,86 +340,11 @@ export default function Trainers() {
           />
         </div>
 
-        {/* Featured Trainers Section */}
-        {!loading && featuredTrainers.length > 0 && !searchQuery && activeFilterCount === 0 && (
-          <Collapsible open={featuredOpen} onOpenChange={setFeaturedOpen} className="mb-8">
-            <section className="py-6 px-4 bg-muted/30 rounded-xl border border-border">
-              <CollapsibleTrigger asChild>
-                <button className="w-full flex items-center justify-between gap-2 cursor-pointer group" aria-label={t('common:featured.toggleTrainers', 'Toggle featured trainers')}>
-                  <div className="flex items-center gap-2">
-                    <Star className="h-5 w-5 text-primary fill-primary/50" />
-                    <h2 className="text-lg font-semibold">{t('common:featured.trainers')}</h2>
-                    <span className="text-sm text-muted-foreground">
-                      ({featuredTrainers.length})
-                    </span>
-                  </div>
-                  <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${featuredOpen ? 'rotate-180' : ''}`} />
-                </button>
-              </CollapsibleTrigger>
-              
-              <CollapsibleContent>
-                <p className="text-sm text-muted-foreground mt-2 mb-4">
-                  {t('common:featured.trainersDescription')}
-                </p>
-                <div className="overflow-x-auto pb-2 -mx-4 px-4">
-                  <div className="flex gap-6 min-w-max lg:grid lg:grid-cols-3 lg:min-w-0">
-                    {featuredTrainers.map((trainer) => (
-                    <Card 
-                      key={trainer.id} 
-                      className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 w-[260px] lg:w-auto flex-shrink-0"
-                      onClick={() => navigate(localizePath(`/trainer/${trainer.slug || trainer.id}`))}
-                    >
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="h-12 w-12">
-                            <AvatarImage src={trainer.profile?.avatar_url || undefined} />
-                            <AvatarFallback>{getInitials(trainer.profile?.full_name)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-base truncate">
-                                {trainer.profile?.full_name || t('marketing:trainersDirectory.trainerFallback', 'Trainer')}
-                              </CardTitle>
-                              {trainer.is_verified && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{t('common:verifiedProfile', 'Verified profile')}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                            {trainer.reviewCount > 0 && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                <span className="font-medium text-sm">{trainer.averageRating.toFixed(1)}</span>
-                                <span className="text-xs text-muted-foreground">({trainer.reviewCount})</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <div className="flex items-center justify-between text-sm">
-                          {trainer.experience_years && (
-                            <span className="text-muted-foreground text-xs">
-                              {t('marketing:trainersDirectory.yearsExp', '{{years}}y exp', { years: trainer.experience_years })}
-                            </span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                    ))}
-                  </div>
-                </div>
-              </CollapsibleContent>
-            </section>
-          </Collapsible>
-        )}
+        {/* NOTE: a "Featured trainers" section used to live here, but it filtered
+            `trainer.subscription_status === 'active'` while that column was never
+            selected — so it was always empty and never rendered. Removed as dead
+            code rather than left silently broken; a real featured concept needs an
+            explicit public-safe priority field + product decision. */}
 
         {/* Search and Sort */}
         <div className="mb-6 space-y-4">
@@ -564,14 +371,14 @@ export default function Trainers() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            {totalPages > 1 
+            {totalPages > 1
               ? t('showingResults', {
                   start: ((currentPage - 1) * TRAINERS_PER_PAGE) + 1,
-                  end: Math.min(currentPage * TRAINERS_PER_PAGE, filteredAndSortedTrainers.length),
-                  total: filteredAndSortedTrainers.length
+                  end: Math.min(currentPage * TRAINERS_PER_PAGE, totalCount),
+                  total: totalCount
                 })
               : t('marketing:trainersDirectory.trainersFound', {
-                  count: filteredAndSortedTrainers.length,
+                  count: totalCount,
                   defaultValue_one: '{{count}} trainer found',
                   defaultValue_other: '{{count}} trainers found',
                 })
@@ -599,7 +406,7 @@ export default function Trainers() {
               </Card>
             ))}
           </div>
-        ) : filteredAndSortedTrainers.length === 0 ? (
+        ) : totalCount === 0 ? (
           <Card className="text-center py-12">
             <CardContent>
               <p className="text-muted-foreground mb-4">{t('marketing:trainersDirectory.noTrainersFound', 'No trainers found')}</p>

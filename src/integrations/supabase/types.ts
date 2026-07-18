@@ -8981,6 +8981,7 @@ export type Database = {
           slot_id: string
         }[]
       }
+      get_public_trainer_directory_facets: { Args: never; Returns: Json }
       get_rebook_group_by_token: { Args: { _token: string }; Returns: Json }
       get_short_codes: {
         Args: { _target_ids: string[]; _target_type: string }
@@ -9291,6 +9292,39 @@ export type Database = {
       schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
       schedule_release_rebook_holds_job: { Args: never; Returns: number }
+      search_public_trainers: {
+        Args: {
+          p_certifications?: string[]
+          p_has_availability?: boolean
+          p_location_id?: string
+          p_min_experience?: number
+          p_min_rating?: number
+          p_min_trainer_rating?: number
+          p_page?: number
+          p_page_size?: number
+          p_rating_system?: string
+          p_search?: string
+          p_sort?: string
+          p_specializations?: string[]
+          p_verified?: boolean
+        }
+        Returns: {
+          avatar_url: string
+          average_rating: number
+          bio: string
+          certifications: string[]
+          experience_years: number
+          full_name: string
+          has_availability: boolean
+          is_verified: boolean
+          location: string
+          review_count: number
+          slug: string
+          specializations: string[]
+          total_count: number
+          trainer_profile_id: string
+        }[]
+      }
       set_player_location: {
         Args: {
           p_academy_profile_id: string
