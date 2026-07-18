@@ -29,8 +29,11 @@ export function initializePostHog(): Promise<PostHog | null> {
               disable_cookie: true,
               disable_persistence: true,
               capture_pageview: false, // We handle SPA page views manually
-              capture_pageleave: true,
-              autocapture: true,
+              // Privacy: no automatic DOM/text capture and no pageleave — both can
+              // scrape PII from form fields and raw URLs. We emit a single manual
+              // $pageview per navigation, with the URL already sanitized.
+              capture_pageleave: false,
+              autocapture: false,
             });
             client = posthog;
             return posthog;
@@ -64,9 +67,15 @@ export function withPostHog(fn: (ph: PostHog) => void): void {
 }
 
 export function trackPostHogPageView(path: string) {
+  // `path` is already sanitized by sanitizeAnalyticsPagePath at the caller
+  // (usePageTracking). Override BOTH location-derived props so posthog-js does
+  // not enrich the event with the raw window.location (invoice/booking tokens,
+  // personal query args) — it sets $pathname from window.location otherwise.
+  const [pathname] = path.split('?');
   withPostHog((ph) => {
     ph.capture('$pageview', {
       $current_url: window.location.origin + path,
+      $pathname: pathname,
     });
   });
 }

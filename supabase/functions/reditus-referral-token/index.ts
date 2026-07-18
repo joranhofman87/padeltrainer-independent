@@ -37,6 +37,23 @@ Deno.serve(async (req) => {
     }
 
     const userId = data.claims.sub as string;
+
+    // Reditus identifies users by the PERSON UID (person:<profile.id>), never the
+    // auth UID. The anon client is scoped to the caller's JWT, so RLS only lets
+    // them read their OWN profile.
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (profileError || !profile?.id) {
+      return new Response(JSON.stringify({ error: "Profile not ready" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const productId = Deno.env.get("REDITUS_PRODUCT_ID")!;
     const productSecret = Deno.env.get("REDITUS_PRODUCT_SECRET")!;
 
@@ -45,7 +62,7 @@ Deno.serve(async (req) => {
 
     const jwt = await new SignJWT({
       ProductId: productId,
-      UserId: userId,
+      UserId: `person:${profile.id}`,
     })
       .setProtectedHeader({ alg: "HS512" })
       .setIssuedAt()

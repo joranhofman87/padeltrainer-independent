@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
 import { logger } from '@/lib/logger';
+import { buildPersonTrackingId, buildPseudonymousTrackingEmail } from '@/lib/trackingPrivacy';
 
 declare global {
   interface Window {
@@ -28,12 +29,16 @@ export function ReferralWidget() {
 
         // Load the referral widget with auth
         if (typeof window.gr === 'function') {
+          // Send the pseudonymous PERSON UID to Reditus, never the real email/name.
+          // The widget requires an email-shaped field, so we pass a non-deliverable
+          // person:<id> alias; the auth_token above is the real bearer of identity.
+          const personUid = profile.id;
           window.gr('loadReferralWidget', {
             product_id: data.product_id,
             auth_token: data.token,
             user_details: {
-              email: profile.email,
-              name: profile.full_name || undefined,
+              email: buildPseudonymousTrackingEmail(personUid),
+              name: buildPersonTrackingId(personUid),
             },
           });
         }

@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { buildFullName } from '@/lib/profileName';
 import { createSignupFailure, extractSignupResponseError, normalizeSignupFailure, SIGNUP_ERROR_CODE } from '@/lib/signupErrors';
 import { clearCachedSubscription } from '@/lib/subscriptionCache';
+import { buildPersonTrackingId } from '@/lib/trackingPrivacy';
 
 export type { SignupFailure, SignupErrorCode } from '@/lib/signupErrors';
 export { SIGNUP_ERROR_CODE, isSignupEmailAlreadyRegistered, normalizeSignupFailure } from '@/lib/signupErrors';
@@ -259,12 +260,18 @@ export async function signUpWithEmail(
       };
     }
 
-    // Track signup conversion in Reditus (affiliate tracking) — fires only here at signup
-    if (signInData.user && typeof window !== 'undefined' && (window as any).gr) {
-      (window as any).gr('track', 'conversion', {
-        email: signInData.user.email,
-        uid: signInData.user.id,
-      });
+    // Track signup conversion in Reditus with the PERSON UID only — no email, no auth UID.
+    if (signInData.user && typeof window !== 'undefined' && typeof (window as any).gr === 'function') {
+      const { data: trackingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', signInData.user.id)
+        .maybeSingle();
+      if (trackingProfile?.id) {
+        (window as any).gr('track', 'conversion', {
+          uid: buildPersonTrackingId(trackingProfile.id),
+        });
+      }
     }
 
     return { 
