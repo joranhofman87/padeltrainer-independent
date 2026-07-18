@@ -57,7 +57,7 @@ beforeAll(async () => {
     CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       slot_id uuid, player_id uuid, guest_player_id uuid, person_id uuid, status text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text);
-    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, first_name text, full_name text, preferred_location_id uuid);
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, first_name text, full_name text, preferred_location_id uuid, academy_profile_id uuid, trainer_id uuid);
     CREATE TABLE public.persons (id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.person_links (person_id uuid, profile_id uuid UNIQUE, guest_player_id uuid UNIQUE);
     CREATE TABLE public.person_merge_review (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -68,6 +68,7 @@ beforeAll(async () => {
     CREATE TABLE public.intake_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), player_id uuid, guest_player_id uuid, location_id uuid);
     CREATE TABLE public.academy_player_locations (academy_profile_id uuid, profile_id uuid, guest_player_id uuid, location_id uuid, dismissed boolean);
     CREATE TABLE public.academy_managers (user_id uuid, academy_profile_id uuid);
+    CREATE TABLE public.academy_trainers (trainer_profile_id uuid, academy_profile_id uuid, status text);
 
     CREATE OR REPLACE FUNCTION public.is_academy_manager(_u uuid, _a uuid)
       RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
@@ -88,8 +89,8 @@ beforeAll(async () => {
     INSERT INTO public.availability_slots VALUES ('${SLOT}', '${CYC}', '2026-09-01T10:00:00Z', '${LOC1}');
     INSERT INTO public.academy_locations VALUES ('${ACADEMY}', '${LOC1}', true), ('${ACADEMY}', '${LOC2}', true);
     INSERT INTO public.profiles VALUES ('${PA}', 'Anna Profile');
-    INSERT INTO public.guest_players (id, first_name, full_name) VALUES
-      ('${GA1}', 'Anna', 'Anna Guest'), ('${GA2}', 'Anna', 'Anna Tweede'), ('${GF}', 'Fred', 'Fred Frozen');
+    INSERT INTO public.guest_players (id, first_name, full_name, academy_profile_id) VALUES
+      ('${GA1}', 'Anna', 'Anna Guest', '${ACADEMY}'), ('${GA2}', 'Anna', 'Anna Tweede', '${ACADEMY}'), ('${GF}', 'Fred', 'Fred Frozen', '${ACADEMY}');
     INSERT INTO public.persons VALUES ('${PERSON_A}', 'Anna Person');
     INSERT INTO public.person_links (person_id, profile_id, guest_player_id) VALUES
       ('${PERSON_A}', '${PA}', NULL), ('${PERSON_A}', NULL, '${GA1}'),
@@ -128,6 +129,18 @@ describe('get_academy_cyclus_labels (Phase 3.5d)', () => {
   });
 });
 
+describe('get_academy_cyclus_labels location precedence', () => {
+  it('cycle-level location outranks the earliest slot location (original order preserved)', async () => {
+    await db.query(`UPDATE public.cycles SET location_id = $1 WHERE id = $2`, [LOC2, CYC]);
+    await db.exec(`SET test.uid = '${MGR_U}';`);
+    const rows = (await db.query<{ cycle_id: string; location_name: string }>(
+      `SELECT cycle_id, location_name FROM public.get_academy_cyclus_labels($1)`, [ACADEMY])).rows;
+    await db.exec(`SET test.uid = '';`);
+    expect(rows[0].location_name).toBe('Club Zuid'); // cyc.location_id wins over slot LOC1
+    await db.query(`UPDATE public.cycles SET location_id = NULL WHERE id = $1`, [CYC]);
+  });
+});
+
 describe('get_player_locations (Phase 3.5d)', () => {
   it('THE FIX: clubs from the person\'s OTHER refs are included (multi-guest person)', async () => {
     // GA2 (a ref the caller did NOT pass) has a preferred location.
@@ -151,6 +164,28 @@ describe('get_player_locations (Phase 3.5d)', () => {
     expect(await locations(PA, null)).toEqual([]);
     await db.exec(`DELETE FROM public.academy_player_locations`);
     await db.query(`UPDATE public.guest_players SET preferred_location_id = NULL WHERE id = $1`, [GA2]);
+  });
+
+  it('CROSS-TENANT (verify r2 P1): a guest at ANOTHER academy is NOT expanded — no location leak', async () => {
+    const GB = '70000000-0000-0000-0000-0000000000b1';
+    const OTHER_ACADEMY = '90000000-0000-0000-0000-000000000009';
+    await db.query(`INSERT INTO public.guest_players (id, academy_profile_id, preferred_location_id) VALUES ($1, $2, $3)`, [GB, OTHER_ACADEMY, LOC2]);
+    await db.query(`INSERT INTO public.person_links (person_id, guest_player_id) VALUES ($1, $2)`, ['e0000000-0000-0000-0000-000000000001', GB]);
+    // GB (other tenant) prefers LOC2 — must NOT surface on THIS academy's page via the expansion.
+    expect(await locations(PA, null)).toEqual([]);
+    await db.query(`DELETE FROM public.person_links WHERE guest_player_id = $1`, [GB]);
+    await db.query(`DELETE FROM public.guest_players WHERE id = $1`, [GB]);
+  });
+
+  it('FAM-02: a dual-keyed booking does not credit the profile arm', async () => {
+    const SLOT2 = '50000000-0000-0000-0000-000000000002';
+    await db.query(`INSERT INTO public.availability_slots VALUES ($1, '${CYC}', '2026-09-02T10:00:00Z', $2)`, [SLOT2, LOC2]);
+    await db.query(`INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status) VALUES ($1, $2, '70000000-0000-0000-0000-000000000009', 'confirmed')`, [SLOT2, PA])
+      .catch(async () => { /* guest 09 may not exist */ });
+    // dual-keyed (profile PA + an out-of-set guest): profile arm must NOT credit LOC2
+    const locs = await locations(PA, null);
+    expect(locs).toEqual([]);
+    await db.exec(`DELETE FROM public.bookings`);
   });
 
   it('unauthorized caller is refused', async () => {

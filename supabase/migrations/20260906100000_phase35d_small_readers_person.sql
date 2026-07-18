@@ -21,8 +21,9 @@
 --     2+ guest refs; clubs contributed by the person's OTHER refs were silently
 --     dropped. Fix: expand the passed pair to the person's FULL ref-set via
 --     person_links inside the fn (frozen guests excluded from the expansion; the
---     PASSED refs always count — the caller explicitly asked about them, and a
---     frozen passed guest degrades to exactly the old single-pair behavior).
+--     PASSED refs always count — the caller explicitly asked about them. A frozen
+--     PASSED guest suppresses only the GUEST-side person resolution; when a linked
+--     profile is also passed, the profile branch still expands).
 --     Every ref predicate becomes = ANY(ref array), including the dismissed-minus
 --     logic (a dismissal under ANY of the person's refs hides the club).
 
@@ -100,7 +101,7 @@ BEGIN
   FROM cyc
   LEFT JOIN earliest e ON e.cyclus_id = cyc.id
   LEFT JOIN names n    ON n.cyclus_id = cyc.id
-  LEFT JOIN public.locations l ON l.id = coalesce(e.location_id, cyc.location_id);
+  LEFT JOIN public.locations l ON l.id = coalesce(cyc.location_id, e.location_id);
 END;
 $$;
 
@@ -139,6 +140,14 @@ BEGIN
     WHERE pl.profile_id = p_profile_id;
   END IF;
 
+  -- TENANT SCOPE on the expansion (verify r2 P1): person_links merges are
+  -- cross-tenant by design, and three union arms below have no academy filter —
+  -- an unscoped expansion would surface ANOTHER tenant's location associations
+  -- (their guest's bookings/preferred/intake at a shared club) on THIS academy's
+  -- detail page. Expanded guest refs are therefore limited to guests IN THIS
+  -- ACADEMY'S SCOPE (the get_players_overview guests-CTE predicate: owned by the
+  -- academy, or owned by one of its active trainers). The PASSED refs keep the
+  -- original behavior untouched.
   v_profile_ids := ARRAY(
     SELECT DISTINCT x FROM unnest(ARRAY[p_profile_id] || COALESCE(ARRAY(
       SELECT pl.profile_id FROM public.person_links pl
@@ -147,8 +156,13 @@ BEGIN
   v_guest_ids := ARRAY(
     SELECT DISTINCT x FROM unnest(ARRAY[p_guest_player_id] || COALESCE(ARRAY(
       SELECT pl.guest_player_id FROM public.person_links pl
+      JOIN public.guest_players g ON g.id = pl.guest_player_id
       WHERE v_person IS NOT NULL AND pl.person_id = v_person AND pl.guest_player_id IS NOT NULL
         AND NOT public.is_guest_split_frozen(pl.guest_player_id)
+        AND (g.academy_profile_id = p_academy_profile_id
+          OR g.trainer_id IN (
+            SELECT at.trainer_profile_id FROM public.academy_trainers at
+            WHERE at.status = 'active' AND at.academy_profile_id = p_academy_profile_id))
     ), '{}'::uuid[])) AS x WHERE x IS NOT NULL);
 
   RETURN QUERY
@@ -160,7 +174,8 @@ BEGIN
       SELECT s.location_id AS loc, true AS requires_active
         FROM public.bookings b JOIN public.availability_slots s ON s.id = b.slot_id
        WHERE b.status IN ('confirmed','completed') AND s.location_id IS NOT NULL
-         AND (b.guest_player_id = ANY(v_guest_ids) OR b.player_id = ANY(v_profile_ids))
+         AND (b.guest_player_id = ANY(v_guest_ids)
+           OR (b.player_id = ANY(v_profile_ids) AND b.guest_player_id IS NULL))  -- FAM-02
       UNION ALL
       SELECT g.preferred_location_id, false
         FROM public.guest_players g
@@ -174,7 +189,8 @@ BEGIN
       SELECT ir.location_id, false
         FROM public.intake_requests ir
        WHERE ir.location_id IS NOT NULL
-         AND (ir.guest_player_id = ANY(v_guest_ids) OR ir.player_id = ANY(v_profile_ids))
+         AND (ir.guest_player_id = ANY(v_guest_ids)
+           OR (ir.player_id = ANY(v_profile_ids) AND ir.guest_player_id IS NULL))  -- FAM-02
       UNION ALL
       SELECT apl.location_id, false
         FROM public.academy_player_locations apl
@@ -199,7 +215,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_player_locations(uuid, uuid, uuid) IS
-  'Phase 3.5d: a player''s displayed clubs (academy scope), person-keyed — the passed (profile, guest) pair is expanded to the person''s full ref-set via person_links (frozen guests excluded from expansion; a frozen PASSED guest degrades to the old single-pair read). Same union as the players table (trained∪preferred∪intake∪manual − dismissed, dismissals under any ref).';
+  'Phase 3.5d: a player''s displayed clubs (academy scope), person-keyed — the passed (profile, guest) pair is expanded to the person''s full ref-set via person_links (expansion limited to IN-SCOPE, non-frozen guests; a frozen passed guest suppresses only the guest-side resolution). Same union as the players table (trained∪preferred∪intake∪manual − dismissed, dismissals under any ref).';
 
 -- Grants unchanged in effect; re-asserted for the re-emits.
 REVOKE ALL ON FUNCTION public.get_academy_cyclus_labels(uuid) FROM PUBLIC, anon;
