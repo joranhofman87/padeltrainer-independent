@@ -2,9 +2,10 @@
 // Phase 3.5d (migration 20260906100000): the two remaining small readers, person-keyed.
 // - get_academy_cyclus_labels: FAM-02 name precedence (guest outranks profile on dual-keyed
 //   rows), person dedup (a merged human appears once), frozen guest keys as its own person.
-// - get_player_locations: the passed (profile, guest) pair expands to the person's FULL
-//   ref-set (multi-guest persons' clubs no longer dropped); frozen passed guest degrades to
-//   the single-pair read; dismissals under ANY ref hide the club.
+// - get_player_locations: the passed GUEST ref expands to the person's IN-SCOPE,
+//   non-frozen guest refs (multi-guest persons' clubs no longer dropped); the PROFILE
+//   side is deliberately NOT expanded (I-22 — callers pass the tenant-authorized ref
+//   from get_person_refs_for_scope); dismissals under ANY ref hide the club.
 // Runs the REAL migration file. These fns had NO prior coverage (TEST_COVERAGE_GAPS).
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
