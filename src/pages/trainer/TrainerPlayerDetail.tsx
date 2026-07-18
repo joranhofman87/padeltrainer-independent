@@ -554,7 +554,8 @@ export default function TrainerPlayerDetail() {
         history={ratingHistory}
         ratingSystem={player.rating_system}
         currentRating={player.skill_rating}
-        isGuest={player.type === 'guest'}
+        // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+        isGuest={!(personHasLogin ?? player.type === 'registered')}
         t={t}
       />
 

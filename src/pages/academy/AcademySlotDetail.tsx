@@ -17,6 +17,8 @@ import { logger } from '@/lib/logger';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { syncInvoicesAfterPriceChange, syncSplitCountForCycle } from '@/lib/invoiceSync';
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
+import { isGuestForBadge } from '@/lib/bookingLoginFlags';
+import { useBookingLoginFlags } from '@/hooks/useBookingLoginFlags';
 import { useToast } from '@/hooks/use-toast';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { getAcademyTrainersWithProfiles, getAcademyLocations } from '@/lib/academy';
@@ -135,6 +137,8 @@ export default function AcademySlotDetail() {
   const [skipInvoiceUpdates, setSkipInvoiceUpdates] = useState(false);
 
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags((detail?.booked_players || []).map(p => p.bookingId));
 
   const fetchSlotDetail = useCallback(async () => {
     if (!slotId) return;
@@ -208,6 +212,8 @@ export default function AcademySlotDetail() {
         return {
           id: b.player_id || b.guest_player_id || b.id,
           bookingId: b.id,
+          profileId: b.player_id ?? null,
+          guestPlayerId: b.guest_player_id ?? null,
           name: prof?.full_name || guest?.full_name || 'Unknown',
           status: b.status as 'confirmed' | 'pending',
           isGuest: !!b.guest_player_id,
@@ -858,7 +864,8 @@ export default function AcademySlotDetail() {
                             ].filter(Boolean).join(' · ') || '\u00A0'}
                           </p>
                         </div>
-                        {player.isGuest && (
+                        {/* Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy) */}
+                        {isGuestForBadge(loginFlags, player.bookingId, player.isGuest) && (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5">{t('slotDetail.guest', 'Guest')}</Badge>
                         )}
                         {player.status === 'confirmed' ? (
@@ -891,10 +898,11 @@ export default function AcademySlotDetail() {
                             slotId={detail.id}
                             authorId={user.id}
                             authorRole="academy"
-                            subjectProfileId={player.isGuest ? null : player.id}
-                            subjectGuestPlayerId={player.isGuest ? player.id : null}
+                            subjectProfileId={player.guestPlayerId ? null : (player.profileId ?? null)}
+                            subjectGuestPlayerId={player.guestPlayerId ?? null}
                             subjectName={player.name}
-                            isGuest={player.isGuest}
+                            // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+                            isGuest={isGuestForBadge(loginFlags, player.bookingId, player.isGuest)}
                             notes={coachingNotes}
                           />
                         </div>

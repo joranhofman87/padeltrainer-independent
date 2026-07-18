@@ -35,6 +35,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useTranslation } from "react-i18next";
+import { useBookingLoginFlags } from "@/hooks/useBookingLoginFlags";
+import { isGuestForBadge } from "@/lib/bookingLoginFlags";
 import { SlotWithBookings, BookedPlayer } from "@/lib/slotTypes";
 import { getSlotStatus, slotDisplayCapacity, slotStatusCardClasses, slotStatusTextClasses } from "./slotStatus";
 
@@ -78,6 +80,9 @@ export function DayViewSlotCard({
   const spotsLeft = capacity - slot.active_bookings;
   const hasSpots = spotsLeft > 0;
   const ratingInfo = calculateAverageRating(slot.booked_players || []);
+
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags((slot.booked_players || []).map((p) => p.bookingId));
 
   const [applyToCyclus, setApplyToCyclus] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -244,7 +249,7 @@ export function DayViewSlotCard({
                         <div>
                           <div className="font-medium flex items-center gap-2">
                             {player.name}
-                            {player.isGuest && (
+                            {isGuestForBadge(loginFlags, player.bookingId, player.isGuest) && (
                               <Badge variant="outline" className="text-xs px-1.5 py-0">
                                 {t("calendar.guest")}
                               </Badge>

@@ -29,6 +29,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { formatSlotRating as formatSlotRatingDisplay } from "@/components/slots/SlotRatingPicker";
 import { useNavigate } from "react-router-dom";
 import { useLocalizedPathFn } from "@/hooks/useLocalizedPath";
+import { useBookingLoginFlags } from "@/hooks/useBookingLoginFlags";
+import { isGuestForBadge } from "@/lib/bookingLoginFlags";
 import { SlotWithBookings } from "@/lib/slotTypes";
 
 interface SlotBooking {
@@ -67,6 +69,8 @@ export function ClubSlotDetailSheet({
   const localizePath = useLocalizedPathFn();
   const [bookings, setBookings] = useState<SlotBooking[]>([]);
   const [loading, setLoading] = useState(false);
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags(bookings.map((b) => b.id));
 
   useEffect(() => {
     if (open && slot) {
@@ -256,7 +260,7 @@ export function ClubSlotDetailSheet({
                           <div>
                             <div className="font-medium text-sm flex items-center gap-2">
                               {playerName}
-                              {isGuest && (
+                              {isGuestForBadge(loginFlags, booking.id, isGuest) && (
                                 <Badge variant="outline" className="text-xs">
                                   {t("calendar.guest", "Guest")}
                                 </Badge>

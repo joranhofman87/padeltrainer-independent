@@ -26,6 +26,7 @@ import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEd
 import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary';
 import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoiceFormTotals';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
+import { fetchPersonRefSet } from '@/lib/playerDetailData';
 import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -80,6 +81,19 @@ export default function AcademyEditInvoice() {
       return data;
     },
     enabled: !!invoiceId,
+  });
+
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const { data: personHasLogin } = useQuery({
+    queryKey: ['invoice-person-has-login', invoice?.id],
+    queryFn: async () => {
+      const refs = await fetchPersonRefSet(
+        { kind: 'academy', id: invoice!.academy_profile_id! },
+        { kind: 'guest', id: invoice!.guest_player_id! },
+      );
+      return refs.hasLogin ?? null;
+    },
+    enabled: !!invoice?.guest_player_id && !!invoice?.academy_profile_id,
   });
 
   useEffect(() => {
@@ -290,6 +304,7 @@ export default function AcademyEditInvoice() {
           playerId={invoice.player_id}
           guestPlayerId={invoice.guest_player_id}
           invoiceId={invoice.id}
+          personHasLogin={personHasLogin ?? undefined}
         />
         <InvoiceSourceCard owner="academy" bookingIds={invoice.booking_ids as string[] | null} />
         <InvoiceStatusHistoryCard invoiceId={invoice.id} />

@@ -19,6 +19,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
+import { useBookingLoginFlags } from "@/hooks/useBookingLoginFlags";
+import { isGuestForBadge } from "@/lib/bookingLoginFlags";
 
 // BookedPlayer + SlotWithBookings live in @/lib/slotTypes (role-neutral, shared
 // by trainer/academy/club calendar surfaces). Re-exported here for convenience;
@@ -74,6 +76,9 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
 
   // Calculate average rating for display
   const ratingInfo = calculateAverageRating(slot.booked_players || []);
+
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags((slot.booked_players || []).map((p) => p.bookingId));
 
   const statusLabel = {
     free: t("calendar.fullyOpen"),
@@ -259,7 +264,7 @@ export function CalendarSlotCard({ slot, compact = false, cyclusSessions, showTr
                             <Euro className="h-3 w-3 text-orange-500 dark:text-orange-400" />
                           )
                         )}
-                        {player.isGuest && (
+                        {isGuestForBadge(loginFlags, player.bookingId, player.isGuest) && (
                           <span className="text-xs text-muted-foreground">
                             ({t("calendar.guest")})
                           </span>

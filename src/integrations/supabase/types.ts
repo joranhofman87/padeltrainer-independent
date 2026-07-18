@@ -8738,6 +8738,13 @@ export type Database = {
           state: string
         }[]
       }
+      get_booking_login_flags: {
+        Args: { _booking_ids: string[] }
+        Returns: {
+          booking_id: string
+          has_login: boolean
+        }[]
+      }
       get_cycle_roster_names: {
         Args: { _cycle_id: string }
         Returns: {
@@ -9297,6 +9304,10 @@ export type Database = {
       slot_held_by_paid_group: { Args: { _slot_id: string }; Returns: boolean }
       stripe_subscription_has_newer_activation: {
         Args: { _event_created: number; _subscription_id: string }
+        Returns: boolean
+      }
+      subject_guest_reads_as_me: {
+        Args: { _guest_player_id: string }
         Returns: boolean
       }
       swap_member_booking: {
