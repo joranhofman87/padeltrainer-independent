@@ -34,9 +34,11 @@ vi.mock('@/components/academy/AcademyPlayerRemoveCard', () => ({
 // Phase 3.5d (Codex P3 pin): capture what the locations control receives — the
 // page must feed the tenant-authorized personRefs.profileId, not the row's
 // linked_profile_id (NULL for email-merged persons).
-const { locationsControlProps, personRefsMock } = vi.hoisted(() => ({
+const { locationsControlProps, personRefsMock, ratingEqCalls } = vi.hoisted(() => ({
   locationsControlProps: [] as Array<Record<string, unknown>>,
   personRefsMock: vi.fn(),
+  // Phase 3.6 pin: records (column, value) filters applied to player_rating_history.
+  ratingEqCalls: [] as Array<[string, unknown]>,
 }));
 vi.mock('@/components/academy/PlayerLocationsControl', () => ({
   PlayerLocationsControl: (props: Record<string, unknown>) => {
@@ -74,6 +76,7 @@ function mockQueryResult(data: unknown) {
     select: () => builder,
     eq: () => builder,
     in: () => builder,
+    is: () => builder,
     not: () => builder,
     order: () => resolved,
     maybeSingle: () => resolved,
@@ -92,6 +95,18 @@ vi.mock('@/lib/supabaseClient', () => ({
     from: (table: string) => {
       if (table in tableResponses) {
         return mockQueryResult(tableResponses[table]);
+      }
+      if (table === 'player_rating_history') {
+        const resolved = Promise.resolve({ data: [], error: null });
+        const builder: Record<string, unknown> = {
+          select: () => builder,
+          eq: (col: string, val: unknown) => {
+            ratingEqCalls.push([col, val]);
+            return builder;
+          },
+          order: () => resolved,
+        };
+        return builder;
       }
       if (table === 'guest_players') {
         return mockQueryResult(guestRow);
@@ -184,6 +199,7 @@ describe('AcademyPlayerDetail', () => {
       delete tableResponses[key];
     }
     locationsControlProps.length = 0;
+    ratingEqCalls.length = 0;
     resolveCycleRouteMock.mockResolvedValue('/app/academy/cycles/cycle-1');
   });
 
@@ -281,6 +297,14 @@ describe('AcademyPlayerDetail', () => {
       const last = locationsControlProps[locationsControlProps.length - 1];
       expect(last?.profileId).toBe('p1'); // NOT the row's linked_profile_id (null)
       expect(last?.guestPlayerId).toBe(GUEST_ID);
+    });
+  });
+
+  it('Phase 3.6 pin: the g_-route rating fetch uses the person-resolved profile ref', async () => {
+    personRefsMock.mockResolvedValueOnce({ guestIds: [GUEST_ID], profileId: 'p1', hasLogin: true });
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(ratingEqCalls).toContainEqual(['profile_id', 'p1']);
     });
   });
 
