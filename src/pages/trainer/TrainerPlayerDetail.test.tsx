@@ -9,11 +9,22 @@ import TrainerPlayerDetail from './TrainerPlayerDetail';
 const TRAINER_ID = 'trainer-uuid-1';
 const GUEST_ID = 'guest-uuid-1';
 
-const { tableResponses, resolveCycleRouteMock, visibleMock } = vi.hoisted(() => ({
+const { tableResponses, resolveCycleRouteMock, visibleMock, personRefsMock, ratingEqCalls } = vi.hoisted(() => ({
   tableResponses: {} as Record<string, unknown>,
   resolveCycleRouteMock: vi.fn(),
   visibleMock: vi.fn(),
+  personRefsMock: vi.fn(),
+  // Phase 3.6 pin: records (column, value) filters applied to player_rating_history.
+  ratingEqCalls: [] as Array<[string, unknown]>,
 }));
+
+// Passthrough spy (3.5d pattern): real fetchPersonRefSet behavior by default;
+// the Phase 3.6 pin overrides it once to hand the page a resolved profile ref.
+vi.mock('@/lib/playerDetailData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/playerDetailData')>();
+  personRefsMock.mockImplementation(actual.fetchPersonRefSet as (...args: unknown[]) => unknown);
+  return { ...actual, fetchPersonRefSet: (...args: unknown[]) => personRefsMock(...args) };
+});
 
 vi.mock('@/lib/trainerPlayerTrainingLocations', () => ({
   fetchTrainerPlayerTrainingLocations: vi.fn().mockResolvedValue([
@@ -59,6 +70,7 @@ function mockQueryResult(data: unknown) {
     select: () => builder,
     eq: () => builder,
     in: () => builder,
+    is: () => builder,
     not: () => builder,
     order: () => resolved,
     maybeSingle: () => resolved,
@@ -81,6 +93,18 @@ vi.mock('@/lib/supabaseClient', () => ({
     from: (table: string) => {
       if (table in tableResponses) {
         return mockQueryResult(tableResponses[table]);
+      }
+      if (table === 'player_rating_history') {
+        const resolved = Promise.resolve({ data: [], error: null });
+        const builder: Record<string, unknown> = {
+          select: () => builder,
+          eq: (col: string, val: unknown) => {
+            ratingEqCalls.push([col, val]);
+            return builder;
+          },
+          order: () => resolved,
+        };
+        return builder;
       }
       if (table === 'guest_players') {
         return mockQueryResult(guestRow);
@@ -174,6 +198,15 @@ describe('TrainerPlayerDetail', () => {
     }
     resolveCycleRouteMock.mockResolvedValue('/app/trainer/cycles/cycle-1/edit');
     visibleMock.mockResolvedValue(false);
+    ratingEqCalls.length = 0;
+  });
+
+  it('Phase 3.6 pin: the g_-route rating fetch uses the person-resolved profile ref', async () => {
+    personRefsMock.mockResolvedValueOnce({ guestIds: [GUEST_ID], profileId: 'p1', hasLogin: true });
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(ratingEqCalls).toContainEqual(['profile_id', 'p1']);
+    });
   });
 
   it('does not render tabs', async () => {

@@ -99,7 +99,10 @@ BEGIN
            bool_or(CASE
              WHEN apl.guest_player_id IS NOT NULL AND public.is_guest_split_frozen(apl.guest_player_id)
                THEN false
-             ELSE COALESCE(pe.user_id IS NOT NULL, apl.profile_id IS NOT NULL)
+             -- (pe.user_id IS NOT NULL) is never NULL, so a COALESCE fallback off it
+             -- would be dead code — key the unstamped degradation on the JOIN hit.
+             WHEN pe.id IS NOT NULL THEN pe.user_id IS NOT NULL
+             ELSE apl.profile_id IS NOT NULL
            END) AS is_registered,
            MIN(apl.created_at) AS first_at
     FROM public.academy_player_locations apl
@@ -269,3 +272,14 @@ BEGIN
   RETURN COALESCE(v_result, jsonb_build_object('monthly', '[]'::jsonb, 'kpis', '{}'::jsonb));
 END;
 $$;
+
+-- Keep the lockdown self-contained across this re-CREATE (mirrors 20260818100000):
+-- CREATE OR REPLACE preserves the existing ACL, but if these functions are ever
+-- re-created from scratch (squash, partial restore) the default ACL would grant
+-- EXECUTE to PUBLIC including anon.
+REVOKE ALL ON FUNCTION public.get_academy_dashboard_analytics(uuid, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_trainer_dashboard_analytics(int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_academy_dashboard_analytics(uuid, int) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.get_trainer_dashboard_analytics(int) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.get_academy_dashboard_analytics(uuid, int) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.get_trainer_dashboard_analytics(int) FROM anon;

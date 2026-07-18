@@ -50,6 +50,10 @@ const sums = (m: Array<{ new_registered: number; new_guest: number }>) => ({
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
+    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+    -- Replicate Supabase's default privilege (auto-grants EXECUTE on new functions
+    -- to anon/authenticated) so the anon-lockdown assertion below is meaningful.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
     CREATE SCHEMA IF NOT EXISTS auth;
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
       SELECT nullif(current_setting('test.uid', true), '')::uuid $fn$;
@@ -143,6 +147,32 @@ describe('get_academy_dashboard_analytics first_seen (Phase 3.6)', () => {
     const s = sums(stats.monthly);
     expect(s.reg).toBe(0);
     expect(s.guest).toBe(1);
+  });
+
+  // Adversarial-verify P1 pin: `(pe.user_id IS NOT NULL)` is never NULL, so a
+  // COALESCE profile-presence fallback off it was DEAD CODE — an unstamped
+  // profile row silently misclassified as a guest. The CTE must key the
+  // degradation on the persons-JOIN hit instead.
+  it('an UNSTAMPED profile-keyed row still counts as REGISTERED (fallback is live)', async () => {
+    await db.exec(`DELETE FROM public.academy_player_locations`);
+    await db.query(
+      `INSERT INTO public.academy_player_locations (academy_profile_id, profile_id) VALUES ($1, $2)`,
+      [ACADEMY, P]);
+    const stats = await academyStats();
+    const s = sums(stats.monthly);
+    expect(s.reg).toBe(1);
+    expect(s.guest).toBe(0);
+  });
+
+  it('anon cannot execute either dashboard function (self-contained lockdown)', async () => {
+    for (const fn of [
+      'public.get_academy_dashboard_analytics(uuid, int)',
+      'public.get_trainer_dashboard_analytics(int)',
+    ]) {
+      const { rows } = await db.query<{ ok: boolean }>(
+        `SELECT has_function_privilege('anon', '${fn}', 'EXECUTE') AS ok`);
+      expect(rows[0].ok).toBe(false);
+    }
   });
 });
 

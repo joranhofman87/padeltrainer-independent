@@ -299,8 +299,11 @@ export default function TrainerPlayerDetail() {
       setInvoices(invoiceRows);
 
       // Phase 3.6: rating history keys on the PROFILE — use the tenant-authorized
-      // person-resolved ref when the page was opened via a guest ref (a merged
-      // person's trend was empty on g_ URLs while personRefs.profileId sat unused).
+      // person-resolved ref when the page was opened via a guest ref, so g_ URLs
+      // query the same profile the p_ route would. NOTE: player_rating_history
+      // RLS is still self-view + admin only (deliberately deferred, see
+      // 20260829100000), so non-admin viewers get an empty trend on BOTH routes
+      // until a tenant read path ships; this keeps the g_ route congruent.
       const ratingProfileId = parsed.kind === 'profile' ? parsed.id : (personRefs.profileId ?? null);
       if (ratingProfileId) {
         const { data: ratings } = await supabase
