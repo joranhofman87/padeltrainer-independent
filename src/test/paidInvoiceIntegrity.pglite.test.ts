@@ -15,7 +15,8 @@ const DRAFT = '10000000-0000-0000-0000-000000000002';
 
 const insert = async (id: string, status: string) =>
   db.query(
-    `INSERT INTO public.invoices (id, status, total, subtotal, vat_amount) VALUES ($1, $2, 121, 100, 21)`,
+    `INSERT INTO public.invoices (id, status, total, subtotal, vat_amount, vat_rate, invoice_number, invoice_date)
+     VALUES ($1, $2, 121, 100, 21, 21, 'INV-' || $2, '2026-01-01')`,
     [id, status],
   );
 
@@ -28,6 +29,11 @@ beforeAll(async () => {
       total numeric,
       subtotal numeric,
       vat_amount numeric,
+      vat_rate numeric,
+      vat_breakdown jsonb,
+      line_items jsonb,
+      invoice_number text,
+      invoice_date date,
       pdf_url text,
       player_id uuid
     );
@@ -54,13 +60,26 @@ describe('protect_paid_invoice_integrity (Audit #4b)', () => {
     expect((rows[0] as { n: number }).n).toBe(0);
   });
 
-  it('BLOCKS changing total / subtotal / vat_amount on a paid invoice', async () => {
-    await expect(db.query(`UPDATE public.invoices SET total = 999 WHERE id = $1`, [PAID]))
-      .rejects.toThrow(/amount of paid invoice/i);
-    await expect(db.query(`UPDATE public.invoices SET subtotal = 1 WHERE id = $1`, [PAID]))
-      .rejects.toThrow(/amount of paid invoice/i);
-    await expect(db.query(`UPDATE public.invoices SET vat_amount = 0 WHERE id = $1`, [PAID]))
-      .rejects.toThrow(/amount of paid invoice/i);
+  it('BLOCKS changing any frozen financial field on a paid invoice', async () => {
+    for (const set of [
+      'total = 999', 'subtotal = 1', 'vat_amount = 0', 'vat_rate = 9',
+      `vat_breakdown = '{"9":{"subtotal":1,"vat":0}}'::jsonb`,
+      `line_items = '[{"x":1}]'::jsonb`, `invoice_number = 'INV-HACK'`, `invoice_date = '2020-01-01'`,
+    ]) {
+      await expect(db.query(`UPDATE public.invoices SET ${set} WHERE id = $1`, [PAID]))
+        .rejects.toThrow(/financial fields of paid invoice/i);
+    }
+  });
+
+  it('BLOCKS a single UPDATE that flips a draft to paid WHILE changing an amount', async () => {
+    await expect(db.query(`UPDATE public.invoices SET status = 'paid', total = 999 WHERE id = $1`, [DRAFT]))
+      .rejects.toThrow(/financial fields of paid invoice/i);
+  });
+
+  it('ALLOWS the normal mark-paid transition (status only, amounts unchanged)', async () => {
+    await db.query(`UPDATE public.invoices SET status = 'paid' WHERE id = $1`, [DRAFT]);
+    const { rows } = await db.query(`SELECT status FROM public.invoices WHERE id = $1`, [DRAFT]);
+    expect((rows[0] as { status: string }).status).toBe('paid');
   });
 
   it('ALLOWS a paid invoice to transition status (soft-cancel / refund) with amounts unchanged', async () => {
