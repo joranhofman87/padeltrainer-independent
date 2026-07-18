@@ -32,8 +32,14 @@ const PERSON_F = 'e0000000-0000-0000-0000-000000000003';
 // unrelated profile
 const PX = 'a0000000-0000-0000-0000-000000000009';
 
-const fnAcademy = async (player: string): Promise<boolean> =>
-  (await db.query<{ r: boolean }>(`SELECT public.is_player_of_academy($1, $2) AS r`, [player, ACADEMY])).rows[0].r;
+// The oracle pin means the fn returns false unless the CALLER manages the academy —
+// run it with the manager uid set (matching how the policies invoke it).
+const fnAcademy = async (player: string, callerUid = MGR_U): Promise<boolean> => {
+  await db.exec(`SET test.uid = '${callerUid}';`);
+  const r = (await db.query<{ r: boolean }>(`SELECT public.is_player_of_academy($1, $2) AS r`, [player, ACADEMY])).rows[0].r;
+  await db.exec(`SET test.uid = '';`);
+  return r;
+};
 
 beforeAll(async () => {
   db = new PGlite();
@@ -64,6 +70,10 @@ beforeAll(async () => {
     GRANT USAGE ON SCHEMA auth TO authenticated, anon;
 
     -- Faithful copies of deployed helpers this migration depends on.
+    CREATE TABLE public.user_roles (user_id uuid, role text);
+    CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid)
+      RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
+        SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = 'admin') $fn$;
     CREATE OR REPLACE FUNCTION public.get_user_academy_ids(_user_id uuid)
       RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
         SELECT academy_profile_id FROM public.academy_managers WHERE user_id = _user_id $fn$;
@@ -126,16 +136,43 @@ describe('is_player_of_academy (Phase 3.5b)', () => {
     expect(await fnAcademy(PX)).toBe(false);
   });
 
-  it('booking arm: pure-profile active seat TRUE; dual-keyed seat FALSE (FAM-02); cancelled seat FALSE', async () => {
+  it('booking arm: active seat TRUE (incl. dual-keyed — relationship semantics); cancelled seat FALSE', async () => {
     await db.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'confirmed')`, [SLOT, PX]);
     expect(await fnAcademy(PX)).toBe(true);
     await db.exec(`DELETE FROM public.bookings`);
     await db.query(`INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status) VALUES ($1, $2, $3, 'confirmed')`, [SLOT, PX, GM]);
-    expect(await fnAcademy(PX)).toBe(false); // dual-keyed → guest-owned
+    expect(await fnAcademy(PX)).toBe(true); // dual-keyed seat still evidences the relationship
     await db.exec(`DELETE FROM public.bookings`);
     await db.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'cancelled')`, [SLOT, PX]);
     expect(await fnAcademy(PX)).toBe(false); // inactive seat
     await db.exec(`DELETE FROM public.bookings`);
+  });
+
+  it('ORACLE PIN: a non-manager caller gets FALSE even for a genuinely-linked player', async () => {
+    expect(await fnAcademy(PM, TR_U)).toBe(false); // trainer ≠ academy manager
+  });
+
+  it('CROSS-TENANT: a guest at ANOTHER academy linking to the profile grants nothing here', async () => {
+    const GB = '70000000-0000-0000-0000-0000000000b9';
+    const PB = 'a0000000-0000-0000-0000-0000000000b9';
+    const PERSON_B = 'e0000000-0000-0000-0000-0000000000b9';
+    const OTHER_ACADEMY = '90000000-0000-0000-0000-000000000009';
+    await db.query(`INSERT INTO public.profiles (id, user_id, full_name) VALUES ($1, gen_random_uuid(), 'CrossTenant')`, [PB]);
+    await db.query(`INSERT INTO public.guest_players (id, academy_profile_id) VALUES ($1, $2)`, [GB, OTHER_ACADEMY]);
+    await db.query(`INSERT INTO public.persons (id) VALUES ($1)`, [PERSON_B]);
+    await db.query(`INSERT INTO public.person_links (person_id, profile_id) VALUES ($1, $2)`, [PERSON_B, PB]);
+    await db.query(`INSERT INTO public.person_links (person_id, guest_player_id) VALUES ($1, $2)`, [PERSON_B, GB]);
+    expect(await fnAcademy(PB)).toBe(false); // the linked guest is out of ACADEMY scope
+  });
+
+  it('PER-GUEST freeze: one frozen + one clean guest of the same person → the clean guest still grants', async () => {
+    const GF2 = '70000000-0000-0000-0000-0000000000c9';
+    await db.query(`INSERT INTO public.guest_players (id, academy_profile_id) VALUES ($1, $2)`, [GF2, ACADEMY]);
+    await db.query(`INSERT INTO public.person_links (person_id, guest_player_id) VALUES ($1, $2)`, ['e0000000-0000-0000-0000-000000000003', GF2]);
+    // PF's person now has GF (frozen) + GF2 (clean, in scope) → grants
+    expect(await fnAcademy(PF)).toBe(true);
+    await db.query(`DELETE FROM public.person_links WHERE guest_player_id = $1`, [GF2]);
+    await db.query(`DELETE FROM public.guest_players WHERE id = $1`, [GF2]);
   });
 
   // PROD REALITY PIN (discovered building this suite): the manager UPDATE policy is
@@ -185,12 +222,12 @@ describe('is_player_of_trainer (Phase 3.5b)', () => {
     return r;
   };
 
-  it('pure-profile active seat → TRUE; dual-keyed → FALSE; cancelled → FALSE', async () => {
+  it('active seat → TRUE (incl. dual-keyed — relationship semantics); cancelled → FALSE', async () => {
     await db.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'confirmed')`, [SLOT, PX]);
     expect(await fnTrainer(TR_U, PX)).toBe(true);
     await db.exec(`DELETE FROM public.bookings`);
     await db.query(`INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status) VALUES ($1, $2, $3, 'confirmed')`, [SLOT, PX, GM]);
-    expect(await fnTrainer(TR_U, PX)).toBe(false);
+    expect(await fnTrainer(TR_U, PX)).toBe(true); // reporter-name surfaces depend on this (verify r1)
     await db.exec(`DELETE FROM public.bookings`);
     await db.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'cancelled_swap')`, [SLOT, PX]);
     expect(await fnTrainer(TR_U, PX)).toBe(false);
