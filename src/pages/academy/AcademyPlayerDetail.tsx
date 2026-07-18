@@ -96,6 +96,11 @@ export default function AcademyPlayerDetail() {
   // Phase 3.3d: person-level login (from get_person_refs_for_scope). Drives the type badge so a
   // merged account holder clicked via their guest side reads 'Registered'. undefined → seat fallback.
   const [personHasLogin, setPersonHasLogin] = useState<boolean | undefined>(undefined);
+  // Phase 3.5d (Codex P2): the person's tenant-authorized profile ref from
+  // get_person_refs_for_scope — for email/person-links-only merges the row's
+  // linked_profile_id is NULL, so the locations control would otherwise query
+  // guest-only and miss pure-profile club sources.
+  const [personProfileId, setPersonProfileId] = useState<string | null>(null);
   const [tags, setTags] = useState<PlayerTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [academyLocations, setAcademyLocations] = useState<{ id: string; name: string }[]>([]);
@@ -249,6 +254,7 @@ export default function AcademyPlayerDetail() {
         { kind: parsed.kind, id: parsed.id },
       );
       setPersonHasLogin(personRefs.hasLogin); // Phase 3.3d: person-level login for the type badge
+      setPersonProfileId(personRefs.profileId ?? null); // Phase 3.5d: tenant-authorized profile ref
       const slotIds = await fetchPersonBookingSlotIds(personRefs);
 
       let cycluses: CyclusItem[] = [];
@@ -458,7 +464,7 @@ export default function AcademyPlayerDetail() {
               <div className="pt-2">
                 <PlayerLocationsControl
                   academyProfileId={activeAcademy.id}
-                  profileId={player.profile_id}
+                  profileId={personProfileId ?? player.profile_id}
                   guestPlayerId={player.guest_player_id}
                   academyLocations={academyLocations}
                 />

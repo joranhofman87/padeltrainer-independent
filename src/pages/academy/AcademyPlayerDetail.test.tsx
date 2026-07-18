@@ -31,6 +31,26 @@ vi.mock('@/components/academy/AcademyPlayerRemoveCard', () => ({
   AcademyPlayerRemoveCard: () => <div data-testid="academy-player-remove-card" />,
 }));
 
+// Phase 3.5d (Codex P3 pin): capture what the locations control receives — the
+// page must feed the tenant-authorized personRefs.profileId, not the row's
+// linked_profile_id (NULL for email-merged persons).
+const { locationsControlProps, personRefsMock } = vi.hoisted(() => ({
+  locationsControlProps: [] as Array<Record<string, unknown>>,
+  personRefsMock: vi.fn(),
+}));
+vi.mock('@/components/academy/PlayerLocationsControl', () => ({
+  PlayerLocationsControl: (props: Record<string, unknown>) => {
+    locationsControlProps.push(props);
+    return <div data-testid="player-locations-control" />;
+  },
+}));
+vi.mock('@/lib/playerDetailData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/playerDetailData')>();
+  // Passthrough spy: real behavior by default; the 3.5d pin overrides it once.
+  personRefsMock.mockImplementation(actual.fetchPersonRefSet as (...args: unknown[]) => unknown);
+  return { ...actual, fetchPersonRefSet: (...args: unknown[]) => personRefsMock(...args) };
+});
+
 const GUEST_ID = 'guest-uuid-1';
 const ACADEMY_ID = 'academy-uuid-1';
 
@@ -163,6 +183,7 @@ describe('AcademyPlayerDetail', () => {
     for (const key of Object.keys(tableResponses)) {
       delete tableResponses[key];
     }
+    locationsControlProps.length = 0;
     resolveCycleRouteMock.mockResolvedValue('/app/academy/cycles/cycle-1');
   });
 
@@ -248,6 +269,19 @@ describe('AcademyPlayerDetail', () => {
     const backLink = screen.getByRole('link', { name: /Back to players/i });
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute('href', '/app/academy/players');
+  });
+
+  it('Phase 3.5d pin: feeds the tenant-authorized personRefs.profileId into the locations control (linked_profile_id is null)', async () => {
+    personRefsMock.mockResolvedValueOnce({ guestIds: [GUEST_ID], profileId: 'p1', hasLogin: true });
+    renderGuestDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId('player-locations-control')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      const last = locationsControlProps[locationsControlProps.length - 1];
+      expect(last?.profileId).toBe('p1'); // NOT the row's linked_profile_id (null)
+      expect(last?.guestPlayerId).toBe(GUEST_ID);
+    });
   });
 
   describe('related item navigation', () => {
