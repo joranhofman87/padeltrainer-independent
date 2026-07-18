@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { SelectFilter } from '@/components/ui/select-filter';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchAllRows } from '@/lib/supabasePaging';
 import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
@@ -94,30 +95,40 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
 
   const fetchInvoices = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('trainer_id', trainerId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
+    try {
+      // Page the FULL set to completion: PostgREST silently caps a plain select at
+      // 1000 rows, so a high-volume trainer would lose their oldest invoices with no
+      // error (the same money-path truncation supabasePaging exists to prevent). The
+      // rows/order are unchanged; `id` is the stable tiebreaker range paging requires.
+      const data = await fetchAllRows<Invoice>(
+        () =>
+          supabase
+            .from('invoices')
+            .select('*')
+            .eq('trainer_id', trainerId)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false }) as unknown as {
+            range: (from: number, to: number) => PromiseLike<{ data: Invoice[] | null; error: unknown }>;
+          },
+      );
+      const now = new Date();
+      // Persist the derived status (e.g. sent + past-due → overdue) so the
+      // status filter and badge agree. Single source of truth: deriveInvoiceStatus.
+      const processedInvoices = data.map(inv => ({
+        ...inv,
+        status: deriveInvoiceStatus(inv, now),
+      }));
+      setInvoices(processedInvoices as Invoice[]);
+    } catch (error) {
       logger.error('Error fetching invoices', error instanceof Error ? error : new Error(String(error)), { component: 'InvoiceList' });
       toast({
         title: 'Fout',
         description: 'Kon facturen niet laden',
         variant: 'destructive',
       });
-    } else {
-      const now = new Date();
-      // Persist the derived status (e.g. sent + past-due → overdue) so the
-      // status filter and badge agree. Single source of truth: deriveInvoiceStatus.
-      const processedInvoices = (data || []).map(inv => ({
-        ...inv,
-        status: deriveInvoiceStatus(inv, now),
-      }));
-      setInvoices(processedInvoices as Invoice[]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   /** After any invoice/guest write: refresh list + all player views (overdue flag, email). */
