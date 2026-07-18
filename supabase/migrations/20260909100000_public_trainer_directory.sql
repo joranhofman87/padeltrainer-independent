@@ -19,6 +19,13 @@
 CREATE INDEX IF NOT EXISTS idx_reviews_trainer_public
   ON public.reviews (trainer_id) WHERE is_public = true;
 
+-- The specializations/certifications filters use array OVERLAP (&&) — GIN is the
+-- index type Postgres uses for that operator (mirrors idx_academy_player_metadata_tag_ids).
+CREATE INDEX IF NOT EXISTS idx_trainer_profiles_specializations_gin
+  ON public.trainer_profiles USING GIN (specializations);
+CREATE INDEX IF NOT EXISTS idx_trainer_profiles_certifications_gin
+  ON public.trainer_profiles USING GIN (certifications);
+
 -- ---------------------------------------------------------------------------
 -- search_public_trainers — one bounded page of directory cards + total_count.
 -- Mirrors the exact filter/sort semantics the client used to compute locally.
@@ -62,7 +69,11 @@ AS $$
     SELECT
       NULLIF(btrim(COALESCE(p_search, '')), '')                       AS q,
       LEAST(GREATEST(COALESCE(p_page_size, 48), 1), 100)             AS page_size,
-      GREATEST(COALESCE(p_page, 1), 1)                               AS page,
+      -- Upper-bounded defensively: OFFSET = (page-1)*page_size is computed as int,
+      -- and page_size maxes at 100, so an unbounded page could overflow int32
+      -- (~21.4M pages) on a malicious/garbage request. 1,000,000 pages is far
+      -- beyond any realistic result set and leaves headroom below the overflow line.
+      LEAST(GREATEST(COALESCE(p_page, 1), 1), 1000000)               AS page,
       (SELECT lower_is_better FROM public.rating_systems WHERE code = p_rating_system) AS lower_is_better
   ),
   filtered AS (
@@ -87,13 +98,25 @@ AS $$
     JOIN public.profiles_public pr ON pr.user_id = tp.user_id
     CROSS JOIN params
     LEFT JOIN LATERAL (
-      SELECT avg(r.rating)::numeric AS avg_rating, count(*)::int AS cnt
+      -- Rounded to 1 decimal to match the OLD client semantics exactly
+      -- (Math.round(avg*10)/10 in getBatchTrainerRatings) — a raw average would
+      -- filter/sort slightly differently at the boundary (e.g. a true 4.494
+      -- average rounds to a displayed/filterable 4.5, and must clear a
+      -- minRating=4.5 filter the same way it did before this migration).
+      SELECT round(avg(r.rating)::numeric, 1) AS avg_rating, count(*)::int AS cnt
       FROM public.reviews r
       WHERE r.trainer_id = tp.id AND r.is_public = true
     ) rv ON true
     WHERE tp.is_public = true
       AND tp.is_active_subscription = true
-      -- free-text search: name / bio / any specialization
+      -- free-text search: name / bio / any specialization. Deliberately plain
+      -- ILIKE, not trigram/full-text (no pg_trgm extension is enabled anywhere
+      -- in this schema yet) — this predicate is NOT index-assisted and costs a
+      -- sequential scan over the entitled+public candidate set for every search.
+      -- Acceptable at the current & near-term trainer count; if/when the public
+      -- roster reaches the point where this measurably matters, add
+      -- `CREATE EXTENSION pg_trgm` + a GIN trigram index on profiles.full_name/
+      -- bio (and re-benchmark before doing anything more invasive).
       AND (params.q IS NULL OR (
               pr.full_name ILIKE '%' || params.q || '%'
            OR pr.bio       ILIKE '%' || params.q || '%'
@@ -134,6 +157,19 @@ AS $$
     SELECT * FROM filtered
     WHERE average_rating >= COALESCE(p_min_rating, 0)
   ),
+  -- KNOWN SCALE TRADE-OFF: `count(*) OVER ()` gives an EXACT total_count in the
+  -- same query as the page, which is the standard single-round-trip pattern —
+  -- but Postgres must materialize every row in `rated` (all filter predicates
+  -- applied, including the unindexed ILIKE above) BEFORE the page is sliced off,
+  -- so the RESPONSE is bounded to page_size but the WORK is O(matching rows), not
+  -- O(page_size). Combined with the indexes this migration adds (reviews partial,
+  -- specializations/certifications GIN, existing trainer_locations/availability
+  -- indexes), this is fine up to tens/hundreds of thousands of candidate rows.
+  -- If a broad, unfiltered public roster query becomes the bottleneck at real
+  -- scale, the fix is to stop computing an exact count on deep pages (estimate
+  -- via pg_class.reltuples, or drop to keyset/cursor pagination) — deliberately
+  -- not done here since it is unneeded at the current and realistically-near
+  -- trainer count and would add real complexity for no present benefit.
   counted AS (
     SELECT *, count(*) OVER () AS total_count FROM rated
   )

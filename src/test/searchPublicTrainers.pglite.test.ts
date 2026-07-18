@@ -199,6 +199,21 @@ describe('search_public_trainers — filters', () => {
     expect(names).not.toContain('HiPrivateOnly'); // public avg is 2, below 4
   });
 
+  // Codex P3: the OLD client rounded to 1 decimal before filtering/sorting/
+  // displaying (Math.round(avg*10)/10). A raw (unrounded) average changes
+  // behavior at the boundary — pin the exact case Codex described: a true
+  // average of 4.45 rounds to 4.5 and must clear a minRating=4.5 filter, the
+  // same way the pre-migration client did.
+  it('average_rating is ROUNDED to 1 decimal, matching the old client (boundary case)', async () => {
+    const boundary = await addTrainer({ full_name: 'Boundary' });
+    for (let i = 0; i < 11; i++) await addReview(boundary, 4, true);
+    for (let i = 0; i < 9; i++) await addReview(boundary, 5, true); // raw avg = 89/20 = 4.45
+    const unfiltered = await search({});
+    expect(Number(unfiltered.find((r) => r.full_name === 'Boundary')!.average_rating)).toBe(4.5);
+    const rows = await search({ p_min_rating: 4.5 });
+    expect(rows.map((r) => r.full_name)).toContain('Boundary');
+  });
+
   it('hasAvailability counts only FUTURE public slots', async () => {
     const ok = await addTrainer({ full_name: 'FutureSlot' });
     const pastOnly = await addTrainer({ full_name: 'PastSlot' });

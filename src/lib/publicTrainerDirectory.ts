@@ -40,24 +40,38 @@ export interface PublicTrainerSearchResult {
   totalCount: number;
 }
 
-/** One bounded page of directory cards + the total across the full filtered set. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A non-negative finite number, or `fallback` for anything else (NaN, Infinity,
+ *  negative, non-numeric). This is a public SEO page fed straight from the URL —
+ *  garbage query params must degrade to "no filter", never an RPC error. */
+function safeNonNegative(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+/** One bounded page of directory cards + the total across the full filtered set.
+ *  URL-derived params are sanitized here (the RPC boundary) so a malformed deep
+ *  link degrades to "no filter" instead of surfacing a Postgres cast error. */
 export async function searchPublicTrainers(
   params: PublicTrainerSearchParams,
   client: Pick<typeof supabase, 'rpc'> = supabase,
 ): Promise<PublicTrainerSearchResult> {
+  const locationId = params.locationId && params.locationId !== 'all' && UUID_RE.test(params.locationId)
+    ? params.locationId
+    : null;
   const { data, error } = await client.rpc('search_public_trainers', {
     p_search: params.search?.trim() || null,
-    p_location_id: params.locationId && params.locationId !== 'all' ? params.locationId : null,
-    p_min_rating: params.minRating ?? 0,
-    p_min_experience: params.minExperience ?? 0,
+    p_location_id: locationId,
+    p_min_rating: safeNonNegative(params.minRating, 0),
+    p_min_experience: safeNonNegative(params.minExperience, 0),
     p_specializations: params.specializations?.length ? params.specializations : null,
     p_certifications: params.certifications?.length ? params.certifications : null,
     p_verified: params.verified ?? false,
     p_rating_system: params.ratingSystem || null,
-    p_min_trainer_rating: params.minTrainerRating ?? 0,
+    p_min_trainer_rating: safeNonNegative(params.minTrainerRating, 0),
     p_has_availability: params.hasAvailability ?? false,
-    p_sort: params.sort ?? 'rating',
-    p_page: params.page ?? 1,
+    p_sort: params.sort === 'experience' ? 'experience' : 'rating',
+    p_page: Math.max(1, Math.trunc(safeNonNegative(params.page, 1))),
     p_page_size: params.pageSize ?? 48,
   });
   if (error) throw new Error(error.message);
