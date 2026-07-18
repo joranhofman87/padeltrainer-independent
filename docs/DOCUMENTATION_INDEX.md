@@ -3,7 +3,7 @@
 The canonical map of all padeltrainer documentation and the single entry point for anyone — AI agent or human — making changes to this codebase.
 
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-02
+Status: canonical (source of truth) | last updated 2026-07-18
 
 ---
 
@@ -87,11 +87,13 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [CYCLE_SERIES_SPLIT_RUNBOOK.md](archive/CYCLE_SERIES_SPLIT_RUNBOOK.md) | OA | One-time mega-cycle split (APPLIED to prod 2026-06-29) | no | done | Archive |
 | [SCHEDULING_ARCHITECTURE.md](SCHEDULING_ARCHITECTURE.md) | UNU | Academy-first scheduling strategy note | yes | partial | Overlaps [DOMAIN_MODEL.md](DOMAIN_MODEL.md) |
 | [SHORT_LINKS.md](SHORT_LINKS.md) | CC | Branded `/s/<code>` short-link primitive (schema, worker, seams, invariants) | yes | yes | Distinct from `/t/` `/a/` profile slugs |
+| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 1–3.4 shipped, Phase 4 contract pending | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
+| [../src/lib/personIdentity.ts](../src/lib/personIdentity.ts) | CC | Code-as-doc: **the single TS home of the FAM-02 person rule** (person key, XOR ref, booking match scope, display name) — read it before touching any `player_id`/`guest_player_id` logic | yes | yes | SQL surfaces encode the same rule inline; keep in sync |
 | [COMPONENT_REUSE_AUDIT.md](COMPONENT_REUSE_AUDIT.md) | HAO | 2026-06-30 reuse audit + plan | ref | plan | [technical-debt/COMPONENT_REUSE_BACKLOG.md](technical-debt/COMPONENT_REUSE_BACKLOG.md) |
 | [EDGE_FUNCTIONS_FICWB_AUDIT.md](EDGE_FUNCTIONS_FICWB_AUDIT.md) | HAO | 2026-05-31 edge-fn deploy-status audit | ref | dated | — |
 | [FICWB_SECRETS_AUDIT.md](FICWB_SECRETS_AUDIT.md) | HAO | 2026-06-02 edge secrets audit | ref | dated | — |
 | [P0_PR1_PR4_NOTES.md](P0_PR1_PR4_NOTES.md) | HAO | P0 hardening PR-1..4 deploy notes | no | historical | — |
-| [PUBLIC_BOOKING_WIDGET_PLAN.md](PUBLIC_BOOKING_WIDGET_PLAN.md) | UNU | Not-started feature plan (audited 2026-07-01) | ref | plan (not built) | — |
+| [PUBLIC_BOOKING_WIDGET_PLAN.md](PUBLIC_BOOKING_WIDGET_PLAN.md) | UNU | Not-started feature plan (audited 2026-07-01) | ref | plan (not built; re-base on persons first) | — |
 | [PHASE2_REGISTRATIONS_SPLIT.md](archive/PHASE2_REGISTRATIONS_SPLIT.md) | OA | Phase-2 migration spec (shipped) | no | done | [adr/0001](adr/0001-registrations-cycles-split.md) · Archive |
 | [PHASE2_STEP3_RUNBOOK.md](archive/PHASE2_STEP3_RUNBOOK.md) | OA | One-time cutover backfill runbook | no | done | Archive |
 | [PHASE4_CE_INTEGRITY_INDEX_RUNBOOK.md](archive/PHASE4_CE_INTEGRITY_INDEX_RUNBOOK.md) | OA | One-time FK+GIN owner runbook | no | done | Archive |
@@ -101,7 +103,7 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [UI_AUDIT_SPRINT1.md](archive/UI_AUDIT_SPRINT1.md) | OA | 2026-05-30 visual audit sprint | no | done | [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) · Archive |
 | [W06-DEDUPE-DRYRUN.md](archive/W06-DEDUPE-DRYRUN.md) | OA | Club-dedupe dry-run approval gate (2026-05-30) | no | done | Archive |
 | [WAVE4-SCOPE.md](archive/WAVE4-SCOPE.md) | OA | Wave-4 scope/plan (2026-06-12) | no | done | Archive |
-| [AUDIT-2026-06.md](AUDIT-2026-06.md) | HAO | June-2026 consolidated pre-launch audit | ref | historical | [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) |
+| [AUDIT-2026-06.md](archive/AUDIT-2026-06.md) | HAO | June-2026 consolidated pre-launch audit | ref | historical | [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) · Archive |
 
 ### `docs/adr/` — Architecture Decision Records (all CC, all Accepted)
 
@@ -182,5 +184,7 @@ To be archived under `docs/archive/`:
 - `docs/archive/W06-DEDUPE-DRYRUN.md`
 - `docs/archive/WAVE4-SCOPE.md`
 - `docs/archive/test-summary.md`, `docs/archive/testability-report.md`
+- `docs/archive/AUDIT-2026-06.md` (moved 2026-07-18)
+- `docs/archive/REBOOK_LINKED_GUEST_BACKFILL.sql` (one-time backfill, executed; moved 2026-07-18 — do not rerun)
 
-**Superseded, keep in place (historical/needs-update):** `README.md` (rewrite pending), `MIGRATION_STABILIZATION.md`, `lessons-learned.md`, `TEST_BASELINE.md`, `DATA_INTEGRITY_AUDIT.md`, `docs/DATA_HEALTH_CHECKS.md`, `docs/AUDIT-2026-06.md`, `docs/EDGE_FUNCTIONS_FICWB_AUDIT.md`, `docs/FICWB_SECRETS_AUDIT.md`, `docs/P0_PR1_PR4_NOTES.md`, `docs/SCHEDULING_ARCHITECTURE.md`, `docs/COMPONENT_REUSE_AUDIT.md`, `docs/PUBLIC_BOOKING_WIDGET_PLAN.md`.
+**Superseded, keep in place (historical/needs-update):** `README.md` (rewrite pending), `MIGRATION_STABILIZATION.md`, `lessons-learned.md`, `TEST_BASELINE.md`, `DATA_INTEGRITY_AUDIT.md`, `docs/DATA_HEALTH_CHECKS.md`, `docs/EDGE_FUNCTIONS_FICWB_AUDIT.md`, `docs/FICWB_SECRETS_AUDIT.md`, `docs/P0_PR1_PR4_NOTES.md`, `docs/SCHEDULING_ARCHITECTURE.md`, `docs/COMPONENT_REUSE_AUDIT.md`, `docs/PUBLIC_BOOKING_WIDGET_PLAN.md` (re-base on persons/person_links before build).

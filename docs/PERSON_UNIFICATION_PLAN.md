@@ -1,9 +1,11 @@
 # Person Unification Plan — one `persons` table, "has a login" as an attribute
 
-Status: **DESIGN APPROVED, not yet started** (2026-07-16). This is the tracker for the largest
-migration in the codebase. Execute it as a **strangler / expand→migrate→contract** program of small,
-independently-shippable PRs — never a big-bang. You can stop between any two phases with a fully
-working app.
+Status: **IN EXECUTION** (last updated 2026-07-18). Phases 0–3.4 are **shipped + deployed**
+(`persons` + `person_links` live and backfilled, dual-write stamps on, person-keyed readers through
+the money-path dedup guard); Phase 3.5 slices a–e are in PR review (#578–#581); Phase 3.6 + Phase 4
+(CONTRACT) remain. This is the tracker for the largest migration in the codebase. Execute it as a
+**strangler / expand→migrate→contract** program of small, independently-shippable PRs — never a
+big-bang. You can stop between any two phases with a fully working app.
 
 Audience / AI-read: yes. Companion: [`INVARIANTS.md`](INVARIANTS.md), the person-identity rule in
 `src/lib/personIdentity.ts`, and the registration-decouple precedent

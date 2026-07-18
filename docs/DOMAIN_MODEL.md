@@ -8,7 +8,7 @@
 > `supabase.from(...).insert/update/delete`.
 
 **Audience / AI-read: yes** — this is the backbone other docs reference.
-**Status: canonical (source of truth) | last updated 2026-07-02**
+**Status: canonical (source of truth) | last updated 2026-07-18**
 
 Related: [`EXTENDING_THE_DOMAIN.md`](./EXTENDING_THE_DOMAIN.md) (change playbook + PR checklist + test
 matrix), [`SCHEDULING_ARCHITECTURE.md`](./SCHEDULING_ARCHITECTURE.md) (academy-first UX strategy),
@@ -65,7 +65,7 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | **lib** | `academy.ts`, `academyVisibility.ts`, `academyMollieSettingsState.ts`, `academyPayments.ts`, `academyPlayerBulk.ts`, `academyPlayerDetails.ts`, `academyPlayerRemoval.ts`, `academySubscription.ts`. |
 | **Edge/RPC** | `create-academy-profile`, `create-academy-trainer`, `academy-update-player-email`, `mollie-connect-academy`, `mollie-disconnect-academy`, `check-mollie-connect-status`. |
 | **Dangerous** | Player soft-removal is metadata-driven (see §5); Mollie routing must use the *academy's* connected account (P1-9, fixed). |
-| **Invariants** | (1) Per-player academy data (notes/tags/preferred location/soft-removal) lives in `academy_player_metadata` keyed by `(academy, guest_player_id | profile_id)` XOR. (2) Only academy + trainer create/edit scheduling; **clubs are read-only**. |
+| **Invariants** | (1) Per-player academy data (notes/tags/preferred location/soft-removal) lives in `academy_player_metadata`, one row per **legacy seat**: keyed `(academy, guest_player_id XOR profile_id)` (row CHECK) plus a derived `person_id` stamp — the person is the canonical identity, the guest/profile key is the transitional dual-write layer (see §5). (2) Only academy + trainer create/edit scheduling; **clubs are read-only**. |
 | **Tests** | `academyVisibility.test.ts`, `academyMollieSettingsState.test.ts`, `academyPayments.test.ts`, `AcademyPlayers.actions.test.tsx`. |
 
 ## 3. trainers
@@ -94,18 +94,18 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | **Invariants** | (1) Clubs are read-only over slots/cycles/bookings; RLS may be symmetric but there must be no club write UI. |
 | **Tests** | `club.test.ts`, `ClubSidebar.test.tsx`. |
 
-## 5. players / guest-players
+## 5. players / guest-players / persons
 
 | | |
 |---|---|
-| **Purpose** | The two learner identities: registered `player` users and `guest_players` (no auth account). |
-| **Key tables** | `guest_players`, `player_links` / `signupClaimFlow` link (guest→profile), `player_locations`, `academy_player_metadata` (per-academy overlay), `player_rating_history`, `user_discounts`, `waiting_list_entries`. |
+| **Purpose** | The learner identity domain. **Canonical model: one `persons` row per human** — "has a login" is simply `persons.user_id IS NOT NULL` — mapped over the two legacy identities (`profiles` = account holder, `guest_players` = trainer/academy-managed, possibly no account) via the `person_links` identity map. The legacy `player_id`/`guest_player_id` columns stay as the **transitional dual-write layer**; Phase 4 of [`PERSON_UNIFICATION_PLAN.md`](./PERSON_UNIFICATION_PLAN.md) contracts them. |
+| **Key tables** | `persons`, `person_links` (`profile_id` UNIQUE, `guest_player_id` UNIQUE, exactly-one-source CHECK, one-profile-per-person partial index), `person_merge_review` (owner sign-off queue) — all three RLS-enabled with **zero policies BY DESIGN** (definer/service-only; `supabase/migrations/20260826260000_persons_expand.sql`, `…280000_persons_backfill.sql`). Person ids are **deterministic** (an absorbed profile/guest keeps its old uuid as its person id). Legacy: `guest_players` (`twin_of_profile_id` = explicit manager-asserted twin stamp; `linked_profile_id` is email-inferred and **NEVER identity truth** — the twin bridge retires at Phase 4), `player_locations`, `academy_player_metadata` (per-academy overlay), `player_rating_history`, `user_discounts`, `waiting_list_entries`. |
 | **UI** | `src/pages/{PlayerDashboard,PlayerAgenda,PlayerBookings,PlayerInvoicesPage,PlayerJourney}.tsx`, `AcademyPlayers.tsx`/`AcademyPlayerDetail.tsx`, `src/components/players/*` (shared) vs `src/components/player/*` (player-role-only, ESLint-restricted). |
-| **lib** | `guestPlayers.ts`, `academyPlayersQuery.ts`, `academyPlayerDetails.ts`, `signupClaimFlow.ts` (guest→account merge), `mapPlayersOverviewRow` / `UnifiedPlayer`. |
-| **Edge/RPC** | `create-manual-player`, `create-guest-slot-payment`, `create-guest-cyclus-payment`, `get-guest-booking`, `submit-guest-intake`; RPC `merge_guest_players` (data-loss-safe merge, hardened P1-3). |
-| **Dangerous** | `merge_guest_players` and guest→profile linking can lose booking/invoice history if not careful; booking is `player_id` XOR `guest_player_id`. |
-| **Invariants** | (1) A booking references exactly one of `player_id` / `guest_player_id`, never both. (2) Delete of an academy player is a **soft remove** (reversible metadata flag), not a row delete. |
-| **Tests** | `academyPlayerRemoval.test.ts`, `signupClaimFlow.test.ts`, `guestPlayers`-related tests, `AdminGuestPlayers.tsx`. |
+| **lib** | **`personIdentity.ts` — the single TS home of the person rule** (`personKeyOf`/`unifiedPersonKeyOf`/`personRefOf`/`matchBookingsToPerson`/`personDisplayName`), `guestPlayers.ts`, `academyPlayersQuery.ts`, `academyPlayerDetails.ts`, `signupClaimFlow.ts` (guest→account claim), `mapPlayersOverviewRow` / `UnifiedPlayer`. |
+| **Edge/RPC** | `create-manual-player`, `create-guest-slot-payment`, `create-guest-cyclus-payment`, `get-guest-booking`, `submit-guest-intake`; RPC `merge_guest_players` (twin-aware, data-loss-safe — the **only** same-person reconcile path, hardened P1-3); person-keyed readers (Phase 3.x): `get_my_person_id`, `get_cycle_roster_names`, `get_players_overview` (person-dedup), `get_person_refs_for_scope` (+`has_login`), `get_my_linked_guest_bookings`/`get_my_paid_booking_ids`/`get_my_pending_priority_claims`, `can_book_member_window`, `can_report_attendance_on_slot`, `is_guest_split_frozen`. |
+| **Dangerous** | Never treat `linked_profile_id` (or a bare email match) as identity — reconcile same-person duplicates only via `merge_guest_players`. Never write `person_id` columns directly — they are derived (invariant 2). Guest→profile linking outside the hardened RPC can lose booking/invoice history. |
+| **Invariants** | (1) **FAM-02**: guests and profiles are DISTINCT people unless `person_links` says otherwise, and a **dual-keyed row** (`player_id` + `guest_player_id` both set — written by the historical signup linker, exists by design) **belongs to the GUEST person**. Ownership predicates (player RLS on bookings/invoices) therefore carry pure-profile guards (`player_id = me AND guest_player_id IS NULL`); relationship-visibility helpers (`is_player_of_trainer`/`is_player_of_academy`) deliberately do not. (2) The `person_id` columns on the 7 dual-keyed tables (9 column-pairs) are **pure derived data**: `stamp_person_id_*` SECURITY DEFINER triggers recompute them guest-first from `person_links` on every keyed write — a client-supplied value is re-derived, never trusted. (3) **Split-freeze**: a guest with a pending `twin_detached_needs_split`/`merged_guest_email_moved` review (`is_guest_split_frozen`) reads as its OWN person — every person arm/path is freeze-gated on both the inbound and the candidate side until the owner resolves the `person_merge_review` row. (4) Delete of an academy player is a **soft remove** (reversible metadata flag), not a row delete. |
+| **Tests** | `personIdentity.test.ts`, `academyPlayerRemoval.test.ts`, `signupClaimFlow.test.ts`, `guestPlayers`-related tests, `AdminGuestPlayers.tsx`. |
 
 ## 6. slots
 
