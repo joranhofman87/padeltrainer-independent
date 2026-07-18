@@ -83,18 +83,24 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
     // merged person's guest-keyed invoices (invisible to the direct player_id
     // select). Fall back to the legacy direct query if the RPC isn't deployed yet
     // (congruent degradation: exactly the pre-3.5a list).
-    let { data, error } = await supabase.rpc('get_my_invoices');
-    if (error) {
+    let data: PlayerInvoice[] | null = null;
+    let error: { message: string } | null = null;
+    const rpcRes = await supabase.rpc('get_my_invoices');
+    if (rpcRes.error) {
       logger.warn('get_my_invoices RPC unavailable, using legacy direct query', {
         component: 'PlayerInvoicesTab',
-        message: error.message,
+        message: rpcRes.error.message,
       });
-      ({ data, error } = await supabase
+      const legacy = await supabase
         .from('invoices')
         .select('id, invoice_number, invoice_date, due_date, player_name, player_business_name, player_address, player_btw_number, subtotal, vat_rate, vat_amount, total, status, pdf_url, sent_at, paid_at, notes')
         .eq('player_id', profileId)
         .neq('status', 'draft')
-        .order('invoice_date', { ascending: false }));
+        .order('invoice_date', { ascending: false });
+      data = legacy.data as PlayerInvoice[] | null; // legacy rows: no can_edit_billing → edit stays enabled (old behavior)
+      error = legacy.error;
+    } else {
+      data = rpcRes.data as PlayerInvoice[] | null;
     }
 
     if (error) {
