@@ -174,6 +174,9 @@ async function enrichBookings(rawBookings: RawBookingRow[], playerId: string): P
     // Any RPC error (not-deployed PGRST202 or transient) degrades to the legacy player_id-only
     // invoices read — same best-effort behaviour as before (a failed paid lookup never errors the
     // page; the booking's own payment_status simply stands, and linked-guest paid status is lost).
+    // Phase 3.5a note: the player SELECT policy is now PURE-PROFILE, so this fallback also no
+    // longer sees BOTH-keyed paid invoices (linker-stamped rows) — acceptable: it only runs in a
+    // double-failure window and the RPC (the happy path) covers every arm.
     const { data: paidInvoices } = await supabase
       .from('invoices')
       .select('booking_ids, status, paid_at')

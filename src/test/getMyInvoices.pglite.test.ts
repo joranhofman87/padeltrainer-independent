@@ -192,6 +192,22 @@ describe('get_my_invoices (Phase 3.5a)', () => {
     expect(mine).toBeTruthy();
     expect(mine!.can_edit_billing).toBe(false);
   });
+
+  it('anon cannot execute get_my_invoices (REVOKE pinned)', async () => {
+    await db.exec(`SET ROLE anon;`);
+    const denied = await db.query(`SELECT * FROM public.get_my_invoices()`).then(() => false, () => true);
+    await db.exec(`RESET ROLE;`);
+    expect(denied).toBe(true);
+  });
+
+  it('rows come back newest-first (ORDER BY invoice_date DESC)', async () => {
+    const older = await insertInvoice({ player: P, date: '2026-01-01' });
+    const newer = await insertInvoice({ player: P, date: '2026-06-01' });
+    const rows = await asUser(U, myInvoices);
+    const ids = rows.map((r) => r.id).filter((id) => id === older || id === newer);
+    expect(ids[0]).toBe(newer);
+    expect(ids[1]).toBe(older);
+  });
 });
 
 describe('pure-profile RLS policies (Phase 3.5a)', () => {
