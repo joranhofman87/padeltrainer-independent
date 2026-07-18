@@ -124,7 +124,7 @@ jobs:
   # edge fn — incl. money-critical mollie-webhook — used to ship as a runtime ReferenceError with a
   # green build (e.g. backfill-invoices references undefined supabaseUrl/supabaseServiceKey). This
   # job needs BOTH `npm ci` (so the 14 functions importing `npm:` specifiers resolve against
-  # node_modules) AND Deno; the script passes --node-modules-dir=auto. NEW errors fail; the known
+  # node_modules) AND Deno; the script passes --node-modules-dir=manual. NEW errors fail; the known
   # perma-red set does not block. Regenerate: npm run check:edge-types:update.
   edge-typecheck:
     runs-on: ubuntu-latest
