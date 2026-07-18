@@ -71,6 +71,8 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/pricing";
 import { logger } from "@/lib/logger";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
+import { useBookingLoginFlags } from "@/hooks/useBookingLoginFlags";
+import { isGuestForBadge } from "@/lib/bookingLoginFlags";
 
 // Lesson interface removed - pricing now on slots
 
@@ -168,6 +170,9 @@ export function BookForPlayerDialog({
   >(null);
   const [invoiceConfirmLoading, setInvoiceConfirmLoading] = useState(false);
   const closingInvoiceDialogFromChoiceRef = useRef(false);
+
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags((slot?.booked_players ?? []).map((p) => p.bookingId));
 
   useEffect(() => {
     if (open && trainerId) {
@@ -966,7 +971,8 @@ export function BookForPlayerDialog({
                             )}>
                               {existingBookedPlayer.name}
                             </span>
-                            {existingBookedPlayer.isGuest && (
+                            {/* Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy) */}
+                            {isGuestForBadge(loginFlags, existingBookedPlayer.bookingId, existingBookedPlayer.isGuest) && (
                               <span className="text-xs text-muted-foreground">
                                 ({t("calendar.guest")})
                               </span>

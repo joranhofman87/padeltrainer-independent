@@ -21,6 +21,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { type SlotWithBookings, type BookedPlayer } from '@/lib/slotTypes';
+import { useBookingLoginFlags } from '@/hooks/useBookingLoginFlags';
+import { isGuestForBadge } from '@/lib/bookingLoginFlags';
 
 // ── Types ──
 
@@ -96,13 +98,14 @@ function getSlotBorderColor(slot: SlotWithBookings): string {
 // ── Draggable Player Chip ──
 
 function DraggableBookedPlayer({
-  player, slotId, slotMinRating, slotMaxRating, searchQuery, onRemove, onEditBooking,
+  player, slotId, slotMinRating, slotMaxRating, searchQuery, loginFlags, onRemove, onEditBooking,
 }: {
   player: BookedPlayer;
   slotId: string;
   slotMinRating?: number | null;
   slotMaxRating?: number | null;
   searchQuery?: string;
+  loginFlags: Map<string, boolean>;
   onRemove?: (bookingId: string) => void;
   onEditBooking?: (bookingId: string) => void;
 }) {
@@ -155,7 +158,8 @@ function DraggableBookedPlayer({
             </Tooltip>
           </TooltipProvider>
         )}
-        {player.isGuest && (
+        {/* Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy) */}
+        {isGuestForBadge(loginFlags, player.bookingId, player.isGuest) && (
           <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0">{t('calendar.guest', { defaultValue: 'Guest' })}</Badge>
         )}
         <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 shrink-0', getStatusColor(player.status))}>
@@ -178,10 +182,11 @@ function DraggableBookedPlayer({
 // ── Slot Card ──
 
 function SlotCard({
-  slot, searchQuery, onRemovePlayer, onEditBooking, onEditSlot, onDeleteSlot, onBookForPlayer,
+  slot, searchQuery, loginFlags, onRemovePlayer, onEditBooking, onEditSlot, onDeleteSlot, onBookForPlayer,
 }: {
   slot: SlotWithBookings;
   searchQuery?: string;
+  loginFlags: Map<string, boolean>;
   onRemovePlayer?: (bookingId: string) => void;
   onEditBooking?: (bookingId: string) => void;
   onEditSlot?: (slot: SlotWithBookings) => void;
@@ -298,6 +303,7 @@ function SlotCard({
                 slotMinRating={slot.min_rating}
                 slotMaxRating={slot.max_rating}
                 searchQuery={searchQuery}
+                loginFlags={loginFlags}
                 onRemove={onRemovePlayer}
                 onEditBooking={onEditBooking}
               />
@@ -427,6 +433,9 @@ export default function AcademyDayGrid({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
+
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags(slots.flatMap(s => s.booked_players.map(p => p.bookingId)));
 
   // Week days from currentDate
   const weekStart = useMemo(() => startOfWeek(currentDate, { weekStartsOn: 1 }), [currentDate]);
@@ -662,6 +671,7 @@ export default function AcademyDayGrid({
                               key={slot.id}
                               slot={slot}
                               searchQuery={searchQuery}
+                              loginFlags={loginFlags}
                               onRemovePlayer={onRemovePlayer}
                               onEditBooking={onEditBooking}
                               onEditSlot={onEditSlot}

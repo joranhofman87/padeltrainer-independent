@@ -17,6 +17,8 @@ import { syncInvoicesAfterPriceChange, syncSplitCountForCycle } from '@/lib/invo
 import { applySlotDeleteToCycle } from '@/lib/slotDeleteGuard';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useBookingLoginFlags } from '@/hooks/useBookingLoginFlags';
+import { isGuestForBadge } from '@/lib/bookingLoginFlags';
 import { useTrainerCanEdit } from '@/hooks/useTrainerHasAcademy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -93,6 +95,8 @@ export default function TrainerSlotDetail() {
   const [attendanceVersion, setAttendanceVersion] = useState(0);
 
   const { trainerRatingSystem } = useTrainerRatingSystem(detail?.trainer_id || undefined);
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags((detail?.booked_players ?? []).map(p => p.bookingId));
 
   const fetchSlotDetail = useCallback(async () => {
     if (!slotId) return;
@@ -423,7 +427,8 @@ export default function TrainerSlotDetail() {
                             {[player.skillRating != null ? `${player.ratingSystem?.toUpperCase()} ${player.skillRating}` : null, calculateAge(player.birthDate) != null ? `${calculateAge(player.birthDate)} jr` : null].filter(Boolean).join(' · ') || '\u00A0'}
                           </p>
                         </div>
-                        {player.isGuest && <Badge variant="outline" className="text-[10px] h-5 px-1.5">Gast</Badge>}
+                        {/* Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy) */}
+                        {isGuestForBadge(loginFlags, player.bookingId, player.isGuest) && <Badge variant="outline" className="text-[10px] h-5 px-1.5">Gast</Badge>}
                         {player.status === 'confirmed' ? (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-emerald-600 border-emerald-300"><Check className="h-2.5 w-2.5 mr-0.5" />{tCommon('confirmed', 'Bevestigd')}</Badge>
                         ) : (<Badge variant="outline" className="text-[10px] h-5 px-1.5 text-amber-600 border-amber-300">{tCommon('pending', 'Wachtend')}</Badge>)}
@@ -451,7 +456,8 @@ export default function TrainerSlotDetail() {
                             subjectProfileId={player.isGuest ? null : player.id}
                             subjectGuestPlayerId={player.isGuest ? player.id : null}
                             subjectName={player.name}
-                            isGuest={player.isGuest}
+                            // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+                            isGuest={isGuestForBadge(loginFlags, player.bookingId, player.isGuest)}
                             notes={coachingNotes}
                           />
                         </div>

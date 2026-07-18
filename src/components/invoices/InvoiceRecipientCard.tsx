@@ -21,6 +21,8 @@ export interface InvoiceRecipientCardProps {
   playerId?: string | null;
   guestPlayerId?: string | null;
   invoiceId?: string | null;
+  /** Phase 3.5c: person-level has-login; when true a guest-seated invoice shows the registered label. */
+  personHasLogin?: boolean;
 }
 
 // Resolve the recipient email through the ownership-gated RPC, which applies the
@@ -41,6 +43,7 @@ export function InvoiceRecipientCard({
   playerId,
   guestPlayerId,
   invoiceId,
+  personHasLogin,
 }: InvoiceRecipientCardProps) {
   const { t } = useTranslation('common');
   const kind = getInvoiceRecipientKind(playerId, guestPlayerId);
@@ -56,8 +59,9 @@ export function InvoiceRecipientCard({
       ? getAcademyPlayerProfilePath(playerId, guestPlayerId)
       : getTrainerPlayerProfilePath(playerId, guestPlayerId);
 
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
   const typeLabel =
-    kind === 'registered'
+    kind === 'registered' || (kind === 'guest' && personHasLogin === true)
       ? t('invoiceEdit.recipient.registered', 'Registered Player')
       : kind === 'guest'
         ? t('invoiceEdit.recipient.guest', 'Guest Player')

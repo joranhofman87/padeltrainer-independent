@@ -20,6 +20,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { useBookingLoginFlags } from '@/hooks/useBookingLoginFlags';
+import { isGuestForBadge } from '@/lib/bookingLoginFlags';
 import { SlotWithBookings, BookedPlayer } from '@/lib/slotTypes';
 
 interface SlotDetail {
@@ -62,6 +64,8 @@ export function SlotDetailDialog({
   const dateLocale = i18n.language === 'nl' ? nl : enUS;
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<SlotDetail | null>(null);
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const loginFlags = useBookingLoginFlags(detail?.booked_players.map(p => p.bookingId) ?? []);
 
   useEffect(() => {
     if (open && slotId) {
@@ -279,7 +283,7 @@ export function SlotDetailDialog({
                       {player.name.slice(0, 2).toUpperCase()}
                     </div>
                     <span className="text-sm truncate flex-1">{player.name}</span>
-                    {player.isGuest && (
+                    {isGuestForBadge(loginFlags, player.bookingId, player.isGuest) && (
                       <Badge variant="outline" className="text-[10px] h-4 px-1">{t('calendar.guest', 'Guest')}</Badge>
                     )}
                     {player.status === 'pending' && (

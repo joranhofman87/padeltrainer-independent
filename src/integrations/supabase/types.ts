@@ -8738,6 +8738,13 @@ export type Database = {
           state: string
         }[]
       }
+      get_booking_login_flags: {
+        Args: { _booking_ids: string[] }
+        Returns: {
+          booking_id: string
+          has_login: boolean
+        }[]
+      }
       get_cycle_roster_names: {
         Args: { _cycle_id: string }
         Returns: {

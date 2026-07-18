@@ -21,6 +21,7 @@ import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
+import { fetchPersonRefSet } from '@/lib/playerDetailData';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEditor';
 import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary';
@@ -68,6 +69,19 @@ export default function TrainerEditInvoice() {
       return data;
     },
     enabled: !!invoiceId,
+  });
+
+  // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
+  const { data: personHasLogin } = useQuery({
+    queryKey: ['invoice-person-has-login', invoice?.id],
+    queryFn: async () => {
+      const refs = await fetchPersonRefSet(
+        { kind: 'trainer', id: invoice!.trainer_id! },
+        { kind: 'guest', id: invoice!.guest_player_id! },
+      );
+      return refs.hasLogin ?? null;
+    },
+    enabled: !!invoice?.guest_player_id && !!invoice?.trainer_id,
   });
 
   useEffect(() => {
@@ -210,6 +224,7 @@ export default function TrainerEditInvoice() {
           playerId={invoice.player_id}
           guestPlayerId={invoice.guest_player_id}
           invoiceId={invoice.id}
+          personHasLogin={personHasLogin ?? undefined}
         />
         <InvoiceSourceCard owner="trainer" bookingIds={invoice.booking_ids as string[] | null} />
 
