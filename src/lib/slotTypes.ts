@@ -9,6 +9,12 @@
 export interface BookedPlayer {
   id: string;
   bookingId: string;
+  // Phase 3.5c (Codex P1): explicit seat refs. `id` is a legacy display key
+  // (player_id || guest_player_id) and MUST NOT be used as a subject FK — on a
+  // dual-keyed FAM-02 row it holds the PROFILE uuid while the row belongs to the
+  // guest. Note subjects and any ref-keyed write use these instead.
+  profileId?: string | null;
+  guestPlayerId?: string | null;
   name: string;
   status: "confirmed" | "pending";
   isGuest: boolean;

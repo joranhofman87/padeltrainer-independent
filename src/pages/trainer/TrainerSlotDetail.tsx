@@ -119,6 +119,8 @@ export default function TrainerSlotDetail() {
         return {
           id: b.player_id || b.guest_player_id || b.id,
           bookingId: b.id,
+          profileId: b.player_id ?? null,
+          guestPlayerId: b.guest_player_id ?? null,
           name: prof?.full_name || guest?.full_name || 'Unknown',
           status: b.status as 'confirmed' | 'pending',
           isGuest: !!b.guest_player_id,
@@ -453,8 +455,8 @@ export default function TrainerSlotDetail() {
                             slotId={detail.id}
                             authorId={user.id}
                             authorRole="trainer"
-                            subjectProfileId={player.isGuest ? null : player.id}
-                            subjectGuestPlayerId={player.isGuest ? player.id : null}
+                            subjectProfileId={player.guestPlayerId ? null : (player.profileId ?? null)}
+                            subjectGuestPlayerId={player.guestPlayerId ?? null}
                             subjectName={player.name}
                             // Phase 3.5c: badge keys on person-level login (falls back to seat pre-deploy)
                             isGuest={isGuestForBadge(loginFlags, player.bookingId, player.isGuest)}

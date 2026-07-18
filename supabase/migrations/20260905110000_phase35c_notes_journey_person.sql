@@ -228,3 +228,58 @@ COMMENT ON FUNCTION public.get_player_journey(uuid, integer, integer) IS
 
 REVOKE ALL ON FUNCTION public.get_player_journey(uuid, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_player_journey(uuid, integer, integer) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- (4) get_unseen_shared_feedback_count — the guest-subject arm (Codex P2: the
+--     Journey now SHOWS guest-keyed shared notes, so the new-feedback badge must
+--     COUNT them too, or it stays at zero while feedback is visible). Same
+--     v_guest_ids resolution as the journey; the seen-marker join stays keyed on
+--     the reader's profile (coaching_note_views.profile_id — how the player marks
+--     any note seen, regardless of the note's subject key).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_unseen_shared_feedback_count(p_profile_id uuid)
+RETURNS integer
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_count integer;
+  v_guest_ids uuid[];
+BEGIN
+  IF p_profile_id <> public.get_profile_id_for_user(auth.uid()) AND NOT public.is_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'not authorized for player %', p_profile_id USING ERRCODE = '42501';
+  END IF;
+
+  -- Phase 3.5c: the profile's guest ref-set (identical to get_player_journey).
+  v_guest_ids := ARRAY(
+    SELECT DISTINCT gp.id
+    FROM public.guest_players gp
+    WHERE NOT public.is_guest_split_frozen(gp.id)
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM public.person_links plg
+          JOIN public.person_links plp ON plp.person_id = plg.person_id
+          WHERE plg.guest_player_id = gp.id AND plp.profile_id = p_profile_id
+        )
+        OR gp.twin_of_profile_id = p_profile_id
+        OR (gp.twin_of_profile_id IS NULL AND gp.linked_profile_id = p_profile_id)
+      )
+  );
+
+  SELECT count(*)::int INTO v_count
+  FROM public.session_player_notes n
+  WHERE (n.subject_profile_id = p_profile_id OR n.subject_guest_player_id = ANY(v_guest_ids))
+    AND n.author_role IN ('trainer','academy')
+    AND n.visibility = 'shared'
+    AND NOT EXISTS (
+      SELECT 1 FROM public.coaching_note_views v
+      WHERE v.note_id = n.id AND v.profile_id = p_profile_id
+    );
+  RETURN coalesce(v_count, 0);
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_unseen_shared_feedback_count(uuid) IS
+  'Unseen shared coaching notes for the player — profile-keyed OR keyed on one of the person''s guest refs (Phase 3.5c, matches get_player_journey). Seen-markers stay profile-keyed (the reader''s own profile).';
+REVOKE ALL ON FUNCTION public.get_unseen_shared_feedback_count(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_unseen_shared_feedback_count(uuid) TO authenticated;

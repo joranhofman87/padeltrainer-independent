@@ -71,6 +71,7 @@ beforeAll(async () => {
     CREATE TABLE public.player_rating_history (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       profile_id uuid, rating numeric, rating_system text, scraped_at timestamptz);
     CREATE TABLE public.academy_managers (user_id uuid, academy_profile_id uuid);
+    CREATE TABLE public.coaching_note_views (note_id uuid, profile_id uuid);
     CREATE TABLE public.user_roles (user_id uuid, role text);
 
     ALTER TABLE public.session_player_notes ENABLE ROW LEVEL SECURITY;
@@ -159,6 +160,16 @@ describe('get_player_journey person-keying (Phase 3.5c p2)', () => {
     await db.exec(`SET test.uid = '';`);
     expect(rows.some((r) => r.slot_id === SLOT)).toBe(false);
     await db.exec(`DELETE FROM public.bookings`);
+  });
+
+  it('unseen-feedback badge counts guest-keyed shared notes (Codex P2)', async () => {
+    await db.exec(`DELETE FROM public.session_player_notes; DELETE FROM public.coaching_note_views;`);
+    await insertNote({ guest: G });
+    await db.exec(`SET test.uid = '${U}';`);
+    const n = (await db.query<{ c: number }>(
+      `SELECT public.get_unseen_shared_feedback_count($1) AS c`, [P])).rows[0].c;
+    await db.exec(`SET test.uid = '';`);
+    expect(n).toBe(1);
   });
 
   it('another player cannot pull my journey', async () => {
