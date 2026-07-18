@@ -111,10 +111,36 @@ describe('get_booking_login_flags (Phase 3.5c)', () => {
     expect(flags.get(plain)).toBe(false);
   });
 
-  it('FROZEN guest is treated as accountless (link suspended) even though the person has a login', async () => {
-    const id = await insertBooking({ guest: GF });
-    const flags = await flagsAs(TR_U, [id]);
-    expect(flags.get(id)).toBe(false);
+  it('FROZEN guest is treated as accountless — in the PRODUCTION shape (stamped person_id)', async () => {
+    // The stamp trigger keeps stamping during a pending review, so the real-world
+    // frozen row carries person_id. Verify r1: the person arm must be freeze-gated
+    // or this returns true (the possibly-wrong person's login).
+    const stamped = await insertBooking({ guest: GF, person: PERSON });
+    const unstamped = await insertBooking({ guest: GF });
+    const flags = await flagsAs(TR_U, [stamped, unstamped]);
+    expect(flags.get(stamped)).toBe(false);
+    expect(flags.get(unstamped)).toBe(false);
+  });
+
+  it('AUTHZ arms: academy manager and admin resolve their slots; others omitted', async () => {
+    const ACAD = '90000000-0000-0000-0000-000000000001';
+    const ACAD_SLOT = '50000000-0000-0000-0000-000000000003';
+    const MGR = 'b0000000-0000-0000-0000-0000000000d1';
+    const ADMIN = 'b0000000-0000-0000-0000-0000000000e1';
+    await db.exec(`
+      INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id)
+        VALUES ('${ACAD_SLOT}', '${OTHER_TR}', '${ACAD}');
+      INSERT INTO public.academy_managers VALUES ('${MGR}', '${ACAD}');
+      INSERT INTO public.user_roles VALUES ('${ADMIN}', 'admin');
+    `);
+    const acadBooking = await insertBooking({ slot: ACAD_SLOT, guest: G });
+    const trainerBooking = await insertBooking({ guest: G });
+    const mgrFlags = await flagsAs(MGR, [acadBooking, trainerBooking]);
+    expect(mgrFlags.has(acadBooking)).toBe(true);
+    expect(mgrFlags.has(trainerBooking)).toBe(false); // not their academy's slot
+    const adminFlags = await flagsAs(ADMIN, [acadBooking, trainerBooking]);
+    expect(adminFlags.has(acadBooking)).toBe(true);
+    expect(adminFlags.has(trainerBooking)).toBe(true);
   });
 
   it('pure-profile seat: profiles.user_id decides; FAM-02: a dual-keyed unstamped row resolves via the GUEST side', async () => {

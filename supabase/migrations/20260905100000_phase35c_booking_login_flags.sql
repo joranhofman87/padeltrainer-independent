@@ -19,7 +19,7 @@
 -- Returns ONLY (booking_id, has_login) — a boolean, no PII, no refs.
 --
 -- AUTHZ: rows are returned ONLY for bookings whose slot the caller can manage
--- (slot's trainer / academy manager / club manager / admin) — the same audience
+-- (slot's trainer / academy manager / admin) — the same audience
 -- that already reads those bookings on the calling surfaces. Unauthorized ids are
 -- silently omitted (no oracle: absence = not-yours-or-unknown, and the flag
 -- itself exists only for people already visible to the caller).
@@ -34,8 +34,13 @@ AS $$
   SELECT
     b.id AS booking_id,
     COALESCE(
-      -- person arm: the stamped person has an account.
-      (SELECT pe.user_id IS NOT NULL FROM public.persons pe WHERE pe.id = b.person_id),
+      -- person arm: the stamped person has an account. FREEZE-GATED (verify r1):
+      -- the stamp trigger keeps stamping DURING a pending review, so without this
+      -- gate the guest arm's freeze suspension would be dead code — a frozen
+      -- guest's stamped booking would leak the possibly-wrong person's login.
+      CASE WHEN b.guest_player_id IS NULL OR NOT public.is_guest_split_frozen(b.guest_player_id) THEN
+        (SELECT pe.user_id IS NOT NULL FROM public.persons pe WHERE pe.id = b.person_id)
+      END,
       -- profile side (pure-profile seats only — FAM-02: dual-keyed rows belong
       -- to the guest and resolve via the guest arms below).
       CASE WHEN b.player_id IS NOT NULL AND b.guest_player_id IS NULL THEN EXISTS (
@@ -60,17 +65,15 @@ AS $$
       OR s.trainer_id IN (SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid())
       OR (s.academy_profile_id IS NOT NULL
           AND s.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid())))
-      OR (s.location_id IS NOT NULL AND EXISTS (
-        SELECT 1
-        FROM public.club_profiles cp
-        JOIN public.club_managers cm ON cm.club_profile_id = cp.id
-        WHERE cp.location_id = s.location_id AND cm.user_id = auth.uid()
-      ))
+      -- NO club-manager arm (verify r1): bookings RLS grants pure club managers
+      -- no read on these rows, so they cannot even obtain booking ids to pass —
+      -- a definer arm here would implicitly WIDEN beyond RLS. If club managers
+      -- ever get a bookings read policy, add the matching arm then.
     );
 $$;
 
 COMMENT ON FUNCTION public.get_booking_login_flags(uuid[]) IS
-  'Phase 3.5c: booking_id → person-level has_login (boolean only, no PII) for the Guest/Registered badges + note-sharing gates on staff surfaces. Person arm first, then pure-profile seat, then guest person-link (suspended while split-frozen). Rows returned only for bookings on slots the caller manages (trainer/academy manager/club manager/admin); others silently omitted.';
+  'Phase 3.5c: booking_id → person-level has_login (boolean only, no PII) for the Guest/Registered badges + note-sharing gates on staff surfaces. Person arm first, then pure-profile seat, then guest person-link (suspended while split-frozen). Rows returned only for bookings on slots the caller manages (trainer/academy manager/admin — matching bookings RLS; no club arm); others silently omitted.';
 
 REVOKE ALL ON FUNCTION public.get_booking_login_flags(uuid[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_booking_login_flags(uuid[]) FROM anon;
