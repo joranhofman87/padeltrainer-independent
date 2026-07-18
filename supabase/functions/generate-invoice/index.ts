@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { resolveInvoicePlayerAccess, type AuthzClient } from "../_shared/invoice-player-authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -705,35 +706,18 @@ const handler = async (req: Request): Promise<Response> => {
     // Service role calls (from auto-create-invoice) and migration bypass skip authorization
     if (!isServiceRole && !isMigrationBypass) {
       const isTrainer = trainerProfile?.user_id === user?.id;
-      let isPlayer = invoice.player_id === user?.id;
       let isAcademyManager = false;
 
-      // player_id may reference profiles.id rather than auth user id, so check via profiles table
-      if (!isPlayer && invoice.player_id) {
-        const { data: playerProfile } = await supabase
-          .from('profiles')
-          .select('user_id')
-          .eq('id', invoice.player_id)
-          .single();
-        if (playerProfile?.user_id === user?.id) {
-          isPlayer = true;
-        }
-      }
-
-      // Guest invoice fallback: if the invoice is tied to a guest_player whose
-      // email matches the authed user's email, treat them as the player. This
-      // covers the case where a guest paid an invoice and then signed up — the
-      // link trigger may not have run, or the player_id has not yet been populated.
-      if (!isPlayer && invoice.guest_player_id && user?.email) {
-        const { data: guest } = await supabase
-          .from('guest_players')
-          .select('email')
-          .eq('id', invoice.guest_player_id)
-          .maybeSingle();
-        if (guest?.email && guest.email.toLowerCase() === user.email.toLowerCase()) {
-          isPlayer = true;
-        }
-      }
+      // Phase 3.5a: the PLAYER-side decision lives in the shared, unit-tested
+      // helper (freeze OUTSIDE the arms + the exact get_my_invoices arm set +
+      // the deliberate legacy-email exception). See _shared/invoice-player-authz.ts.
+      const isPlayer = await resolveInvoicePlayerAccess(
+        { player_id: invoice.player_id ?? null, guest_player_id: invoice.guest_player_id ?? null },
+        { id: user?.id ?? null, email: user?.email ?? null },
+        // Minimal query surface — the supabase-js builder's own type is too deep
+        // to pass through a typed param (TS2589); reads only.
+        supabase as unknown as AuthzClient,
+      );
 
       // Check if user is an academy manager for this invoice's academy
       if (!isTrainer && !isPlayer && invoice.academy_profile_id) {
