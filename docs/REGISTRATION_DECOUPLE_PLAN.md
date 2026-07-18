@@ -1,5 +1,10 @@
 # Registration ↔ Cycle Decoupling — Plan & Tracker
 
+> **Status (2026-07-18): Phase 2 SHIPPED + DEPLOYED** — migrations `20260823100000–130000` applied
+> to prod, shells deleted. The deploy checklist below was **executed; do not re-run it**. Still
+> open: retire the form-attached Generate-proposals UI on both intake pages, and the Phase-3
+> planning board.
+
 **Goal:** A *registration* is a standalone intake **form** (collect applicant details). A *cycle* is the training you **plan** registrants into. Creating a form must NOT create a cycle — planning does.
 
 **Why now:** registration forms are live and the overlay-on-a-cycle-shell coupling is generating bugs (stale public form after edit, "close" not closing, blank prices, forms masquerading as training cycles). Only 10 forms exist, so migration effort is minimal.
@@ -46,7 +51,7 @@
 
 ---
 
-## DEPLOY — data-safety checklist (coordinated; migrations + code together)
+## DEPLOY — data-safety checklist (EXECUTED 2026-07 — historical record, do not re-run)
 
 **Order matters. Migrations `20260823100000` → `110000` → `120000` → `130000` apply in filename order. Deploy the frontend + edge functions in the SAME release.**
 

@@ -32,3 +32,12 @@ and [`../AI_DEVELOPMENT_GUIDE.md`](../AI_DEVELOPMENT_GUIDE.md).
 > archived here; they remain the evidence trail for findings and fixes. (One exception:
 > `AUDIT-2026-06.md` predates the `audits/` convention and is fully superseded by the 2026-07-02
 > fresh-eyes audit, so it lives here.)
+
+- `PHASE2_STEP3_CUTOVER.sql` (moved 2026-07-18) — one-time Phase-2 cutover backfill SQL, executed —
+  **DO NOT RERUN**. `src/test/settingsSplit.golden.test.ts` still reads it as the frozen
+  form-allowlist source, so its content must not change.
+- `CYCLE_SERIES_SPLIT.sql` (moved 2026-07-18) — one-time mega-cycle split, applied to prod
+  2026-06-29 — **DO NOT RERUN**. `scripts/db/rehearse-cycle-series-split.ts` still rehearses it in
+  CI (retiring that rehearsal is an open owner decision).
+- `EDGE_FUNCTIONS_FICWB_AUDIT.md` (moved 2026-07-18) — cutover-era deploy-status snapshot; header
+  note added, deploy list must not be used.

@@ -2,7 +2,7 @@
 
 Purpose: the first doc a future AI agent (Claude/Codex) or human reads before touching padeltrainer. It is the router to the canonical docs and the hard rules for making safe, consistent changes.
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-02
+Status: canonical (source of truth) | last updated 2026-07-18
 
 > **Read order for a new agent:** this file → [`DOMAIN_MODEL.md`](./DOMAIN_MODEL.md) → [`MUTATION_BOUNDARIES.md`](./MUTATION_BOUNDARIES.md) + [`INVARIANTS.md`](./INVARIANTS.md) for money/scheduling work → the topic doc for your change type (below). [`../AGENTS.md`](../AGENTS.md) stays as the short tooling/frontend cheat-sheet; this guide extends it, it does not replace it.
 
@@ -34,6 +34,14 @@ The money spine in one line:
 | Anything money/data-critical | Read [`EXTENDING_THE_DOMAIN.md`](./EXTENDING_THE_DOMAIN.md) (the change playbook) first. |
 
 ## 4. Where NOT to add code
+
+- **No identity logic off `player_id`/`guest_player_id`/`linked_profile_id` alone.** One human =
+  one `persons` row ("has a login" = `persons.user_id IS NOT NULL`); identity truth is
+  `persons`/`person_links`. Before touching ANY player/guest key, read
+  [`src/lib/personIdentity.ts`](../src/lib/personIdentity.ts) (the TS doctrine home),
+  [`DOMAIN_MODEL.md`](./DOMAIN_MODEL.md) §5 and [`INVARIANTS.md`](./INVARIANTS.md) I-15..I-22
+  (FAM-02: dual-key rows belong to the guest person; split-frozen guests read as their own person
+  via the frozen-CASE pattern; type labels tell LOGINS, not seats).
 
 - **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation boundary is shrink-only — `src/test/mutationBoundary.test.ts` fails if you add a new page-level write.
 - **No cross-role imports.** `components/<role>` and `pages/<role>` must not import another role's code (ESLint `no-restricted-imports`, baseline = 0). To share, lift to a neutral folder (`components/ui`, `components/slots`, `components/invoices`, `components/players`, `hooks/`, `lib/`). Note: `components/player` = the player role (private); `components/players` = shared.

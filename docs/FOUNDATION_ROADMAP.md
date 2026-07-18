@@ -2,7 +2,7 @@
 
 Purpose: the single clean, forward-looking priority list of foundation work — grouped by when it must land — so an AI agent or human can pick the next-highest-leverage item without re-reading every audit.
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-02
+Status: canonical (source of truth) | last updated 2026-07-18 (tier statuses below last fully re-verified 2026-07-02; the person-unification section is current)
 
 ## How to use this
 
@@ -16,6 +16,17 @@ Status: canonical (source of truth) | last updated 2026-07-02
 The 2026-07-02 fresh-eyes audit's P0 and 7 of its P1s are **fixed and live in prod**: forged service-role-JWT bypass (P0), `swap_slots` ownership guard (P1-2), `merge_guest_players` cascade repoint (P1-3), M-17 webhook 23505 tolerance (P1-4), extras charge==invoice (P1-5/P2-7), `create_invoice_deduped` dedup RPC (P1-6), `invoiceSync` paging via new [`src/lib/supabasePaging.ts`](../src/lib/supabasePaging.ts) (P1-7), academy-Mollie charge==confirm routing (P1-9). Do not describe these as open. **Parked/disputed:** P1-1 (Google-Calendar OAuth `state` CSRF, parked), P1-8 (Stripe basil `invoice.subscription`, DISPUTED — endpoint API-version dependent, not source-observable).
 
 ---
+
+## Person unification — the dominant open program (2026-07-18)
+
+Phases 0–3.6 are **SHIPPED + deployed + prod-verified** ([`PERSON_UNIFICATION_PLAN.md`](PERSON_UNIFICATION_PLAN.md)
+§0 has the final-state model). The one remaining item is **Phase 4 — CONTRACT**: drop
+`twin_of_profile_id`/`linked_profile_id`, the legacy dual keys, merge out
+`guest_players`/`club_players`, single-key column renames. **Gate:** the ~106-row
+`person_merge_review` owner queue (P-B) must drain first. Everything deliberately deferred to
+Phase 4 (rating-history tenant read path, reviews INSERT person-keyed tightening, rebook
+one-invoice index re-key, G7 cross-tenant suite, `profiles_public` arm 6b) is listed in the plan's
+Phase-4 checklist — documented there, nowhere else.
 
 ## Tier 1 — Critical before inviting many academies
 

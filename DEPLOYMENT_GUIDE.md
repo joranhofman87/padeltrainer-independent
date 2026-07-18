@@ -419,7 +419,7 @@ Use this before announcing “we’re live” or after any major deploy.
 | `docs/PHASE5_DEPLOYMENT.md` | Preview deploy, cron, Resend DNS, redirect URLs |
 | `MIGRATION_STABILIZATION.md` | Detailed smoke tests and known issues |
 | `docs/FICWB_SECRETS_AUDIT.md` | Which secrets must exist on ficwb |
-| `docs/EDGE_FUNCTIONS_FICWB_AUDIT.md` | Function deploy priority history |
+| `docs/archive/EDGE_FUNCTIONS_FICWB_AUDIT.md` | Function deploy priority history |
 | `docs/cloudflare-worker.js` | Worker source to paste in Cloudflare |
 
 ---

@@ -1,3 +1,8 @@
+> **ARCHIVED (2026-07-18):** migration-era snapshot (2026-05-31) of which edge functions were
+> not yet deployed to ficwb during the Lovable→independent cutover. The cutover is complete and
+> every function has since been deployed — do NOT use the deploy list or the ppkbhd cron URLs
+> in this file.
+
 # Edge functions not on ficwb — audit (30)
 
 **Project:** `ficwbdrzefmblkbkomzw`  

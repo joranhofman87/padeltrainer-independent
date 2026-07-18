@@ -1,7 +1,7 @@
 /**
  * Phase 4 F1 — GOLDEN: the registration↔cycle settings split contract.
  *
- * The cutover (docs/PHASE2_STEP3_CUTOVER.sql) copied a specific FORM-ONLY allowlist of
+ * The cutover (docs/archive/PHASE2_STEP3_CUTOVER.sql) copied a specific FORM-ONLY allowlist of
  * `cycles.settings` keys onto `registrations.settings`, and KEPT the training/scoring keys on the
  * cycle. Slices 1/4 (createRegistration / updateRegistration / the editor write-switch) MUST filter
  * through the SAME allowlist, or the admin editor will write keys the public form never reads (the

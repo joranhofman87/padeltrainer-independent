@@ -1,5 +1,5 @@
 /**
- * PGlite rehearsal for the one-time cycle series split (docs/CYCLE_SERIES_SPLIT.sql).
+ * PGlite rehearsal for the one-time cycle series split (docs/archive/CYCLE_SERIES_SPLIT.sql — applied to prod 2026-06-29, archived).
  * Real Postgres in WASM; runs the ACTUAL owner-run SQL file against a synthetic
  * schema seeded with the edge cases:
  *   - a multi-court timeslot (many slots, same trainer/dow/time) -> ONE cycle
@@ -153,7 +153,7 @@ SELECT 'cccccccc-0000-0000-0000-000000000001', 45.00, 45.00, 0, 'paid', '${CX}',
        array_agg(id) FROM public.bookings;
 `);
 
-const SQL_FILE = 'docs/CYCLE_SERIES_SPLIT.sql';
+const SQL_FILE = 'docs/archive/CYCLE_SERIES_SPLIT.sql';
 const sql = readFileSync(join(process.cwd(), SQL_FILE), 'utf8');
 
 // fingerprints of the never-written tables (same expressions the SQL checks)

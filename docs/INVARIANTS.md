@@ -351,7 +351,8 @@ enforcement time (2026-07-15; 533 cycles + 12 registrations, all academy-owned).
 
 ## Person identity (unification program)
 
-The [person-unification program](PERSON_UNIFICATION_PLAN.md) (IN EXECUTION — Phases 0–3.4 shipped)
+The [person-unification program](PERSON_UNIFICATION_PLAN.md) (Phases 0–3.6 SHIPPED + deployed; only
+the Phase-4 CONTRACT remains, gated on the P-B owner queue)
 introduces one canonical human (`persons`, "has a login" = `user_id IS NOT NULL`) behind the two
 legacy tables (`profiles`, `guest_players`). The identity rules below are invariants **today** —
 every shipped person-keyed reader/writer enforces them, and every future one must. The doctrine
@@ -402,8 +403,8 @@ relationship. The guard belongs on *ownership* ("this row is mine to read/cancel
 **Tests:** `attendancePersonRls.pglite.test.ts`; the FAM-02 arms in
 `createInvoiceDeduped.pglite.test.ts`.
 
-**Risk:** P0, enforced on every shipped ownership surface (remaining player-facing surfaces are
-being person-keyed in Phase 3.5).
+**Risk:** P0, enforced on every shipped ownership surface (all player-facing surfaces are
+person-keyed as of Phases 3.5/3.6).
 
 ## I-17 — A split-frozen guest is its OWN person 🟢 (P0)
 
@@ -418,7 +419,13 @@ REVOKEd from clients) names the freeze. The doctrine, applied on **every person 
 resolved AND the candidate/sibling being matched (e.g. the invoice dedup gates both the incoming
 recipient and the sibling-invoice match —
 `supabase/migrations/20260902100000_phase34_create_invoice_deduped_person.sql`). Advisory-lock keys
-stay freeze-INDEPENDENT (see I-20) so serialization survives a mid-flight review.
+stay freeze-INDEPENDENT (see I-20) so serialization survives a mid-flight review. Note the stamp
+PERSISTS during a freeze — I-18's derivation is deliberately freeze-independent, so the freeze is
+applied at READ time with an explicit `CASE WHEN is_guest_split_frozen(guest_id) THEN <own
+accountless person> ELSE person_id END`. A plain `COALESCE(person_id, guest_key)` is WRONG under
+freeze: it folds the frozen guest back into a possibly-different human. Every shipped person arm
+uses this frozen-CASE pattern (reference:
+`supabase/migrations/20260907100000_phase36_dashboard_person_counts.sql`).
 
 **Tests:** the split-freeze cases in `playersOverviewPersonDedup.pglite.test.ts`,
 `attendancePersonRls.pglite.test.ts`, `createInvoiceDeduped.pglite.test.ts` (frozen inbound, frozen
@@ -535,7 +542,7 @@ the 3.5d expansion shipped without it.
 
 ## When you touch this area
 
-- Adding a new mutation path? It must respect I-1..I-21 **at the RPC/DB layer**, not just in the UI. See
+- Adding a new mutation path? It must respect I-1..I-22 **at the RPC/DB layer**, not just in the UI. See
   [`EXTENDING_THE_DOMAIN.md`](EXTENDING_THE_DOMAIN.md).
 - Touching anything person-keyed? Every person arm must be split-freeze-gated on both sides (I-17),
   ownership predicates pure-profile-guarded (I-16), and identity resolved from `person_links` — never
