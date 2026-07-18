@@ -720,18 +720,59 @@ const handler = async (req: Request): Promise<Response> => {
         }
       }
 
-      // Guest invoice fallback: if the invoice is tied to a guest_player whose
-      // email matches the authed user's email, treat them as the player. This
-      // covers the case where a guest paid an invoice and then signed up — the
-      // link trigger may not have run, or the player_id has not yet been populated.
-      if (!isPlayer && invoice.guest_player_id && user?.email) {
-        const { data: guest } = await supabase
-          .from('guest_players')
-          .select('email')
-          .eq('id', invoice.guest_player_id)
+      // Guest invoice arms — the invoice is tied to a guest_player:
+      // (a) Phase 3.5a PERSON arm: the guest resolves via person_links to the SAME
+      //     person as the caller's profile (covers merged persons whose guest email
+      //     differs or is empty — the list now shows these invoices via
+      //     get_my_invoices, so the PDF must be downloadable too). Split-frozen
+      //     guests are excluded: while a twin-split/email-move review is pending
+      //     the guest may be a DIFFERENT human, mirroring the reader's freeze.
+      // (b) legacy email fallback: guest email matches the authed user's email
+      //     (guest paid, then signed up before the linker ran).
+      if (!isPlayer && invoice.guest_player_id) {
+        const { data: frozen } = await supabase
+          .from('person_merge_review')
+          .select('id')
+          .eq('guest_player_id', invoice.guest_player_id)
+          .eq('status', 'pending')
+          .in('kind', ['twin_detached_needs_split', 'merged_guest_email_moved'])
+          .limit(1)
           .maybeSingle();
-        if (guest?.email && guest.email.toLowerCase() === user.email.toLowerCase()) {
-          isPlayer = true;
+        if (!frozen) {
+          // (a) person arm — service-role client reads the RLS-locked person_links.
+          const { data: guestLink } = await supabase
+            .from('person_links')
+            .select('person_id')
+            .eq('guest_player_id', invoice.guest_player_id)
+            .maybeSingle();
+          if (guestLink?.person_id && user?.id) {
+            const { data: callerProfile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (callerProfile?.id) {
+              const { data: profileLink } = await supabase
+                .from('person_links')
+                .select('person_id')
+                .eq('profile_id', callerProfile.id)
+                .maybeSingle();
+              if (profileLink?.person_id === guestLink.person_id) {
+                isPlayer = true;
+              }
+            }
+          }
+          // (b) legacy email fallback (unchanged behavior).
+          if (!isPlayer && user?.email) {
+            const { data: guest } = await supabase
+              .from('guest_players')
+              .select('email')
+              .eq('id', invoice.guest_player_id)
+              .maybeSingle();
+            if (guest?.email && guest.email.toLowerCase() === user.email.toLowerCase()) {
+              isPlayer = true;
+            }
+          }
         }
       }
 

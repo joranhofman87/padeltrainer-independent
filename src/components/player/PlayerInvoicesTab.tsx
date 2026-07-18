@@ -46,6 +46,11 @@ interface PlayerInvoice {
   sent_at: string | null;
   paid_at: string | null;
   notes: string | null;
+  // Phase 3.5a: false for guest-keyed/both-keyed invoices of a merged person —
+  // those rows belong to the guest side (FAM-02) and their billing identity is
+  // managed by the trainer/academy. Undefined on the legacy fallback path (treated
+  // as editable, matching pre-3.5a behavior where only pure-profile rows appeared).
+  can_edit_billing?: boolean;
 }
 
 interface PlayerInvoicesTabProps {
@@ -74,12 +79,23 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
 
   const fetchInvoices = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('id, invoice_number, invoice_date, due_date, player_name, player_business_name, player_address, player_btw_number, subtotal, vat_rate, vat_amount, total, status, pdf_url, sent_at, paid_at, notes')
-      .eq('player_id', profileId)
-      .neq('status', 'draft')
-      .order('invoice_date', { ascending: false });
+    // Phase 3.5a: the person-keyed reader is the primary path — it also returns a
+    // merged person's guest-keyed invoices (invisible to the direct player_id
+    // select). Fall back to the legacy direct query if the RPC isn't deployed yet
+    // (congruent degradation: exactly the pre-3.5a list).
+    let { data, error } = await supabase.rpc('get_my_invoices');
+    if (error) {
+      logger.warn('get_my_invoices RPC unavailable, using legacy direct query', {
+        component: 'PlayerInvoicesTab',
+        message: error.message,
+      });
+      ({ data, error } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, invoice_date, due_date, player_name, player_business_name, player_address, player_btw_number, subtotal, vat_rate, vat_amount, total, status, pdf_url, sent_at, paid_at, notes')
+        .eq('player_id', profileId)
+        .neq('status', 'draft')
+        .order('invoice_date', { ascending: false }));
+    }
 
     if (error) {
       logger.error('Error fetching player invoices', error as unknown as Error, { component: 'PlayerInvoicesTab' });
@@ -245,14 +261,19 @@ export function PlayerInvoicesTab({ profileId }: PlayerInvoicesTabProps) {
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon" aria-label={t('playerInvoices.actions.editBilling', 'Edit billing details')}
-                      onClick={() => openEditBilling(invoice)}
-                      title={t('playerInvoices.actions.editBilling')}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {/* Phase 3.5a: billing edit is pure-profile only — a guest-keyed
+                        invoice of a merged person is viewable but its billing identity
+                        is managed by the trainer/academy (matches the UPDATE policy). */}
+                    {invoice.can_edit_billing !== false && (
+                      <Button
+                        variant="ghost"
+                        size="icon" aria-label={t('playerInvoices.actions.editBilling', 'Edit billing details')}
+                        onClick={() => openEditBilling(invoice)}
+                        title={t('playerInvoices.actions.editBilling')}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon" aria-label={t('playerInvoices.actions.downloadPdf', 'Download PDF')}

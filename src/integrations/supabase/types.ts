@@ -8810,6 +8810,29 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_my_invoices: {
+        Args: never
+        Returns: {
+          can_edit_billing: boolean
+          due_date: string
+          id: string
+          invoice_date: string
+          invoice_number: string
+          notes: string
+          paid_at: string
+          pdf_url: string
+          player_address: string
+          player_btw_number: string
+          player_business_name: string
+          player_name: string
+          sent_at: string
+          status: string
+          subtotal: number
+          total: number
+          vat_amount: number
+          vat_rate: number
+        }[]
+      }
       get_my_linked_guest_bookings: { Args: never; Returns: Json }
       get_my_paid_booking_ids: {
         Args: never
