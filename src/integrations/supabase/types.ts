@@ -9283,6 +9283,10 @@ export type Database = {
         Args: { _event_created: number; _subscription_id: string }
         Returns: boolean
       }
+      subject_guest_reads_as_me: {
+        Args: { _guest_player_id: string }
+        Returns: boolean
+      }
       swap_member_booking: {
         Args: { _new_slot_id: string; _old_booking_id: string }
         Returns: Json

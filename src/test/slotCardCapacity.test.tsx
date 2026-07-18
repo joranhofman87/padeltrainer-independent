@@ -3,6 +3,7 @@
 // beyond #4. They must follow the slot's real max_participants.
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getSlotStatus, slotDisplayCapacity } from '@/components/agenda/slotStatus';
 import { DayViewSlotCard } from '@/components/agenda/DayViewSlotCard';
 import type { SlotWithBookings, BookedPlayer } from '@/lib/slotTypes';
@@ -47,10 +48,14 @@ describe('slot status follows real capacity', () => {
   });
 });
 
+// Phase 3.5c: DayViewSlotCard uses useBookingLoginFlags (react-query) — renders need a QueryClient.
+const renderWithQuery = (ui: React.ReactElement) =>
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+
 describe('DayViewSlotCard renders real capacity', () => {
   it('shows X/max and every booked player, not just the first 4', () => {
     const players = [1, 2, 3, 4, 5, 6].map(player);
-    render(
+    renderWithQuery(
       <DayViewSlotCard
         slot={slot({ max_participants: 6, active_bookings: 6, booked_players: players })}
       />,
@@ -62,7 +67,7 @@ describe('DayViewSlotCard renders real capacity', () => {
   });
 
   it('a 2-person slot renders 2 seats and no empty extras', () => {
-    render(
+    renderWithQuery(
       <DayViewSlotCard
         slot={slot({ max_participants: 2, active_bookings: 1, booked_players: [player(1)] })}
       />,
