@@ -18,12 +18,13 @@
 --
 -- (2) get_player_locations — the detail-page clubs union:
 --     The signature takes ONE (profile, guest) pair, but a merged person can hold
---     2+ guest refs; clubs contributed by the person's OTHER refs were silently
---     dropped. Fix: expand the passed pair to the person's FULL ref-set via
---     person_links inside the fn (frozen guests excluded from the expansion; the
---     PASSED refs always count — the caller explicitly asked about them. A frozen
---     PASSED guest suppresses only the GUEST-side person resolution; when a linked
---     profile is also passed, the profile branch still expands).
+--     2+ guest refs; clubs contributed by the person's OTHER guest refs were
+--     silently dropped. Fix: expand the passed pair to the person's IN-SCOPE
+--     GUEST refs via person_links inside the fn (frozen guests excluded; the
+--     PASSED refs always count — the caller explicitly asked about them). The
+--     PROFILE side is deliberately NOT expanded (I-22: profiles are global and
+--     the bookings/intake arms carry no tenant predicate — the caller passes the
+--     tenant-authorized profile ref from get_person_refs_for_scope instead).
 --     Every ref predicate becomes = ANY(ref array), including the dismissed-minus
 --     logic (a dismissal under ANY of the person's refs hides the club).
 
@@ -128,7 +129,7 @@ BEGIN
     RAISE EXCEPTION 'not authorized for academy %', p_academy_profile_id USING ERRCODE = '42501';
   END IF;
 
-  -- Phase 3.5d: expand the passed pair to the person's FULL ref-set. Guest-first
+  -- Phase 3.5d: expand the passed GUEST ref to the person's in-scope guest set. Guest-first
   -- resolution; a FROZEN passed guest does not resolve (degrades to the old
   -- single-pair behavior); frozen OTHER guests are excluded from the expansion.
   IF p_guest_player_id IS NOT NULL AND NOT public.is_guest_split_frozen(p_guest_player_id) THEN
@@ -216,7 +217,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_player_locations(uuid, uuid, uuid) IS
-  'Phase 3.5d: a player''s displayed clubs (academy scope), person-keyed — the passed (profile, guest) pair is expanded to the person''s full ref-set via person_links (expansion limited to IN-SCOPE, non-frozen guests; a frozen passed guest suppresses only the guest-side resolution). Same union as the players table (trained∪preferred∪intake∪manual − dismissed, dismissals under any ref).';
+  'Phase 3.5d: a player''s displayed clubs (academy scope). GUEST refs expand to the person''s IN-SCOPE, non-frozen guests via person_links; the PROFILE side is deliberately NOT expanded (I-22 — callers pass the tenant-authorized profile ref from get_person_refs_for_scope). Union: trained∪preferred∪intake∪manual − dismissed (dismissals under any ref).';
 
 -- Grants unchanged in effect; re-asserted for the re-emits.
 REVOKE ALL ON FUNCTION public.get_academy_cyclus_labels(uuid) FROM PUBLIC, anon;
