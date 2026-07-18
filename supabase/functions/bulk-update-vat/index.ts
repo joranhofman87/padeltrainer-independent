@@ -145,12 +145,21 @@ serve(async (req) => {
           total = Math.round((subtotal + vatAmount) * 100) / 100;
         }
 
-        const { error: updateError } = await supabase
+        // Write-time status guard (mirrors recalculate-invoices' P2-6 guard): re-check
+        // status in the UPDATE predicate so an invoice that was paid AFTER the eligibility
+        // select above is not silently re-totalled. The 20260908 trigger is the DB-final
+        // backstop; this makes the skip graceful (0 rows) instead of a raised exception.
+        const { data: updatedRows, error: updateError } = await supabase
           .from("invoices")
           .update({ subtotal, vat_amount: vatAmount, total, vat_rate: vatRate })
-          .eq("id", invoice.id);
+          .eq("id", invoice.id)
+          .in("status", ["draft", "sent", "pending"])
+          .select("id");
 
-        if (!updateError) {
+        if (!updateError && (updatedRows?.length ?? 0) === 0) {
+          // Status changed concurrently (paid/cancelled) — correctly left untouched.
+          console.warn(`bulk-update-vat: skipped ${invoice.id} — status changed concurrently (no longer draft/sent/pending)`);
+        } else if (!updateError) {
           invoicesUpdated++;
           invoiceIds.push(invoice.id);
         } else {
