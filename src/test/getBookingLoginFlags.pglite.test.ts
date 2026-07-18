@@ -34,9 +34,7 @@ const flagsAs = async (uid: string, ids: string[]): Promise<Map<string, boolean>
   return new Map(rows.map((r) => [r.booking_id, r.has_login]));
 };
 
-let seq = 0;
 const insertBooking = async (opts: { slot?: string; player?: string | null; guest?: string | null; person?: string | null }): Promise<string> => {
-  seq += 1;
   const r = await db.query<{ id: string }>(
     `INSERT INTO public.bookings (slot_id, player_id, guest_player_id, person_id, status)
      VALUES ($1, $2, $3, $4, 'confirmed') RETURNING id`,
