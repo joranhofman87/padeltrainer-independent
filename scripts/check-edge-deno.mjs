@@ -13,7 +13,7 @@
  *
  *   - check each function's index.ts on its own (a single merged graph dies on the first npm:
  *     resolution quirk; per-file mirrors how each function actually deploys)
- *   - `--node-modules-dir=auto` so the 14 functions that import `npm:` specifiers resolve against
+ *   - `--node-modules-dir=manual` so the 14 functions that import `npm:` specifiers resolve against
  *     the node_modules that `npm ci` populated (the deno-only edge-tests job can't do this)
  *   - signature each error as `file|code|message`, with abs paths + version-pinned dep segments
  *     normalized out so a signature is stable across machines/CI and across dependency bumps
@@ -67,7 +67,7 @@ function collectErrorCounts() {
     let out = '';
     try {
       // deno check exits non-zero on type errors; diagnostics go to stdout/stderr.
-      out = execSync(`deno check --node-modules-dir=auto "${entry}"`, {
+      out = execSync(`deno check --node-modules-dir=manual "${entry}"`, {
         cwd: ROOT,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
