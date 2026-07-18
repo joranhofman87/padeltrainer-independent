@@ -88,7 +88,11 @@ export function isSensitiveTrackingKey(key: string): boolean {
 export function redactTrackingString(value: string): string {
   return value
     .replace(EMAIL_GLOBAL_RE, '[redacted-email]')
+    // Same sensitive token routes the page-path sanitizer redacts: /pay/<token>
+    // (this arm also covers the branded /academies/:slug/pay/<token> as a
+    // substring) and /booking/<token>.
     .replace(/(\/pay\/)[^\s/?#]+/g, '$1:token')
+    .replace(/(\/booking\/)[^\s/?#]+/g, '$1:token')
     .replace(/([?&](?:token|email|name|redirect)=)[^&#\s]+/gi, '$1[redacted]');
 }
 

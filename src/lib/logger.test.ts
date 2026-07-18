@@ -152,7 +152,7 @@ describe('sendToMonitoring — no PII reaches PostHog $exception (Codex round)',
   it('redacts free-text emails/tokens and drops sensitive context keys', () => {
     logger.error(
       'Load failed for user@example.com',
-      new Error('boom user@example.com at /pay/secret-token'),
+      new Error('boom user@example.com at /pay/secret-token then /booking/other-token'),
       {
         component: 'InvoiceList',
         userId: 'u-123',
@@ -167,9 +167,10 @@ describe('sendToMonitoring — no PII reaches PostHog $exception (Codex round)',
     const payload = call![1] as Record<string, unknown>;
     const serialized = JSON.stringify(payload);
 
-    // Free-text fields are redacted…
+    // Free-text fields are redacted (email + BOTH /pay and /booking token routes)…
     expect(serialized).not.toContain('user@example.com');
     expect(serialized).not.toContain('secret-token');
+    expect(serialized).not.toContain('other-token');
     // …and sensitive context keys are dropped by the shared sanitizer.
     expect(payload.email).toBeUndefined();
     expect(payload.userId).toBeUndefined();     // normalizes to user_id → dropped

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPseudonymousTrackingEmail,
   buildPersonTrackingId,
+  redactTrackingString,
   sanitizeAnalyticsSearch,
   sanitizeTrackingProperties,
 } from './trackingPrivacy';
@@ -35,5 +36,13 @@ describe('trackingPrivacy', () => {
     expect(sanitizeAnalyticsSearch(
       '?utm_source=newsletter&source=paid_invoice&email=a@example.com&redirect=/pay/secret&free_text=hello',
     )).toBe('?utm_source=newsletter&source=paid_invoice');
+  });
+
+  it('redactTrackingString strips emails and EVERY sensitive token route (parity with the page-path sanitizer)', () => {
+    expect(redactTrackingString('failed for a@b.com')).toBe('failed for [redacted-email]');
+    expect(redactTrackingString('open /pay/secret-token now')).toBe('open /pay/:token now');
+    expect(redactTrackingString('at /booking/secret-token-abc')).toBe('at /booking/:token');
+    expect(redactTrackingString('hit /academies/my-academy/pay/secret')).toBe('hit /academies/my-academy/pay/:token');
+    expect(redactTrackingString('?token=abc&x=1')).toBe('?token=[redacted]&x=1');
   });
 });
