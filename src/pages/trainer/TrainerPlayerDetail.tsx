@@ -298,11 +298,15 @@ export default function TrainerPlayerDetail() {
       )) as unknown as InvoiceItem[];
       setInvoices(invoiceRows);
 
-      if (parsed.kind === 'profile') {
+      // Phase 3.6: rating history keys on the PROFILE — use the tenant-authorized
+      // person-resolved ref when the page was opened via a guest ref (a merged
+      // person's trend was empty on g_ URLs while personRefs.profileId sat unused).
+      const ratingProfileId = parsed.kind === 'profile' ? parsed.id : (personRefs.profileId ?? null);
+      if (ratingProfileId) {
         const { data: ratings } = await supabase
           .from('player_rating_history')
           .select('rating, rating_system, source, scraped_at, created_at')
-          .eq('profile_id', parsed.id)
+          .eq('profile_id', ratingProfileId)
           .order('scraped_at', { ascending: true });
         setRatingHistory(
           (ratings || []).map((r) => ({
