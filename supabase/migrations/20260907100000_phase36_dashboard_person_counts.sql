@@ -13,9 +13,11 @@
 --     stamped during a pending review, so a plain COALESCE would fold the frozen
 --     guest into a possibly-different human (the 3.5d/3.5c lesson);
 --   * is_registered = the person has a LOGIN (persons.user_id, 3.3e doctrine)
---     with profile-presence fallback for unstamped rows (congruent degradation);
---     the trainer registered arm keeps its pre-existing "player_id booking =
---     registered" semantics for non-frozen rows.
+--     on EVERY arm of both dashboards: a dual-key booking stamped to an
+--     accountless guest person counts as a GUEST (FAM-02 — the seat shape does
+--     not decide), and a linked guest whose person holds a login counts as
+--     REGISTERED. Unstamped rows degrade to their seat shape (profile presence,
+--     player_id booking = registered) — congruent pre-person behavior.
 --
 -- EVERYTHING ELSE IS RE-EMITTED VERBATIM from 20260818100000 (mechanically
 -- copied from that file and CTE-substituted — the revenue money-collected
@@ -207,22 +209,32 @@ BEGIN
     GROUP BY 1
   ),
   first_seen AS (
-    -- Phase 3.6: one row per PERSON (see the academy CTE note). The registered
-    -- arm keeps its non-cancelled booking gate; a split-frozen guest keys as its
-    -- own accountless person on BOTH arms. The guest arm resolves the guest's
+    -- Phase 3.6: one row per PERSON (see the academy CTE note). The booking arm
+    -- keeps its non-cancelled gate; a split-frozen guest keys as its own
+    -- accountless person on BOTH arms. The guest arm resolves the guest's
     -- person via person_links (guest_players carries no person_id column).
+    -- is_registered = the person's LOGIN on both arms (3.3e): a dual-key
+    -- booking stamped to an accountless guest person is a GUEST (FAM-02 — the
+    -- seat shape does not decide), and a linked guest whose person holds a
+    -- login is REGISTERED. Unstamped rows degrade to their seat shape.
     SELECT pkey, bool_or(is_registered) AS is_registered, MIN(first_at) AS first_at
     FROM (
-      -- registered: first (non-cancelled) booking on one of this trainer's slots
+      -- bookings: first (non-cancelled) booking on one of this trainer's slots
       SELECT CASE
                WHEN b.guest_player_id IS NOT NULL AND public.is_guest_split_frozen(b.guest_player_id)
                  THEN 'g:' || b.guest_player_id::text
                ELSE COALESCE(b.person_id::text, 'p:' || b.player_id::text)
              END AS pkey,
-             (NOT (b.guest_player_id IS NOT NULL AND public.is_guest_split_frozen(b.guest_player_id))) AS is_registered,
+             CASE
+               WHEN b.guest_player_id IS NOT NULL AND public.is_guest_split_frozen(b.guest_player_id)
+                 THEN false
+               WHEN pe.id IS NOT NULL THEN pe.user_id IS NOT NULL
+               ELSE true -- unstamped fallback: player_id booking = registered
+             END AS is_registered,
              b.created_at AS first_at
       FROM public.bookings b
       JOIN public.availability_slots s ON s.id = b.slot_id
+      LEFT JOIN public.persons pe ON pe.id = b.person_id
       WHERE s.trainer_id = v_trainer AND b.player_id IS NOT NULL
         AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
       UNION ALL
@@ -231,9 +243,15 @@ BEGIN
                WHEN public.is_guest_split_frozen(gp.id) THEN 'g:' || gp.id::text
                ELSE COALESCE(pl.person_id::text, 'g:' || gp.id::text)
              END,
-             false, gp.created_at
+             CASE
+               WHEN public.is_guest_split_frozen(gp.id) THEN false
+               WHEN pe.id IS NOT NULL THEN pe.user_id IS NOT NULL
+               ELSE false -- unlinked guest: accountless
+             END,
+             gp.created_at
       FROM public.guest_players gp
       LEFT JOIN public.person_links pl ON pl.guest_player_id = gp.id
+      LEFT JOIN public.persons pe ON pe.id = pl.person_id
       WHERE gp.trainer_id = v_trainer
     ) u
     GROUP BY pkey

@@ -27,6 +27,12 @@ const PERSON = 'e0000000-0000-0000-0000-000000000001';
 const GF = '70000000-0000-0000-0000-000000000002';
 // plain accountless guest
 const G2 = '70000000-0000-0000-0000-000000000003';
+// login-holding person with NO guest presence (cancelled-booking pin)
+const P2 = 'a0000000-0000-0000-0000-000000000002';
+const PERSON2 = 'e0000000-0000-0000-0000-000000000002';
+// ACCOUNTLESS person behind guest G3 (dual-key doctrine pin)
+const G3 = '70000000-0000-0000-0000-000000000004';
+const PERSON3 = 'e0000000-0000-0000-0000-000000000003';
 
 const academyStats = async (): Promise<{ monthly: Array<{ new_registered: number; new_guest: number }>; kpis: Record<string, number> }> => {
   await db.exec(`SET test.uid = '${MGR_U}';`);
@@ -98,12 +104,14 @@ beforeAll(async () => {
     INSERT INTO public.academy_managers VALUES ('${MGR_U}', '${ACADEMY}');
     INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${TR}', '${TR_U}');
     INSERT INTO public.availability_slots (id, trainer_id) VALUES ('${SLOT}', '${TR}');
-    INSERT INTO public.profiles (id, user_id) VALUES ('${P}', gen_random_uuid());
+    INSERT INTO public.profiles (id, user_id) VALUES ('${P}', gen_random_uuid()), ('${P2}', gen_random_uuid());
     INSERT INTO public.guest_players (id, trainer_id) VALUES
-      ('${G}', '${TR}'), ('${GF}', '${TR}'), ('${G2}', '${TR}');
-    INSERT INTO public.persons (id, user_id) VALUES ('${PERSON}', gen_random_uuid());
+      ('${G}', '${TR}'), ('${GF}', '${TR}'), ('${G2}', '${TR}'), ('${G3}', '${TR}');
+    INSERT INTO public.persons (id, user_id) VALUES
+      ('${PERSON}', gen_random_uuid()), ('${PERSON2}', gen_random_uuid()), ('${PERSON3}', NULL);
     INSERT INTO public.person_links (person_id, profile_id, guest_player_id) VALUES
-      ('${PERSON}', '${P}', NULL), ('${PERSON}', NULL, '${G}'), ('${PERSON}', NULL, '${GF}');
+      ('${PERSON}', '${P}', NULL), ('${PERSON}', NULL, '${G}'), ('${PERSON}', NULL, '${GF}'),
+      ('${PERSON2}', '${P2}', NULL), ('${PERSON3}', NULL, '${G3}');
     INSERT INTO public.person_merge_review (kind, status, guest_player_id)
       VALUES ('twin_detached_needs_split', 'pending', '${GF}');
   `);
@@ -176,30 +184,69 @@ describe('get_academy_dashboard_analytics first_seen (Phase 3.6)', () => {
   });
 });
 
+// Trainer baseline with NO bookings: G resolves to PERSON (login → REGISTERED via
+// the guest arm), GF (frozen) + G2 (unlinked) + G3→PERSON3 (accountless) are guests.
 describe('get_trainer_dashboard_analytics first_seen (Phase 3.6)', () => {
   it('a merged person (profile booking + owned guest row) counts ONCE, as registered', async () => {
     await db.exec(`DELETE FROM public.bookings`);
     await db.query(
       `INSERT INTO public.bookings (slot_id, player_id, person_id, status) VALUES ($1, $2, $3, 'confirmed')`,
       [SLOT, P, PERSON]);
-    // G is owned by TR (guest arm) and links to the same person → must merge.
+    // G is owned by TR (guest arm) and links to the same person → must merge
+    // (both arms classify PERSON registered — unmerged would double to reg=2).
     const stats = await trainerStats();
     const s = sums(stats.monthly);
-    // person counted once as registered; GF (frozen) + G2 (plain) count as guests.
     expect(s.reg).toBe(1);
-    expect(s.guest).toBe(2);
+    expect(s.guest).toBe(3);
   });
 
-  it('cancelled bookings still grant nothing on the registered arm', async () => {
+  // Codex round-1 pin (3.3e doctrine): the guest arm derives registered from the
+  // person's LOGIN, not the seat shape — no booking needed.
+  it('a linked guest whose person holds a LOGIN counts as REGISTERED', async () => {
     await db.exec(`DELETE FROM public.bookings`);
-    await db.query(
-      `INSERT INTO public.bookings (slot_id, player_id, person_id, status) VALUES ($1, $2, $3, 'cancelled')`,
-      [SLOT, P, PERSON]);
     const stats = await trainerStats();
     const s = sums(stats.monthly);
-    expect(s.reg).toBe(0);
-    // G (linked, non-frozen, no booking) resolves to the person → still a distinct
-    // person entry via the guest arm; GF + G2 as before.
+    expect(s.reg).toBe(1);   // PERSON, via G's link alone
+    expect(s.guest).toBe(3); // GF (frozen), G2 (unlinked), PERSON3 (accountless)
+  });
+
+  it('a CANCELLED booking grants nothing (its login person stays absent)', async () => {
+    await db.exec(`DELETE FROM public.bookings`);
+    // PERSON2 has a login but NO guest presence — only this cancelled booking.
+    await db.query(
+      `INSERT INTO public.bookings (slot_id, player_id, person_id, status) VALUES ($1, $2, $3, 'cancelled')`,
+      [SLOT, P2, PERSON2]);
+    const stats = await trainerStats();
+    const s = sums(stats.monthly);
+    expect(s.reg).toBe(1); // if the cancelled booking granted, PERSON2 would make this 2
+    expect(s.guest).toBe(3);
+  });
+
+  // Codex round-1 pin (FAM-02): a dual-key booking stamped to an ACCOUNTLESS
+  // guest person is a GUEST — player_id presence does not decide. Mirrors the
+  // get_booking_login_flags dual-key accountless case.
+  it('a dual-key booking stamped to an accountless guest person counts as GUEST', async () => {
+    await db.exec(`DELETE FROM public.bookings`);
+    await db.query(
+      `INSERT INTO public.bookings (slot_id, player_id, guest_player_id, person_id, status)
+       VALUES ($1, $2, $3, $4, 'confirmed')`,
+      [SLOT, P, G3, PERSON3]);
+    const stats = await trainerStats();
+    const s = sums(stats.monthly);
+    expect(s.reg).toBe(1);   // PERSON via G only — the seat-sourced code made PERSON3 registered (reg=2)
+    expect(s.guest).toBe(3); // PERSON3 stays a guest (merged across booking + guest arms)
+  });
+
+  it('an UNSTAMPED player_id booking still counts as REGISTERED (fallback is live)', async () => {
+    await db.exec(`DELETE FROM public.bookings`);
+    await db.query(
+      `INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'confirmed')`,
+      [SLOT, P]);
+    const stats = await trainerStats();
+    const s = sums(stats.monthly);
+    // 'p:'||P (unstamped fallback) + PERSON via G — the unstamped key diverging
+    // from the person key is the documented congruent degradation (double count).
+    expect(s.reg).toBe(2);
     expect(s.guest).toBe(3);
   });
 });
