@@ -3,8 +3,9 @@
 //
 // Pins the BROKEN_NOW fix — an academy manager can update the profile of an
 // EMAIL-MERGED person (person_links pair, no linked_profile_id/twin stamp) — plus
-// the twin-precedence bridge, the split-freeze on both guest arms, FAM-02 pure-
-// profile guards, and the canonical inactive-booking filter on both helpers.
+// the twin-precedence bridge, the split-freeze on both guest arms, the canonical
+// inactive-booking filter, and the RELATIONSHIP-VISIBILITY doctrine (dual-keyed
+// seats still grant — visibility helpers, not ownership predicates).
 // Drives the REAL profiles UPDATE policy under SET ROLE authenticated.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';

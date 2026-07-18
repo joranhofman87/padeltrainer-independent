@@ -16,7 +16,8 @@
 --
 -- FIX:
 --   is_player_of_academy gains the 3.3c-pattern arms:
---     * booking arm: + FAM-02 pure-profile guard + the canonical inactive filter;
+--     * booking arm: + the canonical inactive filter (dual-keyed seats KEEP
+--       granting — relationship-visibility semantics, see the doctrine note);
 --     * bridge arm: upgraded from bare linked_profile_id to the Phase-0c
 --       TWIN-PRECEDENCE bridge (twin_of_profile_id outranks; linked only when no
 --       twin stamp) — kept until the P-B review queue drains (Phase 4);
