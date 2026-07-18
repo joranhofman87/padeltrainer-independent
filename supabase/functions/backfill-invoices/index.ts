@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { requireAdmin } from "../_shared/auth.ts";
 import { restrictedCors } from "../_shared/cors.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { backfillGroupKey } from "../_shared/backfill-invoice-grouping.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BACKFILL-INVOICES] ${step}`, details ? JSON.stringify(details) : "");
@@ -16,6 +17,11 @@ serve(async (req) => {
   const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const supabase = auth.supabase;
+  // Used below to invoke auto-create-invoice over HTTP. These were referenced but
+  // never defined — the backfill loop threw ReferenceError the moment it reached the
+  // first group (latent because this is a rarely-run admin utility).
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   try {
 
@@ -46,11 +52,15 @@ serve(async (req) => {
       });
     }
 
-    // 2. Get all confirmed bookings for these trainers that are unpaid
+    // 2. Get all confirmed unpaid bookings for these trainers — SCOPED TO THIS
+    // ACADEMY'S SLOTS. Without the academy_profile_id filter a trainer shared
+    // between academies A and B would let an academy-A backfill invoice their
+    // academy-B bookings (cross-tenant money leak).
     const { data: bookings, error: bErr } = await supabase
       .from("bookings")
-      .select("id, slot_id, player_id, guest_player_id, payment_status, paid_externally, status, availability_slots!inner(trainer_id, cyclus_id)")
+      .select("id, slot_id, player_id, guest_player_id, payment_status, paid_externally, status, availability_slots!inner(trainer_id, academy_profile_id, cyclus_id)")
       .in("availability_slots.trainer_id", trainerIds)
+      .eq("availability_slots.academy_profile_id", academyProfileId)
       .eq("status", "confirmed")
       .eq("payment_status", "pending")
       .neq("paid_externally", true);
@@ -93,13 +103,13 @@ serve(async (req) => {
       });
     }
 
-    // 5. Group by (cyclus_id, player_id/guest_player_id)
+    // 5. Group by (cyclus, invoice subject). The subject is GUEST-FIRST (FAM-02):
+    // a parent-books-for-child dual-key booking bills the child guest, so distinct
+    // children never collapse into one parent-keyed invoice. See backfillGroupKey.
     const groups: Record<string, string[]> = {};
     for (const b of uninvoiced) {
       const slot = (b as any).availability_slots;
-      const cyclusId = slot?.cyclus_id || "no-cycle";
-      const playerId = b.player_id || b.guest_player_id || "unknown";
-      const key = `${cyclusId}__${playerId}`;
+      const key = backfillGroupKey(slot?.cyclus_id, b);
       if (!groups[key]) groups[key] = [];
       groups[key].push(b.id);
     }
