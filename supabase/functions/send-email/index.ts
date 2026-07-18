@@ -87,8 +87,7 @@ interface EmailRequest {
     lessonTypeLabels?: string[];
     preferredDurationMinutes?: number;
     sessionsPerWeek?: number;
-    locationName?: string;
-    rating?: number;
+    // (locationName + rating already declared above — duplicates removed)
     ratingSystem?: string;
     notes?: string;
   };

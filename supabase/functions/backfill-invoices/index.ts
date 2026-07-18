@@ -16,6 +16,11 @@ serve(async (req) => {
   const auth = await requireAdmin(req);
   if (auth instanceof Response) return auth;
   const supabase = auth.supabase;
+  // Used below to invoke auto-create-invoice over HTTP. These were referenced but
+  // never defined — the backfill loop threw ReferenceError the moment it reached the
+  // first group (latent because this is a rarely-run admin utility).
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   try {
 
