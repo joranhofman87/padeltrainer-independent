@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { resolveInvoicePlayerAccess, type AuthzClient } from "../_shared/invoice-player-authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -705,98 +706,18 @@ const handler = async (req: Request): Promise<Response> => {
     // Service role calls (from auto-create-invoice) and migration bypass skip authorization
     if (!isServiceRole && !isMigrationBypass) {
       const isTrainer = trainerProfile?.user_id === user?.id;
-      let isPlayer = false;
       let isAcademyManager = false;
 
-      // Phase 3.5a: split-pending FREEZE, applied OUTSIDE the player arms (mirrors
-      // get_my_invoices / get_my_paid_booking_ids). While the invoice's guest has a
-      // pending twin-split/email-move review it may be a DIFFERENT human, and a
-      // both-keyed invoice's player_id came from the email linker (inference) — so
-      // NO player-side arm (player_id, person link, twin/linked bridge, email match)
-      // may grant access. Fails CLOSED: a lookup error counts as frozen.
-      let guestFrozen = false;
-      if (invoice.guest_player_id) {
-        const { data: frozen, error: frozenErr } = await supabase
-          .from('person_merge_review')
-          .select('id')
-          .eq('guest_player_id', invoice.guest_player_id)
-          .eq('status', 'pending')
-          .in('kind', ['twin_detached_needs_split', 'merged_guest_email_moved'])
-          .limit(1)
-          .maybeSingle();
-        guestFrozen = !!frozen || !!frozenErr;
-      }
-
-      if (!guestFrozen) {
-        isPlayer = invoice.player_id === user?.id;
-
-        // player_id may reference profiles.id rather than auth user id, so check via profiles table
-        if (!isPlayer && invoice.player_id) {
-          const { data: playerProfile } = await supabase
-            .from('profiles')
-            .select('user_id')
-            .eq('id', invoice.player_id)
-            .single();
-          if (playerProfile?.user_id === user?.id) {
-            isPlayer = true;
-          }
-        }
-
-        // Guest invoice arms — MUST match get_my_invoices' arms exactly, or the list
-        // shows rows whose PDF download 403s:
-        // (a) PERSON arm: the guest resolves via person_links to the SAME person as
-        //     the caller's profile (merged persons; guest email may differ/be empty).
-        // (b) TWIN/LINKED bridge: gp.twin_of_profile_id = my profile, or (no twin
-        //     stamp AND gp.linked_profile_id = my profile) — verbatim the reader's
-        //     bridge arm (linked-but-unmerged guests pending the P-B review queue).
-        // (c) legacy email fallback: guest email matches the authed user's email
-        //     (guest paid, then signed up before the linker ran).
-        if (!isPlayer && invoice.guest_player_id && user?.id) {
-          const { data: callerProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          const { data: guestRow } = await supabase
-            .from('guest_players')
-            .select('email, twin_of_profile_id, linked_profile_id')
-            .eq('id', invoice.guest_player_id)
-            .maybeSingle();
-
-          // (a) person arm — service-role client reads the RLS-locked person_links.
-          if (callerProfile?.id) {
-            const { data: guestLink } = await supabase
-              .from('person_links')
-              .select('person_id')
-              .eq('guest_player_id', invoice.guest_player_id)
-              .maybeSingle();
-            if (guestLink?.person_id) {
-              const { data: profileLink } = await supabase
-                .from('person_links')
-                .select('person_id')
-                .eq('profile_id', callerProfile.id)
-                .maybeSingle();
-              if (profileLink?.person_id === guestLink.person_id) {
-                isPlayer = true;
-              }
-            }
-          }
-          // (b) twin/linked bridge (matches the reader's bridge arm).
-          if (!isPlayer && callerProfile?.id && guestRow) {
-            if (
-              guestRow.twin_of_profile_id === callerProfile.id ||
-              (guestRow.twin_of_profile_id === null && guestRow.linked_profile_id === callerProfile.id)
-            ) {
-              isPlayer = true;
-            }
-          }
-          // (c) legacy email fallback (unchanged behavior).
-          if (!isPlayer && user?.email && guestRow?.email &&
-              guestRow.email.toLowerCase() === user.email.toLowerCase()) {
-            isPlayer = true;
-          }
-        }
-      }
+      // Phase 3.5a: the PLAYER-side decision lives in the shared, unit-tested
+      // helper (freeze OUTSIDE the arms + the exact get_my_invoices arm set +
+      // the deliberate legacy-email exception). See _shared/invoice-player-authz.ts.
+      const isPlayer = await resolveInvoicePlayerAccess(
+        { player_id: invoice.player_id ?? null, guest_player_id: invoice.guest_player_id ?? null },
+        { id: user?.id ?? null, email: user?.email ?? null },
+        // Minimal query surface — the supabase-js builder's own type is too deep
+        // to pass through a typed param (TS2589); reads only.
+        supabase as unknown as AuthzClient,
+      );
 
       // Check if user is an academy manager for this invoice's academy
       if (!isTrainer && !isPlayer && invoice.academy_profile_id) {
