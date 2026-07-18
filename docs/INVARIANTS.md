@@ -57,6 +57,7 @@ post-fix code.
 | I-19 | `persons` / `person_links` / `person_merge_review` are definer-RPC-only (zero policies) | RLS enabled with NO policies + REVOKEd helpers | 🟢 |
 | I-20 | Invoice dedup resolves a guest-bearing recipient guest-EXCLUSIVELY; the lock serializes every pair the recheck can dedup | person-keyed `create_invoice_deduped` (freeze-independent lock key) | 🟢 |
 | I-21 | `linked_profile_id` is never identity truth; an explicit twin stamp outranks it | backfill trust rule + twin-precedence readers | 🟢 |
+| I-22 | A person-ref expansion inside a tenant-scoped reader is intersected with the tenant scope | in-scope-guests predicate on every ref-set expansion | 🟢 |
 
 ---
 
@@ -507,6 +508,28 @@ retires at Phase 4 once the P-B review queue drains — the person columns then 
 **Tests:** `guestTwinBridge.pglite.test.ts`; twin-precedence cases in the reader suites.
 
 **Risk:** P0, enforced.
+
+## I-22 — A person-ref expansion inside a tenant-scoped reader is intersected with the tenant scope 🟢 (P0)
+
+**Why:** `person_links` merges are **cross-tenant by design** (the backfill email-matches guests to
+profiles system-wide), so "all refs of this person" routinely spans academies/trainers. A reader
+scoped to one tenant that expands a passed ref to the person's full ref-set — and then feeds arms
+without their own tenant predicate — surfaces ANOTHER tenant's associations (bookings, preferred
+locations, intake) on this tenant's surface. Person-level truth does **not** trump tenancy: what a
+tenant may see is decided by scope, not by the identity map.
+
+**Enforced:** every shipped ref-set expansion intersects with the tenant's scope: `get_player_locations`
+(`supabase/migrations/20260906100000_phase35d_small_readers_person.sql`) expands only guests owned by
+the academy or its active trainers, and does **not** expand the (global, unscopable) profile side;
+`get_players_overview` builds its guest sets from scope-filtered guests only
+(`supabase/migrations/20260827100000_phase32_players_overview_person_dedup.sql`). Player-SELF readers
+(`get_my_*`, `get_player_journey`) expand freely — the scope there is the person themself.
+
+**Tests:** cross-tenant negatives in `smallReadersPerson.pglite.test.ts` (guest-side AND profile-side).
+
+**Risk:** P0, enforced. Any NEW tenant-scoped reader that resolves person refs must add the same
+intersection (and a cross-tenant negative test) — this invariant exists because the first version of
+the 3.5d expansion shipped without it.
 
 ---
 
