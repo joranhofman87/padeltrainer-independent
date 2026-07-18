@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { logger, type LogLevel, type LogContext, type LogEntry } from './logger';
 
+// Capture what the logger forwards to PostHog's $exception event.
+const { captureMock } = vi.hoisted(() => ({ captureMock: vi.fn() }));
+vi.mock('@/lib/posthog', () => ({
+  withPostHog: (fn: (ph: { capture: (event: string, props: unknown) => void }) => void) =>
+    fn({ capture: captureMock }),
+}));
+
 describe('logger', () => {
   beforeEach(() => {
     vi.spyOn(console, 'debug').mockImplementation(() => {});
@@ -136,6 +143,42 @@ describe('logger', () => {
       logger.clearStoredErrors();
       expect(logger.getStoredErrors()).toEqual([]);
     });
+  });
+});
+
+describe('sendToMonitoring — no PII reaches PostHog $exception (Codex round)', () => {
+  beforeEach(() => captureMock.mockClear());
+
+  it('redacts free-text emails/tokens and drops sensitive context keys', () => {
+    logger.error(
+      'Load failed for user@example.com',
+      new Error('boom user@example.com at /pay/secret-token then /booking/other-token'),
+      {
+        component: 'InvoiceList',
+        userId: 'u-123',
+        email: 'user@example.com',
+        playerName: 'Ada Lovelace',
+        trainer_slug: 'ada-l',
+      } as LogContext,
+    );
+
+    const call = captureMock.mock.calls.find((c) => c[0] === '$exception');
+    expect(call).toBeTruthy();
+    const payload = call![1] as Record<string, unknown>;
+    const serialized = JSON.stringify(payload);
+
+    // Free-text fields are redacted (email + BOTH /pay and /booking token routes)…
+    expect(serialized).not.toContain('user@example.com');
+    expect(serialized).not.toContain('secret-token');
+    expect(serialized).not.toContain('other-token');
+    // …and sensitive context keys are dropped by the shared sanitizer.
+    expect(payload.email).toBeUndefined();
+    expect(payload.userId).toBeUndefined();     // normalizes to user_id → dropped
+    expect(payload.playerName).toBeUndefined(); // player_name → dropped
+    expect(payload.trainer_slug).toBeUndefined();
+    // Safe operational keys still flow through for triage.
+    expect(payload.component).toBe('InvoiceList');
+    expect(payload.$exception_source).toBe('logger');
   });
 });
 

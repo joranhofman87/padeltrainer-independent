@@ -4,13 +4,15 @@
  * posthog-js is only lazily loaded + initialized on production domains.
  */
 import { withPostHog } from '@/lib/posthog';
+import { buildPersonTrackingId, sanitizeTrackingProperties } from '@/lib/trackingPrivacy';
 
-/** Identify the authenticated user and link anonymous browsing history. */
+/** Identify the authenticated user by their PERSON UID (`person:<profile.id>`), never the
+ *  auth UID or PII. Traits are sanitized — only non-personal keys survive. */
 export function identifyUser(
-  userId: string,
-  traits?: Record<string, string | number | boolean | null>
+  personUid: string,
+  traits?: Record<string, unknown>
 ) {
-  withPostHog((ph) => ph.identify(userId, traits));
+  withPostHog((ph) => ph.identify(buildPersonTrackingId(personUid), sanitizeTrackingProperties(traits)));
 }
 
 /** Reset the PostHog identity on logout. */
@@ -21,7 +23,7 @@ export function resetUser() {
 /** Capture a custom event with optional properties. Never throws. */
 export function trackEvent(
   event: string,
-  properties?: Record<string, string | number | boolean | null | undefined>
+  properties?: Record<string, unknown>
 ) {
-  withPostHog((ph) => ph.capture(event, properties));
+  withPostHog((ph) => ph.capture(event, sanitizeTrackingProperties(properties)));
 }

@@ -6,6 +6,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { ErrorBoundary, tryChunkReload, isChunkLoadError } from "./components/ErrorBoundary";
 import { logger } from "./lib/logger";
+import { isSensitiveAnalyticsPath } from "./lib/analyticsPagePath";
 
 // Recover from Vite dynamic-import failures (stale chunks / Cloudflare 524s)
 // before they propagate to the React ErrorBoundary.
@@ -52,9 +53,12 @@ async function initDeferred() {
   initializePostHog();
 
   const isAuthRoute = /^\/app\/(auth|signup|forgot-password|reset-password)/.test(window.location.pathname);
-  if (isAuthRoute) return;
+  // Skip the third-party Reditus script entirely on auth routes AND on any
+  // sensitive URL (invoice/booking token pages, or PII-bearing query strings) —
+  // it must never observe a token or personal data in the address bar.
+  if (isAuthRoute || isSensitiveAnalyticsPath(window.location.pathname, window.location.search)) return;
 
-  // Reditus affiliate tracking — deferred to avoid render-blocking and skipped on auth routes
+  // Reditus affiliate tracking — deferred to avoid render-blocking and skipped on sensitive URLs
   const s = document.createElement('script');
   s.async = true;
   s.src = 'https://script.getreditus.com/v2.js';

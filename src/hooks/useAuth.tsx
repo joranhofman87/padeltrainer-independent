@@ -137,13 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           i18n.changeLanguage(userProfile.preferred_language);
         }
 
-        // Link anonymous browsing history to this user in PostHog
+        // Link anonymous browsing history to the PERSON UID in PostHog — never the
+        // auth UID, email, or created_at. profile.id IS the person id for account
+        // holders (deterministic ids); identifyUser namespaces it to person:<id>.
         try {
-          identifyUser(userId, {
-            role: primaryRole,
-            email: userProfile?.email ?? null,
-            created_at: userProfile?.created_at ?? null,
-          });
+          if (userProfile?.id) {
+            identifyUser(userProfile.id, { role: primaryRole });
+          }
         } catch {
           // Analytics must never break auth
         }

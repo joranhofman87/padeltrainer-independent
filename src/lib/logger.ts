@@ -4,6 +4,7 @@
  */
 
 import { withPostHog } from '@/lib/posthog';
+import { redactTrackingString, sanitizeTrackingProperties } from '@/lib/trackingPrivacy';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -68,13 +69,18 @@ function createLogEntry(
 function sendToMonitoring(entry: LogEntry): void {
   // Send to PostHog if available (lazily loaded, production hostnames only)
   withPostHog((ph) => {
+    // Automatic bug capture must NOT leak PII: logger callers pass ids, paths,
+    // names, and error payloads. Redact the free-text fields (emails/tokens/pay
+    // URLs) and run the context through the SAME sanitizer as trackingPrivacy —
+    // sensitive keys are dropped and nested objects (which can hide PII) are not
+    // forwarded at all.
     ph.capture('$exception', {
-      $exception_message: entry.error?.message || entry.message,
+      $exception_message: redactTrackingString(entry.error?.message || entry.message || ''),
       $exception_type: entry.error?.name || (entry.level === 'warn' ? 'Warning' : 'Error'),
-      $exception_stack_trace_raw: entry.error?.stack,
+      $exception_stack_trace_raw: entry.error?.stack ? redactTrackingString(entry.error.stack) : undefined,
       $exception_source: 'logger',
       $exception_level: entry.level,
-      ...(entry.context || {}),
+      ...(sanitizeTrackingProperties(entry.context) ?? {}),
     });
   });
 
