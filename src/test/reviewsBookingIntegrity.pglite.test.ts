@@ -1,0 +1,143 @@
+// @vitest-environment node
+// Reviews integrity hardening (migration 20260914100000). Pins the INSERT RLS + FK:
+// a player review must be tied to a REAL completed/confirmed booking of that player with
+// that trainer; admins may insert manual reviews with booking_id = NULL; the FK rejects a
+// non-null fake booking_id; one review per real booking, unlimited NULLs. Exercises the
+// REAL policies by SET ROLE authenticated with a mockable auth.uid().
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+let db: PGlite;
+const MIG = (n: string) => readFileSync(join(process.cwd(), 'supabase', 'migrations', n), 'utf8');
+
+const U_PLAYER = 'e0000000-0000-0000-0000-0000000000e1';
+const PL = 'b0000000-0000-0000-0000-0000000000b1';       // player's profile
+const U_ADMIN = 'e0000000-0000-0000-0000-0000000000e2';
+const ADM = 'b0000000-0000-0000-0000-0000000000b2';      // admin's profile
+const TP = 'c0000000-0000-0000-0000-0000000000a1';       // trainer being reviewed
+const TP2 = 'c0000000-0000-0000-0000-0000000000a2';      // a DIFFERENT trainer
+const S1 = 'f0000000-0000-0000-0000-00000000001a';       // slot of TP
+const B1 = 'a1000000-0000-0000-0000-0000000000b1';       // PL completed booking with TP
+const BP = 'a1000000-0000-0000-0000-0000000000bf';       // PL PENDING booking with TP
+const FAKE = 'a1000000-0000-0000-0000-00000000dead';     // no such booking
+
+// Attempt an insert as `uid` under RLS. Resolves on success, rejects with the pg error on
+// denial. Everything runs in ONE db.exec: SET ROLE + a warm-up read (a pglite quirk mis-
+// resolves the policy's table access on the first RLS-gated statement after SET ROLE; a
+// warm-up in the same message fixes it — real Postgres/prod is unaffected) + the INSERT.
+const insertReviewAs = async (uid: string, over: Record<string, string> = {}) => {
+  const cols: Record<string, string> = {
+    booking_id: `'${B1}'`, player_id: `'${PL}'`, trainer_id: `'${TP}'`, rating: '5', ...over,
+  };
+  const stmt = `INSERT INTO public.reviews (${Object.keys(cols).join(', ')}) VALUES (${Object.values(cols).join(', ')})`;
+  try {
+    await db.exec(`SET ROLE authenticated; SET test.uid = '${uid}';
+      SELECT count(*) FROM public.bookings; SELECT count(*) FROM public.profiles; SELECT count(*) FROM public.availability_slots;
+      ${stmt};`);
+  } finally {
+    await db.exec(`RESET ROLE; RESET test.uid;`);
+  }
+};
+const reviewCount = async () => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.reviews`)).rows[0].n;
+
+beforeAll(async () => {
+  db = new PGlite();
+  await db.exec(`
+    CREATE ROLE anon; CREATE ROLE authenticated;
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE TABLE auth.users (id uuid PRIMARY KEY);
+    -- auth.uid() reads a per-test GUC
+    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
+      SELECT nullif(current_setting('test.uid', true), '')::uuid $fn$;
+    GRANT USAGE ON SCHEMA auth TO authenticated, anon;  -- Supabase grants this in prod
+    -- admin detection stand-in
+    CREATE TABLE public._test_admins (user_id uuid PRIMARY KEY);
+    -- SECURITY DEFINER (like prod's is_admin) so the authenticated caller doesn't need
+    -- privileges on the admin table when the policy evaluates is_admin(auth.uid()).
+    CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid) RETURNS boolean
+      LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
+      SELECT EXISTS (SELECT 1 FROM public._test_admins WHERE user_id = _user_id) $fn$;
+    -- referenced tables (no RLS on these stand-ins; the policy subqueries just read them)
+    CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid);
+    CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, user_id uuid);
+    CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, trainer_id uuid NOT NULL REFERENCES public.trainer_profiles(id));
+    CREATE TABLE public.bookings (id uuid PRIMARY KEY, slot_id uuid NOT NULL REFERENCES public.availability_slots(id),
+      player_id uuid NOT NULL, status text NOT NULL DEFAULT 'pending');
+    -- reviews in its PRE-hardening shape (the migration transforms it)
+    CREATE TABLE public.reviews (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), booking_id uuid NOT NULL,
+      player_id uuid NOT NULL, trainer_id uuid NOT NULL,
+      rating int NOT NULL CHECK (rating BETWEEN 1 AND 5), comment text,
+      is_public boolean NOT NULL DEFAULT true, is_anonymous boolean NOT NULL DEFAULT false,
+      reviewer_name text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT reviews_booking_id_key UNIQUE (booking_id));
+    ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY "Players can create reviews for their bookings" ON public.reviews FOR INSERT TO public
+      WITH CHECK (player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid()));
+    CREATE POLICY "Admins can create reviews" ON public.reviews FOR INSERT TO public
+      WITH CHECK (public.is_admin(auth.uid()));
+    GRANT SELECT ON public.profiles, public.bookings, public.availability_slots TO authenticated;
+    GRANT SELECT, INSERT ON public.reviews TO authenticated;
+  `);
+  await db.exec(MIG('20260914100000_reviews_booking_integrity.sql'));
+  await db.exec(`
+    INSERT INTO auth.users (id) VALUES ('${U_PLAYER}'), ('${U_ADMIN}');
+    INSERT INTO public._test_admins (user_id) VALUES ('${U_ADMIN}');
+    INSERT INTO public.profiles (id, user_id) VALUES ('${PL}','${U_PLAYER}'), ('${ADM}','${U_ADMIN}');
+    INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${TP}', gen_random_uuid()), ('${TP2}', gen_random_uuid());
+    INSERT INTO public.availability_slots (id, trainer_id) VALUES ('${S1}','${TP}');
+    INSERT INTO public.bookings (id, slot_id, player_id, status) VALUES
+      ('${B1}','${S1}','${PL}','completed'), ('${BP}','${S1}','${PL}','pending');
+  `);
+});
+
+beforeEach(async () => { await db.exec(`DELETE FROM public.reviews;`); });
+
+describe('player INSERT RLS — must match a real completed/confirmed booking of that player+trainer', () => {
+  it('ALLOWS a review of the player\'s own completed booking with the reviewed trainer', async () => {
+    await insertReviewAs(U_PLAYER, { booking_id: `'${B1}'` });
+    expect(await reviewCount()).toBe(1);
+  });
+
+  it('REJECTS a random / non-existent booking_id', async () => {
+    await expect(insertReviewAs(U_PLAYER, { booking_id: `'${FAKE}'` })).rejects.toThrow(/row-level security|violates/i);
+  });
+
+  it('REJECTS a real booking with a FORGED trainer_id (booking is with a different trainer)', async () => {
+    await expect(insertReviewAs(U_PLAYER, { booking_id: `'${B1}'`, trainer_id: `'${TP2}'` })).rejects.toThrow(/row-level security|violates/i);
+  });
+
+  it('REJECTS a review of a PENDING (not completed/confirmed) booking', async () => {
+    await expect(insertReviewAs(U_PLAYER, { booking_id: `'${BP}'` })).rejects.toThrow(/row-level security|violates/i);
+  });
+
+  it('REJECTS a player review with a NULL booking_id (players must have a booking)', async () => {
+    await expect(insertReviewAs(U_PLAYER, { booking_id: `NULL` })).rejects.toThrow(/row-level security|violates/i);
+  });
+});
+
+describe('admin INSERT + FK/unique constraints', () => {
+  it('ALLOWS an admin manual review with booking_id NULL', async () => {
+    await insertReviewAs(U_ADMIN, { booking_id: `NULL`, player_id: `'${ADM}'` });
+    expect(await reviewCount()).toBe(1);
+  });
+
+  it('allows MULTIPLE admin NULL-booking reviews (NULLs are distinct)', async () => {
+    await insertReviewAs(U_ADMIN, { booking_id: `NULL`, player_id: `'${ADM}'` });
+    await insertReviewAs(U_ADMIN, { booking_id: `NULL`, player_id: `'${ADM}'` });
+    expect(await reviewCount()).toBe(2);
+  });
+
+  it('FK rejects a NON-NULL fake booking_id even from an admin', async () => {
+    await expect(insertReviewAs(U_ADMIN, { booking_id: `'${FAKE}'`, player_id: `'${ADM}'` }))
+      .rejects.toThrow(/foreign key|violates/i);
+  });
+
+  it('unique: two reviews for the SAME real booking are rejected', async () => {
+    await insertReviewAs(U_PLAYER, { booking_id: `'${B1}'` });
+    await expect(insertReviewAs(U_ADMIN, { booking_id: `'${B1}'`, player_id: `'${ADM}'` }))
+      .rejects.toThrow(/duplicate key|unique|violates/i);
+  });
+});
