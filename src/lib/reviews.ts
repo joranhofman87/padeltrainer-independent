@@ -3,7 +3,7 @@ import { logger } from '@/lib/logger';
 
 export interface Review {
   id: string;
-  booking_id: string;
+  booking_id: string | null; // NULL for admin/manual reviews (see 20260914100000)
   player_id: string;
   trainer_id: string;
   rating: number;

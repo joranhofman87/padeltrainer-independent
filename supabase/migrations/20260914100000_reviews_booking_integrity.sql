@@ -24,28 +24,51 @@ ALTER TABLE public.reviews
   ADD CONSTRAINT reviews_booking_id_fkey
   FOREIGN KEY (booking_id) REFERENCES public.bookings(id) ON DELETE SET NULL;
 
--- 5. Tighten the PLAYER INSERT policy: a non-admin review must be tied to a real
---    completed/confirmed booking of the inserting player with the reviewed trainer.
---    The new row's columns (player_id/trainer_id/booking_id) are referenced BARE in the
---    outer scope and compared to the booking's own player/trainer via scalar subqueries —
---    correlating only booking_id inside (unambiguous: bookings has no booking_id column),
---    which avoids bookings.player_id shadowing the review's player_id.
+-- 5. Factor the "is this a legitimate reviewable booking for this player+trainer?" rule
+--    into ONE SECURITY DEFINER helper, so the INSERT and UPDATE policies share it and
+--    cannot drift. DEFINER lets it read bookings/slots regardless of the caller's grants.
+CREATE OR REPLACE FUNCTION public.is_reviewable_booking(p_booking_id uuid, p_player_id uuid, p_trainer_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT p_booking_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+    WHERE b.id = p_booking_id
+      AND b.player_id = p_player_id
+      AND s.trainer_id = p_trainer_id
+      AND b.status IN ('completed', 'confirmed')
+  );
+$$;
+COMMENT ON FUNCTION public.is_reviewable_booking(uuid, uuid, uuid) IS
+  'Reviews integrity: TRUE iff booking_id is a real completed/confirmed booking of that player with that trainer. Shared by the reviews INSERT + UPDATE RLS so a player cannot forge trainer_id/booking_id on EITHER path.';
+
+-- 6. PLAYER INSERT policy — must be a legitimate reviewable booking.
 DROP POLICY IF EXISTS "Players can create reviews for their bookings" ON public.reviews;
 CREATE POLICY "Players can create reviews for their bookings"
   ON public.reviews FOR INSERT TO public
   WITH CHECK (
     player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid())
-    AND booking_id IS NOT NULL
-    AND player_id  = (SELECT b.player_id FROM public.bookings b WHERE b.id = booking_id)
-    AND trainer_id = (SELECT s.trainer_id FROM public.bookings b
-                        JOIN public.availability_slots s ON s.id = b.slot_id
-                       WHERE b.id = booking_id)
-    AND (SELECT b.status FROM public.bookings b WHERE b.id = booking_id)
-          IN ('completed', 'confirmed')
+    AND public.is_reviewable_booking(booking_id, player_id, trainer_id)
   );
 
--- The separate "Admins can create reviews" policy (WITH CHECK is_admin(auth.uid())) is left
--- untouched: admins may insert manual reviews with booking_id = NULL.
+-- 7. PLAYER UPDATE policy — CLOSE THE BYPASS: the OLD policy had USING(own) and NO
+--    WITH CHECK, so a player could insert a valid review then UPDATE it to a forged
+--    trainer_id / booking_id / NULL and pollute another trainer. The RESULTING row must
+--    now also be a legitimate reviewable booking (rating/comment edits keep booking_id +
+--    trainer_id, so they still pass).
+DROP POLICY IF EXISTS "Players can update their own reviews" ON public.reviews;
+CREATE POLICY "Players can update their own reviews"
+  ON public.reviews FOR UPDATE TO public
+  USING (player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid()))
+  WITH CHECK (
+    player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid())
+    AND public.is_reviewable_booking(booking_id, player_id, trainer_id)
+  );
+
+-- The separate admin policies ("Admins can create reviews" / "Admins can update any
+-- review", is_admin(auth.uid())) are untouched: admins may insert/keep booking_id = NULL.
 
 COMMENT ON CONSTRAINT reviews_booking_id_fkey ON public.reviews IS
   'A review''s booking_id, when set, must be a real booking. Admin/manual reviews use NULL. Player reviews are further gated to a completed/confirmed booking of that player+trainer by the INSERT RLS.';

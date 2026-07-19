@@ -9711,6 +9711,14 @@ export type Database = {
       }
       is_player_of_trainer: { Args: { p_player_id: string }; Returns: boolean }
       is_reserved_handle: { Args: { _handle: string }; Returns: boolean }
+      is_reviewable_booking: {
+        Args: {
+          p_booking_id: string
+          p_player_id: string
+          p_trainer_id: string
+        }
+        Returns: boolean
+      }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
       link_guest_data_to_profile: {
         Args: { _profile_id: string }

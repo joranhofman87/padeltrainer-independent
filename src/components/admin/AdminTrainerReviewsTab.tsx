@@ -133,8 +133,8 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
     setIsSubmitting(true);
     try {
-      // For admin-created reviews, we'll create a "virtual" booking ID
-      // and use a system player ID (or the admin's profile ID)
+      // Admin/manual reviews are not tied to a real booking (booking_id = NULL) and use
+      // the admin's own profile id as player_id.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
