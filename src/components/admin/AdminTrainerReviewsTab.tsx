@@ -133,8 +133,8 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
     setIsSubmitting(true);
     try {
-      // For admin-created reviews, we'll create a "virtual" booking ID
-      // and use a system player ID (or the admin's profile ID)
+      // Admin/manual reviews are not tied to a real booking (booking_id = NULL) and use
+      // the admin's own profile id as player_id.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -147,14 +147,12 @@ export function AdminTrainerReviewsTab({ trainerId, trainerName }: AdminTrainerR
 
       if (!adminProfile) throw new Error("Admin profile not found");
 
-      // Create a virtual booking ID for admin-created reviews
-      const virtualBookingId = crypto.randomUUID();
-
-      // Create the review
+      // Create the review (manual admin review — not tied to a real booking → NULL,
+      // enforced by the reviews.booking_id FK + INSERT RLS)
       const { data: review, error: reviewError } = await supabase
         .from("reviews")
         .insert({
-          booking_id: virtualBookingId,
+          booking_id: null,
           player_id: adminProfile.id, // Admin's profile ID
           trainer_id: trainerId,
           rating,
