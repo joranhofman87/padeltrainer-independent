@@ -4224,7 +4224,7 @@ export type Database = {
           channel: string
           consent_academy_profile_id?: string | null
           consent_at?: string | null
-          consent_scope?: string
+          consent_scope: string
           consent_source?: string | null
           consent_status?: string
           consent_trainer_id?: string | null
