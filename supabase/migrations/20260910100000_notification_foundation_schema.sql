@@ -62,8 +62,8 @@ CREATE TABLE public.notification_contacts (
   -- any tenant context); 'tenant' = collected by/for one tenant, usable ONLY
   -- when the notification's tenant matches the provenance below.
   consent_scope             text NOT NULL DEFAULT 'global' CHECK (consent_scope IN ('global','tenant')),
-  consent_academy_profile_id uuid,
-  consent_trainer_id        uuid,
+  consent_academy_profile_id uuid REFERENCES public.academy_profiles(id) ON DELETE CASCADE,
+  consent_trainer_id        uuid REFERENCES public.trainer_profiles(id) ON DELETE CASCADE,
   consent_source            text,
   consent_at                timestamptz,
   revoked_at                timestamptz,
@@ -72,7 +72,15 @@ CREATE TABLE public.notification_contacts (
   updated_at                timestamptz NOT NULL DEFAULT now(),
   -- no orphan contacts: every contact belongs to a person / user / guest.
   CONSTRAINT chk_notification_contacts_ref
-    CHECK (person_id IS NOT NULL OR user_id IS NOT NULL OR guest_player_id IS NOT NULL)
+    CHECK (person_id IS NOT NULL OR user_id IS NOT NULL OR guest_player_id IS NOT NULL),
+  -- consent_scope ⇔ provenance coherence: a 'tenant' consent MUST name its tenant,
+  -- a 'global' consent must NOT carry tenant provenance (else the scope is a lie
+  -- and the resolver's is_notification_consent_in_scope() intersection is bypassable).
+  CONSTRAINT chk_notification_contacts_consent_scope
+    CHECK (
+      (consent_scope = 'tenant' AND (consent_academy_profile_id IS NOT NULL OR consent_trainer_id IS NOT NULL))
+      OR (consent_scope = 'global' AND consent_academy_profile_id IS NULL AND consent_trainer_id IS NULL)
+    )
 );
 CREATE INDEX idx_notification_contacts_person ON public.notification_contacts (person_id);
 CREATE INDEX idx_notification_contacts_user   ON public.notification_contacts (user_id);
@@ -110,7 +118,7 @@ $$;
 -- 3. notification_preferences_v2 — per-user, per-event, per-channel frequency.
 CREATE TABLE public.notification_preferences_v2 (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id            uuid NOT NULL,
+  user_id            uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   event_type         text NOT NULL REFERENCES public.notification_event_types(key) ON DELETE CASCADE,
   email_frequency    text NOT NULL DEFAULT 'instant' CHECK (email_frequency IN ('instant','daily','weekly','off')),
   whatsapp_frequency text NOT NULL DEFAULT 'off'     CHECK (whatsapp_frequency IN ('instant','daily','weekly','off')),
@@ -188,6 +196,9 @@ CREATE INDEX idx_notification_outbox_recipient_person ON public.notification_out
 CREATE INDEX idx_notification_outbox_invoice ON public.notification_outbox (related_invoice_id) WHERE related_invoice_id IS NOT NULL;
 CREATE INDEX idx_notification_outbox_provider_msg ON public.notification_outbox (provider_message_id) WHERE provider_message_id IS NOT NULL;
 CREATE INDEX idx_notification_outbox_collapse ON public.notification_outbox (collapse_key) WHERE collapse_key IS NOT NULL AND status = 'pending';
+-- booking-timeline lookups (get_booking_notification_timeline, PR 7): related_booking_ids
+-- is uuid[] → GIN so the array-contains query is index-assisted at scale.
+CREATE INDEX idx_notification_outbox_booking_ids ON public.notification_outbox USING GIN (related_booking_ids) WHERE related_booking_ids IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- 5. Generalize email_delivery_events into the channel-agnostic delivery log.

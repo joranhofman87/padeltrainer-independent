@@ -4262,6 +4262,55 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "notification_contacts_consent_academy_profile_id_fkey"
+            columns: ["consent_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_contacts_consent_academy_profile_id_fkey"
+            columns: ["consent_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_contacts_consent_academy_profile_id_fkey"
+            columns: ["consent_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_contacts_consent_academy_profile_id_fkey"
+            columns: ["consent_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_contacts_consent_trainer_id_fkey"
+            columns: ["consent_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_contacts_consent_trainer_id_fkey"
+            columns: ["consent_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_contacts_consent_trainer_id_fkey"
+            columns: ["consent_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "notification_contacts_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false

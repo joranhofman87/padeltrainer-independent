@@ -138,6 +138,29 @@ describe('tenant-scoped consent (cross-tenant opt-in denial)', () => {
   });
 });
 
+describe('consent_scope ⇔ provenance coherence CHECK', () => {
+  const insertContact = (dest: string, scope: string, cA: string | null, cT: string | null) =>
+    db.query(
+      `INSERT INTO public.notification_contacts
+         (person_id, channel, destination_normalized, destination_redacted, consent_scope, consent_academy_profile_id, consent_trainer_id)
+       VALUES ($1,'whatsapp',$2,'redacted',$3,$4,$5)`,
+      [P1, dest, scope, cA, cT]);
+  it("rejects a 'tenant' consent with NO provenance", async () => {
+    await expect(insertContact('+31600000001', 'tenant', null, null))
+      .rejects.toThrow(/chk_notification_contacts_consent_scope/i);
+  });
+  it("rejects a 'global' consent that carries tenant provenance", async () => {
+    await expect(insertContact('+31600000002', 'global', A, null))
+      .rejects.toThrow(/chk_notification_contacts_consent_scope/i);
+  });
+  it('allows a coherent tenant consent and a coherent global consent', async () => {
+    await insertContact('+31600000003', 'tenant', A, null);
+    await insertContact('+31600000004', 'global', null, null);
+    const { rows } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.notification_contacts`);
+    expect(rows[0].n).toBe(2);
+  });
+});
+
 describe('delivery-events generalization', () => {
   it('recipient_email is now nullable and a WhatsApp phone row inserts cleanly', async () => {
     await db.query(
