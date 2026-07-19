@@ -2999,10 +2999,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "email_delivery_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "notification_contacts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "email_delivery_events_invoice_id_fkey"
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_delivery_events_outbox_id_fkey"
+            columns: ["outbox_id"]
+            isOneToOne: false
+            referencedRelation: "notification_outbox"
             referencedColumns: ["id"]
           },
         ]
@@ -4246,7 +4260,15 @@ export type Database = {
           user_id?: string | null
           verified_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "notification_contacts_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notification_event_types: {
         Row: {
@@ -4437,11 +4459,46 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "notification_outbox_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "notification_contacts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "notification_outbox_event_type_fkey"
             columns: ["event_type"]
             isOneToOne: false
             referencedRelation: "notification_event_types"
             referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "notification_outbox_recipient_person_id_fkey"
+            columns: ["recipient_person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_related_invoice_id_fkey"
+            columns: ["related_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_tenant_academy_profile_id_fkey"
+            columns: ["tenant_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_tenant_trainer_id_fkey"
+            columns: ["tenant_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
           },
         ]
       }

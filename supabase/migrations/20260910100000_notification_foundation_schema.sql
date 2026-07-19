@@ -50,9 +50,9 @@ CREATE TABLE public.notification_event_types (
 -- 2. notification_contacts — person-keyed destinations + TENANT-SCOPED consent.
 CREATE TABLE public.notification_contacts (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  person_id                 uuid,
-  user_id                   uuid,
-  guest_player_id           uuid,
+  person_id                 uuid REFERENCES public.persons(id) ON DELETE CASCADE,
+  user_id                   uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  guest_player_id           uuid,  -- FK deferred: guest_players is retired in Phase 4 (person-unification)
   channel                   text NOT NULL CHECK (channel IN ('email','whatsapp','push')),
   destination_normalized    text NOT NULL,                 -- raw (service-role-only)
   destination_redacted      text NOT NULL,                 -- the only value tenant reads ever see
@@ -69,7 +69,10 @@ CREATE TABLE public.notification_contacts (
   revoked_at                timestamptz,
   is_primary                boolean NOT NULL DEFAULT false,
   created_at                timestamptz NOT NULL DEFAULT now(),
-  updated_at                timestamptz NOT NULL DEFAULT now()
+  updated_at                timestamptz NOT NULL DEFAULT now(),
+  -- no orphan contacts: every contact belongs to a person / user / guest.
+  CONSTRAINT chk_notification_contacts_ref
+    CHECK (person_id IS NOT NULL OR user_id IS NOT NULL OR guest_player_id IS NOT NULL)
 );
 CREATE INDEX idx_notification_contacts_person ON public.notification_contacts (person_id);
 CREATE INDEX idx_notification_contacts_user   ON public.notification_contacts (user_id);
@@ -92,9 +95,13 @@ LANGUAGE sql IMMUTABLE
 AS $$
   SELECT CASE
     WHEN _consent_scope = 'global' THEN true
+    -- tenant: EVERY non-null provenance dimension must match the notification's
+    -- context, AND at least one provenance must be set. An OR would leak — consent
+    -- for (Academy A, Trainer T) must NOT be usable for (Academy B, Trainer T).
     WHEN _consent_scope = 'tenant' THEN
-         (_ctx_academy IS NOT NULL AND _ctx_academy = _consent_academy)
-      OR (_ctx_trainer IS NOT NULL AND _ctx_trainer = _consent_trainer)
+          (_consent_academy IS NULL OR (_ctx_academy IS NOT NULL AND _ctx_academy = _consent_academy))
+      AND (_consent_trainer IS NULL OR (_ctx_trainer IS NOT NULL AND _ctx_trainer = _consent_trainer))
+      AND (_consent_academy IS NOT NULL OR _consent_trainer IS NOT NULL)
     ELSE false
   END;
 $$;
@@ -120,22 +127,22 @@ CREATE TABLE public.notification_outbox (
   event_type                text NOT NULL REFERENCES public.notification_event_types(key),
   channel                   text NOT NULL CHECK (channel IN ('email','whatsapp','push')),
   -- recipient (person-keyed; the dual keys carry through the transition)
-  recipient_user_id         uuid,
-  recipient_person_id       uuid,
-  recipient_guest_player_id uuid,
+  recipient_user_id         uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  recipient_person_id       uuid REFERENCES public.persons(id) ON DELETE CASCADE,
+  recipient_guest_player_id uuid,  -- FK deferred: guest_players retired in Phase 4
   -- tenant context (drives tenant-visible reads + consent intersection)
-  tenant_academy_profile_id uuid,
-  tenant_trainer_id         uuid,
+  tenant_academy_profile_id uuid REFERENCES public.academy_profiles(id) ON DELETE CASCADE,
+  tenant_trainer_id         uuid REFERENCES public.trainer_profiles(id) ON DELETE CASCADE,
   visibility_scope          text NOT NULL DEFAULT 'private_user_only' CHECK (visibility_scope IN
                               ('private_user_only','tenant_visible','tenant_visible_limited','admin_only')),
   -- subject refs (for timelines)
   related_booking_ids       uuid[],
-  related_invoice_id        uuid,
+  related_invoice_id        uuid REFERENCES public.invoices(id) ON DELETE SET NULL,
   related_payment_id        text,
   -- destinations: raw is service-role-only; redacted is the tenant-visible one.
   destination_normalized    text,
   destination_redacted      text,
-  contact_id                uuid,                          -- service-role-only ref (never tenant-visible)
+  contact_id                uuid REFERENCES public.notification_contacts(id) ON DELETE SET NULL, -- service-role-only ref
   template_key              text,
   payload                   jsonb,                         -- service-role-only (may hold tokens/PII)
   public_summary            jsonb,                         -- sanitized; the only body a tenant read sees
@@ -158,6 +165,14 @@ CREATE TABLE public.notification_outbox (
   last_error                text,
   created_at                timestamptz NOT NULL DEFAULT now(),
   updated_at                timestamptz NOT NULL DEFAULT now(),
+  -- no orphan: every outbox row targets a recipient.
+  CONSTRAINT chk_notification_outbox_recipient
+    CHECK (recipient_person_id IS NOT NULL OR recipient_user_id IS NOT NULL OR recipient_guest_player_id IS NOT NULL),
+  -- tenant-visible rows must carry tenant context + a sanitized summary, so they
+  -- can't become invisible history or force the timeline RPCs to invent fallbacks.
+  CONSTRAINT chk_notification_outbox_tenant_visible
+    CHECK (visibility_scope NOT IN ('tenant_visible','tenant_visible_limited')
+           OR ((tenant_academy_profile_id IS NOT NULL OR tenant_trainer_id IS NOT NULL) AND public_summary IS NOT NULL)),
   -- PER-RECIPIENT idempotency: the paid E-15 claim GATES enqueue; each recipient
   -- row's key is <event>:<subject>:<recipient_person>, channel is the constraint.
   CONSTRAINT uq_notification_outbox_idem UNIQUE (channel, idempotency_key)
@@ -179,8 +194,8 @@ CREATE INDEX idx_notification_outbox_collapse ON public.notification_outbox (col
 --    Reuse (don't fork) so the suppression list + invoice bounce UI keep working.
 ALTER TABLE public.email_delivery_events
   ADD COLUMN IF NOT EXISTS channel              text NOT NULL DEFAULT 'email' CHECK (channel IN ('email','whatsapp','push')),
-  ADD COLUMN IF NOT EXISTS outbox_id            uuid,
-  ADD COLUMN IF NOT EXISTS contact_id           uuid,   -- service-role-only ref
+  ADD COLUMN IF NOT EXISTS outbox_id            uuid REFERENCES public.notification_outbox(id)   ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS contact_id           uuid REFERENCES public.notification_contacts(id) ON DELETE SET NULL, -- service-role-only ref
   ADD COLUMN IF NOT EXISTS destination_redacted text;   -- tenant-visible destination
 -- recipient_email was NOT NULL + email-shaped; a WhatsApp phone can't live there.
 ALTER TABLE public.email_delivery_events ALTER COLUMN recipient_email DROP NOT NULL;
@@ -223,7 +238,20 @@ REVOKE ALL ON FUNCTION public.is_notification_consent_in_scope(text, uuid, uuid,
 GRANT EXECUTE ON FUNCTION public.is_notification_consent_in_scope(text, uuid, uuid, uuid, uuid) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- Seed the initial event-type taxonomy (reconciled from the existing senders).
+-- Seed the initial v2 event-type taxonomy (20 canonical keys).
+--
+-- RECONCILIATION with the current send-email dispatcher (26 concrete `type`s):
+-- these 20 v2 keys cover the notifications that PR 5/6 migrate onto the outbox;
+-- the PR-3 resolver owns the LEGACY-type → v2-key mapping (many-to-one, e.g.
+-- new_booking_trainer + new_public_booking_admin + booking_request all collapse
+-- to booking_confirmed_staff / booking_request_staff). Legacy/system-only types
+-- that are NOT yet migrated — club_claim_{approved,rejected},
+-- club_trainer_invitation{,_accepted}, partner_inquiry, location_request,
+-- intake_registration_confirmation, new_intake_registration_admin,
+-- schedule_notification, booking_approved_{payment,invoice}, booking_rejected —
+-- deliberately stay on the direct send-email path until PR 10 (retire legacy
+-- sends). No enqueue references a v2 key that isn't seeded here, so there are no
+-- FK failures; the resolver is the single place the legacy names are translated.
 INSERT INTO public.notification_event_types
   (key, category, audience, priority, required_delivery, supports_email, supports_whatsapp, supports_digest,
    default_email_frequency, collapse_window_minutes, quiet_hours_respect, visibility_scope) VALUES
