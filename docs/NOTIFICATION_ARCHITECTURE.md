@@ -247,19 +247,19 @@ account_email_changed · marketing_updates
 ## 5. WhatsApp provider + prerequisites (owner-provisioned, in parallel)
 
 WhatsApp is greenfield in THIS codebase (email is Resend; there is no messaging
-provider wired up here). But the owner reports an existing **Twilio / SendGrid
-account family with a WhatsApp number** — SendGrid is Twilio-owned, and Twilio
-WhatsApp senders live under **Twilio Messaging** (registered WhatsApp senders),
-so the likely path is **Twilio WhatsApp**, not SendGrid-email and not a separate
-Meta Cloud API / 360dialog integration.
+provider wired up here). **Provider = Twilio WhatsApp (confirmed by owner,
+2026-07-19).** The PR-9 worker targets Twilio Messaging — the `Messages` API with
+a registered WhatsApp sender + Content Templates (Meta-reviewed), authed by the
+Twilio Account SID + Auth Token. Not SendGrid-email, not Meta Cloud API directly,
+not 360dialog. New edge-function secrets: `TWILIO_ACCOUNT_SID`,
+`TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (the registered sender).
 
-> **OWNER TO CONFIRM before PR 9** (the worker's credential model depends on it):
-> the exact account (Twilio Account SID vs a SendGrid-branded console), the
-> registered WhatsApp sender number, and the credential/API shape (Twilio
-> `Messages` API + Content Templates, or Meta Cloud API). This doc will be
-> updated to the confirmed provider before the WhatsApp worker is built.
+> **Remaining owner setup before PR 9 ships** (does NOT block PRs 3–8): the
+> registered WhatsApp sender number provisioned on Twilio + business verification,
+> and the approved Content Templates. We build the consent model + worker against
+> the Twilio contract in the meantime.
 
-Prerequisites, once the provider is confirmed:
+Prerequisites:
 - **Registered WhatsApp sender** on the Twilio number + business verification.
 - **Approved message templates** — every business-initiated message needs an
   approved template (Twilio Content Templates → Meta review, ~1–3 days each).
