@@ -75,6 +75,7 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [COMPONENT_PATTERN_REGISTRY.md](COMPONENT_PATTERN_REGISTRY.md) | CC | "Which component for X" lookup | yes | yes | — |
 | [PERFORMANCE_QUERY_RULES.md](PERFORMANCE_QUERY_RULES.md) | CC | Read/query rules for scale | yes | yes | — |
 | [PUBLIC_DIRECTORY_RPC_PATTERN.md](PUBLIC_DIRECTORY_RPC_PATTERN.md) | CC | Recipe for converting an unbounded public "browse + filter" page to a bounded server-side RPC (worked example: `/trainers`) | yes | yes | Apply-elsewhere checklist + parked candidates (city/province directory) |
+| [NOTIFICATION_ARCHITECTURE.md](NOTIFICATION_ARCHITECTURE.md) | CC | **Notification pipeline rebuild (Foundation v2)** — current-state audit + target outbox/resolver/worker design + reconciliation decisions + PR sequence. Email now, WhatsApp next | yes | yes | Program IN PROGRESS; read before touching any notification/email send path |
 | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | CC | Required tests by change type | yes | yes | — |
 | [TEST_COVERAGE_GAPS.md](TEST_COVERAGE_GAPS.md) | CC | Honest coverage map | yes | yes | — |
 | [QUALITY_GATES.md](QUALITY_GATES.md) | CC | CI/gate map | yes | yes | Links to [technical-debt/QUALITY_GATES_BACKLOG.md](technical-debt/QUALITY_GATES_BACKLOG.md) |
