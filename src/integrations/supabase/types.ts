@@ -9709,10 +9709,7 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
-      mark_skipped_alerts_sent: {
-        Args: { p_ids: string[] }
-        Returns: number
-      }
+      mark_skipped_alerts_sent: { Args: { p_ids: string[] }; Returns: number }
       merge_guest_players: {
         Args: {
           p_fields?: Json
