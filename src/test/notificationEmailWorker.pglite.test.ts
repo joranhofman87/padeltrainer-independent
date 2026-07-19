@@ -69,6 +69,7 @@ beforeAll(async () => {
   `);
   await db.exec(MIG('20260910100000_notification_foundation_schema.sql'));
   await db.exec(MIG('20260912100000_notification_email_worker.sql'));
+  await db.exec(MIG('20260915110000_notification_scrub_attachments_on_terminal.sql')); // scrubs payload.attachments on terminal
   await db.exec(`INSERT INTO public.persons (id) VALUES ('${P1}');`);
 });
 
@@ -198,6 +199,46 @@ describe('record_notification_send_result', () => {
     const r = await row(id);
     expect(r.status).toBe('processing');   // untouched
     expect(r.sent_at).toBeNull();
+  });
+
+  // A TERMINAL outcome must strip the large base64 attachment (e.g. the paid-booking invoice
+  // PDF PR 6a carries in the payload) so sent/dead rows don't bloat the outbox forever; a
+  // RETRYABLE failure keeps it because the next attempt has to re-send the same PDF.
+  describe('payload.attachments scrub on terminal outcome (outbox bloat guard)', () => {
+    const WITH_PDF = `'{"subject":"Hi","html":"<p>Hi</p>","attachments":[{"filename":"factuur.pdf","content":"JVBERi0xLjQK"}]}'::jsonb`;
+    const hasAttachments = async (id: string) =>
+      (await db.query<{ has: boolean }>(`SELECT jsonb_exists(payload, 'attachments') AS has FROM public.notification_outbox WHERE id=$1`, [id])).rows[0].has;
+    const subjectOf = async (id: string) =>
+      (await db.query<{ s: string }>(`SELECT payload->>'subject' AS s FROM public.notification_outbox WHERE id=$1`, [id])).rows[0].s;
+
+    it('SENT → attachments stripped, rest of the payload preserved', async () => {
+      const id = await insertOutbox({ payload: WITH_PDF });
+      await claim();
+      await record(id, 'sent', { msg: 'resend-1' });
+      expect(await hasAttachments(id)).toBe(false);
+      expect(await subjectOf(id)).toBe('Hi');
+    });
+
+    it('TERMINAL failed (p_terminal) → attachments stripped', async () => {
+      const id = await insertOutbox({ payload: WITH_PDF });
+      await claim();
+      await record(id, 'failed', { err: 'email_suppressed', terminal: true });
+      expect(await hasAttachments(id)).toBe(false);
+    });
+
+    it('EXHAUSTED failed (attempts at max) → attachments stripped', async () => {
+      const id = await insertOwned({ payload: WITH_PDF, attempts: '5', max_attempts: '5' });
+      await record(id, 'failed', { err: 'boom' });
+      expect(await hasAttachments(id)).toBe(false);
+    });
+
+    it('RETRYABLE failed (backoff → pending) → attachments KEPT for the retry', async () => {
+      const id = await insertOutbox({ payload: WITH_PDF });
+      await claim();
+      const res = await record(id, 'failed', { err: 'temporary' });
+      expect(res.rows[0].record_notification_send_result).toBe('pending');
+      expect(await hasAttachments(id)).toBe(true);
+    });
   });
 });
 

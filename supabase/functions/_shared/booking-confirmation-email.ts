@@ -216,16 +216,26 @@ export async function sendPlayerBookingConfirmation(opts: {
 
   // Make the guest deliverable: upsert their tenant-scoped email contact. A missing email
   // leaves NO contact → the required confirmation resolves to a visible 'skipped' row.
+  // But an UPSERT FAILURE (email was present) must fail LOUDLY, not fall through: enqueueing
+  // anyway would resolve to a misleading 'skipped'/no_email_contact that hides the real cause.
+  // supabase.rpc returns { error } (it does NOT throw), so inspect it AND guard the throw.
   if (recipientEmail) {
+    let contactErr: string | null = null;
     try {
-      await supabase.rpc("ensure_guest_email_contact", {
+      const { error } = await supabase.rpc("ensure_guest_email_contact", {
         p_guest_player_id: guestPlayerId,
         p_email: recipientEmail,
         p_academy_profile_id: academyProfileId,
         p_trainer_id: trainerId,
       });
+      if (error) contactErr = error.message;
     } catch (e) {
-      logStep("Guest contact upsert failed (non-fatal)", { error: String(e).slice(0, 200) });
+      contactErr = String(e);
+    }
+    if (contactErr) {
+      const detail = contactErr.slice(0, 200);
+      logStep("Guest contact upsert failed — enqueue aborted", { error: detail });
+      return { ok: false, reason: "enqueue_failed", isGuest: true, pdfAttached, detail };
     }
   }
 

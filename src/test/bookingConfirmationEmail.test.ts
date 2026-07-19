@@ -25,7 +25,7 @@ function installEnv(overrides: Record<string, string | undefined> = {}) {
 
 beforeEach(() => {
   installEnv();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   fetchMock = vi.fn(async (url: string) => {
     if (String(url).includes('/functions/v1/generate-invoice')) {
       return { ok: true, json: async () => ({ pdfUrl: 'https://sb.test/pdf/x.pdf' }) };
@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[] }) {
+function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string }) {
   const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain = (data: any) => {
@@ -73,7 +73,9 @@ function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; in
       if (name === 'get_invoice_recipient_identity') {
         return { data: opts.identityEmail !== undefined ? [{ email: opts.identityEmail }] : [], error: null };
       }
-      if (name === 'ensure_guest_email_contact') return { data: 'contact-1', error: null };
+      if (name === 'ensure_guest_email_contact') {
+        return opts.contactError ? { data: null, error: { message: opts.contactError } } : { data: 'contact-1', error: null };
+      }
       if (name === 'enqueue_notification') {
         return { data: opts.enqueueRows ?? [{ outbox_id: 'ob1', channel: 'email', status: 'pending', skip_reason: null }], error: null };
       }
@@ -159,8 +161,20 @@ describe('sendPlayerBookingConfirmation', () => {
     expect(contactCall(rpcCalls).p_email).toBe('fallback@example.com');
   });
 
+  it('guest contact upsert RPC returns an error → fails LOUDLY (enqueue_failed), does NOT enqueue a misleading skipped', async () => {
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [{ id: 'B1', player_id: null, guest_player_id: 'G1', availability_slots: SLOT(), profiles: null, guest_players: { full_name: 'Guest', email: 'g@example.com' } }],
+      identityEmail: 'g@example.com',
+      contactError: 'coherence CHECK violated',
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: null, logStep });
+    expect(res).toMatchObject({ ok: false, reason: 'enqueue_failed', isGuest: true });
+    expect(res.detail).toContain('coherence CHECK');
+    expect(enqueueCall(rpcCalls)).toBeUndefined(); // never enqueued → no misleading no_email_contact row
+  });
+
   it('still enqueues (no attachment) when PDF generation fails', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     fetchMock.mockImplementation(async (url: string) => {
       if (String(url).includes('/functions/v1/generate-invoice')) return { ok: false, status: 500, json: async () => ({}) };
       return { ok: false, status: 404, json: async () => ({}) };
