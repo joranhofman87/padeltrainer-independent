@@ -4494,10 +4494,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "notification_outbox_tenant_academy_profile_id_fkey"
+            columns: ["tenant_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_tenant_academy_profile_id_fkey"
+            columns: ["tenant_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_tenant_academy_profile_id_fkey"
+            columns: ["tenant_academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "notification_outbox_tenant_trainer_id_fkey"
             columns: ["tenant_trainer_id"]
             isOneToOne: false
             referencedRelation: "trainer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_tenant_trainer_id_fkey"
+            columns: ["tenant_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_tenant_trainer_id_fkey"
+            columns: ["tenant_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_profiles_safe"
             referencedColumns: ["id"]
           },
         ]
