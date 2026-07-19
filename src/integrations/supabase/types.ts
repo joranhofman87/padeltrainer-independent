@@ -8976,6 +8976,39 @@ export type Database = {
         }
       }
       digits_only: { Args: { _value: string }; Returns: string }
+      enqueue_notification: {
+        Args: {
+          p_event_key: string
+          p_idempotency_subject?: string
+          p_payload?: Json
+          p_public_summary?: Json
+          p_recipient_guest_player_id?: string
+          p_recipient_person_id?: string
+          p_recipient_user_id?: string
+          p_related_booking_ids?: string[]
+          p_related_invoice_id?: string
+          p_related_payment_id?: string
+          p_scheduled_for?: string
+          p_template_key?: string
+          p_tenant_academy_profile_id?: string
+          p_tenant_trainer_id?: string
+        }
+        Returns: {
+          channel: string
+          collapse_key: string
+          destination_normalized: string
+          destination_redacted: string
+          idempotency_key: string
+          outbox_id: string
+          public_summary: Json
+          recipient_person_id: string
+          scheduled_for: string
+          skip_reason: string
+          status: string
+          template_key: string
+          visibility_scope: string
+        }[]
+      }
       expire_lapsed_priority_claims: { Args: never; Returns: number }
       expired_holds_over_capacity: {
         Args: { _booking_ids: string[] }
@@ -9648,6 +9681,10 @@ export type Database = {
       next_invoice_sequence: {
         Args: { p_min?: number; p_profile_id: string; p_profile_type: string }
         Returns: number
+      }
+      notification_redact_destination: {
+        Args: { p_channel: string; p_value: string }
+        Returns: string
       }
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }

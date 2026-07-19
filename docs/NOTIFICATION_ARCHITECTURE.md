@@ -285,8 +285,30 @@ Prerequisites:
    `tenant_trainer_id`, subject refs, `public_summary`, per-recipient
    `idempotency_key` (§3.7), the RLS, and **cross-tenant (+ cross-tenant
    consent) denial tests**. RLS + indexes + pglite tests.
-3. Policy resolver + `enqueue_notification` helper (absorbs `send-email`'s
-   mapping) + tests.
+3. Policy resolver + `enqueue_notification` helper + tests. **← shipped (PR 3).**
+   As-built contract (`20260911100000_notification_resolver.sql`,
+   `SECURITY DEFINER`, service-role-only, `RETURNS TABLE` of the rows it created):
+   - **Recipient normalization** — any of `person_id`/`user_id`/`guest_player_id`
+     resolves to the one person (via `persons.user_id` / `person_links`); the
+     idempotency key is `<event>:<subject>:<person>` so the same recipient reached
+     by different keys never double-sends.
+   - **Preference resolution** — `prefs_v2` override else the event-type default,
+     per channel. A required-delivery event **forces the email channel to
+     `instant`** (can't be turned off or digested).
+   - **Two independent WhatsApp/push gates** (both must pass): (1) a non-`off`
+     per-event frequency — `default_whatsapp_frequency` seeds to `off`, so
+     WhatsApp is opt-in per event via `prefs_v2`; (2) an **opted-in, in-tenant-
+     scope contact** (`is_notification_consent_in_scope`). No raw phone fallback.
+   - **Email = transactional** — no opt-in needed; uses an email contact else the
+     `persons.email` account fallback; **hard suppression** (`is_email_suppressed`)
+     blocks even required sends (re-sending a hard bounce just re-bounces).
+   - **Skipped rows** — a REQUIRED event with no deliverable channel writes a
+     visible `status='skipped'` row (`skip_reason` = `preference_off` /
+     `no_email_contact` / `email_suppressed`) instead of vanishing.
+   - **Redaction** — `notification_redact_destination` covers the account-email
+     fallback so a `destination_redacted` always exists for the PR-7 timelines.
+   - Deferred here (documented, not gaps): digest batching / quiet-hours /
+     `max_per_user` → the worker (PR 4+); the legacy `type`→`key` map → PR 5.
 4. Email worker (drains outbox → Resend via the existing primitive) + delivery
    event recording via the reused layer.
 5. **Pilot: migrate ONE low-risk notification** (e.g. `review_received_trainer`)
