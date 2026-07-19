@@ -2,6 +2,13 @@
 
 Status: canonical (source of truth) | last updated 2026-07-19 | program IN PROGRESS
 
+> **Rev 2 (2026-07-19, Codex review of PR #590):** per-recipient idempotency key
+> (was collision-prone); tenant-visibility columns + RLS + denial tests moved
+> into the schema PR (PR 2); tenant-scoped consent (`consent_scope`/provenance)
+> on person-keyed contacts; channel-agnostic PII-safe destination model on the
+> delivery-events table; WhatsApp provider updated to the Twilio/SendGrid family
+> (owner to confirm exact credentials).
+
 Audience / AI-read: yes. This is the reference for the notification pipeline
 rebuild — the current-state audit, the target design, the reconciliation
 decisions (what we reuse vs replace), the taxonomy, and the PR sequence. Read
@@ -92,7 +99,8 @@ feature/payment code
 policy resolver  ── decides: recipients, channels, prefs, consent, required
    │                delivery, collapse/digest, quiet hours, rate caps
    ▼
-notification_outbox  (one row per recipient × channel, idempotent)
+notification_outbox  (one row per recipient × channel; deterministic
+                      PER-RECIPIENT idempotency_key)
    │
    ├── email worker ─────► Resend ─┐
    ├── whatsapp worker ──► provider┤ (later)
@@ -116,8 +124,23 @@ notification_outbox  (one row per recipient × channel, idempotent)
 - **No raw PII/tokens** in logs or tenant-visible payloads: `payload` is
   service-role-only; `public_summary` is sanitized (reuse
   `redactTrackingString`/`sanitizeTrackingProperties` from
-  [`trackingPrivacy.ts`](../src/lib/trackingPrivacy.ts)).
-- WhatsApp requires **explicit opt-in** regardless of preference.
+  [`trackingPrivacy.ts`](../src/lib/trackingPrivacy.ts)). The **raw destination
+  (email/phone) is NEVER exposed to a tenant read** — tenant-visible rows carry
+  only a `redacted_destination` (`j***@x.com`, `+31•••1234`) + `contact_id`; the
+  raw value lives in a service-role-only column. A phone number must never be
+  shoved into an email-shaped field (see §3.1).
+- **Idempotency is PER RECIPIENT.** `unique(channel, idempotency_key)` where
+  `idempotency_key = <event_key>:<subject_id>:<recipient_person_id>` — NOT the
+  shared per-booking claim (that would collide the player + staff rows of one
+  paid booking). The E-15 atomic paid-claim gates whether the fan-out ENQUEUES
+  at all (run-once); each enqueued recipient row derives its own key (see §3.7).
+- **The full tenant-visibility posture is created in the SCHEMA PR (PR 2)** —
+  `visibility_scope`, `tenant_academy_profile_id`, `tenant_trainer_id`, subject
+  refs, `public_summary`, the RLS, and cross-tenant denial tests. PR 7 only adds
+  the read RPCs/UI on top; the columns must be right from the start.
+- WhatsApp requires **explicit opt-in** regardless of preference, and the opt-in
+  is CONSENT-SCOPED (see §3.3) — an opt-in collected by one tenant is not
+  automatically usable by another.
 
 Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
 §3. Full column lists live in the migration + are mirrored in
@@ -127,22 +150,42 @@ Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
 
 ## 3. Reconciliation decisions (the deltas vs a greenfield build)
 
-1. **`notification_delivery_events` = the generalized `email_delivery_events`.**
+1. **`notification_delivery_events` = the generalized `email_delivery_events`,
+   with a channel-agnostic, PII-safe destination model.**
    Do NOT create a second delivery-log table — that would fork the suppression
-   list (`email_address_state`) and break the invoice-delivery UI. Instead:
-   add `channel` + `outbox_id` to the delivery-events layer, keep
-   `record_email_event`'s idempotency + the state machine, and have the
-   `resend-webhook` correlate via `provider_message_id`. The WhatsApp webhook
-   writes into the same log with `channel='whatsapp'`.
+   list (`email_address_state`) and break the invoice-delivery UI. Generalize
+   the existing table: add `channel`, `outbox_id`, and `contact_id`; keep
+   `record_email_event`'s idempotency + the state machine; the `resend-webhook`
+   correlates via `provider_message_id`, and the WhatsApp webhook writes the same
+   log with `channel='whatsapp'`.
+   **Destination handling (the P2 PII boundary — decided):** `recipient_email`
+   was `NOT NULL` and email-shaped, which cannot hold a WhatsApp phone. So:
+   (a) make `recipient_email` NULLABLE (email channel only, kept for the existing
+   suppression join); (b) add `destination_redacted text` (the only thing
+   tenant-visible reads ever see — `j***@x.com` / `+31•••1234`); (c) the RAW
+   destination is reachable only via `contact_id` → `notification_contacts`
+   (service-role-only). Phone numbers never land in `recipient_email`. Suppression
+   for WhatsApp keys on the contact, not on an email-shaped string.
 2. **The resolver absorbs `send-email`'s mapping.** Seed
    `notification_event_types` from the union of the existing ~26 `EmailType`s +
    `TYPE_TO_PREF_COLUMN` + `SYSTEM_EMAIL_TYPES`, so no current notification is
    lost in translation. `SYSTEM_EMAIL_TYPES` → `required_delivery = true`.
-3. **Recipients are person-keyed.** `notification_contacts` keys on
-   `persons.id` (nullable `user_id`/`guest_player_id` for the transition), and
-   recipient resolution reuses `get_invoice_recipient_identity`'s FAM-02 rules
-   but resolves through `person_links`. A guest's WhatsApp/email consent lives
-   on their person's contact rows.
+3. **Recipients are person-keyed, but consent is TENANT-SCOPED.**
+   `notification_contacts` keys on `persons.id` (nullable
+   `user_id`/`guest_player_id` for the transition), and recipient resolution
+   reuses `get_invoice_recipient_identity`'s FAM-02 rules but resolves through
+   `person_links`. **Critical (P2):** `persons`/`person_links` are GLOBAL /
+   cross-tenant by design, so a raw person-keyed consent row would leak across
+   tenants — a guest WhatsApp opt-in collected by Academy A must NOT become
+   usable or visible for Academy B. So each contact/consent row carries a
+   `consent_scope` (`global` | `tenant`) + a tenant provenance
+   (`consent_academy_profile_id` / `consent_trainer_id`) + `consent_source`, and
+   the resolver **intersects the contact's consent scope with the notification's
+   tenant context** (the I-22 tenant-scoping doctrine applied to consent): a
+   `tenant`-scoped opt-in is only usable when the notification's
+   `tenant_academy_profile_id`/`tenant_trainer_id` matches its provenance;
+   `global` (e.g. the person's own account-level email) is usable everywhere.
+   Cross-tenant consent-leak denial is a required test.
 4. **`notification_preferences_v2` replaces v1** (event_type × channel
    frequency). Backfill from v1's 14 columns where they map; the v2
    `NotificationSettings` UI replaces the v1 page (we may break the v1 page —
@@ -151,11 +194,17 @@ Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
    The existing collapse-by-count digest logic is the behavior to generalize.
 6. **Slack stays an ops side channel** (`edge-slack`), NOT an outbox channel.
    Required-delivery failures Slack-alert via the existing helper.
-7. **Idempotency reuses the paid-chain's atomic claim.** The pilot migration
-   maps the E-15 first-paid claim → the outbox `idempotency_key`
-   (`unique(channel, idempotency_key)`), so the "duplicate Mollie webhook" and
-   "webhook-vs-verify race" no-duplicate guarantees carry over from existing
-   precedent.
+7. **Idempotency: a PER-RECIPIENT key, gated by the paid-chain's atomic claim.**
+   The E-15 first-paid claim is per BOOKING (shared by the player + every staff
+   recipient), so it CANNOT be the outbox `idempotency_key` directly — that
+   would collide the player and staff rows of one paid booking (P1). Instead:
+   the E-15 claim gates whether `runBookingPaidSideEffects` ENQUEUES at all
+   (run-once), and each enqueued row gets a deterministic PER-RECIPIENT key
+   `booking_paid:<booking_id>:<event_type>:<recipient_person_id>:<channel>` under
+   `unique(channel, idempotency_key)`. This keeps the "duplicate Mollie webhook →
+   one row per recipient per channel" and "webhook-vs-verify race → no
+   duplicates" guarantees (a duplicate delivery re-derives the same per-recipient
+   keys and no-ops on the unique index), while still fanning out to N recipients.
 8. **Worker = the cron single-flight lock pattern** already in
    [`20260614190000_cron_single_flight_lock.sql`](../supabase/migrations/20260614190000_cron_single_flight_lock.sql),
    plus stale-lock recovery + exponential backoff + max attempts.
@@ -183,18 +232,30 @@ account_email_changed · marketing_updates
 
 ---
 
-## 5. WhatsApp prerequisites (owner-provisioned, in parallel)
+## 5. WhatsApp provider + prerequisites (owner-provisioned, in parallel)
 
-WhatsApp is greenfield — there is **no** provider account today. Before the
-WhatsApp worker (PR 8) can send:
-- **Provider decision** (Twilio WhatsApp vs Meta Cloud API vs 360dialog) — cost
-  + approval trade-offs. Owner to choose/provision.
-- **WhatsApp Business number** + Meta Business verification.
-- **Approved message templates** — every business-initiated message needs a
-  Meta-approved template (~1–3 days review each). Start template drafts early.
-- **Consent + phone normalization** (built by us, prerequisite): E.164
-  normalization + a consent checkbox on booking/intake/signup writing
-  `notification_contacts` (channel=`whatsapp`, `consent_status=opted_in`).
+WhatsApp is greenfield in THIS codebase (email is Resend; there is no messaging
+provider wired up here). But the owner reports an existing **Twilio / SendGrid
+account family with a WhatsApp number** — SendGrid is Twilio-owned, and Twilio
+WhatsApp senders live under **Twilio Messaging** (registered WhatsApp senders),
+so the likely path is **Twilio WhatsApp**, not SendGrid-email and not a separate
+Meta Cloud API / 360dialog integration.
+
+> **OWNER TO CONFIRM before PR 9** (the worker's credential model depends on it):
+> the exact account (Twilio Account SID vs a SendGrid-branded console), the
+> registered WhatsApp sender number, and the credential/API shape (Twilio
+> `Messages` API + Content Templates, or Meta Cloud API). This doc will be
+> updated to the confirmed provider before the WhatsApp worker is built.
+
+Prerequisites, once the provider is confirmed:
+- **Registered WhatsApp sender** on the Twilio number + business verification.
+- **Approved message templates** — every business-initiated message needs an
+  approved template (Twilio Content Templates → Meta review, ~1–3 days each).
+  Start template drafts early.
+- **Consent + phone normalization** (built by us — the real prerequisite): E.164
+  normalization + a tenant-scoped consent checkbox on booking/intake/signup
+  writing `notification_contacts` (channel=`whatsapp`, `consent_status=opted_in`,
+  `consent_scope` + provenance per §3.3).
 - First release: **no PDF attachments** — send secure links; opt-out via the
   provider webhook updates `notification_contacts`.
 
@@ -203,10 +264,15 @@ WhatsApp worker (PR 8) can send:
 ## 6. Adjusted PR sequence
 
 1. **This doc** (current-state map + reconciled design). ← PR 1
-2. Schema: `notification_event_types` (+ seed), `notification_contacts`,
+2. Schema: `notification_event_types` (+ seed), `notification_contacts`
+   (person-keyed + `consent_scope`/provenance §3.3),
    `notification_preferences_v2`, `notification_outbox`, and the
-   `email_delivery_events`→delivery-events generalization. RLS + indexes +
-   tenant scoping + pglite tests.
+   `email_delivery_events`→delivery-events generalization (§3.1 destination
+   model). **Ships the FULL tenant-visibility posture even though the read RPCs
+   come in PR 7:** `visibility_scope`, `tenant_academy_profile_id`,
+   `tenant_trainer_id`, subject refs, `public_summary`, per-recipient
+   `idempotency_key` (§3.7), the RLS, and **cross-tenant (+ cross-tenant
+   consent) denial tests**. RLS + indexes + pglite tests.
 3. Policy resolver + `enqueue_notification` helper (absorbs `send-email`'s
    mapping) + tests.
 4. Email worker (drains outbox → Resend via the existing primitive) + delivery
@@ -215,9 +281,11 @@ WhatsApp worker (PR 8) can send:
    end-to-end to prove the pipeline — NOT the money path first.
 6. Migrate the paid-booking player/staff notifications to the outbox (map the
    E-15 claim → idempotency_key).
-7. Tenant-visible timelines: `get_player_notification_timeline`,
+7. Tenant-visible timelines — the READ RPCs/UI only (the schema + RLS + denial
+   tests already landed in PR 2): `get_player_notification_timeline`,
    `get_invoice_notification_timeline`, `get_booking_notification_timeline`
-   (SECURITY DEFINER, reuse the person-scope RPCs) + cross-tenant denial tests.
+   (SECURITY DEFINER, reuse the person-scope RPCs), returning only
+   `public_summary` + `destination_redacted` + safe IDs.
 8. `NotificationSettings` v2 UI (replaces v1).
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
    (once the owner's provider/templates are approved).
