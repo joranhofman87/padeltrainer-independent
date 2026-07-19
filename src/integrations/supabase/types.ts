@@ -2946,13 +2946,17 @@ export type Database = {
         Row: {
           academy_profile_id: string | null
           bounce_type: string | null
+          channel: string
+          contact_id: string | null
           created_at: string
+          destination_redacted: string | null
           event_type: string
           id: string
           invoice_id: string | null
           occurred_at: string
+          outbox_id: string | null
           reason: string | null
-          recipient_email: string
+          recipient_email: string | null
           resend_email_id: string | null
           resend_event_id: string | null
           trainer_id: string | null
@@ -2960,13 +2964,17 @@ export type Database = {
         Insert: {
           academy_profile_id?: string | null
           bounce_type?: string | null
+          channel?: string
+          contact_id?: string | null
           created_at?: string
+          destination_redacted?: string | null
           event_type: string
           id?: string
           invoice_id?: string | null
           occurred_at?: string
+          outbox_id?: string | null
           reason?: string | null
-          recipient_email: string
+          recipient_email?: string | null
           resend_email_id?: string | null
           resend_event_id?: string | null
           trainer_id?: string | null
@@ -2974,13 +2982,17 @@ export type Database = {
         Update: {
           academy_profile_id?: string | null
           bounce_type?: string | null
+          channel?: string
+          contact_id?: string | null
           created_at?: string
+          destination_redacted?: string | null
           event_type?: string
           id?: string
           invoice_id?: string | null
           occurred_at?: string
+          outbox_id?: string | null
           reason?: string | null
-          recipient_email?: string
+          recipient_email?: string | null
           resend_email_id?: string | null
           resend_event_id?: string | null
           trainer_id?: string | null
@@ -4173,6 +4185,266 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_contacts: {
+        Row: {
+          channel: string
+          consent_academy_profile_id: string | null
+          consent_at: string | null
+          consent_scope: string
+          consent_source: string | null
+          consent_status: string
+          consent_trainer_id: string | null
+          created_at: string
+          destination_normalized: string
+          destination_redacted: string
+          guest_player_id: string | null
+          id: string
+          is_primary: boolean
+          person_id: string | null
+          revoked_at: string | null
+          updated_at: string
+          user_id: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          channel: string
+          consent_academy_profile_id?: string | null
+          consent_at?: string | null
+          consent_scope?: string
+          consent_source?: string | null
+          consent_status?: string
+          consent_trainer_id?: string | null
+          created_at?: string
+          destination_normalized: string
+          destination_redacted: string
+          guest_player_id?: string | null
+          id?: string
+          is_primary?: boolean
+          person_id?: string | null
+          revoked_at?: string | null
+          updated_at?: string
+          user_id?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          channel?: string
+          consent_academy_profile_id?: string | null
+          consent_at?: string | null
+          consent_scope?: string
+          consent_source?: string | null
+          consent_status?: string
+          consent_trainer_id?: string | null
+          created_at?: string
+          destination_normalized?: string
+          destination_redacted?: string
+          guest_player_id?: string | null
+          id?: string
+          is_primary?: boolean
+          person_id?: string | null
+          revoked_at?: string | null
+          updated_at?: string
+          user_id?: string | null
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
+      notification_event_types: {
+        Row: {
+          audience: string
+          category: string
+          collapse_window_minutes: number
+          created_at: string
+          default_email_frequency: string
+          default_push_frequency: string
+          default_whatsapp_frequency: string
+          key: string
+          max_per_user_per_day: number | null
+          max_per_user_per_hour: number | null
+          priority: string
+          quiet_hours_respect: boolean
+          required_delivery: boolean
+          supports_digest: boolean
+          supports_email: boolean
+          supports_push: boolean
+          supports_whatsapp: boolean
+          template_email: string | null
+          template_whatsapp: string | null
+          updated_at: string
+          visibility_scope: string
+        }
+        Insert: {
+          audience: string
+          category: string
+          collapse_window_minutes?: number
+          created_at?: string
+          default_email_frequency?: string
+          default_push_frequency?: string
+          default_whatsapp_frequency?: string
+          key: string
+          max_per_user_per_day?: number | null
+          max_per_user_per_hour?: number | null
+          priority: string
+          quiet_hours_respect?: boolean
+          required_delivery?: boolean
+          supports_digest?: boolean
+          supports_email?: boolean
+          supports_push?: boolean
+          supports_whatsapp?: boolean
+          template_email?: string | null
+          template_whatsapp?: string | null
+          updated_at?: string
+          visibility_scope?: string
+        }
+        Update: {
+          audience?: string
+          category?: string
+          collapse_window_minutes?: number
+          created_at?: string
+          default_email_frequency?: string
+          default_push_frequency?: string
+          default_whatsapp_frequency?: string
+          key?: string
+          max_per_user_per_day?: number | null
+          max_per_user_per_hour?: number | null
+          priority?: string
+          quiet_hours_respect?: boolean
+          required_delivery?: boolean
+          supports_digest?: boolean
+          supports_email?: boolean
+          supports_push?: boolean
+          supports_whatsapp?: boolean
+          template_email?: string | null
+          template_whatsapp?: string | null
+          updated_at?: string
+          visibility_scope?: string
+        }
+        Relationships: []
+      }
+      notification_outbox: {
+        Row: {
+          attempts: number
+          channel: string
+          collapse_key: string | null
+          contact_id: string | null
+          created_at: string
+          delivered_at: string | null
+          destination_normalized: string | null
+          destination_redacted: string | null
+          event_type: string
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          next_attempt_at: string | null
+          payload: Json | null
+          provider: string | null
+          provider_message_id: string | null
+          public_summary: Json | null
+          recipient_guest_player_id: string | null
+          recipient_person_id: string | null
+          recipient_user_id: string | null
+          related_booking_ids: string[] | null
+          related_invoice_id: string | null
+          related_payment_id: string | null
+          scheduled_for: string
+          sent_at: string | null
+          skip_reason: string | null
+          status: string
+          template_key: string | null
+          tenant_academy_profile_id: string | null
+          tenant_trainer_id: string | null
+          updated_at: string
+          visibility_scope: string
+        }
+        Insert: {
+          attempts?: number
+          channel: string
+          collapse_key?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          destination_normalized?: string | null
+          destination_redacted?: string | null
+          event_type: string
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          next_attempt_at?: string | null
+          payload?: Json | null
+          provider?: string | null
+          provider_message_id?: string | null
+          public_summary?: Json | null
+          recipient_guest_player_id?: string | null
+          recipient_person_id?: string | null
+          recipient_user_id?: string | null
+          related_booking_ids?: string[] | null
+          related_invoice_id?: string | null
+          related_payment_id?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          skip_reason?: string | null
+          status?: string
+          template_key?: string | null
+          tenant_academy_profile_id?: string | null
+          tenant_trainer_id?: string | null
+          updated_at?: string
+          visibility_scope?: string
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          collapse_key?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          destination_normalized?: string | null
+          destination_redacted?: string | null
+          event_type?: string
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          next_attempt_at?: string | null
+          payload?: Json | null
+          provider?: string | null
+          provider_message_id?: string | null
+          public_summary?: Json | null
+          recipient_guest_player_id?: string | null
+          recipient_person_id?: string | null
+          recipient_user_id?: string | null
+          related_booking_ids?: string[] | null
+          related_invoice_id?: string | null
+          related_payment_id?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          skip_reason?: string | null
+          status?: string
+          template_key?: string | null
+          tenant_academy_profile_id?: string | null
+          tenant_trainer_id?: string | null
+          updated_at?: string
+          visibility_scope?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_outbox_event_type_fkey"
+            columns: ["event_type"]
+            isOneToOne: false
+            referencedRelation: "notification_event_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           booking_cancelled: string
@@ -4235,6 +4507,47 @@ export type Database = {
           waitlist_update?: string
         }
         Relationships: []
+      }
+      notification_preferences_v2: {
+        Row: {
+          created_at: string
+          email_frequency: string
+          event_type: string
+          id: string
+          push_frequency: string
+          updated_at: string
+          user_id: string
+          whatsapp_frequency: string
+        }
+        Insert: {
+          created_at?: string
+          email_frequency?: string
+          event_type: string
+          id?: string
+          push_frequency?: string
+          updated_at?: string
+          user_id: string
+          whatsapp_frequency?: string
+        }
+        Update: {
+          created_at?: string
+          email_frequency?: string
+          event_type?: string
+          id?: string
+          push_frequency?: string
+          updated_at?: string
+          user_id?: string
+          whatsapp_frequency?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_v2_event_type_fkey"
+            columns: ["event_type"]
+            isOneToOne: false
+            referencedRelation: "notification_event_types"
+            referencedColumns: ["key"]
+          },
+        ]
       }
       notification_queue: {
         Row: {
@@ -9157,6 +9470,16 @@ export type Database = {
       is_email_suppressed: { Args: { p_email: string }; Returns: boolean }
       is_guest_split_frozen: {
         Args: { _guest_player_id: string }
+        Returns: boolean
+      }
+      is_notification_consent_in_scope: {
+        Args: {
+          _consent_academy: string
+          _consent_scope: string
+          _consent_trainer: string
+          _ctx_academy: string
+          _ctx_trainer: string
+        }
         Returns: boolean
       }
       is_player: { Args: { _user_id: string }; Returns: boolean }
