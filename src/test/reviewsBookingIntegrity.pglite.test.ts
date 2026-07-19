@@ -16,6 +16,8 @@ const U_PLAYER = 'e0000000-0000-0000-0000-0000000000e1';
 const PL = 'b0000000-0000-0000-0000-0000000000b1';       // player's profile
 const U_ADMIN = 'e0000000-0000-0000-0000-0000000000e2';
 const ADM = 'b0000000-0000-0000-0000-0000000000b2';      // admin's profile
+const U_OTHER = 'e0000000-0000-0000-0000-0000000000e3'; // a different, non-admin user
+const OTHER = 'b0000000-0000-0000-0000-0000000000b3';    // their profile
 const TP = 'c0000000-0000-0000-0000-0000000000a1';       // trainer being reviewed
 const TP2 = 'c0000000-0000-0000-0000-0000000000a2';      // a DIFFERENT trainer
 const S1 = 'f0000000-0000-0000-0000-00000000001a';       // slot of TP
@@ -56,11 +58,21 @@ const updateReviewAs = async (uid: string, id: string, setClause: string) => {
     await db.exec(`RESET ROLE; RESET test.uid;`);
   }
 };
+// call the (auth-bound, DEFINER) helper as a given user
+const canReviewAs = async (uid: string, bookingId: string, playerId: string, trainerId: string) => {
+  await db.exec(`SET ROLE authenticated; SET test.uid = '${uid}';`);
+  try {
+    return (await db.query<{ ok: boolean }>(
+      `SELECT public.is_reviewable_booking('${bookingId}','${playerId}','${trainerId}') AS ok`)).rows[0].ok;
+  } finally {
+    await db.exec(`RESET ROLE; RESET test.uid;`);
+  }
+};
 
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
-    CREATE ROLE anon; CREATE ROLE authenticated;
+    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA IF NOT EXISTS auth;
     CREATE TABLE auth.users (id uuid PRIMARY KEY);
     -- auth.uid() reads a per-test GUC
@@ -100,9 +112,9 @@ beforeAll(async () => {
   `);
   await db.exec(MIG('20260914100000_reviews_booking_integrity.sql'));
   await db.exec(`
-    INSERT INTO auth.users (id) VALUES ('${U_PLAYER}'), ('${U_ADMIN}');
+    INSERT INTO auth.users (id) VALUES ('${U_PLAYER}'), ('${U_ADMIN}'), ('${U_OTHER}');
     INSERT INTO public._test_admins (user_id) VALUES ('${U_ADMIN}');
-    INSERT INTO public.profiles (id, user_id) VALUES ('${PL}','${U_PLAYER}'), ('${ADM}','${U_ADMIN}');
+    INSERT INTO public.profiles (id, user_id) VALUES ('${PL}','${U_PLAYER}'), ('${ADM}','${U_ADMIN}'), ('${OTHER}','${U_OTHER}');
     INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${TP}', gen_random_uuid()), ('${TP2}', gen_random_uuid());
     INSERT INTO public.availability_slots (id, trainer_id) VALUES ('${S1}','${TP}');
     INSERT INTO public.bookings (id, slot_id, player_id, status) VALUES
@@ -180,5 +192,26 @@ describe('player UPDATE RLS — same booking-link rule (closes the insert-then-u
   it('REJECTS updating booking_id to a PENDING booking', async () => {
     const id = await seedReview();
     await expect(updateReviewAs(U_PLAYER, id, `booking_id = '${BP}'`)).rejects.toThrow(/row-level security|violates/i);
+  });
+});
+
+describe('is_reviewable_booking is auth-bound + locked down (not an oracle)', () => {
+  it('anon CANNOT execute the helper; authenticated + service_role can', async () => {
+    const priv = async (role: string) => (await db.query<{ ok: boolean }>(
+      `SELECT has_function_privilege($1, p.oid, 'EXECUTE') AS ok
+       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='public' AND p.proname='is_reviewable_booking'`, [role])).rows[0].ok;
+    expect(await priv('anon')).toBe(false);
+    expect(await priv('authenticated')).toBe(true);
+    expect(await priv('service_role')).toBe(true);
+  });
+
+  it('returns TRUE for the caller\'s OWN completed booking', async () => {
+    expect(await canReviewAs(U_PLAYER, B1, PL, TP)).toBe(true);
+  });
+
+  it('returns FALSE when a caller asserts ANOTHER player\'s booking triple (oracle blocked)', async () => {
+    // U_OTHER neither owns PL nor is admin → cannot probe PL's real booking, even though (B1,PL,TP) is real
+    expect(await canReviewAs(U_OTHER, B1, PL, TP)).toBe(false);
   });
 });

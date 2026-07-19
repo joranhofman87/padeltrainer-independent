@@ -31,23 +31,32 @@ CREATE OR REPLACE FUNCTION public.is_reviewable_booking(p_booking_id uuid, p_pla
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT p_booking_id IS NOT NULL AND EXISTS (
-    SELECT 1
-    FROM public.bookings b
-    JOIN public.availability_slots s ON s.id = b.slot_id
-    WHERE b.id = p_booking_id
-      AND b.player_id = p_player_id
-      AND s.trainer_id = p_trainer_id
-      AND b.status IN ('completed', 'confirmed')
-  );
+  SELECT
+    p_booking_id IS NOT NULL
+    -- AUTH-BOUND: this is SECURITY DEFINER (bypasses bookings RLS), so bind it to the
+    -- caller — they may only assert bookings for their OWN player identity (or as admin).
+    -- Otherwise it is an oracle leaking other players' booking existence/status/relations.
+    AND (p_player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid())
+         OR public.is_admin(auth.uid()))
+    AND EXISTS (
+      SELECT 1
+      FROM public.bookings b
+      JOIN public.availability_slots s ON s.id = b.slot_id
+      WHERE b.id = p_booking_id
+        AND b.player_id = p_player_id
+        AND s.trainer_id = p_trainer_id
+        AND b.status IN ('completed', 'confirmed')
+    );
 $$;
 COMMENT ON FUNCTION public.is_reviewable_booking(uuid, uuid, uuid) IS
-  'Reviews integrity: TRUE iff booking_id is a real completed/confirmed booking of that player with that trainer. Shared by the reviews INSERT + UPDATE RLS so a player cannot forge trainer_id/booking_id on EITHER path.';
+  'Reviews integrity: TRUE iff booking_id is a real completed/confirmed booking of that player with that trainer AND the caller owns that player identity (or is admin). Shared by the reviews INSERT + UPDATE RLS; auth-bound + locked down so it is not an oracle over others'' bookings.';
+REVOKE ALL ON FUNCTION public.is_reviewable_booking(uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_reviewable_booking(uuid, uuid, uuid) TO authenticated, service_role;
 
 -- 6. PLAYER INSERT policy — must be a legitimate reviewable booking.
 DROP POLICY IF EXISTS "Players can create reviews for their bookings" ON public.reviews;
 CREATE POLICY "Players can create reviews for their bookings"
-  ON public.reviews FOR INSERT TO public
+  ON public.reviews FOR INSERT TO authenticated
   WITH CHECK (
     player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid())
     AND public.is_reviewable_booking(booking_id, player_id, trainer_id)
@@ -60,7 +69,7 @@ CREATE POLICY "Players can create reviews for their bookings"
 --    trainer_id, so they still pass).
 DROP POLICY IF EXISTS "Players can update their own reviews" ON public.reviews;
 CREATE POLICY "Players can update their own reviews"
-  ON public.reviews FOR UPDATE TO public
+  ON public.reviews FOR UPDATE TO authenticated
   USING (player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid()))
   WITH CHECK (
     player_id IN (SELECT id FROM public.profiles WHERE user_id = auth.uid())
