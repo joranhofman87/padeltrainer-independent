@@ -21,6 +21,16 @@
 --     where it is exercised end-to-end (kept out of here to avoid dead, untested code).
 
 -- ---------------------------------------------------------------------------
+-- Write-time hardening for the cross-tenant destination-provenance rule: the
+-- resolver treats a 'global' contact as usable in ANY tenant, so a contact that
+-- SILENTLY defaults to 'global' (a guest email/phone written without an explicit
+-- scope) would be a cross-tenant leak. Drop the DEFAULT so every writer must state
+-- consent_scope on purpose; the NOT NULL + chk_notification_contacts_consent_scope
+-- coherence CHECK then force a fully-specified scope. (Read-time, the resolver also
+-- rejects 'global' for guest-only recipients — belt and suspenders.)
+ALTER TABLE public.notification_contacts ALTER COLUMN consent_scope DROP DEFAULT;
+
+-- ---------------------------------------------------------------------------
 -- Tenant-safe redaction of a raw destination. Contacts store their own
 -- destination_redacted; this covers the persons.email FALLBACK (no contact row),
 -- so a redacted value is always available for the tenant-visible timelines (PR 7).
@@ -222,10 +232,15 @@ BEGIN
       -- transactional: no opt-IN required, but the DESTINATION must still respect tenant
       -- scope. persons is GLOBAL (unifies guests across academies), so an email collected
       -- under Academy A must not carry Academy B's mail. The contact must be IN-SCOPE
-      -- (global contacts match anywhere; tenant contacts only in their own tenant) — like
-      -- whatsapp, minus the opt-in requirement.
+      -- (tenant contacts only in their own tenant) — like whatsapp, minus the opt-in.
+      -- A 'global' contact = the person's OWN account-level address, which requires an
+      -- account: honored only for ACCOUNT HOLDERS (v_user_id). A guest-only person can
+      -- never legitimately own a global contact (its address is always tenant-collected),
+      -- so global-scoped guest rows are rejected — else a contact written/defaulted to
+      -- 'global' would reopen the cross-tenant leak through 'global' instead of 'tenant'.
       SELECT * INTO v_contact FROM public.notification_contacts
       WHERE channel = 'email' AND revoked_at IS NULL AND consent_status <> 'opted_out'
+        AND (consent_scope <> 'global' OR v_user_id IS NOT NULL)
         AND public.is_notification_consent_in_scope(
               consent_scope, consent_academy_profile_id, consent_trainer_id,
               p_tenant_academy_profile_id, p_tenant_trainer_id)
@@ -261,8 +276,11 @@ BEGIN
       -- opt-in per event via prefs_v2; if it's 'off' we already CONTINUEd). (2) channel/
       -- legal — an explicit, opted-in, IN-TENANT-SCOPE contact. No raw fallback: a
       -- person-keyed opt-in is only usable inside its own tenant provenance.
+      -- Same global-only-for-account-holders guard as email (a guest's global contact
+      -- must never be usable cross-tenant).
       SELECT * INTO v_contact FROM public.notification_contacts
       WHERE channel = v_channel AND revoked_at IS NULL AND consent_status = 'opted_in'
+        AND (consent_scope <> 'global' OR v_user_id IS NOT NULL)
         AND public.is_notification_consent_in_scope(
               consent_scope, consent_academy_profile_id, consent_trainer_id,
               p_tenant_academy_profile_id, p_tenant_trainer_id)

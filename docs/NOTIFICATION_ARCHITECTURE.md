@@ -311,13 +311,17 @@ Prerequisites:
      for now** — a guest (no login) can't reach a non-`off` cadence; a guest
      opt-in path is a **PR 9** design item. Guest *email* is unaffected.
    - **Email = tenant-scoped transactional** — no opt-in needed, but the
-     destination still respects tenant scope: an **in-scope** email contact
-     (global contacts anywhere, tenant contacts only in their tenant), else — **for
-     account holders only** — the `persons.email` account (login) email. A
-     guest-only person has no global email (it's always tenant-collected), so it
-     must come from an in-scope contact — **Academy B can't reuse an address
-     Academy A collected**. **Hard suppression** (`is_email_suppressed`) blocks
-     even required sends (re-sending a hard bounce just re-bounces).
+     destination still respects tenant scope: an **in-scope** email contact — a
+     `tenant` contact only in its own tenant, and a `global` contact **only for
+     account holders** (`v_user_id`) — else, for account holders only, the
+     `persons.email` account (login) email. A guest-only person can own **neither**
+     a global contact **nor** the account-email fallback: its address is always
+     tenant-collected, so it must come from a `tenant`-scoped, in-scope contact —
+     **Academy B can't reuse an address Academy A collected**, whether that address
+     was scoped `tenant` OR (mis-)written `global`. The schema's
+     `consent_scope DEFAULT 'global'` is dropped so writers must state scope on
+     purpose. **Hard suppression** (`is_email_suppressed`) blocks even required
+     sends (re-sending a hard bounce just re-bounces).
    - **Skipped rows** — a REQUIRED event with no deliverable channel writes a
      visible `status='skipped'` row (`skip_reason` = `preference_off` /
      `no_email_contact` / `email_suppressed`) instead of vanishing. The ops Slack

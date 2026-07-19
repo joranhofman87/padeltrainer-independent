@@ -150,6 +150,26 @@ describe('email respects tenant scope (P1 fix — no cross-tenant guest data)', 
     const forB = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_person_id: `'${P1}'`, p_idempotency_subject: `'b2'`, p_tenant_academy_profile_id: `'${B}'` });
     expect(forB.rows[0].destination_normalized).toBe('p1@example.com');          // A contact NOT leaked to B → global account email
   });
+
+  // the 'global' loophole: a global-scoped contact matches any tenant, and the schema
+  // used to DEFAULT scope to 'global' — so a guest global contact must be rejected too.
+  it('a GUEST-only person with a GLOBAL email contact is DENIED (global is account-holders-only) → skipped', async () => {
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1,'email','guest-global@example.com','g***@example.com','opted_in','global')`, [PG]);
+    const { rows } = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_guest_player_id: `'${G1}'`, p_idempotency_subject: `'b1'`, p_tenant_academy_profile_id: `'${B}'` });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('skipped');
+    expect(rows[0].skip_reason).toBe('no_email_contact');
+  });
+
+  it('an ACCOUNT HOLDER with a GLOBAL email contact DOES use it (global is legitimate for account holders)', async () => {
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1,$2,'email','p1-global@example.com','p***@example.com','opted_in','global')`, [P1, U1]);
+    const { rows } = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_person_id: `'${P1}'`, p_idempotency_subject: `'b1'` });
+    expect(rows[0].destination_normalized).toBe('p1-global@example.com');
+  });
 });
 
 describe('idempotency subject is mandatory (derive-or-raise, P1 fix)', () => {
