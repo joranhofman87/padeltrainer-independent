@@ -18,6 +18,23 @@ DECLARE
   v_user_id uuid;
   v_html    text;
 BEGIN
+  -- SECURITY: only notify for a review tied to a REAL booking of THIS player with THIS
+  -- trainer. The reviews INSERT RLS only checks player_id, and booking_id has no FK, so
+  -- without this a caller could insert reviews with a forged trainer_id + random booking_id
+  -- and make the platform email spam to arbitrary trainers. Verify the player↔trainer link
+  -- through the booking's slot; if it doesn't hold, keep the review row but send nothing.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+    WHERE b.id = NEW.booking_id
+      AND b.player_id = NEW.player_id
+      AND s.trainer_id = NEW.trainer_id
+      AND b.status IN ('completed', 'confirmed')
+  ) THEN
+    RETURN NEW;
+  END IF;
+
   -- recipient = the reviewed trainer (trainer_profiles.user_id is NOT NULL → always a login)
   SELECT user_id INTO v_user_id FROM public.trainer_profiles WHERE id = NEW.trainer_id;
   IF v_user_id IS NULL THEN

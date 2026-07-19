@@ -1,10 +1,11 @@
 // @vitest-environment node
 // Notification Foundation v2 — PR 5 pilot (migration 20260913100000).
 // Pins the first real notification wired onto the spine: an AFTER INSERT trigger on
-// reviews enqueues review_received_trainer to the reviewed trainer. Asserts the trigger
-// produces the correct tenant_visible outbox row (recipient/tenant/payload/idempotency),
-// delivers via the account-holder persons.email fallback (no contact needed), and never
-// blocks the review insert when the trainer has no deliverable email.
+// reviews enqueues review_received_trainer to the reviewed trainer — but ONLY for a
+// review tied to a real booking of that player with that trainer (the reviews RLS only
+// checks player_id and booking_id has no FK, so the trigger must authorize the link or
+// it becomes an email-spam vector). Asserts the happy path, the security guard (forged
+// trainer_id / random booking / non-confirmed status → no send), and insert-safety.
 // Runs the REAL schema + resolver + pilot migrations.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
@@ -14,24 +15,33 @@ import { join } from 'node:path';
 let db: PGlite;
 const MIG = (n: string) => readFileSync(join(process.cwd(), 'supabase', 'migrations', n), 'utf8');
 
-// trainer WITH an email (deliverable via fallback)
-const U_T = 'e0000000-0000-0000-0000-0000000000a1';
+const U_T = 'e0000000-0000-0000-0000-0000000000a1'; // trainer WITH email
 const P_T = 'd0000000-0000-0000-0000-0000000000a1';
-const TP = 'c0000000-0000-0000-0000-0000000000a1';
-// trainer WITHOUT an email (not deliverable, must not break the insert)
-const U_T2 = 'e0000000-0000-0000-0000-0000000000a2';
+const TP  = 'c0000000-0000-0000-0000-0000000000a1';
+const U_T2 = 'e0000000-0000-0000-0000-0000000000a2'; // trainer WITHOUT email
 const P_T2 = 'd0000000-0000-0000-0000-0000000000a2';
 const TP2 = 'c0000000-0000-0000-0000-0000000000a2';
+const PL  = 'b0000000-0000-0000-0000-0000000000b1'; // the reviewing player
+const S1  = 'f0000000-0000-0000-0000-00000000001a'; // slot of TP
+const S2  = 'f0000000-0000-0000-0000-00000000002a'; // slot of TP2
+const B1  = 'a1000000-0000-0000-0000-0000000000b1'; // valid completed booking: PL with TP
+const B2  = 'a1000000-0000-0000-0000-0000000000b2'; // another valid: PL with TP
+const B3  = 'a1000000-0000-0000-0000-0000000000b3'; // valid: PL with TP2
+const BP  = 'a1000000-0000-0000-0000-0000000000bf'; // PENDING booking: PL with TP
 
 const insertReview = (over: Record<string, string> = {}) => {
   const cols: Record<string, string> = {
-    id: `gen_random_uuid()`, booking_id: `gen_random_uuid()`, player_id: `gen_random_uuid()`,
-    trainer_id: `'${TP}'`, rating: '5', comment: `'great session'`, is_anonymous: 'false', reviewer_name: `'Jamie'`,
+    booking_id: `'${B1}'`, player_id: `'${PL}'`, trainer_id: `'${TP}'`,
+    rating: '5', comment: `'great session'`, is_anonymous: 'false', reviewer_name: `'Jamie'`,
     ...over,
   };
   return db.query<{ id: string }>(
     `INSERT INTO public.reviews (${Object.keys(cols).join(', ')}) VALUES (${Object.values(cols).join(', ')}) RETURNING id`);
 };
+const outboxCount = async () =>
+  (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.notification_outbox`)).rows[0].n;
+const reviewCount = async () =>
+  (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.reviews`)).rows[0].n;
 
 beforeAll(async () => {
   db = new PGlite();
@@ -45,6 +55,10 @@ beforeAll(async () => {
     CREATE TABLE public.invoices (id uuid PRIMARY KEY);
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, user_id uuid);
+    CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, trainer_id uuid NOT NULL);
+    CREATE TABLE public.bookings (
+      id uuid PRIMARY KEY, slot_id uuid NOT NULL, player_id uuid NOT NULL,
+      status text NOT NULL DEFAULT 'pending');
     CREATE TABLE public.reviews (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), booking_id uuid NOT NULL UNIQUE,
       player_id uuid NOT NULL, trainer_id uuid NOT NULL,
@@ -67,15 +81,19 @@ beforeAll(async () => {
     INSERT INTO auth.users (id) VALUES ('${U_T}'), ('${U_T2}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P_T}','${U_T}','trainer@example.com'), ('${P_T2}','${U_T2}', NULL);
     INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${TP}','${U_T}'), ('${TP2}','${U_T2}');
+    INSERT INTO public.availability_slots (id, trainer_id) VALUES ('${S1}','${TP}'), ('${S2}','${TP2}');
+    INSERT INTO public.bookings (id, slot_id, player_id, status) VALUES
+      ('${B1}','${S1}','${PL}','completed'), ('${B2}','${S1}','${PL}','completed'),
+      ('${B3}','${S2}','${PL}','completed'), ('${BP}','${S1}','${PL}','pending');
   `);
 });
 
 beforeEach(async () => {
-  await db.exec(`TRUNCATE public.notification_outbox CASCADE; DELETE FROM public.reviews;`);
+  await db.exec(`TRUNCATE public.notification_outbox CASCADE; DELETE FROM public.reviews; DELETE FROM public.email_address_state;`);
 });
 
-describe('review insert → enqueue review_received_trainer', () => {
-  it('creates the correct tenant_visible outbox row for the trainer (delivered via persons.email fallback)', async () => {
+describe('happy path — a legitimate review enqueues to the trainer', () => {
+  it('creates the correct tenant_visible outbox row (delivered via the account-holder persons.email fallback)', async () => {
     const { rows: [{ id: reviewId }] } = await insertReview({ rating: '4' });
     const { rows } = await db.query<{
       event_type: string; channel: string; status: string; recipient_user_id: string; recipient_person_id: string;
@@ -90,41 +108,54 @@ describe('review insert → enqueue review_received_trainer', () => {
     expect(r.channel).toBe('email');
     expect(r.status).toBe('pending');
     expect(r.recipient_user_id).toBe(U_T);
-    expect(r.recipient_person_id).toBe(P_T);            // normalized to the person
+    expect(r.recipient_person_id).toBe(P_T);
     expect(r.tenant_trainer_id).toBe(TP);
     expect(r.visibility_scope).toBe('tenant_visible');
-    expect(r.destination_normalized).toBe('trainer@example.com'); // account-holder fallback, no contact
+    expect(r.destination_normalized).toBe('trainer@example.com');
     expect(r.idempotency_key).toBe(`review_received_trainer:${reviewId}:${P_T}`);
     expect(r.public_summary).toMatchObject({ event_type: 'review_received_trainer', rating: 4 });
     expect(r.payload.subject).toContain('New Review Received');
     expect(r.payload.html).toContain('4-star review');
   });
 
-  it('a re-inserted-equivalent review (same id) would be idempotent — one row per review', async () => {
-    const { rows: [{ id }] } = await insertReview();
-    // a second review is a distinct row (distinct id → distinct idempotency key)
-    await insertReview({ booking_id: 'gen_random_uuid()' });
-    const n = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.notification_outbox`)).rows[0].n;
-    expect(n).toBe(2);
-    expect(id).toBeTruthy();
+  it('distinct booking → distinct review → distinct outbox row', async () => {
+    await insertReview({ booking_id: `'${B1}'` });
+    await insertReview({ booking_id: `'${B2}'` });
+    expect(await outboxCount()).toBe(2);
+  });
+});
+
+describe('SECURITY — the trigger authorizes the player↔trainer booking link', () => {
+  it('owned player_id + FORGED trainer_id (real booking is with a different trainer) → review inserts but NO email', async () => {
+    // booking B1 is PL-with-TP, but the review claims TP2 → no verifiable session → no enqueue
+    const { rows } = await insertReview({ booking_id: `'${B1}'`, trainer_id: `'${TP2}'` });
+    expect(rows).toHaveLength(1);            // the review row still inserts (pre-existing RLS)
+    expect(await outboxCount()).toBe(0);     // but the platform sends nothing
   });
 
-  it('a trainer with NO deliverable email does NOT block the review insert and produces no outbox row', async () => {
-    const { rows } = await insertReview({ trainer_id: `'${TP2}'`, booking_id: 'gen_random_uuid()' });
-    expect(rows).toHaveLength(1);                        // the review WAS inserted
-    const n = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.notification_outbox`)).rows[0].n;
-    expect(n).toBe(0);                                   // not required_delivery → no skipped row, just no send
-    const reviewCount = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.reviews`)).rows[0].n;
-    expect(reviewCount).toBe(1);
-  });
-
-  it('a suppressed trainer email produces no deliverable row (still does not break the insert)', async () => {
-    await db.query(`INSERT INTO public.email_address_state (email, state) VALUES ('trainer@example.com','hard_bounced')`);
-    const { rows } = await insertReview({ booking_id: 'gen_random_uuid()' });
+  it('RANDOM booking_id (no such booking) → review inserts but NO email', async () => {
+    const { rows } = await insertReview({ booking_id: `'a1000000-0000-0000-0000-00000000dead'` });
     expect(rows).toHaveLength(1);
-    // not required_delivery → suppressed email yields no outbox row at all
-    const n = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.notification_outbox`)).rows[0].n;
-    expect(n).toBe(0);
-    await db.query(`DELETE FROM public.email_address_state`); // reset for other tests
+    expect(await outboxCount()).toBe(0);
+  });
+
+  it("booking that isn't completed/confirmed (pending) → NO email", async () => {
+    await insertReview({ booking_id: `'${BP}'` });
+    expect(await outboxCount()).toBe(0);
+  });
+});
+
+describe('deliverability edge cases (verified booking, but no reachable email)', () => {
+  it('a trainer with NO email — verified booking still does not block the insert, and no row is produced', async () => {
+    const { rows } = await insertReview({ booking_id: `'${B3}'`, trainer_id: `'${TP2}'` });
+    expect(rows).toHaveLength(1);
+    expect(await outboxCount()).toBe(0);
+    expect(await reviewCount()).toBe(1);
+  });
+
+  it('a suppressed trainer email → no deliverable row (not required_delivery)', async () => {
+    await db.query(`INSERT INTO public.email_address_state (email, state) VALUES ('trainer@example.com','hard_bounced')`);
+    await insertReview({ booking_id: `'${B1}'` });
+    expect(await outboxCount()).toBe(0);
   });
 });
