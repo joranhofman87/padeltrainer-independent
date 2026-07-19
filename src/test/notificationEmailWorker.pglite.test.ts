@@ -121,10 +121,17 @@ describe('claim_notification_outbox_batch', () => {
 });
 
 describe('record_notification_send_result', () => {
-  const record = (id: string, status: string, over: Record<string, unknown> = {}) =>
+  // record only finalizes a row it still owns (status=processing + locked_by=worker).
+  const record = (id: string, status: string, over: { worker?: string; msg?: string; err?: string; terminal?: boolean } = {}) =>
     db.query<{ record_notification_send_result: string }>(
-      `SELECT public.record_notification_send_result($1,$2,$3,$4,'resend',60,$5) AS record_notification_send_result`,
-      [id, status, over.msg ?? null, over.err ?? null, over.terminal ?? false]);
+      `SELECT public.record_notification_send_result(
+         p_outbox_id => $1, p_worker => $2, p_status => $3,
+         p_provider_message_id => $4, p_error => $5, p_terminal => $6
+       ) AS record_notification_send_result`,
+      [id, over.worker ?? 'worker-test', status, over.msg ?? null, over.err ?? null, over.terminal ?? false]);
+  // a row already claimed by 'worker-test' (simulates post-claim state without going through claim)
+  const insertOwned = (over: Record<string, string> = {}) =>
+    insertOutbox({ status: `'processing'`, locked_by: `'worker-test'`, locked_at: `now()`, ...over });
 
   it('sent → status sent, timestamps + provider id set, and a linked sent delivery event', async () => {
     const id = await insertOutbox();
@@ -166,15 +173,15 @@ describe('record_notification_send_result', () => {
   });
 
   it('failed at max_attempts → terminal by exhaustion', async () => {
-    const id = await insertOutbox({ attempts: '5', max_attempts: '5' }); // already at the cap
+    const id = await insertOwned({ attempts: '5', max_attempts: '5' }); // owned + already at the cap
     const res = await record(id, 'failed', { err: 'boom' });
     expect(res.rows[0].record_notification_send_result).toBe('failed');
     expect((await row(id)).status).toBe('failed');
   });
 
   it('backoff grows with the attempt count', async () => {
-    const early = await insertOutbox({ attempts: '1' });
-    const late = await insertOutbox({ attempts: '4' });
+    const early = await insertOwned({ attempts: '1' });
+    const late = await insertOwned({ attempts: '4' });
     await record(early, 'failed', { err: 'x' });
     await record(late, 'failed', { err: 'x' });
     const cmp = await db.query<{ later: boolean }>(
@@ -182,31 +189,89 @@ describe('record_notification_send_result', () => {
             > (SELECT next_attempt_at FROM public.notification_outbox WHERE id=$1) AS later`, [early, late]);
     expect(cmp.rows[0].later).toBe(true);
   });
+
+  it('OWNERSHIP: a worker that does not hold the lock cannot overwrite the outcome (returns stale)', async () => {
+    const id = await insertOutbox();
+    await claim(); // locked_by → 'worker-test'
+    const res = await record(id, 'sent', { worker: 'a-different-run', msg: 'x' });
+    expect(res.rows[0].record_notification_send_result).toBe('stale');
+    const r = await row(id);
+    expect(r.status).toBe('processing');   // untouched
+    expect(r.sent_at).toBeNull();
+  });
 });
 
-describe('claim_skipped_required_alerts', () => {
-  const claimAlerts = () =>
-    db.query<{ outbox_id: string; event_type: string; skip_reason: string }>(
-      `SELECT * FROM public.claim_skipped_required_alerts(20)`);
+describe('stale-processing recovery', () => {
+  const stale = (over: Record<string, string> = {}) =>
+    insertOutbox({ status: `'processing'`, locked_by: `'dead-worker'`, locked_at: `now() - interval '30 minutes'`, attempts: '1', ...over });
 
-  it('claims a skipped REQUIRED row once, sets ops_alerted_at, and returns safe refs', async () => {
+  it('reclaims a stale-processing row orphaned by a crashed worker (new lock, attempts bumped)', async () => {
+    const id = await stale();
+    const { rows } = await claim();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].outbox_id).toBe(id);
+    const r = await row(id);
+    expect(r.status).toBe('processing');
+    expect(r.attempts).toBe(2);            // reclaim counts as another attempt
+  });
+
+  it('does NOT reclaim a FRESH processing row (recently locked, not yet stale)', async () => {
+    await insertOutbox({ status: `'processing'`, locked_by: `'live-worker'`, locked_at: `now()`, attempts: '1' });
+    expect((await claim()).rows).toHaveLength(0);
+  });
+
+  it('REAPS a stale-processing row already at max_attempts → failed, not reclaimed forever', async () => {
+    const id = await stale({ attempts: '5', max_attempts: '5' });
+    const { rows } = await claim();
+    expect(rows).toHaveLength(0);          // reaped, not returned
+    const r = await row(id);
+    expect(r.status).toBe('failed');
+    expect(r.last_error).toBe('stuck_in_processing');
+  });
+});
+
+describe('claim_skipped_required_alerts + mark_skipped_alerts_sent (reliable at-least-once)', () => {
+  const lease = (over: { retry?: number; max?: number } = {}) =>
+    db.query<{ outbox_id: string; event_type: string; skip_reason: string }>(
+      `SELECT * FROM public.claim_skipped_required_alerts(20, $1, $2)`, [over.retry ?? 5, over.max ?? 5]);
+  const markSent = (ids: string[]) =>
+    db.query(`SELECT public.mark_skipped_alerts_sent(ARRAY[${ids.map((i) => `'${i}'`).join(',')}]::uuid[])`);
+  const rewindAttempt = (id: string) =>
+    db.query(`UPDATE public.notification_outbox SET ops_alert_last_attempt_at = now() - interval '10 minutes' WHERE id=$1`, [id]);
+
+  it('LEASES a skipped REQUIRED row (returns it, bumps attempts) WITHOUT yet marking it alerted', async () => {
     const id = await insertOutbox({ event_type: `'password_reset'`, status: `'skipped'`, skip_reason: `'email_suppressed'` });
-    const first = await claimAlerts();
+    const first = await lease();
     expect(first.rows).toHaveLength(1);
     expect(first.rows[0]).toMatchObject({ outbox_id: id, event_type: 'password_reset', skip_reason: 'email_suppressed' });
+    expect((await row(id)).ops_alerted_at).toBeNull();   // leased, not yet alerted (Slack unconfirmed)
+  });
+
+  it('does not re-lease within the retry window, DOES after it elapses, and stops once marked sent', async () => {
+    const id = await insertOutbox({ event_type: `'password_reset'`, status: `'skipped'`, skip_reason: `'x'` });
+    await lease();                                         // attempt 1
+    expect((await lease()).rows).toHaveLength(0);          // within the retry window → not re-leased
+    await rewindAttempt(id);
+    expect((await lease()).rows).toHaveLength(1);          // window elapsed → re-leased (at-least-once)
+    await markSent([id]);                                  // Slack confirmed → mark alerted
     expect((await row(id)).ops_alerted_at).not.toBeNull();
-    // exactly-once: a second sweep does not re-claim it
-    expect((await claimAlerts()).rows).toHaveLength(0);
+    await rewindAttempt(id);
+    expect((await lease()).rows).toHaveLength(0);          // never leased again once alerted
   });
 
-  it('does NOT claim skipped rows for NON-required events', async () => {
+  it('stops leasing after the max-attempts give-up cap', async () => {
+    await insertOutbox({ event_type: `'password_reset'`, status: `'skipped'`, skip_reason: `'x'`, ops_alert_attempts: '5' });
+    expect((await lease({ max: 5 })).rows).toHaveLength(0);
+  });
+
+  it('does NOT lease skipped rows for NON-required events', async () => {
     await insertOutbox({ event_type: `'booking_cancelled_player'`, status: `'skipped'`, skip_reason: `'preference_off'` });
-    expect((await claimAlerts()).rows).toHaveLength(0);
+    expect((await lease()).rows).toHaveLength(0);
   });
 
-  it('does NOT claim non-skipped rows', async () => {
+  it('does NOT lease non-skipped rows', async () => {
     await insertOutbox({ event_type: `'password_reset'`, status: `'sent'` });
-    expect((await claimAlerts()).rows).toHaveLength(0);
+    expect((await lease()).rows).toHaveLength(0);
   });
 });
 
@@ -216,7 +281,7 @@ describe('lockdown — worker RPCs are service-role-only', () => {
       `SELECT bool_and(has_function_privilege($1, p.oid, 'EXECUTE')) AS ok
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname='public' AND p.proname IN
-         ('claim_notification_outbox_batch','record_notification_send_result','claim_skipped_required_alerts')`, [role])).rows[0].ok;
+         ('claim_notification_outbox_batch','record_notification_send_result','claim_skipped_required_alerts','mark_skipped_alerts_sent')`, [role])).rows[0].ok;
     expect(await priv('anon')).toBe(false);
     expect(await priv('authenticated')).toBe(false);
     expect(await priv('service_role')).toBe(true);

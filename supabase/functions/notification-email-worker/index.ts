@@ -1,18 +1,18 @@
 // Notification Foundation v2 — PR 4: the email worker (cron-driven outbox drainer).
 // See docs/NOTIFICATION_ARCHITECTURE.md §2 (worker). Thin send loop; all the
-// atomicity/backoff policy lives in the SECURITY DEFINER RPCs from migration
+// atomicity/backoff/ownership policy lives in the SECURITY DEFINER RPCs from migration
 // 20260912100000 (claim_notification_outbox_batch / record_notification_send_result
-// / claim_skipped_required_alerts).
+// / claim_skipped_required_alerts / mark_skipped_alerts_sent).
 //
-// Flow: service-role guard → single-flight cron lock → claim a batch of due email
-// rows → per row: validate payload, re-check suppression, send via Resend, record
-// the outcome (sent / retry-with-backoff / terminal) → raise the exactly-once ops
-// Slack alert on skipped-required rows (the PR-3 hand-off) and on send failures.
+// Flow: service-role guard → single-flight cron lock → claim a batch of due (or stale-
+// orphaned) email rows under a PER-RUN lock token → per row: validate payload, re-check
+// suppression (FAIL CLOSED), send via Resend (provider-idempotent), record the outcome
+// under our token → lease + confirm the ops Slack alert on skipped-required rows.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
-import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { notifySlackEdgeError, notifySlackEdgeResult } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,9 +46,26 @@ const handler = async (req: Request): Promise<Response> => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // unique per invocation: it is the lock token, so only THIS run may finalize the rows
+  // it claims. A stale-takeover by a later run gets a different token → our late writes no-op.
+  const workerToken = `${JOB}:${crypto.randomUUID()}`;
+
+  const recordResult = (
+    outboxId: string,
+    status: "sent" | "failed",
+    opts: { messageId?: string | null; error?: string; terminal?: boolean } = {},
+  ) =>
+    supabase.rpc("record_notification_send_result", {
+      p_outbox_id: outboxId,
+      p_worker: workerToken,
+      p_status: status,
+      p_provider_message_id: opts.messageId ?? null,
+      p_error: opts.error ?? null,
+      p_terminal: opts.terminal ?? false,
+    });
+
   let cronLockHeld = false;
   try {
-    // only pg_cron / service-role callers (constant-time key comparison)
     const guard = requireServiceRole(req);
     if (guard) return guard;
 
@@ -61,10 +78,10 @@ const handler = async (req: Request): Promise<Response> => {
     if (cronLocked === false) return json({ processed: 0, skipped: "locked" });
     cronLockHeld = cronLocked === true;
 
-    // 1. atomically claim a batch of due email rows (marks them processing, bumps attempts)
+    // 1. atomically claim due (or stale-orphaned) email rows under our lock token
     const { data: claimed, error: claimErr } = await supabase.rpc("claim_notification_outbox_batch", {
       p_channel: "email",
-      p_worker: JOB,
+      p_worker: workerToken,
       p_limit: BATCH_LIMIT,
     });
     if (claimErr) throw new Error(`claim failed: ${claimErr.message}`);
@@ -82,76 +99,75 @@ const handler = async (req: Request): Promise<Response> => {
 
       // a row that can never render is terminal — never burn retries on it
       if (!dest || !subject || !html) {
-        await supabase.rpc("record_notification_send_result", {
-          p_outbox_id: row.outbox_id,
-          p_status: "failed",
-          p_error: !dest ? "missing_destination" : "missing_subject_or_html",
-          p_terminal: true,
+        await recordResult(row.outbox_id, "failed", {
+          error: !dest ? "missing_destination" : "missing_subject_or_html",
+          terminal: true,
         });
         failed++;
         continue;
       }
 
-      // suppression may have flipped since enqueue (a bounce/complaint webhook fired) →
-      // don't send to a known-bad address; terminal (retrying just re-bounces).
+      // suppression may have flipped since enqueue (a bounce/complaint webhook fired).
+      // FAIL CLOSED: if the check errors we do NOT send — record a retryable failure and
+      // try again next tick, rather than risk emailing a hard-bounced/complained address.
+      let blocked: boolean | null = null;
+      let supErr: unknown = null;
       try {
-        const { data: blocked } = await supabase.rpc("is_email_suppressed", { p_email: dest });
-        if (blocked === true) {
-          await supabase.rpc("record_notification_send_result", {
-            p_outbox_id: row.outbox_id,
-            p_status: "failed",
-            p_error: "email_suppressed",
-            p_terminal: true,
-          });
-          suppressed++;
-          continue;
-        }
-      } catch {
-        // suppression check is best-effort — fall through and attempt the send
+        const res = await supabase.rpc("is_email_suppressed", { p_email: dest });
+        blocked = res.data as boolean | null;
+        supErr = res.error;
+      } catch (e) {
+        supErr = e;
+      }
+      if (supErr) {
+        await recordResult(row.outbox_id, "failed", { error: "suppression_check_failed", terminal: false });
+        failed++;
+        continue;
+      }
+      if (blocked === true) {
+        await recordResult(row.outbox_id, "failed", { error: "email_suppressed", terminal: true });
+        suppressed++;
+        continue;
       }
 
-      const outcome = await sendResendEmail(resendApiKey, {
-        from: payload.from ?? DEFAULT_FROM,
-        to: [dest],
-        subject,
-        html,
-      });
+      // provider-idempotent: keyed on the stable outbox id → a retry after Resend already
+      // accepted the send (our timeout, a stale takeover) is a no-op in Resend's 24h window.
+      const outcome = await sendResendEmail(
+        resendApiKey,
+        { from: payload.from ?? DEFAULT_FROM, to: [dest], subject, html },
+        { idempotencyKey: `notification-outbox-${row.outbox_id}` },
+      );
 
       if (outcome.ok) {
-        await supabase.rpc("record_notification_send_result", {
-          p_outbox_id: row.outbox_id,
-          p_status: "sent",
-          p_provider_message_id: outcome.id ?? null,
-        });
+        await recordResult(row.outbox_id, "sent", { messageId: outcome.id ?? null });
         sent++;
       } else {
         // non-retryable Resend errors (4xx) are terminal; retryable ones (429/5xx/network) back off
-        await supabase.rpc("record_notification_send_result", {
-          p_outbox_id: row.outbox_id,
-          p_status: "failed",
-          p_error: outcome.error.slice(0, 500),
-          p_terminal: !outcome.retryable,
+        await recordResult(row.outbox_id, "failed", {
+          error: outcome.error.slice(0, 500),
+          terminal: !outcome.retryable,
         });
         failed++;
       }
     }
 
-    // 2. PR-3 hand-off: raise the exactly-once ops Slack alert on skipped-required rows
-    // (the resolver wrote the durable skipped row; SQL can't do outbound HTTP).
+    // 2. PR-3 hand-off: the ops Slack alert on skipped-required rows. LEASE → send →
+    // confirm: only mark alerted after Slack succeeds, so a Slack failure re-tries later.
     let alerted = 0;
-    const { data: skippedRows } = await supabase.rpc("claim_skipped_required_alerts", { p_limit: ALERT_LIMIT });
-    const alerts = (skippedRows ?? []) as Array<{ outbox_id: string; event_type: string; skip_reason: string | null }>;
+    const { data: leased } = await supabase.rpc("claim_skipped_required_alerts", { p_limit: ALERT_LIMIT });
+    const alerts = (leased ?? []) as Array<{ outbox_id: string; event_type: string; skip_reason: string | null }>;
     if (alerts.length > 0) {
-      alerted = alerts.length;
-      await notifySlackEdgeError(
-        JOB,
-        `${alerts.length} required notification(s) had no deliverable channel`,
-        {
-          count: alerts.length,
-          // SAFE refs only — never a destination/PII in an ops alert
-          samples: alerts.slice(0, 10).map((a) => ({ event: a.event_type, reason: a.skip_reason, outbox_id: a.outbox_id })),
-        },
-      );
+      const ok = await notifySlackEdgeResult("edge_function_error", {
+        function: JOB,
+        error: `${alerts.length} required notification(s) had no deliverable channel`,
+        count: alerts.length,
+        // SAFE refs only — never a destination/PII in an ops alert
+        samples: alerts.slice(0, 10).map((a) => ({ event: a.event_type, reason: a.skip_reason, outbox_id: a.outbox_id })),
+      });
+      if (ok) {
+        await supabase.rpc("mark_skipped_alerts_sent", { p_ids: alerts.map((a) => a.outbox_id) });
+        alerted = alerts.length;
+      }
     }
 
     // per-row failures return HTTP 200 (only non-2xx trips the cron wrapper), so alert here

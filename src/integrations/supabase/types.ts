@@ -4410,6 +4410,8 @@ export type Database = {
           locked_by: string | null
           max_attempts: number
           next_attempt_at: string | null
+          ops_alert_attempts: number
+          ops_alert_last_attempt_at: string | null
           ops_alerted_at: string | null
           payload: Json | null
           provider: string | null
@@ -4449,6 +4451,8 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          ops_alert_attempts?: number
+          ops_alert_last_attempt_at?: string | null
           ops_alerted_at?: string | null
           payload?: Json | null
           provider?: string | null
@@ -4488,6 +4492,8 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          ops_alert_attempts?: number
+          ops_alert_last_attempt_at?: string | null
           ops_alerted_at?: string | null
           payload?: Json | null
           provider?: string | null
@@ -8832,7 +8838,7 @@ export type Database = {
         Returns: string
       }
       claim_notification_outbox_batch: {
-        Args: { p_channel: string; p_limit?: number; p_worker: string }
+        Args: { p_channel: string; p_limit?: number; p_stale_after_minutes?: number; p_worker: string }
         Returns: {
           attempts: number
           destination_normalized: string
@@ -8852,7 +8858,7 @@ export type Database = {
         Returns: boolean
       }
       claim_skipped_required_alerts: {
-        Args: { p_limit?: number }
+        Args: { p_limit?: number; p_max_attempts?: number; p_retry_after_minutes?: number }
         Returns: {
           created_at: string
           event_type: string
@@ -9694,6 +9700,10 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
+      mark_skipped_alerts_sent: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
       merge_guest_players: {
         Args: {
           p_fields?: Json
@@ -9796,6 +9806,7 @@ export type Database = {
           p_provider_message_id?: string
           p_status: string
           p_terminal?: boolean
+          p_worker: string
         }
         Returns: string
       }
