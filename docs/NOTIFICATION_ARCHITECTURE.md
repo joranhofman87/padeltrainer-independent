@@ -123,7 +123,10 @@ notification_outbox  (one row per recipient × channel; deterministic
 - Feature/payment code enqueues intent only — **no direct sends** from client
   or feature code.
 - Required/payment/security notifications are **never silently dropped**: if no
-  channel is deliverable, write a `skipped` row + Slack-alert.
+  channel is deliverable, write a `skipped` row + Slack-alert. **Split of duties:**
+  the *resolver* (PR 3) writes the durable `skipped` row; the *worker* (PR 4)
+  raises the Slack alert on skipped-required rows (a `SECURITY DEFINER` SQL
+  function can't and shouldn't make an outbound HTTP call).
 - **Tenant isolation**: academies/trainers see only their own scope; security/
   account/marketing notifications are `private_user_only`/`admin_only`, never
   tenant-visible.
@@ -247,19 +250,19 @@ account_email_changed · marketing_updates
 ## 5. WhatsApp provider + prerequisites (owner-provisioned, in parallel)
 
 WhatsApp is greenfield in THIS codebase (email is Resend; there is no messaging
-provider wired up here). But the owner reports an existing **Twilio / SendGrid
-account family with a WhatsApp number** — SendGrid is Twilio-owned, and Twilio
-WhatsApp senders live under **Twilio Messaging** (registered WhatsApp senders),
-so the likely path is **Twilio WhatsApp**, not SendGrid-email and not a separate
-Meta Cloud API / 360dialog integration.
+provider wired up here). **Provider = Twilio WhatsApp (confirmed by owner,
+2026-07-19).** The PR-9 worker targets Twilio Messaging — the `Messages` API with
+a registered WhatsApp sender + Content Templates (Meta-reviewed), authed by the
+Twilio Account SID + Auth Token. Not SendGrid-email, not Meta Cloud API directly,
+not 360dialog. New edge-function secrets: `TWILIO_ACCOUNT_SID`,
+`TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (the registered sender).
 
-> **OWNER TO CONFIRM before PR 9** (the worker's credential model depends on it):
-> the exact account (Twilio Account SID vs a SendGrid-branded console), the
-> registered WhatsApp sender number, and the credential/API shape (Twilio
-> `Messages` API + Content Templates, or Meta Cloud API). This doc will be
-> updated to the confirmed provider before the WhatsApp worker is built.
+> **Remaining owner setup before PR 9 ships** (does NOT block PRs 3–8): the
+> registered WhatsApp sender number provisioned on Twilio + business verification,
+> and the approved Content Templates. We build the consent model + worker against
+> the Twilio contract in the meantime.
 
-Prerequisites, once the provider is confirmed:
+Prerequisites:
 - **Registered WhatsApp sender** on the Twilio number + business verification.
 - **Approved message templates** — every business-initiated message needs an
   approved template (Twilio Content Templates → Meta review, ~1–3 days each).
@@ -285,8 +288,48 @@ Prerequisites, once the provider is confirmed:
    `tenant_trainer_id`, subject refs, `public_summary`, per-recipient
    `idempotency_key` (§3.7), the RLS, and **cross-tenant (+ cross-tenant
    consent) denial tests**. RLS + indexes + pglite tests.
-3. Policy resolver + `enqueue_notification` helper (absorbs `send-email`'s
-   mapping) + tests.
+3. Policy resolver + `enqueue_notification` helper + tests. **← shipped (PR 3).**
+   As-built contract (`20260911100000_notification_resolver.sql`,
+   `SECURITY DEFINER`, service-role-only, `RETURNS TABLE` of the rows it created):
+   - **Recipient normalization** — any of `person_id`/`user_id`/`guest_player_id`
+     resolves to the one person (via `persons.user_id` / `person_links`); the
+     idempotency key is `<event>:<subject>:<person>` so the same recipient reached
+     by different keys never double-sends.
+   - **Mandatory idempotency subject** — a blank subject would make every future
+     send for that event+recipient collide into a silent no-op (fatal on the money
+     path), so it is **derived** from the related invoice / payment / sorted-booking
+     refs when omitted, and if there is nothing to derive from the resolver
+     **RAISEs** rather than mint a collision-prone `<event>::<person>` key.
+   - **Preference resolution** — `prefs_v2` override else the event-type default,
+     per channel. A required-delivery event **forces the email channel to
+     `instant`** (can't be turned off or digested).
+   - **Two independent WhatsApp/push gates** (both must pass): (1) a non-`off`
+     per-event frequency — `default_whatsapp_frequency` seeds to `off`, so
+     WhatsApp is opt-in per event via `prefs_v2`; (2) an **opted-in, in-tenant-
+     scope contact** (`is_notification_consent_in_scope`). No raw phone fallback.
+     Because `prefs_v2` is `user_id`-keyed, **WhatsApp/push are registered-only
+     for now** — a guest (no login) can't reach a non-`off` cadence; a guest
+     opt-in path is a **PR 9** design item. Guest *email* is unaffected.
+   - **Email = tenant-scoped transactional** — no opt-in needed, but the
+     destination still respects tenant scope: an **in-scope** email contact — a
+     `tenant` contact only in its own tenant, and a `global` contact **only for
+     account holders** (`v_user_id`) — else, for account holders only, the
+     `persons.email` account (login) email. A guest-only person can own **neither**
+     a global contact **nor** the account-email fallback: its address is always
+     tenant-collected, so it must come from a `tenant`-scoped, in-scope contact —
+     **Academy B can't reuse an address Academy A collected**, whether that address
+     was scoped `tenant` OR (mis-)written `global`. The schema's
+     `consent_scope DEFAULT 'global'` is dropped so writers must state scope on
+     purpose. **Hard suppression** (`is_email_suppressed`) blocks even required
+     sends (re-sending a hard bounce just re-bounces).
+   - **Skipped rows** — a REQUIRED event with no deliverable channel writes a
+     visible `status='skipped'` row (`skip_reason` = `preference_off` /
+     `no_email_contact` / `email_suppressed`) instead of vanishing. The ops Slack
+     alert on those rows is the worker's job (PR 4), not the resolver's.
+   - **Redaction** — `notification_redact_destination` covers the account-email
+     fallback so a `destination_redacted` always exists for the PR-7 timelines.
+   - Deferred here (documented, not gaps): digest batching / quiet-hours /
+     `max_per_user` → the worker (PR 4+); the legacy `type`→`key` map → PR 5.
 4. Email worker (drains outbox → Resend via the existing primitive) + delivery
    event recording via the reused layer.
 5. **Pilot: migrate ONE low-risk notification** (e.g. `review_received_trainer`)
