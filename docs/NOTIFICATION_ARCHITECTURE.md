@@ -123,7 +123,10 @@ notification_outbox  (one row per recipient × channel; deterministic
 - Feature/payment code enqueues intent only — **no direct sends** from client
   or feature code.
 - Required/payment/security notifications are **never silently dropped**: if no
-  channel is deliverable, write a `skipped` row + Slack-alert.
+  channel is deliverable, write a `skipped` row + Slack-alert. **Split of duties:**
+  the *resolver* (PR 3) writes the durable `skipped` row; the *worker* (PR 4)
+  raises the Slack alert on skipped-required rows (a `SECURITY DEFINER` SQL
+  function can't and shouldn't make an outbound HTTP call).
 - **Tenant isolation**: academies/trainers see only their own scope; security/
   account/marketing notifications are `private_user_only`/`admin_only`, never
   tenant-visible.
@@ -292,6 +295,11 @@ Prerequisites:
      resolves to the one person (via `persons.user_id` / `person_links`); the
      idempotency key is `<event>:<subject>:<person>` so the same recipient reached
      by different keys never double-sends.
+   - **Mandatory idempotency subject** — a blank subject would make every future
+     send for that event+recipient collide into a silent no-op (fatal on the money
+     path), so it is **derived** from the related invoice / payment / sorted-booking
+     refs when omitted, and if there is nothing to derive from the resolver
+     **RAISEs** rather than mint a collision-prone `<event>::<person>` key.
    - **Preference resolution** — `prefs_v2` override else the event-type default,
      per channel. A required-delivery event **forces the email channel to
      `instant`** (can't be turned off or digested).
@@ -299,12 +307,21 @@ Prerequisites:
      per-event frequency — `default_whatsapp_frequency` seeds to `off`, so
      WhatsApp is opt-in per event via `prefs_v2`; (2) an **opted-in, in-tenant-
      scope contact** (`is_notification_consent_in_scope`). No raw phone fallback.
-   - **Email = transactional** — no opt-in needed; uses an email contact else the
-     `persons.email` account fallback; **hard suppression** (`is_email_suppressed`)
-     blocks even required sends (re-sending a hard bounce just re-bounces).
+     Because `prefs_v2` is `user_id`-keyed, **WhatsApp/push are registered-only
+     for now** — a guest (no login) can't reach a non-`off` cadence; a guest
+     opt-in path is a **PR 9** design item. Guest *email* is unaffected.
+   - **Email = tenant-scoped transactional** — no opt-in needed, but the
+     destination still respects tenant scope: an **in-scope** email contact
+     (global contacts anywhere, tenant contacts only in their tenant), else — **for
+     account holders only** — the `persons.email` account (login) email. A
+     guest-only person has no global email (it's always tenant-collected), so it
+     must come from an in-scope contact — **Academy B can't reuse an address
+     Academy A collected**. **Hard suppression** (`is_email_suppressed`) blocks
+     even required sends (re-sending a hard bounce just re-bounces).
    - **Skipped rows** — a REQUIRED event with no deliverable channel writes a
      visible `status='skipped'` row (`skip_reason` = `preference_off` /
-     `no_email_contact` / `email_suppressed`) instead of vanishing.
+     `no_email_contact` / `email_suppressed`) instead of vanishing. The ops Slack
+     alert on those rows is the worker's job (PR 4), not the resolver's.
    - **Redaction** — `notification_redact_destination` covers the account-email
      fallback so a `destination_redacted` always exists for the PR-7 timelines.
    - Deferred here (documented, not gaps): digest batching / quiet-hours /

@@ -53,7 +53,7 @@ CREATE OR REPLACE FUNCTION public.enqueue_notification(
   p_recipient_guest_player_id uuid        DEFAULT NULL,
   p_tenant_academy_profile_id uuid        DEFAULT NULL,
   p_tenant_trainer_id         uuid        DEFAULT NULL,
-  p_idempotency_subject       text        DEFAULT '',
+  p_idempotency_subject       text        DEFAULT NULL,
   p_related_booking_ids       uuid[]      DEFAULT NULL,
   p_related_invoice_id        uuid        DEFAULT NULL,
   p_related_payment_id        text        DEFAULT NULL,
@@ -89,6 +89,7 @@ DECLARE
   v_person_id        uuid;
   v_user_id          uuid;
   v_guest_id         uuid := p_recipient_guest_player_id;
+  v_subject          text;
   v_recipient_key    text;
   v_idem_key         text;
   v_now              timestamptz := now();
@@ -137,8 +138,26 @@ BEGIN
   -- 4. PER-RECIPIENT idempotency key: <event>:<subject>:<recipient>. The channel is
   --    the UNIQUE constraint, NOT part of the string, so email+whatsapp for the same
   --    recipient share the key but live as distinct rows, and a re-enqueue no-ops.
+  --    The SUBJECT scopes the key to ONE event instance. An EMPTY subject is fatal: it
+  --    makes every future send for this event+recipient collide into a silent no-op
+  --    (e.g. the 2nd booking confirmation for a player would vanish). So a blank subject
+  --    is DERIVED from the related refs, and if there is nothing to derive from we RAISE
+  --    rather than mint a collision-prone key.
+  v_subject := nullif(btrim(coalesce(p_idempotency_subject, '')), '');
+  IF v_subject IS NULL THEN
+    v_subject := CASE
+      WHEN p_related_invoice_id IS NOT NULL THEN 'invoice:' || p_related_invoice_id::text
+      WHEN p_related_payment_id IS NOT NULL THEN 'payment:' || p_related_payment_id
+      WHEN p_related_booking_ids IS NOT NULL AND array_length(p_related_booking_ids, 1) > 0
+        THEN 'bookings:' || (SELECT string_agg(b::text, ',' ORDER BY b) FROM unnest(p_related_booking_ids) AS b)
+      ELSE NULL
+    END;
+  END IF;
+  IF v_subject IS NULL THEN
+    RAISE EXCEPTION 'enqueue_notification: % needs an idempotency subject (pass p_idempotency_subject, or a related invoice/payment/booking ref to derive one)', p_event_key;
+  END IF;
   v_recipient_key := coalesce(v_person_id::text, v_guest_id::text, p_recipient_user_id::text);
-  v_idem_key := p_event_key || ':' || coalesce(p_idempotency_subject, '') || ':' || v_recipient_key;
+  v_idem_key := p_event_key || ':' || v_subject || ':' || v_recipient_key;
 
   -- 5. tenant-visibility contract (mirror the outbox CHECK up-front so the error is
   --    a clear caller message, not a constraint violation): tenant-visible events
@@ -168,6 +187,11 @@ BEGIN
       WHEN 'whatsapp' THEN v_evt.default_whatsapp_frequency
       WHEN 'push'     THEN v_evt.default_push_frequency
     END;
+    -- prefs_v2 is user_id-keyed, so only account holders can express a cadence. A
+    -- consequence (accepted for now): because default_whatsapp_frequency seeds to 'off',
+    -- a GUEST (no login) can never reach a non-off whatsapp/push cadence → whatsapp/push
+    -- are REGISTERED-ONLY until PR 9 adds a person/contact-scoped guest opt-in path.
+    -- Guest EMAIL is unaffected (its default is 'instant' and needs no pref row).
     v_freq := NULL;
     IF v_user_id IS NOT NULL THEN
       SELECT CASE v_channel
@@ -195,9 +219,16 @@ BEGIN
     v_deliverable := false; v_dest := NULL; v_dest_redacted := NULL; v_contact_id := NULL;
 
     IF v_channel = 'email' THEN
-      -- transactional: any non-revoked, non-opted-out email contact for the recipient
+      -- transactional: no opt-IN required, but the DESTINATION must still respect tenant
+      -- scope. persons is GLOBAL (unifies guests across academies), so an email collected
+      -- under Academy A must not carry Academy B's mail. The contact must be IN-SCOPE
+      -- (global contacts match anywhere; tenant contacts only in their own tenant) — like
+      -- whatsapp, minus the opt-in requirement.
       SELECT * INTO v_contact FROM public.notification_contacts
       WHERE channel = 'email' AND revoked_at IS NULL AND consent_status <> 'opted_out'
+        AND public.is_notification_consent_in_scope(
+              consent_scope, consent_academy_profile_id, consent_trainer_id,
+              p_tenant_academy_profile_id, p_tenant_trainer_id)
         AND ( (v_person_id IS NOT NULL AND person_id = v_person_id)
            OR (v_user_id   IS NOT NULL AND user_id = v_user_id)
            OR (v_guest_id  IS NOT NULL AND guest_player_id = v_guest_id) )
@@ -207,8 +238,11 @@ BEGIN
         v_dest := v_contact.destination_normalized;
         v_dest_redacted := v_contact.destination_redacted;
         v_contact_id := v_contact.id;
-      ELSIF v_person_id IS NOT NULL THEN
-        -- fallback: the person's account email is an implicit global email contact
+      ELSIF v_user_id IS NOT NULL THEN
+        -- global fallback ONLY for account holders: persons.email is then their own
+        -- account (login) email, legitimately usable in any tenant context. A guest-only
+        -- person has NO global email — its address is always tenant-collected, so it must
+        -- come from an in-scope contact above, never from this global fallback.
         SELECT email INTO v_dest FROM public.persons WHERE id = v_person_id;
         v_dest_redacted := public.notification_redact_destination(v_dest, 'email');
       END IF;
@@ -297,6 +331,9 @@ BEGIN
 
   -- 7. required delivery but nothing was deliverable → a VISIBLE skipped row so ops
   --    and the timelines see the gap (idempotent: won't duplicate a prior outcome).
+  --    This records the durable FACT only. Raising the ops Slack alert on skipped-required
+  --    rows is the WORKER's job (PR 4) — it scans the outbox and can call edge-slack;
+  --    a SECURITY DEFINER SQL function cannot (and shouldn't) make an outbound HTTP call.
   IF NOT v_any_deliverable AND v_evt.required_delivery THEN
     INSERT INTO public.notification_outbox (
       event_type, channel,

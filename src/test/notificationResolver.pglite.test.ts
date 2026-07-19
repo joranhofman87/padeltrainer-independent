@@ -118,11 +118,53 @@ describe('recipient normalization + basic email enqueue', () => {
     expect(rows[0].idempotency_key).toBe(`booking_confirmed_player:b1:${P1}`);
   });
 
-  it('resolves a guest-only recipient to its person via person_links', async () => {
-    const { rows } = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_guest_player_id: `'${G1}'`, p_idempotency_subject: `'b1'` });
+  it('resolves a guest-only recipient to its person via person_links (delivering to an in-scope contact)', async () => {
+    // a guest-only person has NO global account email → it must use an in-scope tenant contact
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1,'email','guest-a@example.com','g***@example.com','opted_in','tenant',$2)`, [PG, A]);
+    const { rows } = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_guest_player_id: `'${G1}'`, p_idempotency_subject: `'b1'`, p_tenant_academy_profile_id: `'${A}'` });
     expect(rows).toHaveLength(1);
-    expect(rows[0].destination_normalized).toBe('guestperson@example.com');
-    expect(rows[0].idempotency_key).toBe(`booking_confirmed_player:b1:${PG}`);
+    expect(rows[0].destination_normalized).toBe('guest-a@example.com');
+    expect(rows[0].idempotency_key).toBe(`booking_confirmed_player:b1:${PG}`); // normalized to the PERSON
+  });
+});
+
+describe('email respects tenant scope (P1 fix — no cross-tenant guest data)', () => {
+  it('a guest email contact for academy A is DENIED for an academy B send (required → skipped, no global fallback)', async () => {
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1,'email','guest-a@example.com','g***@example.com','opted_in','tenant',$2)`, [PG, A]);
+    const { rows } = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_guest_player_id: `'${G1}'`, p_idempotency_subject: `'b1'`, p_tenant_academy_profile_id: `'${B}'` });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('skipped');            // A-scoped contact unusable for B; guest has no account fallback
+    expect(rows[0].skip_reason).toBe('no_email_contact');
+  });
+
+  it('an account holder uses its in-scope contact but falls back to the GLOBAL account email cross-tenant (no leak of the A contact)', async () => {
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1,$2,'email','p1-academyA@example.com','p***@example.com','opted_in','tenant',$3)`, [P1, U1, A]);
+    const forA = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_person_id: `'${P1}'`, p_idempotency_subject: `'b1'`, p_tenant_academy_profile_id: `'${A}'` });
+    expect(forA.rows[0].destination_normalized).toBe('p1-academyA@example.com'); // in-scope contact wins for A
+    const forB = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_person_id: `'${P1}'`, p_idempotency_subject: `'b2'`, p_tenant_academy_profile_id: `'${B}'` });
+    expect(forB.rows[0].destination_normalized).toBe('p1@example.com');          // A contact NOT leaked to B → global account email
+  });
+});
+
+describe('idempotency subject is mandatory (derive-or-raise, P1 fix)', () => {
+  it('raises when neither a subject nor a derivable ref is supplied', async () => {
+    await expect(enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_person_id: `'${P1}'` }))
+      .rejects.toThrow(/needs an idempotency subject/i);
+  });
+  it('derives a stable subject from SORTED related_booking_ids when the subject is omitted', async () => {
+    const { rows } = await enqueue({
+      p_event_key: `'booking_confirmed_player'`, p_recipient_person_id: `'${P1}'`,
+      // passed reverse-sorted on purpose → the derived key must be deterministic (sorted)
+      p_related_booking_ids: `ARRAY['22222222-2222-2222-2222-222222222222'::uuid,'11111111-1111-1111-1111-111111111111'::uuid]`,
+    });
+    expect(rows[0].idempotency_key).toBe(
+      `booking_confirmed_player:bookings:11111111-1111-1111-1111-111111111111,22222222-2222-2222-2222-222222222222:${P1}`);
   });
 });
 
@@ -235,6 +277,22 @@ describe('whatsapp requires BOTH gates: a whatsapp preference AND an opted-in in
   it('an opted-OUT whatsapp contact is never used even with the preference on', async () => {
     await wantWa(); await addWa('global', null, null, 'opted_out');
     expect((await enqueueP1()).rows.map((r) => r.channel).sort()).toEqual(['email']);
+  });
+});
+
+describe('whatsapp is registered-only for now (P2: guests have no prefs_v2 cadence)', () => {
+  it('a guest with an opted-in in-scope whatsapp contact still gets NO whatsapp — only email', async () => {
+    // in-scope email contact → the event has a deliverable channel...
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1,'email','guest-a@example.com','g***@example.com','opted_in','tenant',$2)`, [PG, A]);
+    // ...and an opted-in in-scope whatsapp contact that STILL must not fire: a guest can't
+    // express a non-off whatsapp cadence (prefs_v2 is user_id-keyed), and the default is 'off'.
+    await db.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1,'whatsapp','+31600000077','•••0077','opted_in','tenant',$2)`, [PG, A]);
+    const { rows } = await enqueue({ p_event_key: `'booking_confirmed_player'`, p_recipient_guest_player_id: `'${G1}'`, p_idempotency_subject: `'b1'`, p_tenant_academy_profile_id: `'${A}'` });
+    expect(rows.map((r) => r.channel).sort()).toEqual(['email']);
   });
 });
 
