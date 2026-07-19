@@ -8,6 +8,12 @@ Status: canonical (source of truth) | last updated 2026-07-19 | program IN PROGR
 > on person-keyed contacts; channel-agnostic PII-safe destination model on the
 > delivery-events table; WhatsApp provider updated to the Twilio/SendGrid family
 > (owner to confirm exact credentials).
+>
+> **Rev 3 (2026-07-19, Codex re-check):** tenant timelines return safe ROW ids
+> only — `contact_id`/`person_id`/raw destination stay service-role-only (a
+> stable contact ref is a cross-tenant person-correlation oracle, same reasoning
+> as `get_person_refs_for_scope`); `channel` lives in the
+> `unique(channel, idempotency_key)` constraint, not inside the key string.
 
 Audience / AI-read: yes. This is the reference for the notification pipeline
 rebuild — the current-state audit, the target design, the reconciliation
@@ -126,9 +132,13 @@ notification_outbox  (one row per recipient × channel; deterministic
   `redactTrackingString`/`sanitizeTrackingProperties` from
   [`trackingPrivacy.ts`](../src/lib/trackingPrivacy.ts)). The **raw destination
   (email/phone) is NEVER exposed to a tenant read** — tenant-visible rows carry
-  only a `redacted_destination` (`j***@x.com`, `+31•••1234`) + `contact_id`; the
-  raw value lives in a service-role-only column. A phone number must never be
-  shoved into an email-shaped field (see §3.1).
+  only a `redacted_destination` (`j***@x.com`, `+31•••1234`) plus safe ROW ids
+  (`outbox_id`/`delivery_event_id`). The raw value lives in a service-role-only
+  column, and **`contact_id` is NOT tenant-visible either** — it's a stable
+  per-person ref that would correlate the same person across academies (the same
+  reasoning as `get_person_refs_for_scope`, which withholds `person_id`: a scoped
+  reader must not expose a ref the tenant couldn't otherwise see). A phone number
+  must never be shoved into an email-shaped field (see §3.1).
 - **Idempotency is PER RECIPIENT.** `unique(channel, idempotency_key)` where
   `idempotency_key = <event_key>:<subject_id>:<recipient_person_id>` — NOT the
   shared per-booking claim (that would collide the player + staff rows of one
@@ -200,8 +210,10 @@ Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
    would collide the player and staff rows of one paid booking (P1). Instead:
    the E-15 claim gates whether `runBookingPaidSideEffects` ENQUEUES at all
    (run-once), and each enqueued row gets a deterministic PER-RECIPIENT key
-   `booking_paid:<booking_id>:<event_type>:<recipient_person_id>:<channel>` under
-   `unique(channel, idempotency_key)`. This keeps the "duplicate Mollie webhook →
+   `booking_paid:<booking_id>:<event_type>:<recipient_person_id>` under
+   `unique(channel, idempotency_key)` — channel lives in the UNIQUE constraint,
+   not inside the key string (one convention, no redundancy). This keeps the
+   "duplicate Mollie webhook →
    one row per recipient per channel" and "webhook-vs-verify race → no
    duplicates" guarantees (a duplicate delivery re-derives the same per-recipient
    keys and no-ops on the unique index), while still fanning out to N recipients.
@@ -285,7 +297,9 @@ Prerequisites, once the provider is confirmed:
    tests already landed in PR 2): `get_player_notification_timeline`,
    `get_invoice_notification_timeline`, `get_booking_notification_timeline`
    (SECURITY DEFINER, reuse the person-scope RPCs), returning only
-   `public_summary` + `destination_redacted` + safe IDs.
+   `public_summary`, `destination_redacted`, channel/status/skip_reason,
+   timestamps, and safe ROW ids (`outbox_id`/`delivery_event_id`) — **never
+   `contact_id`, `person_id`, or a raw destination** (cross-tenant correlation).
 8. `NotificationSettings` v2 UI (replaces v1).
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
    (once the owner's provider/templates are approved).
