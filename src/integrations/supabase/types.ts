@@ -4410,6 +4410,9 @@ export type Database = {
           locked_by: string | null
           max_attempts: number
           next_attempt_at: string | null
+          ops_alert_attempts: number
+          ops_alert_last_attempt_at: string | null
+          ops_alerted_at: string | null
           payload: Json | null
           provider: string | null
           provider_message_id: string | null
@@ -4448,6 +4451,9 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          ops_alert_attempts?: number
+          ops_alert_last_attempt_at?: string | null
+          ops_alerted_at?: string | null
           payload?: Json | null
           provider?: string | null
           provider_message_id?: string | null
@@ -4486,6 +4492,9 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          ops_alert_attempts?: number
+          ops_alert_last_attempt_at?: string | null
+          ops_alerted_at?: string | null
           payload?: Json | null
           provider?: string | null
           provider_message_id?: string | null
@@ -8828,6 +8837,23 @@ export type Database = {
         }
         Returns: string
       }
+      claim_notification_outbox_batch: {
+        Args: {
+          p_channel: string
+          p_limit?: number
+          p_stale_after_minutes?: number
+          p_worker: string
+        }
+        Returns: {
+          attempts: number
+          destination_normalized: string
+          destination_redacted: string
+          event_type: string
+          outbox_id: string
+          payload: Json
+          template_key: string
+        }[]
+      }
       claim_onboarding_email_queue_item: {
         Args: { p_from_status: string; p_queue_id: string }
         Returns: boolean
@@ -8835,6 +8861,21 @@ export type Database = {
       claim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: boolean
+      }
+      claim_skipped_required_alerts: {
+        Args: {
+          p_limit?: number
+          p_max_attempts?: number
+          p_retry_after_minutes?: number
+        }
+        Returns: {
+          created_at: string
+          event_type: string
+          outbox_id: string
+          related_booking_ids: string[]
+          related_invoice_id: string
+          skip_reason: string
+        }[]
       }
       claim_stripe_event: {
         Args: {
@@ -9668,6 +9709,7 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
+      mark_skipped_alerts_sent: { Args: { p_ids: string[] }; Returns: number }
       merge_guest_players: {
         Args: {
           p_fields?: Json
@@ -9760,6 +9802,19 @@ export type Database = {
           p_trainer_id?: string
         }
         Returns: undefined
+      }
+      record_notification_send_result: {
+        Args: {
+          p_error?: string
+          p_max_backoff_minutes?: number
+          p_outbox_id: string
+          p_provider?: string
+          p_provider_message_id?: string
+          p_status: string
+          p_terminal?: boolean
+          p_worker: string
+        }
+        Returns: string
       }
       record_priority_claim_intent: {
         Args: { _intent: string; _token: string }

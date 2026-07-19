@@ -37,19 +37,25 @@ function sleep(ms: number): Promise<void> {
 export async function sendResendEmail(
   apiKey: string,
   payload: ResendSendPayload,
-  options?: { maxAttempts?: number },
+  options?: { maxAttempts?: number; idempotencyKey?: string },
 ): Promise<ResendSendOutcome> {
   const maxAttempts = Math.min(options?.maxAttempts ?? RESEND_MAX_ATTEMPTS, RESEND_MAX_ATTEMPTS);
   let lastError = "Unknown Resend error";
+
+  // A stable key makes every retry of THIS intended email — our own bounded retries
+  // above, a stale-takeover, or a cron re-run — a no-op at Resend within its 24h dedupe
+  // window, so a timeout after Resend accepted the send can never double-email anyone.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (options?.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 

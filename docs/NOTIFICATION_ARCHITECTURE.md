@@ -331,7 +331,29 @@ Prerequisites:
    - Deferred here (documented, not gaps): digest batching / quiet-hours /
      `max_per_user` → the worker (PR 4+); the legacy `type`→`key` map → PR 5.
 4. Email worker (drains outbox → Resend via the existing primitive) + delivery
-   event recording via the reused layer.
+   event recording via the reused layer. **← shipped (PR 4).** As-built:
+   - **RPC layer** (`20260912100000`, all `SECURITY DEFINER`, service-role-only):
+     `claim_notification_outbox_batch` (atomic `FOR UPDATE SKIP LOCKED` claim of due
+     `pending` rows **AND** stale-`processing` rows orphaned by a crashed worker —
+     `locked_at` past `p_stale_after_minutes` — reaping any stuck past `max_attempts`
+     to `failed`; claims under a **per-run lock token**); `record_notification_send_result`
+     (validates the caller **still owns the lock** — else returns `stale` so a slow/
+     orphaned worker can't overwrite a newer outcome; sent = terminal; failed = backoff
+     `2^attempts min` capped, or terminal via `p_terminal`, or at `max_attempts`; writes
+     the linked `email_delivery_events` row with `outbox_id`/`channel`/`destination_redacted`
+     for PR 7); `claim_skipped_required_alerts` + `mark_skipped_alerts_sent` — a
+     **lease → confirm** pair (lease bumps `ops_alert_attempts`; only a confirmed Slack
+     send sets `ops_alerted_at`), so a Slack failure re-tries (at-least-once, bounded).
+   - **Edge fn** `notification-email-worker`: `requireServiceRole` guard →
+     `try_lock_cron_job` single-flight (fail-open) → claim under a fresh `crypto.randomUUID()`
+     token → per row: validate payload, re-check `is_email_suppressed` (**fail CLOSED** —
+     on check error, retry rather than risk sending to a bad address), `sendResendEmail`
+     with a stable **`Idempotency-Key`** (`notification-outbox-<id>`, so a retry after
+     Resend accepted can't double-email), record outcome → lease + confirm the ops Slack
+     alert on skipped-required rows (the PR-3 hand-off) and best-effort alert on send failures.
+   - **Schedule**: pg_cron `*/2 * * * *` (Vault-key pattern, guarded for CI).
+   - Deferred: digest **collapse** by `collapse_key` (rows still send individually when
+     `scheduled_for` arrives); quiet-hours; `max_per_user` rate limits.
 5. **Pilot: migrate ONE low-risk notification** (e.g. `review_received_trainer`)
    end-to-end to prove the pipeline — NOT the money path first.
 6. Migrate the paid-booking player/staff notifications to the outbox (map the
