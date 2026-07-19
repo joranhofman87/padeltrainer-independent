@@ -186,6 +186,19 @@ describe('ensure_guest_email_contact — tenant-scoped, redacted, idempotent', (
     expect(rows.map((r) => r.consent_academy_profile_id).sort()).toEqual([A1, A2].sort());
     expect(rows.map((r) => r.guest_player_id).sort()).toEqual([G1, G2].sort());
   });
+
+  it('SCOPE STABILITY (why academy, not academy+trainer): a guest booking a 2nd trainer in the SAME academy keeps ONE academy-scoped contact — both trainers stay deliverable', async () => {
+    await ensureGuestContact(G1, GUEST_EMAIL, A1, T1);           // books trainer T1 in academy A1
+    await ensureGuestContact(G1, GUEST_EMAIL, A1, T2);           // later books a DIFFERENT trainer in the SAME academy
+    const rows = (await contactsFor(GUEST_EMAIL)).rows;
+    expect(rows).toHaveLength(1);                                // one contact, not duplicated
+    expect(rows[0].consent_academy_profile_id).toBe(A1);
+    expect(rows[0].consent_trainer_id).toBeNull();              // academy-scoped → never flips to a single trainer
+    // both trainers' required confirmations resolve in-scope (a trainer-scoped contact would have
+    // stranded whichever trainer it wasn't currently pinned to).
+    expect((await enqueuePlayer({ guest: G1, academy: A1, trainer: T1, payment: 'p_st1' })).rows[0].status).toBe('pending');
+    expect((await enqueuePlayer({ guest: G1, academy: A1, trainer: T2, payment: 'p_st2' })).rows[0].status).toBe('pending');
+  });
 });
 
 describe('enqueue_notification(booking_confirmed_player) — delivery routing', () => {
