@@ -354,8 +354,28 @@ Prerequisites:
    - **Schedule**: pg_cron `*/2 * * * *` (Vault-key pattern, guarded for CI).
    - Deferred: digest **collapse** by `collapse_key` (rows still send individually when
      `scheduled_for` arrives); quiet-hours; `max_per_user` rate limits.
-5. **Pilot: migrate ONE low-risk notification** (e.g. `review_received_trainer`)
-   end-to-end to prove the pipeline — NOT the money path first.
+5. **Pilot: migrate ONE low-risk notification** (`review_received_trainer`)
+   end-to-end to prove the pipeline — NOT the money path first. **← shipped (PR 5).**
+   As-built (`20260913100000`): an `AFTER INSERT ON reviews` **SECURITY DEFINER**
+   trigger (`notify_review_received`) resolves the reviewed trainer's `user_id`
+   (`trainer_profiles.user_id`, always a login), renders a minimal injection-safe
+   email (rating only — no user free-text; details in-app), and calls
+   `enqueue_notification('review_received_trainer', p_recipient_user_id => trainer,
+   p_tenant_trainer_id => reviews.trainer_id, p_idempotency_subject => reviews.id,
+   p_payload => {subject,html}, p_public_summary => {event_type,rating})`. Delivery
+   uses the resolver's **account-holder `persons.email` fallback** — every trainer has
+   one (verified: 24/24) — so **no contact backfill** is needed. Enqueue failures are
+   caught so they never break the review insert.
+   **Authorization guard:** `reviews` INSERT RLS only checks `player_id` and
+   `booking_id` has no FK, so the trigger first verifies the review is tied to a **real
+   completed/confirmed booking of this player with this trainer** (`bookings.slot_id →
+   availability_slots.trainer_id`); otherwise it keeps the review row but sends nothing —
+   else a forged `trainer_id`/`booking_id` would become platform email spam to arbitrary
+   trainers. (Deeper fix — an FK on `reviews.booking_id` + tighter INSERT RLS — is tracked
+   as a separate data-integrity follow-up.)
+   The legacy client-side
+   `sendReviewNotification` is **already dormant** (`trainerEmail` is never passed at
+   the only call site, so no double-send) — its removal is deferred to PR 10.
 6. Migrate the paid-booking player/staff notifications to the outbox (map the
    E-15 claim → idempotency_key).
 7. Tenant-visible timelines — the READ RPCs/UI only (the schema + RLS + denial
