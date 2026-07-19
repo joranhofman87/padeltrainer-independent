@@ -11,7 +11,8 @@
 --     backoff up to max_attempts then fail; write the delivery event either way.
 --   * claim_skipped_required_alerts     — the PR-3 hand-off: the resolver writes the
 --     durable 'skipped' row, the WORKER raises the ops Slack alert (SQL can't do
---     outbound HTTP). ops_alerted_at makes that alert exactly-once.
+--     outbound HTTP). The alert is lease-then-confirm (bounded retry): a row is
+--     ops_alerted_at only after Slack confirms, so a Slack failure re-tries.
 
 -- ops alerting for skipped-required rows: a LEASE (attempt) + a confirmed-sent marker,
 -- so a Slack failure re-tries next tick instead of losing the alert (at-least-once).
