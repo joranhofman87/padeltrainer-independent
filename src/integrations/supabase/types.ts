@@ -9057,6 +9057,15 @@ export type Database = {
           visibility_scope: string
         }[]
       }
+      ensure_guest_email_contact: {
+        Args: {
+          p_academy_profile_id?: string
+          p_email: string
+          p_guest_player_id: string
+          p_trainer_id?: string
+        }
+        Returns: string
+      }
       expire_lapsed_priority_claims: { Args: never; Returns: number }
       expired_holds_over_capacity: {
         Args: { _booking_ids: string[] }

@@ -778,16 +778,17 @@ serve(async (req) => {
                 supabase: supabase as unknown as Parameters<typeof sendPlayerBookingConfirmation>[0]["supabase"],
                 bookingIds: invoiceData.booking_ids,
                 invoiceId: invoiceIdFromMetadata,
+                molliePaymentId: paymentId,
                 logStep,
               });
-              if (!confirmation.ok) {
-                // Alert on EVERY non-send, not just recipient-resolution failures. The silent
-                // reasons (no_resend = RESEND_API_KEY unset, send_failed = Resend rejected) are
-                // exactly what hides a "paid but no confirmation email" — surface them all so a
-                // missing rebook email is never invisible again.
+              if (!confirmation.ok && confirmation.reason !== "skipped") {
+                // The confirmation is now ENQUEUED (PR 6a). A 'skipped' outcome already left a
+                // visible required-but-undeliverable row that the email worker alerts on (dedup'd),
+                // so only surface the reasons that enqueue NOTHING (no_payer / enqueue_failed) —
+                // those are what hides a "paid but no confirmation" and must never be invisible.
                 await notifySlackError(
                   "mollie-webhook",
-                  "Rebook paid: player confirmation not sent",
+                  "Rebook paid: player confirmation could not be enqueued",
                   { paymentId, invoiceId: invoiceIdFromMetadata, reason: confirmation.reason },
                 );
               }
@@ -1058,6 +1059,7 @@ serve(async (req) => {
         supabase,
         bookingIds: paidIds.length > 0 ? paidIds : bookingIds,
         paymentAmountValue: payment.amount?.value,
+        molliePaymentId: payment.id,
         source: "mollie-webhook",
         logStep,
         notifySlackError,

@@ -376,8 +376,29 @@ Prerequisites:
    The legacy client-side
    `sendReviewNotification` is **already dormant** (`trainerEmail` is never passed at
    the only call site, so no double-send) — its removal is deferred to PR 10.
-6. Migrate the paid-booking player/staff notifications to the outbox (map the
-   E-15 claim → idempotency_key).
+6. Migrate the paid-booking notifications to the outbox (map the E-15 claim →
+   idempotency subject, derived from the payment/invoice/booking refs). Split:
+   - **6a (shipped): the PLAYER/payer confirmation.** `sendPlayerBookingConfirmation`
+     now COMPOSES (subject + html + the invoice-PDF attachment, carried in the outbox
+     payload) and enqueues `booking_confirmed_player` instead of sending via Resend —
+     for the public paid-booking path (`runBookingPaidSideEffects`) AND the rebook-group
+     invoice path. A **registered** player delivers via the resolver's `persons.email`
+     account fallback (user_id); a **guest** has no account email, so a locked-down,
+     service-role-only `ensure_guest_email_contact(guest, email, academy, trainer)` upserts
+     a TENANT-SCOPED (`consent_scope='tenant'`, `consent_source='paid_booking'`,
+     `consent_status='unknown'` = transactional not marketing) email contact the resolver
+     then finds by `guest_player_id`. Scope = the ACADEMY when present, else the trainer
+     (independent) — NOT both: a guest can book several trainers within one academy and
+     there is a single contact row per guest, so a trainer dimension would flip and strand
+     retries; academy-scope still blocks cross-academy reuse, which is the isolation goal.
+     A guest with no collected email → a VISIBLE required-but-`skipped`/`no_email_contact`
+     row (the worker's ops alert owns it). The contacts dedup index was reworked so guests
+     are keyed per `guest_player_id` (per-academy) rather than per-email (which would
+     collapse two same-email guests). The email worker forwards `payload.attachments` to
+     Resend so the invoice PDF survives the outbox.
+   - **6b (next): the STAFF fan-out** (`sendStaffBookingNotifications` →
+     `booking_confirmed_staff`) — one deterministic idempotency key per staff recipient;
+     reuse/extract the `new_public_booking_admin` renderer.
 7. Tenant-visible timelines — the READ RPCs/UI only (the schema + RLS + denial
    tests already landed in PR 2): `get_player_notification_timeline`,
    `get_invoice_notification_timeline`, `get_booking_notification_timeline`
