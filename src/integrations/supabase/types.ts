@@ -8838,7 +8838,12 @@ export type Database = {
         Returns: string
       }
       claim_notification_outbox_batch: {
-        Args: { p_channel: string; p_limit?: number; p_stale_after_minutes?: number; p_worker: string }
+        Args: {
+          p_channel: string
+          p_limit?: number
+          p_stale_after_minutes?: number
+          p_worker: string
+        }
         Returns: {
           attempts: number
           destination_normalized: string
@@ -8858,7 +8863,11 @@ export type Database = {
         Returns: boolean
       }
       claim_skipped_required_alerts: {
-        Args: { p_limit?: number; p_max_attempts?: number; p_retry_after_minutes?: number }
+        Args: {
+          p_limit?: number
+          p_max_attempts?: number
+          p_retry_after_minutes?: number
+        }
         Returns: {
           created_at: string
           event_type: string
