@@ -613,11 +613,24 @@ Prerequisites:
      The contact stays the authority on "may we message this person for this tenant"; a stored
      preference becomes an explicit override that still wins, **including `off`** — ticking a
      box at booking must never undo someone later switching WhatsApp off.
-     Coverage is declarative on the catalog (so a new event cannot silently inherit it) and
-     limited to the **session lifecycle**: confirmed, cancelled, reminder. `invoice_reminder_player`
-     and `rebook_invite_player` are deliberately excluded — consent given while booking one
-     session is not consent to be chased for money or invited to book again, and that kind of
-     scope creep is what gets a WhatsApp sender reported.
+     Coverage is declarative on the catalog (so a new event cannot silently inherit it) and is
+     currently **`session_reminder_player` alone** — the pilot, and the only event with a
+     committed template.
+   - **`supports_whatsapp` means "a committed template exists"** (migration `20260923100000`).
+     Business-initiated WhatsApp cannot render without a Meta-approved Content template, so the
+     worker terminal-fails a row it has no template for. The catalog originally claimed the
+     channel for five events while `_shared/whatsapp-templates.ts` commits one, which made
+     every consumer over-promise: the resolver would enqueue rows that die on first drain, the
+     settings page offers a toggle for each `supports_whatsapp` event (so a registered user
+     could switch on `invoice_reminder_player` and simply never receive anything), and the
+     booking opt-in would record consent against events that cannot render.
+     Capability now tracks the template set, and it is the **one lever** — flipping it back on
+     is part of committing a template (definition + samples + approval + its `TWILIO_TEMPLATE_*`
+     env var), not a separate step to remember. A cross-layer test asserts catalog capability
+     never exceeds the committed templates, so this cannot drift again.
+     Also the reason `invoice_reminder_player` / `rebook_invite_player` stay off on their own
+     merits: consent given while booking one session is not consent to be chased for money or
+     invited to book again, and that scope creep is what gets a WhatsApp sender reported.
      `whatsapp_optin_in_scope()` mirrors the resolver's own contact predicate exactly, so the
      cadence gate and the delivery gate cannot disagree about what counts as consent.
    - Owner-side, still open: re-copy `TWILIO_AUTH_TOKEN` from the same account as the `AC…`

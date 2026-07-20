@@ -10,6 +10,7 @@
 //     in-tenant-scope contact AND a non-off cadence.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+import { templateForEvent } from '../../supabase/functions/_shared/whatsapp-templates.ts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -83,6 +84,7 @@ beforeAll(async () => {
   await db.exec(MIG('20260920100000_notification_whatsapp_self_service.sql'));
   await db.exec(MIG('20260921100000_notification_whatsapp_optin_for_slot.sql'));
   await db.exec(MIG('20260922100000_notification_whatsapp_booking_optin_cadence.sql'));
+  await db.exec(MIG('20260923100000_notification_whatsapp_capability_matches_templates.sql'));
   await db.exec(`
     INSERT INTO auth.users (id) VALUES ('${U_P}'), ('${U_O}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P_P}','${U_P}','p@x.com'), ('${P_O}','${U_O}','o@x.com');
@@ -577,25 +579,30 @@ describe('booking opt-in is actually DELIVERABLE (cadence gate)', () => {
   });
 
   it('1. GUEST opt-in at public booking => a WhatsApp outbox row IS created', async () => {
-    // a guest has no login and therefore can NEVER express a cadence; the contact is the opt-in
+    // a guest has no login and therefore can NEVER express a cadence; the contact is the opt-in.
+    // session_reminder_player is the pilot — the one event with a committed template.
     await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
-    expect(await channels('booking_confirmed_player', { person: P_G })).toContain('whatsapp');
+    expect(await channels('session_reminder_player', { person: P_G })).toContain('whatsapp');
   });
 
-  it('2. LOGGED-IN slot opt-in => booking confirmation AND session reminder can enqueue WhatsApp', async () => {
+  it('2. LOGGED-IN slot opt-in => the session reminder can enqueue WhatsApp', async () => {
     await as(U_P);
     await db.query(`SELECT public.record_whatsapp_optin_for_slot(
       '01000000-0000-0000-0000-000000000011', '0612345678', 'booking_form')`);
     await as(null);
-    // required_delivery, so the settings page offers no control for it — this is the only route
-    expect(await channels('booking_confirmed_player', { person: P_P, user: U_P })).toContain('whatsapp');
     expect(await channels('session_reminder_player', { person: P_P, user: U_P })).toContain('whatsapp');
+    // booking_confirmed_player deliberately does NOT: it has no committed WhatsApp template, so
+    // enqueuing it would only produce a row the worker terminal-fails as no_whatsapp_template.
+    // Email still carries that confirmation, and it is required_delivery.
+    const confirm = (await enqueue('booking_confirmed_player', { person: P_P, user: U_P })).rows;
+    expect(confirm.map((r) => r.channel)).not.toContain('whatsapp');
+    expect(confirm.map((r) => r.channel)).toContain('email');
   });
 
   it('3. REVOKED consent => no WhatsApp, even with a cadence explicitly stored', async () => {
     await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
     await db.query(`SELECT public.record_whatsapp_optout('+31612345678')`);
-    expect(await channels('booking_confirmed_player', { person: P_G })).not.toContain('whatsapp');
+    expect(await channels('session_reminder_player', { person: P_G })).not.toContain('whatsapp');
 
     // and for a logged-in user whose stored preference still says 'instant'
     await as(U_P);
@@ -612,8 +619,8 @@ describe('booking opt-in is actually DELIVERABLE (cadence gate)', () => {
   it('4. FOREIGN-tenant consent does not authorize this tenant', async () => {
     // consent collected by academy 1 must not let academy 2 message them
     await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
-    expect(await channels('booking_confirmed_player', { person: P_G, academy: A2 })).not.toContain('whatsapp');
-    expect(await channels('booking_confirmed_player', { person: P_G, academy: A1 })).toContain('whatsapp');
+    expect(await channels('session_reminder_player', { person: P_G, academy: A2 })).not.toContain('whatsapp');
+    expect(await channels('session_reminder_player', { person: P_G, academy: A1 })).toContain('whatsapp');
   });
 
   it('an EXPLICIT preference still wins, including turning it back off', async () => {
@@ -628,13 +635,14 @@ describe('booking opt-in is actually DELIVERABLE (cadence gate)', () => {
     expect(await channels('session_reminder_player', { person: P_P, user: U_P })).not.toContain('whatsapp');
   });
 
-  it('coverage is limited to the session lifecycle, not payment chasing or rebook invites', async () => {
-    // consent given while booking ONE session is not consent to be chased for money or invited
-    // to book again — those stay behind the settings page, which guests do not have
+  it('coverage is the PILOT event only — everything else stays email', async () => {
+    // Two independent reasons, both deliberate: those events have no committed WhatsApp
+    // template (so a row would only terminal-fail), and consent given while booking one session
+    // is not consent to be chased for money or invited to book again.
     await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
-    expect(await channels('booking_cancelled_player', { person: P_G })).toContain('whatsapp');
-    expect(await channels('invoice_reminder_player', { person: P_G })).not.toContain('whatsapp');
-    expect(await channels('rebook_invite_player', { person: P_G })).not.toContain('whatsapp');
+    for (const e of ['booking_cancelled_player', 'invoice_reminder_player', 'rebook_invite_player']) {
+      expect(await channels(e, { person: P_G })).not.toContain('whatsapp');
+    }
   });
 
   it('a non-opted-in contact does not satisfy the gate', async () => {
@@ -645,5 +653,56 @@ describe('booking opt-in is actually DELIVERABLE (cadence gate)', () => {
        consent_scope, consent_academy_profile_id, consent_source, is_primary)
       VALUES ('${P_G}', 'whatsapp', '+31612345678', '•••5678', 'unknown', 'tenant', '${A1}', 'paid_booking', true);`);
     expect(await channels('booking_confirmed_player', { person: P_G })).not.toContain('whatsapp');
+  });
+});
+
+describe('catalog capability never exceeds the COMMITTED templates', () => {
+  // The cross-layer guard. Business-initiated WhatsApp cannot render without a Meta-approved
+  // Content template, so the worker terminal-fails a row it has no template for. A catalog that
+  // claims more capability than the template set therefore produces rows that die on their
+  // first drain — while the settings page cheerfully offers a toggle and the booking checkbox
+  // records consent. Every one of those surfaces reads supports_whatsapp, so this is the single
+  // place the promise has to be true.
+  const flagged = () =>
+    db.query<{ key: string; supports_whatsapp: boolean; whatsapp_optin_via_booking: boolean }>(
+      `SELECT key, supports_whatsapp, whatsapp_optin_via_booking
+       FROM public.notification_event_types
+       WHERE supports_whatsapp OR whatsapp_optin_via_booking
+       ORDER BY key`);
+
+  it('every event claiming supports_whatsapp has a committed template', async () => {
+    for (const row of (await flagged()).rows) {
+      expect(
+        templateForEvent(row.key, 'nl'),
+        `${row.key} claims supports_whatsapp but has no committed template — the worker would ` +
+        `terminal-fail its rows with no_whatsapp_template`,
+      ).not.toBeNull();
+    }
+  });
+
+  it('every booking-opt-in event also supports the channel AND has a template', async () => {
+    for (const row of (await flagged()).rows.filter((r) => r.whatsapp_optin_via_booking)) {
+      expect(row.supports_whatsapp).toBe(true);
+      expect(templateForEvent(row.key, 'nl')).not.toBeNull();
+    }
+  });
+
+  it('is currently the pilot alone — session_reminder_player', async () => {
+    // Deliberate and matching the template file's own plan ("the session reminder is the PILOT;
+    // four more follow once this one is proven"). Widening this means committing a template
+    // FIRST, which the two pins above then enforce.
+    expect((await flagged()).rows.map((r) => r.key)).toEqual(['session_reminder_player']);
+  });
+
+  it('a de-flagged event no longer enqueues WhatsApp even with consent', async () => {
+    const P_G = '0d000000-0000-0000-0000-0000000000d3';
+    await db.exec(`INSERT INTO public.persons (id, user_id, email) VALUES ('${P_G}', NULL, 'g2@x.com')
+      ON CONFLICT (id) DO NOTHING;`);
+    await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
+    const rows = (await db.query<{ channel: string }>(`
+      SELECT channel FROM public.enqueue_notification(
+        'booking_confirmed_player', '${P_G}'::uuid, NULL, NULL, '${A1}'::uuid, NULL, 'cap-check')`)).rows;
+    expect(rows.map((r) => r.channel)).not.toContain('whatsapp');
+    expect(rows.map((r) => r.channel)).toContain('email');   // email still carries it
   });
 });
