@@ -79,6 +79,7 @@ beforeAll(async () => {
   await db.exec(MIG('20260911100000_notification_resolver.sql'));
   await db.exec(MIG('20260915100000_notification_paid_booking_player.sql')); // the contacts index rework the upsert targets
   await db.exec(MIG('20260918100000_notification_whatsapp_consent.sql'));
+  await db.exec(MIG('20260920100000_notification_whatsapp_self_service.sql'));
   await db.exec(`
     INSERT INTO auth.users (id) VALUES ('${U_P}'), ('${U_O}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P_P}','${U_P}','p@x.com'), ('${P_O}','${U_O}','o@x.com');
@@ -350,5 +351,97 @@ describe('the resolver still gates whatsapp on BOTH consent and cadence', () => 
                    VALUES ('${U_P}', 'session_reminder_player', 'instant')`);
     const rows = (await enqueue(A1)).rows;      // ...but the notification is academy 1's
     expect(rows.some((r) => r.channel === 'whatsapp')).toBe(false);
+  });
+});
+
+describe('self-service consent surface (settings page RPCs)', () => {
+  const myConsent = () =>
+    db.query<{ opted_in: boolean; destination_redacted: string | null }>(
+      `SELECT opted_in, destination_redacted FROM public.get_my_whatsapp_consent()`);
+
+  it('reports the caller\'s own consent, REDACTED — never the raw number', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await as(U_P);
+    const row = (await myConsent()).rows[0];
+    expect(row.opted_in).toBe(true);
+    // the settings page must never be a place a raw destination can leak (PR 7 doctrine)
+    expect(row.destination_redacted).not.toContain('612345678');
+    expect(row.destination_redacted).toMatch(/•/);          // masked, not the raw number
+    expect(row.destination_redacted).toBe('•••5678');
+  });
+
+  it('returns exactly one row with opted_in=false when there is no contact', async () => {
+    await as(U_P);
+    const rows = (await myConsent()).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].opted_in).toBe(false);
+    expect(rows[0].destination_redacted).toBeNull();
+  });
+
+  it('never reports ANOTHER person\'s consent', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await as(U_O);                       // a different login
+    expect((await myConsent()).rows[0].opted_in).toBe(false);
+  });
+
+  it('revoke is PERSON-scoped: a partner sharing the number keeps their consent', async () => {
+    // the deliberate opposite of record_whatsapp_optout, which is number-scoped because a STOP
+    // comes from the handset. A settings toggle is one person saying "not me".
+    await optIn(P_P, '0612345678', A1, null);
+    await optIn(P_O, '0612345678', A1, null);
+    await as(U_P);
+    expect((await db.query<{ v: number }>(`SELECT public.revoke_my_whatsapp_consent() AS v`)).rows[0].v).toBe(1);
+
+    const rows = (await contactsFor('+31612345678')).rows;
+    const mine = rows.find((r) => r.person_id === P_P)!;
+    const partner = rows.find((r) => r.person_id === P_O)!;
+    expect(mine.consent_status).toBe('opted_out');
+    expect(partner.consent_status).toBe('opted_in');     // untouched
+    expect(partner.revoked_at).toBeNull();
+  });
+
+  it('revoke leaves PREFERENCES intact, so a later opt-in restores the choices', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+      VALUES ('${U_P}', 'session_reminder_player', 'instant');`);
+    await as(U_P);
+    await db.query(`SELECT public.revoke_my_whatsapp_consent()`);
+    const pref = await db.query<{ whatsapp_frequency: string }>(
+      `SELECT whatsapp_frequency FROM public.notification_preferences_v2 WHERE user_id = '${U_P}'`);
+    expect(pref.rows[0].whatsapp_frequency).toBe('instant');
+  });
+
+  it('revoke keeps the FIRST withdrawal time on a re-revoke', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await as(U_P);
+    await db.query(`SELECT public.revoke_my_whatsapp_consent()`);
+    await as(null);
+    await db.exec(`UPDATE public.notification_contacts
+      SET revoked_at = timestamptz '2026-03-01 09:00:00+00' WHERE person_id = '${P_P}';`);
+    await as(U_P);
+    await db.query(`SELECT public.revoke_my_whatsapp_consent()`);
+    const row = (await contactsFor('+31612345678')).rows[0];
+    expect(new Date(row.revoked_at!).toISOString()).toBe('2026-03-01T09:00:00.000Z');
+  });
+
+  it('an unauthenticated caller cannot revoke, and gets no consent row', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await as(null);   // service_role context: auth.uid() IS NULL
+    await expect(db.query(`SELECT public.revoke_my_whatsapp_consent()`)).rejects.toThrow(/not authorized/);
+    expect((await myConsent()).rows).toHaveLength(0);
+  });
+
+  it('anon cannot execute either RPC', async () => {
+    const r = await db.query<{ role: string; rd: boolean; rv: boolean }>(`
+      SELECT role,
+             has_function_privilege(role, 'public.get_my_whatsapp_consent()', 'EXECUTE') AS rd,
+             has_function_privilege(role, 'public.revoke_my_whatsapp_consent()', 'EXECUTE') AS rv
+      FROM unnest(ARRAY['anon','authenticated']) AS role`);
+    const anon = r.rows.find((x) => x.role === 'anon')!;
+    expect(anon.rd).toBe(false);
+    expect(anon.rv).toBe(false);
+    const auth = r.rows.find((x) => x.role === 'authenticated')!;
+    expect(auth.rd).toBe(true);
+    expect(auth.rv).toBe(true);
   });
 });

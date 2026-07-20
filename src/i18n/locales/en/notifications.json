@@ -159,6 +159,14 @@
       "alwaysOn": "Always sent",
       "alwaysOnDesc": "Receipts, confirmations and security emails cannot be turned off."
     },
-    "alwaysOn": "Always on"
+    "alwaysOn": "Always on",
+    "whatsapp": {
+      "title": "WhatsApp",
+      "activeDesc": "WhatsApp messages go to {{number}}.",
+      "inactiveDesc": "WhatsApp messages are off. You can turn them on when you book, by entering your number and ticking the WhatsApp box.",
+      "revoke": "Stop WhatsApp messages",
+      "revoked": "WhatsApp messages stopped",
+      "toggleFor": "WhatsApp for {{event}}"
+    }
   }
 }

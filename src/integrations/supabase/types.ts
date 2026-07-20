@@ -9453,6 +9453,14 @@ export type Database = {
         }[]
       }
       get_my_person_id: { Args: never; Returns: string }
+      get_my_whatsapp_consent: {
+        Args: never
+        Returns: {
+          consent_at: string
+          destination_redacted: string
+          opted_in: boolean
+        }[]
+      }
       get_or_create_short_link: {
         Args: {
           _permanent?: boolean
@@ -9980,6 +9988,7 @@ export type Database = {
         Args: { _action: string; _reason?: string; _token: string }
         Returns: Json
       }
+      revoke_my_whatsapp_consent: { Args: never; Returns: number }
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }

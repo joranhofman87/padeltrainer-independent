@@ -4,7 +4,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // NotificationSettings v2 (PR 8). Pins the five things this page must not get wrong:
 //  1. required_delivery events get NO control (the resolver overrides them, so a toggle lies),
-//  2. no WhatsApp UI before PR 9 provisions Twilio,
+//  2. WhatsApp controls appear only for events that support it and stay DISABLED without an
+//     opted-in contact (PR 9),
 //  3. the v1 orphan preferences stay editable (they are still enforced by send-email),
 //  4. staff filtering includes TRAINERS, not just the literal `audience` label,
 //  5. a failed save must not leave the UI showing a value the database does not have.
@@ -13,15 +14,25 @@ let catalog: unknown[] = [];
 let v2rows: unknown[] = [];
 let v1row: Record<string, string> | null = null;
 let upsertResult: { error: { message: string } | null } = { error: null };
+let consentRows: unknown[] = [];
 const upsertMock = vi.fn();
 const legacyUpsertMock = vi.fn();
+const rpcMock = vi.fn();
 
 let authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+// The mock INTERPOLATES {{vars}} like real i18next — otherwise a value passed into a string
+// (the redacted number below) is invisible to assertions and could silently go missing.
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (_k: string, def?: string) => def ?? _k }),
+  useTranslation: () => ({
+    t: (key: string, def?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
+      const vars = (typeof def === 'string' ? opts : def) ?? {};
+      const template = typeof def === 'string' ? def : key;
+      return template.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(vars[name] ?? ''));
+    },
+  }),
 }));
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
@@ -43,6 +54,12 @@ vi.mock('@/lib/supabaseClient', () => ({
       }
       return {};
     },
+    rpc: (fn: string, ...rest: unknown[]) => {
+      rpcMock(fn, ...rest);
+      if (fn === 'get_my_whatsapp_consent') return Promise.resolve({ data: consentRows, error: null });
+      if (fn === 'revoke_my_whatsapp_consent') return Promise.resolve({ data: 1, error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
   },
 }));
 
@@ -50,12 +67,15 @@ import NotificationSettings from '@/pages/NotificationSettings';
 
 const evt = (over: Record<string, unknown>) => ({
   key: 'x', category: 'booking', audience: 'player', required_delivery: false,
-  supports_email: true, supports_digest: false, default_email_frequency: 'instant', ...over,
+  supports_email: true, supports_whatsapp: false, supports_digest: false,
+  default_email_frequency: 'instant', default_whatsapp_frequency: 'off', ...over,
 });
 
 beforeEach(() => {
   upsertMock.mockReset();
   legacyUpsertMock.mockReset();
+  rpcMock.mockReset();
+  consentRows = [{ opted_in: false, destination_redacted: null, consent_at: null }];
   upsertResult = { error: null };
   v2rows = [];
   v1row = null;
@@ -63,7 +83,7 @@ beforeEach(() => {
   catalog = [
     evt({ key: 'booking_confirmed_player', required_delivery: true }),
     evt({ key: 'booking_cancelled_player' }),
-    evt({ key: 'session_reminder_player', supports_digest: true }),
+    evt({ key: 'session_reminder_player', supports_digest: true, supports_whatsapp: true, default_email_frequency: 'daily' }),
     evt({ key: 'booking_request_staff', audience: 'academy_manager' }),
     evt({ key: 'review_received_trainer', audience: 'trainer', supports_digest: true }),
   ];
@@ -87,11 +107,64 @@ describe('NotificationSettings v2', () => {
     expect(screen.queryByRole('switch', { name: /booking_confirmed_player/i })).toBeNull();
   });
 
-  it('renders NO WhatsApp or push controls', async () => {
+  it('renders NO push controls (nothing seeds supports_push)', async () => {
     const { container } = render(<NotificationSettings />);
     await screen.findByTestId('notification-settings-configurable');
-    expect(container.textContent?.toLowerCase()).not.toContain('whatsapp');
     expect(container.textContent?.toLowerCase()).not.toContain('push');
+  });
+
+  it('shows a WhatsApp control ONLY for events that support the channel', async () => {
+    render(<NotificationSettings />);
+    await screen.findByTestId('pref-row-session_reminder_player');
+    expect(screen.getByTestId('wa-cell-session_reminder_player')).toBeInTheDocument();
+    // booking_cancelled_player has supports_whatsapp false — a toggle there would be a control
+    // for a channel the resolver would never use
+    expect(screen.queryByTestId('wa-cell-booking_cancelled_player')).toBeNull();
+  });
+
+  it('DISABLES the WhatsApp toggle until there is an opted-in contact', async () => {
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    const sw = cell.querySelector('[role="switch"]')!;
+    // the resolver's second gate would refuse anyway; an enabled toggle would promise delivery
+    // we cannot make good on
+    expect(sw).toBeDisabled();
+    expect(sw).not.toBeChecked();
+  });
+
+  it('enables the toggle and shows the REDACTED number once consent exists', async () => {
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: '2026-07-01T00:00:00Z' }];
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    expect(cell.querySelector('[role="switch"]')).not.toBeDisabled();
+    expect(screen.getByTestId('notification-settings-whatsapp').textContent).toContain('•••5678');
+  });
+
+  it('offers revoke only when opted in, and calls the person-scoped RPC', async () => {
+    render(<NotificationSettings />);
+    await screen.findByTestId('notification-settings-whatsapp');
+    expect(screen.queryByTestId('whatsapp-revoke')).toBeNull();   // not opted in
+
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    render(<NotificationSettings />);
+    const btn = await screen.findByTestId('whatsapp-revoke');
+    fireEvent.click(btn);
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('revoke_my_whatsapp_consent'));
+  });
+
+  it('a WhatsApp toggle writes BOTH columns, preserving the EVENT email default', async () => {
+    // the trap: an upsert carrying only whatsapp_frequency inserts a row whose email_frequency
+    // takes the COLUMN default ('instant'), silently promoting this event's 'daily' email.
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    fireEvent.click(cell.querySelector('[role="switch"]')!);
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
+    expect(upsertMock.mock.calls[0][0]).toMatchObject({
+      event_type: 'session_reminder_player',
+      whatsapp_frequency: 'instant',
+      email_frequency: 'daily',        // the EVENT default, not the column default
+    });
   });
 
   it('keeps EVERY v1 player preference reachable — including ones send-email still enforces', async () => {
@@ -151,10 +224,12 @@ describe('NotificationSettings v2', () => {
     render(<NotificationSettings />);
     await screen.findByTestId('pref-row-booking_cancelled_player');
     expect(upsertMock).not.toHaveBeenCalled(); // no pre-seeding of rows
-    fireEvent.click(screen.getByRole('switch'));
+    const row = screen.getByTestId('pref-row-booking_cancelled_player');
+    fireEvent.click(row.querySelector('[role="switch"]')!);
     await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
     expect(upsertMock.mock.calls[0][0]).toMatchObject({
-      user_id: 'U1', event_type: 'booking_cancelled_player', email_frequency: 'off',
+      user_id: 'U1', event_type: 'booking_cancelled_player',
+      email_frequency: 'off', whatsapp_frequency: 'off',
     });
   });
 
@@ -172,12 +247,13 @@ describe('NotificationSettings v2', () => {
   it('a FAILED save does not leave the UI lying (pessimistic update)', async () => {
     upsertResult = { error: { message: 'nope' } };
     render(<NotificationSettings />);
-    await screen.findByTestId('pref-row-booking_cancelled_player');
-    const sw = screen.getByRole('switch');
+    const row = await screen.findByTestId('pref-row-booking_cancelled_player');
+    const sw = row.querySelector('[role="switch"]')!;
     expect(sw).toBeChecked(); // default 'instant'
     fireEvent.click(sw);
     await waitFor(() => expect(upsertMock).toHaveBeenCalled());
     // the write failed, so the control must stay where it was
-    await waitFor(() => expect(screen.getByRole('switch')).toBeChecked());
+    await waitFor(() =>
+      expect(screen.getByTestId('pref-row-booking_cancelled_player').querySelector('[role="switch"]')).toBeChecked());
   });
 });
