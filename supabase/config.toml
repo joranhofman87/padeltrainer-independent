@@ -52,6 +52,12 @@ verify_jwt = false
 [functions.notification-email-worker]
 verify_jwt = false
 
+# Ops tool for Twilio Content Templates (PR 9). Service-role only, never scheduled —
+# it exists so templates are created from version-controlled definitions rather than by
+# hand in the Twilio console.
+[functions.twilio-content-admin]
+verify_jwt = false
+
 [functions.signup-user]
 verify_jwt = false
 
