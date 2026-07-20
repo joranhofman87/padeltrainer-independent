@@ -395,7 +395,11 @@ Prerequisites:
      row (the worker's ops alert owns it). The contacts dedup index was reworked so guests
      are keyed per `guest_player_id` (per-academy) rather than per-email (which would
      collapse two same-email guests). The email worker forwards `payload.attachments` to
-     Resend so the invoice PDF survives the outbox.
+     Resend so the invoice PDF is delivered; to avoid unbounded JSONB/TOAST bloat, the base64
+     attachment lives in the payload only while the row is IN FLIGHT — `record_notification_send_result`
+     strips `payload.attachments` on any TERMINAL outcome (sent / non-retryable / exhausted),
+     while a RETRYABLE backoff keeps it so the retry re-sends the same PDF (migration
+     `20260915110000`). At scale this can be swapped for an invoice reference resolved at send time.
    - **6b (next): the STAFF fan-out** (`sendStaffBookingNotifications` →
      `booking_confirmed_staff`) — one deterministic idempotency key per staff recipient;
      reuse/extract the `new_public_booking_admin` renderer.

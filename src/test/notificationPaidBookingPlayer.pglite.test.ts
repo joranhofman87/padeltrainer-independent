@@ -264,3 +264,17 @@ describe('enqueue_notification(booking_confirmed_player) — delivery routing', 
     expect((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.notification_outbox`)).rows[0].n).toBe(1);
   });
 });
+
+describe('lockdown — ensure_guest_email_contact is service-role-only', () => {
+  // A SECURITY DEFINER writer of PII contacts must NOT be reachable by anon/authenticated
+  // (else it is a client-callable way to seed arbitrary tenant-scoped contacts).
+  const canExec = async (role: string) =>
+    (await db.query<{ ok: boolean }>(
+      `SELECT has_function_privilege($1, 'public.ensure_guest_email_contact(uuid,text,uuid,uuid)', 'EXECUTE') AS ok`, [role])).rows[0].ok;
+
+  it('anon + authenticated CANNOT execute; service_role CAN', async () => {
+    expect(await canExec('anon')).toBe(false);
+    expect(await canExec('authenticated')).toBe(false);
+    expect(await canExec('service_role')).toBe(true);
+  });
+});

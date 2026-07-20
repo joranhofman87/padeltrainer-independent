@@ -25,7 +25,7 @@ function installEnv(overrides: Record<string, string | undefined> = {}) {
 
 beforeEach(() => {
   installEnv();
-   
+
   fetchMock = vi.fn(async (url: string) => {
     if (String(url).includes('/functions/v1/generate-invoice')) {
       return { ok: true, json: async () => ({ pdfUrl: 'https://sb.test/pdf/x.pdf' }) };
@@ -174,7 +174,7 @@ describe('sendPlayerBookingConfirmation', () => {
   });
 
   it('still enqueues (no attachment) when PDF generation fails', async () => {
-     
+
     fetchMock.mockImplementation(async (url: string) => {
       if (String(url).includes('/functions/v1/generate-invoice')) return { ok: false, status: 500, json: async () => ({}) };
       return { ok: false, status: 404, json: async () => ({}) };
