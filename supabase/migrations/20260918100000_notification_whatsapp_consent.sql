@@ -89,8 +89,14 @@ AS $$
 $$;
 COMMENT ON FUNCTION public.person_has_tenant_relationship(uuid, uuid, uuid) IS
   'Notification v2 (PR 9): TRUE iff the person has a booking with that academy/trainer. Used to stop an authenticated caller consenting on behalf of a tenant they have no relationship with.';
-REVOKE ALL ON FUNCTION public.person_has_tenant_relationship(uuid, uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.person_has_tenant_relationship(uuid, uuid, uuid) TO authenticated, service_role;
+-- INTERNAL ONLY — deliberately NOT granted to `authenticated`. This is SECURITY DEFINER and
+-- bypasses RLS to answer "does person X have bookings with tenant Y?", so exposing it to
+-- clients would make it a RELATIONSHIP ORACLE for anyone able to obtain or guess UUIDs (the
+-- same trap is_reviewable_booking fell into in PR 595). record_whatsapp_optin is itself
+-- SECURITY DEFINER, so it calls this with the DEFINER's privileges — the opt-in path is
+-- unaffected by revoking the caller's.
+REVOKE ALL ON FUNCTION public.person_has_tenant_relationship(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.person_has_tenant_relationship(uuid, uuid, uuid) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. Record a WhatsApp OPT-IN as a tenant-scoped, opted-in contact.

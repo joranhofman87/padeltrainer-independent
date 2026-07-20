@@ -255,6 +255,28 @@ describe('caller-supplied tenant ids are validated for authenticated callers', (
   });
 });
 
+describe('lockdown — person_has_tenant_relationship stays INTERNAL', () => {
+  // SECURITY DEFINER + RLS bypass + "does person X know tenant Y?" = a relationship oracle if
+  // a client can call it. record_whatsapp_optin is itself DEFINER, so it calls this with the
+  // definer's privileges and does not need the caller to hold EXECUTE.
+  const canExec = async (role: string) =>
+    (await db.query<{ ok: boolean }>(
+      `SELECT has_function_privilege($1, 'public.person_has_tenant_relationship(uuid,uuid,uuid)', 'EXECUTE') AS ok`,
+      [role])).rows[0].ok;
+
+  it('anon and authenticated CANNOT execute it; service_role can', async () => {
+    expect(await canExec('anon')).toBe(false);
+    expect(await canExec('authenticated')).toBe(false);
+    expect(await canExec('service_role')).toBe(true);
+  });
+
+  it('and the authenticated opt-in path still works despite that revoke', async () => {
+    await as(U_P);
+    expect((await optIn(P_P, '0612345678', A1, null)).rows[0].record_whatsapp_optin).toBeTruthy();
+    await as(null);
+  });
+});
+
 describe('the resolver still gates whatsapp on BOTH consent and cadence', () => {
   const enqueue = (academy: string) =>
     db.query<{ channel: string; status: string; destination_normalized: string | null }>(`
