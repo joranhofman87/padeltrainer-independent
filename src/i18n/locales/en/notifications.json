@@ -90,6 +90,75 @@
         "label": "Payments Received",
         "description": "Get notified when you receive a payment"
       }
-    }
+    },
+    "events": {
+      "booking_confirmed_player": {
+        "label": "Booking confirmed"
+      },
+      "booking_confirmed_staff": {
+        "label": "New booking"
+      },
+      "booking_request_staff": {
+        "label": "Booking request"
+      },
+      "booking_cancelled_player": {
+        "label": "Booking cancelled"
+      },
+      "booking_cancelled_staff": {
+        "label": "Booking cancelled (team)"
+      },
+      "session_reminder_player": {
+        "label": "Session reminder"
+      },
+      "payment_receipt_player": {
+        "label": "Payment receipt"
+      },
+      "payment_received_staff": {
+        "label": "Payment received"
+      },
+      "invoice_created_player": {
+        "label": "New invoice"
+      },
+      "invoice_paid_player": {
+        "label": "Invoice paid"
+      },
+      "invoice_paid_staff": {
+        "label": "Invoice paid (team)"
+      },
+      "invoice_payment_failed": {
+        "label": "Payment failed"
+      },
+      "invoice_reminder_player": {
+        "label": "Invoice reminder"
+      },
+      "rebook_invite_player": {
+        "label": "Rebooking invitation"
+      },
+      "rebook_paid_player": {
+        "label": "Rebooking confirmed"
+      },
+      "rebook_paid_staff": {
+        "label": "Rebooking paid"
+      },
+      "review_received_trainer": {
+        "label": "New review"
+      },
+      "password_reset": {
+        "label": "Password reset"
+      },
+      "account_email_changed": {
+        "label": "Email address changed"
+      },
+      "marketing_updates": {
+        "label": "Product updates"
+      }
+    },
+    "sections": {
+      "choose": "Your notifications",
+      "other": "Other notifications",
+      "alwaysOn": "Always sent",
+      "alwaysOnDesc": "Receipts, confirmations and security emails cannot be turned off."
+    },
+    "alwaysOn": "Always on"
   }
 }

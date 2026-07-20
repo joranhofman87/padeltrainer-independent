@@ -767,14 +767,6 @@
       "count": 1
     }
   },
-  "src/pages/NotificationSettings.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "src/pages/Onboarding.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
