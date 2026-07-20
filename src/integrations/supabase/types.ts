@@ -9025,6 +9025,7 @@ export type Database = {
       }
       defer_notification_outbox_row: {
         Args: {
+          p_max_defer_hours?: number
           p_outbox_id: string
           p_reason?: string
           p_retry_minutes?: number

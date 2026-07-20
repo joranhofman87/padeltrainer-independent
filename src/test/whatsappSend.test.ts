@@ -172,11 +172,35 @@ describe('sendWhatsAppMessage — error classification', () => {
     expect((r as { configError?: true }).configError).toBeUndefined();
   });
 
-  it('treats a 400 as TERMINAL — retrying will never make it valid', async () => {
+  it('treats a 400 for a bad ContentSid as CONFIG, not a row verdict', async () => {
+    // the ContentSid comes from an env var, so an unapproved / wrong-account / mistyped one is
+    // wrong for EVERY row. Terminal here would destroy the whole queue on its FIRST drain —
+    // faster and more total than the max_attempts exhaustion this defers around.
     fetchMock.mockResolvedValue(respond(400, { message: 'Invalid ContentSid', code: 21656 }));
     const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HXbad' });
-    expect(r).toMatchObject({ ok: false, retryable: false });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ ok: false, retryable: true, configError: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);   // no point retrying it in-request
+  });
+
+  it('treats a rejected-but-syntactically-valid sender as CONFIG too', async () => {
+    fetchMock.mockResolvedValue(respond(400, { message: 'From is not a valid WhatsApp sender', code: 63007 }));
+    const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' });
+    expect(r).toMatchObject({ ok: false, configError: true });
+  });
+
+  it('classifies by WHOSE INPUT was wrong, not by HTTP semantics', async () => {
+    // 4xx normally reads as "permanent client error", but everything row-shaped (E.164
+    // recipient, consent, committed template, content present) is validated BEFORE the call —
+    // so what is left in the request is environment. 5xx/429 stay transient and DO spend the
+    // row's attempt budget, which is exactly what that budget is for.
+    fetchMock.mockResolvedValue(respond(404, { message: 'Not Found', code: 20404 }));
+    expect(await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' }))
+      .toMatchObject({ configError: true });
+
+    fetchMock.mockResolvedValue(respond(500, { message: 'Server Error' }));
+    const transient = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' }, { maxAttempts: 1 });
+    expect(transient).toMatchObject({ ok: false, retryable: true });
+    expect((transient as { configError?: true }).configError).toBeUndefined();
   });
 
   it('retries a 429 up to the cap, then reports it retryable', async () => {

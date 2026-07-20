@@ -249,15 +249,17 @@ GRANT EXECUTE ON FUNCTION public.record_notification_send_result(uuid, text, tex
 -- NOT the row's fault and where nothing was sent — a per-row problem (bad phone, withdrawn
 -- consent, no committed template) is still terminal, and a real provider attempt still counts.
 CREATE OR REPLACE FUNCTION public.defer_notification_outbox_row(
-  p_outbox_id     uuid,
-  p_worker        text,               -- the claiming run's lock token; only it may defer
-  p_reason        text DEFAULT NULL,
-  p_retry_minutes int  DEFAULT 5
+  p_outbox_id      uuid,
+  p_worker         text,              -- the claiming run's lock token; only it may defer
+  p_reason         text DEFAULT NULL,
+  p_retry_minutes  int  DEFAULT 5,
+  p_max_defer_hours int DEFAULT 24     -- beyond this a parked row fails rather than looping
 ) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
-  v_row public.notification_outbox%ROWTYPE;
+  v_row    public.notification_outbox%ROWTYPE;
+  v_anchor timestamptz;
 BEGIN
   SELECT * INTO v_row FROM public.notification_outbox WHERE id = p_outbox_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -268,6 +270,35 @@ BEGIN
   -- rewind a row a newer run has since claimed.
   IF v_row.status <> 'processing' OR v_row.locked_by IS DISTINCT FROM p_worker THEN
     RETURN 'stale';
+  END IF;
+
+  -- BOUNDED. Deferring is unbounded in attempts by design, but a row that is genuinely
+  -- undeliverable (recipient not on WhatsApp, sender blocked) also surfaces as a provider 4xx,
+  -- and the worker cannot always tell that apart from a config gap. So parking is capped by
+  -- TIME rather than by count: a real config gap gets a full day to be fixed, and a row that is
+  -- simply never deliverable still reaches a terminal state instead of looping forever.
+  -- Anchored on when the row became DUE (scheduled_for for a future-dated reminder), not on
+  -- creation, so a reminder queued days ahead is not born half-expired.
+  v_anchor := greatest(v_row.created_at, v_row.scheduled_for);
+  IF now() > v_anchor + make_interval(hours => greatest(p_max_defer_hours, 1)) THEN
+    UPDATE public.notification_outbox
+    SET status     = 'failed',
+        failed_at  = now(),
+        last_error = coalesce(p_reason, 'deferred_too_long'),
+        payload    = payload - 'attachments',
+        locked_at  = NULL,
+        locked_by  = NULL,
+        updated_at = now()
+    WHERE id = p_outbox_id;
+
+    INSERT INTO public.email_delivery_events
+      (channel, outbox_id, event_type, recipient_email, destination_redacted, reason, occurred_at)
+    VALUES
+      (v_row.channel, p_outbox_id, 'send_failed',
+       CASE WHEN v_row.channel = 'email' THEN lower(btrim(v_row.destination_normalized)) END,
+       v_row.destination_redacted, coalesce(p_reason, 'deferred_too_long'), now());
+
+    RETURN 'exhausted';
   END IF;
 
   UPDATE public.notification_outbox
@@ -283,7 +314,7 @@ BEGIN
   RETURN 'deferred';
 END;
 $$;
-COMMENT ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int) IS
-  'Notification v2 worker: return a claimed row to pending WITHOUT consuming an attempt, for global config gaps where the worker never reached the provider (missing template SID, missing/invalid credentials). Ownership-guarded like record_notification_send_result. Prevents a config gap outliving the retry budget from permanently failing every queued row. service_role only.';
-REVOKE ALL ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int) TO service_role;
+COMMENT ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int, int) IS
+  'Notification v2 worker: return a claimed row to pending WITHOUT consuming an attempt, for GLOBAL config gaps (missing/unapproved template SID, missing/invalid credentials, an unusable sender) — including provider 4xx responses, since by then every row-shaped input has already been validated locally. Ownership-guarded like record_notification_send_result. Bounded: past p_max_defer_hours from when the row became due it fails terminally (''exhausted'') so an undeliverable row cannot park forever. service_role only.';
+REVOKE ALL ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int, int) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int, int) TO service_role;

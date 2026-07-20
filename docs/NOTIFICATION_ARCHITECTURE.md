@@ -522,9 +522,22 @@ Prerequisites:
      once `attempts >= max_attempts` whatever `p_terminal` says, and 5 attempts of 2^n backoff
      is only ~62 minutes — far shorter than a credential fix or a Meta template review. Without
      deferral, a config gap outliving that hour silently discards everything queued behind it.
-     Row-specific faults (bad phone, withdrawn consent, no committed template) stay terminal,
-     and a real provider attempt still counts. Deferrals raise their own ops alert, so a gap
-     that is never fixed parks the queue loudly rather than silently.
+     Row-specific faults stay terminal, and a transient provider blip still spends the budget.
+   - **The defer/fail split is drawn by WHOSE INPUT WAS WRONG, not by HTTP semantics.** A 4xx
+     normally reads as "permanent client error", but every row-shaped input is validated
+     locally *before* the call — E.164 recipient, live consent, a committed template, content
+     present — so what remains in the request is environment: the `ContentSid`, the sender, the
+     account. An unapproved / wrong-account / mistyped `ContentSid` returns a 400, and treating
+     that as terminal would destroy the whole queue on its **first drain** — faster and more
+     total than the `max_attempts` exhaustion above. So provider 4xx ⇒ defer; 429/5xx ⇒
+     ordinary retry. TERMINAL is reserved for what we ourselves diagnosed: non-E.164 recipient,
+     withdrawn consent, no committed template for the event/language, no content.
+   - Deferral is **bounded by time** (24h from when the row became *due* — anchored on
+     `scheduled_for`, so a reminder queued days ahead isn't born half-expired). Past the cap the
+     row fails terminally and lands on the delivery log, because an ambiguous 4xx can also mean
+     genuinely undeliverable (recipient not on WhatsApp, sender blocked) and that must not park
+     forever. Deferrals and exhaustions both raise ops alerts, so a gap that is never fixed
+     parks the queue loudly rather than silently.
    - The worker is **scheduled on pg_cron from the start** (`20260919110000`, every 2 min,
      same guarded/idempotent Vault pattern as the email worker). Safe while disabled — the
      kill switch returns before claiming — and it makes going live a single env-var flip

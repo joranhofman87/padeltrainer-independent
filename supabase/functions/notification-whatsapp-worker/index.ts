@@ -87,13 +87,18 @@ const handler = async (req: Request): Promise<Response> => {
   // attempts >= max_attempts regardless of p_terminal, which at 5 attempts of 2^n backoff is
   // ~62 minutes — far shorter than a credential fix or a Meta template approval. Deferring
   // parks the row until the config is corrected instead of burning it down.
-  const deferRow = (outboxId: string, reason: string) =>
-    supabase.rpc("defer_notification_outbox_row", {
+  const deferRow = async (outboxId: string, reason: string): Promise<"deferred" | "exhausted"> => {
+    const { data } = await supabase.rpc("defer_notification_outbox_row", {
       p_outbox_id: outboxId,
       p_worker: workerToken,
       p_reason: reason,
       p_retry_minutes: 5,
+      p_max_defer_hours: 24,
     });
+    // 'exhausted' = parked past the cap and now terminally failed; count it as a failure so it
+    // is alerted as one rather than hiding inside the (benign-sounding) deferred tally.
+    return data === "exhausted" ? "exhausted" : "deferred";
+  };
 
   let cronLockHeld = false;
   try {
@@ -195,8 +200,8 @@ const handler = async (req: Request): Promise<Response> => {
         // property of this row. DEFER rather than record a failure: a "retryable" failure still
         // consumes an attempt, so a template approval taking longer than ~62 minutes would
         // permanently discard every reminder queued behind it.
-        await deferRow(row.outbox_id, "missing_content_sid");
-        deferred++;
+        if (await deferRow(row.outbox_id, "missing_content_sid") === "exhausted") failed++;
+        else deferred++;
         continue;
       }
 
@@ -211,9 +216,11 @@ const handler = async (req: Request): Promise<Response> => {
         await recordResult(row.outbox_id, "sent", { messageId: outcome.sid ?? null });
         sent++;
       } else if (outcome.configError) {
-        // Bad/missing credentials, an unusable sender, a 401 — wrong for EVERY row. Park it.
-        await deferRow(row.outbox_id, outcome.error.slice(0, 500));
-        deferred++;
+        // Missing/invalid credentials, an unusable sender, or ANY provider 4xx — by this point
+        // every row-shaped input was already validated locally, so what Twilio is rejecting is
+        // our configuration (typically an unapproved or wrong-account ContentSid). Park it.
+        if (await deferRow(row.outbox_id, outcome.error.slice(0, 500)) === "exhausted") failed++;
+        else deferred++;
       } else {
         await recordResult(row.outbox_id, "failed", {
           error: outcome.error.slice(0, 500),

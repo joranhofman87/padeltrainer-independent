@@ -12,9 +12,12 @@
 //     only deliverable inside the 24-hour service window, so it is gated behind an explicit
 //     opt-in flag and exists for pre-approval testing, not production sends.
 //
-//   * AUTH FAILURES ARE RETRYABLE HERE. A 401 is a misconfiguration affecting EVERY row, not a
-//     property of one message; treating it as terminal would permanently fail the whole queue
-//     over a wrong env var. It self-heals once the credentials are corrected.
+//   * PROVIDER 4xx IS A CONFIG SIGNAL, NOT A ROW VERDICT. Everything row-shaped is validated
+//     before the call (E.164 recipient, live consent, committed template, content present), so
+//     what remains in the request is environment — the ContentSid, the sender, the account.
+//     A 401, or a 400 for an unapproved/wrong-account ContentSid, is a misconfiguration
+//     affecting EVERY row; failing rows terminally over it destroys them on the first drain.
+//     Those surface as configError so the worker DEFERS them instead of spending the budget.
 
 export type WhatsAppSendPayload = {
   /** "whatsapp:+31…" sender, or a Messaging Service SID (MG…). */
@@ -52,9 +55,8 @@ export type TwilioAuth = {
 export const WHATSAPP_MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 400;
 
-const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
-/** Config-level failures: wrong for every row, so retry (they self-heal) rather than burn one. */
-const CONFIG_STATUS = new Set([401, 403]);
+/** Transient provider trouble. This is what the row's attempt budget is FOR, so it burns one. */
+const TRANSIENT_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
 const E164 = /^\+[1-9][0-9]{7,14}$/;
 
@@ -141,14 +143,28 @@ export async function sendWhatsAppMessage(
         ? `${bodyJson.message}${code}`
         : `Twilio HTTP ${res.status}${code}`;
 
-      const retryable = RETRYABLE_STATUS.has(res.status) || CONFIG_STATUS.has(res.status);
-      // A config failure is not worth burning our in-request retries on — the outbox backoff
-      // will re-try it later, by which time the env var may have been fixed.
-      if (CONFIG_STATUS.has(res.status)) {
+      if (TRANSIENT_STATUS.has(res.status)) {
+        if (attempt === maxAttempts) {
+          return { ok: false, error: lastError, attempts: attempt, retryable: true };
+        }
+        // fall through to the backoff and try again in-request
+      } else if (res.status >= 400 && res.status < 500) {
+        // EVERY OTHER 4xx IS TREATED AS A CONFIG PROBLEM, not a row fault — classified by whose
+        // input was wrong rather than by HTTP semantics. By the time we reach Twilio we have
+        // already validated everything that belongs to the ROW ourselves (E.164 recipient,
+        // live consent, a committed template, content present). What is left in the request is
+        // ENVIRONMENT: the ContentSid, the configured sender, the account's own state. Twilio
+        // rejecting an unapproved/wrong-account ContentSid or an unusable sender is a statement
+        // about our configuration, and terminal-failing queued rows over it would destroy them
+        // on the FIRST drain.
+        //
+        // The asymmetry decides the default: wrongly deferring parks a row visibly, with an
+        // ops alert and a bounded lifetime; wrongly terminal-failing silently destroys a real
+        // notification. So an ambiguous 4xx defers.
         return { ok: false, error: lastError, attempts: attempt, retryable: true, configError: true };
-      }
-      if (!retryable || attempt === maxAttempts) {
-        return { ok: false, error: lastError, attempts: attempt, retryable };
+      } else if (attempt === maxAttempts) {
+        // unlisted 5xx — treat as transient
+        return { ok: false, error: lastError, attempts: attempt, retryable: true };
       }
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);

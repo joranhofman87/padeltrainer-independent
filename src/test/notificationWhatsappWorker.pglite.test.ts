@@ -268,6 +268,45 @@ describe('defer_notification_outbox_row — a config gap must not burn the retry
     expect((await rowState(id)).status).toBe('failed');
   });
 
+  it('is BOUNDED: past the cap it fails terminally instead of parking forever', async () => {
+    // deferring on an ambiguous provider 4xx means a genuinely undeliverable row (recipient not
+    // on WhatsApp, sender blocked) would otherwise loop for good. Capped by time, so a real
+    // config gap gets a full day while a dead row still reaches a terminal state.
+    const id = await queueRow(P_P, PHONE, null, 'k1');
+    await db.exec(
+      `UPDATE public.notification_outbox
+       SET created_at = now() - interval '30 hours', scheduled_for = now() - interval '30 hours'
+       WHERE id = '${id}';`);
+    await claimOne();
+    const r = await db.query<{ v: string }>(
+      `SELECT public.defer_notification_outbox_row('${id}', 'w1', 'Invalid ContentSid', 5, 24) AS v`);
+    expect(r.rows[0].v).toBe('exhausted');
+
+    const after = await rowState(id);
+    expect(after.status).toBe('failed');
+    expect(after.locked_by).toBeNull();
+    // and it lands on the delivery log rather than disappearing quietly
+    const ev = await db.query<{ event_type: string; reason: string | null; recipient_email: string | null }>(
+      `SELECT event_type, reason, recipient_email FROM public.email_delivery_events WHERE outbox_id = '${id}'`);
+    expect(ev.rows[0].event_type).toBe('send_failed');
+    expect(ev.rows[0].reason).toContain('ContentSid');
+    expect(ev.rows[0].recipient_email).toBeNull();   // never a phone in the email column
+  });
+
+  it('anchors the cap on when the row became DUE, not when it was created', async () => {
+    // a reminder queued days ahead of its session must not be born half-expired
+    const id = await queueRow(P_P, PHONE, null, 'k1');
+    await db.exec(
+      `UPDATE public.notification_outbox
+       SET created_at = now() - interval '30 days', scheduled_for = now()
+       WHERE id = '${id}';`);
+    await claimOne();
+    const r = await db.query<{ v: string }>(
+      `SELECT public.defer_notification_outbox_row('${id}', 'w1', 'missing_content_sid', 5, 24) AS v`);
+    expect(r.rows[0].v).toBe('deferred');
+    expect((await rowState(id)).status).toBe('pending');
+  });
+
   it('refuses to rewind a row a NEWER run has claimed (ownership guard)', async () => {
     const id = await queueRow(P_P, PHONE, null, 'k1');
     await claimOne('whatsapp', 'w1');
@@ -280,7 +319,7 @@ describe('defer_notification_outbox_row — a config gap must not burn the retry
   it('is service_role only', async () => {
     const r = await db.query<{ role: string; can: boolean }>(`
       SELECT role, has_function_privilege(role,
-        'public.defer_notification_outbox_row(uuid,text,text,int)', 'EXECUTE') AS can
+        'public.defer_notification_outbox_row(uuid,text,text,int,int)', 'EXECUTE') AS can
       FROM unnest(ARRAY['anon','authenticated','service_role']) AS role`);
     expect(r.rows.find((x) => x.role === 'anon')!.can).toBe(false);
     expect(r.rows.find((x) => x.role === 'authenticated')!.can).toBe(false);
