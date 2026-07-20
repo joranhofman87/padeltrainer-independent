@@ -823,6 +823,7 @@ serve(async (req) => {
                 bookingIds: invoiceData.booking_ids,
                 playerName,
                 paymentAmountValue: payment.amount?.value,
+                molliePaymentId: paymentId,
                 source: "mollie-webhook-rebook",
                 logStep,
                 notifySlackError,

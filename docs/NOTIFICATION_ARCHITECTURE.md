@@ -400,9 +400,21 @@ Prerequisites:
      strips `payload.attachments` on any TERMINAL outcome (sent / non-retryable / exhausted),
      while a RETRYABLE backoff keeps it so the retry re-sends the same PDF (migration
      `20260915110000`). At scale this can be swapped for an invoice reference resolved at send time.
-   - **6b (next): the STAFF fan-out** (`sendStaffBookingNotifications` →
-     `booking_confirmed_staff`) — one deterministic idempotency key per staff recipient;
-     reuse/extract the `new_public_booking_admin` renderer.
+   - **6b (shipped): the STAFF fan-out.** `sendStaffBookingNotifications` now enqueues
+     `booking_confirmed_staff` (one row per staff recipient) instead of a direct send-email,
+     for both the public and rebook paths. The `new_public_booking_admin` copy was extracted
+     to `_shared/staff-booking-email.ts` (send-email now renders through it too — no drift).
+     Each row is TENANT-scoped — a manager's to their ACADEMY, a trainer's to their TRAINER —
+     so PR-7 timelines show it only inside that scope, never cross-tenant. Delivery is the
+     resolver's persons.email ACCOUNT fallback (staff are account holders). Idempotency is
+     per recipient (`<event>:<payment-subject>:<person>`), so a duplicate webhook/verify
+     delivery re-enqueues to a no-op, and a trainer who is also a manager (same account) gets
+     ONLY the academy row. `booking_confirmed_staff` was flipped to REQUIRED-delivery
+     (migration `20260916100000`) so a staff account with no reachable email yields a VISIBLE
+     skipped/no_email_contact row — consequence: staff booking email is now non-mutable +
+     instant (a prefs_v2 opt-out/digest would be a PR-8 decision). The legacy send-email
+     `new_public_booking_admin` case stays wired (now via the shared renderer) but has no
+     remaining caller → retired in PR 10.
 7. Tenant-visible timelines — the READ RPCs/UI only (the schema + RLS + denial
    tests already landed in PR 2): `get_player_notification_timeline`,
    `get_invoice_notification_timeline`, `get_booking_notification_timeline`
