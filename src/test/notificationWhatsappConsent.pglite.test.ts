@@ -172,6 +172,42 @@ describe('record_whatsapp_optin', () => {
 });
 
 describe('record_whatsapp_optout — platform-wide', () => {
+  it('IDEMPOTENT: a re-delivered callback cannot move the withdrawal timestamp', async () => {
+    // revoked_at answers "when did this person ask us to stop" — a compliance fact. Twilio
+    // re-delivers status callbacks, so an unguarded `revoked_at = now()` walks that forward on
+    // every retry: consent stays correct, but the audit trail quietly stops answering the
+    // question it exists for. Pinned with an explicit past timestamp so it cannot go flaky on
+    // two now() values landing in the same tick.
+    await optIn(P_P, '0612345678', A1, null);
+    await db.query(`SELECT public.record_whatsapp_optout('+31612345678')`);
+
+    await db.exec(`UPDATE public.notification_contacts
+      SET revoked_at = timestamptz '2026-03-01 09:00:00+00'
+      WHERE channel = 'whatsapp' AND destination_normalized = '+31612345678';`);
+
+    // the retry
+    await db.query(`SELECT public.record_whatsapp_optout('+31612345678')`);
+
+    const rows = (await contactsFor('+31612345678')).rows;
+    expect(rows).toHaveLength(1);
+    expect(new Date(rows[0].revoked_at!).toISOString()).toBe('2026-03-01T09:00:00.000Z');
+    expect(rows[0].consent_status).toBe('opted_out');
+  });
+
+  it('still records a withdrawal for a number revoked with an inconsistent status', async () => {
+    // the broad WHERE (no `revoked_at IS NULL` guard) is deliberate: it repairs a row whose
+    // status drifted from its revocation, without touching the original timestamp
+    await optIn(P_P, '0612345678', A1, null);
+    await db.exec(`UPDATE public.notification_contacts
+      SET revoked_at = timestamptz '2026-03-01 09:00:00+00', consent_status = 'opted_in'
+      WHERE channel = 'whatsapp' AND destination_normalized = '+31612345678';`);
+
+    await db.query(`SELECT public.record_whatsapp_optout('+31612345678')`);
+    const row = (await contactsFor('+31612345678')).rows[0];
+    expect(row.consent_status).toBe('opted_out');
+    expect(new Date(row.revoked_at!).toISOString()).toBe('2026-03-01T09:00:00.000Z');
+  });
+
   it('revokes EVERY contact on that number, across tenants', async () => {
     await optIn(P_P, '0612345678', A1, null);
     await optIn(P_O, '0612345678', A2, null);   // same number, different person + academy

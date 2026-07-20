@@ -80,6 +80,22 @@ const handler = async (req: Request): Promise<Response> => {
     const messageSid = params.MessageSid ?? params.SmsSid ?? "";
     const status = params.MessageStatus ?? params.SmsStatus ?? "";
     if (messageSid && status) {
+      // A 21610 callback is BOTH a delivery outcome and a consent event, and CONSENT GOES
+      // FIRST: if only one of the two writes survives a transient failure, it must be the one
+      // that stops us messaging someone who opted out. (Twilio retries either way, and both
+      // writes are idempotent — the status event on its unique index, the opt-out because
+      // revoked_at keeps the first withdrawal time.) Recording only the outcome would leave
+      // the resolver queueing to that person, and this is the ONLY notice we get when the STOP
+      // predates this webhook.
+      let revoked: number | null = null;
+      if (optOutNumber) {
+        const { data: revokedCount, error: optErr } = await supabase.rpc("record_whatsapp_optout", {
+          p_phone: optOutNumber,
+        });
+        if (optErr) throw new Error(`opt-out failed: ${optErr.message}`);
+        revoked = revokedCount ?? 0;
+      }
+
       const { data, error } = await supabase.rpc("record_whatsapp_status_event", {
         p_message_sid: messageSid,
         p_status: status,
@@ -88,18 +104,9 @@ const handler = async (req: Request): Promise<Response> => {
       });
       if (error) throw new Error(`status record failed: ${error.message}`);
 
-      // A 21610 status callback is BOTH a delivery outcome and a consent event. Recording only
-      // the outcome would leave the resolver queueing messages to someone who has opted out —
-      // and this is the only notice we get when the STOP predates the webhook. Both writes are
-      // idempotent, so a Twilio callback retry re-runs them harmlessly.
-      if (optOutNumber) {
-        const { data: revoked, error: optErr } = await supabase.rpc("record_whatsapp_optout", {
-          p_phone: optOutNumber,
-        });
-        if (optErr) throw new Error(`opt-out failed: ${optErr.message}`);
-        return json({ ok: true, action: "status_opted_out", result: data, revoked: revoked ?? 0 });
-      }
-      return json({ ok: true, action: "status", result: data });
+      return optOutNumber
+        ? json({ ok: true, action: "status_opted_out", result: data, revoked: revoked ?? 0 })
+        : json({ ok: true, action: "status", result: data });
     }
 
     // A verified-but-unrecognized payload is not an error: Twilio sends shapes we do not

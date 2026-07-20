@@ -179,7 +179,10 @@ BEGIN
   -- LAST` is non-deterministic between them — so it can keep messaging the OLD number, which
   -- after recycling may belong to a stranger. One active WhatsApp number per person.
   UPDATE public.notification_contacts
-  SET is_primary = false, consent_status = 'opted_out', revoked_at = now(), updated_at = now()
+  SET is_primary = false, consent_status = 'opted_out',
+      -- coalesce, not now(): the WHERE below already skips revoked rows, but keeping the
+      -- FIRST withdrawal time here too means the invariant survives that guard being relaxed.
+      revoked_at = coalesce(revoked_at, now()), updated_at = now()
   WHERE channel = 'whatsapp'
     AND person_id = p_person_id
     AND id <> v_id
@@ -210,14 +213,21 @@ DECLARE
 BEGIN
   IF v_phone IS NULL THEN RETURN 0; END IF;
 
+  -- revoked_at records WHEN the person asked us to stop, so it must be the FIRST withdrawal,
+  -- not the latest write. Twilio re-delivers status callbacks, and a retried 21610 (or a second
+  -- STOP) would otherwise walk that timestamp forward — the consent state stays correct either
+  -- way, but the audit trail quietly stops answering the question it exists to answer.
+  -- updated_at still moves: that is the row's write time, which is a different fact.
   UPDATE public.notification_contacts
-  SET consent_status = 'opted_out', revoked_at = now(), updated_at = now()
+  SET consent_status = 'opted_out',
+      revoked_at = coalesce(revoked_at, now()),
+      updated_at = now()
   WHERE channel = 'whatsapp' AND destination_normalized = v_phone;
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
 $$;
 COMMENT ON FUNCTION public.record_whatsapp_optout(text) IS
-  'Notification v2 (PR 9): revoke WhatsApp consent for a number across ALL tenants — a STOP reply addresses the sender, not one academy. service_role only (called by the Twilio inbound/status webhook).';
+  'Notification v2 (PR 9): revoke WhatsApp consent for a number across ALL tenants — a STOP reply addresses the sender, not one academy. Idempotent: revoked_at keeps the FIRST withdrawal time, so a re-delivered Twilio callback cannot move the audit timestamp. service_role only (called by the Twilio inbound/status webhook).';
 REVOKE ALL ON FUNCTION public.record_whatsapp_optout(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_whatsapp_optout(text) TO service_role;

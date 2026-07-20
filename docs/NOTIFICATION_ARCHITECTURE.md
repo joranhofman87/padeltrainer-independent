@@ -585,8 +585,13 @@ Prerequisites:
      consent using **`To`** — reading `From` would opt out our own platform number while the
      webhook 200s and a delivery-log row lands, i.e. failing in a way that looks like success
      at every layer. That decision lives in the tested `optOutNumberFromPayload()` rather than
-     being re-derived per call site. A 21610 callback records the status event *and* the
-     opt-out; both writes are idempotent under Twilio's callback retries. Other failure codes
+     being re-derived per call site. A 21610 callback performs **the opt-out first**, then the
+     status event: if only one write survives a transient failure it must be the one that stops
+     us messaging someone who opted out. Both are idempotent under Twilio's callback retries —
+     the status event on its unique index, and the opt-out because `revoked_at` uses
+     `coalesce(revoked_at, now())` to keep the **first** withdrawal time. That field is the
+     audit answer to "when did this person ask us to stop", so a retried callback must not walk
+     it forward; `updated_at` still moves, since the row's write time is a different fact. Other failure codes
      (63024/21614/63032) mean undeliverable, not "asked us to stop", and never revoke. **The X-Twilio-Signature IS the authentication** — no token
      configured or a bad signature means 403 before the payload is interpreted. Statuses map
      onto the EXISTING `email_delivery_events` taxonomy (raw status kept in `reason`) rather
