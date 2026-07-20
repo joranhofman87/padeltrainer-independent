@@ -950,7 +950,9 @@ const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?:
       // only, never the price) and to academy managers (data.amount present).
       // The copy now lives in _shared/staff-booking-email.ts so the notification
       // outbox path (booking_confirmed_staff, PR 6b) renders the identical email.
-      return renderStaffBookingEmail(data);
+      // That renderer HTML-escapes its own body interpolations, so pass the RAW
+      // dataRaw here — the deep-escaped `data` would double-escape.
+      return renderStaffBookingEmail(dataRaw);
     }
 
     case "new_intake_registration_admin": {

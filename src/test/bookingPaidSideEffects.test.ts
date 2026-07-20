@@ -291,6 +291,21 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
     expect(staffEnqueues(rpc)).toHaveLength(0);
   });
 
+  it('SECURITY: a malicious guest playerName is HTML-escaped in the enqueued staff email (no injection)', async () => {
+    const evil = '<img src=x onerror=alert(1)>';
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: { ...guestBooking, guest_players: { full_name: evil } },
+      invoiceInvokeData: { invoiceId: 'INV-1' },
+      staffBookings: [staffBooking()],
+      trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+      profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+    });
+    await run(supabase);
+    const p = staffEnqueues(rpc)[0][1] as { p_payload: { html: string } };
+    expect(p.p_payload.html).not.toContain(evil);
+    expect(p.p_payload.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
   it('an enqueue error is surfaced (Slack alert), never swallowed', async () => {
     const notify = vi.fn(async (_fn: string, _msg: string, _ctx?: Record<string, unknown>) => {});
     const { supabase } = makeFakeSupabase({
