@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { renderStaffBookingEmail } from "../_shared/staff-booking-email.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -947,34 +948,11 @@ const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?:
       // Staff notification for a PAID public booking. Sent to the slot's trainer
       // (data.amount ABSENT — owner decision: trainer emails carry the booking(s)
       // only, never the price) and to academy managers (data.amount present).
-      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
-      const sessionRows = sessions
-        .map((sess: { date?: string; time?: string; location?: string; name?: string }) => `
-              <tr>
-                <td style="padding: 6px 12px 6px 0; white-space: nowrap;"><strong>${sess.date || ""}</strong></td>
-                <td style="padding: 6px 12px 6px 0; white-space: nowrap;">${sess.time || ""}</td>
-                <td style="padding: 6px 12px 6px 0;">${[sess.name, sess.location].filter(Boolean).join(" · ")}</td>
-              </tr>`)
-        .join("");
-      const count = sessions.length;
-      return {
-        subject: `New booking: ${data.playerName}${count > 1 ? ` (${count} sessions)` : ""} 🎾`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            ${EMAIL_LOGO}
-            <h1 style="color: ${BRAND_ORANGE};">New booking 🎾</h1>
-            <p>Hi ${data.recipientName || ""},</p>
-            <p><strong>${data.playerName}</strong> just booked ${count === 1 ? "a session" : `${count} sessions`} and paid online.</p>
-            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <table style="border-collapse: collapse; width: 100%;">${sessionRows}
-              </table>
-              ${data.amount ? `<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 12px 0;" /><p style="margin: 4px 0;"><strong>Amount paid:</strong> ${data.amount}</p>` : ""}
-            </div>
-            <p>The booking is confirmed and visible in your agenda.</p>
-            <p>Best regards,<br>PadelTrainer.ai Team</p>
-          </div>
-        `,
-      };
+      // The copy now lives in _shared/staff-booking-email.ts so the notification
+      // outbox path (booking_confirmed_staff, PR 6b) renders the identical email.
+      // That renderer HTML-escapes its own body interpolations, so pass the RAW
+      // dataRaw here — the deep-escaped `data` would double-escape.
+      return renderStaffBookingEmail(dataRaw);
     }
 
     case "new_intake_registration_admin": {

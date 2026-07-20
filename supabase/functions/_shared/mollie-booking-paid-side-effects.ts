@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
+import { renderStaffBookingEmail } from "./staff-booking-email.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
 type NotifySlackError = (
@@ -172,6 +173,7 @@ export async function runBookingPaidSideEffects(opts: {
         bookingIds,
         playerName: booking.profiles?.full_name ?? booking.guest_players?.full_name ?? "Guest",
         paymentAmountValue,
+        molliePaymentId,
         source,
         logStep,
         notifySlackError,
@@ -197,26 +199,32 @@ function formatAmsterdam(iso: string, kind: "date" | "time"): string {
 type StaffSession = { date: string; time: string; location: string; name: string };
 
 /**
- * Email the slot owners about a paid public booking: one email per TRAINER
- * (their sessions only, NO amount) and one per ACADEMY MANAGER (all sessions +
- * the paid amount). A trainer whose address is already among the academy
- * recipients gets only the academy version (solo academies would otherwise see
- * every booking twice). Recipients route through send-email's `new_booking`
- * preference, so staff can mute or digest these per user.
+ * Notify the slot owners about a paid public booking — now via the notification OUTBOX
+ * (booking_confirmed_staff, PR 6b) instead of a direct send-email: one row per TRAINER
+ * (their sessions only, NO amount) and one per ACADEMY MANAGER (all sessions + the paid
+ * amount). A trainer who is ALSO an academy manager (same account) gets only the academy
+ * version. Each row is TENANT-SCOPED — a manager's row to their ACADEMY, a trainer's to
+ * their TRAINER — so PR-7 timelines show it only inside that scope, never cross-tenant.
+ * Delivery is the resolver's persons.email ACCOUNT fallback (staff are account holders);
+ * booking_confirmed_staff is required-delivery, so an account with no reachable email
+ * yields a VISIBLE skipped row (the email worker raises the dedup'd ops alert).
  *
- * Non-fatal by design; a failure alerts Slack (the paid claim is consumed, so
- * nothing retries this).
+ * Idempotency is per recipient (<event>:<payment-subject>:<person>), so a duplicate
+ * webhook/verify delivery re-enqueues to a no-op. Non-fatal by design; a failure alerts
+ * Slack (the paid claim is consumed, so nothing retries this).
  */
 export async function sendStaffBookingNotifications(opts: {
   supabase: SupabaseClient;
   bookingIds: string[];
   playerName: string;
   paymentAmountValue?: string;
+  /** Mollie payment id — the confirmation's idempotency subject (shared with the player row). */
+  molliePaymentId?: string;
   source: string;
   logStep: LogStep;
   notifySlackError: NotifySlackError;
 }): Promise<void> {
-  const { supabase, bookingIds, playerName, paymentAmountValue, source, logStep, notifySlackError } = opts;
+  const { supabase, bookingIds, playerName, paymentAmountValue, molliePaymentId, source, logStep, notifySlackError } = opts;
   try {
     const { data: rows } = await supabase
       .from("bookings")
@@ -252,33 +260,38 @@ export async function sendStaffBookingNotifications(opts: {
       name: b.availability_slots.cyclus_name ?? "",
     });
 
-    // Academy recipients first (they win the dedupe): every manager of every
-    // academy involved, all sessions, amount included.
+    // Academy recipients first (they win the person-dedupe): each manager of each academy
+    // involved, all sessions, amount included. Keyed by user_id (the account the resolver's
+    // persons.email fallback delivers to), carrying the academy for the row's tenant scope.
     const academyIds = [...new Set(bookings.map((b) => b.availability_slots.academy_profile_id).filter(Boolean))] as string[];
-    const academyEmails = new Set<string>();
-    const academyRecipients: Array<{ email: string; name: string }> = [];
+    const academyUserIds = new Set<string>();
+    const academyRecipients: Array<{ userId: string; name: string; academyId: string }> = [];
     if (academyIds.length > 0) {
       const { data: managers } = await supabase
         .from("academy_managers")
-        .select("user_id")
+        .select("user_id, academy_profile_id")
         .in("academy_profile_id", academyIds);
-      const managerUserIds = [...new Set(((managers ?? []) as Array<{ user_id: string }>).map((m) => m.user_id))];
+      const mgrRows = (managers ?? []) as Array<{ user_id: string; academy_profile_id: string }>;
+      const managerUserIds = [...new Set(mgrRows.map((m) => m.user_id))];
+      const nameByUser = new Map<string, string | null>();
       if (managerUserIds.length > 0) {
         const { data: profs } = await supabase
           .from("profiles")
-          .select("user_id, email, full_name")
+          .select("user_id, full_name")
           .in("user_id", managerUserIds);
-        for (const prof of (profs ?? []) as Array<{ user_id: string; email: string | null; full_name: string | null }>) {
-          if (!prof.email || academyEmails.has(prof.email)) continue;
-          academyEmails.add(prof.email);
-          academyRecipients.push({ email: prof.email, name: prof.full_name ?? "" });
-        }
+        for (const p of (profs ?? []) as Array<{ user_id: string; full_name: string | null }>) nameByUser.set(p.user_id, p.full_name);
+      }
+      for (const m of mgrRows) {
+        if (academyUserIds.has(m.user_id)) continue; // one row per manager (first academy wins)
+        academyUserIds.add(m.user_id);
+        academyRecipients.push({ userId: m.user_id, name: nameByUser.get(m.user_id) ?? "", academyId: m.academy_profile_id });
       }
     }
 
-    // Trainer recipients: per trainer, their own sessions, NO amount.
+    // Trainer recipients: per trainer, their own sessions, NO amount. A trainer who is also
+    // an academy manager (same account) already has the academy row → skip.
     const trainerIds = [...new Set(bookings.map((b) => b.availability_slots.trainer_id).filter(Boolean))] as string[];
-    const trainerRecipients: Array<{ email: string; name: string; sessions: StaffSession[] }> = [];
+    const trainerRecipients: Array<{ userId: string; name: string; trainerId: string; sessions: StaffSession[] }> = [];
     if (trainerIds.length > 0) {
       const { data: tps } = await supabase
         .from("trainer_profiles")
@@ -286,62 +299,75 @@ export async function sendStaffBookingNotifications(opts: {
         .in("id", trainerIds);
       const tpList = (tps ?? []) as Array<{ id: string; user_id: string | null }>;
       const userIds = [...new Set(tpList.map((t) => t.user_id).filter(Boolean))] as string[];
-      const emailByUser = new Map<string, { email: string | null; full_name: string | null }>();
+      const nameByUser = new Map<string, string | null>();
       if (userIds.length > 0) {
         const { data: profs } = await supabase
           .from("profiles")
-          .select("user_id, email, full_name")
+          .select("user_id, full_name")
           .in("user_id", userIds);
-        for (const prof of (profs ?? []) as Array<{ user_id: string; email: string | null; full_name: string | null }>) {
-          emailByUser.set(prof.user_id, prof);
-        }
+        for (const p of (profs ?? []) as Array<{ user_id: string; full_name: string | null }>) nameByUser.set(p.user_id, p.full_name);
       }
       for (const tp of tpList) {
-        const prof = tp.user_id ? emailByUser.get(tp.user_id) : undefined;
-        if (!prof?.email) continue;
-        if (academyEmails.has(prof.email)) continue; // gets the academy version instead
+        if (!tp.user_id || academyUserIds.has(tp.user_id)) continue; // no account, or gets the academy version instead
         trainerRecipients.push({
-          email: prof.email,
-          name: prof.full_name ?? "",
+          userId: tp.user_id,
+          name: nameByUser.get(tp.user_id) ?? "",
+          trainerId: tp.id,
           sessions: bookings.filter((b) => b.availability_slots.trainer_id === tp.id).map(toSession),
         });
       }
     }
 
     const allSessions = bookings.map(toSession);
-    const sends: Array<Promise<unknown>> = [];
-    for (const r of trainerRecipients) {
-      sends.push(
-        supabase.functions.invoke("send-email", {
-          body: {
-            to: r.email,
-            type: "new_public_booking_admin",
-            data: { recipientName: r.name, playerName, sessions: r.sessions },
-          },
-        }),
-      );
-    }
+    let enqueueErrors = 0;
+
+    // One booking_confirmed_staff row per recipient. supabase.rpc returns { error } (never
+    // throws on a DB error), so inspect it — a swallowed enqueue error is a silent lost notice.
+    const enqueueStaff = async (
+      userId: string,
+      scope: { academy?: string; trainer?: string },
+      sessions: StaffSession[],
+      amount: string | undefined,
+      name: string,
+    ) => {
+      const { subject, html } = renderStaffBookingEmail({ recipientName: name, playerName, sessions, amount });
+      const { error } = await supabase.rpc("enqueue_notification", {
+        p_event_key: "booking_confirmed_staff",
+        p_recipient_user_id: userId,
+        p_tenant_academy_profile_id: scope.academy ?? null,
+        p_tenant_trainer_id: scope.trainer ?? null,
+        p_related_booking_ids: bookingIds,
+        p_related_payment_id: molliePaymentId ?? null,
+        p_payload: { subject, html },
+        p_public_summary: { event_type: "booking_confirmed_staff", sessions: sessions.length },
+      });
+      if (error) {
+        enqueueErrors++;
+        logStep("Staff notification enqueue failed", { error: error.message, userId });
+      }
+    };
+
+    const enqueues: Array<Promise<void>> = [];
     for (const r of academyRecipients) {
-      sends.push(
-        supabase.functions.invoke("send-email", {
-          body: {
-            to: r.email,
-            type: "new_public_booking_admin",
-            data: {
-              recipientName: r.name,
-              playerName,
-              sessions: allSessions,
-              ...(paymentAmountValue ? { amount: `€${paymentAmountValue}` } : {}),
-            },
-          },
-        }),
-      );
+      enqueues.push(enqueueStaff(r.userId, { academy: r.academyId }, allSessions, paymentAmountValue ? `€${paymentAmountValue}` : undefined, r.name));
     }
-    await Promise.all(sends);
-    if (sends.length > 0) {
-      logStep("Staff booking notifications sent", {
+    for (const r of trainerRecipients) {
+      enqueues.push(enqueueStaff(r.userId, { trainer: r.trainerId }, r.sessions, undefined, r.name));
+    }
+    await Promise.all(enqueues);
+
+    const total = academyRecipients.length + trainerRecipients.length;
+    if (total > 0) {
+      logStep("Staff booking notifications enqueued", {
         trainers: trainerRecipients.length,
         academyManagers: academyRecipients.length,
+        enqueueErrors,
+      });
+    }
+    if (enqueueErrors > 0) {
+      await notifySlackError(source, "some staff booking notifications could not be enqueued", {
+        bookingIds,
+        enqueueErrors,
       });
     }
   } catch (staffErr) {
