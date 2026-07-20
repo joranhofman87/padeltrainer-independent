@@ -183,17 +183,23 @@ export default function NotificationSettings() {
     }
   };
 
-  /** Legacy v1 column write — select-then-branch, as v1 did (that table has no upsert target). */
+  /**
+   * Legacy v1 column write. UPSERT on user_id — notification_preferences.user_id is UNIQUE, so
+   * unlike v1's select-then-insert/update this is atomic. With per-row saving, two quick changes
+   * by a brand-new user would otherwise BOTH observe "no row" and BOTH insert, and the second
+   * would die on the unique constraint (losing that change). Unset columns keep their COLUMN
+   * DEFAULTs on insert and are left untouched on conflict.
+   */
   const saveLegacy = async (column: LegacyKey, frequency: Frequency) => {
     if (!user) return;
     setSavingKey(column);
     try {
-      const { data: existing } = await supabase
-        .from('notification_preferences').select('id').eq('user_id', user.id).maybeSingle();
-      const payload: Record<string, string> = { [column]: frequency, updated_at: new Date().toISOString() };
-      const { error } = existing
-        ? await supabase.from('notification_preferences').update(payload).eq('user_id', user.id)
-        : await supabase.from('notification_preferences').insert({ user_id: user.id, ...payload });
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(
+          { user_id: user.id, [column]: frequency, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' },
+        );
       if (error) throw error;
       setLegacy((l) => ({ ...l, [column]: frequency }));
       toast({ title: t('notifications.saved') });

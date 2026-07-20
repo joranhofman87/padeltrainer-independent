@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // NotificationSettings v2 (PR 8). Pins the five things this page must not get wrong:
@@ -14,6 +14,7 @@ let v2rows: unknown[] = [];
 let v1row: Record<string, string> | null = null;
 let upsertResult: { error: { message: string } | null } = { error: null };
 const upsertMock = vi.fn();
+const legacyUpsertMock = vi.fn();
 
 let authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
@@ -37,8 +38,7 @@ vi.mock('@/lib/supabaseClient', () => ({
       if (table === 'notification_preferences') {
         return {
           select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: v1row, error: null }) }) }),
-          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-          insert: () => Promise.resolve({ error: null }),
+          upsert: (...args: unknown[]) => { legacyUpsertMock(...args); return Promise.resolve({ error: null }); },
         };
       }
       return {};
@@ -55,6 +55,7 @@ const evt = (over: Record<string, unknown>) => ({
 
 beforeEach(() => {
   upsertMock.mockReset();
+  legacyUpsertMock.mockReset();
   upsertResult = { error: null };
   v2rows = [];
   v1row = null;
@@ -66,6 +67,15 @@ beforeEach(() => {
     evt({ key: 'booking_request_staff', audience: 'academy_manager' }),
     evt({ key: 'review_received_trainer', audience: 'trainer', supports_digest: true }),
   ];
+});
+
+// Radix Select needs pointer-capture / ResizeObserver / scrollIntoView, which jsdom lacks.
+beforeAll(() => {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  window.HTMLElement.prototype.releasePointerCapture = vi.fn();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 });
 
 describe('NotificationSettings v2', () => {
@@ -146,6 +156,17 @@ describe('NotificationSettings v2', () => {
     expect(upsertMock.mock.calls[0][0]).toMatchObject({
       user_id: 'U1', event_type: 'booking_cancelled_player', email_frequency: 'off',
     });
+  });
+
+  it('legacy saves are an ATOMIC upsert on user_id (no select-then-insert race)', async () => {
+    render(<NotificationSettings />);
+    await screen.findByTestId('pref-row-waitlist_update');
+    const row = screen.getByTestId('pref-row-waitlist_update');
+    fireEvent.click(row.querySelector('[role="combobox"]')!);
+    fireEvent.click(await screen.findByText('notifications.frequency.off'));
+    await waitFor(() => expect(legacyUpsertMock).toHaveBeenCalledTimes(1));
+    expect(legacyUpsertMock.mock.calls[0][0]).toMatchObject({ user_id: 'U1', waitlist_update: 'off' });
+    expect(legacyUpsertMock.mock.calls[0][1]).toMatchObject({ onConflict: 'user_id' });
   });
 
   it('a FAILED save does not leave the UI lying (pessimistic update)', async () => {
