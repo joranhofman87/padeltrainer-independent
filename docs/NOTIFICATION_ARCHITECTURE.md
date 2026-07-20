@@ -633,6 +633,21 @@ Prerequisites:
      invited to book again, and that scope creep is what gets a WhatsApp sender reported.
      `whatsapp_optin_in_scope()` mirrors the resolver's own contact predicate exactly, so the
      cadence gate and the delivery gate cannot disagree about what counts as consent.
+   - **One-shot repair of PR 8's mechanical `off` values** (migration `20260924100000`). PR 8's
+     page wrote only `email_frequency`, so every row it inserted took `whatsapp_frequency` from
+     the **column default** (`off`) — and there was no WhatsApp control on that page, so those
+     values cannot be a choice. Once `20260922100000` made a stored value authoritative, a
+     player who had once changed their reminder email cadence could tick the WhatsApp box at
+     booking and still never receive anything: the same "consent that cannot send" failure,
+     arriving by a different route. The repair sets those to `instant`, scoped to the pilot
+     event, leaving `email_frequency` and `updated_at` untouched (a data repair should not
+     claim to be a user action).
+     It does **not** contradict "explicit off wins": that rule protects a *choice*, and before
+     PR 9 there was no control to make one with. Values written from here on keep winning.
+     It also **grants nothing** — `instant` clears only the first gate; the second still needs
+     an opted-in in-scope contact. Pinned both ways, including a before/after reproduction.
+     When another template is committed, that event needs the same one-shot consideration:
+     mechanical and chosen `off` are indistinguishable after the fact, which is the real lesson.
    - **The settings page mirrors that derivation.** Its `effective()` shows WhatsApp as
      `instant` when there is no stored preference, consent is active and the event is flagged —
      otherwise the switch would read **off while reminders were being delivered**, which is

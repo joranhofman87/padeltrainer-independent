@@ -706,3 +706,95 @@ describe('catalog capability never exceeds the COMMITTED templates', () => {
     expect(rows.map((r) => r.channel)).toContain('email');   // email still carries it
   });
 });
+
+describe('PR-8 mechanical whatsapp="off" rows do not block a later opt-in', () => {
+  // PR 8's page wrote ONLY email_frequency, so the insert took whatsapp_frequency from its
+  // COLUMN DEFAULT ('off'). Those are not choices — there was no WhatsApp control on that page.
+  // But 20260922100000 made any stored value authoritative, so without the repair a player who
+  // once changed their reminder email cadence could opt in at booking and still never receive
+  // anything: consent that cannot send, arriving by a different route than the one just closed.
+  const REPAIR = '20260924100000_notification_clear_mechanical_whatsapp_off.sql';
+
+  const pr8Row = () =>
+    db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+             VALUES ('${U_P}', 'session_reminder_player', 'daily')
+             ON CONFLICT (user_id, event_type)
+             DO UPDATE SET email_frequency = 'daily', whatsapp_frequency = 'off';`);
+
+  const waChannels = async () =>
+    (await db.query<{ channel: string; status: string }>(`
+      SELECT channel, status FROM public.enqueue_notification(
+        'session_reminder_player', '${P_P}'::uuid, '${U_P}'::uuid, NULL, '${A1}'::uuid, NULL,
+        'repair-${Math.random()}')`)).rows.filter((r) => r.status !== 'skipped').map((r) => r.channel);
+
+  beforeEach(async () => {
+    await db.exec(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+  });
+
+  it('reproduces the block BEFORE the repair, then clears it', async () => {
+    await pr8Row();
+    await as(U_P);
+    await db.query(`SELECT public.record_whatsapp_optin_for_slot(
+      '01000000-0000-0000-0000-000000000011', '0612345678', 'booking_form')`);
+    await as(null);
+
+    // the stale mechanical 'off' wins over the derivation — this is the bug
+    expect(await waChannels()).not.toContain('whatsapp');
+
+    await db.exec(MIG(REPAIR));
+    expect(await waChannels()).toContain('whatsapp');
+  });
+
+  it('preserves the email cadence the user DID choose', async () => {
+    await pr8Row();
+    await db.exec(MIG(REPAIR));
+    const row = (await db.query<{ email_frequency: string; whatsapp_frequency: string }>(
+      `SELECT email_frequency, whatsapp_frequency FROM public.notification_preferences_v2
+       WHERE user_id = '${U_P}' AND event_type = 'session_reminder_player'`)).rows[0];
+    expect(row.email_frequency).toBe('daily');
+    expect(row.whatsapp_frequency).toBe('instant');
+  });
+
+  it('does NOT make updated_at look like the user did something', async () => {
+    await pr8Row();
+    await db.exec(`UPDATE public.notification_preferences_v2
+      SET updated_at = timestamptz '2026-05-01 12:00:00+00' WHERE user_id = '${U_P}';`);
+    await db.exec(MIG(REPAIR));
+    const row = (await db.query<{ updated_at: string }>(
+      `SELECT updated_at FROM public.notification_preferences_v2 WHERE user_id = '${U_P}'`)).rows[0];
+    expect(new Date(row.updated_at).toISOString()).toBe('2026-05-01T12:00:00.000Z');
+  });
+
+  it('GRANTS NOTHING on its own — no consent still means no WhatsApp', async () => {
+    // the repair only clears the FIRST gate; the second still needs an opted-in in-scope contact
+    await pr8Row();
+    await db.exec(MIG(REPAIR));
+    expect(await waChannels()).not.toContain('whatsapp');
+    expect(await waChannels()).toContain('email');
+  });
+
+  it('leaves events other than the pilot alone', async () => {
+    await db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+      VALUES ('${U_P}', 'booking_confirmed_player', 'off');`);
+    await db.exec(MIG(REPAIR));
+    const row = (await db.query<{ whatsapp_frequency: string }>(
+      `SELECT whatsapp_frequency FROM public.notification_preferences_v2
+       WHERE user_id = '${U_P}' AND event_type = 'booking_confirmed_player'`)).rows[0];
+    expect(row.whatsapp_frequency).toBe('off');
+  });
+
+  it('an off chosen AFTER the repair still wins', async () => {
+    await db.exec(MIG(REPAIR));
+    await as(U_P);
+    await db.query(`SELECT public.record_whatsapp_optin_for_slot(
+      '01000000-0000-0000-0000-000000000011', '0612345678', 'booking_form')`);
+    await as(null);
+    expect(await waChannels()).toContain('whatsapp');
+
+    // the user then switches it off in settings — a real choice, which must hold
+    await db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+      VALUES ('${U_P}', 'session_reminder_player', 'off')
+      ON CONFLICT (user_id, event_type) DO UPDATE SET whatsapp_frequency = 'off';`);
+    expect(await waChannels()).not.toContain('whatsapp');
+  });
+});
