@@ -18,6 +18,7 @@ import { readFileSync, existsSync } from 'node:fs';
 const MUST_BE_PUBLIC = [
   // payment / external webhooks — authenticate by provider signature, no JWT
   'stripe-subscription-webhook', 'mollie-webhook', 'mollie-callback', 'resend-webhook', 'reditus-referral-webhook',
+  'twilio-whatsapp-webhook',
   // public pages / images / reads / health — anonymous callers (own rate-limit where needed)
   'og-image', 'rating-og-image', 'get-public-rating', 'get-public-invoice', 'render-page', 'sitemap', 'llms-full-txt', 'public-api', 'health-check',
   // public submission + public-token actions

@@ -9937,6 +9937,15 @@ export type Database = {
         Returns: string
       }
       record_whatsapp_optout: { Args: { p_phone: string }; Returns: number }
+      record_whatsapp_status_event: {
+        Args: {
+          p_error_code?: string
+          p_error_message?: string
+          p_message_sid: string
+          p_status: string
+        }
+        Returns: string
+      }
       rederive_person: { Args: { _person: string }; Returns: undefined }
       reinstate_rebook_claims: {
         Args: { _claim_ids: string[] }
@@ -10153,6 +10162,7 @@ export type Database = {
         Args: { _registration_id: string }
         Returns: boolean
       }
+      whatsapp_consent_active: { Args: { p_phone: string }; Returns: boolean }
     }
     Enums: {
       app_role:

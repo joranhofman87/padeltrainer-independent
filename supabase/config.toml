@@ -255,6 +255,11 @@ verify_jwt = false
 [functions.health-check]
 verify_jwt = false
 
+# Twilio WhatsApp status callbacks + inbound (STOP) messages. Twilio sends no Supabase JWT;
+# the endpoint authenticates every request by X-Twilio-Signature and 403s anything unsigned.
+[functions.twilio-whatsapp-webhook]
+verify_jwt = false
+
 # Self-authenticating: validates a user JWT (getUser) for owner sends and the
 # service-role key (isServiceRoleRequest) for the daily sweep cron + its own resume
 # chain. Must stay false so the service-role caller isn't 401'd at the gateway.

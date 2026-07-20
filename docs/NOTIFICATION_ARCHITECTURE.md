@@ -486,8 +486,47 @@ Prerequisites:
    PR 10 migrates those senders and the group goes.
    The route + the academy-managed-trainer exemption are unchanged: outbound email footers
    deep-link to `settings/notifications` as their unsubscribe target.
-9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
-   (once the owner's provider/templates are approved).
+9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook.
+   **Built and reviewable ahead of Twilio auth; SHIPPED DISABLED.** All Twilio/Meta side
+   effects stay blocked until the owner confirms credentials — no templates created, none
+   submitted, nothing sent (the only live Twilio calls are the read-only `diagnose`/`probe`
+   actions on `twilio-content-admin`).
+   - `normalize_phone_e164` — free-text phone → strict E.164, NULL when it cannot normalize
+     CONFIDENTLY. A bare number with no `+` and no leading `0` is rejected rather than guessed:
+     a wrong guess does not error, it messages a stranger.
+   - `record_whatsapp_optin` (auth-bound, self-only; validates the caller-supplied tenant via
+     the INTERNAL `person_has_tenant_relationship`) / `record_whatsapp_optout` (platform-wide —
+     a STOP addresses the sender, not one academy). Opting in with a new number RETIRES the
+     person's other WhatsApp contacts, so a phone change cannot leave the resolver
+     non-deterministically messaging a recycled old number.
+   - `whatsapp_consent_active` — the worker's SEND-TIME re-check, because a STOP can land
+     between enqueue and send. Rule is "an opted-in, non-revoked row exists", deliberately NOT
+     "no revoked row exists": the stricter form would blacklist every recycled number forever.
+   - **Templates are committed to `_shared/whatsapp-templates.ts` and reviewed BEFORE anything
+     is created in Twilio.** A submitted template goes in front of Meta under the business's
+     identity and cannot be quietly withdrawn. `variables` is a positional contract — Twilio
+     fills `{{n}}` by index, so a reorder silently sends a time where a name belongs.
+   - **Worker (`notification-whatsapp-worker`) is OFF unless `WHATSAPP_SEND_ENABLED=true`,
+     and returns BEFORE claiming.** Claiming and then failing would increment `attempts` on
+     every pending row each tick and eventually mark them failed — destroying the queue it is
+     meant to protect. Per-row guards: non-E.164 → terminal; consent revoked → terminal;
+     consent check errored → retry (never send); no committed template → terminal; template
+     approved-SID env var missing → RETRY, since that is a deployment gap that self-heals.
+   - **No provider idempotency.** Unlike Resend, Twilio's Messages API has no Idempotency-Key,
+     so the outbox claim is the only double-send guard; a crash between Twilio accepting and
+     `record_notification_send_result` committing can re-send after the 15-minute stale reclaim.
+   - Auth failures (401/403) are classified RETRYABLE: they are wrong for every row, so
+     terminal would permanently fail the whole queue over a fixable env var.
+   - `twilio-whatsapp-webhook` (`verify_jwt = false`) handles status callbacks AND inbound
+     STOP on one endpoint. **The X-Twilio-Signature IS the authentication** — no token
+     configured or a bad signature means 403 before the payload is interpreted. Statuses map
+     onto the EXISTING `email_delivery_events` taxonomy (raw status kept in `reason`) rather
+     than widening a CHECK the PR 7 timeline UI renders; `invoice_id` stays NULL so a WhatsApp
+     failure never wears the invoice email-bounce badge. Idempotent on `(sid, status)`.
+   - Owner-side, still open: re-copy `TWILIO_AUTH_TOKEN` from the same account as the `AC…`
+     SID (the probe matrix proved they belong to different accounts — every us1/ie1/au1 ×
+     credential-pair combination 401s), add the `whatsapp:` prefix to `TWILIO_WHATSAPP_FROM`
+     (the sender helper now tolerates its absence), then create/submit the template.
 10. Retire/wrap remaining legacy direct sends through the outbox; update this
     doc + runbooks as each lands.
 
