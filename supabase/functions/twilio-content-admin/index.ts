@@ -46,7 +46,16 @@ serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
   const guard = requireServiceRole(req);
-  if (guard) return guard;
+  if (guard) {
+    // requireServiceRole's SHARED response carries wide-open `*` CORS. Re-wrap it with this
+    // endpoint's restricted headers so EVERY path is consistent — including rejection.
+    // Re-wrapping (rather than re-authoring the body) keeps us correct if that shared
+    // message ever changes.
+    return new Response(await guard.text(), {
+      status: guard.status,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
 
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
