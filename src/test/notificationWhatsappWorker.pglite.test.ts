@@ -216,6 +216,78 @@ describe('record_notification_send_result — provider derives from the channel'
   });
 });
 
+describe('defer_notification_outbox_row — a config gap must not burn the retry budget', () => {
+  const claimOne = (channel = 'whatsapp', worker = 'w1') =>
+    db.query(`SELECT public.claim_notification_outbox_batch('${channel}', '${worker}', 10)`);
+
+  const rowState = async (id: string) =>
+    (await db.query<{ status: string; attempts: number; locked_by: string | null; next_attempt_at: string | null }>(
+      `SELECT status, attempts, locked_by, next_attempt_at FROM public.notification_outbox WHERE id = '${id}'`
+    )).rows[0];
+
+  it('returns the row to pending, GIVES THE ATTEMPT BACK and backs off', async () => {
+    const id = await queueRow(P_P, PHONE, null, 'k1');
+    await claimOne();
+    expect((await rowState(id)).attempts).toBe(1);          // the claim counted an attempt
+
+    const r = await db.query<{ v: string }>(
+      `SELECT public.defer_notification_outbox_row('${id}', 'w1', 'missing_content_sid', 5) AS v`);
+    expect(r.rows[0].v).toBe('deferred');
+
+    const after = await rowState(id);
+    expect(after.status).toBe('pending');
+    expect(after.attempts).toBe(0);                          // …and the defer gave it back
+    expect(after.locked_by).toBeNull();
+    expect(after.next_attempt_at).not.toBeNull();
+  });
+
+  it('survives a config gap far longer than the retry budget — the actual bug', async () => {
+    // record_notification_send_result fails a row at attempts >= max_attempts REGARDLESS of
+    // p_terminal, so "retryable" alone only survives ~62 minutes. A Meta template review or a
+    // credential fix does not fit in that. Ten deferral cycles must leave the row deliverable.
+    const id = await queueRow(P_P, PHONE, null, 'k1');
+    for (let i = 0; i < 10; i++) {
+      await db.exec(`UPDATE public.notification_outbox SET next_attempt_at = NULL WHERE id = '${id}';`);
+      await claimOne();
+      await db.query(`SELECT public.defer_notification_outbox_row('${id}', 'w1', 'missing_content_sid', 5)`);
+    }
+    const after = await rowState(id);
+    expect(after.status).toBe('pending');     // NOT 'failed'
+    expect(after.attempts).toBe(0);
+  });
+
+  it('contrast: a plain retryable FAILURE does exhaust the budget and go terminal', async () => {
+    // this is what deferring exists to avoid, pinned so the difference cannot quietly collapse
+    const id = await queueRow(P_P, PHONE, null, 'k1');
+    for (let i = 0; i < 5; i++) {
+      await db.exec(`UPDATE public.notification_outbox SET next_attempt_at = NULL WHERE id = '${id}';`);
+      await claimOne();
+      await db.query(
+        `SELECT public.record_notification_send_result('${id}', 'w1', 'failed', NULL, 'boom', NULL, 60, false)`);
+    }
+    expect((await rowState(id)).status).toBe('failed');
+  });
+
+  it('refuses to rewind a row a NEWER run has claimed (ownership guard)', async () => {
+    const id = await queueRow(P_P, PHONE, null, 'k1');
+    await claimOne('whatsapp', 'w1');
+    const r = await db.query<{ v: string }>(
+      `SELECT public.defer_notification_outbox_row('${id}', 'someone-else', 'x', 5) AS v`);
+    expect(r.rows[0].v).toBe('stale');
+    expect((await rowState(id)).status).toBe('processing');   // untouched
+  });
+
+  it('is service_role only', async () => {
+    const r = await db.query<{ role: string; can: boolean }>(`
+      SELECT role, has_function_privilege(role,
+        'public.defer_notification_outbox_row(uuid,text,text,int)', 'EXECUTE') AS can
+      FROM unnest(ARRAY['anon','authenticated','service_role']) AS role`);
+    expect(r.rows.find((x) => x.role === 'anon')!.can).toBe(false);
+    expect(r.rows.find((x) => x.role === 'authenticated')!.can).toBe(false);
+    expect(r.rows.find((x) => x.role === 'service_role')!.can).toBe(true);
+  });
+});
+
 describe('record_whatsapp_status_event', () => {
   const SID = 'SM0123456789abcdef0123456789abcdef';
 

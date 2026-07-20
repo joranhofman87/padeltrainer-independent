@@ -134,14 +134,42 @@ describe('sendWhatsAppMessage — request shape', () => {
 });
 
 describe('sendWhatsAppMessage — error classification', () => {
-  it('treats 401 as RETRYABLE config, without burning in-request retries', async () => {
-    // this is the live situation: SID and token belong to different accounts. Terminal here
-    // would permanently fail every queued message over a fixable env var.
+  it('flags 401 as a GLOBAL configError, without burning in-request retries', async () => {
+    // this is the live situation: SID and token belong to different accounts. configError tells
+    // the worker to DEFER the row rather than spend an attempt — "retryable" alone is not
+    // enough, since the outbox still fails a row once attempts >= max_attempts.
     fetchMock.mockResolvedValue(respond(401, { message: 'Authenticate', code: 20003 }));
     const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' });
-    expect(r).toMatchObject({ ok: false, retryable: true, attempts: 1 });
+    expect(r).toMatchObject({ ok: false, retryable: true, configError: true, attempts: 1 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((r as { error: string }).error).toContain('20003');
+  });
+
+  it('marks every pre-flight CONFIG refusal as configError — and row faults NOT', async () => {
+    // the distinction the worker keys its defer-vs-fail decision on, pinned in one place
+    const config = [
+      await sendWhatsAppMessage({ accountSid: '' }, { from: FROM, to: TO, contentSid: 'HX1' }),
+      await sendWhatsAppMessage({ accountSid: AUTH.accountSid }, { from: FROM, to: TO, contentSid: 'HX1' }),
+      await sendWhatsAppMessage(AUTH, { from: 'nonsense', to: TO, contentSid: 'HX1' }),
+    ];
+    for (const r of config) expect(r).toMatchObject({ ok: false, configError: true });
+
+    // these are properties of THIS message and must still consume/terminate normally
+    const rowFaults = [
+      await sendWhatsAppMessage(AUTH, { from: FROM, to: 'garbage', contentSid: 'HX1' }),
+      await sendWhatsAppMessage(AUTH, { from: FROM, to: TO }),
+    ];
+    for (const r of rowFaults) {
+      expect(r).toMatchObject({ ok: false, retryable: false });
+      expect((r as { configError?: true }).configError).toBeUndefined();
+    }
+  });
+
+  it('does NOT mark an ordinary transient failure as configError', async () => {
+    fetchMock.mockResolvedValue(respond(503, { message: 'Service Unavailable' }));
+    const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' }, { maxAttempts: 1 });
+    expect(r).toMatchObject({ ok: false, retryable: true });
+    expect((r as { configError?: true }).configError).toBeUndefined();
   });
 
   it('treats a 400 as TERMINAL — retrying will never make it valid', async () => {

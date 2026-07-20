@@ -515,8 +515,20 @@ Prerequisites:
      and returns BEFORE claiming.** Claiming and then failing would increment `attempts` on
      every pending row each tick and eventually mark them failed — destroying the queue it is
      meant to protect. Per-row guards: non-E.164 → terminal; consent revoked → terminal;
-     consent check errored → retry (never send); no committed template → terminal; template
-     approved-SID env var missing → RETRY, since that is a deployment gap that self-heals.
+     consent check errored → retry (never send); no committed template → terminal.
+   - **A GLOBAL config gap DEFERS instead of failing** (`defer_notification_outbox_row`, which
+     returns the row to pending and gives the claim's attempt back). Marking a missing template
+     SID or a 401 "retryable" is not sufficient: `record_notification_send_result` fails a row
+     once `attempts >= max_attempts` whatever `p_terminal` says, and 5 attempts of 2^n backoff
+     is only ~62 minutes — far shorter than a credential fix or a Meta template review. Without
+     deferral, a config gap outliving that hour silently discards everything queued behind it.
+     Row-specific faults (bad phone, withdrawn consent, no committed template) stay terminal,
+     and a real provider attempt still counts. Deferrals raise their own ops alert, so a gap
+     that is never fixed parks the queue loudly rather than silently.
+   - The worker is **scheduled on pg_cron from the start** (`20260919110000`, every 2 min,
+     same guarded/idempotent Vault pattern as the email worker). Safe while disabled — the
+     kill switch returns before claiming — and it makes going live a single env-var flip
+     rather than a flip plus a remembered second step.
    - **No provider idempotency.** Unlike Resend, Twilio's Messages API has no Idempotency-Key,
      so the outbox claim is the only double-send guard; a crash between Twilio accepting and
      `record_notification_send_result` committing can re-send after the 15-minute stale reclaim.
@@ -537,6 +549,11 @@ Prerequisites:
      onto the EXISTING `email_delivery_events` taxonomy (raw status kept in `reason`) rather
      than widening a CHECK the PR 7 timeline UI renders; `invoice_id` stays NULL so a WhatsApp
      failure never wears the invoice email-bounce badge. Idempotent on `(sid, status)`.
+   - **Rollout order** (belt and braces alongside the deferral mechanism): set
+     `TWILIO_ACCOUNT_SID` + working credentials, `TWILIO_WHATSAPP_FROM`,
+     `TWILIO_TEMPLATE_SESSION_REMINDER_NL` and `TWILIO_STATUS_CALLBACK_URL` **first**, then
+     flip `WHATSAPP_SEND_ENABLED=true` last. Deferral means getting this order wrong parks
+     rows rather than losing them, but there is no reason to lean on that.
    - Owner-side, still open: re-copy `TWILIO_AUTH_TOKEN` from the same account as the `AC…`
      SID (the probe matrix proved they belong to different accounts — every us1/ie1/au1 ×
      credential-pair combination 401s), add the `whatsapp:` prefix to `TWILIO_WHATSAPP_FROM`

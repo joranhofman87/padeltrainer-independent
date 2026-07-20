@@ -14,8 +14,13 @@
 //   arrived since. An error on that check does NOT send.
 //
 //   NO APPROVED TEMPLATE => NO SEND. Business-initiated WhatsApp requires a Meta-approved
-//   Content template; a missing SID is a config gap, so it backs off (self-heals once set)
-//   rather than failing the row terminally.
+//   Content template.
+//
+//   A GLOBAL CONFIG GAP DEFERS INSTEAD OF FAILING. Marking a missing template SID or a 401 as
+//   a "retryable failure" is not enough: record_notification_send_result fails a row once
+//   attempts >= max_attempts whatever p_terminal says, and 5 attempts of 2^n backoff is only
+//   ~62 minutes — shorter than a credential fix or a Meta template review. Those rows are
+//   deferred (attempt given back) so the gap parks the queue instead of destroying it.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireServiceRole } from "../_shared/auth.ts";
@@ -77,6 +82,19 @@ const handler = async (req: Request): Promise<Response> => {
       p_terminal: opts.terminal ?? false,
     });
 
+  // A GLOBAL config gap is not this row's fault and never reached the provider, so it must not
+  // spend the row's attempt budget: record_notification_send_result fails a row once
+  // attempts >= max_attempts regardless of p_terminal, which at 5 attempts of 2^n backoff is
+  // ~62 minutes — far shorter than a credential fix or a Meta template approval. Deferring
+  // parks the row until the config is corrected instead of burning it down.
+  const deferRow = (outboxId: string, reason: string) =>
+    supabase.rpc("defer_notification_outbox_row", {
+      p_outbox_id: outboxId,
+      p_worker: workerToken,
+      p_reason: reason,
+      p_retry_minutes: 5,
+    });
+
   let cronLockHeld = false;
   try {
     const guard = requireServiceRole(req);
@@ -118,7 +136,8 @@ const handler = async (req: Request): Promise<Response> => {
     const rows = (claimed ?? []) as ClaimedRow[];
     let sent = 0;
     let failed = 0;
-    let refused = 0;   // guard-refused: never reached Twilio
+    let refused = 0;    // guard-refused: never reached Twilio, and never will
+    let deferred = 0;   // parked on a GLOBAL config gap, with the attempt given back
 
     for (const row of rows) {
       const dest = (row.destination_normalized ?? "").trim();
@@ -172,11 +191,12 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
       if (!contentSid && !(allowFreeform && payload.body)) {
-        // The template exists but its approved SID is not configured yet. RETRYABLE: this is a
-        // deployment gap that fixes itself the moment the env var is set, and a terminal
-        // failure here would silently discard every reminder queued before approval landed.
-        await recordResult(row.outbox_id, "failed", { error: "missing_content_sid", terminal: false });
-        failed++;
+        // The template exists but its approved SID is not configured yet — a GLOBAL gap, not a
+        // property of this row. DEFER rather than record a failure: a "retryable" failure still
+        // consumes an attempt, so a template approval taking longer than ~62 minutes would
+        // permanently discard every reminder queued behind it.
+        await deferRow(row.outbox_id, "missing_content_sid");
+        deferred++;
         continue;
       }
 
@@ -190,6 +210,10 @@ const handler = async (req: Request): Promise<Response> => {
       if (outcome.ok) {
         await recordResult(row.outbox_id, "sent", { messageId: outcome.sid ?? null });
         sent++;
+      } else if (outcome.configError) {
+        // Bad/missing credentials, an unusable sender, a 401 — wrong for EVERY row. Park it.
+        await deferRow(row.outbox_id, outcome.error.slice(0, 500));
+        deferred++;
       } else {
         await recordResult(row.outbox_id, "failed", {
           error: outcome.error.slice(0, 500),
@@ -201,13 +225,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (failed > 0) {
       await notifySlackEdgeError(JOB, `${failed} WhatsApp notification(s) failed to send`, {
-        failed,
-        sent,
-        refused,
+        failed, sent, refused, deferred,
+      });
+    }
+    // Deferred rows are NOT failures, but a config gap that never gets fixed would park rows
+    // forever in silence — so it is surfaced as its own signal.
+    if (deferred > 0) {
+      await notifySlackEdgeError(JOB, `${deferred} WhatsApp notification(s) deferred on a config gap`, {
+        deferred, sent, failed, refused,
       });
     }
 
-    return json({ processed: rows.length, sent, failed, refused });
+    return json({ processed: rows.length, sent, failed, refused, deferred });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";
     try {

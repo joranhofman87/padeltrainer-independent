@@ -232,3 +232,58 @@ COMMENT ON FUNCTION public.record_notification_send_result(uuid, text, text, tex
   'Notification v2 worker: finalize a send outcome IF the caller still owns the lock (else ''stale'') — sent (final) or failed (retry with exponential backoff up to max_attempts, or terminal when p_terminal), log the delivery event, and on a TERMINAL outcome strip payload.attachments. The provider label DERIVES from the row''s channel (email=>resend, whatsapp=>twilio) when not passed explicitly. Returns the new outbox status. service_role only.';
 REVOKE ALL ON FUNCTION public.record_notification_send_result(uuid, text, text, text, text, text, int, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_notification_send_result(uuid, text, text, text, text, text, int, boolean) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 4. Give an attempt BACK when the worker never reached the provider.
+--
+-- claim_notification_outbox_batch increments attempts on the assumption that a claim leads to
+-- an attempt. For a GLOBAL CONFIG GAP that is false, and the accounting silently discards real
+-- notifications: a missing template SID or wrong Twilio credentials is recorded as a
+-- "retryable" failure, but record_notification_send_result still marks the row FAILED once
+-- attempts >= max_attempts. With max_attempts=5 and 2^n backoff that is ~62 minutes — so a
+-- config gap that outlives one hour permanently drops every queued row, which is exactly the
+-- window a credential fix or a Meta template approval does NOT fit inside.
+--
+-- Deferring instead: undo the claim's increment, back off, release the lock. The row waits for
+-- the config to be fixed instead of being burned down by it. Reserved for conditions that are
+-- NOT the row's fault and where nothing was sent — a per-row problem (bad phone, withdrawn
+-- consent, no committed template) is still terminal, and a real provider attempt still counts.
+CREATE OR REPLACE FUNCTION public.defer_notification_outbox_row(
+  p_outbox_id     uuid,
+  p_worker        text,               -- the claiming run's lock token; only it may defer
+  p_reason        text DEFAULT NULL,
+  p_retry_minutes int  DEFAULT 5
+) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_row public.notification_outbox%ROWTYPE;
+BEGIN
+  SELECT * INTO v_row FROM public.notification_outbox WHERE id = p_outbox_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'defer_notification_outbox_row: outbox row % not found', p_outbox_id;
+  END IF;
+
+  -- Same ownership rule as record_notification_send_result: a slow or orphaned worker must not
+  -- rewind a row a newer run has since claimed.
+  IF v_row.status <> 'processing' OR v_row.locked_by IS DISTINCT FROM p_worker THEN
+    RETURN 'stale';
+  END IF;
+
+  UPDATE public.notification_outbox
+  SET status          = 'pending',
+      attempts        = greatest(v_row.attempts - 1, 0),   -- the claim's increment, undone
+      next_attempt_at = now() + make_interval(mins => greatest(p_retry_minutes, 1)),
+      last_error      = p_reason,
+      locked_at       = NULL,
+      locked_by       = NULL,
+      updated_at      = now()
+  WHERE id = p_outbox_id;
+
+  RETURN 'deferred';
+END;
+$$;
+COMMENT ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int) IS
+  'Notification v2 worker: return a claimed row to pending WITHOUT consuming an attempt, for global config gaps where the worker never reached the provider (missing template SID, missing/invalid credentials). Ownership-guarded like record_notification_send_result. Prevents a config gap outliving the retry budget from permanently failing every queued row. service_role only.';
+REVOKE ALL ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.defer_notification_outbox_row(uuid, text, text, int) TO service_role;

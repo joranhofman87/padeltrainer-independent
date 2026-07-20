@@ -33,7 +33,13 @@ export type WhatsAppSendPayload = {
 
 export type WhatsAppSendOutcome =
   | { ok: true; sid?: string; attempts: number }
-  | { ok: false; error: string; attempts: number; retryable: boolean };
+  /**
+   * configError marks a failure that is GLOBAL (wrong for every row) rather than a property of
+   * this message — missing/invalid credentials, an unusable sender, a 401. The worker must not
+   * spend the row's attempt budget on those: a config gap that outlives max_attempts would
+   * otherwise permanently fail everything queued behind it.
+   */
+  | { ok: false; error: string; attempts: number; retryable: boolean; configError?: true };
 
 export type TwilioAuth = {
   accountSid: string;
@@ -76,12 +82,12 @@ export async function sendWhatsAppMessage(
 ): Promise<WhatsAppSendOutcome> {
   // ---- fail-closed guards. These refuse BEFORE any network call. ----
   if (!auth.accountSid) {
-    return { ok: false, error: "missing_account_sid", attempts: 0, retryable: true };
+    return { ok: false, error: "missing_account_sid", attempts: 0, retryable: true, configError: true };
   }
   const user = auth.apiKeySid && auth.apiKeySecret ? auth.apiKeySid : auth.accountSid;
   const pass = auth.apiKeySid && auth.apiKeySecret ? auth.apiKeySecret : auth.authToken;
   if (!pass) {
-    return { ok: false, error: "missing_twilio_credentials", attempts: 0, retryable: true };
+    return { ok: false, error: "missing_twilio_credentials", attempts: 0, retryable: true, configError: true };
   }
   if (!E164.test(payload.to)) {
     // Never guess at a malformed number — a wrong guess messages a stranger.
@@ -89,7 +95,7 @@ export async function sendWhatsAppMessage(
   }
   const sender = normalizeWhatsAppSender(payload.from);
   if (!sender) {
-    return { ok: false, error: "invalid_sender", attempts: 0, retryable: true };
+    return { ok: false, error: "invalid_sender", attempts: 0, retryable: true, configError: true };
   }
   if (!payload.contentSid && !payload.body) {
     // No approved template and nothing to say: refuse rather than send an empty message.
@@ -139,7 +145,7 @@ export async function sendWhatsAppMessage(
       // A config failure is not worth burning our in-request retries on — the outbox backoff
       // will re-try it later, by which time the env var may have been fixed.
       if (CONFIG_STATUS.has(res.status)) {
-        return { ok: false, error: lastError, attempts: attempt, retryable: true };
+        return { ok: false, error: lastError, attempts: attempt, retryable: true, configError: true };
       }
       if (!retryable || attempt === maxAttempts) {
         return { ok: false, error: lastError, attempts: attempt, retryable };

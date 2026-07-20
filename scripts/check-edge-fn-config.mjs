@@ -29,6 +29,9 @@ const MUST_BE_PUBLIC = [
   // is an `sb_secret_…` key and NOT a JWT, so verify_jwt=true 401s them at the gateway before
   // requireServiceRole ever runs. Silent: the cron job "succeeds" and nothing is ever sent.
   'notification-email-worker', 'notification-whatsapp-worker',
+  // ops tool, service-role guarded + restricted CORS; called with the service-role key, so the
+  // same non-JWT reasoning applies
+  'twilio-content-admin',
   // Mollie connect / payment-init (reached from public pay pages / OAuth callbacks)
   'create-invoice-payment', 'create-registration-invoice', 'create-rebook-invoice',
   'mollie-connect-academy', 'mollie-connect-trainer', 'check-mollie-connect-status', 'verify-mollie-payment',

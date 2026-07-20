@@ -9023,6 +9023,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      defer_notification_outbox_row: {
+        Args: {
+          p_outbox_id: string
+          p_reason?: string
+          p_retry_minutes?: number
+          p_worker: string
+        }
+        Returns: string
+      }
       digits_only: { Args: { _value: string }; Returns: string }
       enqueue_notification: {
         Args: {
