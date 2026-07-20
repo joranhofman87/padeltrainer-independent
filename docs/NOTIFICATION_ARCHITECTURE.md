@@ -529,9 +529,23 @@ Prerequisites:
      present — so what remains in the request is environment: the `ContentSid`, the sender, the
      account. An unapproved / wrong-account / mistyped `ContentSid` returns a 400, and treating
      that as terminal would destroy the whole queue on its **first drain** — faster and more
-     total than the `max_attempts` exhaustion above. So provider 4xx ⇒ defer; 429/5xx ⇒
-     ordinary retry. TERMINAL is reserved for what we ourselves diagnosed: non-E.164 recipient,
-     withdrawn consent, no committed template for the event/language, no content.
+     total than the `max_attempts` exhaustion above.
+     The full split, by Twilio error code where one is given:
+     * **row terminal** — `21610` unsubscribed, `21614` not a mobile, `21211` invalid `To`,
+       plus everything we diagnose locally (non-E.164, withdrawn consent, no committed
+       template, no content). No config fix makes these deliverable, so they must never sit in
+       the defer queue. `21610` additionally calls `record_whatsapp_optout`: until the status
+       webhook is live it is our only STOP signal, and ignoring it would keep the resolver
+       queueing messages to someone who opted out.
+     * **defer** — auth/account/sender/template/ContentSid problems, and any *unrecognised* 4xx.
+     * **transient** — 429/5xx/network, which spend the row's attempt budget as intended.
+     The row-fault code set is a deliberately **conservative allow-list, not a full table**:
+     unknown codes keep deferring, because a wrongly-deferred row is parked and recoverable
+     while a wrongly-terminal one is a destroyed notification. Codes get promoted into the list
+     from evidence — an unrecognised code appears in the delivery log with its number.
+     The decision itself lives in the pure `whatsappFailureAction()` so it is unit-tested; the
+     worker only switches on it (its `index.ts` calls `serve()` and has no harness, so policy
+     left inline there would be policy nothing verifies).
    - Deferral is **bounded by time** (24h from when the row became *due* — anchored on
      `scheduled_for`, so a reminder queued days ahead isn't born half-expired). Past the cap the
      row fails terminally and lands on the delivery log, because an ambiguous 4xx can also mean

@@ -25,7 +25,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { sendWhatsAppMessage } from "../_shared/whatsapp-send.ts";
+import { sendWhatsAppMessage, whatsappFailureAction } from "../_shared/whatsapp-send.ts";
 import { buildContentVariables, templateForEvent } from "../_shared/whatsapp-templates.ts";
 
 const corsHeaders = {
@@ -215,18 +215,34 @@ const handler = async (req: Request): Promise<Response> => {
       if (outcome.ok) {
         await recordResult(row.outbox_id, "sent", { messageId: outcome.sid ?? null });
         sent++;
-      } else if (outcome.configError) {
-        // Missing/invalid credentials, an unusable sender, or ANY provider 4xx — by this point
-        // every row-shaped input was already validated locally, so what Twilio is rejecting is
-        // our configuration (typically an unapproved or wrong-account ContentSid). Park it.
-        if (await deferRow(row.outbox_id, outcome.error.slice(0, 500)) === "exhausted") failed++;
-        else deferred++;
       } else {
-        await recordResult(row.outbox_id, "failed", {
-          error: outcome.error.slice(0, 500),
-          terminal: !outcome.retryable,
-        });
-        failed++;
+        // The defer/fail/retry policy lives in whatsappFailureAction so it is unit-testable;
+        // this switch is only the wiring.
+        const err = outcome.error.slice(0, 500);
+        switch (whatsappFailureAction(outcome)) {
+          case "defer":
+            // Credentials, sender, or an unapproved/wrong-account ContentSid — all env-supplied,
+            // so Twilio is rejecting our CONFIG, not this recipient. Park rather than destroy.
+            if (await deferRow(row.outbox_id, err) === "exhausted") failed++;
+            else deferred++;
+            break;
+          case "terminal_optout":
+            // Twilio says this recipient unsubscribed. Before the status webhook is live this
+            // is our ONLY signal of a STOP, so record the withdrawal — otherwise the resolver
+            // keeps queueing messages that can never deliver, against someone who opted out.
+            await supabase.rpc("record_whatsapp_optout", { p_phone: dest });
+            await recordResult(row.outbox_id, "failed", { error: err, terminal: true });
+            refused++;
+            break;
+          case "terminal":
+            // The recipient is the problem (unreachable / not a mobile) — no config fix helps.
+            await recordResult(row.outbox_id, "failed", { error: err, terminal: true });
+            refused++;
+            break;
+          default:
+            await recordResult(row.outbox_id, "failed", { error: err, terminal: false });
+            failed++;
+        }
       }
     }
 

@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   sendWhatsAppMessage,
   normalizeWhatsAppSender,
+  whatsappFailureAction,
 } from '../../supabase/functions/_shared/whatsapp-send.ts';
 
 const AUTH = { accountSid: 'AC00000000000000000000000000000001', authToken: 'tok' };
@@ -188,6 +189,27 @@ describe('sendWhatsAppMessage — error classification', () => {
     expect(r).toMatchObject({ ok: false, configError: true });
   });
 
+  it('RECIPIENT-specific codes terminal-fail — they must never sit in the defer queue', async () => {
+    // the counterweight to the broad 4xx bucket: no config fix makes these deliverable, so
+    // parking them for 24h would just delay an inevitable failure (and, for 21610, sit on an
+    // unsubscribe signal)
+    for (const [code, label] of [[21610, 'unsubscribed'], [21614, 'not a mobile'], [21211, 'invalid To']] as const) {
+      fetchMock.mockResolvedValue(respond(400, { message: label, code }));
+      const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' });
+      expect(r).toMatchObject({ ok: false, retryable: false, rowFault: true, code });
+      expect((r as { configError?: true }).configError).toBeUndefined();
+    }
+  });
+
+  it('an UNKNOWN 4xx code still defers — uncertainty fails in the recoverable direction', async () => {
+    // the row-fault list is a conservative allow-list grown from evidence, not a full table:
+    // a wrongly-deferred row is parked and recoverable, a wrongly-terminal one is destroyed
+    fetchMock.mockResolvedValue(respond(400, { message: 'Something new', code: 29999 }));
+    const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' });
+    expect(r).toMatchObject({ ok: false, configError: true, code: 29999 });
+    expect((r as { rowFault?: true }).rowFault).toBeUndefined();
+  });
+
   it('classifies by WHOSE INPUT was wrong, not by HTTP semantics', async () => {
     // 4xx normally reads as "permanent client error", but everything row-shaped (E.164
     // recipient, consent, committed template, content present) is validated BEFORE the call —
@@ -214,5 +236,33 @@ describe('sendWhatsAppMessage — error classification', () => {
     fetchMock.mockRejectedValue(new Error('connection reset'));
     const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' }, { maxAttempts: 1 });
     expect(r).toMatchObject({ ok: false, retryable: true, error: 'connection reset' });
+  });
+});
+
+describe('whatsappFailureAction — the defer/fail/retry policy', () => {
+  // Extracted from the worker precisely so it CAN be pinned: notification-whatsapp-worker's
+  // index.ts calls serve() and has no test harness, so a policy left inline there is a policy
+  // nothing verifies. The worker now only switches on this.
+  const base = { ok: false as const, error: 'x', attempts: 1 };
+
+  it('parks config problems, terminates recipient problems, retries transient ones', () => {
+    expect(whatsappFailureAction({ ...base, retryable: true, configError: true })).toBe('defer');
+    expect(whatsappFailureAction({ ...base, retryable: false, rowFault: true, code: 21614 })).toBe('terminal');
+    expect(whatsappFailureAction({ ...base, retryable: true })).toBe('retry');
+    expect(whatsappFailureAction({ ...base, retryable: false })).toBe('terminal');
+  });
+
+  it('treats an unsubscribed recipient as a CONSENT event, not just a failed send', () => {
+    // before the status webhook is live this is the only STOP signal we get; without recording
+    // it the resolver keeps queueing messages to someone who opted out
+    expect(whatsappFailureAction({ ...base, retryable: false, rowFault: true, code: 21610 }))
+      .toBe('terminal_optout');
+  });
+
+  it('never lets a row fault be parked by a stray configError flag', () => {
+    // rowFault is the stronger signal: a recipient problem is not fixed by editing an env var
+    expect(whatsappFailureAction({
+      ...base, retryable: false, rowFault: true, configError: true, code: 21610,
+    })).toBe('terminal_optout');
   });
 });

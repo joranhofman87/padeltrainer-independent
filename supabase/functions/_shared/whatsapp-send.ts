@@ -42,7 +42,17 @@ export type WhatsAppSendOutcome =
    * spend the row's attempt budget on those: a config gap that outlives max_attempts would
    * otherwise permanently fail everything queued behind it.
    */
-  | { ok: false; error: string; attempts: number; retryable: boolean; configError?: true };
+  | {
+      ok: false;
+      error: string;
+      attempts: number;
+      retryable: boolean;
+      configError?: true;
+      /** Provider says the fault is THIS RECIPIENT's — terminal, never deferred. */
+      rowFault?: true;
+      /** Twilio's numeric error code, when it gave one. */
+      code?: number;
+    };
 
 export type TwilioAuth = {
   accountSid: string;
@@ -57,6 +67,42 @@ const BASE_DELAY_MS = 400;
 
 /** Transient provider trouble. This is what the row's attempt budget is FOR, so it burns one. */
 const TRANSIENT_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+/**
+ * RECIPIENT-specific Twilio codes: the fault is this destination, not our configuration, so
+ * these terminal-fail rather than parking for a day waiting on a config fix that isn't coming.
+ *
+ * Deliberately a CONSERVATIVE allow-list, not an exhaustive table. Unknown 4xx codes keep
+ * defaulting to defer, because the two mistakes are not symmetric: a wrongly-deferred row is
+ * parked and recoverable, a wrongly-terminal row is a destroyed notification. Codes are added
+ * here from evidence — an unrecognised code shows up in the delivery log with its number, which
+ * is what promotes it to this list.
+ */
+const ROW_FAULT_CODES = new Set([
+  21211,  // invalid 'To' phone number
+  21610,  // recipient has unsubscribed (a STOP we did not otherwise see)
+  21614,  // 'To' is not a valid mobile number
+]);
+
+/** Twilio's code for "this recipient unsubscribed" — also a consent signal we must record. */
+export const TWILIO_CODE_UNSUBSCRIBED = 21610;
+
+/**
+ * What the worker should DO with a failed send. Pulled out as a pure function so the policy is
+ * unit-testable on its own — the worker's index.ts calls serve() and has no test harness, so
+ * leaving this decision inline would leave the actual rules unpinned.
+ */
+export type WhatsAppFailureAction = "retry" | "defer" | "terminal" | "terminal_optout";
+
+export function whatsappFailureAction(
+  outcome: Extract<WhatsAppSendOutcome, { ok: false }>,
+): WhatsAppFailureAction {
+  // an unsubscribe is consent information, not just a delivery failure
+  if (outcome.rowFault && outcome.code === TWILIO_CODE_UNSUBSCRIBED) return "terminal_optout";
+  if (outcome.rowFault) return "terminal";
+  if (outcome.configError) return "defer";
+  return outcome.retryable ? "retry" : "terminal";
+}
 
 const E164 = /^\+[1-9][0-9]{7,14}$/;
 
@@ -148,6 +194,14 @@ export async function sendWhatsAppMessage(
           return { ok: false, error: lastError, attempts: attempt, retryable: true };
         }
         // fall through to the backoff and try again in-request
+      } else if (typeof bodyJson.code === "number" && ROW_FAULT_CODES.has(bodyJson.code)) {
+        // The provider is telling us about THIS RECIPIENT (unsubscribed, unreachable, not a
+        // mobile). No amount of config-fixing changes it, so it must not sit in the defer
+        // queue for a day pretending to be recoverable.
+        return {
+          ok: false, error: lastError, attempts: attempt,
+          retryable: false, rowFault: true, code: bodyJson.code,
+        };
       } else if (res.status >= 400 && res.status < 500) {
         // EVERY OTHER 4xx IS TREATED AS A CONFIG PROBLEM, not a row fault — classified by whose
         // input was wrong rather than by HTTP semantics. By the time we reach Twilio we have
@@ -161,7 +215,10 @@ export async function sendWhatsAppMessage(
         // The asymmetry decides the default: wrongly deferring parks a row visibly, with an
         // ops alert and a bounded lifetime; wrongly terminal-failing silently destroys a real
         // notification. So an ambiguous 4xx defers.
-        return { ok: false, error: lastError, attempts: attempt, retryable: true, configError: true };
+        return {
+          ok: false, error: lastError, attempts: attempt, retryable: true, configError: true,
+          ...(typeof bodyJson.code === "number" ? { code: bodyJson.code } : {}),
+        };
       } else if (attempt === maxAttempts) {
         // unlisted 5xx — treat as transient
         return { ok: false, error: lastError, attempts: attempt, retryable: true };
