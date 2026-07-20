@@ -122,6 +122,39 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
+    if (action === "probe") {
+      // Diagnostic matrix: which ENDPOINT x which CREDENTIAL PAIR authenticates.
+      // Two correctly-shaped pairs both failing 20003 points at something systemic rather
+      // than a typo — most often a REGIONAL account (EU/AU), whose credentials do not
+      // authenticate against the global us1 endpoints. This separates those cases.
+      const pairs: Array<{ label: string; user: string; pass: string }> = [];
+      if (apiSid && apiSecret) pairs.push({ label: "api_key(SK)", user: apiSid, pass: apiSecret });
+      if (accountSid && authToken) pairs.push({ label: "account+token", user: accountSid, pass: authToken });
+
+      const endpoints = [
+        { label: "us1 api (account fetch)", url: `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json` },
+        { label: "us1 content", url: "https://content.twilio.com/v1/Content?PageSize=1" },
+        { label: "ie1 api (account fetch)", url: `https://api.ie1.twilio.com/2010-04-01/Accounts/${accountSid}.json` },
+        { label: "ie1 content", url: "https://content.ie1.twilio.com/v1/Content?PageSize=1" },
+        { label: "au1 api (account fetch)", url: `https://api.au1.twilio.com/2010-04-01/Accounts/${accountSid}.json` },
+      ];
+
+      const results: Array<Record<string, unknown>> = [];
+      for (const p of pairs) {
+        for (const e of endpoints) {
+          try {
+            const r = await fetch(e.url, { headers: { Authorization: twilioAuthHeader(p.user, p.pass) } });
+            let code: unknown = null;
+            try { code = (await r.json())?.code ?? null; } catch { /* non-JSON */ }
+            results.push({ pair: p.label, endpoint: e.label, http: r.status, twilio_code: code });
+          } catch (err) {
+            results.push({ pair: p.label, endpoint: e.label, error: String(err).slice(0, 120) });
+          }
+        }
+      }
+      return json({ ok: true, note: "http 200 = that pair authenticates on that endpoint", results });
+    }
+
     if (action === "list") {
       const res = await fetch(`${CONTENT_API}?PageSize=50`, { headers: { Authorization: auth } });
       const body = await res.json();
