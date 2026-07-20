@@ -36,10 +36,13 @@ import { logger } from '@/lib/logger';
  * fan-out also sends it to TRAINERS, so a literal match would hide a setting from people who
  * actually receive that mail.
  *
- * "Other notifications" is a deliberate TRANSITIONAL bridge: seven v1 preference columns have
- * no v2 event key yet but are still enforced by send-email (e.g. open_slots_digest gates
- * new_availability / slot_reopened). Dropping them here would leave live settings enforced but
- * unreachable. PR 10 migrates those senders and this group then disappears.
+ * "Other notifications" is a deliberate TRANSITIONAL bridge exposing the COMPLETE v1 column
+ * set. The rule is "every column send-email can still consult", NOT "columns with no v2 event
+ * key" — the latter is too narrow and strands live settings, because send-email still gates
+ * legacy sends on booking_confirmation / booking_reminder / booking_cancelled / new_review /
+ * payment_receipt / payment_received / new_booking / open_slots_digest even where a v2 event of
+ * a similar NAME exists (they are two different enforcement paths). Dropping any of them would
+ * leave a live setting enforced but unreachable. PR 10 migrates those senders and the group goes.
  *
  * NOTE: this route is deep-linked from outbound email footers as the unsubscribe target, and
  * academy-managed trainers are deliberately exempted from the usual route bounce to reach it
@@ -60,10 +63,37 @@ interface EventType {
   default_email_frequency: Frequency;
 }
 
-/** v1 columns with no v2 event key yet — still enforced by send-email. Retired in PR 10. */
-const LEGACY_PLAYER = ['open_slots_digest', 'upcoming_sessions_digest', 'waitlist_update'] as const;
-const LEGACY_STAFF = ['new_follower', 'new_player', 'new_registration', 'upcoming_schedule_digest'] as const;
+/**
+ * EVERY v1 preference column, kept reachable until PR 10 migrates the legacy senders.
+ *
+ * The rule here is NOT "columns with no v2 event key" — that was too narrow and stranded live
+ * settings. It is "every column send-email can still consult". send-email's TYPE_TO_PREF_COLUMN
+ * maps its types onto booking_confirmation / booking_reminder / booking_cancelled / new_review /
+ * payment_receipt / payment_received / new_booking / open_slots_digest, and those paths are still
+ * live (send-digest-emails sends booking_confirmation|booking_reminder|booking_cancelled;
+ * BookLesson sends booking_request → new_booking; BookForPlayerDialog sends
+ * manual_booking_confirmation → booking_confirmation; notify-followers sends
+ * new_availability|slot_reopened → open_slots_digest). The remaining columns have no v2 key at
+ * all. Union = the complete v1 set, so nothing a user could previously control becomes
+ * unreachable just because the v2 page shipped.
+ */
+const LEGACY_PLAYER = [
+  'booking_confirmation', 'booking_reminder', 'open_slots_digest',
+  'upcoming_sessions_digest', 'payment_receipt', 'waitlist_update',
+] as const;
+const LEGACY_STAFF = [
+  'new_booking', 'booking_cancelled', 'new_follower', 'new_player',
+  'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received',
+] as const;
 const LEGACY_DIGEST = new Set<string>(['open_slots_digest', 'upcoming_sessions_digest', 'upcoming_schedule_digest']);
+/** Mirrors the COLUMN DEFAULTs in migration 20260210090026 exactly — do not guess these. */
+const LEGACY_DEFAULTS: Record<string, Frequency> = {
+  booking_confirmation: 'instant', booking_reminder: 'instant', open_slots_digest: 'weekly',
+  upcoming_sessions_digest: 'daily', payment_receipt: 'instant', waitlist_update: 'instant',
+  new_booking: 'instant', booking_cancelled: 'instant', new_follower: 'daily', new_player: 'daily',
+  new_registration: 'instant', new_review: 'instant', upcoming_schedule_digest: 'daily',
+  payment_received: 'instant',
+};
 type LegacyKey = (typeof LEGACY_PLAYER)[number] | (typeof LEGACY_STAFF)[number];
 
 const STAFF_AUDIENCES = new Set(['academy_manager', 'trainer']);
@@ -109,7 +139,7 @@ export default function NotificationSettings() {
       const legacyRow = (v1.data ?? {}) as Record<string, string | null>;
       const legacyMap: Record<string, Frequency> = {};
       for (const k of [...LEGACY_PLAYER, ...LEGACY_STAFF]) {
-        legacyMap[k] = (legacyRow[k] as Frequency | null) ?? (LEGACY_DIGEST.has(k) ? 'daily' : 'instant');
+        legacyMap[k] = (legacyRow[k] as Frequency | null) ?? LEGACY_DEFAULTS[k];
       }
       setLegacy(legacyMap);
     } catch (error) {
@@ -244,7 +274,7 @@ export default function NotificationSettings() {
               <div key={k} className="flex items-center justify-between gap-4" data-testid={`pref-row-${k}`}>
                 <Label htmlFor={`pref-${k}`} className="font-normal">{t(`notifications.types.${k}.label`)}</Label>
                 <Select
-                  value={legacy[k] ?? 'instant'}
+                  value={legacy[k] ?? LEGACY_DEFAULTS[k]}
                   onValueChange={(v) => saveLegacy(k, v as Frequency)}
                   disabled={savingKey === k}
                 >

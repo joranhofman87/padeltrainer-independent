@@ -84,11 +84,36 @@ describe('NotificationSettings v2', () => {
     expect(container.textContent?.toLowerCase()).not.toContain('push');
   });
 
-  it('keeps the v1 orphan preferences editable (still enforced by send-email)', async () => {
+  it('keeps EVERY v1 player preference reachable — including ones send-email still enforces', async () => {
     render(<NotificationSettings />);
-    expect(await screen.findByTestId('pref-row-open_slots_digest')).toBeInTheDocument();
-    expect(screen.getByTestId('pref-row-upcoming_sessions_digest')).toBeInTheDocument();
-    expect(screen.getByTestId('pref-row-waitlist_update')).toBeInTheDocument();
+    // not just the "no v2 key" orphans: booking_confirmation / booking_reminder / payment_receipt
+    // are still gated by live send-email paths (send-digest-emails, BookForPlayerDialog), so
+    // dropping them would leave a live setting enforced but unreachable.
+    for (const k of ['booking_confirmation', 'booking_reminder', 'open_slots_digest',
+                     'upcoming_sessions_digest', 'payment_receipt', 'waitlist_update']) {
+      expect(await screen.findByTestId(`pref-row-${k}`)).toBeInTheDocument();
+    }
+  });
+
+  it('keeps EVERY v1 staff preference reachable for staff', async () => {
+    authState = { user: { id: 'U1' }, role: 'trainer', isAcademyManager: false, loading: false };
+    render(<NotificationSettings />);
+    for (const k of ['new_booking', 'booking_cancelled', 'new_follower', 'new_player',
+                     'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received']) {
+      expect(await screen.findByTestId(`pref-row-${k}`)).toBeInTheDocument();
+    }
+  });
+
+  it('legacy fallbacks match the COLUMN DEFAULTs (open_slots_digest is weekly, not daily)', async () => {
+    v1row = null; // no stored row → fall back to schema defaults
+    render(<NotificationSettings />);
+    await screen.findByTestId('pref-row-open_slots_digest');
+    // the i18n mock echoes the key, so assert the SELECTED frequency via the key suffix
+    const freq = (testid: string) =>
+      screen.getByTestId(testid).querySelector('[role="combobox"]')?.textContent?.split('.').pop();
+    expect(freq('pref-row-open_slots_digest')).toBe('weekly'); // NOT 'daily'
+    expect(freq('pref-row-upcoming_sessions_digest')).toBe('daily');
+    expect(freq('pref-row-booking_confirmation')).toBe('instant');
   });
 
   it('STAFF filtering includes trainers — a trainer-only account sees staff events', async () => {

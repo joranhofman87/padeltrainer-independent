@@ -471,12 +471,19 @@ Prerequisites:
    **Role filtering treats `academy_manager` + `trainer` as ONE staff bucket** rather than
    trusting `audience` literally: `booking_confirmed_staff` is catalogued `academy_manager`
    but PR 6b's fan-out also mails TRAINERS, so a literal match would hide a setting from
-   people who receive it. A transitional **"Other notifications"** group keeps the seven v1
-   columns that have no v2 event key (`open_slots_digest`, `upcoming_sessions_digest`,
-   `waitlist_update`, `new_follower`, `new_player`, `new_registration`,
-   `upcoming_schedule_digest`) editable — they are STILL enforced by send-email (e.g.
-   `open_slots_digest` gates `new_availability`/`slot_reopened`), so dropping them would leave
-   live settings enforced but unreachable. PR 10 migrates those senders and the group goes.
+   people who receive it. A transitional **"Other notifications"** group keeps the
+   **COMPLETE v1 column set** editable. The rule is "every column send-email can still
+   consult", NOT "columns with no v2 event key" — the latter is too narrow and strands live
+   settings, because send-email still gates legacy sends on `booking_confirmation`,
+   `booking_reminder`, `booking_cancelled`, `new_review`, `payment_receipt`, `payment_received`,
+   `new_booking` and `open_slots_digest` even where a v2 event of a similar NAME exists (they
+   are two different enforcement paths: v1 gates send-email, v2 gates the outbox). Live callers
+   confirm it — `send-digest-emails` sends booking_confirmation/booking_reminder/
+   booking_cancelled, `BookLesson` sends booking_request→new_booking, `BookForPlayerDialog`
+   sends manual_booking_confirmation→booking_confirmation, `notify-followers` sends
+   new_availability|slot_reopened→open_slots_digest. Legacy fallbacks mirror the COLUMN DEFAULTs
+   of migration 20260210090026 exactly (notably `open_slots_digest` = **weekly**, not daily).
+   PR 10 migrates those senders and the group goes.
    The route + the academy-managed-trainer exemption are unchanged: outbound email footers
    deep-link to `settings/notifications` as their unsubscribe target.
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
