@@ -67,7 +67,7 @@ describe('NotificationTimelineCard', () => {
     await screen.findByTestId('notification-timeline-card');
     // textContent concatenates sibling nodes, so match loosely and assert the INVARIANT:
     // every address-looking token in the DOM carries the redaction marker.
-    const addresses = container.textContent?.match(/[A-Za-z0-9._%+*-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [];
+    const addresses: string[] = container.textContent?.match(/[A-Za-z0-9._%+*-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [];
     expect(addresses.length).toBeGreaterThan(0);
     expect(addresses.every((a) => a.includes('***'))).toBe(true);
     expect(screen.getByText('m***@academy.nl')).toBeInTheDocument(); // rendered as its own node
