@@ -9808,6 +9808,10 @@ export type Database = {
         Args: { p_min?: number; p_profile_id: string; p_profile_type: string }
         Returns: number
       }
+      normalize_phone_e164: {
+        Args: { p_default_country_code?: string; p_phone: string }
+        Returns: string
+      }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
@@ -9914,6 +9918,17 @@ export type Database = {
         Args: { _intent: string; _token: string }
         Returns: undefined
       }
+      record_whatsapp_optin: {
+        Args: {
+          p_academy_profile_id?: string
+          p_person_id: string
+          p_phone: string
+          p_source?: string
+          p_trainer_id?: string
+        }
+        Returns: string
+      }
+      record_whatsapp_optout: { Args: { p_phone: string }; Returns: number }
       rederive_person: { Args: { _person: string }; Returns: undefined }
       reinstate_rebook_claims: {
         Args: { _claim_ids: string[] }
