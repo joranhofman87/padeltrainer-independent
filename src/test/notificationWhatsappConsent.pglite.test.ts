@@ -82,6 +82,7 @@ beforeAll(async () => {
   await db.exec(MIG('20260918100000_notification_whatsapp_consent.sql'));
   await db.exec(MIG('20260920100000_notification_whatsapp_self_service.sql'));
   await db.exec(MIG('20260921100000_notification_whatsapp_optin_for_slot.sql'));
+  await db.exec(MIG('20260922100000_notification_whatsapp_booking_optin_cadence.sql'));
   await db.exec(`
     INSERT INTO auth.users (id) VALUES ('${U_P}'), ('${U_O}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P_P}','${U_P}','p@x.com'), ('${P_O}','${U_O}','o@x.com');
@@ -323,10 +324,26 @@ describe('the resolver still gates whatsapp on BOTH consent and cadence', () => 
         'session_reminder_player', NULL, '${U_P}'::uuid, NULL, '${academy}'::uuid, NULL,
         NULL, NULL, NULL, 'pay_wa', NULL, '{"subject":"s","html":"h"}'::jsonb)`);
 
-  it('an opted-in contact alone is NOT enough — cadence defaults to off', async () => {
+  it('an opted-in contact IS the opt-in for a covered event (was: cadence defaults to off)', async () => {
+    // SUPERSEDED PIN, changed deliberately. It used to assert that consent alone was not
+    // enough — true then, but it made the consent model self-contradictory: prefs_v2 is
+    // user_id-keyed so a guest could never satisfy the cadence gate, and required_delivery
+    // events have no WhatsApp control on the settings page. So an opt-in recorded at booking
+    // could never send. session_reminder_player is now whatsapp_optin_via_booking, and the
+    // contact supplies the cadence when the person has expressed none.
     await optIn(P_P, '0612345678', A1, null);
     const rows = (await enqueue(A1)).rows;
-    expect(rows.some((r) => r.channel === 'whatsapp')).toBe(false); // email only
+    expect(rows.some((r) => r.channel === 'whatsapp')).toBe(true);
+  });
+
+  it('...but NOT for an event outside the booking opt-in', async () => {
+    // the gate still exists — coverage is per-event, not a blanket unlock
+    await optIn(P_P, '0612345678', A1, null);
+    const rows = (await db.query<{ channel: string }>(`
+      SELECT channel FROM public.enqueue_notification(
+        'rebook_invite_player', NULL, '${U_P}'::uuid, NULL, '${A1}'::uuid, NULL,
+        'rebook_wa', NULL, NULL, NULL, NULL, '{"subject":"s","html":"h"}'::jsonb)`)).rows;
+    expect(rows.some((r) => r.channel === 'whatsapp')).toBe(false);
   });
 
   it('with consent AND a non-off cadence, whatsapp is enqueued to the E.164 number', async () => {
@@ -528,5 +545,105 @@ describe('record_whatsapp_optin_for_slot — tenant derived from the SLOT, never
     // the wrappers keep their own authorization; only the WRITE was shared
     await as(U_P);
     await expect(optIn(P_P, '0612345678', A2, null)).rejects.toThrow(/no relationship/);
+  });
+});
+
+describe('booking opt-in is actually DELIVERABLE (cadence gate)', () => {
+  // The gap this closes: the resolver's FIRST gate is a per-event cadence that must be non-off
+  // before it even looks for a contact. prefs_v2 is user_id-keyed, so a guest could never
+  // satisfy it; and booking_confirmed_player is required_delivery, which the settings page
+  // renders as "Always on" with no WhatsApp control. A checkbox on top of that would have
+  // recorded consent that could never send — success at every layer, no message ever.
+  const P_G = '0d000000-0000-0000-0000-0000000000d3';  // that guest's person
+
+  const enqueue = (event: string, opts: { person: string; user?: string | null; academy?: string }) =>
+    db.query<{ channel: string; status: string; skip_reason: string | null }>(
+      `SELECT channel, status, skip_reason FROM public.enqueue_notification(
+         '${event}',
+         '${opts.person}',
+         ${opts.user ? `'${opts.user}'` : 'NULL'},
+         NULL,
+         '${opts.academy ?? A1}', NULL,
+         'subj-${event}-${opts.person}-${opts.academy ?? A1}')`);
+
+  const channels = async (event: string, opts: { person: string; user?: string | null; academy?: string }) =>
+    (await enqueue(event, opts)).rows.filter((r) => r.status !== 'skipped').map((r) => r.channel).sort();
+
+  beforeEach(async () => {
+    await db.exec(`
+      DELETE FROM public.notification_outbox;
+      INSERT INTO public.persons (id, user_id, email) VALUES ('${P_G}', NULL, 'g@x.com')
+        ON CONFLICT (id) DO NOTHING;`);
+  });
+
+  it('1. GUEST opt-in at public booking => a WhatsApp outbox row IS created', async () => {
+    // a guest has no login and therefore can NEVER express a cadence; the contact is the opt-in
+    await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
+    expect(await channels('booking_confirmed_player', { person: P_G })).toContain('whatsapp');
+  });
+
+  it('2. LOGGED-IN slot opt-in => booking confirmation AND session reminder can enqueue WhatsApp', async () => {
+    await as(U_P);
+    await db.query(`SELECT public.record_whatsapp_optin_for_slot(
+      '01000000-0000-0000-0000-000000000011', '0612345678', 'booking_form')`);
+    await as(null);
+    // required_delivery, so the settings page offers no control for it — this is the only route
+    expect(await channels('booking_confirmed_player', { person: P_P, user: U_P })).toContain('whatsapp');
+    expect(await channels('session_reminder_player', { person: P_P, user: U_P })).toContain('whatsapp');
+  });
+
+  it('3. REVOKED consent => no WhatsApp, even with a cadence explicitly stored', async () => {
+    await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
+    await db.query(`SELECT public.record_whatsapp_optout('+31612345678')`);
+    expect(await channels('booking_confirmed_player', { person: P_G })).not.toContain('whatsapp');
+
+    // and for a logged-in user whose stored preference still says 'instant'
+    await as(U_P);
+    await db.query(`SELECT public.record_whatsapp_optin_for_slot(
+      '01000000-0000-0000-0000-000000000011', '0687654321', 'booking_form')`);
+    await as(null);
+    await db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+      VALUES ('${U_P}', 'session_reminder_player', 'instant')
+      ON CONFLICT (user_id, event_type) DO UPDATE SET whatsapp_frequency = 'instant';`);
+    await db.query(`SELECT public.record_whatsapp_optout('+31687654321')`);
+    expect(await channels('session_reminder_player', { person: P_P, user: U_P })).not.toContain('whatsapp');
+  });
+
+  it('4. FOREIGN-tenant consent does not authorize this tenant', async () => {
+    // consent collected by academy 1 must not let academy 2 message them
+    await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
+    expect(await channels('booking_confirmed_player', { person: P_G, academy: A2 })).not.toContain('whatsapp');
+    expect(await channels('booking_confirmed_player', { person: P_G, academy: A1 })).toContain('whatsapp');
+  });
+
+  it('an EXPLICIT preference still wins, including turning it back off', async () => {
+    // ticking a box at booking must never override someone later switching WhatsApp off
+    await as(U_P);
+    await db.query(`SELECT public.record_whatsapp_optin_for_slot(
+      '01000000-0000-0000-0000-000000000011', '0612345678', 'booking_form')`);
+    await as(null);
+    await db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+      VALUES ('${U_P}', 'session_reminder_player', 'off')
+      ON CONFLICT (user_id, event_type) DO UPDATE SET whatsapp_frequency = 'off';`);
+    expect(await channels('session_reminder_player', { person: P_P, user: U_P })).not.toContain('whatsapp');
+  });
+
+  it('coverage is limited to the session lifecycle, not payment chasing or rebook invites', async () => {
+    // consent given while booking ONE session is not consent to be chased for money or invited
+    // to book again — those stay behind the settings page, which guests do not have
+    await db.query(`SELECT public.record_whatsapp_optin('${P_G}', '0612345678', '${A1}', NULL, 'booking_form')`);
+    expect(await channels('booking_cancelled_player', { person: P_G })).toContain('whatsapp');
+    expect(await channels('invoice_reminder_player', { person: P_G })).not.toContain('whatsapp');
+    expect(await channels('rebook_invite_player', { person: P_G })).not.toContain('whatsapp');
+  });
+
+  it('a non-opted-in contact does not satisfy the gate', async () => {
+    // ensure_guest_email_contact writes consent_status='unknown' for transactional email; the
+    // equivalent must never read as a WhatsApp opt-in
+    await db.exec(`INSERT INTO public.notification_contacts
+      (person_id, channel, destination_normalized, destination_redacted, consent_status,
+       consent_scope, consent_academy_profile_id, consent_source, is_primary)
+      VALUES ('${P_G}', 'whatsapp', '+31612345678', '•••5678', 'unknown', 'tenant', '${A1}', 'paid_booking', true);`);
+    expect(await channels('booking_confirmed_player', { person: P_G })).not.toContain('whatsapp');
   });
 });

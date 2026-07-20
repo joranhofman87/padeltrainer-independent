@@ -4342,6 +4342,7 @@ export type Database = {
           template_whatsapp: string | null
           updated_at: string
           visibility_scope: string
+          whatsapp_optin_via_booking: boolean
         }
         Insert: {
           audience: string
@@ -4365,6 +4366,7 @@ export type Database = {
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
+          whatsapp_optin_via_booking?: boolean
         }
         Update: {
           audience?: string
@@ -4388,6 +4390,7 @@ export type Database = {
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
+          whatsapp_optin_via_booking?: boolean
         }
         Relationships: []
       }
@@ -10183,6 +10186,16 @@ export type Database = {
       }
       user_owns_registration: {
         Args: { _registration_id: string }
+        Returns: boolean
+      }
+      whatsapp_optin_in_scope: {
+        Args: {
+          p_guest_player_id: string
+          p_person_id: string
+          p_tenant_academy_profile_id: string
+          p_tenant_trainer_id: string
+          p_user_id: string
+        }
         Returns: boolean
       }
       whatsapp_outbox_consent_active: {

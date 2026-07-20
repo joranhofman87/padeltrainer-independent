@@ -602,6 +602,24 @@ Prerequisites:
      `TWILIO_TEMPLATE_SESSION_REMINDER_NL` and `TWILIO_STATUS_CALLBACK_URL` **first**, then
      flip `WHATSAPP_SEND_ENABLED=true` last. Deferral means getting this order wrong parks
      rows rather than losing them, but there is no reason to lean on that.
+   - **An explicit booking opt-in IS the WhatsApp opt-in** for the events flagged
+     `whatsapp_optin_via_booking` (migration `20260922100000`). Without this the consent model
+     contradicted itself: the resolver's first gate is a per-event cadence, `prefs_v2` is
+     `user_id`-keyed so a **guest can never express one**, and `booking_confirmed_player` is
+     `required_delivery` — which the settings page renders as "Always on" with no WhatsApp
+     control. A booking checkbox on top of that would have recorded consent that could never
+     send, with every layer reporting success. (PR 3's own comment predicted exactly this and
+     deferred it to PR 9.)
+     The contact stays the authority on "may we message this person for this tenant"; a stored
+     preference becomes an explicit override that still wins, **including `off`** — ticking a
+     box at booking must never undo someone later switching WhatsApp off.
+     Coverage is declarative on the catalog (so a new event cannot silently inherit it) and
+     limited to the **session lifecycle**: confirmed, cancelled, reminder. `invoice_reminder_player`
+     and `rebook_invite_player` are deliberately excluded — consent given while booking one
+     session is not consent to be chased for money or invited to book again, and that kind of
+     scope creep is what gets a WhatsApp sender reported.
+     `whatsapp_optin_in_scope()` mirrors the resolver's own contact predicate exactly, so the
+     cadence gate and the delivery gate cannot disagree about what counts as consent.
    - Owner-side, still open: re-copy `TWILIO_AUTH_TOKEN` from the same account as the `AC…`
      SID (the probe matrix proved they belong to different accounts — every us1/ie1/au1 ×
      credential-pair combination 401s), add the `whatsapp:` prefix to `TWILIO_WHATSAPP_FROM`
