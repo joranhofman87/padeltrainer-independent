@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
 import { InvoiceStatusHistoryCard } from '@/components/invoices/InvoiceStatusHistoryCard';
+import { InvoiceNotificationTimelineCard } from '@/components/notifications/NotificationTimelineCard';
 import { annotateInvoiceStatusReason } from '@/lib/invoiceStatusHistory';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
 import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEditor';
@@ -308,6 +309,7 @@ export default function AcademyEditInvoice() {
         />
         <InvoiceSourceCard owner="academy" bookingIds={invoice.booking_ids as string[] | null} />
         <InvoiceStatusHistoryCard invoiceId={invoice.id} />
+        <InvoiceNotificationTimelineCard invoiceId={invoice.id} />
 
         {/* Receiver (editable billing) */}
         <Card className={flushOnMobileCardClass()}>

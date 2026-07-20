@@ -23,6 +23,7 @@ import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPick
 import { InvoiceRecipientCard } from '@/components/invoices/InvoiceRecipientCard';
 import { fetchPersonRefSet } from '@/lib/playerDetailData';
 import { InvoiceSourceCard } from '@/components/invoices/InvoiceSourceCard';
+import { InvoiceNotificationTimelineCard } from '@/components/notifications/NotificationTimelineCard';
 import { InvoiceLineItemsEditor } from '@/components/invoices/InvoiceLineItemsEditor';
 import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary';
 import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoiceFormTotals';
@@ -227,6 +228,7 @@ export default function TrainerEditInvoice() {
           personHasLogin={personHasLogin ?? undefined}
         />
         <InvoiceSourceCard owner="trainer" bookingIds={invoice.booking_ids as string[] | null} />
+        <InvoiceNotificationTimelineCard invoiceId={invoice.id} />
 
         {/* Receiver (editable billing) */}
         <Card className={flushOnMobileCardClass()}>

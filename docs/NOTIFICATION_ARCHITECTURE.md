@@ -444,9 +444,20 @@ Prerequisites:
      silently granting a foreign tenant access. The pglite denial suite caught exactly that.
      PR 6b's staff enqueue also now records `related_invoice_id`, so the invoice timeline is
      populated for tenants.
-   - **7b (next): the UI surfaces** — one compact, self-hiding timeline card (modelled on
-     `InvoiceStatusHistoryCard`) on the academy/trainer player detail pages and the
-     academy/trainer invoice detail pages. Deliberately small: no new dashboard.
+   - **7b (shipped): the UI surfaces.** One compact card
+     (`components/notifications/NotificationTimelineCard.tsx`, modelled on
+     `InvoiceStatusHistoryCard`) backed by `lib/notificationTimeline.ts`, wired to four
+     surfaces: academy + trainer INVOICE detail (`InvoiceNotificationTimelineCard`) and
+     academy + trainer PLAYER detail (`PlayerNotificationTimelineCard`, which passes the
+     page's existing scope + parsed `p_`/`g_` ref straight through to the RPC). It renders
+     the humanized event, a status badge (a `skipped` row shows its reason, so an
+     undelivered notice is visible), the REDACTED destination and a timestamp — and
+     **self-hides** while loading or with no visible rows, so a viewer who legitimately sees
+     nothing (staff on a player whose confirmations are `private_user_only`) gets no empty
+     card. A missing RPC (`PGRST202`, client ahead of the migration) also renders nothing
+     rather than throwing. Deliberately small: no new dashboard, and no BOOKING surface —
+     the app has no standalone booking detail page, and the staff rows are reachable on the
+     invoice surface now that PR 6b records `related_invoice_id`.
 8. `NotificationSettings` v2 UI (replaces v1).
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
    (once the owner's provider/templates are approved).

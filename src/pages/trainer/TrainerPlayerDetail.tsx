@@ -22,6 +22,7 @@ import { trainerPlayersQueryKey } from '@/lib/trainerPlayersQuery';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { buildTrainerInvoiceEmailEvents, filterInvoicesForTrainer, mapCampaignEmailEvents, mergePlayerEmailHistory, type TrainerPlayerEmailHistoryItem } from '@/lib/trainerPlayerEmailHistory';
 import { TrainerPlayerDetailsCard } from '@/components/trainer/TrainerPlayerDetailsCard';
+import { PlayerNotificationTimelineCard } from '@/components/notifications/NotificationTimelineCard';
 import { TrainerPlayerRemoveCard } from '@/components/trainer/TrainerPlayerRemoveCard';
 import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
 import { TagPicker } from '@/components/players/TagPicker';
@@ -792,6 +793,15 @@ export default function TrainerPlayerDetail() {
           )}
         </CardContent>
       </Card>
+
+      {trainerId && parsed.kind && parsed.id && (
+        <PlayerNotificationTimelineCard
+          scope="trainer"
+          scopeId={trainerId}
+          guestId={parsed.kind === 'guest' ? parsed.id : null}
+          profileId={parsed.kind === 'profile' ? parsed.id : null}
+        />
+      )}
 
       {canEdit && trainerId && player && parsed.kind && (
         <TrainerPlayerRemoveCard
