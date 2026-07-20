@@ -29,12 +29,14 @@ export async function runBookingPaidSideEffects(opts: {
   bookingIds: string[];
   /** payment.amount.value as reported by Mollie — display only, never used for math. */
   paymentAmountValue?: string;
+  /** Mollie payment id — threaded to the resolver as the confirmation's idempotency subject. */
+  molliePaymentId?: string;
   /** Calling function name, used in log + Slack context. */
   source: string;
   logStep: LogStep;
   notifySlackError: NotifySlackError;
 }): Promise<void> {
-  const { supabase, bookingIds, paymentAmountValue, source, logStep, notifySlackError } = opts;
+  const { supabase, bookingIds, paymentAmountValue, molliePaymentId, source, logStep, notifySlackError } = opts;
 
   // P2-12: settle the slot_priority_claims row for a paid strict-hold booking on
   // WHICHEVER path (webhook OR verify-mollie-payment) first flips it paid. If only
@@ -123,14 +125,19 @@ export async function runBookingPaidSideEffects(opts: {
     // see your sessions" link. Replaces the two older divergent emails (a player
     // booking_confirmation with NO pdf; the guest's raw invoice email). Non-fatal; the
     // caller's atomic paid claim already guards against a double-send.
-    const confirmation = await sendPlayerBookingConfirmation({ supabase, bookingIds, invoiceId, logStep });
+    const confirmation = await sendPlayerBookingConfirmation({ supabase, bookingIds, invoiceId, molliePaymentId, logStep });
     if (!confirmation.ok) {
-      const { reason } = confirmation;
-      if (reason === "no_payer" || reason === "no_recipient_email") {
-        // Money landed but nobody could be emailed — alert LOUDLY. This is exactly the
-        // silent gap that once left a guest cyclus payer (Kim de Kort) with no email; a
-        // single unified path plus this alert means no payer type can fall through again.
-        await notifySlackError(source, "paid booking had no resolvable recipient for the confirmation email", {
+      const { reason, skipReason } = confirmation;
+      // A 'skipped' outcome already left a VISIBLE required-but-undeliverable row in the
+      // outbox, and the email worker raises its own dedup'd ops alert for those — so only
+      // log it here (double-alerting would be noise). no_payer / enqueue_failed enqueue
+      // NOTHING, so nothing downstream surfaces them — alert LOUDLY. This is the same silent
+      // gap that once left a guest cyclus payer (Kim de Kort) with no email; the unified
+      // enqueue path plus this alert means no payer type can fall through again.
+      if (reason === "skipped") {
+        logStep("Paid booking confirmation is a visible skipped row (worker will alert)", { bookingIds, skipReason });
+      } else {
+        await notifySlackError(source, "paid booking confirmation could not be enqueued", {
           bookingIds,
           reason,
         });

@@ -31,7 +31,16 @@ type ClaimedRow = {
   template_key: string | null;
   destination_normalized: string | null;
   destination_redacted: string | null;
-  payload: { subject?: string; html?: string; from?: string } | null;
+  payload:
+    | {
+        subject?: string;
+        html?: string;
+        from?: string;
+        // optional pass-through attachments (e.g. the paid-booking invoice PDF, built at
+        // enqueue time so the payload is self-contained + retries are deterministic).
+        attachments?: Array<{ filename: string; content: string }>;
+      }
+    | null;
   attempts: number;
 };
 
@@ -134,7 +143,15 @@ const handler = async (req: Request): Promise<Response> => {
       // accepted the send (our timeout, a stale takeover) is a no-op in Resend's 24h window.
       const outcome = await sendResendEmail(
         resendApiKey,
-        { from: payload.from ?? DEFAULT_FROM, to: [dest], subject, html },
+        {
+          from: payload.from ?? DEFAULT_FROM,
+          to: [dest],
+          subject,
+          html,
+          ...(payload.attachments && payload.attachments.length > 0
+            ? { attachments: payload.attachments }
+            : {}),
+        },
         { idempotencyKey: `notification-outbox-${row.outbox_id}` },
       );
 

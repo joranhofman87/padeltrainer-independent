@@ -1,37 +1,45 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendResendEmail } from "./resend-send.ts";
 import { resolveAppBase } from "./priority-claim-invite.ts";
 
 /**
  * The player-facing PAYMENT CONFIRMATION email, sent after a public Mollie payment
  * for a single slot OR a whole cyclus, to BOTH a guest and a registered player.
  *
- * It replaces the two divergent post-payment emails that used to run in
- * mollie-booking-paid-side-effects (a plain `booking_confirmation` for registered
- * players with NO pdf, and the raw `send-invoice-email` for guests): one friendly
- * confirmation for everyone, carrying
- *   (1) a "what you booked" table of every paid session,
- *   (2) the SAME invoice PDF the bookkeeper receives (best-effort attachment), and
- *   (3) a "sign in / create an account to see your sessions" link.
+ * Notification Foundation v2 (PR 6a): this no longer sends via Resend directly — it
+ * COMPOSES the email (subject + html + the invoice-PDF attachment) and hands it to the
+ * resolver (enqueue_notification) as a `booking_confirmed_player` intent. The resolver
+ * owns destination + consent + idempotency; the email worker (cron) does the actual send.
+ *   * registered player → the resolver's persons.email ACCOUNT fallback (keyed on user_id),
+ *   * guest → a TENANT-SCOPED notification_contacts row upserted here (ensure_guest_email_contact),
+ *     because a guest has no account email and MUST NOT reuse a shared address cross-tenant.
+ * The PDF rides in the outbox payload (built once here, deterministic on worker retries).
  *
- * Best-effort throughout: a missing PDF still sends the email, and the whole send is
- * non-fatal (returns an outcome; never throws). The caller gates this behind an atomic
- * paid claim, so it fires exactly once per first-transition to paid — no extra dedupe.
+ * Idempotent: the resolver keys on `booking_confirmed_player:<subject>:<recipient>` where the
+ * subject derives from the invoice/payment/booking refs — so the same paid claim, re-run by a
+ * duplicate webhook/verify delivery, is a no-op (no duplicate outbox row, no double-send).
+ * Best-effort + non-fatal throughout: a missing PDF still enqueues; a guest with no collected
+ * email produces a VISIBLE required-but-skipped outbox row (skip_reason 'no_email_contact'),
+ * never a silent drop. The caller gates this behind the atomic paid claim (E-15).
  */
 
-const FROM = "PadelTrainer.ai <noreply@app.padeltrainer.ai>";
 const BRAND = "#f45d25";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
 
-export type BookingConfirmationReason = "no_resend" | "no_payer" | "no_recipient_email" | "send_failed";
+export type BookingConfirmationReason = "no_payer" | "skipped" | "enqueue_failed";
 export type BookingConfirmationOutcome = {
+  /** true = an email row is enqueued 'pending' (or was already, idempotently). */
   ok: boolean;
   /** Present when ok=false. */
   reason?: BookingConfirmationReason;
-  recipient?: string;
   isGuest?: boolean;
   pdfAttached?: boolean;
+  /** The outbox row this call created (absent on an idempotent no-op or hard failure). */
+  outboxId?: string;
+  /** 'pending' | 'skipped' | 'already_enqueued' */
+  status?: string;
+  /** e.g. 'no_email_contact' when a required confirmation could not be delivered. */
+  skipReason?: string;
   detail?: string;
 };
 
@@ -99,6 +107,7 @@ const COPY: Record<"nl" | "en", Copy> = {
 };
 
 type SessionRow = { start_time: string; end_time: string; cyclus_name: string | null; location: string };
+type Attachment = { filename: string; content: string };
 
 interface BookingRow {
   id: string;
@@ -108,38 +117,35 @@ interface BookingRow {
     start_time: string;
     end_time: string;
     cyclus_name: string | null;
+    trainer_id: string | null;
     academy_profile_id: string | null;
     locations: { name: string | null } | null;
   } | null;
-  profiles: { full_name: string | null; email: string | null; preferred_language: string | null } | null;
+  profiles: { user_id: string | null; full_name: string | null; email: string | null; preferred_language: string | null } | null;
   guest_players: { full_name: string | null; email: string | null } | null;
 }
 
 /**
- * Resolve + send the confirmation for the just-paid `bookingIds`.
- * `invoiceId` is the invoice minted for these bookings (may be null → resolved here).
+ * Resolve + ENQUEUE the confirmation for the just-paid `bookingIds`.
+ * `invoiceId` is the invoice minted for these bookings (may be null → resolved here for the PDF).
+ * `molliePaymentId` threads the payment id so the resolver derives a stable idempotency subject.
  */
 export async function sendPlayerBookingConfirmation(opts: {
   supabase: SupabaseClient;
   bookingIds: string[];
   invoiceId: string | null;
+  molliePaymentId?: string | null;
   logStep: LogStep;
 }): Promise<BookingConfirmationOutcome> {
-  const { supabase, bookingIds, invoiceId, logStep } = opts;
-
-  const resendApiKey = env("RESEND_API_KEY");
-  if (!resendApiKey) {
-    logStep("Player confirmation skipped — RESEND not configured");
-    return { ok: false, reason: "no_resend" };
-  }
+  const { supabase, bookingIds, invoiceId, molliePaymentId, logStep } = opts;
 
   // All booked sessions (single slot = 1 row, cyclus = N) + the payer identity fields.
   const { data: rows } = await supabase
     .from("bookings")
     .select(`
       id, player_id, guest_player_id,
-      availability_slots!inner(start_time, end_time, cyclus_name, academy_profile_id, locations(name)),
-      profiles!bookings_player_id_fkey(full_name, email, preferred_language),
+      availability_slots!inner(start_time, end_time, cyclus_name, trainer_id, academy_profile_id, locations(name)),
+      profiles!bookings_player_id_fkey(user_id, full_name, email, preferred_language),
       guest_players(full_name, email)
     `)
     .in("id", bookingIds);
@@ -147,40 +153,15 @@ export async function sendPlayerBookingConfirmation(opts: {
   if (bookings.length === 0) return { ok: false, reason: "no_payer" };
 
   // Payer type from ANY row (not just [0]): a same-guest cyclus stamps guest_player_id
-  // on every child row, but harden against a mixed set.
-  const registered = bookings.find((b) => b.player_id && b.profiles?.email);
+  // on every child row, but harden against a mixed set. Registered = an account holder
+  // (player_id + user_id) — the resolver delivers to their persons.email account address.
+  const registered = bookings.find((b) => b.player_id && b.profiles?.user_id);
   const guest = bookings.find((b) => b.guest_player_id);
-  const isGuest = !registered && !!guest;
 
-  let recipientEmail: string | null = null;
-  let recipientName = "";
-  let language: "nl" | "en" = "nl";
-
-  if (registered) {
-    recipientEmail = registered.profiles?.email ?? null;
-    recipientName = registered.profiles?.full_name ?? "";
-    language = normalizeLang(registered.profiles?.preferred_language);
-  } else if (guest) {
-    recipientName = guest.guest_players?.full_name ?? "";
-    // Single source of truth for the guest's address (honours a linked profile /
-    // academy billing-email override), falling back to the booking-form address.
-    try {
-      const { data: idRows } = await supabase.rpc("get_invoice_recipient_identity", {
-        _player_id: null,
-        _guest_player_id: guest.guest_player_id,
-        _academy_profile_id: guest.availability_slots?.academy_profile_id ?? null,
-      });
-      const identity = Array.isArray(idRows) ? idRows[0] : idRows;
-      recipientEmail = (identity as { email?: string } | null)?.email ?? null;
-    } catch (_e) {
-      // fall through to the joined address
-    }
-    if (!recipientEmail) recipientEmail = guest.guest_players?.email ?? null;
-  } else {
-    return { ok: false, reason: "no_payer" };
-  }
-
-  if (!recipientEmail) return { ok: false, reason: "no_recipient_email" };
+  // Tenant context from the booked slot (all rows of one payment share it; take any slot).
+  const slot = bookings.find((b) => b.availability_slots)?.availability_slots ?? null;
+  const academyProfileId = slot?.academy_profile_id ?? null;
+  const trainerId = slot?.trainer_id ?? null;
 
   // Sessions table (chronological).
   const sessions: SessionRow[] = bookings
@@ -193,34 +174,140 @@ export async function sendPlayerBookingConfirmation(opts: {
     .filter((s) => s.start_time)
     .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-  // Invoice PDF — the SAME artifact the bookkeeper receives. Best-effort.
+  // Invoice PDF — the SAME artifact the bookkeeper receives. Best-effort; rides in the
+  // outbox payload so the worker's send (and any retry) is self-contained + deterministic.
   const { attachments } = await buildInvoiceAttachment(supabase, invoiceId, bookingIds, logStep);
-
+  const pdfAttached = attachments != null;
   const appBase = resolveAppBase(env("PUBLIC_APP_URL"));
-  const signInUrl = isGuest
-    ? `${appBase}/app/signup/player?email=${encodeURIComponent(recipientEmail)}&name=${encodeURIComponent(recipientName)}&redirect=${encodeURIComponent("/app/player/agenda")}`
-    : `${appBase}/app/auth?redirect=${encodeURIComponent("/app/player/agenda")}`;
 
-  const html = renderHtml({ copy: COPY[language], recipientName, sessions, isGuest, signInUrl, hasPdf: attachments != null });
+  if (registered) {
+    const userId = registered.profiles?.user_id as string;
+    const language = normalizeLang(registered.profiles?.preferred_language);
+    const recipientName = registered.profiles?.full_name ?? "";
+    const signInUrl = `${appBase}/app/auth?redirect=${encodeURIComponent("/app/player/agenda")}`;
+    const html = renderHtml({ copy: COPY[language], recipientName, sessions, isGuest: false, signInUrl, hasPdf: pdfAttached });
+    return await enqueueConfirmation(supabase, {
+      recipient: { p_recipient_user_id: userId },
+      academyProfileId, trainerId, bookingIds, invoiceId, molliePaymentId,
+      subject: COPY[language].subject, html, attachments, isGuest: false, pdfAttached, logStep,
+    });
+  }
 
-  const outcome = await sendResendEmail(resendApiKey, {
-    from: FROM,
-    to: [recipientEmail],
-    subject: COPY[language].subject,
-    html,
-    ...(attachments ? { attachments } : {}),
+  if (!guest) return { ok: false, reason: "no_payer" };
+  const guestPlayerId = guest.guest_player_id as string;
+  const recipientName = guest.guest_players?.full_name ?? "";
+  const language: "nl" | "en" = "nl"; // guests have no profile language preference
+
+  // Single source of truth for the guest's address (honours a linked profile / academy
+  // billing-email override), falling back to the booking-form address.
+  let recipientEmail: string | null = null;
+  try {
+    const { data: idRows } = await supabase.rpc("get_invoice_recipient_identity", {
+      _player_id: null,
+      _guest_player_id: guestPlayerId,
+      _academy_profile_id: academyProfileId,
+    });
+    const identity = Array.isArray(idRows) ? idRows[0] : idRows;
+    recipientEmail = (identity as { email?: string } | null)?.email ?? null;
+  } catch (_e) {
+    // fall through to the joined address
+  }
+  if (!recipientEmail) recipientEmail = guest.guest_players?.email ?? null;
+
+  // Make the guest deliverable: upsert their tenant-scoped email contact. A missing email
+  // leaves NO contact → the required confirmation resolves to a visible 'skipped' row.
+  // But an UPSERT FAILURE (email was present) must fail LOUDLY, not fall through: enqueueing
+  // anyway would resolve to a misleading 'skipped'/no_email_contact that hides the real cause.
+  // supabase.rpc returns { error } (it does NOT throw), so inspect it AND guard the throw.
+  if (recipientEmail) {
+    let contactErr: string | null = null;
+    try {
+      const { error } = await supabase.rpc("ensure_guest_email_contact", {
+        p_guest_player_id: guestPlayerId,
+        p_email: recipientEmail,
+        p_academy_profile_id: academyProfileId,
+        p_trainer_id: trainerId,
+      });
+      if (error) contactErr = error.message;
+    } catch (e) {
+      contactErr = String(e);
+    }
+    if (contactErr) {
+      const detail = contactErr.slice(0, 200);
+      logStep("Guest contact upsert failed — enqueue aborted", { error: detail });
+      return { ok: false, reason: "enqueue_failed", isGuest: true, pdfAttached, detail };
+    }
+  }
+
+  const signInUrl = `${appBase}/app/signup/player?email=${encodeURIComponent(recipientEmail ?? "")}&name=${encodeURIComponent(recipientName)}&redirect=${encodeURIComponent("/app/player/agenda")}`;
+  const html = renderHtml({ copy: COPY[language], recipientName, sessions, isGuest: true, signInUrl, hasPdf: pdfAttached });
+  return await enqueueConfirmation(supabase, {
+    recipient: { p_recipient_guest_player_id: guestPlayerId },
+    academyProfileId, trainerId, bookingIds, invoiceId, molliePaymentId,
+    subject: COPY[language].subject, html, attachments, isGuest: true, pdfAttached, logStep,
+  });
+}
+
+type EnqueueRow = { outbox_id: string; channel: string; status: string; skip_reason: string | null };
+
+/** Call the resolver + interpret its return (pending / skipped / idempotent no-op). */
+async function enqueueConfirmation(
+  supabase: SupabaseClient,
+  args: {
+    recipient: { p_recipient_user_id?: string; p_recipient_guest_player_id?: string };
+    academyProfileId: string | null;
+    trainerId: string | null;
+    bookingIds: string[];
+    invoiceId: string | null;
+    molliePaymentId?: string | null;
+    subject: string;
+    html: string;
+    attachments?: Attachment[];
+    isGuest: boolean;
+    pdfAttached: boolean;
+    logStep: LogStep;
+  },
+): Promise<BookingConfirmationOutcome> {
+  const { recipient, academyProfileId, trainerId, bookingIds, invoiceId, molliePaymentId, subject, html, attachments, isGuest, pdfAttached, logStep } = args;
+
+  const payload: { subject: string; html: string; attachments?: Attachment[] } = { subject, html };
+  if (attachments && attachments.length > 0) payload.attachments = attachments;
+
+  const { data, error } = await supabase.rpc("enqueue_notification", {
+    p_event_key: "booking_confirmed_player",
+    p_recipient_person_id: null,
+    p_recipient_user_id: recipient.p_recipient_user_id ?? null,
+    p_recipient_guest_player_id: recipient.p_recipient_guest_player_id ?? null,
+    p_tenant_academy_profile_id: academyProfileId,
+    p_tenant_trainer_id: trainerId,
+    p_related_booking_ids: bookingIds,
+    p_related_invoice_id: invoiceId,
+    p_related_payment_id: molliePaymentId ?? null,
+    p_payload: payload,
   });
 
-  if (!outcome.ok) {
-    // ResendSendOutcome is a discriminated union; this helper is also type-checked under
-    // the app's non-strict tsconfig (via its test), where `!ok` does not narrow it — read
-    // `error` through a cast rather than relying on narrowing.
-    const err = (outcome as { error?: string }).error ?? "send_failed";
-    logStep("Player confirmation send failed", { error: err });
-    return { ok: false, reason: "send_failed", detail: err };
+  if (error) {
+    logStep("Player confirmation enqueue failed", { error: error.message, isGuest });
+    return { ok: false, reason: "enqueue_failed", isGuest, pdfAttached, detail: error.message };
   }
-  logStep("Player confirmation sent", { isGuest, pdfAttached: attachments != null });
-  return { ok: true, recipient: recipientEmail, isGuest, pdfAttached: attachments != null };
+
+  const emitted = (data ?? []) as EnqueueRow[];
+  const emailRow = emitted.find((r) => r.channel === "email");
+
+  // No emitted row = the idempotency key already existed (a prior paid-claim run created it).
+  // That's the designed no-op: the confirmation is already handled.
+  if (!emailRow) {
+    logStep("Player confirmation already enqueued (idempotent no-op)", { isGuest });
+    return { ok: true, isGuest, pdfAttached, status: "already_enqueued" };
+  }
+
+  if (emailRow.status === "skipped") {
+    logStep("Player confirmation skipped — no deliverable email", { isGuest, skipReason: emailRow.skip_reason });
+    return { ok: false, reason: "skipped", isGuest, pdfAttached, outboxId: emailRow.outbox_id, status: "skipped", skipReason: emailRow.skip_reason ?? undefined };
+  }
+
+  logStep("Player confirmation enqueued", { isGuest, pdfAttached, outboxId: emailRow.outbox_id });
+  return { ok: true, isGuest, pdfAttached, outboxId: emailRow.outbox_id, status: emailRow.status };
 }
 
 function normalizeLang(v: string | null | undefined): "nl" | "en" {
@@ -230,14 +317,14 @@ function normalizeLang(v: string | null | undefined): "nl" | "en" {
 /**
  * Fetch (or rebuild) the invoice PDF for these bookings and return it as a Resend
  * base64 attachment. Best-effort: returns `{ attachments: undefined }` on any failure —
- * the confirmation email must never be blocked by PDF generation (mirrors send-invoice-email).
+ * the confirmation must never be blocked by PDF generation (mirrors send-invoice-email).
  */
 async function buildInvoiceAttachment(
   supabase: SupabaseClient,
   invoiceId: string | null,
   bookingIds: string[],
   logStep: LogStep,
-): Promise<{ attachments?: Array<{ filename: string; content: string }> }> {
+): Promise<{ attachments?: Attachment[] }> {
   try {
     let id = invoiceId;
     let invoiceNumber: string | null = null;

@@ -392,6 +392,7 @@ serve(async (req) => {
             supabase,
             bookingIds: paidIds,
             paymentAmountValue: payment.amount?.value,
+            molliePaymentId: payment.id,
             source: "verify-mollie-payment",
             logStep,
             notifySlackError,
