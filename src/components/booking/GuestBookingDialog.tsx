@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
 import { validatePhone } from '@/lib/validation';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -64,6 +65,8 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  // unchecked by default — consent must be an action the guest took
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   // Default to the WHOLE cyclus (only relevant when the slot is part of one) — nudges the fuller
@@ -204,6 +207,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             email: email.trim(),
             phone: phone.trim(),
             notes: notes.trim() || undefined,
+            whatsappOptIn,
           },
         },
       );
@@ -400,6 +404,12 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             <Label htmlFor="guest-phone">{t('booking.guest.phone', 'Telefoon')}</Label>
             <PhoneInput id="guest-phone" value={phone} onChange={setPhone} required />
           </div>
+          <WhatsAppOptInField
+            id="guest-whatsapp"
+            checked={whatsappOptIn}
+            onCheckedChange={setWhatsappOptIn}
+            phone={phone}
+          />
           <div className="space-y-1">
             <Label htmlFor="guest-notes">
               {t('booking.guest.notes', 'Opmerking')} <span className="text-muted-foreground">({t('booking.guest.optional', 'optioneel')})</span>

@@ -597,6 +597,15 @@ Prerequisites:
      onto the EXISTING `email_delivery_events` taxonomy (raw status kept in `reason`) rather
      than widening a CHECK the PR 7 timeline UI renders; `invoice_id` stays NULL so a WhatsApp
      failure never wears the invoice email-bounce badge. Idempotent on `(sid, status)`.
+   - **Re-run the mechanical-`off` repair once more immediately before enabling sending.**
+     Migrations apply at deploy, but PR 8's client bundle keeps running in already-open browsers
+     for a while afterwards — and it still writes `whatsapp_frequency='off'` from the column
+     default whenever someone changes an email preference. Any row written in that window is a
+     fresh mechanical `off` created *after* `20260924100000` ran. The repair is a plain
+     idempotent `UPDATE`, so re-running it costs nothing:
+     `UPDATE notification_preferences_v2 SET whatsapp_frequency='instant' WHERE event_type='session_reminder_player' AND whatsapp_frequency='off';`
+     (Do this *before* flipping `WHATSAPP_SEND_ENABLED`, not after — it grants nothing on its
+     own, since the contact gate still applies.)
    - **Rollout order** (belt and braces alongside the deferral mechanism): set
      `TWILIO_ACCOUNT_SID` + working credentials, `TWILIO_WHATSAPP_FROM`,
      `TWILIO_TEMPLATE_SESSION_REMINDER_NL` and `TWILIO_STATUS_CALLBACK_URL` **first**, then

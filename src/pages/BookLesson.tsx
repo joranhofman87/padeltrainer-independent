@@ -26,6 +26,9 @@ import { BookingTrainerCard } from '@/components/booking/BookingTrainerCard';
 import { CycleBundleList } from '@/components/booking/CycleBundleList';
 import { SlotList } from '@/components/booking/SlotList';
 import { BookingSummary } from '@/components/booking/BookingSummary';
+import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
+import { PhoneInput } from '@/components/ui/phone-input';
+import { Label } from '@/components/ui/label';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { FullPageLoader } from '@/components/ui/page-spinner';
 
@@ -116,6 +119,10 @@ export default function BookLesson() {
   const [applicableTerms, setApplicableTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // WhatsApp opt-in. Unchecked by default, always — consent must be something the player did.
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  // Only used when the profile has no number yet; saved back to the profile on opt-in.
+  const [whatsappPhone, setWhatsappPhone] = useState('');
   const [cycleSettingsMap, setCycleSettingsMap] = useState<Record<string, { min_group_size?: number; payment_timing?: string; invoice_delay_weeks?: number; mark_as_paid?: boolean; split_payment?: boolean; allow_cyclus_booking?: boolean }>>({});
 
   useEffect(() => {
@@ -314,6 +321,41 @@ export default function BookLesson() {
 
   const getSlotPrice = (slot: SlotWithDetails) => slot.price_per_session || trainer?.hourly_rate || 0;
 
+  const profilePhone = ((profile as { phone?: string | null } | null)?.phone ?? '').trim();
+  const optInPhone = profilePhone || whatsappPhone.trim();
+
+  /**
+   * Record the WhatsApp opt-in. The tenant is derived SERVER-SIDE from the slot — this sends a
+   * slot id and a phone, never an academy/trainer id.
+   *
+   * Called BEFORE the booking branches, deliberately: two of the three paths hand off to Mollie
+   * and leave the page, so anything queued after that is lost. The cost is recording consent for
+   * a booking that is then abandoned at payment — bounded, since the player actively ticked the
+   * box and pressed Book, and revocable from the settings page.
+   *
+   * NEVER throws: a consent write must not be able to break a booking.
+   */
+  const recordWhatsAppOptIn = async () => {
+    const slotId = selectedSlot?.id ?? selectedCyclus?.slots?.[0]?.id;
+    if (!whatsappOptIn || !slotId || !optInPhone) return;
+    try {
+      // The player typed a number the profile did not have — keep it, so they are not asked again.
+      if (!profilePhone && profile?.id) {
+        await supabase.from('profiles').update({ phone: optInPhone }).eq('id', profile.id);
+      }
+      const { error } = await supabase.rpc('record_whatsapp_optin_for_slot', {
+        p_slot_id: slotId,
+        p_phone: optInPhone,
+        p_source: 'booking_form',
+      });
+      if (error) throw error;
+    } catch (error) {
+      // Log only. The booking is what the player came for.
+      logger.error('WhatsApp opt-in failed', error instanceof Error ? error : new Error(String(error)),
+        { component: 'BookLesson', action: 'recordWhatsAppOptIn' });
+    }
+  };
+
   const handleBook = async () => {
     if ((!selectedSlot && !selectedCyclus) || !profile?.id || !trainer) return;
 
@@ -323,6 +365,7 @@ export default function BookLesson() {
     }
 
     setBooking(true);
+    await recordWhatsAppOptIn();
     trackEvent('booking_payment_initiated', {
       trainer_id: trainer.id, type: selectedCyclus ? 'cycle' : 'single',
       slot_id: selectedSlot?.id ?? selectedCyclus?.cyclus_id ?? undefined,
@@ -591,6 +634,29 @@ export default function BookLesson() {
               }}
             />
           </div>
+
+          {(selectedSlot || selectedCyclus) && (
+            <div className="mb-4 space-y-2">
+              {/* No number on the profile yet: let them add one here rather than sending them
+                  to settings mid-booking. Optional — the booking does not need it. */}
+              {!profilePhone && (
+                <div className="space-y-1">
+                  <Label htmlFor="booking-phone">
+                    {t('booking.whatsapp.phoneLabel', 'Telefoonnummer')}{' '}
+                    <span className="text-muted-foreground">({t('booking.guest.optional', 'optioneel')})</span>
+                  </Label>
+                  <PhoneInput id="booking-phone" value={whatsappPhone} onChange={setWhatsappPhone} />
+                </div>
+              )}
+              <WhatsAppOptInField
+                id="booking-whatsapp"
+                checked={whatsappOptIn}
+                onCheckedChange={setWhatsappOptIn}
+                phone={optInPhone}
+                showNumber={Boolean(profilePhone)}
+              />
+            </div>
+          )}
 
           <BookingSummary
             selectedSlot={selectedSlot}

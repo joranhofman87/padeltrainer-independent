@@ -32,6 +32,7 @@ import {
   validateCartSlots,
 } from "../_shared/cart-payment.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
+import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
 import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
@@ -89,6 +90,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const email = (typeof body?.email === "string" ? body.email.trim() : "").toLowerCase();
     const phone = typeof body?.phone === "string" && body.phone.trim() ? body.phone.trim() : null;
+    // Strict === true: a missing or truthy-ish value must never read as consent.
+    const whatsappOptIn = body?.whatsappOptIn === true;
     const notes = typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
     const name = resolveRegistrationNameFields({ firstName: body?.firstName, lastName: body?.lastName, fullName: body?.fullName });
 
@@ -173,6 +176,23 @@ Deno.serve(async (req) => {
     // 6. Guest identity — always a guest_players row, owned by the cart's single org.
     const owner = academyProfileId ? { academyProfileId } : { trainerId };
     const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, { email, name, phone, owner, source: "public_booking" });
+
+    // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
+    // Tenant comes from the SLOT above, never from the client — the client sends a boolean and
+    // nothing else. Never throws: a consent write must not be able to fail a paid booking.
+    if (whatsappOptIn === true) {
+      const optIn = await recordGuestWhatsAppOptIn(supabase as unknown as ConsentWriteClient, {
+        optIn: whatsappOptIn,
+        phone,
+        guestPlayerId,
+        academyProfileId: academyProfileId,
+        trainerId: trainerId,
+        source: "public_booking",
+      });
+      if (!optIn.ok && optIn.reason === "error") {
+        console.error("whatsapp opt-in failed", { reason: optIn.reason, detail: optIn.detail });
+      }
+    }
 
     // Already-paid guard: don't re-charge a guest who already paid for any selected session.
     const { data: existingPaid } = await supabase
