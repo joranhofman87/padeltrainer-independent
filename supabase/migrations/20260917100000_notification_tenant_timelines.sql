@@ -41,9 +41,16 @@ AS $$
   SELECT CASE
     WHEN public.is_admin(auth.uid()) THEN true
     WHEN p_visibility_scope = 'admin_only' THEN false
-    -- the recipient's OWN notification history (any scope, incl. private_user_only)
-    WHEN (p_recipient_user_id IS NOT NULL AND p_recipient_user_id = auth.uid())
-      OR (p_recipient_person_id IS NOT NULL AND p_recipient_person_id = public.get_my_person_id())
+    -- the recipient's OWN PRIVATE history. Deliberately gated on private_user_only: a
+    -- tenant_visible row must ALWAYS clear the tenant-scope check below, even when it is
+    -- addressed to the caller. Otherwise a malformed / mis-routed row carrying a FOREIGN
+    -- tenant ref would surface purely because the caller's id sits in a recipient column
+    -- (tenant-visible rows belong to their TENANT, not to whoever happens to receive them).
+    -- Staff still see their own staff mail — those rows carry their own academy/trainer and
+    -- pass the tenant arm below.
+    WHEN p_visibility_scope = 'private_user_only'
+      AND ((p_recipient_user_id IS NOT NULL AND p_recipient_user_id = auth.uid())
+        OR (p_recipient_person_id IS NOT NULL AND p_recipient_person_id = public.get_my_person_id()))
       THEN true
     -- tenant staff: tenant-visible rows, and only inside their own tenant scope
     WHEN p_visibility_scope IN ('tenant_visible', 'tenant_visible_limited')

@@ -249,6 +249,24 @@ describe('booking timeline — tenant scoping', () => {
     await as(U_M1);
     await expect(bookingTimeline(B2)).rejects.toThrow(/not authorized for booking/);
   });
+
+  // A tenant_visible row belongs to its TENANT, not to whoever is in a recipient column.
+  // Being the addressee must NOT bypass the tenant-scope check, or a malformed / mis-routed
+  // row carrying a FOREIGN tenant ref would leak to the caller purely via their user id.
+  it('CROSS-TENANT row filter: a foreign-tenant row ADDRESSED TO the caller is still invisible', async () => {
+    await db.exec(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_user_id, tenant_academy_profile_id, visibility_scope,
+         public_summary, related_booking_ids, destination_redacted, idempotency_key, status)
+      VALUES ('booking_confirmed_staff','email','${U_M1}','${A2}','tenant_visible',
+         '{"event_type":"booking_confirmed_staff"}'::jsonb, ARRAY['${B1}']::uuid[],
+         'leak***@x.com', 'booking_confirmed_staff:misrouted:${U_M1}', 'pending');`);
+    await as(U_M1); // academy-1 manager: addressee of the row, but A2 is outside their scope
+    const { rows } = await bookingTimeline(B1);
+    expect(rows.some((r) => r.destination_redacted === 'leak***@x.com')).toBe(false);
+    expect(rows).toHaveLength(1); // still just their legitimate academy-1 row
+    expect(rows[0].destination_redacted).toBe('m***@x.com');
+  });
 });
 
 describe('invoice timeline — tenant scoping', () => {
