@@ -57,12 +57,23 @@ serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!accountSid || !authToken) {
-    return json({ error: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not configured" }, 500);
+  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+  const apiSid = Deno.env.get("TWILIO_API_SID") ?? "";
+  const apiSecret = Deno.env.get("TWILIO_API_CLIENT_SECRET") ?? "";
+
+  // PREFER the API Key pair (SK… + secret) when present: it is independently revocable and
+  // scopable, so it is the credential a server should hold. Fall back to the account-wide
+  // Account SID + Auth Token. Twilio accepts either as HTTP Basic on the Content API.
+  const useApiKey = Boolean(apiSid && apiSecret);
+  const authUser = useApiKey ? apiSid : accountSid;
+  const authPass = useApiKey ? apiSecret : authToken;
+  if (!authUser || !authPass) {
+    return json({
+      error: "No usable Twilio credentials: set TWILIO_API_SID + TWILIO_API_CLIENT_SECRET, or TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN",
+    }, 500);
   }
-  const auth = twilioAuthHeader(accountSid, authToken);
+  const auth = twilioAuthHeader(authUser, authPass);
 
   let payload: {
     action?: string;
@@ -89,13 +100,25 @@ serve(async (req: Request): Promise<Response> => {
         has_surrounding_whitespace: v !== v.trim(),
         has_newline: /[\r\n]/.test(v),
       });
+      const from = Deno.env.get("TWILIO_WHATSAPP_FROM") ?? "";
       return json({
         ok: true,
-        account_sid: shape(accountSid),
-        auth_token: { length: authToken.length, has_surrounding_whitespace: authToken !== authToken.trim(), has_newline: /[\r\n]/.test(authToken) },
-        expected: { account_sid: "prefix 'AC', length 34", auth_token: "length 32" },
-        whatsapp_from_set: Boolean(Deno.env.get("TWILIO_WHATSAPP_FROM")),
-        whatsapp_from_prefix: (Deno.env.get("TWILIO_WHATSAPP_FROM") ?? "").slice(0, 9),
+        auth_mode: useApiKey ? "api_key (SK)" : "account_sid + auth_token",
+        account_sid: accountSid ? shape(accountSid) : "NOT SET",
+        auth_token: authToken ? shape(authToken) : "NOT SET",
+        api_sid: apiSid ? shape(apiSid) : "NOT SET",
+        api_secret: apiSecret ? shape(apiSecret) : "NOT SET",
+        expected: {
+          account_sid: "prefix 'AC', length 34",
+          auth_token: "length 32",
+          api_sid: "prefix 'SK', length 34",
+          api_secret: "length 32",
+        },
+        whatsapp_from: {
+          set: Boolean(from),
+          has_required_whatsapp_prefix: from.startsWith("whatsapp:"),
+          prefix: from.slice(0, 12),
+        },
       });
     }
 
