@@ -24,6 +24,7 @@ const P_P = '0d000000-0000-0000-0000-0000000000d1';  // the player's person
 const U_O = '0e000000-0000-0000-0000-0000000000e2';  // someone else
 const P_O = '0d000000-0000-0000-0000-0000000000d2';
 const PR_P = '0f000000-0000-0000-0000-0000000000f1'; // profiles row for U_P
+const PR_O = '0f000000-0000-0000-0000-0000000000f2'; // profiles row for U_O
 
 const as = (uid: string | null) =>
   db.exec(`SELECT set_config('test.uid', ${uid ? `'${uid}'` : `''`}, false);`);
@@ -80,11 +81,12 @@ beforeAll(async () => {
   await db.exec(MIG('20260915100000_notification_paid_booking_player.sql')); // the contacts index rework the upsert targets
   await db.exec(MIG('20260918100000_notification_whatsapp_consent.sql'));
   await db.exec(MIG('20260920100000_notification_whatsapp_self_service.sql'));
+  await db.exec(MIG('20260921100000_notification_whatsapp_optin_for_slot.sql'));
   await db.exec(`
     INSERT INTO auth.users (id) VALUES ('${U_P}'), ('${U_O}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P_P}','${U_P}','p@x.com'), ('${P_O}','${U_O}','o@x.com');
-    INSERT INTO public.profiles (id, user_id) VALUES ('${PR_P}','${U_P}');
-    INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P_P}','${PR_P}');
+    INSERT INTO public.profiles (id, user_id) VALUES ('${PR_P}','${U_P}'), ('${PR_O}','${U_O}');
+    INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P_P}','${PR_P}'), ('${P_O}','${PR_O}');
     INSERT INTO public.academy_profiles (id) VALUES ('${A1}'), ('${A2}');
     INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${T1}', NULL);
     INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id)
@@ -443,5 +445,88 @@ describe('self-service consent surface (settings page RPCs)', () => {
     const auth = r.rows.find((x) => x.role === 'authenticated')!;
     expect(auth.rd).toBe(true);
     expect(auth.rv).toBe(true);
+  });
+});
+
+describe('record_whatsapp_optin_for_slot — tenant derived from the SLOT, never the client', () => {
+  const SLOT_A1 = '01000000-0000-0000-0000-000000000011';   // academy A1, trainer T1
+  const optInForSlot = (slot: string, phone: string) =>
+    db.query<{ v: string | null }>(
+      `SELECT public.record_whatsapp_optin_for_slot('${slot}', '${phone}', 'booking_form') AS v`);
+
+  it('scopes consent to the SLOT\'s academy — the client never names a tenant', async () => {
+    await as(U_P);
+    const id = (await optInForSlot(SLOT_A1, '0612345678')).rows[0].v;
+    expect(id).not.toBeNull();
+
+    const row = (await contactsFor('+31612345678')).rows[0];
+    expect(row.person_id).toBe(P_P);
+    expect(row.consent_academy_profile_id).toBe(A1);
+    expect(row.consent_trainer_id).toBeNull();     // academy present => trainer not pinned
+    expect(row.consent_status).toBe('opted_in');
+    expect(row.consent_source).toBe('booking_form');
+  });
+
+  it('works WITHOUT an existing booking — the pay-first path books only after payment', async () => {
+    // record_whatsapp_optin would reject this (no relationship yet). Requiring one here would
+    // break the online-payment route, where the booking is created by the webhook.
+    await db.exec(`DELETE FROM public.bookings;`);
+    await as(U_P);
+    expect((await optInForSlot(SLOT_A1, '0612345678')).rows[0].v).not.toBeNull();
+  });
+
+  it('opts in only YOURSELF — there is no on-behalf-of form', async () => {
+    // the signature takes no person id at all, so staff cannot consent for a player. Whoever
+    // calls it gets their OWN person from auth.uid().
+    await as(U_O);
+    await optInForSlot(SLOT_A1, '0612345678');
+    const rows = (await contactsFor('+31612345678')).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].person_id).toBe(P_O);
+  });
+
+  it('refuses an unauthenticated caller', async () => {
+    await as(null);   // service_role: auth.uid() IS NULL
+    await expect(optInForSlot(SLOT_A1, '0612345678')).rejects.toThrow(/not authorized/);
+  });
+
+  it('returns NULL for an unknown slot and an unusable phone — never a guess', async () => {
+    await as(U_P);
+    expect((await optInForSlot('01000000-0000-0000-0000-0000000000ff', '0612345678')).rows[0].v).toBeNull();
+    expect((await optInForSlot(SLOT_A1, '612345678')).rows[0].v).toBeNull();   // no + and no leading 0
+    expect((await contactsFor('+31612345678')).rows).toHaveLength(0);
+  });
+
+  it('falls back to TRAINER scope for a slot with no academy', async () => {
+    await db.exec(`INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id)
+      VALUES ('01000000-0000-0000-0000-000000000012', '${T1}', NULL);`);
+    await as(U_P);
+    await optInForSlot('01000000-0000-0000-0000-000000000012', '0612345678');
+    const row = (await contactsFor('+31612345678')).rows[0];
+    expect(row.consent_academy_profile_id).toBeNull();
+    expect(row.consent_trainer_id).toBe(T1);
+  });
+
+  it('anon cannot execute it, and the internal write is service_role only', async () => {
+    const r = await db.query<{ role: string; slot_fn: boolean; write_fn: boolean }>(`
+      SELECT role,
+             has_function_privilege(role, 'public.record_whatsapp_optin_for_slot(uuid,text,text)', 'EXECUTE') AS slot_fn,
+             has_function_privilege(role, 'public.write_whatsapp_optin(uuid,text,uuid,uuid,text)', 'EXECUTE') AS write_fn
+      FROM unnest(ARRAY['anon','authenticated','service_role']) AS role`);
+    const anon = r.rows.find((x) => x.role === 'anon')!;
+    const auth = r.rows.find((x) => x.role === 'authenticated')!;
+    expect(anon.slot_fn).toBe(false);
+    expect(auth.slot_fn).toBe(true);
+    // the unauthorized write must never be reachable directly — it is the one function with no
+    // rules of its own
+    expect(anon.write_fn).toBe(false);
+    expect(auth.write_fn).toBe(false);
+    expect(r.rows.find((x) => x.role === 'service_role')!.write_fn).toBe(true);
+  });
+
+  it('the extraction did not weaken record_whatsapp_optin: cross-tenant still denied', async () => {
+    // the wrappers keep their own authorization; only the WRITE was shared
+    await as(U_P);
+    await expect(optIn(P_P, '0612345678', A2, null)).rejects.toThrow(/no relationship/);
   });
 });

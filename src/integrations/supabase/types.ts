@@ -9954,6 +9954,10 @@ export type Database = {
         }
         Returns: string
       }
+      record_whatsapp_optin_for_slot: {
+        Args: { p_phone: string; p_slot_id: string; p_source?: string }
+        Returns: string
+      }
       record_whatsapp_optout: { Args: { p_phone: string }; Returns: number }
       record_whatsapp_status_event: {
         Args: {
@@ -10184,6 +10188,16 @@ export type Database = {
       whatsapp_outbox_consent_active: {
         Args: { p_outbox_id: string }
         Returns: boolean
+      }
+      write_whatsapp_optin: {
+        Args: {
+          p_academy_profile_id: string
+          p_person_id: string
+          p_phone_e164: string
+          p_source: string
+          p_trainer_id: string
+        }
+        Returns: string
       }
     }
     Enums: {
