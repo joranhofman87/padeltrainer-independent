@@ -73,6 +73,7 @@ const handler = async (req: Request): Promise<Response> => {
       p_status: status,
       p_provider_message_id: opts.messageId ?? null,
       p_error: opts.error ?? null,
+      p_provider: "twilio",   // the RPC also derives this from the channel; explicit is clearer
       p_terminal: opts.terminal ?? false,
     });
 
@@ -131,12 +132,14 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
 
-      // 2. send-time consent re-check. FAIL CLOSED: an error means we do NOT send, and retry
-      //    later — the opposite default would message someone who may have said STOP.
+      // 2. send-time consent re-check, bound to THIS ROW'S OWN contact — not to the number.
+      //    A number-keyed check would let this row ride a DIFFERENT person's consent on the
+      //    same number (phone change + a spouse/new holder registering it). FAIL CLOSED: an
+      //    error means we do NOT send, and retry later.
       let consented: boolean | null = null;
       let consentErr: unknown = null;
       try {
-        const res = await supabase.rpc("whatsapp_consent_active", { p_phone: dest });
+        const res = await supabase.rpc("whatsapp_outbox_consent_active", { p_outbox_id: row.outbox_id });
         consented = res.data as boolean | null;
         consentErr = res.error;
       } catch (e) {

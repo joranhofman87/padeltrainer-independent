@@ -10162,7 +10162,10 @@ export type Database = {
         Args: { _registration_id: string }
         Returns: boolean
       }
-      whatsapp_consent_active: { Args: { p_phone: string }; Returns: boolean }
+      whatsapp_outbox_consent_active: {
+        Args: { p_outbox_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:

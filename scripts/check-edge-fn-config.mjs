@@ -25,6 +25,10 @@ const MUST_BE_PUBLIC = [
   'submit-guest-intake', 'get-booking-invoice', 'update-public-invoice-details',
   // self-authenticating: user JWT for owner sends, service-role key for the sweep cron + resume chain
   'send-campaign-emails',
+  // cron-driven outbox drainers — pg_cron presents the service-role key, which on this project
+  // is an `sb_secret_…` key and NOT a JWT, so verify_jwt=true 401s them at the gateway before
+  // requireServiceRole ever runs. Silent: the cron job "succeeds" and nothing is ever sent.
+  'notification-email-worker', 'notification-whatsapp-worker',
   // Mollie connect / payment-init (reached from public pay pages / OAuth callbacks)
   'create-invoice-payment', 'create-registration-invoice', 'create-rebook-invoice',
   'mollie-connect-academy', 'mollie-connect-trainer', 'check-mollie-connect-status', 'verify-mollie-payment',

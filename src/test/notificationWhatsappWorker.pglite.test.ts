@@ -21,9 +21,21 @@ const P_P = '0d000000-0000-0000-0000-0000000000d1';  // current owner of the num
 const P_O = '0d000000-0000-0000-0000-0000000000d2';  // previous owner (recycled-number case)
 const PHONE = '+31612345678';
 
-const consentActive = async (phone: string | null) =>
+const consentActive = async (outboxId: string) =>
   (await db.query<{ v: boolean }>(
-    `SELECT public.whatsapp_consent_active(${phone === null ? 'NULL' : `'${phone}'`}) AS v`)).rows[0].v;
+    `SELECT public.whatsapp_outbox_consent_active('${outboxId}') AS v`)).rows[0].v;
+
+/** Insert a whatsapp outbox row bound to a contact, returning its id. */
+const queueRow = async (
+  person: string, phone: string, contactId: string | null, key: string, channel = 'whatsapp',
+) =>
+  (await db.query<{ id: string }>(`
+    INSERT INTO public.notification_outbox
+      (event_type, channel, recipient_person_id, destination_normalized, destination_redacted,
+       contact_id, idempotency_key, status)
+    VALUES ('session_reminder_player', '${channel}', '${person}', '${phone}', '+316****5678',
+       ${contactId ? `'${contactId}'` : 'NULL'}, '${key}', 'pending')
+    RETURNING id`)).rows[0].id;
 
 const statusEvent = async (
   sid: string, status: string, errCode: string | null = null, errMsg: string | null = null,
@@ -45,13 +57,14 @@ const events = () =>
       FROM public.email_delivery_events ORDER BY created_at, resend_event_id`);
 
 /** Insert an opted-in whatsapp contact directly (bypassing the auth-bound opt-in RPC). */
-const contact = (person: string, phone: string, opts: { revoked?: boolean } = {}) =>
-  db.exec(`
+const contact = async (person: string, phone: string, opts: { revoked?: boolean } = {}) =>
+  (await db.query<{ id: string }>(`
     INSERT INTO public.notification_contacts
       (person_id, channel, destination_normalized, destination_redacted, consent_status,
        consent_scope, consent_academy_profile_id, consent_source, consent_at, revoked_at, is_primary)
     VALUES ('${person}', 'whatsapp', '${phone}', '***', '${opts.revoked ? 'opted_out' : 'opted_in'}',
-       'tenant', '${A1}', 'settings', now(), ${opts.revoked ? 'now()' : 'NULL'}, true);`);
+       'tenant', '${A1}', 'settings', now(), ${opts.revoked ? 'now()' : 'NULL'}, true)
+    RETURNING id`)).rows[0].id;
 
 beforeAll(async () => {
   db = new PGlite();
@@ -96,7 +109,9 @@ beforeAll(async () => {
   `);
   await db.exec(MIG('20260910100000_notification_foundation_schema.sql'));
   await db.exec(MIG('20260911100000_notification_resolver.sql'));
+  await db.exec(MIG('20260912100000_notification_email_worker.sql'));
   await db.exec(MIG('20260915100000_notification_paid_booking_player.sql'));
+  await db.exec(MIG('20260915110000_notification_scrub_attachments_on_terminal.sql'));
   await db.exec(MIG('20260918100000_notification_whatsapp_consent.sql'));
   await db.exec(MIG('20260919100000_notification_whatsapp_worker.sql'));
   await db.exec(`
@@ -113,57 +128,91 @@ beforeEach(async () => {
     DELETE FROM public.notification_contacts;`);
 });
 
-describe('whatsapp_consent_active — the send-time re-check', () => {
-  it('is TRUE for an opted-in, non-revoked contact', async () => {
-    await contact(P_P, PHONE);
-    expect(await consentActive(PHONE)).toBe(true);
+describe('whatsapp_outbox_consent_active — the send-time re-check', () => {
+  it('is TRUE while the row\'s own contact is opted in', async () => {
+    const c = await contact(P_P, PHONE);
+    expect(await consentActive(await queueRow(P_P, PHONE, c, 'k1'))).toBe(true);
   });
 
-  it('normalizes the input, so the national form answers the same as E.164', async () => {
-    await contact(P_P, PHONE);
-    expect(await consentActive('06 12345678')).toBe(true);
-    expect(await consentActive('0031612345678')).toBe(true);
-  });
-
-  it('FAILS CLOSED for an unknown number, junk, an un-guessable bare number, and NULL', async () => {
-    await contact(P_P, PHONE);
-    expect(await consentActive('+31699999999')).toBe(false);
-    expect(await consentActive('abc')).toBe(false);
-    expect(await consentActive('612345678')).toBe(false);   // no + and no leading 0 => NULL => false
-    expect(await consentActive(null)).toBe(false);
-  });
-
-  it('is FALSE once the number opts out — the gap this whole function exists to close', async () => {
-    await contact(P_P, PHONE);
-    expect(await consentActive(PHONE)).toBe(true);
+  it('is FALSE once that contact opts out — the gap this function exists to close', async () => {
+    const c = await contact(P_P, PHONE);
+    const row = await queueRow(P_P, PHONE, c, 'k1');
+    expect(await consentActive(row)).toBe(true);
     await db.exec(`SELECT public.record_whatsapp_optout('${PHONE}');`);
-    expect(await consentActive(PHONE)).toBe(false);
+    expect(await consentActive(row)).toBe(false);
   });
 
-  it('is FALSE for a contact that exists but was never opted in', async () => {
-    await contact(P_P, PHONE, { revoked: true });
-    expect(await consentActive(PHONE)).toBe(false);
+  it('does NOT let a queued row ride ANOTHER PERSON\'S consent on the same number', async () => {
+    // THE reason this is contact-bound rather than number-bound. A number-keyed check answers
+    // "is anyone consented on N?", which is not the question:
+    //   A opts in with N -> row queued against A's contact
+    //   A moves to a new number -> record_whatsapp_optin RETIRES A's contact for N
+    //   B (spouse / N's next holder) has their own opted-in contact on N
+    // A number-keyed check would return TRUE from B's consent and deliver A's private
+    // notification to B's phone.
+    const ca = await contact(P_P, PHONE);
+    const row = await queueRow(P_P, PHONE, ca, 'k1');
+    expect(await consentActive(row)).toBe(true);
+
+    // A changes number: the opt-in RPC retires CA (service_role context, auth.uid() IS NULL)
+    await db.exec(`SELECT public.record_whatsapp_optin('${P_P}', '+31600000001', '${A1}', NULL, 'settings');`);
+    // B registers the freed number
+    await contact(P_O, PHONE);
+
+    expect(await consentActive(row)).toBe(false);
   });
 
-  it('a RECYCLED number is usable by its new owner despite the old owner\'s retired row', async () => {
-    // the deliberate reason the rule is "an opted-in row exists" and NOT "no revoked row
-    // exists": the stricter form would blacklist every recycled number forever
-    await contact(P_O, PHONE, { revoked: true });   // previous owner, retired
-    await contact(P_P, PHONE);                      // new owner, opted in
-    expect(await consentActive(PHONE)).toBe(true);
+  it('is FALSE when the contact\'s number no longer matches the row\'s destination', async () => {
+    const c = await contact(P_P, PHONE);
+    const row = await queueRow(P_P, PHONE, c, 'k1');
+    await db.exec(
+      `UPDATE public.notification_contacts SET destination_normalized = '+31600000009' WHERE id = '${c}';`);
+    expect(await consentActive(row)).toBe(false);
+  });
 
-    // …but a STOP still silences the number for EVERYONE holding it
-    await db.exec(`SELECT public.record_whatsapp_optout('${PHONE}');`);
-    expect(await consentActive(PHONE)).toBe(false);
+  it('FAILS CLOSED on a NULL contact_id, a non-whatsapp row, and an unknown row', async () => {
+    // a row we cannot tie to a consent record is a row we cannot justify sending
+    expect(await consentActive(await queueRow(P_P, PHONE, null, 'k1'))).toBe(false);
+    const c = await contact(P_P, PHONE);
+    expect(await consentActive(await queueRow(P_P, PHONE, c, 'k2', 'email'))).toBe(false);
+    expect(await consentActive('00000000-0000-0000-0000-0000000000ff')).toBe(false);
+  });
+
+  it('is FALSE for a contact that was never opted in', async () => {
+    const c = await contact(P_P, PHONE, { revoked: true });
+    expect(await consentActive(await queueRow(P_P, PHONE, c, 'k1'))).toBe(false);
   });
 
   it('is service_role only — never a client-callable consent oracle', async () => {
     const r = await db.query<{ role: string; can: boolean }>(`
-      SELECT role, has_function_privilege(role, 'public.whatsapp_consent_active(text)', 'EXECUTE') AS can
+      SELECT role, has_function_privilege(role, 'public.whatsapp_outbox_consent_active(uuid)', 'EXECUTE') AS can
       FROM unnest(ARRAY['anon','authenticated','service_role']) AS role`);
     expect(r.rows.find((x) => x.role === 'anon')!.can).toBe(false);
     expect(r.rows.find((x) => x.role === 'authenticated')!.can).toBe(false);
     expect(r.rows.find((x) => x.role === 'service_role')!.can).toBe(true);
+  });
+});
+
+describe('record_notification_send_result — provider derives from the channel', () => {
+  // The default was 'resend', which was right while email was the only worker and silently
+  // wrong the moment a second channel existed. Deriving it means the NEXT channel worker
+  // cannot mislabel its sends by forgetting an argument.
+  const finalize = async (channel: string, key: string, provider?: string) => {
+    const id = await queueRow(P_P, channel === 'email' ? 'p@x.com' : PHONE, null, key, channel);
+    await db.query(`SELECT public.claim_notification_outbox_batch('${channel}', 'w1', 10)`);
+    await db.query(`SELECT public.record_notification_send_result('${id}', 'w1', 'sent', 'MID1',
+      NULL, ${provider ? `'${provider}'` : 'NULL'})`);
+    return (await db.query<{ provider: string | null }>(
+      `SELECT provider FROM public.notification_outbox WHERE id = '${id}'`)).rows[0].provider;
+  };
+
+  it('labels a whatsapp send twilio and an email send resend, with no argument passed', async () => {
+    expect(await finalize('whatsapp', 'k1')).toBe('twilio');
+    expect(await finalize('email', 'k2')).toBe('resend');
+  });
+
+  it('still honours an explicit provider', async () => {
+    expect(await finalize('whatsapp', 'k3', 'twilio-sandbox')).toBe('twilio-sandbox');
   });
 });
 

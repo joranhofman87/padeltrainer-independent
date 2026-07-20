@@ -499,9 +499,14 @@ Prerequisites:
      a STOP addresses the sender, not one academy). Opting in with a new number RETIRES the
      person's other WhatsApp contacts, so a phone change cannot leave the resolver
      non-deterministically messaging a recycled old number.
-   - `whatsapp_consent_active` — the worker's SEND-TIME re-check, because a STOP can land
-     between enqueue and send. Rule is "an opted-in, non-revoked row exists", deliberately NOT
-     "no revoked row exists": the stricter form would blacklist every recycled number forever.
+   - `whatsapp_outbox_consent_active` — the worker's SEND-TIME re-check, because a STOP can
+     land between enqueue and send. **Bound to the row's own `contact_id`, NOT to the number.**
+     The question is "is the consent THIS row was enqueued against still valid?", which
+     diverges from "is anyone consented on this number?": A opts in with N → row queued; A
+     moves to a new number, retiring A's contact for N; B (spouse / N's next holder) registers
+     N; a number-keyed check would then return true from **B's** consent and deliver A's
+     private notification to B's phone. Contact-binding also makes recycled numbers a
+     non-issue — a retired contact stays retired whoever later holds the digits.
    - **Templates are committed to `_shared/whatsapp-templates.ts` and reviewed BEFORE anything
      is created in Twilio.** A submitted template goes in front of Meta under the business's
      identity and cannot be quietly withdrawn. `variables` is a positional contract — Twilio
@@ -517,6 +522,15 @@ Prerequisites:
      `record_notification_send_result` committing can re-send after the 15-minute stale reclaim.
    - Auth failures (401/403) are classified RETRYABLE: they are wrong for every row, so
      terminal would permanently fail the whole queue over a fixable env var.
+   - `record_notification_send_result` now DERIVES `provider` from the row's channel
+     (email⇒resend, whatsapp⇒twilio) instead of defaulting to `resend`. The old default was
+     right while email was the only worker and silently mislabeled the first non-email
+     worker's sends; deriving it means the push worker cannot repeat that by omission.
+   - Both cron drainers (`notification-email-worker`, `notification-whatsapp-worker`) are
+     `verify_jwt = false` **and now covered by `scripts/check-edge-fn-config.mjs`**: pg_cron
+     presents the service-role key, which on this project is an `sb_secret_…` key and not a
+     JWT, so `verify_jwt = true` 401s them at the gateway before `requireServiceRole` runs —
+     and the cron job still reports success while nothing is ever sent.
    - `twilio-whatsapp-webhook` (`verify_jwt = false`) handles status callbacks AND inbound
      STOP on one endpoint. **The X-Twilio-Signature IS the authentication** — no token
      configured or a bad signature means 403 before the payload is interpreted. Statuses map
