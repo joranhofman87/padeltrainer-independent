@@ -25,8 +25,10 @@
 -- on the caller's OWN access only — it is not an oracle over other people's data.
 --   * admin              → everything;
 --   * admin_only rows    → nobody else, ever;
---   * the RECIPIENT      → their own history, whatever its scope (this is the player's
---                          private_user_only confirmation trail);
+--   * the RECIPIENT      → their own PRIVATE history ONLY (private_user_only — the player's
+--                          confirmation trail). Being the addressee is NOT a bypass: a
+--                          tenant_visible row must still clear the tenant arm below, because
+--                          such a row belongs to its TENANT rather than to whoever receives it;
 --   * tenant staff       → ONLY rows explicitly marked tenant-visible AND carrying THEIR
 --                          academy / trainer as the tenant ref (never cross-tenant).
 CREATE OR REPLACE FUNCTION public.notification_row_visible_to_caller(
@@ -66,7 +68,7 @@ AS $$
   END;
 $$;
 COMMENT ON FUNCTION public.notification_row_visible_to_caller(text, uuid, uuid, uuid, uuid) IS
-  'Notification v2 (PR 7): the single visibility rule shared by every notification timeline RPC — admin sees all, admin_only is never tenant-visible, the recipient sees their own history, and tenant staff see ONLY tenant_visible rows carrying their own academy/trainer. Auth-bound to auth.uid().';
+  'Notification v2 (PR 7): the single visibility rule shared by every notification timeline RPC — admin sees all, admin_only is never tenant-visible, the recipient sees their own PRIVATE (private_user_only) history only, and tenant staff see ONLY tenant_visible rows carrying their own academy/trainer. Being a row''s addressee is not a bypass: a tenant_visible row must always clear the tenant arm. Auth-bound to auth.uid().';
 REVOKE ALL ON FUNCTION public.notification_row_visible_to_caller(text, uuid, uuid, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.notification_row_visible_to_caller(text, uuid, uuid, uuid, uuid) TO authenticated, service_role;
 

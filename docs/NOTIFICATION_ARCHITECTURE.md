@@ -431,9 +431,10 @@ Prerequisites:
      enforces the scope pin, IDOR guard and guest split-freeze), else `42501`. Every row is
      then filtered by ONE shared predicate, `notification_row_visible_to_caller`, so the
      rule cannot drift across the three: admin sees all · `admin_only` never leaves the
-     platform · the RECIPIENT sees their own history (incl. their `private_user_only`
-     confirmations) · tenant staff see ONLY `tenant_visible` rows carrying THEIR academy or
-     trainer. `get_player_notification_timeline` has two modes — `p_scope IS NULL` = the
+     platform · the RECIPIENT sees their own **private** (`private_user_only`) history only —
+     being a row's addressee is NOT a bypass, so a `tenant_visible` row must still clear the
+     tenant arm (it belongs to its TENANT, not to whoever receives it) · tenant staff see ONLY
+     `tenant_visible` rows carrying THEIR academy or trainer. `get_player_notification_timeline` has two modes — `p_scope IS NULL` = the
      signed-in player's own history, `p_scope` academy/trainer = the staff view of one
      player (legitimately EMPTY while every player-recipient event is `private_user_only`;
      widening that is a visibility_scope policy decision, deliberately NOT taken here).
