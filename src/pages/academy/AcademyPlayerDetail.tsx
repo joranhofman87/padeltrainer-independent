@@ -27,6 +27,7 @@ import { TagPicker } from '@/components/players/TagPicker';
 import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
 import { PlayerLocationsControl } from '@/components/academy/PlayerLocationsControl';
+import { PlayerNotificationTimelineCard } from '@/components/notifications/NotificationTimelineCard';
 import { AcademyPlayerRemoveCard } from '@/components/academy/AcademyPlayerRemoveCard';
 import { getAcademyLocations } from '@/lib/academy';
 import { fetchPersonRefSet, fetchPersonBookingSlotIds, fetchPersonInvoices, groupSlotsIntoCycluses } from '@/lib/playerDetailData';
@@ -755,6 +756,15 @@ export default function AcademyPlayerDetail() {
           )}
         </CardContent>
       </Card>
+
+      {activeAcademy && parsed.kind && parsed.id && (
+        <PlayerNotificationTimelineCard
+          scope="academy"
+          scopeId={activeAcademy.id}
+          guestId={parsed.kind === 'guest' ? parsed.id : null}
+          profileId={parsed.kind === 'profile' ? parsed.id : null}
+        />
+      )}
 
       {activeAcademy && player && parsed.kind && (
         <AcademyPlayerRemoveCard
