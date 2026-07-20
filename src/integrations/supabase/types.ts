@@ -9826,6 +9826,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      person_has_tenant_relationship: {
+        Args: {
+          p_academy_profile_id: string
+          p_person_id: string
+          p_trainer_id: string
+        }
+        Returns: boolean
+      }
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean

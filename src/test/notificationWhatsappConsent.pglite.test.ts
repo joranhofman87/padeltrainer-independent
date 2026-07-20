@@ -57,6 +57,8 @@ beforeAll(async () => {
     CREATE TABLE public.invoices (id uuid PRIMARY KEY);
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, user_id uuid);
+    CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, trainer_id uuid, academy_profile_id uuid);
+    CREATE TABLE public.bookings (id uuid PRIMARY KEY, slot_id uuid, player_id uuid, guest_player_id uuid);
     CREATE TABLE public.platform_admins (user_id uuid PRIMARY KEY);
     CREATE TABLE public.email_address_state (email text PRIMARY KEY, state text NOT NULL);
     CREATE OR REPLACE FUNCTION public.is_email_suppressed(p_email text) RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
@@ -84,6 +86,11 @@ beforeAll(async () => {
     INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P_P}','${PR_P}');
     INSERT INTO public.academy_profiles (id) VALUES ('${A1}'), ('${A2}');
     INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${T1}', NULL);
+    INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id)
+      VALUES ('01000000-0000-0000-0000-000000000011','${T1}','${A1}');
+    -- the player has played at academy 1 (and therefore trainer 1); NOTHING at academy 2
+    INSERT INTO public.bookings (id, slot_id, player_id)
+      VALUES ('02000000-0000-0000-0000-000000000021','01000000-0000-0000-0000-000000000011','${PR_P}');
   `);
 });
 
@@ -193,6 +200,58 @@ describe('record_whatsapp_optout — platform-wide', () => {
     const [c] = (await contactsFor('+31612345678')).rows;
     expect(c.consent_status).toBe('opted_in');
     expect(c.revoked_at).toBeNull();
+  });
+});
+
+describe('a new number RETIRES the old one', () => {
+  it('opting in with a new phone revokes the previous number and marks the new one primary', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await optIn(P_P, '0698765432', A1, null);          // person changed their number
+
+    const oldC = (await contactsFor('+31612345678')).rows[0];
+    const newC = (await contactsFor('+31698765432')).rows[0];
+    // The OLD number must be revoked, not merely de-primaried: after recycling it may belong
+    // to a stranger, and the resolver's ORDER BY is non-deterministic between two opted-in rows.
+    expect(oldC.consent_status).toBe('opted_out');
+    expect(oldC.revoked_at).not.toBeNull();
+    expect(newC.consent_status).toBe('opted_in');
+    expect(newC.revoked_at).toBeNull();
+  });
+
+  it('so the resolver can only pick the NEW number', async () => {
+    await optIn(P_P, '0612345678', A1, null);
+    await optIn(P_P, '0698765432', A1, null);
+    await db.exec(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+                   VALUES ('${U_P}', 'session_reminder_player', 'instant')`);
+    const rows = (await db.query<{ channel: string; destination_normalized: string | null }>(`
+      SELECT channel, destination_normalized FROM public.enqueue_notification(
+        'session_reminder_player', NULL, '${U_P}'::uuid, NULL, '${A1}'::uuid, NULL,
+        NULL, NULL, NULL, 'pay_new', NULL, '{"subject":"s","html":"h"}'::jsonb)`)).rows;
+    const wa = rows.find((r) => r.channel === 'whatsapp');
+    expect(wa?.destination_normalized).toBe('+31698765432');
+  });
+});
+
+describe('caller-supplied tenant ids are validated for authenticated callers', () => {
+  it('CROSS-TENANT DENIAL: a user cannot consent to an academy they have never played at', async () => {
+    await as(U_P);
+    // the player has bookings at academy 1 only
+    await expect(optIn(P_P, '0612345678', A2, null)).rejects.toThrow(/no relationship with that tenant/);
+    expect((await contactsFor('+31612345678')).rows).toHaveLength(0);
+    await as(null);
+  });
+
+  it('allows a tenant the person actually plays at', async () => {
+    await as(U_P);
+    const id = (await optIn(P_P, '0612345678', A1, null)).rows[0].record_whatsapp_optin;
+    expect(id).toBeTruthy();
+    await as(null);
+  });
+
+  it('service_role (our own booking flow) may still act before a relationship exists', async () => {
+    await as(null);   // service_role context
+    const id = (await optIn(P_O, '0698765432', A2, null)).rows[0].record_whatsapp_optin;
+    expect(id).toBeTruthy();   // P_O has no bookings at all
   });
 });
 
