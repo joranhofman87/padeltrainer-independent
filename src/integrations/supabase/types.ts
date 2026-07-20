@@ -9289,6 +9289,24 @@ export type Database = {
           has_login: boolean
         }[]
       }
+      get_booking_notification_timeline: {
+        Args: { p_booking_id: string; p_limit?: number }
+        Returns: {
+          channel: string
+          created_at: string
+          delivery_event_id: string
+          destination_redacted: string
+          event_type: string
+          failed_at: string
+          occurred_at: string
+          outbox_id: string
+          public_summary: Json
+          scheduled_for: string
+          sent_at: string
+          skip_reason: string
+          status: string
+        }[]
+      }
       get_cycle_roster_names: {
         Args: { _cycle_id: string }
         Returns: {
@@ -9318,6 +9336,24 @@ export type Database = {
       get_invoice_delivery_status: {
         Args: { p_invoice_id: string }
         Returns: string
+      }
+      get_invoice_notification_timeline: {
+        Args: { p_invoice_id: string; p_limit?: number }
+        Returns: {
+          channel: string
+          created_at: string
+          delivery_event_id: string
+          destination_redacted: string
+          event_type: string
+          failed_at: string
+          occurred_at: string
+          outbox_id: string
+          public_summary: Json
+          scheduled_for: string
+          sent_at: string
+          skip_reason: string
+          status: string
+        }[]
       }
       get_invoice_recipient_email: {
         Args: { _invoice_id: string }
@@ -9464,6 +9500,30 @@ export type Database = {
         Returns: {
           location_id: string
           location_name: string
+        }[]
+      }
+      get_player_notification_timeline: {
+        Args: {
+          p_guest_id?: string
+          p_limit?: number
+          p_profile_id?: string
+          p_scope?: string
+          p_scope_id?: string
+        }
+        Returns: {
+          channel: string
+          created_at: string
+          delivery_event_id: string
+          destination_redacted: string
+          event_type: string
+          failed_at: string
+          occurred_at: string
+          outbox_id: string
+          public_summary: Json
+          scheduled_for: string
+          sent_at: string
+          skip_reason: string
+          status: string
         }[]
       }
       get_players_overview: {
@@ -9751,6 +9811,16 @@ export type Database = {
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
+      }
+      notification_row_visible_to_caller: {
+        Args: {
+          p_recipient_person_id: string
+          p_recipient_user_id: string
+          p_tenant_academy_profile_id: string
+          p_tenant_trainer_id: string
+          p_visibility_scope: string
+        }
+        Returns: boolean
       }
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }

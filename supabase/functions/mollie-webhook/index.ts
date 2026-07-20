@@ -824,6 +824,7 @@ serve(async (req) => {
                 playerName,
                 paymentAmountValue: payment.amount?.value,
                 molliePaymentId: paymentId,
+                invoiceId: invoiceIdFromMetadata,
                 source: "mollie-webhook-rebook",
                 logStep,
                 notifySlackError,

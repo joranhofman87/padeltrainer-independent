@@ -227,12 +227,14 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
     await run(supabase);
     const staff = staffEnqueues(rpc);
     expect(staff).toHaveLength(1);
-    const p = staff[0][1] as { p_recipient_user_id: string; p_tenant_trainer_id: string | null; p_tenant_academy_profile_id: string | null; p_related_booking_ids: string[]; p_related_payment_id: string; p_payload: { subject: string; html: string } };
+    const p = staff[0][1] as { p_recipient_user_id: string; p_tenant_trainer_id: string | null; p_tenant_academy_profile_id: string | null; p_related_booking_ids: string[]; p_related_invoice_id: string | null; p_related_payment_id: string; p_payload: { subject: string; html: string } };
     expect(p.p_recipient_user_id).toBe('user-1');
     expect(p.p_tenant_trainer_id).toBe('tp-1');
     expect(p.p_tenant_academy_profile_id).toBeNull();
     expect(p.p_related_payment_id).toBe('tr_test'); // idempotency subject threaded through
     expect(p.p_related_booking_ids).toEqual(['B1', 'B2']);
+    // PR 7: the invoice relation makes these staff rows visible on the INVOICE timeline
+    expect(p.p_related_invoice_id).toBe('INV-1');
     expect(p.p_payload.html).not.toContain('Amount paid');
     expect(p.p_payload.subject).toContain('Gast Speler');
     expect(legacyStaffEmails(invoke)).toHaveLength(0); // no double-send

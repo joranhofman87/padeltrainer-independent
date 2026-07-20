@@ -422,6 +422,30 @@ Prerequisites:
    `public_summary`, `destination_redacted`, channel/status/skip_reason,
    timestamps, and safe ROW ids (`outbox_id`/`delivery_event_id`) — **never
    `contact_id`, `person_id`, or a raw destination** (cross-tenant correlation).
+   - **7a (shipped, migration `20260917100000`): the READ RPCs.** All three are
+     SECURITY DEFINER over the service-role-only tables, so the auth-binding is the
+     security story: each RPC first AUTHORIZES THE SUBJECT with the gate the app already
+     uses (bookings → `can_manage_slot` + the player/trainer-guest arms; invoices → the
+     canonical academy-manager | owning-trainer | admin predicate from
+     `get_invoice_status_history`; player → `get_person_refs_for_scope`, which already
+     enforces the scope pin, IDOR guard and guest split-freeze), else `42501`. Every row is
+     then filtered by ONE shared predicate, `notification_row_visible_to_caller`, so the
+     rule cannot drift across the three: admin sees all · `admin_only` never leaves the
+     platform · the RECIPIENT sees their own history (incl. their `private_user_only`
+     confirmations) · tenant staff see ONLY `tenant_visible` rows carrying THEIR academy or
+     trainer. `get_player_notification_timeline` has two modes — `p_scope IS NULL` = the
+     signed-in player's own history, `p_scope` academy/trainer = the staff view of one
+     player (legitimately EMPTY while every player-recipient event is `private_user_only`;
+     widening that is a visibility_scope policy decision, deliberately NOT taken here).
+     **Both subject gates are written `IF (...) IS NOT TRUE THEN RAISE`, never
+     `IF NOT (...)`** — a NULL in the predicate (e.g. `get_profile_id_for_user()` is NULL
+     for a staff account) makes `NOT (...)` NULL, the IF not fire and the RAISE be skipped,
+     silently granting a foreign tenant access. The pglite denial suite caught exactly that.
+     PR 6b's staff enqueue also now records `related_invoice_id`, so the invoice timeline is
+     populated for tenants.
+   - **7b (next): the UI surfaces** — one compact, self-hiding timeline card (modelled on
+     `InvoiceStatusHistoryCard`) on the academy/trainer player detail pages and the
+     academy/trainer invoice detail pages. Deliberately small: no new dashboard.
 8. `NotificationSettings` v2 UI (replaces v1).
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
    (once the owner's provider/templates are approved).

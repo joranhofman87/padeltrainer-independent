@@ -174,6 +174,7 @@ export async function runBookingPaidSideEffects(opts: {
         playerName: booking.profiles?.full_name ?? booking.guest_players?.full_name ?? "Guest",
         paymentAmountValue,
         molliePaymentId,
+        invoiceId,
         source,
         logStep,
         notifySlackError,
@@ -220,11 +221,13 @@ export async function sendStaffBookingNotifications(opts: {
   paymentAmountValue?: string;
   /** Mollie payment id — the confirmation's idempotency subject (shared with the player row). */
   molliePaymentId?: string;
+  /** Invoice minted for these bookings — recorded as a relation so the INVOICE timeline (PR 7) shows these staff rows. */
+  invoiceId?: string | null;
   source: string;
   logStep: LogStep;
   notifySlackError: NotifySlackError;
 }): Promise<void> {
-  const { supabase, bookingIds, playerName, paymentAmountValue, molliePaymentId, source, logStep, notifySlackError } = opts;
+  const { supabase, bookingIds, playerName, paymentAmountValue, molliePaymentId, invoiceId, source, logStep, notifySlackError } = opts;
   try {
     const { data: rows } = await supabase
       .from("bookings")
@@ -337,6 +340,7 @@ export async function sendStaffBookingNotifications(opts: {
         p_tenant_academy_profile_id: scope.academy ?? null,
         p_tenant_trainer_id: scope.trainer ?? null,
         p_related_booking_ids: bookingIds,
+        p_related_invoice_id: invoiceId ?? null,
         p_related_payment_id: molliePaymentId ?? null,
         p_payload: { subject, html },
         p_public_summary: { event_type: "booking_confirmed_staff", sessions: sessions.length },
