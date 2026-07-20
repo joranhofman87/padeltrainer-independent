@@ -69,6 +69,8 @@ interface EventType {
   supports_digest: boolean;
   default_email_frequency: Frequency;
   default_whatsapp_frequency: Frequency;
+  /** An explicit booking opt-in counts as the WhatsApp opt-in for this event. */
+  whatsapp_optin_via_booking: boolean;
 }
 
 /** Per-event cadence for both channels. */
@@ -145,7 +147,7 @@ export default function NotificationSettings() {
       const [types, rows, v1, wa] = await Promise.all([
         supabase
           .from('notification_event_types')
-          .select('key, category, audience, required_delivery, supports_email, supports_whatsapp, supports_digest, default_email_frequency, default_whatsapp_frequency'),
+          .select('key, category, audience, required_delivery, supports_email, supports_whatsapp, supports_digest, default_email_frequency, default_whatsapp_frequency, whatsapp_optin_via_booking'),
         supabase
           .from('notification_preferences_v2')
           .select('event_type, email_frequency, whatsapp_frequency')
@@ -193,10 +195,30 @@ export default function NotificationSettings() {
       variant: 'destructive',
     });
 
-  /** The stored cadence if there is one, else the EVENT's default (never the column default). */
+  /**
+   * The cadence the RESOLVER would actually use — not merely what is stored.
+   *
+   * For WhatsApp those differ. The resolver treats an explicit booking opt-in as the opt-in for
+   * events flagged whatsapp_optin_via_booking when the person has stored no preference, because
+   * default_whatsapp_frequency is 'off' and a guest can never express one. If this page read
+   * the stored value alone it would show the switch OFF while reminders were being delivered —
+   * worse than a control that does nothing, because it misreports what is happening.
+   *
+   * An explicit preference still wins, including 'off', exactly as in the resolver.
+   *
+   * IMPRECISION, stated rather than hidden: the resolver checks consent IN THE TENANT of each
+   * notification, while this page is tenant-agnostic (get_my_whatsapp_consent answers "do you
+   * have an active opt-in anywhere"). So someone opted in at academy A sees "on" for academy
+   * B's events too. Erring this way is the right side: it reflects that WhatsApp is switched on
+   * for them, and the switch still turns it off everywhere.
+   */
   const effective = (e: EventType): EventPref => ({
     email: prefs[e.key]?.email ?? e.default_email_frequency,
-    whatsapp: prefs[e.key]?.whatsapp ?? e.default_whatsapp_frequency,
+    whatsapp:
+      prefs[e.key]?.whatsapp
+      ?? (consent.optedIn && e.supports_whatsapp && e.whatsapp_optin_via_booking
+        ? 'instant'
+        : e.default_whatsapp_frequency),
   });
 
   /**

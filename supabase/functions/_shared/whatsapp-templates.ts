@@ -43,7 +43,14 @@ export interface WhatsAppTemplate {
 /**
  * PILOT: the session reminder. Chosen deliberately — genuinely useful on WhatsApp, NOT on the
  * money path, and it mirrors how PR 5 piloted email on a low-risk notification before the
- * paid-booking chain. Four more events support whatsapp; they follow once this one is proven.
+ * paid-booking chain.
+ *
+ * It is currently the ONLY event that supports WhatsApp, and that is not a coincidence:
+ * notification_event_types.supports_whatsapp means "a committed template exists for this
+ * event", so this file IS the capability list. Other events are CANDIDATES, not supported —
+ * enabling one means committing its template here (body + samples + contentSidEnv), getting it
+ * approved, setting the env var, and only then flipping supports_whatsapp. A cross-layer test
+ * fails if the catalog ever claims more than this array delivers.
  */
 export const SESSION_REMINDER_NL: WhatsAppTemplate = {
   eventType: "session_reminder_player",

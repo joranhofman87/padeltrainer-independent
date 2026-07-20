@@ -633,6 +633,16 @@ Prerequisites:
      invited to book again, and that scope creep is what gets a WhatsApp sender reported.
      `whatsapp_optin_in_scope()` mirrors the resolver's own contact predicate exactly, so the
      cadence gate and the delivery gate cannot disagree about what counts as consent.
+   - **The settings page mirrors that derivation.** Its `effective()` shows WhatsApp as
+     `instant` when there is no stored preference, consent is active and the event is flagged —
+     otherwise the switch would read **off while reminders were being delivered**, which is
+     worse than a control that does nothing because it misreports what is happening. Explicit
+     preferences still win, including `off`. One imprecision, stated rather than hidden: the
+     resolver checks consent *per tenant*, while the page is tenant-agnostic
+     (`get_my_whatsapp_consent` answers "do you have an active opt-in anywhere"), so someone
+     opted in at academy A sees "on" for academy B's events too. That errs on the right side —
+     it reflects that WhatsApp is switched on for them, and the switch still turns it off
+     everywhere.
    - Owner-side, still open: re-copy `TWILIO_AUTH_TOKEN` from the same account as the `AC…`
      SID (the probe matrix proved they belong to different accounts — every us1/ie1/au1 ×
      credential-pair combination 401s), add the `whatsapp:` prefix to `TWILIO_WHATSAPP_FROM`

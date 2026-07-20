@@ -68,7 +68,8 @@ import NotificationSettings from '@/pages/NotificationSettings';
 const evt = (over: Record<string, unknown>) => ({
   key: 'x', category: 'booking', audience: 'player', required_delivery: false,
   supports_email: true, supports_whatsapp: false, supports_digest: false,
-  default_email_frequency: 'instant', default_whatsapp_frequency: 'off', ...over,
+  default_email_frequency: 'instant', default_whatsapp_frequency: 'off',
+  whatsapp_optin_via_booking: false, ...over,
 });
 
 beforeEach(() => {
@@ -83,7 +84,8 @@ beforeEach(() => {
   catalog = [
     evt({ key: 'booking_confirmed_player', required_delivery: true }),
     evt({ key: 'booking_cancelled_player' }),
-    evt({ key: 'session_reminder_player', supports_digest: true, supports_whatsapp: true, default_email_frequency: 'daily' }),
+    evt({ key: 'session_reminder_player', supports_digest: true, supports_whatsapp: true,
+      whatsapp_optin_via_booking: true, default_email_frequency: 'daily' }),
     evt({ key: 'booking_request_staff', audience: 'academy_manager' }),
     evt({ key: 'review_received_trainer', audience: 'trainer', supports_digest: true }),
   ];
@@ -155,13 +157,19 @@ describe('NotificationSettings v2', () => {
   it('a WhatsApp toggle writes BOTH columns, preserving the EVENT email default', async () => {
     // the trap: an upsert carrying only whatsapp_frequency inserts a row whose email_frequency
     // takes the COLUMN default ('instant'), silently promoting this event's 'daily' email.
+    // Uses an event OUTSIDE the booking opt-in so the switch starts off and this exercises the
+    // turning-ON direction (the opt-in events start on — covered separately below).
     consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    catalog = [evt({
+      key: 'invoice_reminder_player', supports_whatsapp: true,
+      whatsapp_optin_via_booking: false, default_email_frequency: 'daily',
+    })];
     render(<NotificationSettings />);
-    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    const cell = await screen.findByTestId('wa-cell-invoice_reminder_player');
     fireEvent.click(cell.querySelector('[role="switch"]')!);
     await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
     expect(upsertMock.mock.calls[0][0]).toMatchObject({
-      event_type: 'session_reminder_player',
+      event_type: 'invoice_reminder_player',
       whatsapp_frequency: 'instant',
       email_frequency: 'daily',        // the EVENT default, not the column default
     });
@@ -255,5 +263,45 @@ describe('NotificationSettings v2', () => {
     // the write failed, so the control must stay where it was
     await waitFor(() =>
       expect(screen.getByTestId('pref-row-booking_cancelled_player').querySelector('[role="switch"]')).toBeChecked());
+  });
+
+  it('shows the WhatsApp switch ON for a booking opt-in with no stored preference', async () => {
+    // the resolver treats the opt-in as the cadence for this event, so a page reading only the
+    // stored value would show OFF while reminders were actually being delivered
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    v2rows = [];   // no explicit preference
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    expect(cell.querySelector('[role="switch"]')).toBeChecked();
+  });
+
+  it('clicking that switch writes an explicit off, which the resolver then honours', async () => {
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    v2rows = [];
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    fireEvent.click(cell.querySelector('[role="switch"]')!);
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
+    expect(upsertMock.mock.calls[0][0]).toMatchObject({
+      event_type: 'session_reminder_player',
+      whatsapp_frequency: 'off',
+      email_frequency: 'daily',      // the other channel is preserved, not reset to its column default
+    });
+  });
+
+  it('an explicit stored preference still wins over the derived opt-in state', async () => {
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    v2rows = [{ event_type: 'session_reminder_player', email_frequency: 'daily', whatsapp_frequency: 'off' }];
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-session_reminder_player');
+    expect(cell.querySelector('[role="switch"]')).not.toBeChecked();
+  });
+
+  it('does NOT derive an on-state for an event outside the booking opt-in', async () => {
+    consentRows = [{ opted_in: true, destination_redacted: '•••5678', consent_at: null }];
+    catalog = [evt({ key: 'invoice_reminder_player', supports_whatsapp: true, whatsapp_optin_via_booking: false })];
+    render(<NotificationSettings />);
+    const cell = await screen.findByTestId('wa-cell-invoice_reminder_player');
+    expect(cell.querySelector('[role="switch"]')).not.toBeChecked();
   });
 });
