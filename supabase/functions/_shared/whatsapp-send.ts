@@ -82,7 +82,29 @@ const ROW_FAULT_CODES = new Set([
   21211,  // invalid 'To' phone number
   21610,  // recipient has unsubscribed (a STOP we did not otherwise see)
   21614,  // 'To' is not a valid mobile number
+  63024,  // invalid message recipient — not a WhatsApp user / has not accepted WhatsApp's ToS
+  63032,  // WhatsApp limitation: the recipient's number is in a Meta experiment
 ]);
+
+/**
+ * Codes that are TRANSIENT whatever HTTP status carries them. 63018 is a channel/sender rate
+ * limit; Twilio's error docs do not state which status it arrives with, and classifying it by
+ * CODE makes that question moot — if it ever comes as a 400 it must still not be mistaken for
+ * a config gap and parked for a day.
+ */
+const TRANSIENT_CODES = new Set([
+  63018,  // rate limit exceeded for channel
+]);
+
+/*
+ * DELIBERATELY NOT row-fault: 63003 "Channel could not find To address". Twilio documents it as
+ * primarily a recipient problem, but its causes also include a malformed/mis-constructed `To` —
+ * which would be OUR bug, systematic, and would destroy every queued row if treated as
+ * terminal. We already validate E.164 and build the `whatsapp:` prefix in one tested place, so
+ * in practice it means an unregistered recipient; but the asymmetry says an ambiguous code
+ * defers. Promote it only if the delivery log shows it arriving for genuinely unreachable
+ * numbers.
+ */
 
 /** Twilio's code for "this recipient unsubscribed" — also a consent signal we must record. */
 export const TWILIO_CODE_UNSUBSCRIBED = 21610;
@@ -189,18 +211,20 @@ export async function sendWhatsAppMessage(
         ? `${bodyJson.message}${code}`
         : `Twilio HTTP ${res.status}${code}`;
 
-      if (TRANSIENT_STATUS.has(res.status)) {
+      const errCode = typeof bodyJson.code === "number" ? bodyJson.code : undefined;
+
+      if (TRANSIENT_STATUS.has(res.status) || (errCode !== undefined && TRANSIENT_CODES.has(errCode))) {
         if (attempt === maxAttempts) {
-          return { ok: false, error: lastError, attempts: attempt, retryable: true };
+          return { ok: false, error: lastError, attempts: attempt, retryable: true, ...(errCode !== undefined ? { code: errCode } : {}) };
         }
         // fall through to the backoff and try again in-request
-      } else if (typeof bodyJson.code === "number" && ROW_FAULT_CODES.has(bodyJson.code)) {
+      } else if (errCode !== undefined && ROW_FAULT_CODES.has(errCode)) {
         // The provider is telling us about THIS RECIPIENT (unsubscribed, unreachable, not a
         // mobile). No amount of config-fixing changes it, so it must not sit in the defer
         // queue for a day pretending to be recoverable.
         return {
           ok: false, error: lastError, attempts: attempt,
-          retryable: false, rowFault: true, code: bodyJson.code,
+          retryable: false, rowFault: true, code: errCode,
         };
       } else if (res.status >= 400 && res.status < 500) {
         // EVERY OTHER 4xx IS TREATED AS A CONFIG PROBLEM, not a row fault — classified by whose
@@ -217,7 +241,7 @@ export async function sendWhatsAppMessage(
         // notification. So an ambiguous 4xx defers.
         return {
           ok: false, error: lastError, attempts: attempt, retryable: true, configError: true,
-          ...(typeof bodyJson.code === "number" ? { code: bodyJson.code } : {}),
+          ...(errCode !== undefined ? { code: errCode } : {}),
         };
       } else if (attempt === maxAttempts) {
         // unlisted 5xx — treat as transient

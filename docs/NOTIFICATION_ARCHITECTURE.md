@@ -532,13 +532,21 @@ Prerequisites:
      total than the `max_attempts` exhaustion above.
      The full split, by Twilio error code where one is given:
      * **row terminal** — `21610` unsubscribed, `21614` not a mobile, `21211` invalid `To`,
+       `63024` not a WhatsApp user / ToS not accepted, `63032` recipient in a Meta experiment,
        plus everything we diagnose locally (non-E.164, withdrawn consent, no committed
        template, no content). No config fix makes these deliverable, so they must never sit in
        the defer queue. `21610` additionally calls `record_whatsapp_optout`: until the status
        webhook is live it is our only STOP signal, and ignoring it would keep the resolver
        queueing messages to someone who opted out.
      * **defer** — auth/account/sender/template/ContentSid problems, and any *unrecognised* 4xx.
-     * **transient** — 429/5xx/network, which spend the row's attempt budget as intended.
+     * **transient** — 429/5xx/network, plus `63018` (channel rate limit) **by code**: Twilio's
+       docs do not state which HTTP status carries it, and classifying by code means that
+       question never has to be answered — a 400-borne rate limit must not be read as a config
+       gap and parked for a day.
+     Deliberately **not** row-terminal: `63003` "Channel could not find To address". Twilio
+     documents it as primarily recipient-side, but its causes also include a mis-constructed
+     `To` — which would be *our* bug, systematic, and would destroy every queued row. It defers
+     until the delivery log shows it arriving for genuinely unreachable numbers.
      The row-fault code set is a deliberately **conservative allow-list, not a full table**:
      unknown codes keep deferring, because a wrongly-deferred row is parked and recoverable
      while a wrongly-terminal one is a destroyed notification. Codes get promoted into the list

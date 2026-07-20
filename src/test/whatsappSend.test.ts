@@ -193,11 +193,30 @@ describe('sendWhatsAppMessage — error classification', () => {
     // the counterweight to the broad 4xx bucket: no config fix makes these deliverable, so
     // parking them for 24h would just delay an inevitable failure (and, for 21610, sit on an
     // unsubscribe signal)
-    for (const [code, label] of [[21610, 'unsubscribed'], [21614, 'not a mobile'], [21211, 'invalid To']] as const) {
+    const cases = [
+      [21610, 'unsubscribed'],
+      [21614, 'not a mobile'],
+      [21211, 'invalid To'],
+      [63024, 'invalid message recipient — not a WhatsApp user / has not accepted ToS'],
+      [63032, 'WhatsApp limitation — recipient number is in a Meta experiment'],
+    ] as const;
+    for (const [code, label] of cases) {
       fetchMock.mockResolvedValue(respond(400, { message: label, code }));
       const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' });
       expect(r).toMatchObject({ ok: false, retryable: false, rowFault: true, code });
       expect((r as { configError?: true }).configError).toBeUndefined();
+    }
+  });
+
+  it('treats the 63018 channel rate limit as TRANSIENT whatever HTTP status carries it', async () => {
+    // Twilio's docs do not state which status 63018 arrives with, so it is classified by CODE:
+    // if it ever comes as a 400 it must not be mistaken for a config gap and parked for a day.
+    for (const status of [429, 400]) {
+      fetchMock.mockResolvedValue(respond(status, { message: 'Rate limit exceeded', code: 63018 }));
+      const r = await sendWhatsAppMessage(AUTH, { from: FROM, to: TO, contentSid: 'HX1' }, { maxAttempts: 1 });
+      expect(r).toMatchObject({ ok: false, retryable: true, code: 63018 });
+      expect((r as { configError?: true }).configError).toBeUndefined();
+      expect((r as { rowFault?: true }).rowFault).toBeUndefined();
     }
   });
 
