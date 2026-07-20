@@ -115,7 +115,7 @@ describe('GuestBookingDialog', () => {
   it('submits the single slot (firstName + lastName + phone) and redirects to the checkout URL', async () => {
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/checkout/abc', token: 'tok-1' }, error: null });
     const hrefSetter = vi.fn();
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(v: string) { hrefSetter(v); } } });
 
     renderDialog();
     fillValid();
@@ -123,7 +123,7 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
     });
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/checkout/abc'));
     expect(toastErrorMock).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe('GuestBookingDialog', () => {
     cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/xyz' }, error: null });
     const hrefSetter = vi.fn();
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(v: string) { hrefSetter(v); } } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(v: string) { hrefSetter(v); } } });
 
     render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
     fillValid();
@@ -143,7 +143,7 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
-      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
     });
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/c/xyz'));
   });
@@ -151,7 +151,7 @@ describe('GuestBookingDialog', () => {
   it('toggling to "This session only" books the single slot instead', async () => {
     cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/s/1' }, error: null });
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(_v: string) {} } });
 
     render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
     fireEvent.click(await screen.findByRole('button', { name: /Alleen deze sessie/ }));
@@ -160,7 +160,7 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
     });
   });
 
@@ -169,7 +169,7 @@ describe('GuestBookingDialog', () => {
     // toggle must NOT be offered — booking is forced to the whole cyclus.
     cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/split' }, error: null });
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(_v: string) {} } });
 
     const wholeSeriesSlot: PublicSlot = { ...cyclusSlot, allow_single_booking: false, split_payment: true };
     render(<GuestBookingDialog slot={wholeSeriesSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
@@ -184,7 +184,7 @@ describe('GuestBookingDialog', () => {
     fireEvent.click(payBtn);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
-      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
     });
   });
 
@@ -211,7 +211,7 @@ describe('GuestBookingDialog', () => {
     cyclusSessions.current = twoSessions;
     cyclusPublicRow.current = { settings: { allow_single_booking: true, allow_cyclus_booking: false } };
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/s/only' }, error: null });
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(_v: string) {} } });
 
     render(<GuestBookingDialog slot={cyclusSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
 
@@ -223,7 +223,7 @@ describe('GuestBookingDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
     });
   });
 
@@ -288,7 +288,7 @@ describe('GuestBookingDialog', () => {
   it('whole-slot cyclus session (allow_single=false, whole_slot=true): single option offered at FULL price', async () => {
     cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/ws' }, error: null });
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(_v: string) {} } });
 
     const wholeSlot: PublicSlot = { ...cyclusSlot, allow_single_booking: false, whole_slot_booking: true, price_per_session: 76.5, max_participants: 4 };
     render(<GuestBookingDialog slot={wholeSlot} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
@@ -306,7 +306,7 @@ describe('GuestBookingDialog', () => {
   it('whole-slot unlock NEVER applies to split sessions (#352 stays closed)', async () => {
     cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/x' }, error: null });
-    Object.defineProperty(window, 'location', { configurable: true, value: { set href(_v: string) {} } });
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(_v: string) {} } });
 
     const splitWhole: PublicSlot = { ...cyclusSlot, allow_single_booking: false, whole_slot_booking: true, split_payment: true };
     render(<GuestBookingDialog slot={splitWhole} open onOpenChange={() => {}} timezone="Europe/Amsterdam" />);
@@ -324,5 +324,18 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
     expect(toastErrorMock).toHaveBeenCalledWith('Deze plek is net volgeboekt. Kies een ander moment.');
+  });
+
+  it('posts whatsappOptIn=false unless the guest ticks it, and true when they do', async () => {
+    // The box is the ONLY thing the client contributes to consent — the tenant it is scoped to
+    // is read off the slot server-side. So the one property worth pinning here is that an
+    // untouched form never claims consent.
+    renderDialog();
+    fillValid();
+    fireEvent.click(screen.getByTestId('whatsapp-optin'));
+    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(invokeMock.mock.calls[0][1].body).toMatchObject({ whatsappOptIn: true });
   });
 });
