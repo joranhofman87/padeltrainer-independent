@@ -12,12 +12,20 @@
 //     only deliverable inside the 24-hour service window, so it is gated behind an explicit
 //     opt-in flag and exists for pre-approval testing, not production sends.
 //
-//   * PROVIDER 4xx IS A CONFIG SIGNAL, NOT A ROW VERDICT. Everything row-shaped is validated
-//     before the call (E.164 recipient, live consent, committed template, content present), so
-//     what remains in the request is environment — the ContentSid, the sender, the account.
-//     A 401, or a 400 for an unapproved/wrong-account ContentSid, is a misconfiguration
-//     affecting EVERY row; failing rows terminally over it destroys them on the first drain.
-//     Those surface as configError so the worker DEFERS them instead of spending the budget.
+//   * FAILURES ARE CLASSIFIED BY WHOSE INPUT WAS WRONG, NOT BY HTTP STATUS. Everything
+//     row-shaped is validated before the call (E.164 recipient, live consent, committed
+//     template, content present), so an unexplained 4xx is far more likely to be about the
+//     environment — the ContentSid, the sender, the account — than about this recipient.
+//     Three outcomes, and Twilio's error CODE decides between them where it gives one:
+//       - rowFault  (terminal): the recipient can't receive this — 21610 unsubscribed,
+//         21614 not a mobile, 21211 invalid To, 63024 not a WhatsApp user, 63032 Meta
+//         experiment. No config fix helps, so these must not sit in the defer queue.
+//       - configError (defer): auth/account/sender/ContentSid, and any UNRECOGNISED 4xx.
+//         Failing these terminally would destroy the whole queue on its first drain.
+//       - retryable (spend an attempt): 429/5xx/network, plus 63018 by code.
+//     The rowFault set is a conservative allow-list grown from evidence, because the two
+//     mistakes are not symmetric: a wrongly-deferred row is parked and recoverable, a
+//     wrongly-terminal one is a destroyed notification.
 
 export type WhatsAppSendPayload = {
   /** "whatsapp:+31…" sender, or a Messaging Service SID (MG…). */

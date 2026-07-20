@@ -13,7 +13,9 @@ import {
   verifyTwilioSignature,
   buildTwilioSignatureBase,
   isOptOutKeyword,
+  optOutNumberFromPayload,
 } from '../../supabase/functions/_shared/twilio-signature.ts';
+import { TWILIO_CODE_UNSUBSCRIBED } from '../../supabase/functions/_shared/whatsapp-send.ts';
 
 const TOKEN = 'the_auth_token_not_the_api_secret';
 const URL_ = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/twilio-whatsapp-webhook';
@@ -111,5 +113,55 @@ describe('isOptOutKeyword', () => {
     expect(isOptOutKeyword('')).toBe(false);
     expect(isOptOutKeyword(null)).toBe(false);
     expect(isOptOutKeyword(undefined)).toBe(false);
+  });
+});
+
+describe('optOutNumberFromPayload — which field holds the USER, per payload shape', () => {
+  const OUR_SENDER = 'whatsapp:+3197010254321';
+  const USER = 'whatsapp:+31612345678';
+
+  it('inbound STOP: the user is the SENDER', () => {
+    expect(optOutNumberFromPayload({ From: USER, To: OUR_SENDER, Body: 'STOP' }))
+      .toBe('+31612345678');
+  });
+
+  it('status callback 21610: the user is the RECIPIENT — never our own sender', () => {
+    // THE bug this function exists to prevent. On an outbound status callback From is OUR
+    // platform number; reading it would revoke our own sender and silently discard the real
+    // withdrawal, while the webhook 200s and a row lands in the delivery log as if fine.
+    const n = optOutNumberFromPayload({
+      MessageSid: 'SM1', MessageStatus: 'undelivered', ErrorCode: '21610',
+      From: OUR_SENDER, To: USER,
+    });
+    expect(n).toBe('+31612345678');
+    expect(n).not.toBe('+3197010254321');
+  });
+
+  it('the code it keys on matches the send helper, so the two cannot drift', () => {
+    expect(TWILIO_CODE_UNSUBSCRIBED).toBe(21610);
+  });
+
+  it('does NOT treat other failure codes as consent withdrawal', () => {
+    // 63024/21614 mean undeliverable, not "asked us to stop" — revoking on those would opt
+    // people out for owning the wrong handset
+    for (const ErrorCode of ['63024', '21614', '63032', '30008']) {
+      expect(optOutNumberFromPayload({
+        MessageSid: 'SM1', MessageStatus: 'undelivered', ErrorCode, From: OUR_SENDER, To: USER,
+      })).toBeNull();
+    }
+  });
+
+  it('returns null for an ordinary delivery callback and an ordinary inbound message', () => {
+    expect(optOutNumberFromPayload({
+      MessageSid: 'SM1', MessageStatus: 'delivered', From: OUR_SENDER, To: USER,
+    })).toBeNull();
+    expect(optOutNumberFromPayload({ From: USER, To: OUR_SENDER, Body: 'tot morgen!' })).toBeNull();
+    expect(optOutNumberFromPayload({})).toBeNull();
+  });
+
+  it('returns null when 21610 arrives with no To to act on', () => {
+    expect(optOutNumberFromPayload({
+      MessageSid: 'SM1', MessageStatus: 'failed', ErrorCode: '21610', From: OUR_SENDER,
+    })).toBeNull();
   });
 });

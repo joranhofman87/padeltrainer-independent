@@ -81,3 +81,38 @@ export function isOptOutKeyword(body: string | null | undefined): boolean {
   if (!body) return false;
   return OPT_OUT_KEYWORDS.has(body.trim().toLowerCase());
 }
+
+/** Strip Twilio's "whatsapp:" channel prefix to leave a bare E.164 number. */
+const stripChannel = (v: string): string => v.replace(/^whatsapp:/i, "").trim();
+
+/**
+ * Which number — if any — this webhook payload withdraws consent for.
+ *
+ * THE TWO PAYLOAD SHAPES DISAGREE ON DIRECTION, which is the whole reason this lives in one
+ * tested function instead of being re-derived at each call site:
+ *
+ *   * INBOUND message          — `From` is the USER, `To` is our sender.
+ *   * OUTBOUND status callback — `From` is OUR SENDER, `To` is the USER.
+ *
+ * Reading the wrong field opts out our own platform number and silently drops the real
+ * withdrawal — a failure that looks like success at every layer: the webhook 200s, a row lands
+ * in the delivery log, and we keep messaging someone who asked us to stop.
+ *
+ * Two ways a withdrawal reaches us: the user replies STOP (inbound), or Twilio rejects an
+ * outbound message with 21610 because the recipient already opted out — sometimes via a STOP
+ * we never saw, e.g. sent before the webhook was configured.
+ */
+export function optOutNumberFromPayload(params: Record<string, string>): string | null {
+  // inbound STOP — the user is the sender
+  if (params.From && isOptOutKeyword(params.Body)) {
+    return stripChannel(params.From) || null;
+  }
+  // outbound status callback carrying Twilio's "recipient has unsubscribed" code — the user is
+  // the RECIPIENT. 21610 is inlined rather than imported to keep this module dependency-free;
+  // the send helper's TWILIO_CODE_UNSUBSCRIBED is pinned against this value by test.
+  const isStatusCallback = Boolean(params.MessageStatus || params.SmsStatus);
+  if (isStatusCallback && Number(params.ErrorCode) === 21610 && params.To) {
+    return stripChannel(params.To) || null;
+  }
+  return null;
+}

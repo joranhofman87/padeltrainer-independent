@@ -579,7 +579,15 @@ Prerequisites:
      JWT, so `verify_jwt = true` 401s them at the gateway before `requireServiceRole` runs —
      and the cron job still reports success while nothing is ever sent.
    - `twilio-whatsapp-webhook` (`verify_jwt = false`) handles status callbacks AND inbound
-     STOP on one endpoint. **The X-Twilio-Signature IS the authentication** — no token
+     STOP on one endpoint. **A withdrawal can arrive in either shape, and the two disagree on
+     which field holds the user**: inbound, `From` is the user; on an outbound status callback
+     `From` is *our sender* and `To` is the user. So a callback with `ErrorCode=21610` revokes
+     consent using **`To`** — reading `From` would opt out our own platform number while the
+     webhook 200s and a delivery-log row lands, i.e. failing in a way that looks like success
+     at every layer. That decision lives in the tested `optOutNumberFromPayload()` rather than
+     being re-derived per call site. A 21610 callback records the status event *and* the
+     opt-out; both writes are idempotent under Twilio's callback retries. Other failure codes
+     (63024/21614/63032) mean undeliverable, not "asked us to stop", and never revoke. **The X-Twilio-Signature IS the authentication** — no token
      configured or a bad signature means 403 before the payload is interpreted. Statuses map
      onto the EXISTING `email_delivery_events` taxonomy (raw status kept in `reason`) rather
      than widening a CHECK the PR 7 timeline UI renders; `invoice_id` stays NULL so a WhatsApp

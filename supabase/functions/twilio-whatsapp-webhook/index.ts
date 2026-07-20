@@ -1,8 +1,13 @@
 // Notification Foundation v2 — PR 9: the Twilio WhatsApp webhook.
 //
 // Handles BOTH Twilio POST shapes on one signed endpoint:
-//   * message STATUS callbacks (MessageStatus + MessageSid) → the delivery log
+//   * message STATUS callbacks (MessageStatus + MessageSid) → the delivery log, AND consent
+//     withdrawal when ErrorCode is 21610 (Twilio rejected the send because the recipient had
+//     already opted out — often via a STOP sent before this webhook existed)
 //   * INBOUND messages (From + Body)                        → STOP handling (consent withdrawal)
+//
+// Both shapes can carry a withdrawal but they DISAGREE on which field holds the user's number,
+// so that decision lives in optOutNumberFromPayload() rather than being re-derived here.
 //
 // verify_jwt = false — Twilio has no Supabase JWT — so THE SIGNATURE IS THE AUTHENTICATION and
 // this endpoint is otherwise reachable by anyone. Every path fails closed:
@@ -15,7 +20,7 @@
 // Hence 403 before ANY parsing of the payload's meaning.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyTwilioSignature, isOptOutKeyword } from "../_shared/twilio-signature.ts";
+import { verifyTwilioSignature, optOutNumberFromPayload } from "../_shared/twilio-signature.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const JOB = "twilio-whatsapp-webhook";
@@ -24,9 +29,6 @@ const JOB = "twilio-whatsapp-webhook";
 const jsonHeaders = { "Content-Type": "application/json" };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: jsonHeaders });
-
-/** Strip Twilio's "whatsapp:" prefix to get a bare E.164 number. */
-const bareNumber = (v: string): string => v.replace(/^whatsapp:/i, "").trim();
 
 const handler = async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -64,12 +66,12 @@ const handler = async (req: Request): Promise<Response> => {
     // Checked FIRST: a STOP must be honoured even if the same payload also carries status
     // fields. Twilio also auto-blocks the sender on STOP, but our own consent state has to
     // agree — otherwise the resolver keeps queueing messages that will never deliver.
-    const from = params.From ?? "";
-    const body = params.Body ?? "";
-    if (from && isOptOutKeyword(body)) {
-      const { data, error } = await supabase.rpc("record_whatsapp_optout", {
-        p_phone: bareNumber(from),
-      });
+    const optOutNumber = optOutNumberFromPayload(params);
+
+    // An INBOUND STOP carries no status fields, so it is the whole payload: revoke and return.
+    const isStatusCallback = Boolean(params.MessageStatus || params.SmsStatus);
+    if (optOutNumber && !isStatusCallback) {
+      const { data, error } = await supabase.rpc("record_whatsapp_optout", { p_phone: optOutNumber });
       if (error) throw new Error(`opt-out failed: ${error.message}`);
       return json({ ok: true, action: "opted_out", revoked: data ?? 0 });
     }
@@ -85,6 +87,18 @@ const handler = async (req: Request): Promise<Response> => {
         p_error_message: params.ErrorMessage ?? null,
       });
       if (error) throw new Error(`status record failed: ${error.message}`);
+
+      // A 21610 status callback is BOTH a delivery outcome and a consent event. Recording only
+      // the outcome would leave the resolver queueing messages to someone who has opted out —
+      // and this is the only notice we get when the STOP predates the webhook. Both writes are
+      // idempotent, so a Twilio callback retry re-runs them harmlessly.
+      if (optOutNumber) {
+        const { data: revoked, error: optErr } = await supabase.rpc("record_whatsapp_optout", {
+          p_phone: optOutNumber,
+        });
+        if (optErr) throw new Error(`opt-out failed: ${optErr.message}`);
+        return json({ ok: true, action: "status_opted_out", result: data, revoked: revoked ?? 0 });
+      }
       return json({ ok: true, action: "status", result: data });
     }
 
