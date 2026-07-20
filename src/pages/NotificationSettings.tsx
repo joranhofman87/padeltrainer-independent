@@ -5,154 +5,98 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { FullPageLoader } from '@/components/ui/page-spinner';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { ArrowLeft, Bell, Mail, Calendar, Star, Users, CreditCard, Clock, UserPlus } from 'lucide-react';
+import { ArrowLeft, Bell, Lock } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
-type Frequency = 'instant' | 'daily' | 'weekly' | 'off';
+/**
+ * Notification settings — v2 (Notification Foundation, PR 8).
+ *
+ * Driven by the notification_event_types CATALOG (readable by `authenticated` precisely so
+ * this page can label itself) and stored per user × event in notification_preferences_v2.
+ *
+ * Three rules this page must not break:
+ *  1. REQUIRED-DELIVERY events render as "Always on" with NO control. The resolver forces
+ *     email_frequency := 'instant' for them regardless of what is stored, so offering a
+ *     switch would be a control that silently does nothing.
+ *  2. A MISSING pref row means "use the event's default", not "off" — so we only write on
+ *     change and never pre-seed rows.
+ *  3. WhatsApp/push are NOT shown. No seeded event supports push, and whatsapp cannot deliver
+ *     until PR 9 provisions Twilio; an opt-in for a channel that cannot deliver is a promise
+ *     we do not keep.
+ *
+ * Role filtering treats academy_manager + trainer as ONE "staff" bucket rather than trusting
+ * `audience` literally: booking_confirmed_staff is catalogued 'academy_manager' but PR 6b's
+ * fan-out also sends it to TRAINERS, so a literal match would hide a setting from people who
+ * actually receive that mail.
+ *
+ * "Other notifications" is a deliberate TRANSITIONAL bridge exposing the COMPLETE v1 column
+ * set. The rule is "every column send-email can still consult", NOT "columns with no v2 event
+ * key" — the latter is too narrow and strands live settings, because send-email still gates
+ * legacy sends on booking_confirmation / booking_reminder / booking_cancelled / new_review /
+ * payment_receipt / payment_received / new_booking / open_slots_digest even where a v2 event of
+ * a similar NAME exists (they are two different enforcement paths). Dropping any of them would
+ * leave a live setting enforced but unreachable. PR 10 migrates those senders and the group goes.
+ *
+ * NOTE: this route is deep-linked from outbound email footers as the unsubscribe target, and
+ * academy-managed trainers are deliberately exempted from the usual route bounce to reach it
+ * (TrainerLayout). Keep both behaviours.
+ */
 
-interface NotificationPrefs {
-  // Player
-  booking_confirmation: Frequency;
-  booking_reminder: Frequency;
-  open_slots_digest: Frequency;
-  upcoming_sessions_digest: Frequency;
-  payment_receipt: Frequency;
-  waitlist_update: Frequency;
-  // Trainer / Academy
-  new_booking: Frequency;
-  booking_cancelled: Frequency;
-  new_follower: Frequency;
-  new_player: Frequency;
-  new_registration: Frequency;
-  new_review: Frequency;
-  upcoming_schedule_digest: Frequency;
-  payment_received: Frequency;
+type Frequency = 'instant' | 'daily' | 'weekly' | 'off';
+const FREQUENCIES: Frequency[] = ['instant', 'daily', 'weekly', 'off'];
+const DIGEST_ONLY: Frequency[] = ['daily', 'weekly', 'off'];
+
+interface EventType {
+  key: string;
+  category: string;
+  audience: string;
+  required_delivery: boolean;
+  supports_email: boolean;
+  supports_digest: boolean;
+  default_email_frequency: Frequency;
 }
 
-const DEFAULT_PREFS: NotificationPrefs = {
-  booking_confirmation: 'instant',
-  booking_reminder: 'instant',
-  open_slots_digest: 'weekly',
-  upcoming_sessions_digest: 'daily',
-  payment_receipt: 'instant',
-  waitlist_update: 'instant',
-  new_booking: 'instant',
-  booking_cancelled: 'instant',
-  new_follower: 'daily',
-  new_player: 'daily',
-  new_registration: 'instant',
-  new_review: 'instant',
-  upcoming_schedule_digest: 'daily',
+/**
+ * EVERY v1 preference column, kept reachable until PR 10 migrates the legacy senders.
+ *
+ * The rule here is NOT "columns with no v2 event key" — that was too narrow and stranded live
+ * settings. It is "every column send-email can still consult". send-email's TYPE_TO_PREF_COLUMN
+ * maps its types onto booking_confirmation / booking_reminder / booking_cancelled / new_review /
+ * payment_receipt / payment_received / new_booking / open_slots_digest, and those paths are still
+ * live (send-digest-emails sends booking_confirmation|booking_reminder|booking_cancelled;
+ * BookLesson sends booking_request → new_booking; BookForPlayerDialog sends
+ * manual_booking_confirmation → booking_confirmation; notify-followers sends
+ * new_availability|slot_reopened → open_slots_digest). The remaining columns have no v2 key at
+ * all. Union = the complete v1 set, so nothing a user could previously control becomes
+ * unreachable just because the v2 page shipped.
+ */
+const LEGACY_PLAYER = [
+  'booking_confirmation', 'booking_reminder', 'open_slots_digest',
+  'upcoming_sessions_digest', 'payment_receipt', 'waitlist_update',
+] as const;
+const LEGACY_STAFF = [
+  'new_booking', 'booking_cancelled', 'new_follower', 'new_player',
+  'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received',
+] as const;
+const LEGACY_DIGEST = new Set<string>(['open_slots_digest', 'upcoming_sessions_digest', 'upcoming_schedule_digest']);
+/** Mirrors the COLUMN DEFAULTs in migration 20260210090026 exactly — do not guess these. */
+const LEGACY_DEFAULTS: Record<string, Frequency> = {
+  booking_confirmation: 'instant', booking_reminder: 'instant', open_slots_digest: 'weekly',
+  upcoming_sessions_digest: 'daily', payment_receipt: 'instant', waitlist_update: 'instant',
+  new_booking: 'instant', booking_cancelled: 'instant', new_follower: 'daily', new_player: 'daily',
+  new_registration: 'instant', new_review: 'instant', upcoming_schedule_digest: 'daily',
   payment_received: 'instant',
 };
+type LegacyKey = (typeof LEGACY_PLAYER)[number] | (typeof LEGACY_STAFF)[number];
 
-interface NotificationItem {
-  key: keyof NotificationPrefs;
-  icon: React.ReactNode;
-  allowedFrequencies?: Frequency[];
-}
-
-interface NotificationCategory {
-  title: string;
-  description: string;
-  items: NotificationItem[];
-}
-
-function getPlayerCategories(t: (key: string) => string): NotificationCategory[] {
-  return [
-    {
-      title: t('notifications.categories.bookings'),
-      description: t('notifications.categories.bookingsDesc'),
-      items: [
-        { key: 'booking_confirmation', icon: <Calendar className="h-5 w-5 text-muted-foreground" /> },
-        { key: 'booking_reminder', icon: <Bell className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-    {
-      title: t('notifications.categories.availability'),
-      description: t('notifications.categories.availabilityDesc'),
-      items: [
-        { key: 'open_slots_digest', icon: <Clock className="h-5 w-5 text-muted-foreground" />, allowedFrequencies: ['daily', 'weekly', 'off'] },
-      ],
-    },
-    {
-      title: t('notifications.categories.schedule'),
-      description: t('notifications.categories.scheduleDesc'),
-      items: [
-        { key: 'upcoming_sessions_digest', icon: <Calendar className="h-5 w-5 text-muted-foreground" />, allowedFrequencies: ['daily', 'weekly', 'off'] },
-      ],
-    },
-    {
-      title: t('notifications.categories.payments'),
-      description: t('notifications.categories.paymentsDesc'),
-      items: [
-        { key: 'payment_receipt', icon: <CreditCard className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-    {
-      title: t('notifications.categories.waitlist'),
-      description: t('notifications.categories.waitlistDesc'),
-      items: [
-        { key: 'waitlist_update', icon: <Users className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-  ];
-}
-
-function getTrainerCategories(t: (key: string) => string): NotificationCategory[] {
-  return [
-    {
-      title: t('notifications.categories.bookings'),
-      description: t('notifications.categories.bookingsDescTrainer'),
-      items: [
-        { key: 'new_booking', icon: <Calendar className="h-5 w-5 text-muted-foreground" /> },
-        { key: 'booking_cancelled', icon: <Bell className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-    {
-      title: t('notifications.categories.players'),
-      description: t('notifications.categories.playersDesc'),
-      items: [
-        { key: 'new_follower', icon: <Users className="h-5 w-5 text-muted-foreground" /> },
-        { key: 'new_player', icon: <UserPlus className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-    {
-      title: t('notifications.categories.registrations'),
-      description: t('notifications.categories.registrationsDesc'),
-      items: [
-        { key: 'new_registration', icon: <Mail className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-    {
-      title: t('notifications.categories.reviews'),
-      description: t('notifications.categories.reviewsDesc'),
-      items: [
-        { key: 'new_review', icon: <Star className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-    {
-      title: t('notifications.categories.schedule'),
-      description: t('notifications.categories.scheduleDescTrainer'),
-      items: [
-        { key: 'upcoming_schedule_digest', icon: <Clock className="h-5 w-5 text-muted-foreground" />, allowedFrequencies: ['daily', 'weekly', 'off'] },
-      ],
-    },
-    {
-      title: t('notifications.categories.payments'),
-      description: t('notifications.categories.paymentsDescTrainer'),
-      items: [
-        { key: 'payment_received', icon: <CreditCard className="h-5 w-5 text-muted-foreground" /> },
-      ],
-    },
-  ];
-}
+const STAFF_AUDIENCES = new Set(['academy_manager', 'trainer']);
 
 export default function NotificationSettings() {
   const { user, role, isAcademyManager, loading } = useAuth();
@@ -160,196 +104,220 @@ export default function NotificationSettings() {
   const { toast } = useToast();
   const { t } = useTranslation('common');
 
-  const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
+  const [catalog, setCatalog] = useState<EventType[]>([]);
+  const [prefs, setPrefs] = useState<Record<string, Frequency>>({});
+  const [legacy, setLegacy] = useState<Record<string, Frequency>>({});
   const [dataLoading, setDataLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  const effectiveRole = isAcademyManager ? 'trainer' : role;
+  // academy_manager + trainer are ONE staff bucket (see header note).
+  const isStaff = Boolean(isAcademyManager) || role === 'trainer';
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/app/auth');
-    }
+    if (!loading && !user) navigate('/app/auth');
   }, [user, loading, navigate]);
 
-  useEffect(() => {
-    if (user) {
-      fetchPreferences();
-    }
-  }, [user]);
-
-  const fetchPreferences = async () => {
+  const load = useCallback(async () => {
+    if (!user) return;
     try {
-      const { data, error } = await supabase
-        .from('notification_preferences')
-        .select('*')
-        .eq('user_id', user!.id)
-        .maybeSingle();
+      const [types, rows, v1] = await Promise.all([
+        supabase
+          .from('notification_event_types')
+          .select('key, category, audience, required_delivery, supports_email, supports_digest, default_email_frequency'),
+        supabase.from('notification_preferences_v2').select('event_type, email_frequency').eq('user_id', user.id),
+        supabase.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
+      ]);
 
-      if (error) throw error;
-      if (data) {
-        setPrefs((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
-            Object.keys(DEFAULT_PREFS)
-              .filter((k) => data[k] !== undefined && data[k] !== null)
-              .map((k) => [k, data[k]])
-          ),
-        }));
+      setCatalog(((types.data ?? []) as unknown as EventType[]).filter((e) => e.supports_email));
+
+      const map: Record<string, Frequency> = {};
+      for (const r of (rows.data ?? []) as Array<{ event_type: string; email_frequency: Frequency }>) {
+        map[r.event_type] = r.email_frequency;
       }
-    } catch (error: any) {
-      logger.error('Error fetching preferences', error instanceof Error ? error : new Error(String(error)), { component: 'NotificationSettings' });
+      setPrefs(map);
+
+      const legacyRow = (v1.data ?? {}) as Record<string, string | null>;
+      const legacyMap: Record<string, Frequency> = {};
+      for (const k of [...LEGACY_PLAYER, ...LEGACY_STAFF]) {
+        legacyMap[k] = (legacyRow[k] as Frequency | null) ?? LEGACY_DEFAULTS[k];
+      }
+      setLegacy(legacyMap);
+    } catch (error) {
+      logger.error('Failed to load notification settings', undefined, { error });
     } finally {
       setDataLoading(false);
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) load();
+  }, [user, load]);
+
+  const failToast = (error: unknown) =>
+    toast({
+      title: t('notifications.saveError'),
+      description: getFriendlyErrorMessage(error, t('notifications.saveErrorDescription', 'Please try again.')),
+      variant: 'destructive',
+    });
+
+  /** PESSIMISTIC: reflect the new value only AFTER the write succeeds, so a failed save never
+   *  leaves the UI showing something the database does not have (v1 did the reverse). */
+  const saveEvent = async (eventKey: string, frequency: Frequency) => {
+    if (!user) return;
+    setSavingKey(eventKey);
+    try {
+      const { error } = await supabase
+        .from('notification_preferences_v2')
+        .upsert(
+          { user_id: user.id, event_type: eventKey, email_frequency: frequency, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,event_type' },
+        );
+      if (error) throw error;
+      setPrefs((p) => ({ ...p, [eventKey]: frequency }));
+      toast({ title: t('notifications.saved') });
+    } catch (error) {
+      logger.error('Failed to save notification preference', undefined, { error, eventKey });
+      failToast(error);
+    } finally {
+      setSavingKey(null);
+    }
   };
 
-  const savePreferences = useCallback(
-    async (newPrefs: NotificationPrefs) => {
-      setSaving(true);
-      try {
-        const { data: existing } = await supabase
-          .from('notification_preferences')
-          .select('id')
-          .eq('user_id', user!.id)
-          .maybeSingle();
-
-        const payload = {
-          booking_confirmation: newPrefs.booking_confirmation,
-          booking_reminder: newPrefs.booking_reminder,
-          open_slots_digest: newPrefs.open_slots_digest,
-          upcoming_sessions_digest: newPrefs.upcoming_sessions_digest,
-          payment_receipt: newPrefs.payment_receipt,
-          waitlist_update: newPrefs.waitlist_update,
-          new_booking: newPrefs.new_booking,
-          booking_cancelled: newPrefs.booking_cancelled,
-          new_follower: newPrefs.new_follower,
-          new_player: newPrefs.new_player,
-          new_registration: newPrefs.new_registration,
-          new_review: newPrefs.new_review,
-          upcoming_schedule_digest: newPrefs.upcoming_schedule_digest,
-          payment_received: newPrefs.payment_received,
-          updated_at: new Date().toISOString(),
-        };
-
-        if (existing) {
-          const { error } = await supabase
-            .from('notification_preferences')
-            .update(payload)
-            .eq('user_id', user!.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from('notification_preferences')
-            .insert({ user_id: user!.id, ...payload });
-          if (error) throw error;
-        }
-
-        toast({ title: t('notifications.saved') });
-      } catch (error: any) {
-        toast({
-          title: t('notifications.saveError'),
-          description: getFriendlyErrorMessage(error, t('notifications.saveErrorDescription', 'Failed to save your notification preferences. Please try again.')),
-          variant: 'destructive',
-        });
-      } finally {
-        setSaving(false);
-      }
-    },
-    [user, toast, t]
-  );
-
-  const updatePref = (key: keyof NotificationPrefs, value: Frequency) => {
-    const next = { ...prefs, [key]: value };
-    setPrefs(next);
-    savePreferences(next);
+  /**
+   * Legacy v1 column write. UPSERT on user_id — notification_preferences.user_id is UNIQUE, so
+   * unlike v1's select-then-insert/update this is atomic. With per-row saving, two quick changes
+   * by a brand-new user would otherwise BOTH observe "no row" and BOTH insert, and the second
+   * would die on the unique constraint (losing that change). Unset columns keep their COLUMN
+   * DEFAULTs on insert and are left untouched on conflict.
+   */
+  const saveLegacy = async (column: LegacyKey, frequency: Frequency) => {
+    if (!user) return;
+    setSavingKey(column);
+    try {
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(
+          { user_id: user.id, [column]: frequency, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' },
+        );
+      if (error) throw error;
+      setLegacy((l) => ({ ...l, [column]: frequency }));
+      toast({ title: t('notifications.saved') });
+    } catch (error) {
+      logger.error('Failed to save legacy notification preference', undefined, { error, column });
+      failToast(error);
+    } finally {
+      setSavingKey(null);
+    }
   };
 
-  const categories =
-    effectiveRole === 'player'
-      ? getPlayerCategories(t)
-      : getTrainerCategories(t);
+  if (loading || dataLoading) return <FullPageLoader />;
 
-  const defaultFrequencies: Frequency[] = ['instant', 'daily', 'weekly', 'off'];
+  const visible = catalog.filter((e) => (STAFF_AUDIENCES.has(e.audience) ? isStaff : true));
+  const alwaysOn = visible.filter((e) => e.required_delivery);
+  const configurable = visible.filter((e) => !e.required_delivery);
+  const legacyKeys: LegacyKey[] = [...LEGACY_PLAYER, ...(isStaff ? LEGACY_STAFF : [])];
 
-  if (loading || dataLoading) {
-    return <FullPageLoader />;
-  }
+  const eventLabel = (key: string) => t(`notifications.events.${key}.label`, key.replace(/_/g, ' '));
+  const freqLabel = (f: Frequency) => t(`notifications.frequency.${f}`);
 
   return (
-    <div className="min-h-screen bg-background" data-testid="page-notification-settings">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" aria-label={t('goBack', 'Go back')} onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <Bell className="h-6 w-6 text-primary" />
-            <span className="font-bold text-xl">{t('notifications.title')}</span>
-          </div>
+    <main className="container mx-auto max-w-3xl px-4 py-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label={t('back')}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            {t('notifications.heading')}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t('notifications.subtitle')}</p>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2">{t('notifications.heading')}</h1>
-          <p className="text-muted-foreground">{t('notifications.subtitle')}</p>
-        </div>
+      {configurable.length > 0 && (
+        <Card data-testid="notification-settings-configurable">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('notifications.sections.choose', 'Your notifications')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {configurable.map((e) => (
+              <div key={e.key} className="flex items-center justify-between gap-4" data-testid={`pref-row-${e.key}`}>
+                <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+                {e.supports_digest ? (
+                  <Select
+                    value={prefs[e.key] ?? e.default_email_frequency}
+                    onValueChange={(v) => saveEvent(e.key, v as Frequency)}
+                    disabled={savingKey === e.key}
+                  >
+                    <SelectTrigger id={`pref-${e.key}`} className="w-[130px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {FREQUENCIES.map((f) => <SelectItem key={f} value={f}>{freqLabel(f)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Switch
+                    id={`pref-${e.key}`}
+                    checked={(prefs[e.key] ?? e.default_email_frequency) !== 'off'}
+                    onCheckedChange={(on) => saveEvent(e.key, on ? 'instant' : 'off')}
+                    disabled={savingKey === e.key}
+                  />
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-        <div className="space-y-6">
-          {categories.map((category, ci) => (
-            <Card key={ci}>
-              <CardHeader>
-                <CardTitle className="text-lg">{category.title}</CardTitle>
-                <CardDescription>{category.description}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {category.items.map((item, ii) => {
-                  const freqs = item.allowedFrequencies || defaultFrequencies;
-                  return (
-                    <div key={item.key}>
-                      {ii > 0 && <Separator className="mb-4" />}
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-start gap-3 min-w-0">
-                          <div className="mt-0.5 shrink-0">{item.icon}</div>
-                          <div className="min-w-0">
-                            <Label className="font-medium">
-                              {t(`notifications.types.${item.key}.label`)}
-                            </Label>
-                            <p className="text-sm text-muted-foreground">
-                              {t(`notifications.types.${item.key}.description`)}
-                            </p>
-                          </div>
-                        </div>
-                        <Select
-                          value={prefs[item.key]}
-                          onValueChange={(v) => updatePref(item.key, v as Frequency)}
-                          disabled={saving}
-                        >
-                          <SelectTrigger className="w-[130px] shrink-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {freqs.map((f) => (
-                              <SelectItem key={f} value={f}>
-                                {t(`notifications.frequency.${f}`)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      {legacyKeys.length > 0 && (
+        <Card data-testid="notification-settings-legacy">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('notifications.sections.other', 'Other notifications')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {legacyKeys.map((k) => (
+              <div key={k} className="flex items-center justify-between gap-4" data-testid={`pref-row-${k}`}>
+                <Label htmlFor={`pref-${k}`} className="font-normal">{t(`notifications.types.${k}.label`)}</Label>
+                <Select
+                  value={legacy[k] ?? LEGACY_DEFAULTS[k]}
+                  onValueChange={(v) => saveLegacy(k, v as Frequency)}
+                  disabled={savingKey === k}
+                >
+                  <SelectTrigger id={`pref-${k}`} className="w-[130px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(LEGACY_DIGEST.has(k) ? DIGEST_ONLY : FREQUENCIES).map((f) => (
+                      <SelectItem key={f} value={f}>{freqLabel(f)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-        <p className="text-sm text-muted-foreground mt-6 text-center">
-          {t('notifications.securityNote')}
-        </p>
-      </main>
-    </div>
+      {alwaysOn.length > 0 && (
+        <Card data-testid="notification-settings-always-on">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Lock className="h-4 w-4" />
+              {t('notifications.sections.alwaysOn', 'Always sent')}
+            </CardTitle>
+            <CardDescription>
+              {t('notifications.sections.alwaysOnDesc', 'Receipts, confirmations and security emails cannot be turned off.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {alwaysOn.map((e) => (
+              <div key={e.key} className="flex items-center justify-between gap-4 text-sm" data-testid={`always-on-${e.key}`}>
+                <span>{eventLabel(e.key)}</span>
+                <Badge variant="secondary" className="font-normal">{t('notifications.alwaysOn', 'Always on')}</Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </main>
   );
 }

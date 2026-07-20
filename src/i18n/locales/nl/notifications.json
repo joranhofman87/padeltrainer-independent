@@ -90,6 +90,75 @@
         "label": "Ontvangen betalingen",
         "description": "Ontvang een melding wanneer je een betaling ontvangt"
       }
-    }
+    },
+    "events": {
+      "booking_confirmed_player": {
+        "label": "Boeking bevestigd"
+      },
+      "booking_confirmed_staff": {
+        "label": "Nieuwe boeking"
+      },
+      "booking_request_staff": {
+        "label": "Boekingsverzoek"
+      },
+      "booking_cancelled_player": {
+        "label": "Boeking geannuleerd"
+      },
+      "booking_cancelled_staff": {
+        "label": "Boeking geannuleerd (team)"
+      },
+      "session_reminder_player": {
+        "label": "Herinnering training"
+      },
+      "payment_receipt_player": {
+        "label": "Betaalbewijs"
+      },
+      "payment_received_staff": {
+        "label": "Betaling ontvangen"
+      },
+      "invoice_created_player": {
+        "label": "Nieuwe factuur"
+      },
+      "invoice_paid_player": {
+        "label": "Factuur betaald"
+      },
+      "invoice_paid_staff": {
+        "label": "Factuur betaald (team)"
+      },
+      "invoice_payment_failed": {
+        "label": "Betaling mislukt"
+      },
+      "invoice_reminder_player": {
+        "label": "Factuurherinnering"
+      },
+      "rebook_invite_player": {
+        "label": "Uitnodiging herboeken"
+      },
+      "rebook_paid_player": {
+        "label": "Herboeking bevestigd"
+      },
+      "rebook_paid_staff": {
+        "label": "Herboeking betaald"
+      },
+      "review_received_trainer": {
+        "label": "Nieuwe review"
+      },
+      "password_reset": {
+        "label": "Wachtwoord resetten"
+      },
+      "account_email_changed": {
+        "label": "E-mailadres gewijzigd"
+      },
+      "marketing_updates": {
+        "label": "Productupdates"
+      }
+    },
+    "sections": {
+      "choose": "Jouw notificaties",
+      "other": "Overige notificaties",
+      "alwaysOn": "Altijd verstuurd",
+      "alwaysOnDesc": "Bevestigingen, betaalbewijzen en beveiligingsmails kun je niet uitzetten."
+    },
+    "alwaysOn": "Altijd aan"
   }
 }

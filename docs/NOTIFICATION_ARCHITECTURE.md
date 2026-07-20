@@ -458,7 +458,34 @@ Prerequisites:
      rather than throwing. Deliberately small: no new dashboard, and no BOOKING surface —
      the app has no standalone booking detail page, and the staff rows are reachable on the
      invoice surface now that PR 6b records `related_invoice_id`.
-8. `NotificationSettings` v2 UI (replaces v1).
+8. `NotificationSettings` v2 UI (replaces v1). **← shipped (PR 8).** The page is driven by
+   the `notification_event_types` CATALOG (readable by `authenticated` precisely so the UI can
+   label itself) and stores per user × event in `notification_preferences_v2`. Rules it must
+   keep: (a) `required_delivery` events render as **"Always on" with NO control** — the
+   resolver forces `email_frequency := 'instant'` for them, so a toggle would silently do
+   nothing; (b) a MISSING pref row means "use the event default", not "off", so the page only
+   writes on change and never pre-seeds; (c) **no WhatsApp/push UI** — nothing seeds
+   `supports_push`, and whatsapp cannot deliver until PR 9, so an opt-in there would be a
+   promise we don't keep; (d) saves are **pessimistic** (state updates only after the write
+   succeeds — v1 was optimistic with no rollback, so a failed save left the UI lying).
+   **Role filtering treats `academy_manager` + `trainer` as ONE staff bucket** rather than
+   trusting `audience` literally: `booking_confirmed_staff` is catalogued `academy_manager`
+   but PR 6b's fan-out also mails TRAINERS, so a literal match would hide a setting from
+   people who receive it. A transitional **"Other notifications"** group keeps the
+   **COMPLETE v1 column set** editable. The rule is "every column send-email can still
+   consult", NOT "columns with no v2 event key" — the latter is too narrow and strands live
+   settings, because send-email still gates legacy sends on `booking_confirmation`,
+   `booking_reminder`, `booking_cancelled`, `new_review`, `payment_receipt`, `payment_received`,
+   `new_booking` and `open_slots_digest` even where a v2 event of a similar NAME exists (they
+   are two different enforcement paths: v1 gates send-email, v2 gates the outbox). Live callers
+   confirm it — `send-digest-emails` sends booking_confirmation/booking_reminder/
+   booking_cancelled, `BookLesson` sends booking_request→new_booking, `BookForPlayerDialog`
+   sends manual_booking_confirmation→booking_confirmation, `notify-followers` sends
+   new_availability|slot_reopened→open_slots_digest. Legacy fallbacks mirror the COLUMN DEFAULTs
+   of migration 20260210090026 exactly (notably `open_slots_digest` = **weekly**, not daily).
+   PR 10 migrates those senders and the group goes.
+   The route + the academy-managed-trainer exemption are unchanged: outbound email footers
+   deep-link to `settings/notifications` as their unsubscribe target.
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
    (once the owner's provider/templates are approved).
 10. Retire/wrap remaining legacy direct sends through the outbox; update this
