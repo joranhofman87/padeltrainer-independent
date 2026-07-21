@@ -1218,7 +1218,12 @@
     "vatBulkUpdateSuccess": "{{slots}} sessies en {{invoices}} facturen bijgewerkt",
     "vatBulkUpdateError": "Fout bij het bijwerken van bestaande sessies en facturen",
     "genericError": "Kon de instelling niet opslaan. Probeer het opnieuw.",
-    "updateFailed": "Instelling opslaan is niet gelukt"
+    "updateFailed": "Instelling opslaan is niet gelukt",
+    "minNotice": {
+      "label": "Minimale aanmeldtijd voor spelers",
+      "description": "Spelers kunnen zich niet meer aanmelden binnen deze tijd voor aanvang. Jij kunt zelf altijd nog iemand toevoegen.",
+      "saved": "Opgeslagen"
+    }
   },
   "noTrainersYet": "Nog geen trainers beschikbaar in dit gebied. kom binnenkort terug!",
   "clearFilters": "Filters wissen",
@@ -1909,5 +1914,11 @@
     "emptyTitle": "Nog geen facturen",
     "emptyFilteredTitle": "Geen {{status}} facturen",
     "emptyDescription": "Maak je eerste factuur aan via de openstaande betalingen."
+  },
+  "bookingCutoff": {
+    "none": "Geen limiet",
+    "hours": "{{count}} uur",
+    "days": "{{count}} dagen",
+    "week": "7 dagen"
   }
 }

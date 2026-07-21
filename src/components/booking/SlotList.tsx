@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Check, Clock, Euro, MapPin, Users } from 'lucide-react';
+import { Calendar, Check, Clock, Euro, Lock, MapPin, Users } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { formatPrice } from '@/lib/pricing';
 
@@ -29,9 +29,20 @@ interface SlotListProps {
   hasCycles: boolean;
   getSlotPrice: (slot: SlotWithDetails) => number;
   onSelect: (slot: SlotWithDetails) => void;
+  /**
+   * Returns the reason a slot can no longer be booked, or null when it can.
+   *
+   * A REASON rather than a boolean on purpose. This is the first disabled state this list has
+   * ever had, and "greyed out" alone would read as "full" — which is a different situation with
+   * a different remedy (wait for a cancellation vs. call the trainer). The copy has to say which.
+   *
+   * Advisory: the server refuses independently. This exists so a player is not invited to fill
+   * in a booking form that will be rejected.
+   */
+  getBookingClosedLabel?: (slot: SlotWithDetails) => string | null;
 }
 
-export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSelect }: SlotListProps) {
+export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSelect, getBookingClosedLabel }: SlotListProps) {
   const { t } = useTranslation('player');
   return (
     <div>
@@ -48,16 +59,22 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
         <div className="grid gap-3 sm:grid-cols-2">
           {slots.map((slot) => {
             const slotPrice = getSlotPrice(slot);
+            const closedLabel = getBookingClosedLabel?.(slot) ?? null;
 
             return (
               <Card
                 key={slot.id}
+                data-testid={`slot-card-${slot.id}`}
+                data-booking-closed={closedLabel ? 'true' : undefined}
+                aria-disabled={closedLabel ? true : undefined}
                 className={`transition-all ${
-                  selectedSlotId === slot.id
+                  closedLabel
+                    ? 'opacity-60 cursor-not-allowed bg-muted/30'
+                    : selectedSlotId === slot.id
                     ? 'ring-2 ring-primary border-primary cursor-pointer'
                     : 'hover:border-primary/50 cursor-pointer'
                 }`}
-                onClick={() => onSelect(slot)}
+                onClick={() => { if (!closedLabel) onSelect(slot); }}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -76,6 +93,18 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
                     {formatDate(slot.start_time, 'HH:mm')} -{' '}
                     {formatDate(slot.end_time, 'HH:mm')}
                   </div>
+                  {/* Named reason, above the fold of the card: a player must not have to infer
+                      from a grey card whether it is full or closed. */}
+                  {closedLabel && (
+                    <Badge
+                      variant="outline"
+                      className="mb-2 gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                      data-testid={`slot-closed-${slot.id}`}
+                    >
+                      <Lock className="h-3 w-3" />
+                      {closedLabel}
+                    </Badge>
+                  )}
                   {slot.location && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                       <MapPin className="h-3 w-3" />
@@ -105,7 +134,10 @@ export function SlotList({ slots, selectedSlotId, hasCycles, getSlotPrice, onSel
                       <Users className="h-4 w-4" />
                       <span>
                         {t('booking.spotsLeft', {
-                          available: slot.spotsLeft || (slot.max_participants || 4),
+                          // ?? not ||: a FULL slot has spotsLeft === 0, which is falsy, so `||`
+                          // fell through and advertised it as completely empty. Found by looking
+                          // at the rendered page, not by a test.
+                          available: slot.spotsLeft ?? (slot.max_participants ?? 4),
                           total: slot.max_participants || 4,
                           defaultValue: '{{available}}/{{total}} spots left',
                         })}

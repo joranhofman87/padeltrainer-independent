@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, Euro, MapPin, Repeat } from 'lucide-react';
+import { Check, Euro, Lock, MapPin, Repeat } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { formatPrice } from '@/lib/pricing';
 
@@ -20,9 +20,15 @@ interface CycleBundleListProps {
   bundles: CyclusBundle[];
   selectedCyclusId: string | null;
   onSelect: (bundle: CyclusBundle) => void;
+  /**
+   * Why this whole series can no longer be booked, or null. A cycle is all-or-nothing: one
+   * session inside its booking cutoff blocks the series, matching the server, which refuses the
+   * purchase rather than quietly selling the remaining sessions. Advisory — the server decides.
+   */
+  getBookingClosedLabel?: (bundle: CyclusBundle) => string | null;
 }
 
-export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBundleListProps) {
+export function CycleBundleList({ bundles, selectedCyclusId, onSelect, getBookingClosedLabel }: CycleBundleListProps) {
   const { t } = useTranslation('player');
   if (bundles.length === 0) return null;
 
@@ -33,15 +39,22 @@ export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBu
         {t('booking.trainingCyclesHeading')}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        {bundles.map((cyclus) => (
+        {bundles.map((cyclus) => {
+          const closedLabel = getBookingClosedLabel?.(cyclus) ?? null;
+          return (
           <Card
             key={cyclus.cyclus_id}
+            data-testid={`cycle-card-${cyclus.cyclus_id}`}
+            data-booking-closed={closedLabel ? 'true' : undefined}
+            aria-disabled={closedLabel ? true : undefined}
             className={`transition-all ${
-              selectedCyclusId === cyclus.cyclus_id
+              closedLabel
+                ? 'opacity-60 cursor-not-allowed bg-muted/30'
+                : selectedCyclusId === cyclus.cyclus_id
                 ? 'ring-2 ring-primary border-primary cursor-pointer'
                 : 'hover:border-primary/50 cursor-pointer'
             }`}
-            onClick={() => onSelect(cyclus)}
+            onClick={() => { if (!closedLabel) onSelect(cyclus); }}
           >
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
@@ -53,6 +66,16 @@ export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBu
                   <Check className="h-5 w-5 text-primary" />
                 )}
               </div>
+              {closedLabel && (
+                <Badge
+                  variant="outline"
+                  className="mb-2 gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  data-testid={`cycle-closed-${cyclus.cyclus_id}`}
+                >
+                  <Lock className="h-3 w-3" />
+                  {closedLabel}
+                </Badge>
+              )}
               <Badge variant="secondary" className="mb-2">
                 {t('booking.sessionsCount', { count: cyclus.slots.length })}
               </Badge>
@@ -74,7 +97,8 @@ export function CycleBundleList({ bundles, selectedCyclusId, onSelect }: CycleBu
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

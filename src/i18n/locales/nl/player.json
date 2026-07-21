@@ -277,7 +277,12 @@
     "perSpotShort": "{{price}}/plek",
     "spotsLeft": "{{available}}/{{total}} plekken vrij",
     "avgRating": "Gem. {{rating}}",
-    "trainingCycleFallback": "Trainingscyclus"
+    "trainingCycleFallback": "Trainingscyclus",
+    "cutoff": {
+      "closed": "Boeken gesloten {{duration}} voor aanvang",
+      "closedCycle": "Een sessie in deze reeks begint te snel om nog te boeken",
+      "closedTitle": "Boeken gesloten"
+    }
   },
   "bookings": {
     "title": "Mijn trainingen",
@@ -486,5 +491,11 @@
     "previousMonth": "Vorige maand",
     "nextMonth": "Volgende maand",
     "trainerFallback": "Trainer"
+  },
+  "bookingCutoff": {
+    "none": "Geen limiet",
+    "hours": "{{count}} uur",
+    "days": "{{count}} dagen",
+    "week": "7 dagen"
   }
 }

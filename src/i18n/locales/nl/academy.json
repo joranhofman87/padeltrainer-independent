@@ -538,7 +538,11 @@
     "timezoneDescription": "Stel de tijdzone in die wordt gebruikt voor het plannen en weergeven van lestijden",
     "timezoneSaved": "Tijdzone bijgewerkt",
     "warningsDescription": "Stel drempelwaarden in voor wanneer er waarschuwingsiconen worden getoond op het kalenderoverzicht als spelers in hetzelfde tijdslot grote verschillen hebben.",
-    "warningsSaved": "Waarschuwingsinstellingen opgeslagen"
+    "warningsSaved": "Waarschuwingsinstellingen opgeslagen",
+    "minNotice": "Minimale aanmeldtijd voor spelers",
+    "minNoticeDescription": "Spelers kunnen zich niet meer aanmelden binnen deze tijd voor aanvang. Medewerkers kunnen altijd nog handmatig iemand toevoegen.",
+    "minNoticeSaved": "Aanmeldlimiet bijgewerkt",
+    "minNoticeSaveError": "Aanmeldlimiet bijwerken mislukt"
   },
   "terms": {
     "title": "Algemene voorwaarden",
