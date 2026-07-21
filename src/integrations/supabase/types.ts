@@ -4397,6 +4397,60 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_fanout_jobs: {
+        Row: {
+          academy_profile_id: string | null
+          created_at: string
+          enqueued_count: number
+          event_anchor: string
+          event_key: string
+          follower_cursor: string | null
+          id: string
+          lease_expires_at: string | null
+          lease_owner: string | null
+          no_identity_count: number
+          skipped_count: number
+          slot_ids: string[]
+          status: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id?: string | null
+          created_at?: string
+          enqueued_count?: number
+          event_anchor: string
+          event_key: string
+          follower_cursor?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          no_identity_count?: number
+          skipped_count?: number
+          slot_ids: string[]
+          status?: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string | null
+          created_at?: string
+          enqueued_count?: number
+          event_anchor?: string
+          event_key?: string
+          follower_cursor?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          no_identity_count?: number
+          skipped_count?: number
+          slot_ids?: string[]
+          status?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notification_outbox: {
         Row: {
           attempts: number
@@ -8929,7 +8983,10 @@ export type Database = {
         }[]
       }
       create_invoice_deduped: { Args: { _payload: Json }; Returns: Json }
-      create_open_slots_fanout: { Args: { p_slot_ids: string[] }; Returns: string }
+      create_open_slots_fanout: {
+        Args: { p_slot_ids: string[] }
+        Returns: string
+      }
       create_rebook_group_guest: {
         Args: {
           _email?: string
@@ -9889,7 +9946,11 @@ export type Database = {
         Returns: boolean
       }
       process_notification_fanout: {
-        Args: { p_lease_seconds?: number; p_max_followers?: number; p_worker: string }
+        Args: {
+          p_lease_seconds?: number
+          p_max_followers?: number
+          p_worker: string
+        }
         Returns: Json
       }
       queue_onboarding_emails: {
