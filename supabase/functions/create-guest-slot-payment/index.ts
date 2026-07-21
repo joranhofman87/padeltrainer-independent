@@ -30,6 +30,7 @@ import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
+import { assertSlotsOutsideBookingCutoff, type CutoffCheckClient } from "../_shared/booking-cutoff.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -199,6 +200,31 @@ Deno.serve(async (req) => {
     }
 
     // 5. Guest identity — always a guest_players row (never an existing player_id).
+
+    // BOOKING CUTOFF — public self-booking only. Checked here because book_guest_*_for_payment
+    // take no user id and so never reach can_book_slot, which carries the rule for registered
+    // players. Refused BEFORE any payment is minted: the gate is booking creation, not payment
+    // completion. Staff adding a guest last-minute go through the authenticated staff paths and
+    // are unaffected.
+    {
+      const cutoff = await assertSlotsOutsideBookingCutoff(
+        supabase as unknown as CutoffCheckClient,
+        [slotId],
+      );
+      if (!cutoff.ok) {
+        return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
+      }
+      if ("degraded" in cutoff) {
+        // Deploy order is migration-first, so this should never fire. Fail open (a blocked sale
+        // is worse than a late one, and staff can cancel) but say so LOUDLY.
+        await notifySlack(supabase, "edge_function_error", {
+          function: "create-guest-slot-payment",
+          error: "is_slot_within_player_booking_cutoff RPC missing — cutoff not enforced (deploy order violated)",
+          detail: cutoff.detail,
+        });
+      }
+    }
+
     const owner = slot.academy_profile_id
       ? { academyProfileId: slot.academy_profile_id as string }
       : { trainerId: slot.trainer_id as string };
