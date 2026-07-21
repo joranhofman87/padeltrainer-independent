@@ -729,6 +729,7 @@ export type Database = {
           name: string
           payment_terms_days: number | null
           phone: string | null
+          player_booking_min_notice_minutes: number
           platform_fee_override: number | null
           price_display_mode: string
           rebook_rules: string | null
@@ -786,6 +787,7 @@ export type Database = {
           name: string
           payment_terms_days?: number | null
           phone?: string | null
+          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
           price_display_mode?: string
           rebook_rules?: string | null
@@ -843,6 +845,7 @@ export type Database = {
           name?: string
           payment_terms_days?: number | null
           phone?: string | null
+          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
           price_display_mode?: string
           rebook_rules?: string | null
@@ -6986,6 +6989,7 @@ export type Database = {
           last_processed_payment_id: string | null
           mollie_customer_id: string | null
           payment_terms_days: number | null
+          player_booking_min_notice_minutes: number
           platform_fee_override: number | null
           preferred_max_rating: number | null
           preferred_min_rating: number | null
@@ -7052,6 +7056,7 @@ export type Database = {
           last_processed_payment_id?: string | null
           mollie_customer_id?: string | null
           payment_terms_days?: number | null
+          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
@@ -7118,6 +7123,7 @@ export type Database = {
           last_processed_payment_id?: string | null
           mollie_customer_id?: string | null
           payment_terms_days?: number | null
+          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
