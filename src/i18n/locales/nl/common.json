@@ -503,7 +503,8 @@
       "optInWithNumber": "Stuur me een herinnering voor deze training op {{phone}}. Je kunt dit altijd stoppen.",
       "phoneLabel": "Telefoonnummer",
       "savesToProfile": "We bewaren dit nummer bij je profiel."
-    }
+    },
+    "availabilityUnverified": "We kunnen het aanbod nu even niet ophalen. Probeer het zo opnieuw."
   },
   "availableSlots": "Beschikbare plekken",
   "slot": "plek",
@@ -910,5 +911,11 @@
   "slotConflict": {
     "trainerOverlap": "Deze trainer heeft al een sessie die overlapt met de gekozen tijd. Een trainer kan maar één sessie tegelijk geven — kies een andere tijd of verwijder eerst de bestaande sessie."
   },
-  "goBack": "Terug"
+  "goBack": "Terug",
+  "bookingCutoff": {
+    "none": "Geen limiet",
+    "hours": "{{count}} uur",
+    "days": "{{count}} dagen",
+    "week": "7 dagen"
+  }
 }

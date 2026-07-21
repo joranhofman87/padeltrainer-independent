@@ -172,6 +172,8 @@ Deno.serve(async (req) => {
     const total = baseTotal + computeCyclusExtrasTotal(cycleExtraCosts, slots.length);
 
     // 6. Guest identity — always a guest_players row.
+
+
     const owner = slots[0].academy_profile_id
       ? { academyProfileId: slots[0].academy_profile_id as string }
       : { trainerId };
@@ -239,9 +241,24 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (rpcError) {
+      // Every refusal this RPC can raise is mapped — the mutation boundary is the ONLY place
+      // the guest cutoff is enforced (see create-guest-slot-payment).
+      if ((rpcError.message || "").includes("booking_cutoff")) {
+        logStep("Refused — booking cutoff", { cyclusId });
+        return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
+      }
       if ((rpcError.message || "").includes("slot_full")) {
         logStep("Refused — a session is full", { cyclusId });
         return json({ error: "slot_full" }, 409);
+      }
+      // A session was hidden between our read and the RPC's lock.
+      if ((rpcError.message || "").includes("slot_not_public")) {
+        logStep("Refused — a session is no longer public (RPC boundary)", { cyclusId });
+        return json({ error: "slot_unavailable", message: "Deze cyclus is niet meer beschikbaar." }, 409);
+      }
+      if ((rpcError.message || "").includes("invalid_input")) {
+        logStep("Refused — invalid input at the RPC boundary", { cyclusId });
+        return json({ error: "invalid_input" }, 400);
       }
       throw new Error(`Failed to reserve cyclus: ${rpcError.message}`);
     }

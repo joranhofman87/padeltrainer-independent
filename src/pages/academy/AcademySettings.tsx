@@ -1,16 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
-import {
-  Settings,
-  AlertCircle,
-  Loader2,
-  FileText,
-  UserPlus,
-  Trash2,
-  MessageSquare,
-  ListChecks
-} from 'lucide-react';
+import { AlertCircle, FileText, ListChecks, Loader2, Lock, MessageSquare, Settings, Trash2, UserPlus } from 'lucide-react';
 import { Globe, Clock } from 'lucide-react';
 import { COMMON_TIMEZONES } from '@/lib/timezones';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -42,6 +33,7 @@ import { AcademyPriceDisplayCard } from '@/components/academy/AcademyPriceDispla
 
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { BOOKING_CUTOFF_PRESETS, formatCutoffMinutes } from '@/lib/bookingCutoff';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -69,6 +61,8 @@ export default function AcademySettings() {
   const [savingWelcome, setSavingWelcome] = useState(false);
   const [academyTimezone, setAcademyTimezone] = useState('Europe/Amsterdam');
   const [updatingTimezone, setUpdatingTimezone] = useState(false);
+  const [minNotice, setMinNotice] = useState(0);
+  const [updatingMinNotice, setUpdatingMinNotice] = useState(false);
   const [warningMaxRatingSpread, setWarningMaxRatingSpread] = useState<string>('');
   const [warningMaxAgeDiffYears, setWarningMaxAgeDiffYears] = useState<string>('');
   const [savingWarnings, setSavingWarnings] = useState(false);
@@ -141,7 +135,7 @@ export default function AcademySettings() {
     const loadTermsAndWelcome = async () => {
       const { data } = await supabase
         .from('academy_profiles')
-        .select('general_terms, welcome_message, timezone, warning_max_rating_spread, warning_max_age_diff_years')
+        .select('general_terms, welcome_message, timezone, warning_max_rating_spread, warning_max_age_diff_years, player_booking_min_notice_minutes')
         .eq('id', activeAcademy.id)
         .maybeSingle();
       if (data?.general_terms) {
@@ -152,6 +146,7 @@ export default function AcademySettings() {
       }
       if ((data as any)?.timezone) {
         setAcademyTimezone((data as any).timezone);
+        setMinNotice((data as { player_booking_min_notice_minutes?: number | null }).player_booking_min_notice_minutes ?? 0);
       }
       if ((data as any)?.warning_max_rating_spread != null) {
         setWarningMaxRatingSpread(String((data as any).warning_max_rating_spread));
@@ -666,6 +661,66 @@ export default function AcademySettings() {
                 <SelectContent>
                   <SelectItem value="nl">🇳🇱 Nederlands</SelectItem>
                   <SelectItem value="en">🇬🇧 English</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Player booking cutoff */}
+        <Card className={flushOnMobileCardClass()} data-testid="academy-min-notice-card">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <Lock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-lg">
+                  {t('settings.minNotice', 'Minimum notice for player bookings')}
+                </CardTitle>
+                <CardDescription>
+                  {t('settings.minNoticeDescription',
+                    'Players cannot book sessions less than this long before the start time. Staff can still add bookings manually.')}
+                </CardDescription>
+              </div>
+              <Select
+                value={String(minNotice)}
+                onValueChange={async (value) => {
+                  if (!activeAcademy) return;
+                  const minutes = Number(value);
+                  setUpdatingMinNotice(true);
+                  try {
+                    const { error } = await supabase
+                      .from('academy_profiles')
+                      .update({ player_booking_min_notice_minutes: minutes })
+                      .eq('id', activeAcademy.id);
+                    if (error) throw error;
+                    setMinNotice(minutes);
+                    toast({ title: t('settings.minNoticeSaved', 'Booking cutoff updated') });
+                  } catch (error) {
+                    // No `as any` / `error: any` here, unlike the neighbouring timezone card:
+                    // the column is in the generated types now, and the suppression ratchet for
+                    // this file is at its existing count — new code should not spend it.
+                    toast({
+                      title: t('common.error'),
+                      description: getFriendlyErrorMessage(error, t('settings.minNoticeSaveError', 'Failed to update the booking cutoff')),
+                      variant: 'destructive',
+                    });
+                  } finally {
+                    setUpdatingMinNotice(false);
+                  }
+                }}
+                disabled={updatingMinNotice}
+              >
+                <SelectTrigger className="w-[240px]" data-testid="academy-min-notice-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BOOKING_CUTOFF_PRESETS.map((m) => (
+                    <SelectItem key={m} value={String(m)}>
+                      {formatCutoffMinutes(m, (k, fb, o) => t(k, fb, o))}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

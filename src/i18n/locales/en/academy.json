@@ -410,7 +410,11 @@
     "timezoneDescription": "Set the timezone used for scheduling and displaying lesson times",
     "timezoneSaved": "Timezone updated",
     "warningsDescription": "Set thresholds for when to show warning icons on the calendar overview when players in the same slot have big differences.",
-    "warningsSaved": "Warning settings saved"
+    "warningsSaved": "Warning settings saved",
+    "minNotice": "Minimum notice for player bookings",
+    "minNoticeDescription": "Players cannot book sessions less than this long before the start time. Staff can still add bookings manually.",
+    "minNoticeSaved": "Booking cutoff updated",
+    "minNoticeSaveError": "Failed to update the booking cutoff"
   },
   "terms": {
     "title": "General Terms",

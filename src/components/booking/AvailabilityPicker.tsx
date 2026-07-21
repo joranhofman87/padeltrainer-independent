@@ -33,7 +33,7 @@ export function AvailabilityPicker({
   className,
 }: AvailabilityPickerProps) {
   const { t, i18n } = useTranslation('common');
-  const { dayGroups, loading } = usePublicAvailability(owner);
+  const { dayGroups, loading, availabilityUnverified } = usePublicAvailability(owner);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   // Re-group by OWNER-timezone day (the hook groups browser-local; the widget must show academy-local
@@ -54,6 +54,16 @@ export function AvailabilityPicker({
       </Card>
     );
   }
+  // Same distinction as the calendar: an unverifiable offer must not read as an empty one.
+  // This widget is embedded, so it renders a one-line notice rather than a card.
+  if (availabilityUnverified) {
+    return (
+      <p className={`text-sm text-muted-foreground ${className ?? ''}`} data-testid="picker-unverified">
+        {t('booking.availabilityUnverified', 'We kunnen het aanbod nu even niet ophalen. Probeer het zo opnieuw.')}
+      </p>
+    );
+  }
+
   if (days.length === 0) return null;
 
   const totalSlots = days.reduce((sum, d) => sum + d.slots.length, 0);

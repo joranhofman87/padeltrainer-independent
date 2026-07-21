@@ -182,7 +182,11 @@ export function BookingSummary({
               {/* Quantity picker for allow_single_booking */}
               {(() => {
                 const maxP = selectedSlot.max_participants || 1;
-                const spotsAvailable = selectedSlot.spotsLeft || maxP;
+                // ?? not ||: spotsLeft === 0 is falsy, so `||` silently offered the FULL slot's
+                // whole capacity as still available. Public surfaces now exclude full slots, so
+                // this is defence for a leak rather than the primary guard — but the quantity
+                // picker is where a wrong number becomes a wrong charge.
+                const spotsAvailable = selectedSlot.spotsLeft ?? maxP;
                 const slotPrice = getSlotPrice(selectedSlot);
                 const perSpot = maxP > 1 && selectedSlot.allow_single_booking ? slotPrice / maxP : 0;
                 const minGroup = selectedSlot.cyclus_id ? (cycleSettingsMap[selectedSlot.cyclus_id]?.min_group_size || 1) : 1;

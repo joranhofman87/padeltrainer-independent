@@ -56,6 +56,54 @@ Source audits (do not re-derive — link): [`audits/MUTATION_BOUNDARY_AUDIT.md`]
 - **Fresh-eyes P0 (forged-JWT service-role bypass) fixed + deployed**: `isServiceRoleRequest` now `timingSafeEqual`s the bearer/apikey against the real service-role key (`supabase/functions/_shared/service-role-auth.ts:84-96`) instead of trusting a decodable JWT claim. This is the durable backstop for every `requireUser`-gated edge fn in the table.
 - **Person layer landed under rows 10/15** (person unification, [`PERSON_UNIFICATION_PLAN.md`](PERSON_UNIFICATION_PLAN.md)): `merge_guest_players` is twin-aware (`20260826220000` — two-persons guard, twin-stamp carry, money-row + CASCADE-child repoint; the `stamp_person_id_*` triggers re-derive `person_id` on every repoint), and `create_invoice_deduped` is person-keyed + service_role-only (`20260902100000`) so one person can no longer be double-billed across their profile/guest keys. Identity truth is `person_links`, never `player_id`/`guest_player_id`/`linked_profile_id` alone.
 
+## Player booking cutoff (minimum notice)
+
+Academies and trainers can require a minimum notice before a player books
+(`academy_profiles.player_booking_min_notice_minutes`,
+`trainer_profiles.player_booking_min_notice_minutes`, both `NOT NULL DEFAULT 0`, CHECK 0..10080).
+
+**Precedence: the STRICTER of the two wins** — `greatest(academy, trainer)`, NULLs treated as 0.
+A trainer can therefore *tighten* their academy's rule but never loosen it, and a trainer's 0
+contributes nothing rather than zeroing the academy's setting. This is deliberately a `max` and
+not an override: under override semantics a trainer's 0 would be indistinguishable from "unset"
+and would silently disable the academy default. An independent trainer's slot has no academy, so
+it uses the trainer's own value. Default 0 everywhere means the feature is inert until somebody
+sets one — including for sessions that have already started.
+
+**Staff are exempt.** The rule applies to player/public SELF-booking only; a trainer or academy
+manager adding someone is unaffected, so last-minute admin keeps working.
+
+**Where it is enforced** (see `20260925100000_player_booking_min_notice.sql`):
+
+| Path | Boundary |
+| --- | --- |
+| Authenticated player self-insert | `trg_enforce_booking_slot_tier` → `can_book_slot` → `'booking_cutoff'` |
+| Registered pay-first | `create-mollie-payment` pre-check, then `book_slot_for_payment` → `can_book_slot` |
+| Guest/public checkout | `book_guest_{slot,cyclus,cart}_for_payment` — the ONLY guest enforcement point |
+| Staff booking for a player | exempt (the trigger returns early when `NEW.player_id` is not the caller's) |
+
+The cutoff is a **new reason token on `can_book_slot`**, not a second trigger: that function was
+already the single source of truth for "may this player self-book", and the existing trigger
+already isolates the self-booking case — re-deriving that staff test in a new trigger would be a
+second copy that can drift.
+
+Three properties worth preserving if this is ever changed:
+
+1. **It gates booking CREATION, not payment completion.** The guest RPC guard sits *below* the
+   live-hold reuse branches, so a guest who began checkout outside the cutoff can still return
+   from Mollie and finish paying. Guarding at the top of those functions silently made the rule
+   block payment continuation too, which is a different policy.
+2. **Tier is checked before the cutoff**, so a hidden slot still reports `slot_not_released`
+   rather than revealing it exists but is merely late.
+3. **The client is advisory.** `src/lib/bookingCutoff.ts` mirrors the SQL so the booking page can
+   disable slots a player cannot book, but the database clock decides. A closed slot shows a
+   *named* reason ("Booking closed 48 hours before start") rather than a generic grey card,
+   because "closed" and "full" are different situations with different remedies.
+
+Both SQL helpers are `service_role` only. This project auto-grants EXECUTE on new functions to
+`anon`/`authenticated` via `ALTER DEFAULT PRIVILEGES`, and a bare `REVOKE FROM PUBLIC` does not
+undo it — so the revoke names the roles, and a test pins it.
+
 ## The guardrail
 
 `src/test/mutationBoundary.test.ts` is a **shrink-only allowlist** (same model as the eslint suppression baseline). A new direct high-risk write on `bookings / availability_slots / cycles / registrations / invoices / slot_priority_claims / email_campaign_recipients` in `src/pages` or `src/components`, or more than the allowlisted count in an existing file, **fails the test** and points the author to a `src/lib/*` owner. `src/lib/**` is the domain layer and is intentionally not scanned. Regenerate the baseline only when a write *moves behind* an owner (it may only shrink).

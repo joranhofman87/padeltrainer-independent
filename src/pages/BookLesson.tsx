@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { logger } from '@/lib/logger';
@@ -28,6 +28,8 @@ import { SlotList } from '@/components/booking/SlotList';
 import { BookingSummary } from '@/components/booking/BookingSummary';
 import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
 import { recordBookingWhatsAppOptIn } from '@/lib/bookingWhatsAppOptIn';
+import { formatCutoffMinutes } from '@/lib/bookingCutoff';
+import { CAPACITY_OCCUPYING_STATUSES, occupiesSeatNow, getSlotCapacity } from '@/lib/lessons';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
@@ -39,6 +41,7 @@ interface BookedPlayerInfo {
 }
 
 interface SlotWithDetails {
+  academy_profile_id?: string | null;
   id: string;
   start_time: string;
   end_time: string;
@@ -106,6 +109,9 @@ export default function BookLesson() {
   const { t } = useTranslation('player');
 
   const [trainer, setTrainer] = useState<TrainerWithProfile | null>(null);
+  // Booking cutoff inputs. ADVISORY ONLY — this hides slots the server would refuse anyway;
+  // the RPC boundary decides, using the database clock.
+  const [slotCutoffs, setSlotCutoffs] = useState<Record<string, { minutes: number; closed: boolean }>>({});
   const [cyclusBundles, setCyclusBundles] = useState<CyclusBundle[]>([]);
   const [individualSlots, setIndividualSlots] = useState<SlotWithDetails[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithDetails | null>(null);
@@ -189,7 +195,7 @@ export default function BookLesson() {
 
     const { data: slotsData, error: slotsError } = await supabase
       .from('availability_slots')
-      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, member_window_ends_at, public_release_status, source_cycle_id, locations:location_id(id, name, city, street_address)`)
+      .select(`id, start_time, end_time, cyclus_id, cyclus_name, court_type, price_per_session, max_participants, allow_single_booking, location_id, rating_system, min_rating, max_rating, priority_window_ends_at, member_window_ends_at, public_release_status, source_cycle_id, academy_profile_id, locations:location_id(id, name, city, street_address)`)
       .eq('trainer_id', trainerData.id)
 
       .eq('is_public', true)
@@ -201,17 +207,51 @@ export default function BookLesson() {
 
     if (slotsData) {
       const slotIds = slotsData.map((s) => s.id);
+      // Ratings for the "average level" badge. The status filter is the CANONICAL occupying set
+      // (was ['pending','confirmed'], which both undercounted capacity and averaged the wrong
+      // group): a player awaiting approval, or holding a live payment, is in this session.
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select(`slot_id, status, profiles:player_id (skill_rating, rating_system), guest_players:guest_player_id (skill_rating, rating_system)`)
+        .select(`slot_id, status, hold_expires_at, profiles:player_id (skill_rating, rating_system), guest_players:guest_player_id (skill_rating, rating_system)`)
         .in('slot_id', slotIds)
-        .in('status', ['pending', 'confirmed']);
+        .in('status', [...CAPACITY_OCCUPYING_STATUSES, 'payment_pending']);
       if (bookingsError) throw bookingsError;
 
-      const slotBookingInfo: Record<string, { count: number; ratings: { rating: number; system: string }[] }> = {};
+      /**
+       * OCCUPANCY comes from get_public_slot_occupancy — the same canonical source the shared
+       * public calendars use. This page used to count bookings itself and got it wrong twice
+       * over: it omitted pending_approval, and it omitted live payment_pending holds, so a slot
+       * that was full server-side still rendered as bookable. It also cannot see a court held
+       * by a paid rebook group, which the RPC reports as fully occupied.
+       *
+       * There is deliberately NO local fallback — see the fail-closed note below.
+       */
+      const canonicalOccupancy: Record<string, number> = {};
+      {
+        const { data: occ, error: occErr } = await supabase.rpc(
+          'get_public_slot_occupancy' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        if (occErr || !occ) {
+          // FAIL CLOSED. There is no viable local fallback: an anonymous visitor has NO SELECT
+          // on `bookings`, so a direct read returns EMPTY rather than erroring — every slot
+          // would look unoccupied and full sessions would go back on sale, silently. Surfacing
+          // the retryable error is the honest outcome; "we cannot tell what is free" must not
+          // render as "everything is free".
+          throw new Error(`Could not load slot availability: ${occErr?.message ?? 'occupancy unavailable'}`);
+        }
+        (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
+          canonicalOccupancy[r.slot_id] = r.occupied;
+        });
+      }
+
+      // Ratings only — occupancy comes from the RPC below and is never derived from this read.
+      const slotBookingInfo: Record<string, { ratings: { rating: number; system: string }[] }> = {};
       bookingsData?.forEach((b) => {
-        if (!slotBookingInfo[b.slot_id]) slotBookingInfo[b.slot_id] = { count: 0, ratings: [] };
-        slotBookingInfo[b.slot_id].count++;
+        // An EXPIRED payment hold is not a participant, so their rating must not skew the
+        // session's average level. Same predicate the server counts with.
+        if (!occupiesSeatNow(b as { status?: string | null; hold_expires_at?: string | null })) return;
+        if (!slotBookingInfo[b.slot_id]) slotBookingInfo[b.slot_id] = { ratings: [] };
         const prof = b.profiles as { skill_rating: number | null; rating_system: string } | null;
         const guestPlayer = b.guest_players as { skill_rating: number | null; rating_system: string } | null;
         const rating = prof?.skill_rating ?? guestPlayer?.skill_rating;
@@ -230,16 +270,19 @@ export default function BookLesson() {
 
       const availableSlots = slotsData
         .filter((s) => {
-          const maxP = (s as any).max_participants || 4;
-          if ((slotBookingInfo[s.id]?.count || 0) >= maxP) return false;
+          // FULL SLOTS NEVER REACH A PUBLIC BOOKING SURFACE. The count is the canonical one, so
+          // pending_approval, live payment holds and a court held by a paid group all count —
+          // each of which previously let a server-full slot render as bookable.
+          const maxP = getSlotCapacity(s as { max_participants?: number | null });
+          if ((canonicalOccupancy[s.id] ?? 0) >= maxP) return false;
           if (!visibleIds.has(s.id)) return false;
           return true;
         })
         .map((s) => {
           const info = slotBookingInfo[s.id];
-          const bookingCount = info?.count || 0;
+          const bookingCount = canonicalOccupancy[s.id] ?? 0;
           const ratings = info?.ratings || [];
-          const maxP = (s as any).max_participants || 4;
+          const maxP = getSlotCapacity(s as { max_participants?: number | null });
           let averageRating: number | null = null;
           let ratingSystem: string | undefined = undefined;
           if (ratings.length > 0) {
@@ -248,6 +291,32 @@ export default function BookLesson() {
           }
           return { ...s, location: s.locations as SlotWithDetails['location'], spotsLeft: maxP - bookingCount, averageRating, ratingSystem } as SlotWithDetails;
         });
+
+      /**
+       * BOOKING CUTOFF, from the shared anon-safe RPC.
+       *
+       * Not read from the settings columns: `trainer_profiles_safe` (what this page reads) does
+       * not expose them, and neither base table is readable by an anonymous visitor — selecting
+       * them either 400s or silently yields 0, which would leave too-late slots on sale. The RPC
+       * publishes the derived answer for PUBLIC slots only, computed with the database clock, so
+       * this page and the shared public calendars apply one identical rule.
+       */
+      {
+        const { data: cutoffRows, error: cutoffErr } = await supabase.rpc(
+          'get_public_slot_booking_cutoff' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        // FAIL CLOSED, as occupancy does. This RPC is the only client source for the cutoff, so
+        // ignoring its error would offer too-late slots and defer the refusal to checkout.
+        if (cutoffErr || !cutoffRows) {
+          throw new Error(`Could not load booking cutoffs: ${cutoffErr?.message ?? 'cutoff unavailable'}`);
+        }
+        const map: Record<string, { minutes: number; closed: boolean }> = {};
+        for (const r of cutoffRows as Array<{ slot_id: string; cutoff_minutes: number; booking_closed: boolean }>) {
+          map[r.slot_id] = { minutes: r.cutoff_minutes ?? 0, closed: Boolean(r.booking_closed) };
+        }
+        setSlotCutoffs(map);
+      }
 
       const cyclusIds: string[] = [];
       slotsData.forEach((s) => {
@@ -322,6 +391,44 @@ export default function BookLesson() {
 
   const getSlotPrice = (slot: SlotWithDetails) => slot.price_per_session || trainer?.hourly_rate || 0;
 
+  /**
+   * Booking cutoff, per slot. ADVISORY: this only decides what the page OFFERS. The server
+   * refuses independently using the database clock, so a skewed browser can make a slot look
+   * bookable that then isn't — never the reverse in a way that matters, because the refusal
+   * still happens.
+   *
+   * Per slot rather than per page because a trainer may work for several academies, and the
+   * strictest of (that slot's academy, this trainer) wins.
+   */
+  const slotCutoffMinutes = useCallback((slot: { id?: string }) =>
+    (slot.id ? slotCutoffs[slot.id]?.minutes : 0) ?? 0, [slotCutoffs]);
+
+  /**
+   * The SERVER's verdict, not a re-derivation of it. The RPC already answered using the database
+   * clock; recomputing from browser time here would be a second rule that can disagree with the
+   * one that actually refuses. isSlotWithinCutoff remains for surfaces that hold only settings.
+   */
+  const isSlotBookingClosed = useCallback((slot: { id?: string }) =>
+    Boolean(slot.id && slotCutoffs[slot.id]?.closed), [slotCutoffs]);
+
+  /** The label a closed slot shows. Names the RULE, not just "unavailable". */
+  const bookingClosedLabel = useCallback((slot: { id?: string }) => {
+    if (!isSlotBookingClosed(slot)) return null;
+    return t('booking.cutoff.closed', {
+      duration: formatCutoffMinutes(slotCutoffMinutes(slot), (k, fb, o) => t(k, { defaultValue: fb, ...(o ?? {}) })),
+      defaultValue: 'Boeken gesloten {{duration}} voor aanvang',
+    });
+  }, [isSlotBookingClosed, slotCutoffMinutes, t]);
+
+  /** A cycle is unbookable if ANY of its sessions is inside the cutoff — matching the server. */
+  const cycleBookingClosedLabel = useCallback((bundle: { slots: Array<{ id?: string }> }) => {
+    const late = bundle.slots.find((sl) => isSlotBookingClosed(sl));
+    if (!late) return null;
+    return t('booking.cutoff.closedCycle', {
+      defaultValue: 'Een sessie in deze reeks begint te snel om nog te boeken',
+    });
+  }, [isSlotBookingClosed, t]);
+
   const profilePhone = ((profile as { phone?: string | null } | null)?.phone ?? '').trim();
   const optInPhone = profilePhone || whatsappPhone.trim();
 
@@ -366,6 +473,21 @@ export default function BookLesson() {
 
   const handleBook = async () => {
     if ((!selectedSlot && !selectedCyclus) || !profile?.id || !trainer) return;
+
+    // Last client-side stop. The lists already disable these, but a selection made before the
+    // cutoff elapsed would otherwise still submit — and the player would meet a server refusal
+    // with no explanation. Advisory: the server refuses regardless.
+    {
+      const closed = selectedSlot
+        ? bookingClosedLabel(selectedSlot)
+        : selectedCyclus
+        ? cycleBookingClosedLabel(selectedCyclus)
+        : null;
+      if (closed) {
+        toast({ title: t('booking.cutoff.closedTitle', { defaultValue: 'Boeken gesloten' }), description: closed, variant: 'destructive' });
+        return;
+      }
+    }
 
     if (applicableTerms && !termsAccepted) {
       toast({ title: t('bookLesson.termsRequired'), description: t('bookLesson.termsRequiredDescription'), variant: 'destructive' });
@@ -621,12 +743,14 @@ export default function BookLesson() {
             />
 
             <CycleBundleList
+              getBookingClosedLabel={cycleBookingClosedLabel}
               bundles={cyclusBundles}
               selectedCyclusId={selectedCyclus?.cyclus_id || null}
               onSelect={(bundle) => { setSelectedCyclus(bundle); setSelectedSlot(null); }}
             />
 
             <SlotList
+              getBookingClosedLabel={bookingClosedLabel}
               slots={individualSlots}
               selectedSlotId={selectedSlot?.id || null}
               hasCycles={cyclusBundles.length > 0}

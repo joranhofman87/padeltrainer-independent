@@ -503,7 +503,8 @@
       "optInWithNumber": "Send me a reminder for this session on {{phone}}. You can stop this at any time.",
       "phoneLabel": "Phone number",
       "savesToProfile": "We will save this number to your profile."
-    }
+    },
+    "availabilityUnverified": "We cannot load the schedule right now. Please try again shortly."
   },
   "availableSlots": "Available Slots",
   "spotLeft": "spot left",
@@ -899,5 +900,11 @@
   "slotConflict": {
     "trainerOverlap": "This trainer already has a session overlapping the chosen time. A trainer can only give one session at a time — pick a different time or remove the existing session first."
   },
-  "goBack": "Go back"
+  "goBack": "Go back",
+  "bookingCutoff": {
+    "none": "No cutoff",
+    "hours": "{{count}} hours",
+    "days": "{{count}} days",
+    "week": "7 days"
+  }
 }

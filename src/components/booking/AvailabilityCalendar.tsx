@@ -42,7 +42,7 @@ export function AvailabilityCalendar({
   alwaysShow = false,
 }: AvailabilityCalendarProps) {
   const { t, i18n } = useTranslation('common');
-  const { dayGroups, loading } = usePublicAvailability(owner);
+  const { dayGroups, loading, availabilityUnverified } = usePublicAvailability(owner);
   const slots = useMemo(() => dayGroups.flatMap((g) => g.slots), [dayGroups]);
   const dateFnsLocale = dateFnsLocaleMap[i18n.language] || enUS;
 
@@ -99,6 +99,29 @@ export function AvailabilityCalendar({
       </Card>
     );
   }
+  /**
+   * "We could not check what is bookable" is NOT "nothing is bookable". Falling through to the
+   * empty-state copy would state a fact we do not have, and with alwaysShow=false the section
+   * would vanish entirely — the visitor would never learn anything went wrong. Shown even when
+   * alwaysShow is false, because a temporary failure is exactly the case worth surfacing.
+   */
+  if (availabilityUnverified) {
+    return (
+      <Card className={className} data-testid="availability-unverified">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-primary" />
+            {t('booking.pickTitle', 'Boek een training')}
+          </CardTitle>
+          <CardDescription>
+            {t('booking.availabilityUnverified',
+              'We kunnen het aanbod nu even niet ophalen. Probeer het zo opnieuw.')}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
   if (slots.length === 0) {
     if (!alwaysShow) return null;
     // Public pages ask to show the booking section even with nothing bookable yet.

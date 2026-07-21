@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BOOKING_CUTOFF_PRESETS, formatCutoffMinutes } from '@/lib/bookingCutoff';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ShieldCheck, Zap, Loader2, MessageSquare, Euro } from 'lucide-react';
@@ -27,6 +29,8 @@ export default function TrainerBookingSettings() {
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [minNotice, setMinNotice] = useState(0);
+  const [savingNotice, setSavingNotice] = useState(false);
   const [savingWelcome, setSavingWelcome] = useState(false);
   const [savingVat, setSavingVat] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
@@ -45,18 +49,45 @@ export default function TrainerBookingSettings() {
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('trainer_profiles')
-      .select('id, require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat')
+      .select('id, require_booking_approval, use_manual_invoicing, welcome_message, prices_include_vat, player_booking_min_notice_minutes')
       .eq('user_id', user!.id)
       .single();
 
     if (data) {
       setTrainerProfileId(data.id);
       setRequireApproval(data.require_booking_approval || false);
+      setMinNotice((data as { player_booking_min_notice_minutes?: number | null }).player_booking_min_notice_minutes ?? 0);
       setUseManualInvoicing(data.use_manual_invoicing || false);
       setWelcomeMessage(data.welcome_message || '');
       setPricesIncludeVat(data.prices_include_vat !== false);
     }
     setLoadingSettings(false);
+  };
+
+  /**
+   * Booking cutoff. Save-on-change, matching the timezone Select on AcademySettings.
+   * Pessimistic: reflect the new value only after the write succeeds.
+   */
+  const handleMinNoticeChange = async (value: string) => {
+    const minutes = Number(value);
+    setSavingNotice(true);
+    try {
+      const { error } = await supabase
+        .from('trainer_profiles')
+        .update({ player_booking_min_notice_minutes: minutes })
+        .eq('user_id', user!.id);
+      if (error) throw error;
+      setMinNotice(minutes);
+      toast({ title: t('bookingSettings.minNotice.saved', { defaultValue: 'Opgeslagen' }) });
+    } catch (error) {
+      toast({
+        title: t('common.error', { defaultValue: 'Er ging iets mis' }),
+        description: getFriendlyErrorMessage(error, t('common.tryAgain', { defaultValue: 'Probeer het opnieuw.' })),
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingNotice(false);
+    }
   };
 
   const handleToggleApproval = async (value: boolean) => {
@@ -209,6 +240,30 @@ export default function TrainerBookingSettings() {
                 onCheckedChange={handleToggleApproval}
                 disabled={saving}
               />
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg" data-testid="min-notice-row">
+              <div className="flex-1 pr-4">
+                <Label htmlFor="min-notice" className="font-medium">
+                  {t('bookingSettings.minNotice.label', { defaultValue: 'Minimale aanmeldtijd voor spelers' })}
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('bookingSettings.minNotice.description', {
+                    defaultValue:
+                      'Spelers kunnen zich niet meer aanmelden binnen deze tijd voor aanvang. Jij kunt zelf altijd nog iemand toevoegen.',
+                  })}
+                </p>
+              </div>
+              <Select value={String(minNotice)} onValueChange={handleMinNoticeChange} disabled={savingNotice}>
+                <SelectTrigger id="min-notice" className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {BOOKING_CUTOFF_PRESETS.map((m) => (
+                    <SelectItem key={m} value={String(m)}>
+                      {formatCutoffMinutes(m, (k, fb, o) => t(k, { defaultValue: fb, ...(o ?? {}) }))}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Explanation Cards */}

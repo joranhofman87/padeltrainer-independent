@@ -35,16 +35,22 @@ const SLOT_SELECT = `
 `;
 
 /** Build the availability_slots `.or()` filter for an owner (academy = its own + its trainers'). */
-async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string> {
+/**
+ * Returns NULL when the owner's slot filter cannot be established. Previously an error here
+ * silently fell through to `academy_profile_id.eq.<id>` alone, quietly dropping every
+ * TRAINER-owned slot from an academy page — availability that looked complete and was not.
+ */
+async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string | null> {
   if (owner.type === 'trainer') return `trainer_id.eq.${owner.trainerId}`;
   // location (public club / venue page): everything bookable AT this venue, whichever trainer.
   // availability_slots.location_id is set on public slots + anon-readable, so no trainer join needed.
   if (owner.type === 'location') return `location_id.eq.${owner.locationId}`;
   // academy: the base academy_trainers table is not anon-readable — use the public view.
-  const { data: trainerRows } = await supabase
+  const { data: trainerRows, error: trainerErr } = await supabase
     .from('academy_trainers_public')
     .select('trainer_profile_id')
     .eq('academy_profile_id', owner.academyId);
+  if (trainerErr) return null;
   const trainerIds = (trainerRows || []).map((t) => t.trainer_profile_id);
   return trainerIds.length > 0
     ? `academy_profile_id.eq.${owner.academyId},trainer_id.in.(${trainerIds.join(',')})`
@@ -60,9 +66,16 @@ async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string> {
 export function usePublicAvailability(owner: AvailabilityOwner): {
   dayGroups: PublicDayGroup[];
   loading: boolean;
+  /**
+   * TRUE when we could not verify what is bookable — occupancy or the booking cutoff — so
+   * NOTHING is offered. Distinct from an empty calendar: "we cannot tell what is free" is not
+   * "nothing is free", and a consumer rendering them identically tells the visitor a falsehood.
+   */
+  availabilityUnverified: boolean;
 } {
   const [dayGroups, setDayGroups] = useState<PublicDayGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [availabilityUnverified, setAvailabilityUnverified] = useState(false);
   const ownerKey =
     owner.type === 'academy' ? `a:${owner.academyId}`
     : owner.type === 'trainer' ? `t:${owner.trainerId}`
@@ -72,9 +85,32 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
+      setAvailabilityUnverified(false);
+
+      /**
+       * THE ONE FAIL PATH. Every way this hook can fail to establish what is bookable ends here:
+       * clear the groups and say so. Handling each site separately is how three of them were
+       * left behind — an error that renders as "nothing available", or leaves STALE slots on
+       * screen, is worse than an error that says nothing, because the visitor believes it.
+       */
+      const failUnverified = (what: string, cause?: unknown) => {
+        logger.error(
+          `Public availability: ${what} — refusing to render slots`,
+          cause instanceof Error ? cause : new Error(String((cause as { message?: string } | null)?.message ?? what)),
+          { component: 'usePublicAvailability', owner: ownerKey },
+        );
+        if (!cancelled) {
+          setDayGroups([]);
+          setAvailabilityUnverified(true);
+        }
+      };
       try {
         const orFilter = await resolveOwnerFilter(owner);
-        const { data: slotsRaw } = await supabase
+        if (orFilter === null) {
+          failUnverified('owner slot filter unavailable');
+          return;
+        }
+        const { data: slotsRaw, error: slotsErr } = await supabase
           .from('availability_slots')
           .select(SLOT_SELECT)
           .or(orFilter)
@@ -88,6 +124,10 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           // PostgREST `in.()` filter 200s at ~500 ids but 400s around 1000. Academies past
           // 500 future public slots need cursor pagination — tracked separately.
           .limit(500);
+        if (slotsErr) {
+          failUnverified('slot query failed', slotsErr);
+          return;
+        }
         const slots = (slotsRaw ?? []) as unknown as RawSlotSelect[];
         if (slots.length === 0) {
           if (!cancelled) setDayGroups([]);
@@ -131,33 +171,51 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           'get_public_slot_occupancy' as never,
           { _slot_ids: slotIds } as never,
         );
-        if (!occErr && occ) {
-          (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
-            bookingCounts[r.slot_id] = r.occupied;
-          });
-        } else {
-          // Deploy-window fallback (RPC not live yet): the legacy direct read — correct for
-          // authed users, no worse than today for anon.
-          const { data: bookingsData } = await supabase
-            .from('bookings')
-            .select('slot_id')
-            .in('slot_id', slotIds)
-            .in('status', ['pending', 'confirmed']);
-          (bookingsData || []).forEach((b) => {
-            bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
-          });
+        /**
+         * FAIL CLOSED. There is no usable fallback here and pretending otherwise is the bug:
+         * anonymous visitors have NO SELECT on `bookings`, so a direct read returns EMPTY rather
+         * than erroring — every slot then looks unoccupied and FULL SESSIONS GO BACK ON SALE,
+         * silently, to exactly the visitors this surface serves. Unknown occupancy must never
+         * render as available.
+         *
+         * Written as a positive guard, like every other fail-closed site in this file: one shape
+         * for one rule is easier to audit than the same rule inverted in half the places.
+         */
+        if (occErr || !occ) {
+          failUnverified('canonical occupancy unavailable', occErr);
+          return;
         }
+        (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
+          bookingCounts[r.slot_id] = r.occupied;
+        });
 
-        // Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
-        // so a guest never fills the whole form only to dead-end (create-*-payment refuses /
-        // Mollie 422). Anon-safe RPC (booleans only, no account data). Deploy-window fallback:
-        // RPC not live → don't filter (show all, no worse than today).
+        /**
+         * Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
+         * so a guest never fills the whole form only to dead-end (create-*-payment refuses /
+         * Mollie 422). Anon-safe RPC (booleans only, no account data).
+         *
+         * FAILS CLOSED — but only when it can matter. This gate decides whether a PAID slot can
+         * actually be paid for, so ignoring its error offers slots that dead-end at checkout with
+         * no_mollie_account. A FREE slot needs no Mollie account, though, so a calendar with no
+         * priced slots is unaffected by this RPC and must not be blanked over an irrelevant
+         * failure. Fail closed exactly when the answer would have been used.
+         */
         let paymentReadyIds: Set<string> | null = null;
         const { data: pr, error: prErr } = await supabase.rpc(
           'get_public_slot_payment_ready' as never,
           { _slot_ids: slotIds } as never,
         );
-        if (!prErr && pr) {
+        if (prErr || !pr) {
+          const anyPriced = slots.some((s) => {
+            const row = s as unknown as { price_per_session?: number | null; total_price?: number | null };
+            return Number(row.price_per_session ?? 0) > 0 || Number(row.total_price ?? 0) > 0;
+          });
+          if (anyPriced) {
+            failUnverified('payment readiness unavailable', prErr);
+            return;
+          }
+          // free-only calendar: nothing here needed a payment account
+        } else {
           paymentReadyIds = new Set(
             (pr as unknown as { slot_id: string; payment_ready: boolean }[])
               .filter((r) => r.payment_ready)
@@ -181,19 +239,50 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           ? new Set([...visibleIds].filter((id) => paymentReadyIds!.has(id)))
           : visibleIds;
 
+        /**
+         * Player booking cutoff, from the shared anon-safe RPC — the SAME call BookLesson makes,
+         * so both surfaces apply one rule computed with the database clock.
+         *
+         * Deliberately not read from academy_profiles / trainer_profiles: anon cannot read either
+         * (public trainer reads go through trainer_profiles_safe), so those selects would silently
+         * yield 0 for exactly the visitors this page is for, leaving too-late slots on sale.
+         *
+         * Dropped rather than dimmed: this surface's invariant is "only open, actionable slots".
+         */
+        const bookingClosedIds = new Set<string>();
+        {
+          const { data: cutoffRows, error: cutoffErr } = await supabase.rpc(
+            'get_public_slot_booking_cutoff' as never,
+            { _slot_ids: slotIds } as never,
+          );
+          if (cutoffErr || !cutoffRows) {
+            /**
+             * FAIL CLOSED, for the same reason occupancy does. This RPC is now the ONLY client
+             * source for "is this slot past its cutoff", so ignoring its error silently offers
+             * too-late slots as bookable and the visitor only meets the refusal at checkout.
+             * An unverifiable rule is not a passed rule.
+             */
+            failUnverified('booking cutoff unavailable', cutoffErr);
+            return;
+          }
+          for (const r of cutoffRows as Array<{ slot_id: string; booking_closed: boolean }>) {
+            if (r.booking_closed) bookingClosedIds.add(r.slot_id);
+          }
+        }
+
         const groups = mapAndGroupPublicSlots(slots as unknown as RawPublicSlotRow[], {
           bookingCounts,
           visibleIds: bookableIds,
           trainerMap,
           nameMap,
+          bookingClosedIds,
         });
         if (!cancelled) setDayGroups(groups);
       } catch (error) {
-        logger.error(
-          'Error fetching public availability',
-          error instanceof Error ? error : new Error(String(error)),
-          { component: 'usePublicAvailability', owner: ownerKey },
-        );
+        // Clears as well as logs: an unexpected throw used to leave the PREVIOUS owner's slots
+        // rendered as if current, which is the worst of the three — stale availability reads as
+        // verified availability.
+        failUnverified('unexpected error', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -206,5 +295,5 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerKey]);
 
-  return { dayGroups, loading };
+  return { dayGroups, loading, availabilityUnverified };
 }

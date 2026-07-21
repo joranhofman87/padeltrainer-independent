@@ -277,7 +277,12 @@
     "perSpotShort": "{{price}}/spot",
     "spotsLeft": "{{available}}/{{total}} spots left",
     "avgRating": "Avg: {{rating}}",
-    "trainingCycleFallback": "Training cycle"
+    "trainingCycleFallback": "Training cycle",
+    "cutoff": {
+      "closed": "Booking closed {{duration}} before start",
+      "closedCycle": "A session in this series starts too soon to book",
+      "closedTitle": "Booking closed"
+    }
   },
   "bookings": {
     "title": "My trainings",
@@ -486,5 +491,11 @@
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
     "trainerFallback": "Trainer"
+  },
+  "bookingCutoff": {
+    "none": "No cutoff",
+    "hours": "{{count}} hours",
+    "days": "{{count}} days",
+    "week": "7 days"
   }
 }

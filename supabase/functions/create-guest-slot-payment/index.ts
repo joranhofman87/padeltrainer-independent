@@ -199,6 +199,8 @@ Deno.serve(async (req) => {
     }
 
     // 5. Guest identity — always a guest_players row (never an existing player_id).
+
+
     const owner = slot.academy_profile_id
       ? { academyProfileId: slot.academy_profile_id as string }
       : { trainerId: slot.trainer_id as string };
@@ -251,6 +253,14 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (bookingError) {
+      // EVERY refusal this RPC can raise is mapped. The mutation boundary is the ONLY place the
+      // guest cutoff is enforced — an edge pre-check was tried and removed, because it sat above
+      // the live-hold reuse and refused guests finishing a checkout they began outside the
+      // cutoff. So an unmapped token here is a generic 500 for a rule we have clear copy for.
+      if ((bookingError.message || "").includes("booking_cutoff")) {
+        logStep("Refused — booking cutoff", { slotId });
+        return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
+      }
       if ((bookingError.message || "").includes("slot_full")) {
         logStep("Refused — slot full", { slotId });
         return json({ error: "slot_full" }, 409);
@@ -260,6 +270,16 @@ Deno.serve(async (req) => {
       if ((bookingError.message || "").includes("single_booking_not_allowed")) {
         logStep("Refused — single_booking_not_allowed (RPC boundary)", { slotId });
         return json({ error: "slot_not_bookable" }, 403);
+      }
+      // Concurrent-change paths: the slot was hidden, or a paid rebook group took the court,
+      // between our read and the RPC's advisory lock. Both have a clean guest-facing meaning.
+      if ((bookingError.message || "").includes("slot_not_public")) {
+        logStep("Refused — slot no longer public (RPC boundary)", { slotId });
+        return json({ error: "slot_unavailable", message: "Deze training is niet meer beschikbaar." }, 409);
+      }
+      if ((bookingError.message || "").includes("reserved_group")) {
+        logStep("Refused — court reserved by a paid group (RPC boundary)", { slotId });
+        return json({ error: "slot_unavailable", message: "Deze training is niet meer beschikbaar." }, 409);
       }
       throw new Error(`Failed to reserve seat: ${bookingError.message}`);
     }

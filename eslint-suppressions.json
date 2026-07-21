@@ -689,7 +689,7 @@
   },
   "src/pages/BookLesson.tsx": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 6
+      "count": 4
     },
     "react-hooks/exhaustive-deps": {
       "count": 1

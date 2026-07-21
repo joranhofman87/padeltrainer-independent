@@ -1215,7 +1215,12 @@
     "vatBulkUpdateSuccess": "Updated {{slots}} sessions and {{invoices}} invoices",
     "vatBulkUpdateError": "Failed to update existing sessions and invoices",
     "genericError": "Failed to save the setting. Please try again.",
-    "updateFailed": "Failed to update setting"
+    "updateFailed": "Failed to update setting",
+    "minNotice": {
+      "label": "Minimum notice for player bookings",
+      "description": "Players cannot book sessions less than this long before the start time. You can still add someone manually.",
+      "saved": "Saved"
+    }
   },
   "noTrainersYet": "No trainers available in this area yet. Check back soon!",
   "clearFilters": "Clear Filters",
@@ -1906,5 +1911,11 @@
     "emptyTitle": "No invoices yet",
     "emptyFilteredTitle": "No {{status}} invoices",
     "emptyDescription": "Create your first invoice from the pending payments tab."
+  },
+  "bookingCutoff": {
+    "none": "No cutoff",
+    "hours": "{{count}} hours",
+    "days": "{{count}} days",
+    "week": "7 days"
   }
 }

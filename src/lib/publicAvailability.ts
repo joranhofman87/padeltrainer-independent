@@ -70,6 +70,15 @@ export interface ShapeContext {
   trainerMap: Record<string, { slug: string | null; user_id: string | null }>;
   /** user_id → full_name. */
   nameMap: Record<string, string>;
+  /**
+   * Slot ids inside their player booking cutoff. These are DROPPED, not dimmed: this is a
+   * browse surface whose invariant is "only open, actionable slots" — the same reason full
+   * slots never reach it. (BookLesson keeps them visible-but-disabled with a named reason,
+   * because a player who navigated to one trainer benefits from knowing WHY.)
+   *
+   * Advisory, like every client-side view of this rule: the server refuses independently.
+   */
+  bookingClosedIds?: Set<string>;
 }
 
 const DEFAULT_MAX_PARTICIPANTS = 4;
@@ -108,6 +117,7 @@ export function mapAndGroupPublicSlots(rawSlots: RawPublicSlotRow[], ctx: ShapeC
       if (seen.has(s.id)) return false;
       seen.add(s.id);
       if (!ctx.visibleIds.has(s.id)) return false;
+      if (ctx.bookingClosedIds?.has(s.id)) return false;
       const maxP = s.max_participants || DEFAULT_MAX_PARTICIPANTS;
       return (ctx.bookingCounts[s.id] || 0) < bookingCapacity(maxP, s.allow_single_booking, s.split_payment);
     })

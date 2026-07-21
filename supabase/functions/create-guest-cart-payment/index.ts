@@ -174,6 +174,8 @@ Deno.serve(async (req) => {
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
     // 6. Guest identity — always a guest_players row, owned by the cart's single org.
+
+
     const owner = academyProfileId ? { academyProfileId } : { trainerId };
     const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, { email, name, phone, owner, source: "public_booking" });
 
