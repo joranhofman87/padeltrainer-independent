@@ -81,6 +81,22 @@ beforeAll(async () => {
       RETURNS boolean LANGUAGE sql STABLE AS $fn$
       SELECT _user_id = '${U_M}'::uuid AND _academy = '${A1}'::uuid $fn$;
 
+    ALTER TABLE public.guest_players ADD COLUMN email text;
+    CREATE TABLE public.notification_contacts (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid,
+      channel text, destination_normalized text, destination_redacted text,
+      consent_status text, consent_scope text, consent_academy_profile_id uuid,
+      consent_trainer_id uuid, consent_source text, consent_at timestamptz,
+      updated_at timestamptz);
+    CREATE UNIQUE INDEX ON public.notification_contacts (channel, guest_player_id)
+      WHERE guest_player_id IS NOT NULL;
+    CREATE OR REPLACE FUNCTION public.notification_redact_destination(d text, c text)
+      RETURNS text LANGUAGE sql IMMUTABLE AS $fn$ SELECT '***' $fn$;
+    -- identity resolver: returns nothing here, so the guest_players fallback is exercised
+    CREATE OR REPLACE FUNCTION public.get_invoice_recipient_identity(
+      _player_id uuid DEFAULT NULL, _guest_player_id uuid DEFAULT NULL, _academy_profile_id uuid DEFAULT NULL)
+      RETURNS TABLE (email text) LANGUAGE sql STABLE AS $fn$ SELECT NULL::text WHERE false $fn$;
+
     -- capture stub for the resolver
     CREATE TABLE public._captured (
       id serial PRIMARY KEY, event_key text, ruser uuid, rguest uuid,
@@ -108,7 +124,7 @@ beforeAll(async () => {
     INSERT INTO public.profiles (id, user_id, full_name) VALUES
       ('${PR1}', '${U_P1}', 'Speler <Een>'), ('${PR2}', '${U_P2}', 'Speler Twee'),
       ('0f000000-0000-0000-0000-0000000000f2', '${U_T}', 'Trainer T');
-    INSERT INTO public.guest_players (id, full_name) VALUES ('${G1}', 'Gast G');
+    INSERT INTO public.guest_players (id, full_name, email) VALUES ('${G1}', 'Gast G', 'gast@example.com');
     INSERT INTO public.locations (id, name, city) VALUES
       ('0d000000-0000-0000-0000-0000000000d1', 'Hal <1>', 'Utrecht');
     INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, start_time, end_time) VALUES
@@ -219,7 +235,16 @@ describe('intent must match booking STATE', () => {
   it('refuses a manual confirmation for a PAID booking — that is the paid path\'s job', async () => {
     await mkBooking(B1, S1, { player: PR1, status: 'confirmed', pay: 'paid' });
     await as(U_P1);
-    await expect(call([B1], 'confirmation_player')).rejects.toThrow(/unpaid confirmed\/pending/);
+    await expect(call([B1], 'confirmation_player')).rejects.toThrow(/unpaid CONFIRMED/);
+  });
+
+  it('refuses a manual confirmation for a PENDING booking — the Mollie upfront state', async () => {
+    // BookLesson's upfront cycle flow inserts status='pending', payment_status='pending'
+    // immediately before redirecting to Mollie. Allowing 'pending' let a player call this and
+    // receive a false "pay your trainer directly" confirmation, then the real paid one later.
+    await mkBooking(B1, S1, { player: PR1, status: 'pending', pay: 'pending' });
+    await as(U_P1);
+    await expect(call([B1], 'confirmation_player')).rejects.toThrow(/unpaid CONFIRMED/);
   });
 });
 
@@ -299,6 +324,60 @@ describe('idempotency is derived from the canonical set', () => {
     const idem = (await db.query<{ idem: string }>(`SELECT idem FROM public._captured`)).rows[0].idem;
     expect(idem).toMatch(/^confirmation_player:/);
     expect(idem).not.toMatch(/^tr_/);
+  });
+});
+
+describe('guests are made DELIVERABLE before enqueueing', () => {
+  // The resolver only falls back to persons.email for ACCOUNT HOLDERS. Without a
+  // tenant-scoped contact a guest-only recipient resolves to no_email_contact: a required
+  // confirmation becomes a visible 'skipped' row, and a cancellation produces NO row at all.
+  const contacts = async () =>
+    (await db.query<{ guest_player_id: string; destination_normalized: string; consent_source: string; consent_scope: string; consent_trainer_id: string | null; consent_academy_profile_id: string | null }>(
+      `SELECT guest_player_id, destination_normalized, consent_source, consent_scope,
+              consent_trainer_id, consent_academy_profile_id FROM public.notification_contacts`)).rows;
+
+  it('provisions a tenant-scoped contact for a staff-created GUEST confirmation', async () => {
+    await mkBooking(B1, S1, { guest: G1 });
+    await as(U_T);
+    expect((await call([B1], 'confirmation_player')).rows[0].v).toBe(1);
+    const c = await contacts();
+    expect(c).toHaveLength(1);
+    expect(c[0].destination_normalized).toBe('gast@example.com');
+    expect(c[0].consent_scope).toBe('tenant');
+    expect(c[0].consent_academy_profile_id).toBe(A1);
+  });
+
+  it('records PROVENANCE as staff_booking, not the paid path\'s label', async () => {
+    // consent_source is the evidence for why we hold the address; borrowing 'paid_booking'
+    // for a staff-created booking would be a false record.
+    await mkBooking(B1, S1, { guest: G1 });
+    await as(U_T);
+    await call([B1], 'confirmation_player');
+    expect((await contacts())[0].consent_source).toBe('staff_booking');
+  });
+
+  it('provisions for a guest CANCELLATION too (non-required: no row would exist at all)', async () => {
+    await mkBooking(B1, S1, { guest: G1, status: 'cancelled' });
+    await as(U_T);
+    expect((await call([B1], 'cancelled_player')).rows[0].v).toBe(1);
+    expect(await contacts()).toHaveLength(1);
+  });
+
+  it('is idempotent across repeated calls', async () => {
+    await mkBooking(B1, S1, { guest: G1 });
+    await as(U_T);
+    await call([B1], 'confirmation_player');
+    await call([B1], 'confirmation_player');
+    expect(await contacts()).toHaveLength(1);
+  });
+});
+
+describe('the caller-controlled array is bounded', () => {
+  it('refuses an oversized set', async () => {
+    await as(U_P1);
+    const many = Array.from({ length: 61 }, (_, i) =>
+      `02000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
+    await expect(call(many, 'request_staff')).rejects.toThrow(/too many bookings/);
   });
 });
 

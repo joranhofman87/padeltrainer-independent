@@ -47,6 +47,89 @@ $$;
 REVOKE ALL ON FUNCTION public.notification_html_escape(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.notification_html_escape(text) TO service_role;
 
+
+-- GUEST DELIVERABILITY.
+--
+-- The resolver's email branch only falls back to persons.email for ACCOUNT HOLDERS. A
+-- guest-only person has no account, so without a tenant-scoped contact row it resolves to
+-- no_email_contact: a required-delivery confirmation becomes a visible 'skipped' row, and a
+-- non-required cancellation produces NO row at all — silently. The paid path already provisions
+-- this via ensure_guest_email_contact; this RPC must too, or staff-created guest bookings and
+-- guest cancellations simply do not arrive.
+--
+-- The existing helper hardcodes consent_source='paid_booking', which would MISLABEL a
+-- staff-created booking's provenance. Provenance on a consent record is not cosmetic — it is
+-- the evidence for why we hold the address — so widen the helper with an explicit source
+-- rather than borrowing a wrong label. The 4-arg form is dropped and replaced by a 5-arg form
+-- defaulting to 'paid_booking', so existing callers (booking-confirmation-email.ts passes four
+-- named args) keep resolving unchanged.
+DROP FUNCTION IF EXISTS public.ensure_guest_email_contact(uuid, text, uuid, uuid);
+
+CREATE OR REPLACE FUNCTION public.ensure_guest_email_contact(
+  p_guest_player_id    uuid,
+  p_email              text,
+  p_academy_profile_id uuid DEFAULT NULL,
+  p_trainer_id         uuid DEFAULT NULL,
+  p_source             text DEFAULT 'paid_booking'
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $fn$
+DECLARE
+  v_email         text := lower(btrim(coalesce(p_email, '')));
+  v_scope_academy uuid;
+  v_scope_trainer uuid;
+  v_id            uuid;
+BEGIN
+  IF p_guest_player_id IS NULL OR v_email = '' OR position('@' IN v_email) < 2 THEN
+    RETURN NULL;
+  END IF;
+
+  IF p_academy_profile_id IS NOT NULL THEN
+    v_scope_academy := p_academy_profile_id;
+    v_scope_trainer := NULL;
+  ELSIF p_trainer_id IS NOT NULL THEN
+    v_scope_academy := NULL;
+    v_scope_trainer := p_trainer_id;
+  ELSE
+    RETURN NULL;  -- no tenant provenance → cannot form a coherent tenant-scoped contact
+  END IF;
+
+  INSERT INTO public.notification_contacts (
+    guest_player_id, person_id, channel,
+    destination_normalized, destination_redacted,
+    consent_status, consent_scope,
+    consent_academy_profile_id, consent_trainer_id,
+    consent_source, consent_at
+  ) VALUES (
+    p_guest_player_id, NULL, 'email',
+    v_email, public.notification_redact_destination(v_email, 'email'),
+    'unknown', 'tenant',
+    v_scope_academy, v_scope_trainer,
+    coalesce(nullif(btrim(p_source), ''), 'paid_booking'), now()
+  )
+  ON CONFLICT (channel, guest_player_id) WHERE guest_player_id IS NOT NULL
+  DO UPDATE SET
+    destination_normalized     = excluded.destination_normalized,
+    destination_redacted       = excluded.destination_redacted,
+    consent_academy_profile_id = excluded.consent_academy_profile_id,
+    consent_trainer_id         = excluded.consent_trainer_id,
+    updated_at                 = now()
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.ensure_guest_email_contact(uuid, text, uuid, uuid, text) IS
+  'Notification v2: upsert a tenant-scoped email contact for a guest so guest notifications are '
+  'deliverable via the outbox. consent_scope=tenant, consent_status=unknown (transactional, not '
+  'a marketing opt-in). p_source records PROVENANCE — paid_booking for the Mollie path, '
+  'staff_booking for staff-created bookings — because a consent record''s source is the evidence '
+  'for why the address is held. Idempotent per guest_player. service_role only.';
+
+REVOKE ALL ON FUNCTION public.ensure_guest_email_contact(uuid, text, uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_guest_email_contact(uuid, text, uuid, uuid, text) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.enqueue_booking_notification(
   p_booking_ids uuid[],
   p_kind        text
@@ -69,6 +152,7 @@ DECLARE
   v_rows      text;
   v_key       text;
   v_count     int := 0;
+  v_guest_email text;
   r           record;
 BEGIN
   IF v_actor IS NULL THEN
@@ -90,6 +174,14 @@ BEGIN
     RETURN 0;
   END IF;
   v_n := array_length(v_ids, 1);
+
+  -- BOUND the caller-controlled array. This is authenticated but not privileged input, and
+  -- everything downstream (joins, aggregation, HTML build, outbox payload) scales with it.
+  -- 60 is comfortably above the largest real cycle (a weekly season is ~52) while keeping a
+  -- single call cheap.
+  IF v_n > 60 THEN
+    RAISE EXCEPTION 'enqueue_booking_notification: too many bookings in one call (%)', v_n;
+  END IF;
 
   -- EVERY id must exist. A missing id means the caller is describing bookings that are not
   -- there, and we must not silently notify about the subset that happens to resolve.
@@ -120,12 +212,16 @@ BEGIN
 
   -- Does the actor OWN this slot's tenant?
   --
-  -- The thing doing the real work here is the explicit `IS NOT NULL` on each side, NOT the
-  -- trailing `IS TRUE` — mutation testing showed the gate still denies with the `IS TRUE`
-  -- removed, but FAILS OPEN the moment `v_trn_user IS NOT NULL AND` is dropped. Without it,
-  -- an orphan trainer_profile (user_id NULL) makes the comparison NULL, and a NULL sails
-  -- through `IF NOT ...` as "not rejected". The `IS TRUE`/`IS NOT TRUE` pair stays as
-  -- belt-and-braces, but the NULL guards are the load-bearing part.
+  -- Three REDUNDANT layers stop an orphan trainer_profile (user_id NULL) turning the
+  -- comparison into NULL and sailing through a gate as "not rejected": the explicit
+  -- IS NOT NULL guards, the trailing IS TRUE, and IS NOT TRUE at the use site.
+  --
+  -- Isolated mutation testing (one change at a time) shows NONE of them is individually
+  -- necessary — removing any one, or even any two, still denies. Only removing all three
+  -- fails open. An earlier comment here claimed the IS NOT NULL guard was "the load-bearing
+  -- part"; that was drawn from a mutation which changed three things at once and attributed
+  -- the result to one of them. Keep all three, and do not let a future cleanup remove the
+  -- last one on the grounds that the others made it redundant.
   v_owner := (
     (v_trn_user IS NOT NULL AND v_actor = v_trn_user)
     OR (v_academy IS NOT NULL AND public.is_academy_manager(v_actor, v_academy) IS TRUE)
@@ -165,13 +261,17 @@ BEGIN
         ) d) <> 1 THEN
       RAISE EXCEPTION 'enqueue_booking_notification: confirmation set covers multiple recipients';
     END IF;
-    -- Not for PAID bookings: those are the paid path's booking_confirmed_player.
+    -- 'confirmed' ONLY, never 'pending'. BookLesson's upfront cycle flow inserts
+    -- status='pending', payment_status='pending' immediately BEFORE redirecting to Mollie,
+    -- so allowing 'pending' let a player call this and receive a false "booking confirmed,
+    -- pay your trainer directly" — followed later by the genuine paid confirmation. All
+    -- three intended manual call sites insert 'confirmed'; the Mollie path does not.
     IF EXISTS (
       SELECT 1 FROM public.bookings
        WHERE id = ANY(v_ids)
-         AND (status NOT IN ('confirmed', 'pending') OR payment_status = 'paid')
+         AND (status IS DISTINCT FROM 'confirmed' OR payment_status = 'paid')
     ) THEN
-      RAISE EXCEPTION 'enqueue_booking_notification: confirmation needs unpaid confirmed/pending bookings';
+      RAISE EXCEPTION 'enqueue_booking_notification: confirmation needs unpaid CONFIRMED bookings';
     END IF;
 
   ELSE  -- cancelled_player
@@ -248,6 +348,23 @@ BEGIN
        GROUP BY pr.user_id, b.guest_player_id, coalesce(pr.full_name, gp.full_name, '')
     LOOP
       CONTINUE WHEN r.ruser IS NULL AND r.rguest IS NULL;   -- nobody to address
+
+      -- A guest has no account for the resolver to fall back on, so make them deliverable
+      -- FIRST. Authoritative address: the invoice identity (honours a linked profile /
+      -- academy billing override), falling back to the address captured on the guest record.
+      IF r.rguest IS NOT NULL THEN
+        BEGIN
+          SELECT i.email INTO v_guest_email
+            FROM public.get_invoice_recipient_identity(NULL, r.rguest, v_academy) AS i;
+        EXCEPTION WHEN OTHERS THEN
+          v_guest_email := NULL;
+        END;
+        IF coalesce(btrim(v_guest_email), '') = '' THEN
+          SELECT gp.email INTO v_guest_email FROM public.guest_players gp WHERE gp.id = r.rguest;
+        END IF;
+        PERFORM public.ensure_guest_email_contact(
+          r.rguest, v_guest_email, v_academy, v_trainer, 'staff_booking');
+      END IF;
 
       IF p_kind = 'confirmation_player' THEN
         v_subject := 'Je boeking is bevestigd';
