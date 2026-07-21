@@ -729,8 +729,8 @@ export type Database = {
           name: string
           payment_terms_days: number | null
           phone: string | null
-          player_booking_min_notice_minutes: number
           platform_fee_override: number | null
+          player_booking_min_notice_minutes: number
           price_display_mode: string
           rebook_rules: string | null
           slug: string
@@ -787,8 +787,8 @@ export type Database = {
           name: string
           payment_terms_days?: number | null
           phone?: string | null
-          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
+          player_booking_min_notice_minutes?: number
           price_display_mode?: string
           rebook_rules?: string | null
           slug: string
@@ -845,8 +845,8 @@ export type Database = {
           name?: string
           payment_terms_days?: number | null
           phone?: string | null
-          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
+          player_booking_min_notice_minutes?: number
           price_display_mode?: string
           rebook_rules?: string | null
           slug?: string
@@ -6989,8 +6989,8 @@ export type Database = {
           last_processed_payment_id: string | null
           mollie_customer_id: string | null
           payment_terms_days: number | null
-          player_booking_min_notice_minutes: number
           platform_fee_override: number | null
+          player_booking_min_notice_minutes: number
           preferred_max_rating: number | null
           preferred_min_rating: number | null
           preferred_rating_system: string | null
@@ -7056,8 +7056,8 @@ export type Database = {
           last_processed_payment_id?: string | null
           mollie_customer_id?: string | null
           payment_terms_days?: number | null
-          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
+          player_booking_min_notice_minutes?: number
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
@@ -7123,8 +7123,8 @@ export type Database = {
           last_processed_payment_id?: string | null
           mollie_customer_id?: string | null
           payment_terms_days?: number | null
-          player_booking_min_notice_minutes?: number
           platform_fee_override?: number | null
+          player_booking_min_notice_minutes?: number
           preferred_max_rating?: number | null
           preferred_min_rating?: number | null
           preferred_rating_system?: string | null
@@ -9621,6 +9621,10 @@ export type Database = {
           target_id: string
         }[]
       }
+      get_slot_player_booking_min_notice_minutes: {
+        Args: { p_slot_id: string }
+        Returns: number
+      }
       get_trainer_dashboard_analytics: {
         Args: { _months?: number }
         Returns: Json
@@ -9813,6 +9817,10 @@ export type Database = {
           p_player_id: string
           p_trainer_id: string
         }
+        Returns: boolean
+      }
+      is_slot_within_player_booking_cutoff: {
+        Args: { p_slot_id: string }
         Returns: boolean
       }
       is_trainer: { Args: { _user_id: string }; Returns: boolean }
