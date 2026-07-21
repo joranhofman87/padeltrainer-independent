@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
 import { validatePhone } from '@/lib/validation';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -49,6 +50,8 @@ export function CartCheckoutDialog({
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  // unchecked by default — consent must be an action the guest took
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -85,6 +88,7 @@ export function CartCheckoutDialog({
           email: email.trim(),
           phone: phone.trim(),
           notes: notes.trim() || undefined,
+          whatsappOptIn,
         },
       });
 
@@ -180,6 +184,12 @@ export function CartCheckoutDialog({
             <Label htmlFor="cart-phone">{t('booking.guest.phone', 'Telefoon')}</Label>
             <PhoneInput id="cart-phone" value={phone} onChange={setPhone} required />
           </div>
+          <WhatsAppOptInField
+            id="cart-whatsapp"
+            checked={whatsappOptIn}
+            onCheckedChange={setWhatsappOptIn}
+            phone={phone}
+          />
           <div className="space-y-1">
             <Label htmlFor="cart-notes">
               {t('booking.guest.notes', 'Opmerking')} <span className="text-muted-foreground">({t('booking.guest.optional', 'optioneel')})</span>

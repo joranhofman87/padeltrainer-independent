@@ -496,6 +496,13 @@
       "addAnother": "Booking multiple sessions? Add this one and pick another",
       "addAnotherWithCount": "Add to selection ({{count}} chosen)",
       "addedKeepBrowsing": "Added! Pick another session — you'll check out via your selection."
+    },
+    "whatsapp": {
+      "optInTitle": "WhatsApp reminders",
+      "optIn": "Send me a reminder for this session on WhatsApp. You can stop this at any time.",
+      "optInWithNumber": "Send me a reminder for this session on {{phone}}. You can stop this at any time.",
+      "phoneLabel": "Phone number",
+      "savesToProfile": "We will save this number to your profile."
     }
   },
   "availableSlots": "Available Slots",

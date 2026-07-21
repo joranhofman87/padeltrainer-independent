@@ -4342,6 +4342,7 @@ export type Database = {
           template_whatsapp: string | null
           updated_at: string
           visibility_scope: string
+          whatsapp_optin_via_booking: boolean
         }
         Insert: {
           audience: string
@@ -4365,6 +4366,7 @@ export type Database = {
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
+          whatsapp_optin_via_booking?: boolean
         }
         Update: {
           audience?: string
@@ -4388,6 +4390,7 @@ export type Database = {
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
+          whatsapp_optin_via_booking?: boolean
         }
         Relationships: []
       }
@@ -9023,6 +9026,16 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      defer_notification_outbox_row: {
+        Args: {
+          p_max_defer_hours?: number
+          p_outbox_id: string
+          p_reason?: string
+          p_retry_minutes?: number
+          p_worker: string
+        }
+        Returns: string
+      }
       digits_only: { Args: { _value: string }; Returns: string }
       enqueue_notification: {
         Args: {
@@ -9443,6 +9456,14 @@ export type Database = {
         }[]
       }
       get_my_person_id: { Args: never; Returns: string }
+      get_my_whatsapp_consent: {
+        Args: never
+        Returns: {
+          consent_at: string
+          destination_redacted: string
+          opted_in: boolean
+        }[]
+      }
       get_or_create_short_link: {
         Args: {
           _permanent?: boolean
@@ -9808,6 +9829,10 @@ export type Database = {
         Args: { p_min?: number; p_profile_id: string; p_profile_type: string }
         Returns: number
       }
+      normalize_phone_e164: {
+        Args: { p_default_country_code?: string; p_phone: string }
+        Returns: string
+      }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
@@ -9819,6 +9844,14 @@ export type Database = {
           p_tenant_academy_profile_id: string
           p_tenant_trainer_id: string
           p_visibility_scope: string
+        }
+        Returns: boolean
+      }
+      person_has_tenant_relationship: {
+        Args: {
+          p_academy_profile_id: string
+          p_person_id: string
+          p_trainer_id: string
         }
         Returns: boolean
       }
@@ -9914,6 +9947,30 @@ export type Database = {
         Args: { _intent: string; _token: string }
         Returns: undefined
       }
+      record_whatsapp_optin: {
+        Args: {
+          p_academy_profile_id?: string
+          p_person_id: string
+          p_phone: string
+          p_source?: string
+          p_trainer_id?: string
+        }
+        Returns: string
+      }
+      record_whatsapp_optin_for_slot: {
+        Args: { p_phone: string; p_slot_id: string; p_source?: string }
+        Returns: string
+      }
+      record_whatsapp_optout: { Args: { p_phone: string }; Returns: number }
+      record_whatsapp_status_event: {
+        Args: {
+          p_error_code?: string
+          p_error_message?: string
+          p_message_sid: string
+          p_status: string
+        }
+        Returns: string
+      }
       rederive_person: { Args: { _person: string }; Returns: undefined }
       reinstate_rebook_claims: {
         Args: { _claim_ids: string[] }
@@ -9938,6 +9995,7 @@ export type Database = {
         Args: { _action: string; _reason?: string; _token: string }
         Returns: Json
       }
+      revoke_my_whatsapp_consent: { Args: never; Returns: number }
       schedule_enrichment_job: { Args: never; Returns: number }
       schedule_invoice_health_check_job: { Args: never; Returns: number }
       schedule_logo_fetch_job: { Args: never; Returns: number }
@@ -10129,6 +10187,30 @@ export type Database = {
       user_owns_registration: {
         Args: { _registration_id: string }
         Returns: boolean
+      }
+      whatsapp_optin_in_scope: {
+        Args: {
+          p_guest_player_id: string
+          p_person_id: string
+          p_tenant_academy_profile_id: string
+          p_tenant_trainer_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      whatsapp_outbox_consent_active: {
+        Args: { p_outbox_id: string }
+        Returns: boolean
+      }
+      write_whatsapp_optin: {
+        Args: {
+          p_academy_profile_id: string
+          p_person_id: string
+          p_phone_e164: string
+          p_source: string
+          p_trainer_id: string
+        }
+        Returns: string
       }
     }
     Enums: {

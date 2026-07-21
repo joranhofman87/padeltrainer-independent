@@ -35,7 +35,13 @@ function clientFieldsRead(source: string): Set<string> {
 
 describe('create-guest-cart-payment — client trust surface', () => {
   it('reads ONLY the slot list and contact fields from the client', () => {
-    const allowed = new Set(['slotIds', 'firstName', 'lastName', 'fullName', 'email', 'phone', 'notes']);
+    // whatsappOptIn (PR 9) is a pure consent BOOLEAN: it gates a notification_contacts write
+    // and touches nothing about pricing, slot selection or identity. The tenant that consent is
+    // scoped to is read from the SLOT server-side, never from the body — which is the property
+    // this suite exists to protect, and why the boolean is safe to accept.
+    const allowed = new Set([
+      'slotIds', 'firstName', 'lastName', 'fullName', 'email', 'phone', 'notes', 'whatsappOptIn',
+    ]);
     const read = clientFieldsRead(fnSource);
     expect([...read].filter((f) => !allowed.has(f))).toEqual([]);
     expect(read.has('slotIds')).toBe(true);
@@ -44,6 +50,14 @@ describe('create-guest-cart-payment — client trust surface', () => {
   it('never reads a client-supplied money or identity field', () => {
     // amount/price/total/guest_player_id/booking_ids must NEVER come from the request body.
     expect(fnSource).not.toMatch(/body\??\.(amount|price|total|payment_amount|guest_?player_?id|booking_?ids)/i);
+  });
+
+  it('never takes the CONSENT TENANT from the client either', () => {
+    // PR 9 accepts a whatsappOptIn boolean, but the academy/trainer that consent is scoped to
+    // must keep coming off the server-read slot rows — a client-named tenant would let anyone
+    // mint a consent row inside someone else's academy.
+    expect(fnSource).not.toMatch(/body\??\.(academy_?profile_?id|academyProfileId|trainer_?id|trainerId)/i);
+    expect(fnSource).toMatch(/academyProfileId,?\n?\s*trainerId|academyProfileId: academyProfileId|academyProfileId,/);
   });
 
   it('guest identity is server-resolved and the Mollie metadata uses the RPC-returned ids', () => {

@@ -486,8 +486,191 @@ Prerequisites:
    PR 10 migrates those senders and the group goes.
    The route + the academy-managed-trainer exemption are unchanged: outbound email footers
    deep-link to `settings/notifications` as their unsubscribe target.
-9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook
-   (once the owner's provider/templates are approved).
+9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook.
+   **Built and reviewable ahead of Twilio auth; SHIPPED DISABLED.** All Twilio/Meta side
+   effects stay blocked until the owner confirms credentials — no templates created, none
+   submitted, nothing sent (the only live Twilio calls are the read-only `diagnose`/`probe`
+   actions on `twilio-content-admin`).
+   - `normalize_phone_e164` — free-text phone → strict E.164, NULL when it cannot normalize
+     CONFIDENTLY. A bare number with no `+` and no leading `0` is rejected rather than guessed:
+     a wrong guess does not error, it messages a stranger.
+   - `record_whatsapp_optin` (auth-bound, self-only; validates the caller-supplied tenant via
+     the INTERNAL `person_has_tenant_relationship`) / `record_whatsapp_optout` (platform-wide —
+     a STOP addresses the sender, not one academy). Opting in with a new number RETIRES the
+     person's other WhatsApp contacts, so a phone change cannot leave the resolver
+     non-deterministically messaging a recycled old number.
+   - `whatsapp_outbox_consent_active` — the worker's SEND-TIME re-check, because a STOP can
+     land between enqueue and send. **Bound to the row's own `contact_id`, NOT to the number.**
+     The question is "is the consent THIS row was enqueued against still valid?", which
+     diverges from "is anyone consented on this number?": A opts in with N → row queued; A
+     moves to a new number, retiring A's contact for N; B (spouse / N's next holder) registers
+     N; a number-keyed check would then return true from **B's** consent and deliver A's
+     private notification to B's phone. Contact-binding also makes recycled numbers a
+     non-issue — a retired contact stays retired whoever later holds the digits.
+   - **Templates are committed to `_shared/whatsapp-templates.ts` and reviewed BEFORE anything
+     is created in Twilio.** A submitted template goes in front of Meta under the business's
+     identity and cannot be quietly withdrawn. `variables` is a positional contract — Twilio
+     fills `{{n}}` by index, so a reorder silently sends a time where a name belongs.
+   - **Worker (`notification-whatsapp-worker`) is OFF unless `WHATSAPP_SEND_ENABLED=true`,
+     and returns BEFORE claiming.** Claiming and then failing would increment `attempts` on
+     every pending row each tick and eventually mark them failed — destroying the queue it is
+     meant to protect. Per-row guards: non-E.164 → terminal; consent revoked → terminal;
+     consent check errored → retry (never send); no committed template → terminal.
+   - **A GLOBAL config gap DEFERS instead of failing** (`defer_notification_outbox_row`, which
+     returns the row to pending and gives the claim's attempt back). Marking a missing template
+     SID or a 401 "retryable" is not sufficient: `record_notification_send_result` fails a row
+     once `attempts >= max_attempts` whatever `p_terminal` says, and 5 attempts of 2^n backoff
+     is only ~62 minutes — far shorter than a credential fix or a Meta template review. Without
+     deferral, a config gap outliving that hour silently discards everything queued behind it.
+     Row-specific faults stay terminal, and a transient provider blip still spends the budget.
+   - **The defer/fail split is drawn by WHOSE INPUT WAS WRONG, not by HTTP semantics.** A 4xx
+     normally reads as "permanent client error", but every row-shaped input is validated
+     locally *before* the call — E.164 recipient, live consent, a committed template, content
+     present — so what remains in the request is environment: the `ContentSid`, the sender, the
+     account. An unapproved / wrong-account / mistyped `ContentSid` returns a 400, and treating
+     that as terminal would destroy the whole queue on its **first drain** — faster and more
+     total than the `max_attempts` exhaustion above.
+     The full split, by Twilio error code where one is given:
+     * **row terminal** — `21610` unsubscribed, `21614` not a mobile, `21211` invalid `To`,
+       `63024` not a WhatsApp user / ToS not accepted, `63032` recipient in a Meta experiment,
+       plus everything we diagnose locally (non-E.164, withdrawn consent, no committed
+       template, no content). No config fix makes these deliverable, so they must never sit in
+       the defer queue. `21610` additionally calls `record_whatsapp_optout`: until the status
+       webhook is live it is our only STOP signal, and ignoring it would keep the resolver
+       queueing messages to someone who opted out.
+     * **defer** — auth/account/sender/template/ContentSid problems, and any *unrecognised* 4xx.
+     * **transient** — 429/5xx/network, plus `63018` (channel rate limit) **by code**: Twilio's
+       docs do not state which HTTP status carries it, and classifying by code means that
+       question never has to be answered — a 400-borne rate limit must not be read as a config
+       gap and parked for a day.
+     Deliberately **not** row-terminal: `63003` "Channel could not find To address". Twilio
+     documents it as primarily recipient-side, but its causes also include a mis-constructed
+     `To` — which would be *our* bug, systematic, and would destroy every queued row. It defers
+     until the delivery log shows it arriving for genuinely unreachable numbers.
+     The row-fault code set is a deliberately **conservative allow-list, not a full table**:
+     unknown codes keep deferring, because a wrongly-deferred row is parked and recoverable
+     while a wrongly-terminal one is a destroyed notification. Codes get promoted into the list
+     from evidence — an unrecognised code appears in the delivery log with its number.
+     The decision itself lives in the pure `whatsappFailureAction()` so it is unit-tested; the
+     worker only switches on it (its `index.ts` calls `serve()` and has no harness, so policy
+     left inline there would be policy nothing verifies).
+   - Deferral is **bounded by time** (24h from when the row became *due* — anchored on
+     `scheduled_for`, so a reminder queued days ahead isn't born half-expired). Past the cap the
+     row fails terminally and lands on the delivery log, because an ambiguous 4xx can also mean
+     genuinely undeliverable (recipient not on WhatsApp, sender blocked) and that must not park
+     forever. Deferrals and exhaustions both raise ops alerts, so a gap that is never fixed
+     parks the queue loudly rather than silently.
+   - The worker is **scheduled on pg_cron from the start** (`20260919110000`, every 2 min,
+     same guarded/idempotent Vault pattern as the email worker). Safe while disabled — the
+     kill switch returns before claiming — and it makes going live a single env-var flip
+     rather than a flip plus a remembered second step.
+   - **No provider idempotency.** Unlike Resend, Twilio's Messages API has no Idempotency-Key,
+     so the outbox claim is the only double-send guard; a crash between Twilio accepting and
+     `record_notification_send_result` committing can re-send after the 15-minute stale reclaim.
+   - Auth failures (401/403) are classified RETRYABLE: they are wrong for every row, so
+     terminal would permanently fail the whole queue over a fixable env var.
+   - `record_notification_send_result` now DERIVES `provider` from the row's channel
+     (email⇒resend, whatsapp⇒twilio) instead of defaulting to `resend`. The old default was
+     right while email was the only worker and silently mislabeled the first non-email
+     worker's sends; deriving it means the push worker cannot repeat that by omission.
+   - Both cron drainers (`notification-email-worker`, `notification-whatsapp-worker`) are
+     `verify_jwt = false` **and now covered by `scripts/check-edge-fn-config.mjs`**: pg_cron
+     presents the service-role key, which on this project is an `sb_secret_…` key and not a
+     JWT, so `verify_jwt = true` 401s them at the gateway before `requireServiceRole` runs —
+     and the cron job still reports success while nothing is ever sent.
+   - `twilio-whatsapp-webhook` (`verify_jwt = false`) handles status callbacks AND inbound
+     STOP on one endpoint. **A withdrawal can arrive in either shape, and the two disagree on
+     which field holds the user**: inbound, `From` is the user; on an outbound status callback
+     `From` is *our sender* and `To` is the user. So a callback with `ErrorCode=21610` revokes
+     consent using **`To`** — reading `From` would opt out our own platform number while the
+     webhook 200s and a delivery-log row lands, i.e. failing in a way that looks like success
+     at every layer. That decision lives in the tested `optOutNumberFromPayload()` rather than
+     being re-derived per call site. A 21610 callback performs **the opt-out first**, then the
+     status event: if only one write survives a transient failure it must be the one that stops
+     us messaging someone who opted out. Both are idempotent under Twilio's callback retries —
+     the status event on its unique index, and the opt-out because `revoked_at` uses
+     `coalesce(revoked_at, now())` to keep the **first** withdrawal time. That field is the
+     audit answer to "when did this person ask us to stop", so a retried callback must not walk
+     it forward; `updated_at` still moves, since the row's write time is a different fact. Other failure codes
+     (63024/21614/63032) mean undeliverable, not "asked us to stop", and never revoke. **The X-Twilio-Signature IS the authentication** — no token
+     configured or a bad signature means 403 before the payload is interpreted. Statuses map
+     onto the EXISTING `email_delivery_events` taxonomy (raw status kept in `reason`) rather
+     than widening a CHECK the PR 7 timeline UI renders; `invoice_id` stays NULL so a WhatsApp
+     failure never wears the invoice email-bounce badge. Idempotent on `(sid, status)`.
+   - **Re-run the mechanical-`off` repair once more immediately before enabling sending.**
+     Migrations apply at deploy, but PR 8's client bundle keeps running in already-open browsers
+     for a while afterwards — and it still writes `whatsapp_frequency='off'` from the column
+     default whenever someone changes an email preference. Any row written in that window is a
+     fresh mechanical `off` created *after* `20260924100000` ran. The repair is a plain
+     idempotent `UPDATE`, so re-running it costs nothing:
+     `UPDATE notification_preferences_v2 SET whatsapp_frequency='instant' WHERE event_type='session_reminder_player' AND whatsapp_frequency='off';`
+     (Do this *before* flipping `WHATSAPP_SEND_ENABLED`, not after — it grants nothing on its
+     own, since the contact gate still applies.)
+   - **Rollout order** (belt and braces alongside the deferral mechanism): set
+     `TWILIO_ACCOUNT_SID` + working credentials, `TWILIO_WHATSAPP_FROM`,
+     `TWILIO_TEMPLATE_SESSION_REMINDER_NL` and `TWILIO_STATUS_CALLBACK_URL` **first**, then
+     flip `WHATSAPP_SEND_ENABLED=true` last. Deferral means getting this order wrong parks
+     rows rather than losing them, but there is no reason to lean on that.
+   - **An explicit booking opt-in IS the WhatsApp opt-in** for the events flagged
+     `whatsapp_optin_via_booking` (migration `20260922100000`). Without this the consent model
+     contradicted itself: the resolver's first gate is a per-event cadence, `prefs_v2` is
+     `user_id`-keyed so a **guest can never express one**, and `booking_confirmed_player` is
+     `required_delivery` — which the settings page renders as "Always on" with no WhatsApp
+     control. A booking checkbox on top of that would have recorded consent that could never
+     send, with every layer reporting success. (PR 3's own comment predicted exactly this and
+     deferred it to PR 9.)
+     The contact stays the authority on "may we message this person for this tenant"; a stored
+     preference becomes an explicit override that still wins, **including `off`** — ticking a
+     box at booking must never undo someone later switching WhatsApp off.
+     Coverage is declarative on the catalog (so a new event cannot silently inherit it) and is
+     currently **`session_reminder_player` alone** — the pilot, and the only event with a
+     committed template.
+   - **`supports_whatsapp` means "a committed template exists"** (migration `20260923100000`).
+     Business-initiated WhatsApp cannot render without a Meta-approved Content template, so the
+     worker terminal-fails a row it has no template for. The catalog originally claimed the
+     channel for five events while `_shared/whatsapp-templates.ts` commits one, which made
+     every consumer over-promise: the resolver would enqueue rows that die on first drain, the
+     settings page offers a toggle for each `supports_whatsapp` event (so a registered user
+     could switch on `invoice_reminder_player` and simply never receive anything), and the
+     booking opt-in would record consent against events that cannot render.
+     Capability now tracks the template set, and it is the **one lever** — flipping it back on
+     is part of committing a template (definition + samples + approval + its `TWILIO_TEMPLATE_*`
+     env var), not a separate step to remember. A cross-layer test asserts catalog capability
+     never exceeds the committed templates, so this cannot drift again.
+     Also the reason `invoice_reminder_player` / `rebook_invite_player` stay off on their own
+     merits: consent given while booking one session is not consent to be chased for money or
+     invited to book again, and that scope creep is what gets a WhatsApp sender reported.
+     `whatsapp_optin_in_scope()` mirrors the resolver's own contact predicate exactly, so the
+     cadence gate and the delivery gate cannot disagree about what counts as consent.
+   - **One-shot repair of PR 8's mechanical `off` values** (migration `20260924100000`). PR 8's
+     page wrote only `email_frequency`, so every row it inserted took `whatsapp_frequency` from
+     the **column default** (`off`) — and there was no WhatsApp control on that page, so those
+     values cannot be a choice. Once `20260922100000` made a stored value authoritative, a
+     player who had once changed their reminder email cadence could tick the WhatsApp box at
+     booking and still never receive anything: the same "consent that cannot send" failure,
+     arriving by a different route. The repair sets those to `instant`, scoped to the pilot
+     event, leaving `email_frequency` and `updated_at` untouched (a data repair should not
+     claim to be a user action).
+     It does **not** contradict "explicit off wins": that rule protects a *choice*, and before
+     PR 9 there was no control to make one with. Values written from here on keep winning.
+     It also **grants nothing** — `instant` clears only the first gate; the second still needs
+     an opted-in in-scope contact. Pinned both ways, including a before/after reproduction.
+     When another template is committed, that event needs the same one-shot consideration:
+     mechanical and chosen `off` are indistinguishable after the fact, which is the real lesson.
+   - **The settings page mirrors that derivation.** Its `effective()` shows WhatsApp as
+     `instant` when there is no stored preference, consent is active and the event is flagged —
+     otherwise the switch would read **off while reminders were being delivered**, which is
+     worse than a control that does nothing because it misreports what is happening. Explicit
+     preferences still win, including `off`. One imprecision, stated rather than hidden: the
+     resolver checks consent *per tenant*, while the page is tenant-agnostic
+     (`get_my_whatsapp_consent` answers "do you have an active opt-in anywhere"), so someone
+     opted in at academy A sees "on" for academy B's events too. That errs on the right side —
+     it reflects that WhatsApp is switched on for them, and the switch still turns it off
+     everywhere.
+   - Owner-side, still open: re-copy `TWILIO_AUTH_TOKEN` from the same account as the `AC…`
+     SID (the probe matrix proved they belong to different accounts — every us1/ie1/au1 ×
+     credential-pair combination 401s), add the `whatsapp:` prefix to `TWILIO_WHATSAPP_FROM`
+     (the sender helper now tolerates its absence), then create/submit the template.
 10. Retire/wrap remaining legacy direct sends through the outbox; update this
     doc + runbooks as each lands.
 

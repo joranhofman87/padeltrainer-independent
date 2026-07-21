@@ -30,6 +30,7 @@ import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
+import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
 import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
@@ -94,6 +95,8 @@ Deno.serve(async (req) => {
     const rawEmail = typeof body?.email === "string" ? body.email.trim() : "";
     const email = rawEmail.toLowerCase();
     const phone = typeof body?.phone === "string" && body.phone.trim() ? body.phone.trim() : null;
+    // Strict === true: a missing or truthy-ish value must never read as consent.
+    const whatsappOptIn = body?.whatsappOptIn === true;
     const notes = typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
     const name = resolveRegistrationNameFields({
       firstName: body?.firstName, lastName: body?.lastName, fullName: body?.fullName,
@@ -202,6 +205,23 @@ Deno.serve(async (req) => {
     const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, {
       email, name, phone, owner, source: "public_booking",
     });
+
+    // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
+    // Tenant comes from the SLOT above, never from the client — the client sends a boolean and
+    // nothing else. Never throws: a consent write must not be able to fail a paid booking.
+    if (whatsappOptIn === true) {
+      const optIn = await recordGuestWhatsAppOptIn(supabase as unknown as ConsentWriteClient, {
+        optIn: whatsappOptIn,
+        phone,
+        guestPlayerId,
+        academyProfileId: slot.academy_profile_id as string | null,
+        trainerId: slot.trainer_id as string | null,
+        source: "public_booking",
+      });
+      if (!optIn.ok && optIn.reason === "error") {
+        console.error("whatsapp opt-in failed", { reason: optIn.reason, detail: optIn.detail });
+      }
+    }
 
     // Already-paid guard: the RPC dedups only a LIVE payment_pending hold, so on a
     // multi-seat slot a guest who ALREADY paid for a seat here could otherwise mint

@@ -159,6 +159,14 @@
       "alwaysOn": "Altijd verstuurd",
       "alwaysOnDesc": "Bevestigingen, betaalbewijzen en beveiligingsmails kun je niet uitzetten."
     },
-    "alwaysOn": "Altijd aan"
+    "alwaysOn": "Altijd aan",
+    "whatsapp": {
+      "title": "WhatsApp",
+      "activeDesc": "WhatsApp-berichten gaan naar {{number}}.",
+      "inactiveDesc": "WhatsApp-berichten staan uit. Je kunt ze aanzetten bij het boeken, door je nummer in te vullen en het WhatsApp-vakje aan te vinken.",
+      "revoke": "Stop WhatsApp-berichten",
+      "revoked": "WhatsApp-berichten gestopt",
+      "toggleFor": "WhatsApp voor {{event}}"
+    }
   }
 }

@@ -52,6 +52,12 @@ verify_jwt = false
 [functions.notification-email-worker]
 verify_jwt = false
 
+# Ops tool for Twilio Content Templates (PR 9). Service-role only, never scheduled —
+# it exists so templates are created from version-controlled definitions rather than by
+# hand in the Twilio console.
+[functions.twilio-content-admin]
+verify_jwt = false
+
 [functions.signup-user]
 verify_jwt = false
 
@@ -247,6 +253,18 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.health-check]
+verify_jwt = false
+
+# Twilio WhatsApp status callbacks + inbound (STOP) messages. Twilio sends no Supabase JWT;
+# the endpoint authenticates every request by X-Twilio-Signature and 403s anything unsigned.
+[functions.twilio-whatsapp-webhook]
+verify_jwt = false
+
+# Cron-driven outbox drainer, same shape as notification-email-worker: the caller is pg_cron
+# presenting the service-role key, which on this project is an `sb_secret_…` key and NOT a
+# JWT — so verify_jwt = true would 401 it at the gateway. It self-authenticates via
+# requireServiceRole.
+[functions.notification-whatsapp-worker]
 verify_jwt = false
 
 # Self-authenticating: validates a user JWT (getUser) for owner sends and the

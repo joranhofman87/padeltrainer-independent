@@ -496,6 +496,13 @@
       "addAnother": "Meerdere sessies boeken? Voeg toe en kies er nog een",
       "addAnotherWithCount": "Voeg toe aan selectie ({{count}} gekozen)",
       "addedKeepBrowsing": "Toegevoegd! Kies nog een sessie — afrekenen doe je via je selectie."
+    },
+    "whatsapp": {
+      "optInTitle": "Herinneringen via WhatsApp",
+      "optIn": "Stuur me een herinnering voor deze training via WhatsApp. Je kunt dit altijd stoppen.",
+      "optInWithNumber": "Stuur me een herinnering voor deze training op {{phone}}. Je kunt dit altijd stoppen.",
+      "phoneLabel": "Telefoonnummer",
+      "savesToProfile": "We bewaren dit nummer bij je profiel."
     }
   },
   "availableSlots": "Beschikbare plekken",
