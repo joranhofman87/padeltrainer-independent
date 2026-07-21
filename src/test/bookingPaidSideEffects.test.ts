@@ -28,6 +28,20 @@ type FakeOpts = {
   profileRows?: { user_id: string; full_name: string | null }[];
   /** error to return from enqueue_notification (default: success). */
   enqueueError?: string;
+  /** resolver answers [] with NO error — the idempotent no-op. Produced NO row. */
+  enqueueEmpty?: boolean;
+  /** resolver answers a 'skipped' row with NO error — a real row, but not a delivery. */
+  enqueueSkipped?: boolean;
+  /** table => error message: the query RESOLVES {data:null,error} (PostgREST 400 / RLS),
+   *  which is the failure mode that used to read as "no rows" everywhere. */
+  queryError?: Record<string, string>;
+  /** make the booking-CONTEXT .single() resolve an ERROR (broken embed / RLS change). */
+  bookingContextError?: string;
+  /** make every query on this table THROW (network/isolate fault), not resolve an error. */
+  throwOnTable?: string;
+  /** make ONLY .single()/.maybeSingle() throw for this table — isolates the display-name
+   *  lookup (which uses .single()) from the staff fan-out's .in() reads on the same table. */
+  throwOnSingle?: string;
 };
 
 /**
@@ -35,7 +49,14 @@ type FakeOpts = {
  * {data: thenData}; .single()/.maybeSingle() resolve {data: rowData}. One chain per
  * from(table) call, so per-table data covers every query the helper runs.
  */
-function chain(thenData: unknown, rowData: unknown = thenData) {
+function chain(
+  thenData: unknown,
+  rowData: unknown = thenData,
+  extra: {
+    rowError?: string; throws?: boolean; throwsSingle?: boolean;
+    thenError?: string; onInsert?: (payload: unknown) => void;
+  } = {},
+) {
   const target = () => {};
   // .in(col, vals) filters are honored when the rows carry that column (the staff
   // notification block resolves managers and trainers with separate .in() reads on
@@ -54,11 +75,29 @@ function chain(thenData: unknown, rowData: unknown = thenData) {
   const self: unknown = new Proxy(target, {
     get(_t, prop) {
       if (prop === 'then') {
+        if (extra.throws) {
+          return (_res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+            Promise.reject(new Error('simulated transport fault')).catch(rej);
+        }
+        if (extra.thenError) {
+          return (res: (v: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: extra.thenError } }).then(res);
+        }
         return (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
           Promise.resolve({ data: applyFilters(thenData), error: null }).then(res, rej);
       }
       if (prop === 'single' || prop === 'maybeSingle') {
-        return () => Promise.resolve({ data: rowData, error: null });
+        if (extra.throws || extra.throwsSingle) return () => Promise.reject(new Error('simulated transport fault'));
+        return () =>
+          Promise.resolve(
+            extra.rowError ? { data: null, error: { message: extra.rowError } } : { data: rowData, error: null },
+          );
+      }
+      if (prop === 'insert') {
+        return (payload: unknown) => {
+          extra.onInsert?.(payload);
+          return self;
+        };
       }
       if (prop === 'in') {
         return (col: string, vals: unknown[]) => {
@@ -81,29 +120,47 @@ function makeFakeSupabase(opts: FakeOpts) {
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
     if (name === 'enqueue_notification') {
       if (opts.enqueueError) return { data: null, error: { message: opts.enqueueError } };
+      if (opts.enqueueEmpty) return { data: [], error: null };
+      if (opts.enqueueSkipped) {
+        return { data: [{ outbox_id: 'ob', channel: 'email', status: 'skipped', skip_reason: 'no_email_contact' }], error: null };
+      }
       return { data: [{ outbox_id: 'ob', channel: 'email', status: 'pending', skip_reason: null }], error: null };
     }
     return { data: null, error: null };
   });
+  const auditRows: Record<string, unknown>[] = [];
   const from = vi.fn((table: string) => {
+    const throws = opts.throwOnTable === table;
+    if (table === 'payment_audit_log') {
+      return chain(null, null, { onInsert: (p) => auditRows.push(p as Record<string, unknown>) });
+    }
     switch (table) {
       case 'bookings':
         // Awaited chains (finalizePriorityClaims + the staff .in() fetch) resolve
         // thenData; the email block ends in .single() (rowData: booking under test).
-        return chain(opts.staffBookings ?? [], opts.booking);
+        return chain(opts.staffBookings ?? [], opts.booking, {
+          rowError: opts.bookingContextError,
+          throws,
+          throwsSingle: opts.throwOnSingle === 'bookings',
+          thenError: opts.queryError?.bookings,
+        });
       case 'invoices':
         return chain(null, opts.invoiceFallbackRow ?? null);
       case 'academy_managers':
-        return chain(opts.managers ?? [], null);
+        return chain(opts.managers ?? [], null, { thenError: opts.queryError?.academy_managers });
       case 'trainer_profiles':
-        return chain(opts.trainerProfiles ?? [], { user_id: 'user-1' });
+        return chain(opts.trainerProfiles ?? [], { user_id: 'user-1' }, {
+          throws,
+          throwsSingle: opts.throwOnSingle === 'trainer_profiles',
+          thenError: opts.queryError?.trainer_profiles,
+        });
       case 'profiles':
         return chain(opts.profileRows ?? [], { full_name: 'Trainer T' });
       default:
         return chain(null, null);
     }
   });
-  return { supabase: { functions: { invoke }, from, rpc }, invoke, rpc };
+  return { supabase: { functions: { invoke }, from, rpc }, invoke, rpc, auditRows };
 }
 
 const SLOT = { start_time: '2027-01-01T10:00:00Z', end_time: '2027-01-01T11:00:00Z', trainer_id: 'tp-1', locations: { name: 'Hal 1', city: 'Utrecht' } };
@@ -320,6 +377,240 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
     });
     await run(supabase, notify);
     expect(notify.mock.calls.some((c) => String(c[1]).includes('staff booking notifications could not be enqueued'))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PR 10a — the 2026-07-20 regression.
+//
+// A real paid guest booking (tr_NSYo…) was transitioned by mollie-webhook, its invoice was
+// created and mailed to the bookkeeper — and then the paying guest AND every staff recipient
+// got nothing. No outbox row, no send, no alert. The whole notification half of the side
+// effects sat inside ONE try whose catch only logged, and the staff fan-out additionally
+// hung off `if (booking)` — a display-name fetch. So a single fault anywhere silently took
+// out three independent notifications and left no trace to find it by.
+//
+// These pin the boundaries: each lane fails alone, and a failure is always LOUD.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PR 10a — one failing lane must not silence the others', () => {
+  const staffFixture = {
+    staffBookings: [{ id: 'B1', availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' } }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  const staffEnqueues = (rpc: { mock: { calls: [string, Record<string, unknown>?][] } }) =>
+    rpc.mock.calls.filter((c) => c[0] === 'enqueue_notification'
+      && (c[1] as { p_event_key?: string } | undefined)?.p_event_key === 'booking_confirmed_staff');
+
+  it('still notifies STAFF when the booking-context read returns an ERROR', async () => {
+    // The exact shape that produced zero staff rows: `const { data: booking }` discarded the
+    // error, `if (booking)` then read false, and the fan-out vanished without a word.
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: guestBooking,
+      bookingContextError: 'column bookings.guest_players does not exist',
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    expect(staffEnqueues(rpc).length, 'staff must be notified even with no display name').toBeGreaterThan(0);
+  });
+
+  it('still notifies STAFF when the display-name lookup THROWS', async () => {
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: guestBooking,
+      throwOnSingle: 'bookings',
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    expect(staffEnqueues(rpc).length, 'a name lookup fault must not cancel notifications').toBeGreaterThan(0);
+  });
+
+  it('records a durable audit row with the COUNTS, so "zero" is visible in the database', async () => {
+    // The original incident was only findable because notification_outbox was empty; there
+    // was nothing in the payment trail saying the notifications had produced nothing.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    const row = auditRows.find((r) => r.status === 'booking_paid_notifications');
+    expect(row, 'every paid booking must leave a notification-outcome row').toBeTruthy();
+    expect(row!.metadata).toMatchObject({ staffRows: expect.any(Number), playerRows: expect.any(Number) });
+    expect(row!.mollie_payment_id).toBe('tr_test');
+  });
+
+  it('runs the STAFF lane even when the PLAYER confirmation cannot enqueue, and alerts', async () => {
+    // The lanes are independent notifications to different people. Before PR 10a they shared
+    // one try/catch, so the payer's confirmation failing could take the staff with it.
+    //
+    // (The outer try/catch now wrapping the staff call is deliberate defence-in-depth, but it
+    // is NOT asserted here: sendStaffBookingNotifications already wraps its own body, so the
+    // outer catch is currently unreachable. A test for it passed even with the alert deleted —
+    // it was catching the INNER alert — so it has been removed rather than left to look like
+    // coverage it never provided.)
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueError: 'resolver unavailable',
+      ...staffFixture,
+    });
+    const notify = await run(supabase);
+    expect(staffEnqueues(rpc).length, 'the staff lane must still be attempted').toBeGreaterThan(0);
+    expect(notify.mock.calls.length, 'an enqueue failure must alert, not vanish').toBeGreaterThan(0);
+  });
+
+  const auditOf = (auditRows: Record<string, unknown>[]) =>
+    auditRows.find((r) => r.status === 'booking_paid_notifications')!.metadata as Record<string, number | string>;
+
+  it('does NOT claim a row when the resolver answers [] with no error', async () => {
+    // The owner's catch. `[]` + no error is the idempotent no-op: correct behaviour, but NO
+    // row was produced by this run. Counting attempts would report a healthy notification for
+    // precisely the situation this audit exists to expose.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueEmpty: true,
+      ...staffFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.staffRows, 'an empty resolver answer is not a staff row').toBe(0);
+    expect(m.playerRows, 'an empty resolver answer is not a player row').toBe(0);
+    expect(Number(m.staffNoop) + Number(m.playerNoop), 'but it IS recorded as a no-op').toBeGreaterThan(0);
+  });
+
+  it('counts a SKIPPED row as skipped, never as delivered', async () => {
+    // A skipped row exists in the outbox but is a required notification that could not be
+    // delivered — the worker alerts on it. It must never inflate the delivered count.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueSkipped: true,
+      ...staffFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.staffRows, 'a skipped row is not a delivered row').toBe(0);
+    expect(Number(m.staffSkipped) + Number(m.skippedRows), 'it must be visible as skipped').toBeGreaterThan(0);
+  });
+
+  it('records the player OUTCOME, not merely that the call returned ok', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    expect(auditOf(auditRows).playerStatus).toBeTypeOf('string');
+  });
+
+  // The tests above exercise the STAFF lane's counting. The PLAYER lane short-circuits to
+  // no_payer with the default fixture (its rows carry no payer identity), so give it a real
+  // registered payer — otherwise playerRows is vacuously 0 and proves nothing.
+  const payerFixture = {
+    staffBookings: [{
+      id: 'B1',
+      player_id: 'P1',
+      guest_player_id: null,
+      profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' },
+      guest_players: null,
+      availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' },
+    }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  it('does NOT count an idempotent PLAYER no-op as a produced row', async () => {
+    // enqueue_notification answering [] means the idempotency key already existed — a
+    // duplicate webhook/verify delivery. ok=true, but this run produced no row.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: playerBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueEmpty: true,
+      ...payerFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.playerRows, 'a no-op produced no player row').toBe(0);
+    expect(m.playerNoop, 'but it must be recorded as a no-op').toBeGreaterThan(0);
+    expect(m.playerStatus).toBe('already_enqueued');
+  });
+
+  it('counts a real PLAYER enqueue as exactly one row', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: playerBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...payerFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.playerRows).toBe(1);
+    expect(m.playerStatus).toBe('pending');
+  });
+
+  // Codex's remaining sibling: RECIPIENT-DISCOVERY reads that resolved {data:null,error}
+  // collapsed into `?? []` and reported a clean zero. A booking with no staff and a booking
+  // whose staff could not be READ looked identical in the audit — the second is an incident.
+  const academyFixture = {
+    staffBookings: [{ id: 'B1', availability_slots: { ...SLOT, academy_profile_id: 'ac-1', trainer_id: 'tp-1' } }],
+    managers: [{ user_id: 'user-mgr', academy_profile_id: 'ac-1' }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-mgr', full_name: 'Manager M' }, { user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  it('staff BOOKINGS read error is reported as an error, never as zero-staff success', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { bookings: 'PostgREST 400: could not resolve embed' },
+      ...academyFixture,
+    });
+    const notify = await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.staffRows).toBe(0);
+    expect(Number(m.staffErrors), 'zero STAFF rows MUST carry a STAFF error').toBeGreaterThan(0);
+    expect(notify.mock.calls.length, 'and it must alert').toBeGreaterThan(0);
+  });
+
+  it('academy manager read error is counted — and trainers are STILL notified', async () => {
+    // Independent recipient groups: failing to resolve managers must not also drop trainers.
+    const { supabase, rpc, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { academy_managers: 'permission denied for table academy_managers' },
+      ...academyFixture,
+    });
+    await run(supabase);
+    expect(Number(auditOf(auditRows).staffErrors), 'unresolved managers is a staff error').toBeGreaterThan(0);
+    expect(staffEnqueues(rpc).length, 'trainers are discovered separately and must proceed').toBeGreaterThan(0);
+  });
+
+  it('trainer profile read error is counted — and academy managers are STILL notified', async () => {
+    const { supabase, rpc, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { trainer_profiles: 'permission denied for table trainer_profiles' },
+      ...academyFixture,
+    });
+    await run(supabase);
+    expect(Number(auditOf(auditRows).staffErrors), 'unresolved trainers is a staff error').toBeGreaterThan(0);
+    expect(staffEnqueues(rpc).length, 'managers are discovered separately and must proceed').toBeGreaterThan(0);
+  });
+
+  it('player bookings read error is enqueue_failed, NOT no_payer', async () => {
+    // Naming the wrong cause is worse than silence: "no_payer" sends the next investigation
+    // to look at the booking's data instead of at a broken query.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: playerBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { bookings: 'PostgREST 400: could not resolve embed' },
+      ...payerFixture,
+    });
+    await run(supabase);
+    expect(auditOf(auditRows).playerStatus, 'a broken query is not a missing payer').toBe('enqueue_failed');
   });
 });
 

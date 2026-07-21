@@ -42,6 +42,8 @@ export const PaymentAuditStatus = {
   memberInvoiceCancelledCovered: "member_invoice_cancelled_covered",
   /** F05: a member's seat was collected twice (own payment + captain's full-court payment) — manual refund. */
   memberSeatDoubleCollected: "member_seat_double_collected",
+  /** PR 10a: what the paid-booking notification lanes actually produced (counts in metadata). */
+  bookingPaidNotifications: "booking_paid_notifications",
   paymentChargedBack: "payment_charged_back",
   paymentRefunded: "payment_refunded",
 } as const;
