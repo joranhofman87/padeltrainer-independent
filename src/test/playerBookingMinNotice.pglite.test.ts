@@ -76,12 +76,20 @@ beforeAll(async () => {
     CREATE TABLE public.availability_slots (
       id uuid PRIMARY KEY, trainer_id uuid NOT NULL, academy_profile_id uuid,
       start_time timestamptz NOT NULL, end_time timestamptz NOT NULL,
-      max_participants integer DEFAULT 1, source_cycle_id uuid);
+      max_participants integer DEFAULT 1, source_cycle_id uuid,
+      split_payment boolean DEFAULT false, whole_slot_booking boolean DEFAULT false,
+      cyclus_id uuid, price_per_session numeric);
     CREATE TABLE public.bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid NOT NULL,
       player_id uuid, guest_player_id uuid, status text DEFAULT 'confirmed',
-      payment_status text, paid_at timestamptz, hold_expires_at timestamptz);
+      payment_status text, paid_at timestamptz, hold_expires_at timestamptz,
+      payment_amount numeric, notes text, seats integer DEFAULT 1);
     CREATE TABLE public.slot_priority_claims (slot_id uuid, player_id uuid, status text);
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY);
+    -- stubs for the deeper machinery the re-emitted guest RPCs touch; those behaviours have
+    -- their own suites, and reproducing them here would just be a second copy of the schema
+    CREATE OR REPLACE FUNCTION public.slot_held_by_paid_group(_slot_id uuid) RETURNS boolean
+      LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
 
     CREATE OR REPLACE FUNCTION public.get_profile_id_for_user(_user_id uuid) RETURNS uuid
       LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
@@ -158,10 +166,30 @@ describe('the default changes nothing', () => {
 });
 
 describe('effective cutoff is the STRICTER of academy and trainer', () => {
-  it('academy 48h alone', async () => {
+  it('ACADEMY DEFAULT applies when the trainer sets nothing', async () => {
+    // The inheritance case. Both columns are NOT NULL DEFAULT 0, and this is only safe because
+    // the rule is greatest(): a trainer's 0 contributes nothing, so max(48h, 0) = 48h and the
+    // academy default survives. Under COALESCE/override semantics 0 would be indistinguishable
+    // from "unset" and would silently ZERO the academy rule — which is exactly why the
+    // combination is a max and not an override, and why a nullable trainer column would add a
+    // state that behaves identically to 0.
     const s = await slot('01000000-0000-0000-0000-000000000002', 100);
+    await setNotice({ academy: 48 * 60, trainer: 0 });
+    expect(await effectiveNotice(s)).toBe(48 * 60);
+  });
+
+  it('the academy default survives even when the trainer row was never touched', async () => {
+    // same case, but relying on the column DEFAULT rather than an explicit 0 write
+    const s = await slot('01000000-0000-0000-0000-000000000011', 100);
+    await db.exec(`UPDATE public.trainer_profiles SET player_booking_min_notice_minutes = DEFAULT WHERE id = '${T1}';`);
     await setNotice({ academy: 48 * 60 });
     expect(await effectiveNotice(s)).toBe(48 * 60);
+  });
+
+  it('a TRAINER OVERRIDE applies when the academy sets nothing', async () => {
+    const s = await slot('01000000-0000-0000-0000-000000000012', 100);
+    await setNotice({ academy: 0, trainer: 24 * 60 });
+    expect(await effectiveNotice(s)).toBe(24 * 60);
   });
 
   it('trainer 72h + academy 48h => 72h (a trainer may TIGHTEN)', async () => {
@@ -305,5 +333,92 @@ describe('the settings themselves', () => {
     await expect(db.exec(
       `UPDATE public.academy_profiles SET player_booking_min_notice_minutes = 10080 WHERE id = '${A1}';`),
     ).resolves.toBeDefined();
+  });
+});
+
+describe('the guest MUTATION BOUNDARY, not just the edge pre-check', () => {
+  // The create-guest-* edge functions pre-check so a guest gets a clean message. But these RPCs
+  // are the last thing before a booking row, they take no user id so they never reach
+  // can_book_slot, and any future caller would otherwise walk straight past the rule. The
+  // registered path has three layers; this is what gives the guest path more than one.
+  const G1 = '0b000000-0000-0000-0000-0000000000b1';
+
+  beforeEach(async () => {
+    await db.exec(`INSERT INTO public.guest_players (id) VALUES ('${G1}') ON CONFLICT DO NOTHING;`);
+  });
+
+  it('book_guest_slot_for_payment REFUSES a slot inside the cutoff', async () => {
+    await setNotice({ academy: 48 * 60 });
+    const s = await slot('01000000-0000-0000-0000-000000000020', 3);
+    await expect(
+      db.query(`SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`),
+    ).rejects.toThrow(/booking_cutoff/);
+  });
+
+  /**
+   * Did the CUTOFF GUARD fire, as opposed to anything else?
+   *
+   * These RPCs reach deep into schema this harness deliberately does not reproduce (capacity,
+   * paid-group holds, split payment, extras). Standing up all of it would be a second copy of
+   * the schema that rots on its own — the full bodies are covered by `supabase db reset` in CI
+   * and by each RPC's own suite. So the positive cases assert the GUARD did not fire, which is
+   * the only thing this migration changed about them.
+   */
+  const cutoffGuardFired = async (sql: string): Promise<boolean> => {
+    try {
+      await db.query(sql);
+      return false;
+    } catch (e) {
+      return /booking_cutoff/.test(String(e));
+    }
+  };
+
+  it('…lets the same slot through when it is outside the cutoff', async () => {
+    await setNotice({ academy: 48 * 60 });
+    const s = await slot('01000000-0000-0000-0000-000000000021', 72);
+    expect(await cutoffGuardFired(
+      `SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`)).toBe(false);
+  });
+
+  it('refuses even when the EDGE pre-check is bypassed entirely', async () => {
+    // calling the RPC directly is exactly what a future caller would do — the whole reason
+    // edge-only enforcement was not enough
+    await setNotice({ trainer: 24 * 60 });
+    const s = await slot('01000000-0000-0000-0000-000000000022', 2);
+    await expect(
+      db.query(`SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`),
+    ).rejects.toThrow(/booking_cutoff/);
+  });
+
+  it('a CYCLE is refused when ANY of its slots is inside the cutoff', async () => {
+    await setNotice({ academy: 48 * 60 });
+    const ok1 = await slot('01000000-0000-0000-0000-000000000023', 100);
+    const ok2 = await slot('01000000-0000-0000-0000-000000000024', 120);
+    const late = await slot('01000000-0000-0000-0000-000000000025', 5);
+    await expect(
+      db.query(`SELECT public.book_guest_cyclus_for_payment('${G1}',
+        ARRAY['${ok1}','${late}','${ok2}']::uuid[], ARRAY[10,10,10]::numeric[], 20, NULL)`),
+    ).rejects.toThrow(/booking_cutoff/);
+
+    // …and lets the purchase through when every slot is clear
+    expect(await cutoffGuardFired(`SELECT public.book_guest_cyclus_for_payment('${G1}',
+      ARRAY['${ok1}','${ok2}']::uuid[], ARRAY[10,10]::numeric[], 20, NULL)`)).toBe(false);
+  });
+
+  it('a CART is refused when ANY of its slots is inside the cutoff', async () => {
+    await setNotice({ academy: 48 * 60 });
+    const ok = await slot('01000000-0000-0000-0000-000000000026', 100);
+    const late = await slot('01000000-0000-0000-0000-000000000027', 5);
+    await expect(
+      db.query(`SELECT public.book_guest_cart_for_payment('${G1}',
+        ARRAY['${ok}','${late}']::uuid[], ARRAY[10,10]::numeric[], 20, NULL)`),
+    ).rejects.toThrow(/booking_cutoff/);
+  });
+
+  it('with no cutoff set the guard is INERT, even 15 minutes before start', async () => {
+    // the no-op-by-default promise, at the boundary rather than only in the helper
+    const s = await slot('01000000-0000-0000-0000-000000000028', 0.25);
+    expect(await cutoffGuardFired(
+      `SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`)).toBe(false);
   });
 });
