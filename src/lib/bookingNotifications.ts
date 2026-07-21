@@ -78,12 +78,13 @@ export async function enqueueBookingNotification(
     return { ok: false, enqueued: 0, error: error.message };
   }
 
+  // Zero rows on a SUCCESSFUL call is an ordinary outcome, not a fault: an idempotent retry
+  // emits nothing, and an optional event the recipient has turned off emits nothing. Warning
+  // on all of them would train everyone to ignore the warning, and the genuinely odd case
+  // (an orphan trainer with no account) would be lost in it. If that case needs alerting it
+  // belongs in the RPC as an explicit error or a structured reason — not inferred out here
+  // from a count that cannot tell the three apart.
   const enqueued = typeof data === 'number' ? data : 0;
-  if (enqueued === 0) {
-    // The RPC answered successfully with zero rows — e.g. an orphan trainer with no account.
-    // Legitimate, but worth seeing rather than assuming a send happened.
-    logger.warn('Booking notification enqueued nothing', { component: context, action: kind });
-  }
   return { ok: true, enqueued };
 }
 
@@ -100,9 +101,16 @@ export function groupBookingIdsByRecipient(
 ): string[][] {
   const byRecipient = new Map<string, string[]>();
   for (const row of rows ?? []) {
-    const recipient = row?.guest_player_id ?? row?.player_id;
     const bookingId = row?.id;
-    if (!recipient || !bookingId) continue;
+    if (!bookingId) continue;
+    // NAMESPACED: guest_player_id and player_id are keys into DIFFERENT tables, so an
+    // un-prefixed map could merge two unrelated people if the values ever coincided.
+    // Guest wins when a row carries both — that row is a staff-booked guest, and keying it
+    // on the player id would address the wrong person.
+    const recipient = row?.guest_player_id
+      ? `guest:${row.guest_player_id}`
+      : row?.player_id ? `player:${row.player_id}` : null;
+    if (!recipient) continue;
     byRecipient.set(recipient, [...(byRecipient.get(recipient) ?? []), bookingId]);
   }
   return [...byRecipient.values()];

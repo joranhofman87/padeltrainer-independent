@@ -55,12 +55,15 @@ describe('the enqueue helper', () => {
     expect(errorLog).toHaveBeenCalledTimes(1);
   });
 
-  it('a SUCCESSFUL call that enqueued nothing is surfaced, not assumed sent', async () => {
+  it('a SUCCESSFUL call that enqueued nothing is ok — zero is an ordinary outcome', async () => {
+    // An idempotent retry emits nothing; so does an optional event the recipient turned off.
+    // Warning on every zero would train everyone to ignore the warning, and bury the one
+    // case that IS odd (an orphan trainer) inside the noise.
     rpc.mockResolvedValue({ data: 0, error: null });
     const r = await enqueueBookingNotification(['b1'], 'request_staff', 'Test');
     expect(r.ok).toBe(true);
     expect(r.enqueued).toBe(0);
-    expect(warnLog).toHaveBeenCalled();   // visible, because "0 rows" is not "delivered"
+    expect(warnLog).not.toHaveBeenCalled();
   });
 
   it('a THROWN rpc failure cannot escape into "booking/delete failed"', async () => {
@@ -168,13 +171,31 @@ describe('groupBookingIdsByRecipient (runtime, not a source pin)', () => {
     expect(groups).toContainEqual(['b3']);
   });
 
-  it('prefers the GUEST key when a row carries both', () => {
-    // A row with both is the staff-booked-for-guest shape; keying on player_id would address
-    // the wrong person.
-    return import('@/lib/bookingNotifications').then(({ groupBookingIdsByRecipient }) => {
-      const groups = groupBookingIdsByRecipient([{ id: 'b1', player_id: 'p1', guest_player_id: 'g1' }]);
-      expect(groups).toEqual([['b1']]);
-    });
+  it('a DUAL-KEY row joins the GUEST group, not the player group', async () => {
+    // The previous version of this test passed a SINGLE row carrying both keys and asserted
+    // [['b1']] — which is the answer under EITHER precedence, so it proved nothing. The
+    // precedence is only observable with companion rows to be grouped WITH.
+    const { groupBookingIdsByRecipient } = await import('@/lib/bookingNotifications');
+    const groups = groupBookingIdsByRecipient([
+      { id: 'b1', player_id: 'p1', guest_player_id: null },   // player-only
+      { id: 'b2', player_id: null, guest_player_id: 'g1' },   // guest-only
+      { id: 'b3', player_id: 'p1', guest_player_id: 'g1' },   // BOTH — staff booked a guest
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups, 'the dual-key booking belongs with the GUEST').toContainEqual(['b2', 'b3']);
+    expect(groups, 'and must NOT be grouped with the registered player').toContainEqual(['b1']);
+  });
+
+  it('namespaces the keys, so a guest id and a player id never collide', async () => {
+    // These uuids index different tables; an un-prefixed map would merge two unrelated people
+    // if the values ever coincided.
+    const { groupBookingIdsByRecipient } = await import('@/lib/bookingNotifications');
+    const same = '00000000-0000-0000-0000-000000000001';
+    const groups = groupBookingIdsByRecipient([
+      { id: 'b1', player_id: same, guest_player_id: null },
+      { id: 'b2', player_id: null, guest_player_id: same },
+    ]);
+    expect(groups).toHaveLength(2);
   });
 
   it('drops rows with no recipient or no id rather than inventing a group', async () => {
