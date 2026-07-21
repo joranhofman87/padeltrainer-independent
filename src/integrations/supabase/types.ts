@@ -8929,6 +8929,7 @@ export type Database = {
         }[]
       }
       create_invoice_deduped: { Args: { _payload: Json }; Returns: Json }
+      create_open_slots_fanout: { Args: { p_slot_ids: string[] }; Returns: string }
       create_rebook_group_guest: {
         Args: {
           _email?: string
@@ -9886,6 +9887,10 @@ export type Database = {
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean
+      }
+      process_notification_fanout: {
+        Args: { p_lease_seconds?: number; p_max_followers?: number; p_worker: string }
+        Returns: Json
       }
       queue_onboarding_emails: {
         Args: {
