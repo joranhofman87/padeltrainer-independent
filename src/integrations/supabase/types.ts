@@ -9859,6 +9859,7 @@ export type Database = {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
       }
+      notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
