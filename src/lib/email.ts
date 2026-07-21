@@ -129,26 +129,6 @@ export const sendEmail = async (
   }
 };
 
-export const sendBookingConfirmation = async (
-  playerEmail: string,
-  playerName: string,
-  trainerName: string,
-  lessonTitle: string,
-  lessonDate: string,
-  lessonTime: string,
-  location: string | null,
-  price: number
-) => {
-  return sendEmail("booking_confirmation", playerEmail, {
-    playerName,
-    trainerName,
-    lessonTitle,
-    lessonDate,
-    lessonTime,
-    location: location || undefined,
-    price,
-  });
-};
 
 export const sendBookingCancellation = async (
   playerEmail: string,
