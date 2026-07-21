@@ -4400,14 +4400,16 @@ export type Database = {
       notification_fanout_jobs: {
         Row: {
           academy_profile_id: string | null
+          attempts: number
           created_at: string
+          digested_count: number
           enqueued_count: number
           event_anchor: string
           event_key: string
           follower_cursor: string | null
           id: string
-          lease_expires_at: string | null
-          lease_owner: string | null
+          last_error: string | null
+          next_attempt_at: string | null
           no_identity_count: number
           skipped_count: number
           slot_ids: string[]
@@ -4417,14 +4419,16 @@ export type Database = {
         }
         Insert: {
           academy_profile_id?: string | null
+          attempts?: number
           created_at?: string
+          digested_count?: number
           enqueued_count?: number
           event_anchor: string
           event_key: string
           follower_cursor?: string | null
           id?: string
-          lease_expires_at?: string | null
-          lease_owner?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
           no_identity_count?: number
           skipped_count?: number
           slot_ids: string[]
@@ -4434,14 +4438,16 @@ export type Database = {
         }
         Update: {
           academy_profile_id?: string | null
+          attempts?: number
           created_at?: string
+          digested_count?: number
           enqueued_count?: number
           event_anchor?: string
           event_key?: string
           follower_cursor?: string | null
           id?: string
-          lease_expires_at?: string | null
-          lease_owner?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
           no_identity_count?: number
           skipped_count?: number
           slot_ids?: string[]
@@ -9919,6 +9925,7 @@ export type Database = {
         Returns: string
       }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
+      notification_plain_header: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
@@ -9946,11 +9953,7 @@ export type Database = {
         Returns: boolean
       }
       process_notification_fanout: {
-        Args: {
-          p_lease_seconds?: number
-          p_max_followers?: number
-          p_worker: string
-        }
+        Args: { p_max_followers?: number; p_worker: string }
         Returns: Json
       }
       queue_onboarding_emails: {
