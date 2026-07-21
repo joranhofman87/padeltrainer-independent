@@ -61,15 +61,15 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
   dayGroups: PublicDayGroup[];
   loading: boolean;
   /**
-   * TRUE when canonical occupancy could not be read, so NOTHING is offered. Distinct from an
-   * empty calendar: "we cannot tell what is free" is not "nothing is free", and a consumer that
-   * renders them identically tells the visitor a falsehood.
+   * TRUE when we could not verify what is bookable — occupancy or the booking cutoff — so
+   * NOTHING is offered. Distinct from an empty calendar: "we cannot tell what is free" is not
+   * "nothing is free", and a consumer rendering them identically tells the visitor a falsehood.
    */
-  occupancyUnavailable: boolean;
+  availabilityUnverified: boolean;
 } {
   const [dayGroups, setDayGroups] = useState<PublicDayGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [occupancyUnavailable, setOccupancyUnavailable] = useState(false);
+  const [availabilityUnverified, setAvailabilityUnverified] = useState(false);
   const ownerKey =
     owner.type === 'academy' ? `a:${owner.academyId}`
     : owner.type === 'trainer' ? `t:${owner.trainerId}`
@@ -79,7 +79,7 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
-      setOccupancyUnavailable(false);
+      setAvailabilityUnverified(false);
       try {
         const orFilter = await resolveOwnerFilter(owner);
         const { data: slotsRaw } = await supabase
@@ -158,7 +158,7 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           );
           if (!cancelled) {
             setDayGroups([]);
-            setOccupancyUnavailable(true);
+            setAvailabilityUnverified(true);
           }
           return;
         }
@@ -208,11 +208,29 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
          */
         const bookingClosedIds = new Set<string>();
         {
-          const { data: cutoffRows } = await supabase.rpc(
+          const { data: cutoffRows, error: cutoffErr } = await supabase.rpc(
             'get_public_slot_booking_cutoff' as never,
             { _slot_ids: slotIds } as never,
           );
-          for (const r of (cutoffRows ?? []) as Array<{ slot_id: string; booking_closed: boolean }>) {
+          if (cutoffErr || !cutoffRows) {
+            /**
+             * FAIL CLOSED, for the same reason occupancy does. This RPC is now the ONLY client
+             * source for "is this slot past its cutoff", so ignoring its error silently offers
+             * too-late slots as bookable and the visitor only meets the refusal at checkout.
+             * An unverifiable rule is not a passed rule.
+             */
+            logger.error(
+              'Public availability: booking cutoff unavailable — refusing to render slots',
+              new Error(String((cutoffErr as { message?: string } | null)?.message ?? 'cutoff rpc unavailable')),
+              { component: 'usePublicAvailability', owner: ownerKey },
+            );
+            if (!cancelled) {
+              setDayGroups([]);
+              setAvailabilityUnverified(true);
+            }
+            return;
+          }
+          for (const r of cutoffRows as Array<{ slot_id: string; booking_closed: boolean }>) {
             if (r.booking_closed) bookingClosedIds.add(r.slot_id);
           }
         }
@@ -243,5 +261,5 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerKey]);
 
-  return { dayGroups, loading, occupancyUnavailable };
+  return { dayGroups, loading, availabilityUnverified };
 }

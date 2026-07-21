@@ -503,7 +503,8 @@
       "optInWithNumber": "Stuur me een herinnering voor deze training op {{phone}}. Je kunt dit altijd stoppen.",
       "phoneLabel": "Telefoonnummer",
       "savesToProfile": "We bewaren dit nummer bij je profiel."
-    }
+    },
+    "availabilityUnverified": "We kunnen het aanbod nu even niet ophalen. Probeer het zo opnieuw."
   },
   "availableSlots": "Beschikbare plekken",
   "slot": "plek",

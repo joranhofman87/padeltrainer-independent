@@ -302,12 +302,17 @@ export default function BookLesson() {
        * this page and the shared public calendars apply one identical rule.
        */
       {
-        const { data: cutoffRows } = await supabase.rpc(
+        const { data: cutoffRows, error: cutoffErr } = await supabase.rpc(
           'get_public_slot_booking_cutoff' as never,
           { _slot_ids: slotIds } as never,
         );
+        // FAIL CLOSED, as occupancy does. This RPC is the only client source for the cutoff, so
+        // ignoring its error would offer too-late slots and defer the refusal to checkout.
+        if (cutoffErr || !cutoffRows) {
+          throw new Error(`Could not load booking cutoffs: ${cutoffErr?.message ?? 'cutoff unavailable'}`);
+        }
         const map: Record<string, { minutes: number; closed: boolean }> = {};
-        for (const r of (cutoffRows ?? []) as Array<{ slot_id: string; cutoff_minutes: number; booking_closed: boolean }>) {
+        for (const r of cutoffRows as Array<{ slot_id: string; cutoff_minutes: number; booking_closed: boolean }>) {
           map[r.slot_id] = { minutes: r.cutoff_minutes ?? 0, closed: Boolean(r.booking_closed) };
         }
         setSlotCutoffs(map);

@@ -503,7 +503,8 @@
       "optInWithNumber": "Send me a reminder for this session on {{phone}}. You can stop this at any time.",
       "phoneLabel": "Phone number",
       "savesToProfile": "We will save this number to your profile."
-    }
+    },
+    "availabilityUnverified": "We cannot load the schedule right now. Please try again shortly."
   },
   "availableSlots": "Available Slots",
   "spotLeft": "spot left",

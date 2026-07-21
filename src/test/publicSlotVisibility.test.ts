@@ -236,18 +236,40 @@ describe('public surfaces only select columns their source actually exposes', ()
       'usePublicAvailability must fill bookingCounts from the RPC alone').toBe(1);
   });
 
-  it('FAILS CLOSED when canonical occupancy cannot be read', () => {
-    // unknown occupancy must never render as availability
-    expect(bookLesson, 'BookLesson must surface the retryable error')
+  it('FAILS CLOSED on BOTH unverifiable rules — occupancy and the cutoff', () => {
+    // An unverifiable rule is not a passed rule. The cutoff RPC is now the ONLY client source
+    // for "is this slot too late", so swallowing its error offers too-late slots and defers the
+    // refusal to checkout — the same shape as the occupancy bug, one call over.
+    expect(bookLesson, 'BookLesson must surface a retryable error for occupancy')
       .toMatch(/if \(occErr \|\| !occ\)[\s\S]{0,600}throw new Error/);
-    expect(publicHook, 'the shared hook must render nothing rather than guess')
-      .toMatch(/setOccupancyUnavailable\(true\)/);
-    expect(publicHook).toMatch(/setDayGroups\(\[\]\)/);
+    expect(bookLesson, 'BookLesson must surface a retryable error for the cutoff')
+      .toMatch(/if \(cutoffErr \|\| !cutoffRows\)[\s\S]{0,400}throw new Error/);
+    // the hook renders nothing in both cases
+    // The GUARDS, not just the bodies. A count of fail-closed blocks passes even when the
+    // condition has been neutered to `if (false)` — the body still exists, unreachable. Assert
+    // what actually triggers them.
+    expect(publicHook, 'hook must fail closed when occupancy errors')
+      .toMatch(/if \(!occErr && occ\)|if \(occErr \|\| !occ\)/);
+    expect(publicHook, 'hook must fail closed when the cutoff RPC errors')
+      .toMatch(/if \(cutoffErr \|\| !cutoffRows\)/);
+    expect([...publicHook.matchAll(/setAvailabilityUnverified\(true\)/g)].length,
+      'hook must fail closed for occupancy AND cutoff').toBe(2);
+    // and each of those sites clears what would otherwise be rendered
+    expect(publicHook).toMatch(/setDayGroups\(\[\]\);\s*\n\s*setAvailabilityUnverified\(true\);/);
   });
 
-  it('distinguishes "cannot tell" from "nothing free" in the hook contract', () => {
-    // a consumer that renders those identically tells the visitor a falsehood
-    expect(publicHook).toContain('occupancyUnavailable: boolean');
-    expect(publicHook).toMatch(/return \{ dayGroups, loading, occupancyUnavailable \}/);
+  it('distinguishes "cannot tell" from "nothing free", and RENDERS that difference', () => {
+    // the flag existing is not enough — a consumer that ignores it still tells the visitor a
+    // falsehood, and with alwaysShow=false the section vanishes with no explanation at all
+    expect(publicHook).toContain('availabilityUnverified: boolean');
+    expect(publicHook).toMatch(/return \{ dayGroups, loading, availabilityUnverified \}/);
+
+    const calendar = readFileSync(join(process.cwd(), 'src', 'components', 'booking', 'AvailabilityCalendar.tsx'), 'utf8');
+    const picker = readFileSync(join(process.cwd(), 'src', 'components', 'booking', 'AvailabilityPicker.tsx'), 'utf8');
+    for (const [name, src] of [['AvailabilityCalendar', calendar], ['AvailabilityPicker', picker]] as const) {
+      expect(src, `${name} must consume the flag`).toContain('availabilityUnverified');
+      expect(src, `${name} must render a distinct state, before the empty-state branch`)
+        .toMatch(/if \(availabilityUnverified\)[\s\S]{0,900}booking\.availabilityUnverified/);
+    }
   });
 });
