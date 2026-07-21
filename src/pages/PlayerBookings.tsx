@@ -352,8 +352,6 @@ export default function PlayerBookings() {
                                   playerId={profile!.id}
                                   trainerId={booking.trainer_id || ''}
                                   trainerName={booking.trainer_name}
-                                  playerName={profile!.full_name || undefined}
-                                  lessonTitle={booking.cyclus_name || undefined}
                                   onSuccess={() => {
                                     setReviewDialogOpen(null);
                                     fetchBookings();

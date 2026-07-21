@@ -167,17 +167,3 @@ export const sendBookingCancellation = async (
   });
 };
 
-export const sendReviewNotification = async (
-  trainerEmail: string,
-  trainerName: string,
-  playerName: string,
-  lessonTitle: string,
-  rating: number
-) => {
-  return sendEmail("review_received", trainerEmail, {
-    trainerName,
-    playerName,
-    lessonTitle,
-    rating,
-  });
-};
