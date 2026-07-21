@@ -64,17 +64,19 @@ beforeAll(async () => {
     CREATE SCHEMA IF NOT EXISTS auth;
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
       SELECT nullif(current_setting('test.uid', true), '')::uuid $fn$;
-    CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid, full_name text);
+    CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid, full_name text, email text);
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, user_id uuid);
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.locations (id uuid PRIMARY KEY, name text, city text);
     CREATE TABLE public.availability_slots (
       id uuid PRIMARY KEY, trainer_id uuid NOT NULL, academy_profile_id uuid, location_id uuid,
-      start_time timestamptz NOT NULL, end_time timestamptz NOT NULL, cyclus_name text);
+      start_time timestamptz NOT NULL, end_time timestamptz NOT NULL, cyclus_name text,
+      price_per_session numeric);
     CREATE TABLE public.bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid NOT NULL,
-      player_id uuid, guest_player_id uuid, status text DEFAULT 'confirmed', payment_status text);
+      player_id uuid, guest_player_id uuid, status text DEFAULT 'confirmed', payment_status text,
+      payment_amount numeric);
 
     -- academy managers: U_M manages A1 only
     CREATE OR REPLACE FUNCTION public.is_academy_manager(_user_id uuid, _academy uuid)
@@ -124,6 +126,7 @@ beforeAll(async () => {
     INSERT INTO public.profiles (id, user_id, full_name) VALUES
       ('${PR1}', '${U_P1}', 'Speler <Een>'), ('${PR2}', '${U_P2}', 'Speler Twee'),
       ('0f000000-0000-0000-0000-0000000000f2', '${U_T}', 'Trainer T');
+    UPDATE public.profiles SET email = 'speler1@example.com' WHERE id = '${PR1}';
     INSERT INTO public.guest_players (id, full_name, email) VALUES ('${G1}', 'Gast G', 'gast@example.com');
     INSERT INTO public.locations (id, name, city) VALUES
       ('0d000000-0000-0000-0000-0000000000d1', 'Hal <1>', 'Utrecht');
@@ -132,11 +135,14 @@ beforeAll(async () => {
       ('01000000-0000-0000-0000-000000000002', '${T1}', '${A1}', '0d000000-0000-0000-0000-0000000000d1', now() + interval '4 days', now() + interval '4 days 1 hour'),
       ('01000000-0000-0000-0000-000000000003', '${T2}', '${A2}', NULL, now() + interval '5 days', now() + interval '5 days 1 hour'),
       ('01000000-0000-0000-0000-000000000004', '${T3}', NULL,   NULL, now() + interval '6 days', now() + interval '6 days 1 hour');
+    UPDATE public.availability_slots SET price_per_session = 25, cyclus_name = 'Herfst <reeks>'
+     WHERE id IN ('01000000-0000-0000-0000-000000000001','01000000-0000-0000-0000-000000000002');
   `);
 });
 
 beforeEach(async () => {
-  await db.exec(`DELETE FROM public._captured; DELETE FROM public.bookings;`);
+  await db.exec(`DELETE FROM public._captured; DELETE FROM public.bookings;
+                 DELETE FROM public.notification_contacts;`);
   await as(null);
 });
 
@@ -378,6 +384,54 @@ describe('the caller-controlled array is bounded', () => {
     const many = Array.from({ length: 61 }, (_, i) =>
       `02000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
     await expect(call(many, 'request_staff')).rejects.toThrow(/too many bookings/);
+  });
+});
+
+describe('identity resolution failure ABORTS — it must not fall back to raw data', () => {
+  // PR 10a doctrine: recipient-discovery reads fail loudly. Swallowing this one would send to
+  // a possibly-stale raw address AND permanently overwrite the tenant contact with it, since
+  // the upsert refreshes destination_normalized. A stale address becoming authoritative is
+  // worse than not sending.
+  it('creates neither a contact nor an enqueue when the identity lookup throws', async () => {
+    await db.exec(`
+      CREATE OR REPLACE FUNCTION public.get_invoice_recipient_identity(
+        _player_id uuid DEFAULT NULL, _guest_player_id uuid DEFAULT NULL, _academy_profile_id uuid DEFAULT NULL)
+        RETURNS TABLE (email text) LANGUAGE plpgsql STABLE AS $fn$
+        BEGIN RAISE EXCEPTION 'identity backend unavailable'; END $fn$;`);
+    await mkBooking(B1, S1, { guest: G1 });
+    await as(U_T);
+    await expect(call([B1], 'confirmation_player')).rejects.toThrow(/identity backend unavailable/);
+    expect((await db.query(`SELECT 1 FROM public.notification_contacts`)).rows).toHaveLength(0);
+    expect(await captured()).toHaveLength(0);
+    // restore the no-override stub for the remaining tests
+    await db.exec(`
+      CREATE OR REPLACE FUNCTION public.get_invoice_recipient_identity(
+        _player_id uuid DEFAULT NULL, _guest_player_id uuid DEFAULT NULL, _academy_profile_id uuid DEFAULT NULL)
+        RETURNS TABLE (email text) LANGUAGE sql STABLE AS $fn$ SELECT NULL::text WHERE false $fn$;`);
+  });
+});
+
+describe('the ported legacy content is present and escaped', () => {
+  // Owner decision: a migration must not quietly reduce what a trainer can act on.
+  it('the request mail keeps player contact, price, cycle title and a dashboard link', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'pending_approval' });
+    await as(U_P1);
+    await call([B1], 'request_staff');
+    const html = (await captured())[0].html;
+    expect(html).toContain('speler1@example.com');
+    expect(html).toContain('&euro;25.00');
+    expect(html).toContain('Herfst &lt;reeks&gt;');          // escaped, not raw
+    expect(html).toContain('padeltrainer.ai/app/trainer/agenda');
+    expect(html).not.toContain('Herfst <reeks>');
+  });
+
+  it('the manual confirmation keeps the cycle title and amount', async () => {
+    await mkBooking(B1, S1, { player: PR1 });
+    await as(U_P1);
+    await call([B1], 'confirmation_player');
+    const html = (await captured())[0].html;
+    expect(html).toContain('Herfst &lt;reeks&gt;');
+    expect(html).toContain('&euro;25.00');
   });
 });
 

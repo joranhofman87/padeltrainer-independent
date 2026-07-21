@@ -153,6 +153,9 @@ DECLARE
   v_key       text;
   v_count     int := 0;
   v_guest_email text;
+  v_price     numeric;
+  v_title     text;
+  v_contact   text;
   r           record;
 BEGIN
   IF v_actor IS NULL THEN
@@ -206,6 +209,15 @@ BEGIN
     RAISE EXCEPTION 'enqueue_booking_notification: booking set spans multiple tenants';
   END IF;
   v_count := 0;
+
+  -- Content the LEGACY templates carried, derived here rather than accepted from the caller.
+  -- Porting it is deliberate: a migration should not quietly reduce what a trainer can act on.
+  SELECT sum(coalesce(b.payment_amount, s.price_per_session, 0)),
+         max(nullif(btrim(coalesce(s.cyclus_name, '')), ''))
+    INTO v_price, v_title
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+   WHERE b.id = ANY(v_ids);
 
   SELECT tp.user_id INTO v_trn_user FROM public.trainer_profiles tp WHERE tp.id = v_trainer;
   SELECT pr.full_name INTO v_trn_name FROM public.profiles pr WHERE pr.user_id = v_trn_user;
@@ -301,17 +313,24 @@ BEGIN
       LEFT JOIN public.locations l ON l.id = s.location_id
      WHERE b.id = ANY(v_ids);
 
-    SELECT public.notification_html_escape(coalesce(pr.full_name, gp.full_name, 'Een speler'))
-      INTO v_subject
+    SELECT public.notification_html_escape(coalesce(pr.full_name, gp.full_name, 'Een speler')),
+           public.notification_html_escape(coalesce(pr.email, gp.email, ''))
+      INTO v_subject, v_contact
       FROM public.bookings b
       LEFT JOIN public.profiles pr ON pr.id = b.player_id
       LEFT JOIN public.guest_players gp ON gp.id = b.guest_player_id
      WHERE b.id = v_ids[1];
 
+    -- The trainer acts from this mail, so it keeps what the legacy template gave them:
+    -- who, how to reach them, what it is worth, and a way in.
     v_html := '<div style="font-family:sans-serif"><h2>Nieuwe boekingsaanvraag</h2><p>Hoi '
       || public.notification_html_escape(v_trn_name) || ',</p><p>' || v_subject
-      || ' heeft een aanvraag gedaan:</p><table>' || coalesce(v_rows, '') || '</table>'
-      || '<p>Je kunt de aanvraag goedkeuren of afwijzen in je agenda.</p></div>';
+      || ' heeft een aanvraag gedaan'
+      || CASE WHEN v_title IS NOT NULL THEN ' voor <strong>' || public.notification_html_escape(v_title) || '</strong>' ELSE '' END
+      || ':</p><table>' || coalesce(v_rows, '') || '</table>'
+      || CASE WHEN v_contact <> '' THEN '<p>Contact: <a href="mailto:' || v_contact || '">' || v_contact || '</a></p>' ELSE '' END
+      || CASE WHEN coalesce(v_price, 0) > 0 THEN '<p>Bedrag: &euro;' || to_char(v_price, 'FM999999990.00') || '</p>' ELSE '' END
+      || '<p><a href="https://padeltrainer.ai/app/trainer/agenda">Bekijk en beoordeel de aanvraag</a></p></div>';
 
     PERFORM public.enqueue_notification(
       p_event_key                 => 'booking_request_staff',
@@ -353,12 +372,17 @@ BEGIN
       -- FIRST. Authoritative address: the invoice identity (honours a linked profile /
       -- academy billing override), falling back to the address captured on the guest record.
       IF r.rguest IS NOT NULL THEN
-        BEGIN
-          SELECT i.email INTO v_guest_email
-            FROM public.get_invoice_recipient_identity(NULL, r.rguest, v_academy) AS i;
-        EXCEPTION WHEN OTHERS THEN
-          v_guest_email := NULL;
-        END;
+        -- NO exception handler here, deliberately. This is a RECIPIENT-DISCOVERY read, and
+        -- PR 10a's doctrine is that those fail loudly: swallowing the error would fall back
+        -- to the raw guest address AND then permanently overwrite the tenant contact with it
+        -- (the upsert refreshes destination_normalized). A stale address would become the
+        -- authoritative one, which is worse than not sending.
+        --
+        -- Returning NO ROWS is a different thing entirely and stays supported: that is the
+        -- ordinary "no linked profile / no billing override" case, and the guest record is
+        -- the designed fallback for it.
+        SELECT i.email INTO v_guest_email
+          FROM public.get_invoice_recipient_identity(NULL, r.rguest, v_academy) AS i;
         IF coalesce(btrim(v_guest_email), '') = '' THEN
           SELECT gp.email INTO v_guest_email FROM public.guest_players gp WHERE gp.id = r.rguest;
         END IF;
@@ -369,9 +393,13 @@ BEGIN
       IF p_kind = 'confirmation_player' THEN
         v_subject := 'Je boeking is bevestigd';
         v_html := '<div style="font-family:sans-serif"><h2>Je boeking is bevestigd</h2><p>Hoi '
-          || public.notification_html_escape(r.rname) || ',</p><p>Je sessie(s) staan klaar. '
-          || 'Betaling regel je met ' || public.notification_html_escape(coalesce(v_trn_name, 'je trainer'))
-          || '.</p><table>' || coalesce(r.rows, '') || '</table></div>';
+          || public.notification_html_escape(r.rname) || ',</p><p>Je sessie(s)'
+          || CASE WHEN v_title IS NOT NULL THEN ' voor <strong>' || public.notification_html_escape(v_title) || '</strong>' ELSE '' END
+          || ' staan klaar. Betaling regel je met '
+          || public.notification_html_escape(coalesce(v_trn_name, 'je trainer'))
+          || '.</p><table>' || coalesce(r.rows, '') || '</table>'
+          || CASE WHEN coalesce(v_price, 0) > 0 THEN '<p>Bedrag: &euro;' || to_char(v_price, 'FM999999990.00') || '</p>' ELSE '' END
+          || '</div>';
       ELSE
         v_subject := 'Je sessie is geannuleerd';
         v_html := '<div style="font-family:sans-serif"><h2>Je sessie is geannuleerd</h2><p>'
