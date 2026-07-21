@@ -241,8 +241,8 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (rpcError) {
-      // Every refusal this RPC can raise is mapped — the mutation boundary is the only place
-      // the cutoff is enforced (see create-guest-slot-payment).
+      // Every refusal this RPC can raise is mapped — the mutation boundary is the ONLY place
+      // the guest cutoff is enforced (see create-guest-slot-payment).
       if ((rpcError.message || "").includes("booking_cutoff")) {
         logStep("Refused — booking cutoff", { cyclusId });
         return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);

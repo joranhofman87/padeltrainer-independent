@@ -24,8 +24,12 @@
 --   rather than at payment completion.
 --
 --   GUESTS are the one gap: book_guest_*_for_payment take no user id, so they never call
---   can_book_slot. Those three edge functions call is_slot_within_player_booking_cutoff()
---   directly before minting a payment.
+--   can_book_slot. They carry the guard themselves (section 5), and that RPC boundary is the
+--   ONLY place the guest cutoff is enforced. An edge pre-check was tried and removed: it
+--   necessarily sat above the live-hold reuse branch, so a guest who began checkout outside
+--   the cutoff was refused their own hold on returning from Mollie. Relocating it would have
+--   meant the edge re-deciding "is there a live hold?", duplicating the RPC's own test — the
+--   duplication that caused the bug. One boundary decides; the edge maps its refusal tokens.
 --
 -- TIME SOURCE is the database. availability_slots.start_time is timestamptz, so
 -- `start_time - now()` is an absolute interval — no AT TIME ZONE, which would only introduce a
@@ -168,10 +172,11 @@ COMMENT ON FUNCTION public.can_book_slot(uuid, uuid) IS
 -- ---------------------------------------------------------------------------
 -- 5. The cutoff at the GUEST MUTATION BOUNDARY.
 --
--- The create-guest-* edge functions pre-check so a guest gets a clean refusal before anything
--- is created. But a pre-check is not a boundary: these RPCs are the last thing before a booking
--- row, they take no user id so they never reach can_book_slot, and edge-only enforcement left
--- the guest path with ONE layer where the registered path has three.
+-- These RPCs are the last thing before a booking row, and they take no user id so they never
+-- reach can_book_slot. They are therefore the ONLY place the guest cutoff is enforced: an edge
+-- pre-check was tried and removed, because it necessarily sat above the live-hold reuse branch
+-- and refused guests finishing a checkout they had begun outside the cutoff. The edge functions
+-- map the 'booking_cutoff' token instead, so the refusal still reads cleanly.
 --
 -- PLACEMENT MATTERS. The guard sits immediately before a NEW hold is created — after the
 -- live-hold reuse branches, not at the top of the function. A guest who begins checkout OUTSIDE

@@ -828,6 +828,22 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+        // book_slot_for_payment re-runs can_book_slot as the HARD boundary, so every reason
+        // that function can return may surface here — not only when the pre-check fails open
+        // during deploy drift, but whenever the slot changes between the pre-check and the
+        // insert. A slot crossing its booking cutoff in that window is the ordinary case now.
+        // Answer exactly as the pre-check does, so the same refusal reads the same either way.
+        {
+          const reason = ["booking_cutoff", "priority_restricted", "members_only", "slot_not_released"]
+            .find((r) => (bookingError.message || "").includes(r));
+          if (reason) {
+            logStep("Refusing payment — not bookable at the RPC boundary", { slotId, reason });
+            return new Response(
+              JSON.stringify({ error: "slot_not_bookable", reason }),
+              { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
         throw new Error(`Failed to create booking: ${bookingError.message}`);
       }
       bookingId = newBookingId as string;

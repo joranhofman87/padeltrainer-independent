@@ -57,6 +57,17 @@ describe('create-mollie-payment — the registered-player self-booking path', ()
     expect(molliePayment).toMatch(/rpc\("can_book_slot"/);
   });
 
+  it('maps the RPC boundary refusals, not only slot_full', () => {
+    // book_slot_for_payment re-runs can_book_slot as the hard boundary, so every reason that
+    // function returns can surface AFTER the early pre-check — a slot crossing its cutoff
+    // between pre-check and insert is now the ordinary case, not just deploy drift.
+    for (const reason of ['booking_cutoff', 'priority_restricted', 'members_only', 'slot_not_released']) {
+      expect(molliePayment, `create-mollie-payment must map ${reason}`).toContain(`"${reason}"`);
+    }
+    // and it answers exactly as the pre-check does, so one refusal reads one way
+    expect(molliePayment).toMatch(/error: "slot_not_bookable", reason \}/);
+  });
+
   it('gates at BOOKING CREATION, not payment completion', () => {
     // Anchored on the CALL SITES, not on any mention: `book_slot_for_payment` appears in
     // comments well above its rpc() call, and matching those made this pass for the wrong
@@ -135,6 +146,12 @@ describe('a booking_cutoff raised by the RPC reaches the guest as a refusal', ()
     const cart = read('supabase', 'functions', '_shared', 'cart-payment.ts');
     for (const token of tokensOf('book_guest_cart_for_payment')) {
       expect(cart, `mapCartRpcError must know ${token}`).toContain(`"${token}"`);
+    }
+
+    // The REGISTERED path, which I originally left out of this audit. book_slot_for_payment
+    // re-raises whatever can_book_slot returns, so those reasons belong here too.
+    for (const reason of ['booking_cutoff', 'priority_restricted', 'members_only', 'slot_not_released']) {
+      expect(molliePayment, `create-mollie-payment must map ${reason}`).toContain(`"${reason}"`);
     }
   });
 });

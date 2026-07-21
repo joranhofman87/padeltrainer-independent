@@ -253,10 +253,10 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (bookingError) {
-      // EVERY refusal this RPC can raise is mapped. The mutation boundary is the only place
-      // the cutoff is enforced now (the edge pre-check was removed — it sat above the live-hold
-      // reuse and blocked guests finishing a checkout they began outside the cutoff), so an
-      // unmapped token here is a generic 500 for a rule we have clear copy for.
+      // EVERY refusal this RPC can raise is mapped. The mutation boundary is the ONLY place the
+      // guest cutoff is enforced — an edge pre-check was tried and removed, because it sat above
+      // the live-hold reuse and refused guests finishing a checkout they began outside the
+      // cutoff. So an unmapped token here is a generic 500 for a rule we have clear copy for.
       if ((bookingError.message || "").includes("booking_cutoff")) {
         logStep("Refused — booking cutoff", { slotId });
         return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
