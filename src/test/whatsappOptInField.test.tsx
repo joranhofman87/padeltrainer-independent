@@ -71,4 +71,17 @@ describe('WhatsAppOptInField', () => {
     setup({ showNumber: false });
     expect(screen.queryByText(/\+31612345678/)).toBeNull();
   });
+
+  it('discloses the profile save when ticking also stores the number', () => {
+    // consent to be MESSAGED is not consent to keep data on the account — where the tick does
+    // both, the label has to say both, or the consent granted is narrower than the action taken
+    setup({ savesToProfile: true });
+    expect(screen.getByTestId('whatsapp-optin-profile-note')).toBeInTheDocument();
+    expect(screen.getByText(/bewaren dit nummer bij je profiel/i)).toBeInTheDocument();
+  });
+
+  it('says nothing about the profile when nothing is stored there', () => {
+    setup({ savesToProfile: false });
+    expect(screen.queryByTestId('whatsapp-optin-profile-note')).toBeNull();
+  });
 });

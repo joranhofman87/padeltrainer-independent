@@ -5,9 +5,15 @@
 // edge function already derived from the SLOT (or the registration), never anything the client
 // sent — the client only ever supplies a boolean.
 //
-// Lives in one place because four flows need it (slot / cyclus / cart payments, and the cycle
-// intake). Four copies of "resolve the person, then call the RPC" is four places for the next
+// Lives in one place because three flows need it (the slot / cyclus / cart guest payments).
+// Three copies of "resolve the person, then call the RPC" is three places for the next
 // person-linking change to be half-applied.
+//
+// NOT wired into submit-guest-intake (cycle registration): that is an application to join a
+// cycle rather than a booking, its tenant comes from the registration row rather than a slot,
+// and an existing matching profile can short-circuit it to a player_id with no guest row at
+// all. Wiring it needs its own decision about what the person is consenting to, so it is
+// deliberately out of scope here rather than half-done.
 //
 // NEVER THROWS. A consent write must not be able to fail a booking the guest has paid for:
 // getting a session reminder is worth far less than completing the purchase. It returns a

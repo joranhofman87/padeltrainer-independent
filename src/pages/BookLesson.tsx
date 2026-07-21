@@ -27,6 +27,7 @@ import { CycleBundleList } from '@/components/booking/CycleBundleList';
 import { SlotList } from '@/components/booking/SlotList';
 import { BookingSummary } from '@/components/booking/BookingSummary';
 import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
+import { recordBookingWhatsAppOptIn } from '@/lib/bookingWhatsAppOptIn';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
@@ -336,24 +337,31 @@ export default function BookLesson() {
    * NEVER throws: a consent write must not be able to break a booking.
    */
   const recordWhatsAppOptIn = async () => {
-    const slotId = selectedSlot?.id ?? selectedCyclus?.slots?.[0]?.id;
-    if (!whatsappOptIn || !slotId || !optInPhone) return;
-    try {
-      // The player typed a number the profile did not have — keep it, so they are not asked again.
-      if (!profilePhone && profile?.id) {
-        await supabase.from('profiles').update({ phone: optInPhone }).eq('id', profile.id);
-      }
-      const { error } = await supabase.rpc('record_whatsapp_optin_for_slot', {
-        p_slot_id: slotId,
-        p_phone: optInPhone,
-        p_source: 'booking_form',
-      });
-      if (error) throw error;
-    } catch (error) {
-      // Log only. The booking is what the player came for.
-      logger.error('WhatsApp opt-in failed', error instanceof Error ? error : new Error(String(error)),
-        { component: 'BookLesson', action: 'recordWhatsAppOptIn' });
-    }
+    // The sequence itself lives in src/lib/bookingWhatsAppOptIn.ts so its ORDERING is unit
+    // tested — this page has no test harness, and the order is precisely what went wrong once
+    // (the profile was written before the RPC had validated the number).
+    await recordBookingWhatsAppOptIn(
+      {
+        optIn: whatsappOptIn,
+        slotId: selectedSlot?.id ?? selectedCyclus?.slots?.[0]?.id,
+        phone: optInPhone,
+        hasProfilePhone: Boolean(profilePhone),
+      },
+      {
+        recordOptIn: (slotId, phone) =>
+          supabase.rpc('record_whatsapp_optin_for_slot', {
+            p_slot_id: slotId,
+            p_phone: phone,
+            p_source: 'booking_form',
+          }),
+        savePhoneToProfile: (phone) =>
+          supabase.from('profiles').update({ phone }).eq('id', profile!.id),
+        // Log only. The booking is what the player came for.
+        onError: (error) =>
+          logger.error('WhatsApp opt-in failed', error instanceof Error ? error : new Error(String(error)),
+            { component: 'BookLesson', action: 'recordWhatsAppOptIn' }),
+      },
+    );
   };
 
   const handleBook = async () => {
@@ -654,6 +662,9 @@ export default function BookLesson() {
                 onCheckedChange={setWhatsappOptIn}
                 phone={optInPhone}
                 showNumber={Boolean(profilePhone)}
+                /* A number typed here is also saved to the profile, so the copy says so —
+                   consent to be messaged is not consent to store data on the account. */
+                savesToProfile={!profilePhone}
               />
             </div>
           )}

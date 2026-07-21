@@ -28,6 +28,12 @@ export interface WhatsAppOptInFieldProps {
   phone: string | null | undefined;
   /** Shown so the person can see the number they are consenting for. */
   showNumber?: boolean;
+  /**
+   * TRUE when ticking this also stores the number on the person's account. Ticking a messaging
+   * box is not by itself consent to keep data on the profile, so when that is what happens the
+   * label must say so — otherwise the consent granted is narrower than the action taken.
+   */
+  savesToProfile?: boolean;
   disabled?: boolean;
 }
 
@@ -37,6 +43,7 @@ export function WhatsAppOptInField({
   onCheckedChange,
   phone,
   showNumber = false,
+  savesToProfile = false,
   disabled,
 }: WhatsAppOptInFieldProps) {
   const { t } = useTranslation('common');
@@ -62,6 +69,14 @@ export function WhatsAppOptInField({
           {showNumber
             ? t('booking.whatsapp.optInWithNumber', 'Stuur me een herinnering voor deze training op {{phone}}. Je kunt dit altijd stoppen.', { phone: trimmed })
             : t('booking.whatsapp.optIn', 'Stuur me een herinnering voor deze training via WhatsApp. Je kunt dit altijd stoppen.')}
+          {savesToProfile && (
+            <>
+              {' '}
+              <span data-testid="whatsapp-optin-profile-note">
+                {t('booking.whatsapp.savesToProfile', 'We bewaren dit nummer bij je profiel.')}
+              </span>
+            </>
+          )}
         </span>
       </Label>
     </div>
