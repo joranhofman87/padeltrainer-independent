@@ -236,7 +236,7 @@ describe('public surfaces only select columns their source actually exposes', ()
       'usePublicAvailability must fill bookingCounts from the RPC alone').toBe(1);
   });
 
-  it('FAILS CLOSED on BOTH unverifiable rules — occupancy and the cutoff', () => {
+  it('FAILS CLOSED on EVERY path that cannot establish what is bookable', () => {
     // An unverifiable rule is not a passed rule. The cutoff RPC is now the ONLY client source
     // for "is this slot too late", so swallowing its error offers too-late slots and defers the
     // refusal to checkout — the same shape as the occupancy bug, one call over.
@@ -248,14 +248,31 @@ describe('public surfaces only select columns their source actually exposes', ()
     // The GUARDS, not just the bodies. A count of fail-closed blocks passes even when the
     // condition has been neutered to `if (false)` — the body still exists, unreachable. Assert
     // what actually triggers them.
-    expect(publicHook, 'hook must fail closed when occupancy errors')
-      .toMatch(/if \(!occErr && occ\)|if \(occErr \|\| !occ\)/);
-    expect(publicHook, 'hook must fail closed when the cutoff RPC errors')
+    expect(bookLesson, 'BookLesson must fail closed when occupancy errors')
+      .toMatch(/if \(occErr \|\| !occ\)/);
+    expect(bookLesson, 'BookLesson must fail closed when the cutoff RPC errors')
       .toMatch(/if \(cutoffErr \|\| !cutoffRows\)/);
-    expect([...publicHook.matchAll(/setAvailabilityUnverified\(true\)/g)].length,
-      'hook must fail closed for occupancy AND cutoff').toBe(2);
-    // and each of those sites clears what would otherwise be rendered
-    expect(publicHook).toMatch(/setDayGroups\(\[\]\);\s*\n\s*setAvailabilityUnverified\(true\);/);
+
+    // EVERY way the hook can fail to establish what is bookable routes through ONE path, and
+    // that path both clears and flags. Handling each site separately is exactly how three of
+    // them were left behind.
+    expect(publicHook).toMatch(/const failUnverified = \([\s\S]{0,400}setDayGroups\(\[\]\);[\s\S]{0,120}setAvailabilityUnverified\(true\);/);
+    for (const [what, guard] of [
+      ['owner filter', /if \(orFilter === null\)[\s\S]{0,120}failUnverified/],
+      ['slot query', /if \(slotsErr\)[\s\S]{0,120}failUnverified/],
+      ['occupancy', /if \(occErr \|\| !occ\)[\s\S]{0,200}failUnverified/],
+      ['cutoff', /if \(cutoffErr \|\| !cutoffRows\)[\s\S]{0,400}failUnverified/],
+      ['unexpected throw', /catch \(error\)[\s\S]{0,400}failUnverified/],
+    ] as const) {
+      expect(publicHook, `hook must fail closed on ${what}`).toMatch(guard);
+    }
+  });
+
+  it('the owner filter REPORTS failure instead of silently narrowing', () => {
+    // An error reading academy_trainers_public used to fall through to the academy-only filter,
+    // quietly dropping every TRAINER-owned slot — availability that looked complete and was not.
+    expect(publicHook).toMatch(/Promise<string \| null>/);
+    expect(publicHook).toMatch(/if \(trainerErr\) return null;/);
   });
 
   it('distinguishes "cannot tell" from "nothing free", and RENDERS that difference', () => {

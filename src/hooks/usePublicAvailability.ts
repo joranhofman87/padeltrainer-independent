@@ -35,16 +35,22 @@ const SLOT_SELECT = `
 `;
 
 /** Build the availability_slots `.or()` filter for an owner (academy = its own + its trainers'). */
-async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string> {
+/**
+ * Returns NULL when the owner's slot filter cannot be established. Previously an error here
+ * silently fell through to `academy_profile_id.eq.<id>` alone, quietly dropping every
+ * TRAINER-owned slot from an academy page — availability that looked complete and was not.
+ */
+async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string | null> {
   if (owner.type === 'trainer') return `trainer_id.eq.${owner.trainerId}`;
   // location (public club / venue page): everything bookable AT this venue, whichever trainer.
   // availability_slots.location_id is set on public slots + anon-readable, so no trainer join needed.
   if (owner.type === 'location') return `location_id.eq.${owner.locationId}`;
   // academy: the base academy_trainers table is not anon-readable — use the public view.
-  const { data: trainerRows } = await supabase
+  const { data: trainerRows, error: trainerErr } = await supabase
     .from('academy_trainers_public')
     .select('trainer_profile_id')
     .eq('academy_profile_id', owner.academyId);
+  if (trainerErr) return null;
   const trainerIds = (trainerRows || []).map((t) => t.trainer_profile_id);
   return trainerIds.length > 0
     ? `academy_profile_id.eq.${owner.academyId},trainer_id.in.(${trainerIds.join(',')})`
@@ -80,9 +86,31 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     const run = async () => {
       setLoading(true);
       setAvailabilityUnverified(false);
+
+      /**
+       * THE ONE FAIL PATH. Every way this hook can fail to establish what is bookable ends here:
+       * clear the groups and say so. Handling each site separately is how three of them were
+       * left behind — an error that renders as "nothing available", or leaves STALE slots on
+       * screen, is worse than an error that says nothing, because the visitor believes it.
+       */
+      const failUnverified = (what: string, cause?: unknown) => {
+        logger.error(
+          `Public availability: ${what} — refusing to render slots`,
+          cause instanceof Error ? cause : new Error(String((cause as { message?: string } | null)?.message ?? what)),
+          { component: 'usePublicAvailability', owner: ownerKey },
+        );
+        if (!cancelled) {
+          setDayGroups([]);
+          setAvailabilityUnverified(true);
+        }
+      };
       try {
         const orFilter = await resolveOwnerFilter(owner);
-        const { data: slotsRaw } = await supabase
+        if (orFilter === null) {
+          failUnverified('owner slot filter unavailable');
+          return;
+        }
+        const { data: slotsRaw, error: slotsErr } = await supabase
           .from('availability_slots')
           .select(SLOT_SELECT)
           .or(orFilter)
@@ -96,6 +124,10 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           // PostgREST `in.()` filter 200s at ~500 ids but 400s around 1000. Academies past
           // 500 future public slots need cursor pagination — tracked separately.
           .limit(500);
+        if (slotsErr) {
+          failUnverified('slot query failed', slotsErr);
+          return;
+        }
         const slots = (slotsRaw ?? []) as unknown as RawSlotSelect[];
         if (slots.length === 0) {
           if (!cancelled) setDayGroups([]);
@@ -139,29 +171,23 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           'get_public_slot_occupancy' as never,
           { _slot_ids: slotIds } as never,
         );
-        if (!occErr && occ) {
-          (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
-            bookingCounts[r.slot_id] = r.occupied;
-          });
-        } else {
-          /**
-           * FAIL CLOSED. There is no usable fallback here and pretending otherwise is the bug:
-           * anonymous visitors have NO SELECT on `bookings`, so a direct read returns EMPTY
-           * rather than erroring — every slot then looks unoccupied and FULL SESSIONS GO BACK
-           * ON SALE, silently, to exactly the visitors this surface serves. Unknown occupancy
-           * must never render as available.
-           */
-          logger.error(
-            'Public availability: canonical occupancy unavailable — refusing to render slots',
-            new Error(String((occErr as { message?: string } | null)?.message ?? 'occupancy rpc unavailable')),
-            { component: 'usePublicAvailability', owner: ownerKey },
-          );
-          if (!cancelled) {
-            setDayGroups([]);
-            setAvailabilityUnverified(true);
-          }
+        /**
+         * FAIL CLOSED. There is no usable fallback here and pretending otherwise is the bug:
+         * anonymous visitors have NO SELECT on `bookings`, so a direct read returns EMPTY rather
+         * than erroring — every slot then looks unoccupied and FULL SESSIONS GO BACK ON SALE,
+         * silently, to exactly the visitors this surface serves. Unknown occupancy must never
+         * render as available.
+         *
+         * Written as a positive guard, like every other fail-closed site in this file: one shape
+         * for one rule is easier to audit than the same rule inverted in half the places.
+         */
+        if (occErr || !occ) {
+          failUnverified('canonical occupancy unavailable', occErr);
           return;
         }
+        (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
+          bookingCounts[r.slot_id] = r.occupied;
+        });
 
         // Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
         // so a guest never fills the whole form only to dead-end (create-*-payment refuses /
@@ -219,15 +245,7 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
              * too-late slots as bookable and the visitor only meets the refusal at checkout.
              * An unverifiable rule is not a passed rule.
              */
-            logger.error(
-              'Public availability: booking cutoff unavailable — refusing to render slots',
-              new Error(String((cutoffErr as { message?: string } | null)?.message ?? 'cutoff rpc unavailable')),
-              { component: 'usePublicAvailability', owner: ownerKey },
-            );
-            if (!cancelled) {
-              setDayGroups([]);
-              setAvailabilityUnverified(true);
-            }
+            failUnverified('booking cutoff unavailable', cutoffErr);
             return;
           }
           for (const r of cutoffRows as Array<{ slot_id: string; booking_closed: boolean }>) {
@@ -244,11 +262,10 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
         });
         if (!cancelled) setDayGroups(groups);
       } catch (error) {
-        logger.error(
-          'Error fetching public availability',
-          error instanceof Error ? error : new Error(String(error)),
-          { component: 'usePublicAvailability', owner: ownerKey },
-        );
+        // Clears as well as logs: an unexpected throw used to leave the PREVIOUS owner's slots
+        // rendered as if current, which is the worst of the three — stale availability reads as
+        // verified availability.
+        failUnverified('unexpected error', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
