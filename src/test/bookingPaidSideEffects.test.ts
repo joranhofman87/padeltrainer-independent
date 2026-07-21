@@ -32,6 +32,9 @@ type FakeOpts = {
   enqueueEmpty?: boolean;
   /** resolver answers a 'skipped' row with NO error — a real row, but not a delivery. */
   enqueueSkipped?: boolean;
+  /** table => error message: the query RESOLVES {data:null,error} (PostgREST 400 / RLS),
+   *  which is the failure mode that used to read as "no rows" everywhere. */
+  queryError?: Record<string, string>;
   /** make the booking-CONTEXT .single() resolve an ERROR (broken embed / RLS change). */
   bookingContextError?: string;
   /** make every query on this table THROW (network/isolate fault), not resolve an error. */
@@ -49,7 +52,10 @@ type FakeOpts = {
 function chain(
   thenData: unknown,
   rowData: unknown = thenData,
-  extra: { rowError?: string; throws?: boolean; throwsSingle?: boolean; onInsert?: (payload: unknown) => void } = {},
+  extra: {
+    rowError?: string; throws?: boolean; throwsSingle?: boolean;
+    thenError?: string; onInsert?: (payload: unknown) => void;
+  } = {},
 ) {
   const target = () => {};
   // .in(col, vals) filters are honored when the rows carry that column (the staff
@@ -72,6 +78,10 @@ function chain(
         if (extra.throws) {
           return (_res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
             Promise.reject(new Error('simulated transport fault')).catch(rej);
+        }
+        if (extra.thenError) {
+          return (res: (v: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: extra.thenError } }).then(res);
         }
         return (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
           Promise.resolve({ data: applyFilters(thenData), error: null }).then(res, rej);
@@ -132,15 +142,17 @@ function makeFakeSupabase(opts: FakeOpts) {
           rowError: opts.bookingContextError,
           throws,
           throwsSingle: opts.throwOnSingle === 'bookings',
+          thenError: opts.queryError?.bookings,
         });
       case 'invoices':
         return chain(null, opts.invoiceFallbackRow ?? null);
       case 'academy_managers':
-        return chain(opts.managers ?? [], null);
+        return chain(opts.managers ?? [], null, { thenError: opts.queryError?.academy_managers });
       case 'trainer_profiles':
         return chain(opts.trainerProfiles ?? [], { user_id: 'user-1' }, {
           throws,
           throwsSingle: opts.throwOnSingle === 'trainer_profiles',
+          thenError: opts.queryError?.trainer_profiles,
         });
       case 'profiles':
         return chain(opts.profileRows ?? [], { full_name: 'Trainer T' });
@@ -537,6 +549,68 @@ describe('PR 10a — one failing lane must not silence the others', () => {
     const m = auditOf(auditRows);
     expect(m.playerRows).toBe(1);
     expect(m.playerStatus).toBe('pending');
+  });
+
+  // Codex's remaining sibling: RECIPIENT-DISCOVERY reads that resolved {data:null,error}
+  // collapsed into `?? []` and reported a clean zero. A booking with no staff and a booking
+  // whose staff could not be READ looked identical in the audit — the second is an incident.
+  const academyFixture = {
+    staffBookings: [{ id: 'B1', availability_slots: { ...SLOT, academy_profile_id: 'ac-1', trainer_id: 'tp-1' } }],
+    managers: [{ user_id: 'user-mgr', academy_profile_id: 'ac-1' }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-mgr', full_name: 'Manager M' }, { user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  it('staff BOOKINGS read error is reported as an error, never as zero-staff success', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { bookings: 'PostgREST 400: could not resolve embed' },
+      ...academyFixture,
+    });
+    const notify = await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.staffRows).toBe(0);
+    expect(Number(m.staffErrors), 'zero STAFF rows MUST carry a STAFF error').toBeGreaterThan(0);
+    expect(notify.mock.calls.length, 'and it must alert').toBeGreaterThan(0);
+  });
+
+  it('academy manager read error is counted — and trainers are STILL notified', async () => {
+    // Independent recipient groups: failing to resolve managers must not also drop trainers.
+    const { supabase, rpc, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { academy_managers: 'permission denied for table academy_managers' },
+      ...academyFixture,
+    });
+    await run(supabase);
+    expect(Number(auditOf(auditRows).staffErrors), 'unresolved managers is a staff error').toBeGreaterThan(0);
+    expect(staffEnqueues(rpc).length, 'trainers are discovered separately and must proceed').toBeGreaterThan(0);
+  });
+
+  it('trainer profile read error is counted — and academy managers are STILL notified', async () => {
+    const { supabase, rpc, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { trainer_profiles: 'permission denied for table trainer_profiles' },
+      ...academyFixture,
+    });
+    await run(supabase);
+    expect(Number(auditOf(auditRows).staffErrors), 'unresolved trainers is a staff error').toBeGreaterThan(0);
+    expect(staffEnqueues(rpc).length, 'managers are discovered separately and must proceed').toBeGreaterThan(0);
+  });
+
+  it('player bookings read error is enqueue_failed, NOT no_payer', async () => {
+    // Naming the wrong cause is worse than silence: "no_payer" sends the next investigation
+    // to look at the booking's data instead of at a broken query.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: playerBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      queryError: { bookings: 'PostgREST 400: could not resolve embed' },
+      ...payerFixture,
+    });
+    await run(supabase);
+    expect(auditOf(auditRows).playerStatus, 'a broken query is not a missing payer').toBe('enqueue_failed');
   });
 });
 

@@ -140,7 +140,11 @@ export async function sendPlayerBookingConfirmation(opts: {
   const { supabase, bookingIds, invoiceId, molliePaymentId, logStep } = opts;
 
   // All booked sessions (single slot = 1 row, cyclus = N) + the payer identity fields.
-  const { data: rows } = await supabase
+  // RECIPIENT-DISCOVERY read: inspect the error. supabase-js resolves on failure, so this
+  // used to collapse into `rows ?? []` → `no_payer` — reporting "this booking has no payer"
+  // for what was actually a broken query. The alert then named the wrong cause, which is
+  // worse than no alert: it sends the next investigation looking at the booking's data.
+  const { data: rows, error: rowsErr } = await supabase
     .from("bookings")
     .select(`
       id, player_id, guest_player_id,
@@ -149,6 +153,10 @@ export async function sendPlayerBookingConfirmation(opts: {
       guest_players(full_name, email)
     `)
     .in("id", bookingIds);
+  if (rowsErr) {
+    logStep("Player confirmation: booking read FAILED", { error: rowsErr.message });
+    return { ok: false, reason: "enqueue_failed", detail: rowsErr.message.slice(0, 200) };
+  }
   const bookings = (rows ?? []) as unknown as BookingRow[];
   if (bookings.length === 0) return { ok: false, reason: "no_payer" };
 

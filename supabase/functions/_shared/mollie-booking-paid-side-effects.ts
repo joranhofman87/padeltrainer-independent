@@ -100,6 +100,10 @@ export async function runBookingPaidSideEffects(opts: {
   let staffNoop = 0;
   let skippedRows = 0;
   let laneErrors = 0;
+  // Reported SEPARATELY from laneErrors. Folding staff faults into one total makes the audit
+  // ambiguous ("something failed") and makes any test asserting on it satisfiable by the other
+  // lane — which is exactly how three pins for this passed while the staff code was reverted.
+  let staffErrors = 0;
   let playerStatus = "none";
 
   // Booking context — display names for the Slack ping and the staff email only. Its
@@ -180,9 +184,9 @@ export async function runBookingPaidSideEffects(opts: {
       // outbox, and the email worker raises its own dedup'd ops alert for those — so only
       // log it here (double-alerting would be noise). no_payer / enqueue_failed enqueue
       // NOTHING, so nothing downstream surfaces them — alert LOUDLY.
+      playerStatus = reason ?? "unknown";
       if (reason === "skipped") {
         skippedRows++;
-        playerStatus = "skipped";
         logStep("Paid booking confirmation is a visible skipped row (worker will alert)", { bookingIds, skipReason });
       } else {
         laneErrors++;
@@ -193,6 +197,7 @@ export async function runBookingPaidSideEffects(opts: {
     // A THROW used to be indistinguishable from success. It is the loudest case of all:
     // the payer is owed a required email and nothing downstream will ever surface it.
     laneErrors++;
+    playerStatus = "threw";
     logStep("Player confirmation threw", { error: String(playerErr) });
     await notifySlackError(source, "paid booking confirmation THREW — payer has no confirmation", {
       bookingIds,
@@ -237,9 +242,9 @@ export async function runBookingPaidSideEffects(opts: {
     staffRows += staff?.enqueued ?? 0;
     staffSkipped += staff?.skipped ?? 0;
     staffNoop += staff?.noop ?? 0;
-    laneErrors += staff?.errors ?? 0;
+    staffErrors += staff?.errors ?? 0;
   } catch (staffErr) {
-    laneErrors++;
+    staffErrors++;
     logStep("Staff fan-out threw", { error: String(staffErr) });
     await notifySlackError(source, "staff booking fan-out THREW — no staff were notified", {
       bookingIds,
@@ -258,13 +263,13 @@ export async function runBookingPaidSideEffects(opts: {
     status: PaymentAuditStatus.bookingPaidNotifications,
     metadata: {
       playerRows, playerNoop, playerStatus,
-      staffRows, staffSkipped, staffNoop,
+      staffRows, staffSkipped, staffNoop, staffErrors,
       skippedRows, laneErrors,
       bookingCount: bookingIds.length,
     },
   });
   logStep("Paid-booking notifications complete", {
-    playerRows, playerNoop, playerStatus, staffRows, staffSkipped, staffNoop, skippedRows, laneErrors,
+    playerRows, playerNoop, playerStatus, staffRows, staffSkipped, staffNoop, staffErrors, skippedRows, laneErrors,
   });
 }
 
@@ -309,7 +314,12 @@ export async function sendStaffBookingNotifications(opts: {
 }): Promise<{ enqueued: number; skipped: number; noop: number; errors: number }> {
   const { supabase, bookingIds, playerName, paymentAmountValue, molliePaymentId, invoiceId, source, logStep, notifySlackError } = opts;
   try {
-    const { data: rows } = await supabase
+    // RECIPIENT-DISCOVERY read. supabase-js RESOLVES on a failed query, so `data: null` +
+    // error used to collapse into `rows ?? []` → "no bookings" → a clean {enqueued:0,errors:0}.
+    // That is a silent zero-row SUCCESS for the staff lane: indistinguishable, in the audit,
+    // from a booking that genuinely has no staff. Discovery failures must be loud; only
+    // display-NAME reads may degrade.
+    const { data: rows, error: rowsErr } = await supabase
       .from("bookings")
       .select(`
         id,
@@ -323,6 +333,14 @@ export async function sendStaffBookingNotifications(opts: {
         )
       `)
       .in("id", bookingIds);
+    if (rowsErr) {
+      logStep("Staff fan-out: booking read FAILED — recipients unknown", { error: rowsErr.message });
+      await notifySlackError(source, "staff fan-out could not read bookings — no staff notified", {
+        bookingIds,
+        error: rowsErr.message.slice(0, 300),
+      });
+      return { enqueued: 0, skipped: 0, noop: 0, errors: 1 };
+    }
     const bookings = (rows ?? []) as unknown as Array<{
       id: string;
       availability_slots: {
@@ -349,11 +367,23 @@ export async function sendStaffBookingNotifications(opts: {
     const academyIds = [...new Set(bookings.map((b) => b.availability_slots.academy_profile_id).filter(Boolean))] as string[];
     const academyUserIds = new Set<string>();
     const academyRecipients: Array<{ userId: string; name: string; academyId: string }> = [];
+    let discoveryErrors = 0;
     if (academyIds.length > 0) {
-      const { data: managers } = await supabase
+      // Another RECIPIENT-DISCOVERY read: its failure means managers are UNKNOWN, not absent.
+      // Counted + alerted, but it does not abort — trainers are discovered independently and
+      // should still hear about the payment.
+      const { data: managers, error: mgrErr } = await supabase
         .from("academy_managers")
         .select("user_id, academy_profile_id")
         .in("academy_profile_id", academyIds);
+      if (mgrErr) {
+        discoveryErrors++;
+        logStep("Staff fan-out: academy manager read FAILED", { error: mgrErr.message });
+        await notifySlackError(source, "academy managers could not be resolved — they were NOT notified", {
+          bookingIds,
+          error: mgrErr.message.slice(0, 300),
+        });
+      }
       const mgrRows = (managers ?? []) as Array<{ user_id: string; academy_profile_id: string }>;
       const managerUserIds = [...new Set(mgrRows.map((m) => m.user_id))];
       const nameByUser = new Map<string, string | null>();
@@ -376,10 +406,18 @@ export async function sendStaffBookingNotifications(opts: {
     const trainerIds = [...new Set(bookings.map((b) => b.availability_slots.trainer_id).filter(Boolean))] as string[];
     const trainerRecipients: Array<{ userId: string; name: string; trainerId: string; sessions: StaffSession[] }> = [];
     if (trainerIds.length > 0) {
-      const { data: tps } = await supabase
+      const { data: tps, error: tpsErr } = await supabase
         .from("trainer_profiles")
         .select("id, user_id")
         .in("id", trainerIds);
+      if (tpsErr) {
+        discoveryErrors++;
+        logStep("Staff fan-out: trainer profile read FAILED", { error: tpsErr.message });
+        await notifySlackError(source, "trainers could not be resolved — they were NOT notified", {
+          bookingIds,
+          error: tpsErr.message.slice(0, 300),
+        });
+      }
       const tpList = (tps ?? []) as Array<{ id: string; user_id: string | null }>;
       const userIds = [...new Set(tpList.map((t) => t.user_id).filter(Boolean))] as string[];
       const nameByUser = new Map<string, string | null>();
@@ -476,7 +514,14 @@ export async function sendStaffBookingNotifications(opts: {
     // Counts flow back to the caller's audit row: "0 staff rows" must be visible in the
     // database, not merely absent from a log nobody reads. These are ROW counts — a
     // recipient we tried but the resolver dropped is reported as skipped/noop, not enqueued.
-    return { enqueued: enqueuedRows, skipped: skippedStaffRows, noop: noopStaffRows, errors: enqueueErrors };
+    // discoveryErrors ride in `errors` so an unresolved recipient group can never present as
+    // a healthy zero — the audit row shows a non-zero error beside the zero rows.
+    return {
+      enqueued: enqueuedRows,
+      skipped: skippedStaffRows,
+      noop: noopStaffRows,
+      errors: enqueueErrors + discoveryErrors,
+    };
   } catch (staffErr) {
     logStep("Staff booking notification failed (non-fatal)", { error: String(staffErr) });
     await notifySlackError(source, "staff booking notification failed after paid transition", {
