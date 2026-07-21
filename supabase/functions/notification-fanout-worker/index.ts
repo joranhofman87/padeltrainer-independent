@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireServiceRole } from "../_shared/auth.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,10 +55,23 @@ const handler = async (req: Request): Promise<Response> => {
       break;
     }
     const r = (data ?? {}) as {
-      claimed?: boolean; done?: boolean; enqueued?: number; skipped?: number; no_identity?: number;
+      claimed?: boolean; done?: boolean; failed?: boolean; dead_letter?: boolean;
+      job_id?: string; error?: string; enqueued?: number; skipped?: number; no_identity?: number;
     };
     if (!r.claimed) break;   // no claimable work left this run
     pages++;
+    if (r.failed) {
+      // A page threw and was rolled back + backed off (or dead-lettered). ALERT ops — a
+      // notification job that cannot make progress is exactly the kind of silent gap this
+      // whole PR is closing. A dead-letter is the loud, terminal case.
+      errors.push(`job ${r.job_id}: ${r.error}${r.dead_letter ? ' [DEAD-LETTER]' : ''}`);
+      await notifySlackEdgeError('notification-fanout-worker',
+        `open_slots fan-out job ${r.job_id} ${r.dead_letter ? 'DEAD-LETTERED' : 'failed, backing off'}: ${r.error}`,
+        { job_id: r.job_id, dead_letter: r.dead_letter });
+      // Stop this run: the backed-off job would just be re-skipped, and continuing risks
+      // spinning. The next cron tick resumes with the backoff respected.
+      break;
+    }
     enqueued += r.enqueued ?? 0;
     skipped += r.skipped ?? 0;
     noIdentity += r.no_identity ?? 0;

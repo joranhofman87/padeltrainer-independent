@@ -887,10 +887,19 @@ export function BulkCreateContent({
           const insertedSlotIds = insertedSlots.map((row) => row.id).filter(Boolean);
           if (insertedSlotIds.length > 0) {
             const { data: { session } } = await supabase.auth.getSession();
-            await supabase.functions.invoke("notify-followers", {
+            // supabase.functions.invoke RESOLVES with { error } for an HTTP failure rather than
+            // throwing, so the fan-out could silently never happen. Slot creation still
+            // succeeded, so this is logged — NOT surfaced as a failed creation — but it is no
+            // longer invisible.
+            const { error: notifyError } = await supabase.functions.invoke("notify-followers", {
               body: { slot_ids: insertedSlotIds },
               headers: { Authorization: `Bearer ${session?.access_token}` },
             });
+            if (notifyError) {
+              logger.warn("notify-followers returned an error (slots were still created)", {
+                component: 'AddSlotDialog', error: notifyError.message,
+              });
+            }
           }
         } catch {
           logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });

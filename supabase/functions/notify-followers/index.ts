@@ -67,7 +67,7 @@ const handler = async (req: Request): Promise<Response> => {
     });
     if (jobError) {
       console.error("create_open_slots_fanout failed:", jobError.message);
-      const status = /not a trainer|not owned|not public/.test(jobError.message) ? 403 : 500;
+      const status = /not a trainer|not owned|not public|multiple academy scopes/.test(jobError.message) ? 403 : 500;
       return new Response(JSON.stringify({ error: jobError.message }),
         { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
@@ -78,13 +78,19 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseService = createClient(supabaseUrl, serviceKey);
     let drained: unknown = null;
     try {
-      const { data } = await supabaseService.rpc("process_notification_fanout", {
+      // Inspect the returned error too — rpc RESOLVES { error } for a DB-level failure. The
+      // kick is non-fatal (the job is durable and the cron resumes it), but a failing kick
+      // should be visible, not swallowed.
+      const { data, error: drainError } = await supabaseService.rpc("process_notification_fanout", {
         p_worker: "notify-followers-kick",
         p_max_followers: 200,
       });
+      if (drainError) {
+        console.error("kick drain error (non-fatal, cron will resume):", drainError.message);
+      }
       drained = data;
     } catch (e) {
-      console.error("kick drain failed (non-fatal, cron will resume):", (e as Error).message);
+      console.error("kick drain threw (non-fatal, cron will resume):", (e as Error).message);
     }
 
     return new Response(JSON.stringify({ job_id: jobId, drained }),
