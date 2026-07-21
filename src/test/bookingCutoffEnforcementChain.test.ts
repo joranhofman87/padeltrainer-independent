@@ -76,28 +76,15 @@ describe('guest/public checkout — the path can_book_slot cannot reach', () => 
     ['create-guest-cart-payment', guestCart],
   ];
 
-  it('every guest checkout checks the cutoff', () => {
-    // book_guest_*_for_payment take no user id, so they never reach can_book_slot — an
-    // unchecked guest flow is a hole straight through the rule
+  it('has NO edge pre-check — the mutation boundary is the only enforcement point', () => {
+    // The pre-check was removed, not relocated. It sat above the live-hold reuse branch, so a
+    // guest who began checkout outside the cutoff was refused their own hold on returning from
+    // Mollie. Any replacement would need its own notion of "live hold", which is exactly the
+    // duplication that caused the bug — so the RPC guard decides, and the token mapping below
+    // is what keeps the refusal clean.
     for (const [name, src] of guests) {
-      expect(src, `${name} must check the booking cutoff`).toMatch(/assertSlotsOutsideBookingCutoff\(/);
-    }
-  });
-
-  it('refuses BEFORE the guest player or payment is created', () => {
-    for (const [name, src] of guests) {
-      const check = src.indexOf('assertSlotsOutsideBookingCutoff(');
-      const guest = src.indexOf('resolveOrCreateGuestPlayer(supabase');
-      expect(check, `${name}: cutoff check missing`).toBeGreaterThan(-1);
-      expect(guest, `${name}: guest resolve missing`).toBeGreaterThan(-1);
-      expect(check, `${name}: must refuse before creating anything`).toBeLessThan(guest);
-    }
-  });
-
-  it('never sends a tenant id with the check — the slot decides', () => {
-    for (const [name, src] of guests) {
-      const call = src.slice(src.indexOf('assertSlotsOutsideBookingCutoff('), src.indexOf('assertSlotsOutsideBookingCutoff(') + 260);
-      expect(call, `${name} must not pass a tenant`).not.toMatch(/academyProfileId|trainerId/);
+      expect(src, `${name} must not re-introduce an edge pre-check`)
+        .not.toMatch(/assertSlotsOutsideBookingCutoff/);
     }
   });
 });
@@ -120,5 +107,34 @@ describe('a booking_cutoff raised by the RPC reaches the guest as a refusal', ()
   it('the cart maps it through the shared refusal vocabulary', () => {
     const cart = read('supabase', 'functions', '_shared', 'cart-payment.ts');
     expect(cart).toMatch(/"booking_cutoff",/);
+  });
+
+  it('maps EVERY refusal token each guest RPC can raise', () => {
+    // The audit Codex asked for. An unmapped mutation-boundary token becomes a generic 500 on
+    // the concurrent-change path — a clean refusal exists for each of these, so use it.
+    const migration = read('supabase', 'migrations', '20260925100000_player_booking_min_notice.sql');
+    const tokensOf = (fnName: string): string[] => {
+      const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${fnName}(`);
+      const end = migration.indexOf('\n$$;', start);
+      const body = migration.slice(start, end);
+      return [...new Set([...body.matchAll(/RAISE EXCEPTION '([a-z_]+)'/g)].map((m) => m[1]))];
+    };
+
+    for (const [fnName, src, label] of [
+      ['book_guest_slot_for_payment', guestSlot, 'create-guest-slot-payment'],
+      ['book_guest_cyclus_for_payment', guestCyclus, 'create-guest-cyclus-payment'],
+    ] as const) {
+      const tokens = tokensOf(fnName);
+      expect(tokens.length, `${fnName}: no tokens found — parser drifted`).toBeGreaterThan(2);
+      for (const token of tokens) {
+        expect(src, `${label} must map ${token} rather than 500`).toContain(`includes("${token}")`);
+      }
+    }
+
+    // the cart routes every token through the shared vocabulary instead of inline branches
+    const cart = read('supabase', 'functions', '_shared', 'cart-payment.ts');
+    for (const token of tokensOf('book_guest_cart_for_payment')) {
+      expect(cart, `mapCartRpcError must know ${token}`).toContain(`"${token}"`);
+    }
   });
 });

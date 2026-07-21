@@ -22,7 +22,6 @@ import { applySplitPayment, computeCyclusTotalFromSlots, computeCyclusExtrasTota
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
 import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
-import { assertSlotsOutsideBookingCutoff, type CutoffCheckClient } from "../_shared/booking-cutoff.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -174,29 +173,6 @@ Deno.serve(async (req) => {
 
     // 6. Guest identity — always a guest_players row.
 
-    // BOOKING CUTOFF — public self-booking only. Checked here because book_guest_*_for_payment
-    // take no user id and so never reach can_book_slot, which carries the rule for registered
-    // players. Refused BEFORE any payment is minted: the gate is booking creation, not payment
-    // completion. Staff adding a guest last-minute go through the authenticated staff paths and
-    // are unaffected.
-    {
-      const cutoff = await assertSlotsOutsideBookingCutoff(
-        supabase as unknown as CutoffCheckClient,
-        (slots as Array<{ id: string }>).map((s) => s.id),
-      );
-      if (!cutoff.ok) {
-        return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
-      }
-      if ("degraded" in cutoff) {
-        // Deploy order is migration-first, so this should never fire. Fail open (a blocked sale
-        // is worse than a late one, and staff can cancel) but say so LOUDLY.
-        await notifySlack(supabase, "edge_function_error", {
-          function: "create-guest-cyclus-payment",
-          error: "is_slot_within_player_booking_cutoff RPC missing — cutoff not enforced (deploy order violated)",
-          detail: cutoff.detail,
-        });
-      }
-    }
 
     const owner = slots[0].academy_profile_id
       ? { academyProfileId: slots[0].academy_profile_id as string }
@@ -265,7 +241,8 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (rpcError) {
-      // See create-guest-slot-payment: reachable on a race or a degraded pre-check.
+      // Every refusal this RPC can raise is mapped — the mutation boundary is the only place
+      // the cutoff is enforced (see create-guest-slot-payment).
       if ((rpcError.message || "").includes("booking_cutoff")) {
         logStep("Refused — booking cutoff", { cyclusId });
         return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
@@ -273,6 +250,15 @@ Deno.serve(async (req) => {
       if ((rpcError.message || "").includes("slot_full")) {
         logStep("Refused — a session is full", { cyclusId });
         return json({ error: "slot_full" }, 409);
+      }
+      // A session was hidden between our read and the RPC's lock.
+      if ((rpcError.message || "").includes("slot_not_public")) {
+        logStep("Refused — a session is no longer public (RPC boundary)", { cyclusId });
+        return json({ error: "slot_unavailable", message: "Deze cyclus is niet meer beschikbaar." }, 409);
+      }
+      if ((rpcError.message || "").includes("invalid_input")) {
+        logStep("Refused — invalid input at the RPC boundary", { cyclusId });
+        return json({ error: "invalid_input" }, 400);
       }
       throw new Error(`Failed to reserve cyclus: ${rpcError.message}`);
     }
