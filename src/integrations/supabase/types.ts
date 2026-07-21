@@ -9043,6 +9043,10 @@ export type Database = {
         Returns: string
       }
       digits_only: { Args: { _value: string }; Returns: string }
+      enqueue_booking_notification: {
+        Args: { p_booking_ids: string[]; p_kind: string }
+        Returns: number
+      }
       enqueue_notification: {
         Args: {
           p_event_key: string
