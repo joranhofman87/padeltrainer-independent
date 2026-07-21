@@ -28,6 +28,13 @@ type FakeOpts = {
   profileRows?: { user_id: string; full_name: string | null }[];
   /** error to return from enqueue_notification (default: success). */
   enqueueError?: string;
+  /** make the booking-CONTEXT .single() resolve an ERROR (broken embed / RLS change). */
+  bookingContextError?: string;
+  /** make every query on this table THROW (network/isolate fault), not resolve an error. */
+  throwOnTable?: string;
+  /** make ONLY .single()/.maybeSingle() throw for this table — isolates the display-name
+   *  lookup (which uses .single()) from the staff fan-out's .in() reads on the same table. */
+  throwOnSingle?: string;
 };
 
 /**
@@ -35,7 +42,11 @@ type FakeOpts = {
  * {data: thenData}; .single()/.maybeSingle() resolve {data: rowData}. One chain per
  * from(table) call, so per-table data covers every query the helper runs.
  */
-function chain(thenData: unknown, rowData: unknown = thenData) {
+function chain(
+  thenData: unknown,
+  rowData: unknown = thenData,
+  extra: { rowError?: string; throws?: boolean; throwsSingle?: boolean; onInsert?: (payload: unknown) => void } = {},
+) {
   const target = () => {};
   // .in(col, vals) filters are honored when the rows carry that column (the staff
   // notification block resolves managers and trainers with separate .in() reads on
@@ -54,11 +65,25 @@ function chain(thenData: unknown, rowData: unknown = thenData) {
   const self: unknown = new Proxy(target, {
     get(_t, prop) {
       if (prop === 'then') {
+        if (extra.throws) {
+          return (_res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+            Promise.reject(new Error('simulated transport fault')).catch(rej);
+        }
         return (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
           Promise.resolve({ data: applyFilters(thenData), error: null }).then(res, rej);
       }
       if (prop === 'single' || prop === 'maybeSingle') {
-        return () => Promise.resolve({ data: rowData, error: null });
+        if (extra.throws || extra.throwsSingle) return () => Promise.reject(new Error('simulated transport fault'));
+        return () =>
+          Promise.resolve(
+            extra.rowError ? { data: null, error: { message: extra.rowError } } : { data: rowData, error: null },
+          );
+      }
+      if (prop === 'insert') {
+        return (payload: unknown) => {
+          extra.onInsert?.(payload);
+          return self;
+        };
       }
       if (prop === 'in') {
         return (col: string, vals: unknown[]) => {
@@ -85,25 +110,37 @@ function makeFakeSupabase(opts: FakeOpts) {
     }
     return { data: null, error: null };
   });
+  const auditRows: Record<string, unknown>[] = [];
   const from = vi.fn((table: string) => {
+    const throws = opts.throwOnTable === table;
+    if (table === 'payment_audit_log') {
+      return chain(null, null, { onInsert: (p) => auditRows.push(p as Record<string, unknown>) });
+    }
     switch (table) {
       case 'bookings':
         // Awaited chains (finalizePriorityClaims + the staff .in() fetch) resolve
         // thenData; the email block ends in .single() (rowData: booking under test).
-        return chain(opts.staffBookings ?? [], opts.booking);
+        return chain(opts.staffBookings ?? [], opts.booking, {
+          rowError: opts.bookingContextError,
+          throws,
+          throwsSingle: opts.throwOnSingle === 'bookings',
+        });
       case 'invoices':
         return chain(null, opts.invoiceFallbackRow ?? null);
       case 'academy_managers':
         return chain(opts.managers ?? [], null);
       case 'trainer_profiles':
-        return chain(opts.trainerProfiles ?? [], { user_id: 'user-1' });
+        return chain(opts.trainerProfiles ?? [], { user_id: 'user-1' }, {
+          throws,
+          throwsSingle: opts.throwOnSingle === 'trainer_profiles',
+        });
       case 'profiles':
         return chain(opts.profileRows ?? [], { full_name: 'Trainer T' });
       default:
         return chain(null, null);
     }
   });
-  return { supabase: { functions: { invoke }, from, rpc }, invoke, rpc };
+  return { supabase: { functions: { invoke }, from, rpc }, invoke, rpc, auditRows };
 }
 
 const SLOT = { start_time: '2027-01-01T10:00:00Z', end_time: '2027-01-01T11:00:00Z', trainer_id: 'tp-1', locations: { name: 'Hal 1', city: 'Utrecht' } };
@@ -323,3 +360,85 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PR 10a — the 2026-07-20 regression.
+//
+// A real paid guest booking (tr_NSYo…) was transitioned by mollie-webhook, its invoice was
+// created and mailed to the bookkeeper — and then the paying guest AND every staff recipient
+// got nothing. No outbox row, no send, no alert. The whole notification half of the side
+// effects sat inside ONE try whose catch only logged, and the staff fan-out additionally
+// hung off `if (booking)` — a display-name fetch. So a single fault anywhere silently took
+// out three independent notifications and left no trace to find it by.
+//
+// These pin the boundaries: each lane fails alone, and a failure is always LOUD.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PR 10a — one failing lane must not silence the others', () => {
+  const staffFixture = {
+    staffBookings: [{ id: 'B1', availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' } }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  const staffEnqueues = (rpc: { mock: { calls: [string, Record<string, unknown>?][] } }) =>
+    rpc.mock.calls.filter((c) => c[0] === 'enqueue_notification'
+      && (c[1] as { p_event_key?: string } | undefined)?.p_event_key === 'booking_confirmed_staff');
+
+  it('still notifies STAFF when the booking-context read returns an ERROR', async () => {
+    // The exact shape that produced zero staff rows: `const { data: booking }` discarded the
+    // error, `if (booking)` then read false, and the fan-out vanished without a word.
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: guestBooking,
+      bookingContextError: 'column bookings.guest_players does not exist',
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    expect(staffEnqueues(rpc).length, 'staff must be notified even with no display name').toBeGreaterThan(0);
+  });
+
+  it('still notifies STAFF when the display-name lookup THROWS', async () => {
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: guestBooking,
+      throwOnSingle: 'bookings',
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    expect(staffEnqueues(rpc).length, 'a name lookup fault must not cancel notifications').toBeGreaterThan(0);
+  });
+
+  it('records a durable audit row with the COUNTS, so "zero" is visible in the database', async () => {
+    // The original incident was only findable because notification_outbox was empty; there
+    // was nothing in the payment trail saying the notifications had produced nothing.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    const row = auditRows.find((r) => r.status === 'booking_paid_notifications');
+    expect(row, 'every paid booking must leave a notification-outcome row').toBeTruthy();
+    expect(row!.metadata).toMatchObject({ staffRows: expect.any(Number), playerRows: expect.any(Number) });
+    expect(row!.mollie_payment_id).toBe('tr_test');
+  });
+
+  it('runs the STAFF lane even when the PLAYER confirmation cannot enqueue, and alerts', async () => {
+    // The lanes are independent notifications to different people. Before PR 10a they shared
+    // one try/catch, so the payer's confirmation failing could take the staff with it.
+    //
+    // (The outer try/catch now wrapping the staff call is deliberate defence-in-depth, but it
+    // is NOT asserted here: sendStaffBookingNotifications already wraps its own body, so the
+    // outer catch is currently unreachable. A test for it passed even with the alert deleted —
+    // it was catching the INNER alert — so it has been removed rather than left to look like
+    // coverage it never provided.)
+    const { supabase, rpc } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueError: 'resolver unavailable',
+      ...staffFixture,
+    });
+    const notify = await run(supabase);
+    expect(staffEnqueues(rpc).length, 'the staff lane must still be attempted').toBeGreaterThan(0);
+    expect(notify.mock.calls.length, 'an enqueue failure must alert, not vanish').toBeGreaterThan(0);
+  });
+});
