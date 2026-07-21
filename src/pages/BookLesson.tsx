@@ -28,7 +28,7 @@ import { SlotList } from '@/components/booking/SlotList';
 import { BookingSummary } from '@/components/booking/BookingSummary';
 import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
 import { recordBookingWhatsAppOptIn } from '@/lib/bookingWhatsAppOptIn';
-import { effectiveCutoffMinutes, isSlotWithinCutoff, formatCutoffMinutes } from '@/lib/bookingCutoff';
+import { formatCutoffMinutes } from '@/lib/bookingCutoff';
 import { CAPACITY_OCCUPYING_STATUSES, occupiesSeatNow, getSlotCapacity } from '@/lib/lessons';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
@@ -111,7 +111,7 @@ export default function BookLesson() {
   const [trainer, setTrainer] = useState<TrainerWithProfile | null>(null);
   // Booking cutoff inputs. ADVISORY ONLY — this hides slots the server would refuse anyway;
   // the RPC boundary decides, using the database clock.
-  const [academyCutoffs, setAcademyCutoffs] = useState<Record<string, number>>({});
+  const [slotCutoffs, setSlotCutoffs] = useState<Record<string, { minutes: number; closed: boolean }>>({});
   const [cyclusBundles, setCyclusBundles] = useState<CyclusBundle[]>([]);
   const [individualSlots, setIndividualSlots] = useState<SlotWithDetails[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotWithDetails | null>(null);
@@ -163,7 +163,7 @@ export default function BookLesson() {
 
     const trainerResult = await supabase
       .from('trainer_profiles_safe' as any)
-      .select(`id, user_id, hourly_rate, experience_years, specializations, require_booking_approval, use_manual_invoicing, player_booking_min_notice_minutes`)
+      .select(`id, user_id, hourly_rate, experience_years, specializations, require_booking_approval, use_manual_invoicing`)
       .eq(isUUID ? 'user_id' : 'slug', trainerId!)
       .maybeSingle();
 
@@ -290,26 +290,25 @@ export default function BookLesson() {
           return { ...s, location: s.locations as SlotWithDetails['location'], spotsLeft: maxP - bookingCount, averageRating, ratingSystem } as SlotWithDetails;
         });
 
-      // Booking-cutoff inputs for the ACADEMY side. A trainer can work for several academies, so
-      // the cutoff is per-slot, not per-page: fetch each distinct academy once and let
-      // effectiveCutoffMinutes take the stricter of it and the trainer's own setting.
+      /**
+       * BOOKING CUTOFF, from the shared anon-safe RPC.
+       *
+       * Not read from the settings columns: `trainer_profiles_safe` (what this page reads) does
+       * not expose them, and neither base table is readable by an anonymous visitor — selecting
+       * them either 400s or silently yields 0, which would leave too-late slots on sale. The RPC
+       * publishes the derived answer for PUBLIC slots only, computed with the database clock, so
+       * this page and the shared public calendars apply one identical rule.
+       */
       {
-        const academyIds = [...new Set(
-          slotsData.map((s) => (s as { academy_profile_id?: string | null }).academy_profile_id)
-            .filter((id): id is string => Boolean(id)),
-        )];
-        if (academyIds.length > 0) {
-          const { data: academyRows } = await supabase
-            .from('academy_profiles')
-            .select('id, player_booking_min_notice_minutes')
-            .in('id', academyIds);
-          const map: Record<string, number> = {};
-          for (const row of academyRows ?? []) {
-            map[row.id as string] = (row as { player_booking_min_notice_minutes?: number | null })
-              .player_booking_min_notice_minutes ?? 0;
-          }
-          setAcademyCutoffs(map);
+        const { data: cutoffRows } = await supabase.rpc(
+          'get_public_slot_booking_cutoff' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        const map: Record<string, { minutes: number; closed: boolean }> = {};
+        for (const r of (cutoffRows ?? []) as Array<{ slot_id: string; cutoff_minutes: number; booking_closed: boolean }>) {
+          map[r.slot_id] = { minutes: r.cutoff_minutes ?? 0, closed: Boolean(r.booking_closed) };
         }
+        setSlotCutoffs(map);
       }
 
       const cyclusIds: string[] = [];
@@ -394,17 +393,19 @@ export default function BookLesson() {
    * Per slot rather than per page because a trainer may work for several academies, and the
    * strictest of (that slot's academy, this trainer) wins.
    */
-  const slotCutoffMinutes = useCallback((slot: { academy_profile_id?: string | null }) =>
-    effectiveCutoffMinutes(
-      slot.academy_profile_id ? academyCutoffs[slot.academy_profile_id] : 0,
-      (trainer as { player_booking_min_notice_minutes?: number | null } | null)?.player_booking_min_notice_minutes,
-    ), [academyCutoffs, trainer]);
+  const slotCutoffMinutes = useCallback((slot: { id?: string }) =>
+    (slot.id ? slotCutoffs[slot.id]?.minutes : 0) ?? 0, [slotCutoffs]);
 
-  const isSlotBookingClosed = useCallback((slot: { start_time: string; academy_profile_id?: string | null }) =>
-    isSlotWithinCutoff(slot.start_time, slotCutoffMinutes(slot)), [slotCutoffMinutes]);
+  /**
+   * The SERVER's verdict, not a re-derivation of it. The RPC already answered using the database
+   * clock; recomputing from browser time here would be a second rule that can disagree with the
+   * one that actually refuses. isSlotWithinCutoff remains for surfaces that hold only settings.
+   */
+  const isSlotBookingClosed = useCallback((slot: { id?: string }) =>
+    Boolean(slot.id && slotCutoffs[slot.id]?.closed), [slotCutoffs]);
 
   /** The label a closed slot shows. Names the RULE, not just "unavailable". */
-  const bookingClosedLabel = useCallback((slot: { start_time: string; academy_profile_id?: string | null }) => {
+  const bookingClosedLabel = useCallback((slot: { id?: string }) => {
     if (!isSlotBookingClosed(slot)) return null;
     return t('booking.cutoff.closed', {
       duration: formatCutoffMinutes(slotCutoffMinutes(slot), (k, fb, o) => t(k, { defaultValue: fb, ...(o ?? {}) })),
@@ -413,7 +414,7 @@ export default function BookLesson() {
   }, [isSlotBookingClosed, slotCutoffMinutes, t]);
 
   /** A cycle is unbookable if ANY of its sessions is inside the cutoff — matching the server. */
-  const cycleBookingClosedLabel = useCallback((bundle: { slots: Array<{ start_time: string; academy_profile_id?: string | null }> }) => {
+  const cycleBookingClosedLabel = useCallback((bundle: { slots: Array<{ id?: string }> }) => {
     const late = bundle.slots.find((sl) => isSlotBookingClosed(sl));
     if (!late) return null;
     return t('booking.cutoff.closedCycle', {

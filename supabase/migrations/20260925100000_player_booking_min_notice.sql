@@ -546,3 +546,35 @@ BEGIN
   RETURN v_ids;
 END;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- 6. The PUBLIC, anon-safe read of the cutoff.
+--
+-- Both public surfaces need "is this slot past its cutoff?", and neither can read the settings
+-- columns: `trainer_profiles` is not readable by anon (public reads go through
+-- trainer_profiles_safe, which deliberately exposes a narrow column set), and academy settings
+-- are not public either. Selecting the raw columns from a page therefore either 400s on a view
+-- that lacks them or silently returns 0 for anonymous visitors — leaving too-late slots on sale.
+--
+-- So the cutoff is published the same way occupancy is: a SECURITY DEFINER function scoped to
+-- PUBLIC slots, granted to anon, returning only the derived answer. The settings columns
+-- themselves stay unreadable, which is the right exposure — a visitor needs to know that a slot
+-- is closed, not what any tenant's policy is.
+--
+-- booking_closed is computed with the DATABASE clock, so the "advisory" client view now agrees
+-- with the authority instead of approximating it from browser time.
+CREATE OR REPLACE FUNCTION public.get_public_slot_booking_cutoff(_slot_ids uuid[])
+RETURNS TABLE (slot_id uuid, cutoff_minutes int, booking_closed boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT s.id AS slot_id,
+         coalesce(public.get_slot_player_booking_min_notice_minutes(s.id), 0) AS cutoff_minutes,
+         public.is_slot_within_player_booking_cutoff(s.id) AS booking_closed
+  FROM public.availability_slots s
+  WHERE s.id = ANY(_slot_ids)
+    AND s.is_public = true;
+$$;
+COMMENT ON FUNCTION public.get_public_slot_booking_cutoff(uuid[]) IS
+  'Notification-free public read: for PUBLIC slots only, the effective player booking cutoff and whether the slot is past it, using the database clock. Anon-safe by design — it exposes the derived answer, never the tenants'' settings. The single source both the booking page and the shared public calendars use.';
+REVOKE ALL ON FUNCTION public.get_public_slot_booking_cutoff(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_slot_booking_cutoff(uuid[]) TO anon, authenticated, service_role;

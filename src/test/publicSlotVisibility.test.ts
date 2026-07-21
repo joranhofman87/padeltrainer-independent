@@ -168,3 +168,57 @@ describe('countOccupiedSeatsNow', () => {
     expect(countOccupiedSeatsNow([])).toBe(0);
   });
 });
+
+describe('public surfaces only select columns their source actually exposes', () => {
+  // THE BUG THIS EXISTS FOR: BookLesson read player_booking_min_notice_minutes from
+  // `trainer_profiles_safe`, a VIEW that does not expose it. PostgREST 400s on that select, so
+  // /book/:trainerId failed to load. Typecheck could not catch it because the .from() carries an
+  // `as any` cast — the one place the type system was disabled is the place it was needed.
+  const types = readFileSync(join(process.cwd(), 'src', 'integrations', 'supabase', 'types.ts'), 'utf8');
+  const bookLesson = readFileSync(join(process.cwd(), 'src', 'pages', 'BookLesson.tsx'), 'utf8');
+  const publicHook = readFileSync(join(process.cwd(), 'src', 'hooks', 'usePublicAvailability.ts'), 'utf8');
+
+  /** Columns the generated types say a table/view has. */
+  const columnsOf = (name: string): string => {
+    const i = types.indexOf(`      ${name}: {`);
+    expect(i, `${name} missing from generated types`).toBeGreaterThan(-1);
+    return types.slice(i, i + 6000);
+  };
+
+  it('trainer_profiles_safe does NOT expose the cutoff column', () => {
+    // the fact that makes the direct select wrong; asserted so the pin below has teeth
+    expect(columnsOf('trainer_profiles_safe')).not.toContain('player_booking_min_notice_minutes');
+  });
+
+  it('BookLesson never selects the cutoff column from the safe view', () => {
+    const at = bookLesson.indexOf("trainer_profiles_safe");
+    expect(at).toBeGreaterThan(-1);
+    // the select immediately follows the .from()
+    expect(bookLesson.slice(at, at + 400)).not.toContain('player_booking_min_notice_minutes');
+  });
+
+  it('neither public surface reads the settings tables directly', () => {
+    // anon cannot read either base table, so those selects silently yield 0 for exactly the
+    // visitors these pages serve — leaving too-late slots on sale
+    for (const [name, src] of [['BookLesson', bookLesson], ['usePublicAvailability', publicHook]] as const) {
+      expect(src, `${name} must not read academy_profiles for cutoffs`)
+        .not.toMatch(/from\('academy_profiles'\)[\s\S]{0,120}player_booking_min_notice_minutes/);
+      expect(src, `${name} must not read trainer_profiles for cutoffs`)
+        .not.toMatch(/from\('trainer_profiles'\)[\s\S]{0,120}player_booking_min_notice_minutes/);
+    }
+  });
+
+  it('both public surfaces use the ONE anon-safe cutoff RPC', () => {
+    for (const [name, src] of [['BookLesson', bookLesson], ['usePublicAvailability', publicHook]] as const) {
+      expect(src, `${name} must use the shared cutoff RPC`)
+        .toMatch(/rpc\(\s*\n?\s*'get_public_slot_booking_cutoff'/);
+    }
+  });
+
+  it('the shared occupancy fallback uses the canonical predicate, not the narrow pair', () => {
+    // during a deploy window this path is the only thing standing between a full slot and a
+    // public page — counting pending/confirmed alone reintroduces the exact bug
+    expect(publicHook).not.toMatch(/\.in\('status', \['pending', 'confirmed'\]\)/);
+    expect(publicHook).toContain('occupiesSeatNow');
+  });
+});

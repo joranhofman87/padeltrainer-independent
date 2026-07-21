@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import type { PublicReleaseStatus } from '@/lib/priorityClaims';
 import { logger } from '@/lib/logger';
-import { effectiveCutoffMinutes, isSlotWithinCutoff } from '@/lib/bookingCutoff';
+import { CAPACITY_OCCUPYING_STATUSES, occupiesSeatNow } from '@/lib/lessons';
 import {
   mapAndGroupPublicSlots,
   type PublicDayGroup,
@@ -137,15 +137,18 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
             bookingCounts[r.slot_id] = r.occupied;
           });
         } else {
-          // Deploy-window fallback (RPC not live yet): the legacy direct read — correct for
-          // authed users, no worse than today for anon.
+          // Deploy-window fallback (RPC not live yet). Uses the SAME predicate as the RPC —
+          // statuses PLUS live payment holds — because the old narrow pair reintroduced the very
+          // bug this path exists to avoid: a server-full slot shown as bookable.
           const { data: bookingsData } = await supabase
             .from('bookings')
-            .select('slot_id')
+            .select('slot_id, status, hold_expires_at')
             .in('slot_id', slotIds)
-            .in('status', ['pending', 'confirmed']);
+            .in('status', [...CAPACITY_OCCUPYING_STATUSES, 'payment_pending']);
           (bookingsData || []).forEach((b) => {
-            bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+            if (occupiesSeatNow(b as { status?: string | null; hold_expires_at?: string | null })) {
+              bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
+            }
           });
         }
 
@@ -183,41 +186,23 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           : visibleIds;
 
         /**
-         * Player booking cutoff. Advisory: the server refuses independently using its own clock.
-         * These slots are DROPPED rather than dimmed — this surface's invariant is "only open,
-         * actionable slots", the same reason full ones never reach it.
+         * Player booking cutoff, from the shared anon-safe RPC — the SAME call BookLesson makes,
+         * so both surfaces apply one rule computed with the database clock.
          *
-         * Per slot, because one calendar can span several trainers and academies, and the
-         * effective cutoff is the STRICTER of a slot's academy and its trainer.
+         * Deliberately not read from academy_profiles / trainer_profiles: anon cannot read either
+         * (public trainer reads go through trainer_profiles_safe), so those selects would silently
+         * yield 0 for exactly the visitors this page is for, leaving too-late slots on sale.
+         *
+         * Dropped rather than dimmed: this surface's invariant is "only open, actionable slots".
          */
         const bookingClosedIds = new Set<string>();
         {
-          const rows = slots as unknown as Array<{ id: string; start_time: string; trainer_id: string | null; academy_profile_id: string | null }>;
-          const academyIds = [...new Set(rows.map((r) => r.academy_profile_id).filter((v): v is string => Boolean(v)))];
-          const trainerIds = [...new Set(rows.map((r) => r.trainer_id).filter((v): v is string => Boolean(v)))];
-          const [academyRows, trainerRows] = await Promise.all([
-            academyIds.length
-              ? supabase.from('academy_profiles').select('id, player_booking_min_notice_minutes').in('id', academyIds)
-              : Promise.resolve({ data: [] as unknown[] }),
-            trainerIds.length
-              ? supabase.from('trainer_profiles').select('id, player_booking_min_notice_minutes').in('id', trainerIds)
-              : Promise.resolve({ data: [] as unknown[] }),
-          ]);
-          const byId = (list: unknown): Record<string, number> => {
-            const out: Record<string, number> = {};
-            for (const r of (list ?? []) as Array<{ id: string; player_booking_min_notice_minutes?: number | null }>) {
-              out[r.id] = r.player_booking_min_notice_minutes ?? 0;
-            }
-            return out;
-          };
-          const academyCut = byId(academyRows.data);
-          const trainerCut = byId(trainerRows.data);
-          for (const r of rows) {
-            const minutes = effectiveCutoffMinutes(
-              r.academy_profile_id ? academyCut[r.academy_profile_id] : 0,
-              r.trainer_id ? trainerCut[r.trainer_id] : 0,
-            );
-            if (isSlotWithinCutoff(r.start_time, minutes)) bookingClosedIds.add(r.id);
+          const { data: cutoffRows } = await supabase.rpc(
+            'get_public_slot_booking_cutoff' as never,
+            { _slot_ids: slotIds } as never,
+          );
+          for (const r of (cutoffRows ?? []) as Array<{ slot_id: string; booking_closed: boolean }>) {
+            if (r.booking_closed) bookingClosedIds.add(r.slot_id);
           }
         }
 
