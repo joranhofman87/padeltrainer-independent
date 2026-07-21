@@ -101,9 +101,9 @@ describe('guest/public checkout — the path can_book_slot cannot reach', () => 
 });
 
 describe('a booking_cutoff raised by the RPC reaches the guest as a refusal', () => {
-  // The guard can still fire AFTER the pre-check: a race across the mutation boundary, or the
-  // pre-check degrading open while the RPC is briefly absent. Unmapped, the guest sees a generic
-  // failure for a rule we have clear copy for — the mapping is what makes the boundary usable.
+  // The RPC guard is the ONLY place the guest cutoff is enforced, so this mapping is not a
+  // fallback for a rare race — it is the ordinary path every refused guest takes. Unmapped, the
+  // guest sees a generic 500 for a rule we have clear copy for.
   it('slot and cyclus map the token to a 400 with the booking-closed message', () => {
     for (const [name, src] of [
       ['create-guest-slot-payment', guestSlot],

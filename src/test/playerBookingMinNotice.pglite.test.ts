@@ -337,11 +337,11 @@ describe('the settings themselves', () => {
   });
 });
 
-describe('the guest MUTATION BOUNDARY, not just the edge pre-check', () => {
-  // The create-guest-* edge functions pre-check so a guest gets a clean message. But these RPCs
-  // are the last thing before a booking row, they take no user id so they never reach
-  // can_book_slot, and any future caller would otherwise walk straight past the rule. The
-  // registered path has three layers; this is what gives the guest path more than one.
+describe('the guest MUTATION BOUNDARY — the only guest enforcement point', () => {
+  // These RPCs are the last thing before a booking row and take no user id, so they never reach
+  // can_book_slot. An edge pre-check was tried and removed: it necessarily sat above the
+  // live-hold reuse branch and refused guests finishing a checkout begun outside the cutoff.
+  // So everything below is what stands between a public checkout and a session that closed.
   const G1 = '0b000000-0000-0000-0000-0000000000b1';
 
   beforeEach(async () => {
@@ -381,9 +381,9 @@ describe('the guest MUTATION BOUNDARY, not just the edge pre-check', () => {
       `SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`)).toBe(false);
   });
 
-  it('refuses even when the EDGE pre-check is bypassed entirely', async () => {
-    // calling the RPC directly is exactly what a future caller would do — the whole reason
-    // edge-only enforcement was not enough
+  it('refuses a caller that reaches the RPC directly, whatever the edge does', async () => {
+    // Calling the RPC with no edge function involved is what any future caller looks like —
+    // and it is why enforcement lives here rather than in a layer above it.
     await setNotice({ trainer: 24 * 60 });
     const s = await slot('01000000-0000-0000-0000-000000000022', 2);
     await expect(

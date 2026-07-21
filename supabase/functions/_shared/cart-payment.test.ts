@@ -234,7 +234,8 @@ Deno.test("rpc-error map: slot_not_public collapses to slot_unavailable for the 
 });
 
 Deno.test("rpc-error map: booking_cutoff reaches the guest as its own refusal, not a generic failure", () => {
-  // The edge pre-check normally refuses first, so this is the race / degraded-pre-check path.
+  // Unlike the other tokens here, booking_cutoff has NO pre-RPC counterpart — the mutation
+  // boundary is its only enforcement point — so this is the ordinary refusal path, not a race.
   // Unmapped it would surface as a 500 for a rule we have clear copy for.
   const id = "9f8e7d6c-5b4a-3210-fedc-ba9876543210";
   assertEquals(mapCartRpcError({ message: "booking_cutoff", details: id }), { error: "booking_cutoff", slotIds: [id] });
