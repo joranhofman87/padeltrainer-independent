@@ -68,11 +68,6 @@ const REGISTER: Entry[] = [
   // ── v1-PREFERENCE-GATED: these BLOCK removal of the PR 8 "Other notifications" bridge ──
   // send-email maps each of these to a notification_preferences column, so the v1 settings
   // remain load-bearing until every one has moved.
-  // Declared under the DYNAMIC key the scanner can actually see. The variable resolves to
-  // 'slot_reopened' or 'new_availability' at runtime; naming the resolved types here instead
-  // would make the register look precise while the guard matched on something else.
-  { file: 'supabase/functions/notify-followers/index.ts', type: '(dynamic:emailType)',
-    status: 'pending', reason: 'Resolves to new_availability | slot_reopened. Maps to notification_preferences.open_slots_digest. No v2 catalog event exists for open-slot alerts yet. Its v1 filter is ALSO inert today: it selects the nonexistent column email_new_availability and discards the error.' },
 ];
 
 /** Wrappers that MUST no longer exist — dead code removed, kept as tombstones. */
@@ -84,6 +79,7 @@ const MIGRATED_AWAY = [
   { file: 'src/pages/BookLesson.tsx', to: 'enqueue_booking_notification(request_staff | confirmation_player)' },
   { file: 'src/components/booking/BookForPlayerDialog.tsx', to: 'enqueue_booking_notification(confirmation_player), one call per recipient' },
   { file: 'src/components/slots/DeleteSlotDialog.tsx', to: 'enqueue_booking_notification(cancelled_player), complete cancelled set' },
+  { file: 'supabase/functions/notify-followers/index.ts', to: 'create_open_slots_fanout → durable process_notification_fanout (open_slots_player)' },
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -183,9 +179,10 @@ describe('the legacy send-email register', () => {
     // columns. This asserts the blocking set is explicit, so "can we drop the bridge yet?"
     // is answered by the register instead of by memory.
     const blocking = REGISTER.filter((e) => e.status === 'pending').map((e) => e.file).sort();
-    // Four booking routes migrated to enqueue_booking_notification; notify-followers is the
-    // last one standing, and it needs a v2 catalog event that does not exist yet.
-    expect(blocking).toEqual(['supabase/functions/notify-followers/index.ts']);
+    // ALL v1-preference-gated routes have now moved. The blocking set is empty, which is the
+    // precondition for removing the PR 8 'Other notifications' bridge — a SEPARATE, later step
+    // once the open_slots_player migration is proven in production.
+    expect(blocking).toEqual([]);
   });
 
   it('removed wrappers stay removed', () => {

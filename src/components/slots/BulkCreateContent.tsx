@@ -881,24 +881,17 @@ export function BulkCreateContent({
       const hasPublicSlots = true; // New slots are public by default
       if (shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots, academyId })) {
         try {
-          const publicSlots = slotsToInsert;
-          const earliestStart = new Date(
-            Math.min(...publicSlots.map((s) => new Date(s.start_time).getTime()))
-          );
-          const latestEnd = new Date(
-            Math.max(...publicSlots.map((s) => new Date(s.start_time).getTime()))
-          );
-
-          const { data: { session } } = await supabase.auth.getSession();
-          await supabase.functions.invoke("notify-followers", {
-            body: {
-              slot_count: publicSlots.length,
-              date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
-            },
-            headers: {
-              Authorization: `Bearer ${session?.access_token}`,
-            },
-          });
+          // PR 10b: pass the CANONICAL inserted slot ids only. The server re-validates
+          // ownership + public and derives count, dates, recipients and copy — the client no
+          // longer composes any of it. A crash mid-fan-out resumes from a durable job.
+          const insertedSlotIds = insertedSlots.map((row) => row.id).filter(Boolean);
+          if (insertedSlotIds.length > 0) {
+            const { data: { session } } = await supabase.auth.getSession();
+            await supabase.functions.invoke("notify-followers", {
+              body: { slot_ids: insertedSlotIds },
+              headers: { Authorization: `Bearer ${session?.access_token}` },
+            });
+          }
         } catch {
           logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
         }

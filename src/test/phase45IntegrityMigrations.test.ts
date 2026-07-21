@@ -99,25 +99,34 @@ describe("BJ-08 notification_sends dedup table", () => {
   });
 });
 
-describe("BJ-08 notify-followers edge function", () => {
+describe("notify-followers is now a thin producer (PR 10b superseded BJ-08)", () => {
+  // BJ-08 used to pin a claim-before-send loop INSIDE this edge function: claim a dedup key in
+  // notification_sends, send, release on failure. PR 10b removed that whole approach, because a
+  // crash AFTER claiming but BEFORE sending stranded that recipient permanently — the claim
+  // existed, so a retry skipped them, but nothing had gone out. Durability now lives in the
+  // notification_fanout_jobs table (leased + cursor-resumable) and idempotency in
+  // enqueue_notification. These pins lock in that the fragile version does not come back.
   const src = readFileSync(
     join(process.cwd(), "supabase", "functions", "notify-followers", "index.ts"),
     "utf8",
   );
 
-  it("claims the dedup key before sending and releases failed claims", () => {
-    expect(src).toContain("notification_sends");
-    expect(src).toContain('onConflict: "dedup_key"');
-    expect(src).toContain("ignoreDuplicates: true");
-    // failed sends release their claim so they retry instead of being suppressed
-    expect(src).toContain('.from("notification_sends").delete().in("dedup_key", failedKeys)');
+  it("no longer composes email or fans out in-request — it hands slot ids to the RPC", () => {
+    expect(src).toContain("create_open_slots_fanout");
+    expect(src).toContain("slot_ids");
+    // the legacy sender, the client-trusted payload fields, and the in-request loop are gone
+    expect(src).not.toContain("send-email");
+    expect(src).not.toContain("slot_count");
+    expect(src).not.toContain("CHUNK_SIZE");
   });
 
-  it("batches with bounded concurrency and a wall-clock budget", () => {
-    expect(src).toContain("CHUNK_SIZE");
-    expect(src).toContain("TIME_BUDGET_MS");
-    expect(src).toContain("Promise.all");
-    // no more serial per-follower await-fetch loop
-    expect(src).not.toContain("for (const player of playersToNotify)");
+  it("does NOT re-introduce the claim-before-send table it used to own", () => {
+    // The stranding bug: a claim in notification_sends with no matching send.
+    expect(src).not.toContain('onConflict: "dedup_key"');
+    expect(src).not.toContain("notification_sends");
+  });
+
+  it("kicks a drain but leaves completion to the durable worker", () => {
+    expect(src).toContain("process_notification_fanout");
   });
 });
