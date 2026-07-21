@@ -189,16 +189,33 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           bookingCounts[r.slot_id] = r.occupied;
         });
 
-        // Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
-        // so a guest never fills the whole form only to dead-end (create-*-payment refuses /
-        // Mollie 422). Anon-safe RPC (booleans only, no account data). Deploy-window fallback:
-        // RPC not live → don't filter (show all, no worse than today).
+        /**
+         * Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
+         * so a guest never fills the whole form only to dead-end (create-*-payment refuses /
+         * Mollie 422). Anon-safe RPC (booleans only, no account data).
+         *
+         * FAILS CLOSED — but only when it can matter. This gate decides whether a PAID slot can
+         * actually be paid for, so ignoring its error offers slots that dead-end at checkout with
+         * no_mollie_account. A FREE slot needs no Mollie account, though, so a calendar with no
+         * priced slots is unaffected by this RPC and must not be blanked over an irrelevant
+         * failure. Fail closed exactly when the answer would have been used.
+         */
         let paymentReadyIds: Set<string> | null = null;
         const { data: pr, error: prErr } = await supabase.rpc(
           'get_public_slot_payment_ready' as never,
           { _slot_ids: slotIds } as never,
         );
-        if (!prErr && pr) {
+        if (prErr || !pr) {
+          const anyPriced = slots.some((s) => {
+            const row = s as unknown as { price_per_session?: number | null; total_price?: number | null };
+            return Number(row.price_per_session ?? 0) > 0 || Number(row.total_price ?? 0) > 0;
+          });
+          if (anyPriced) {
+            failUnverified('payment readiness unavailable', prErr);
+            return;
+          }
+          // free-only calendar: nothing here needed a payment account
+        } else {
           paymentReadyIds = new Set(
             (pr as unknown as { slot_id: string; payment_ready: boolean }[])
               .filter((r) => r.payment_ready)

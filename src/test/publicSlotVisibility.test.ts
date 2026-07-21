@@ -263,6 +263,7 @@ describe('public surfaces only select columns their source actually exposes', ()
       ['occupancy', /if \(occErr \|\| !occ\)[\s\S]{0,200}failUnverified/],
       ['cutoff', /if \(cutoffErr \|\| !cutoffRows\)[\s\S]{0,400}failUnverified/],
       ['unexpected throw', /catch \(error\)[\s\S]{0,400}failUnverified/],
+      ['payment readiness', /if \(prErr \|\| !pr\)[\s\S]{0,600}failUnverified/],
     ] as const) {
       expect(publicHook, `hook must fail closed on ${what}`).toMatch(guard);
     }
@@ -288,5 +289,15 @@ describe('public surfaces only select columns their source actually exposes', ()
       expect(src, `${name} must render a distinct state, before the empty-state branch`)
         .toMatch(/if \(availabilityUnverified\)[\s\S]{0,900}booking\.availabilityUnverified/);
     }
+  });
+
+  it('payment readiness fails closed ONLY when a priced slot is at stake', () => {
+    // This gate decides whether a PAID slot can actually be paid for, so swallowing its error
+    // offers slots that dead-end at checkout with no_mollie_account. But a FREE slot needs no
+    // Mollie account — blanking a free-only calendar over an irrelevant RPC failure would be
+    // failing closed on a question that was never asked.
+    expect(publicHook).toMatch(/const anyPriced = slots\.some/);
+    expect(publicHook).toMatch(/price_per_session[\s\S]{0,120}total_price/);
+    expect(publicHook).toMatch(/if \(anyPriced\)[\s\S]{0,120}failUnverified\('payment readiness unavailable'/);
   });
 });
