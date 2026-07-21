@@ -28,6 +28,10 @@ type FakeOpts = {
   profileRows?: { user_id: string; full_name: string | null }[];
   /** error to return from enqueue_notification (default: success). */
   enqueueError?: string;
+  /** resolver answers [] with NO error — the idempotent no-op. Produced NO row. */
+  enqueueEmpty?: boolean;
+  /** resolver answers a 'skipped' row with NO error — a real row, but not a delivery. */
+  enqueueSkipped?: boolean;
   /** make the booking-CONTEXT .single() resolve an ERROR (broken embed / RLS change). */
   bookingContextError?: string;
   /** make every query on this table THROW (network/isolate fault), not resolve an error. */
@@ -106,6 +110,10 @@ function makeFakeSupabase(opts: FakeOpts) {
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
     if (name === 'enqueue_notification') {
       if (opts.enqueueError) return { data: null, error: { message: opts.enqueueError } };
+      if (opts.enqueueEmpty) return { data: [], error: null };
+      if (opts.enqueueSkipped) {
+        return { data: [{ outbox_id: 'ob', channel: 'email', status: 'skipped', skip_reason: 'no_email_contact' }], error: null };
+      }
       return { data: [{ outbox_id: 'ob', channel: 'email', status: 'pending', skip_reason: null }], error: null };
     }
     return { data: null, error: null };
@@ -441,4 +449,94 @@ describe('PR 10a — one failing lane must not silence the others', () => {
     expect(staffEnqueues(rpc).length, 'the staff lane must still be attempted').toBeGreaterThan(0);
     expect(notify.mock.calls.length, 'an enqueue failure must alert, not vanish').toBeGreaterThan(0);
   });
+
+  const auditOf = (auditRows: Record<string, unknown>[]) =>
+    auditRows.find((r) => r.status === 'booking_paid_notifications')!.metadata as Record<string, number | string>;
+
+  it('does NOT claim a row when the resolver answers [] with no error', async () => {
+    // The owner's catch. `[]` + no error is the idempotent no-op: correct behaviour, but NO
+    // row was produced by this run. Counting attempts would report a healthy notification for
+    // precisely the situation this audit exists to expose.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueEmpty: true,
+      ...staffFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.staffRows, 'an empty resolver answer is not a staff row').toBe(0);
+    expect(m.playerRows, 'an empty resolver answer is not a player row').toBe(0);
+    expect(Number(m.staffNoop) + Number(m.playerNoop), 'but it IS recorded as a no-op').toBeGreaterThan(0);
+  });
+
+  it('counts a SKIPPED row as skipped, never as delivered', async () => {
+    // A skipped row exists in the outbox but is a required notification that could not be
+    // delivered — the worker alerts on it. It must never inflate the delivered count.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueSkipped: true,
+      ...staffFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.staffRows, 'a skipped row is not a delivered row').toBe(0);
+    expect(Number(m.staffSkipped) + Number(m.skippedRows), 'it must be visible as skipped').toBeGreaterThan(0);
+  });
+
+  it('records the player OUTCOME, not merely that the call returned ok', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...staffFixture,
+    });
+    await run(supabase);
+    expect(auditOf(auditRows).playerStatus).toBeTypeOf('string');
+  });
+
+  // The tests above exercise the STAFF lane's counting. The PLAYER lane short-circuits to
+  // no_payer with the default fixture (its rows carry no payer identity), so give it a real
+  // registered payer — otherwise playerRows is vacuously 0 and proves nothing.
+  const payerFixture = {
+    staffBookings: [{
+      id: 'B1',
+      player_id: 'P1',
+      guest_player_id: null,
+      profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' },
+      guest_players: null,
+      availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' },
+    }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  it('does NOT count an idempotent PLAYER no-op as a produced row', async () => {
+    // enqueue_notification answering [] means the idempotency key already existed — a
+    // duplicate webhook/verify delivery. ok=true, but this run produced no row.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: playerBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      enqueueEmpty: true,
+      ...payerFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.playerRows, 'a no-op produced no player row').toBe(0);
+    expect(m.playerNoop, 'but it must be recorded as a no-op').toBeGreaterThan(0);
+    expect(m.playerStatus).toBe('already_enqueued');
+  });
+
+  it('counts a real PLAYER enqueue as exactly one row', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: playerBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      ...payerFixture,
+    });
+    await run(supabase);
+    const m = auditOf(auditRows);
+    expect(m.playerRows).toBe(1);
+    expect(m.playerStatus).toBe('pending');
+  });
 });
+

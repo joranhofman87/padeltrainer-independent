@@ -89,10 +89,18 @@ export async function runBookingPaidSideEffects(opts: {
    * So: the display-name fetch cannot gate the fan-out, the player lane cannot take out
    * the staff lane, and every lane that fails ALERTS rather than whispering into a log.
    */
+  // Every count below is a count of ROWS enqueue_notification actually returned. `ok` is not
+  // enough: an idempotent no-op ('already_enqueued') is ok=true and produced NOTHING this run,
+  // and a 'skipped' row is a real row but NOT a delivery. An audit that blurred those would
+  // report a healthy send for the exact situation it exists to expose.
   let playerRows = 0;
+  let playerNoop = 0;
   let staffRows = 0;
+  let staffSkipped = 0;
+  let staffNoop = 0;
   let skippedRows = 0;
   let laneErrors = 0;
+  let playerStatus = "none";
 
   // Booking context — display names for the Slack ping and the staff email only. Its
   // failure must NOT skip the fan-out: sendStaffBookingNotifications re-reads the
@@ -161,7 +169,11 @@ export async function runBookingPaidSideEffects(opts: {
   try {
     const confirmation = await sendPlayerBookingConfirmation({ supabase, bookingIds, invoiceId, molliePaymentId, logStep });
     if (confirmation.ok) {
-      playerRows++;
+      playerStatus = confirmation.status ?? "unknown";
+      // 'already_enqueued' = the idempotency key existed (duplicate webhook/verify delivery).
+      // Correct behaviour, but no row was produced by THIS run — count it separately.
+      if (playerStatus === "already_enqueued") playerNoop++;
+      else playerRows++;
     } else {
       const { reason, skipReason } = confirmation;
       // A 'skipped' outcome already left a VISIBLE required-but-undeliverable row in the
@@ -170,6 +182,7 @@ export async function runBookingPaidSideEffects(opts: {
       // NOTHING, so nothing downstream surfaces them — alert LOUDLY.
       if (reason === "skipped") {
         skippedRows++;
+        playerStatus = "skipped";
         logStep("Paid booking confirmation is a visible skipped row (worker will alert)", { bookingIds, skipReason });
       } else {
         laneErrors++;
@@ -222,6 +235,8 @@ export async function runBookingPaidSideEffects(opts: {
       notifySlackError,
     });
     staffRows += staff?.enqueued ?? 0;
+    staffSkipped += staff?.skipped ?? 0;
+    staffNoop += staff?.noop ?? 0;
     laneErrors += staff?.errors ?? 0;
   } catch (staffErr) {
     laneErrors++;
@@ -241,9 +256,16 @@ export async function runBookingPaidSideEffects(opts: {
     mollie_payment_id: molliePaymentId ?? null,
     invoice_id: invoiceId ?? null,
     status: PaymentAuditStatus.bookingPaidNotifications,
-    metadata: { playerRows, staffRows, skippedRows, laneErrors, bookingCount: bookingIds.length },
+    metadata: {
+      playerRows, playerNoop, playerStatus,
+      staffRows, staffSkipped, staffNoop,
+      skippedRows, laneErrors,
+      bookingCount: bookingIds.length,
+    },
   });
-  logStep("Paid-booking notifications complete", { playerRows, staffRows, skippedRows, laneErrors });
+  logStep("Paid-booking notifications complete", {
+    playerRows, playerNoop, playerStatus, staffRows, staffSkipped, staffNoop, skippedRows, laneErrors,
+  });
 }
 
 /** Format a timestamptz for staff/player emails in the platform's home timezone. */
@@ -284,7 +306,7 @@ export async function sendStaffBookingNotifications(opts: {
   source: string;
   logStep: LogStep;
   notifySlackError: NotifySlackError;
-}): Promise<{ enqueued: number; errors: number }> {
+}): Promise<{ enqueued: number; skipped: number; noop: number; errors: number }> {
   const { supabase, bookingIds, playerName, paymentAmountValue, molliePaymentId, invoiceId, source, logStep, notifySlackError } = opts;
   try {
     const { data: rows } = await supabase
@@ -312,7 +334,7 @@ export async function sendStaffBookingNotifications(opts: {
         locations: { name: string | null } | null;
       };
     }>;
-    if (bookings.length === 0) return { enqueued: 0, errors: 0 };
+    if (bookings.length === 0) return { enqueued: 0, skipped: 0, noop: 0, errors: 0 };
 
     const toSession = (b: (typeof bookings)[number]): StaffSession => ({
       date: formatAmsterdam(b.availability_slots.start_time, "date"),
@@ -381,6 +403,12 @@ export async function sendStaffBookingNotifications(opts: {
 
     const allSessions = bookings.map(toSession);
     let enqueueErrors = 0;
+    // Counted from the ROWS enqueue_notification returns, never from the recipient list:
+    // the resolver can legitimately answer [] (idempotent no-op) or a 'skipped' row with NO
+    // error, and an audit that counted attempts would claim a notification that never exists.
+    let enqueuedRows = 0;
+    let skippedStaffRows = 0;
+    let noopStaffRows = 0;
 
     // One booking_confirmed_staff row per recipient. supabase.rpc returns { error } (never
     // throws on a DB error), so inspect it — a swallowed enqueue error is a silent lost notice.
@@ -392,7 +420,7 @@ export async function sendStaffBookingNotifications(opts: {
       name: string,
     ) => {
       const { subject, html } = renderStaffBookingEmail({ recipientName: name, playerName, sessions, amount });
-      const { error } = await supabase.rpc("enqueue_notification", {
+      const { data: emitted, error } = await supabase.rpc("enqueue_notification", {
         p_event_key: "booking_confirmed_staff",
         p_recipient_user_id: userId,
         p_tenant_academy_profile_id: scope.academy ?? null,
@@ -406,6 +434,19 @@ export async function sendStaffBookingNotifications(opts: {
       if (error) {
         enqueueErrors++;
         logStep("Staff notification enqueue failed", { error: error.message, userId });
+        return;
+      }
+      const rows = (emitted ?? []) as Array<{ channel: string; status: string; skip_reason: string | null }>;
+      const emailRow = rows.find((r) => r.channel === "email");
+      if (!emailRow) {
+        // No row emitted and no error = the idempotency key already existed (a duplicate
+        // webhook/verify delivery). Designed no-op — but it is NOT a row this run produced.
+        noopStaffRows++;
+      } else if (emailRow.status === "skipped") {
+        skippedStaffRows++;
+        logStep("Staff notification skipped (visible row)", { userId, skipReason: emailRow.skip_reason });
+      } else {
+        enqueuedRows++;
       }
     };
 
@@ -433,15 +474,16 @@ export async function sendStaffBookingNotifications(opts: {
       });
     }
     // Counts flow back to the caller's audit row: "0 staff rows" must be visible in the
-    // database, not merely absent from a log nobody reads.
-    return { enqueued: total - enqueueErrors, errors: enqueueErrors };
+    // database, not merely absent from a log nobody reads. These are ROW counts — a
+    // recipient we tried but the resolver dropped is reported as skipped/noop, not enqueued.
+    return { enqueued: enqueuedRows, skipped: skippedStaffRows, noop: noopStaffRows, errors: enqueueErrors };
   } catch (staffErr) {
     logStep("Staff booking notification failed (non-fatal)", { error: String(staffErr) });
     await notifySlackError(source, "staff booking notification failed after paid transition", {
       bookingIds,
       error: String(staffErr),
     });
-    return { enqueued: 0, errors: 1 };
+    return { enqueued: 0, skipped: 0, noop: 0, errors: 1 };
   }
 }
 
