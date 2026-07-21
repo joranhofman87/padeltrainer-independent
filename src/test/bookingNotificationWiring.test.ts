@@ -63,6 +63,17 @@ describe('the enqueue helper', () => {
     expect(warnLog).toHaveBeenCalled();   // visible, because "0 rows" is not "delivered"
   });
 
+  it('a THROWN rpc failure cannot escape into "booking/delete failed"', async () => {
+    // No-throw contract. By the time this runs the booking (or cancellation) has already
+    // succeeded — letting a network exception propagate would report the whole operation as
+    // failed for what is only a lost email.
+    rpc.mockRejectedValue(new Error('network down'));
+    const r = await enqueueBookingNotification(['b1'], 'cancelled_player', 'Test');
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('network down');
+    expect(errorLog).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses to call the RPC with an empty id set', async () => {
     const r = await enqueueBookingNotification([], 'cancelled_player', 'Test');
     expect(rpc).not.toHaveBeenCalled();
@@ -100,36 +111,90 @@ describe('the four call sites', () => {
     expect(BOOK).toMatch(/insertBookingSingle\([\s\S]{0,220}'id'\s*\)/);
   });
 
-  it('BookForPlayerDialog enqueues ONCE PER RECIPIENT, grouped from the inserted rows', () => {
-    // Not once per player from selectedPlayers: the grouping has to come from what the insert
-    // actually wrote, and confirmation_player accepts exactly one recipient per call.
-    expect(DIALOG).toMatch(/idsByRecipient/);
-    expect(DIALOG).toMatch(/for \(const row of insertedRows/);
-    expect(DIALOG).toMatch(/\[\.\.\.idsByRecipient\.values\(\)\]\.map/);
+
+
+  it('DeleteSlotDialog cancels EXACTLY the ids it read, and notifies exactly what changed', () => {
+    // The race: the UPDATE used to re-select by slot_id + status, so a booking created
+    // between the candidate read and the write got cancelled with no notification and was
+    // missing from invoice reconciliation. Both paths must bound the write to the ids read,
+    // take the changed rows back, and enqueue from THOSE.
+    const updates = [...DELETE.matchAll(/\.update\(\{ status: "cancelled" \}\)([\s\S]{0,240}?);/g)];
+    expect(updates).toHaveLength(2);
+    for (const [, tail] of updates) {
+      expect(tail, 'the cancel UPDATE must be bounded by the ids already read').toContain('.in("id", candidateIds)');
+      expect(tail, 'and must return what it actually changed').toContain('.select("id")');
+      expect(tail, 'it must NOT re-select by slot_id — that is the race').not.toContain('.eq("slot_id"');
+    }
+    // notification + invoice reconciliation both key off the UPDATE's result
+    expect([...DELETE.matchAll(/const actuallyCancelled = \(cancelledRows \?\? \[\]\)/g)]).toHaveLength(2);
+    expect(DELETE).toMatch(/enqueueBookingNotification\(actuallyCancelled, 'cancelled_player'/);
+    expect(DELETE).toMatch(/cancelledBookingIds\.push\(\.\.\.actuallyCancelled\)/);
   });
 
-  it('DeleteSlotDialog sends ONE call with the complete cancelled set, after the update', () => {
-    // The old code looped per booking, so a player losing a whole cycle received one mail per
-    // session. And the RPC requires cancelled status, so ordering matters.
-    const calls = [...DELETE.matchAll(/enqueueBookingNotification\(/g)];
-    expect(calls).toHaveLength(2);           // one per delete path (cyclus + single slot)
-    expect(DELETE).toMatch(/bookingsToCancel\.map\(\(bk\) => bk\.id\)/);
-    expect(DELETE).not.toMatch(/for \(const booking of bookingsToCancel\)/);
-    const update = DELETE.indexOf('status: "cancelled"');
-    // the CALL, not the import at the top of the file — anchoring on the bare identifier
-    // compared the import's position and passed for the wrong reason.
-    const enqueue = DELETE.indexOf('await enqueueBookingNotification(');
-    expect(update).toBeGreaterThan(-1);
-    expect(enqueue, 'must enqueue AFTER the cancel update').toBeGreaterThan(update);
+  it('DeleteSlotDialog no longer reads player names or addresses', () => {
+    // Those joins existed only to compose the email in the browser. Keeping them would be
+    // collecting PII with no remaining purpose.
+    expect(DELETE).not.toMatch(/guest_players\(full_name, email\)/);
+    expect(DELETE).not.toMatch(/profiles:player_id\(full_name, email/);
   });
 
-  it('every call site awaits the enqueue', () => {
-    // Fire-and-forget would put the failure outside the flow that could report it.
-    for (const [name, s] of [['BookLesson', BOOK], ['BookForPlayerDialog', DIALOG], ['DeleteSlotDialog', DELETE]] as const) {
-      for (const m of s.matchAll(/(\w+)\s*\n?\s*enqueueBookingNotification\(/g)) {
-        expect(['await', 'map', 'values'].some((k) => m[1].includes(k)) || m[1] === 'await',
-          `${name}: enqueue at "${m[1]}" should be awaited (directly or via Promise.all)`).toBe(true);
-      }
+  it('both DeleteSlotDialog reads inspect their error', () => {
+    // A failed candidate read resolves {data: null} and is indistinguishable from "nothing to
+    // cancel" — it would cancel nothing, notify nobody, and look like success.
+    expect(DELETE).toMatch(/if \(readError\) throw readError;/);
+    expect(DELETE).toMatch(/if \(readErrorSingle\) throw readErrorSingle;/);
+    expect([...DELETE.matchAll(/if \(cancelError\) throw cancelError;/g)]).toHaveLength(2);
+  });
+
+  it('BookForPlayerDialog delegates grouping to the tested helper', () => {
+    // Replaces a source-level "is it awaited?" regex that matched NOTHING in this file and
+    // therefore asserted nothing. The behaviour it was meant to cover is tested for real in
+    // the helper suite below.
+    expect(DIALOG).toMatch(/await enqueueConfirmationsPerRecipient\(/);
+    expect(DIALOG).not.toMatch(/idsByRecipient/);
+  });
+});
+
+describe('groupBookingIdsByRecipient (runtime, not a source pin)', () => {
+  it('groups by guest first, then registered player', async () => {
+    const { groupBookingIdsByRecipient } = await import('@/lib/bookingNotifications');
+    const groups = groupBookingIdsByRecipient([
+      { id: 'b1', player_id: 'p1', guest_player_id: null },
+      { id: 'b2', player_id: 'p1', guest_player_id: null },
+      { id: 'b3', player_id: null, guest_player_id: 'g1' },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups).toContainEqual(['b1', 'b2']);
+    expect(groups).toContainEqual(['b3']);
+  });
+
+  it('prefers the GUEST key when a row carries both', () => {
+    // A row with both is the staff-booked-for-guest shape; keying on player_id would address
+    // the wrong person.
+    return import('@/lib/bookingNotifications').then(({ groupBookingIdsByRecipient }) => {
+      const groups = groupBookingIdsByRecipient([{ id: 'b1', player_id: 'p1', guest_player_id: 'g1' }]);
+      expect(groups).toEqual([['b1']]);
+    });
+  });
+
+  it('drops rows with no recipient or no id rather than inventing a group', async () => {
+    const { groupBookingIdsByRecipient } = await import('@/lib/bookingNotifications');
+    expect(groupBookingIdsByRecipient([
+      { id: 'b1', player_id: null, guest_player_id: null },
+      { id: null, player_id: 'p1', guest_player_id: null },
+    ])).toEqual([]);
+    expect(groupBookingIdsByRecipient(null)).toEqual([]);
+  });
+
+  it('enqueueConfirmationsPerRecipient makes ONE call per group', async () => {
+    rpc.mockResolvedValue({ data: 1, error: null });
+    const { enqueueConfirmationsPerRecipient } = await import('@/lib/bookingNotifications');
+    await enqueueConfirmationsPerRecipient([
+      { id: 'b1', player_id: 'p1' }, { id: 'b2', player_id: 'p1' }, { id: 'b3', guest_player_id: 'g1' },
+    ], 'Test');
+    expect(rpc).toHaveBeenCalledTimes(2);
+    for (const [, args] of rpc.mock.calls) {
+      expect((args as { p_kind: string }).p_kind).toBe('confirmation_player');
     }
   });
 });

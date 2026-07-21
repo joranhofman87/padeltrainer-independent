@@ -332,7 +332,10 @@ BEGIN
       || CASE WHEN coalesce(v_price, 0) > 0 THEN '<p>Bedrag: &euro;' || to_char(v_price, 'FM999999990.00') || '</p>' ELSE '' END
       || '<p><a href="https://padeltrainer.ai/app/trainer/agenda">Bekijk en beoordeel de aanvraag</a></p></div>';
 
-    PERFORM public.enqueue_notification(
+    -- count the rows the resolver ACTUALLY returned. PERFORM discards them, which made the
+    -- old `v_count := 1` a count of INTENDED recipients: a duplicate call returns no rows
+    -- (correct idempotent no-op) and would still have reported "1 enqueued".
+    SELECT count(*) INTO v_count FROM public.enqueue_notification(
       p_event_key                 => 'booking_request_staff',
       p_recipient_user_id         => v_trn_user,
       p_tenant_trainer_id         => v_trainer,
@@ -342,7 +345,6 @@ BEGIN
       p_payload                   => jsonb_build_object('subject', 'Nieuwe boekingsaanvraag', 'html', v_html),
       p_public_summary            => jsonb_build_object('event_type', 'booking_request_staff', 'sessions', array_length(v_ids, 1))
     );
-    v_count := 1;
 
   ELSE
     -- confirmation_player and cancelled_player both fan out PER RECIPIENT, and each recipient
@@ -408,7 +410,7 @@ BEGIN
           || '</table><p>Neem contact op met je trainer voor een alternatief.</p></div>';
       END IF;
 
-      PERFORM public.enqueue_notification(
+      SELECT v_count + count(*) INTO v_count FROM public.enqueue_notification(
         p_event_key                 => CASE WHEN p_kind = 'confirmation_player'
                                             THEN 'booking_confirmed_player' ELSE 'booking_cancelled_player' END,
         p_recipient_user_id         => r.ruser,
@@ -425,7 +427,6 @@ BEGIN
                                            THEN 'booking_confirmed_player' ELSE 'booking_cancelled_player' END,
                                          'sessions', array_length(r.ids, 1))
       );
-      v_count := v_count + 1;
     END LOOP;
   END IF;
 

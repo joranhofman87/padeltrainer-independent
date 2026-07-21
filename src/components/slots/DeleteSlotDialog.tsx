@@ -232,34 +232,43 @@ export function DeleteSlotDialog({
         const slotIds = cyclusSlots?.map((s) => s.id) || [];
 
         if (slotIds.length > 0) {
-          const { data: bookingsToCancel } = await supabase
+          const { data: bookingsToCancel, error: readError } = await supabase
             .from("bookings")
-            .select(`
-              id, slot_id, guest_player_id, player_id,
-              guest_players(full_name, email),
-              profiles:player_id(full_name, email, user_id)
-            `)
+            // Only `id`. The names and addresses this used to join were for composing the
+            // cancellation email in the browser; the server derives them now, so pulling
+            // player PII here would be collecting data we no longer have a use for.
+            .select("id")
             .in("slot_id", slotIds)
             .in("status", ["pending", "confirmed"]);
 
-          if (bookingsToCancel && bookingsToCancel.length > 0) {
-            cancelledBookingIds.push(...bookingsToCancel.map(b => b.id));
+          // Inspect the read. A failed candidate query resolves {data: null} and would look
+          // exactly like "no bookings to cancel" — cancelling silently and notifying nobody.
+          if (readError) throw readError;
 
-            await supabase
+          if (bookingsToCancel && bookingsToCancel.length > 0) {
+            const candidateIds = bookingsToCancel.map((bk) => bk.id);
+
+            // Bound the UPDATE by the ids we actually READ, and take back exactly what it
+            // changed. Re-selecting by slot+status here would also cancel anything inserted
+            // between the read and the write — cancelled with no notification and missing
+            // from invoice reconciliation.
+            const { data: cancelledRows, error: cancelError } = await supabase
               .from("bookings")
               .update({ status: "cancelled" })
-              .in("id", cancelledBookingIds);
+              .in("id", candidateIds)
+              .in("status", ["pending", "confirmed"])
+              .select("id");
+            if (cancelError) throw cancelError;
 
-            if (notifyPlayers) {
-              // v2: ONE call with the COMPLETE set just cancelled. The RPC groups per
+            const actuallyCancelled = (cancelledRows ?? []).map((bk) => bk.id);
+            cancelledBookingIds.push(...actuallyCancelled);
+
+            if (notifyPlayers && actuallyCancelled.length > 0) {
+              // ONE call with exactly the rows the UPDATE changed. The RPC groups per
               // recipient and gives each only their own sessions — the old per-booking loop
               // sent one mail PER BOOKING, so a player losing a whole cycle got N of them.
-              // Called AFTER the cancel update, because the RPC requires cancelled status.
-              await enqueueBookingNotification(
-                bookingsToCancel.map((bk) => bk.id),
-                'cancelled_player',
-                'DeleteSlotDialog',
-              );
+              // After the update, because the RPC requires cancelled status.
+              await enqueueBookingNotification(actuallyCancelled, 'cancelled_player', 'DeleteSlotDialog');
             }
           }
 
@@ -294,35 +303,37 @@ export function DeleteSlotDialog({
       } else {
         // Delete single slot
         if (hasBookings) {
-          // Get bookings with player info
-          const { data: bookingsToCancel } = await supabase
+          // Candidate ids only — the player names/addresses this used to join were purely
+          // for composing the email client-side, and the server derives them now.
+          const { data: bookingsToCancel, error: readErrorSingle } = await supabase
             .from("bookings")
-            .select(`
-              id, guest_player_id, player_id,
-              guest_players(full_name, email),
-              profiles:player_id(full_name, email, user_id)
-            `)
+            .select("id")
             .eq("slot_id", slot.id)
             .in("status", ["pending", "confirmed"]);
 
-          if (bookingsToCancel && bookingsToCancel.length > 0) {
-            cancelledBookingIds.push(...bookingsToCancel.map(b => b.id));
+          if (readErrorSingle) throw readErrorSingle;
 
-            await supabase
+          if (bookingsToCancel && bookingsToCancel.length > 0) {
+            const candidateIds = bookingsToCancel.map((bk) => bk.id);
+
+            // THE RACE THIS FIXES: the UPDATE used to re-select by slot_id + status, so a
+            // booking created between the read and the write was cancelled anyway — with no
+            // notification and absent from invoice reconciliation. Bound to the read ids.
+            const { data: cancelledRows, error: cancelError } = await supabase
               .from("bookings")
               .update({ status: "cancelled" })
-              .eq("slot_id", slot.id)
-              .in("status", ["pending", "confirmed"]);
+              .in("id", candidateIds)
+              .in("status", ["pending", "confirmed"])
+              .select("id");
+            if (cancelError) throw cancelError;
 
-            if (notifyPlayers) {
-              // Same single call. The slot/trainer lookup that fed the old email is gone:
-              // the server derives all of it, so the browser no longer decides who a
-              // cancellation is addressed to.
-              await enqueueBookingNotification(
-                bookingsToCancel.map((bk) => bk.id),
-                'cancelled_player',
-                'DeleteSlotDialog',
-              );
+            const actuallyCancelled = (cancelledRows ?? []).map((bk) => bk.id);
+            cancelledBookingIds.push(...actuallyCancelled);
+
+            if (notifyPlayers && actuallyCancelled.length > 0) {
+              // The slot/trainer lookup that fed the old email is gone: the server derives
+              // all of it, so the browser no longer decides who a cancellation is addressed to.
+              await enqueueBookingNotification(actuallyCancelled, 'cancelled_player', 'DeleteSlotDialog');
             }
           }
         }

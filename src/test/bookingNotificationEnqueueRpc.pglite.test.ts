@@ -111,11 +111,19 @@ beforeAll(async () => {
       p_related_payment_id text DEFAULT NULL, p_template_key text DEFAULT NULL,
       p_payload jsonb DEFAULT '{}'::jsonb, p_public_summary jsonb DEFAULT NULL,
       p_scheduled_for timestamptz DEFAULT NULL)
-      RETURNS void LANGUAGE sql AS $fn$
-      INSERT INTO public._captured (event_key, ruser, rguest, subject, html, ids, idem)
-      VALUES (p_event_key, p_recipient_user_id, p_recipient_guest_player_id,
-              p_payload->>'subject', p_payload->>'html', p_related_booking_ids, p_idempotency_subject);
-    $fn$;
+      -- RETURNS TABLE like the real resolver, so the RPC's row COUNTING is exercised. It
+      -- emits NO row when the idempotency key was already used, which is what makes the
+      -- duplicate/no-op pin below meaningful.
+      RETURNS TABLE (outbox_id uuid) LANGUAGE plpgsql AS $fn$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM public._captured c WHERE c.idem = p_idempotency_subject) THEN
+          RETURN;
+        END IF;
+        INSERT INTO public._captured (event_key, ruser, rguest, subject, html, ids, idem)
+        VALUES (p_event_key, p_recipient_user_id, p_recipient_guest_player_id,
+                p_payload->>'subject', p_payload->>'html', p_related_booking_ids, p_idempotency_subject);
+        RETURN QUERY SELECT gen_random_uuid();
+      END $fn$;
   `);
 
   await db.exec(MIG('20260926100000_booking_notification_enqueue_rpc.sql'));
@@ -447,6 +455,26 @@ describe('values reaching the HTML are escaped', () => {
   });
 });
 
+describe('the returned count is ROWS ENQUEUED, not recipients attempted', () => {
+  it('a duplicate call returns 0 — the idempotent no-op is not reported as a send', async () => {
+    // The old code set v_count from the recipient list, so a repeat call (double-click,
+    // retry, re-render) reported "1 enqueued" while the resolver correctly emitted nothing.
+    // A count that cannot say "nothing happened" is not worth logging.
+    await mkBooking(B1, S1, { player: PR1 });
+    await as(U_P1);
+    expect((await call([B1], 'confirmation_player')).rows[0].v).toBe(1);
+    expect((await call([B1], 'confirmation_player')).rows[0].v).toBe(0);
+    expect(await captured()).toHaveLength(1);
+  });
+
+  it('counts one row per RECIPIENT actually emitted in a cancellation fan-out', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });
+    await mkBooking(B2, S2, { player: PR2, status: 'cancelled' });
+    await as(U_T);
+    expect((await call([B1, B2], 'cancelled_player')).rows[0].v).toBe(2);
+  });
+});
+
 describe('the ACL boundary is explicit', () => {
   // This repo runs ALTER DEFAULT PRIVILEGES granting EXECUTE on new functions to anon and
   // authenticated, and a bare REVOKE FROM PUBLIC does NOT undo it. The migration revokes
@@ -473,4 +501,3 @@ describe('the ACL boundary is explicit', () => {
     expect(await canExec('authenticated', sig)).toBe(false);
   });
 });
-

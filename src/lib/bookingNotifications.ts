@@ -45,10 +45,26 @@ export async function enqueueBookingNotification(
     return { ok: false, enqueued: 0, error: 'no_booking_ids' };
   }
 
-  const { data, error } = await supabase.rpc('enqueue_booking_notification', {
-    p_booking_ids: ids,
-    p_kind: kind,
-  });
+  let data: unknown = null;
+  let error: { message: string } | null = null;
+  try {
+    const res = await supabase.rpc('enqueue_booking_notification', {
+      p_booking_ids: ids,
+      p_kind: kind,
+    });
+    data = res.data;
+    error = res.error;
+  } catch (thrown) {
+    // NO-THROW CONTRACT. A network drop or a client-level exception must not escape into the
+    // caller, because by this point the BOOKING (or the cancellation) has already succeeded —
+    // letting it propagate would report "booking failed" for what is only a lost email.
+    logger.error(
+      'Booking notification enqueue THREW',
+      thrown instanceof Error ? thrown : new Error(String(thrown)),
+      { component: context, action: kind, bookingCount: ids.length },
+    );
+    return { ok: false, enqueued: 0, error: String(thrown) };
+  }
 
   if (error) {
     // Loud on purpose. The old path swallowed send failures, which is how a notification gap
@@ -70,3 +86,38 @@ export async function enqueueBookingNotification(
   }
   return { ok: true, enqueued };
 }
+
+/**
+ * Group booking rows by RECIPIENT (guest first, then registered player), returning the ids
+ * each recipient is owed a notification about.
+ *
+ * Extracted so the grouping is testable at RUNTIME rather than pinned by a source regex —
+ * the previous source-level assertion silently matched nothing in the one file it was
+ * supposed to be checking, which is a worse failure than no test.
+ */
+export function groupBookingIdsByRecipient(
+  rows: Array<{ id?: string | null; player_id?: string | null; guest_player_id?: string | null }> | null | undefined,
+): string[][] {
+  const byRecipient = new Map<string, string[]>();
+  for (const row of rows ?? []) {
+    const recipient = row?.guest_player_id ?? row?.player_id;
+    const bookingId = row?.id;
+    if (!recipient || !bookingId) continue;
+    byRecipient.set(recipient, [...(byRecipient.get(recipient) ?? []), bookingId]);
+  }
+  return [...byRecipient.values()];
+}
+
+/**
+ * Enqueue one `confirmation_player` per recipient for a just-inserted set of bookings.
+ * `confirmation_player` accepts exactly ONE recipient per call, so the grouping is not a
+ * convenience — it is what keeps each call valid.
+ */
+export async function enqueueConfirmationsPerRecipient(
+  rows: Array<{ id?: string | null; player_id?: string | null; guest_player_id?: string | null }> | null | undefined,
+  context: string,
+): Promise<EnqueueResult[]> {
+  const groups = groupBookingIdsByRecipient(rows);
+  return Promise.all(groups.map((ids) => enqueueBookingNotification(ids, 'confirmation_player', context)));
+}
+

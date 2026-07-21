@@ -73,7 +73,7 @@ import { logger } from "@/lib/logger";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 import { useBookingLoginFlags } from "@/hooks/useBookingLoginFlags";
 import { isGuestForBadge } from "@/lib/bookingLoginFlags";
-import { enqueueBookingNotification } from '@/lib/bookingNotifications';
+import { enqueueConfirmationsPerRecipient } from '@/lib/bookingNotifications';
 
 // Lesson interface removed - pricing now on slots
 
@@ -687,18 +687,9 @@ export function BookForPlayerDialog({
         // Grouping comes from the rows the insert RETURNED, not from selectedPlayers, so the
         // notification can only ever describe bookings that actually exist. The server
         // derives the address (including for guests, who have no account) and the copy.
-        const idsByRecipient = new Map<string, string[]>();
-        for (const row of insertedRows ?? []) {
-          const rid = (row as { guest_player_id?: string | null; player_id?: string | null }).guest_player_id
-            ?? (row as { player_id?: string | null }).player_id;
-          const bid = (row as { id?: string }).id;
-          if (!rid || !bid) continue;
-          idsByRecipient.set(rid, [...(idsByRecipient.get(rid) ?? []), bid]);
-        }
-        await Promise.all(
-          [...idsByRecipient.values()].map((ids) =>
-            enqueueBookingNotification(ids, 'confirmation_player', 'BookForPlayerDialog'),
-          ),
+        await enqueueConfirmationsPerRecipient(
+          insertedRows as Parameters<typeof enqueueConfirmationsPerRecipient>[0],
+          'BookForPlayerDialog',
         );
 
         const totalBookings = selectedPlayers.length * slotsToBook.length;
@@ -787,18 +778,9 @@ export function BookForPlayerDialog({
         // Grouping comes from the rows the insert RETURNED, not from selectedPlayers, so the
         // notification can only ever describe bookings that actually exist. The server
         // derives the address (including for guests, who have no account) and the copy.
-        const idsByRecipient = new Map<string, string[]>();
-        for (const row of insertedRows ?? []) {
-          const rid = (row as { guest_player_id?: string | null; player_id?: string | null }).guest_player_id
-            ?? (row as { player_id?: string | null }).player_id;
-          const bid = (row as { id?: string }).id;
-          if (!rid || !bid) continue;
-          idsByRecipient.set(rid, [...(idsByRecipient.get(rid) ?? []), bid]);
-        }
-        await Promise.all(
-          [...idsByRecipient.values()].map((ids) =>
-            enqueueBookingNotification(ids, 'confirmation_player', 'BookForPlayerDialog'),
-          ),
+        await enqueueConfirmationsPerRecipient(
+          insertedRows as Parameters<typeof enqueueConfirmationsPerRecipient>[0],
+          'BookForPlayerDialog',
         );
 
         toast({
