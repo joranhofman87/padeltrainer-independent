@@ -29,6 +29,7 @@ import { BookingSummary } from '@/components/booking/BookingSummary';
 import { WhatsAppOptInField } from '@/components/booking/WhatsAppOptInField';
 import { recordBookingWhatsAppOptIn } from '@/lib/bookingWhatsAppOptIn';
 import { effectiveCutoffMinutes, isSlotWithinCutoff, formatCutoffMinutes } from '@/lib/bookingCutoff';
+import { CAPACITY_OCCUPYING_STATUSES, occupiesSeatNow, getSlotCapacity } from '@/lib/lessons';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
@@ -206,12 +207,44 @@ export default function BookLesson() {
 
     if (slotsData) {
       const slotIds = slotsData.map((s) => s.id);
+      // Ratings for the "average level" badge. The status filter is the CANONICAL occupying set
+      // (was ['pending','confirmed'], which both undercounted capacity and averaged the wrong
+      // group): a player awaiting approval, or holding a live payment, is in this session.
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select(`slot_id, status, profiles:player_id (skill_rating, rating_system), guest_players:guest_player_id (skill_rating, rating_system)`)
+        .select(`slot_id, status, hold_expires_at, profiles:player_id (skill_rating, rating_system), guest_players:guest_player_id (skill_rating, rating_system)`)
         .in('slot_id', slotIds)
-        .in('status', ['pending', 'confirmed']);
+        .in('status', [...CAPACITY_OCCUPYING_STATUSES, 'payment_pending']);
       if (bookingsError) throw bookingsError;
+
+      /**
+       * OCCUPANCY comes from get_public_slot_occupancy — the same canonical source the shared
+       * public calendars use. This page used to count bookings itself and got it wrong twice
+       * over: it omitted pending_approval, and it omitted live payment_pending holds, so a slot
+       * that was full server-side still rendered as bookable. It also cannot see a court held
+       * by a paid rebook group, which the RPC reports as fully occupied.
+       *
+       * Fallback mirrors usePublicAvailability's: on a deploy window where the RPC is missing,
+       * count locally using the SAME predicate rather than the old narrower one.
+       */
+      const canonicalOccupancy: Record<string, number> = {};
+      {
+        const { data: occ, error: occErr } = await supabase.rpc(
+          'get_public_slot_occupancy' as never,
+          { _slot_ids: slotIds } as never,
+        );
+        if (!occErr && occ) {
+          (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
+            canonicalOccupancy[r.slot_id] = r.occupied;
+          });
+        } else {
+          for (const b of (bookingsData ?? []) as Array<{ slot_id: string; status?: string | null; hold_expires_at?: string | null }>) {
+            if (occupiesSeatNow(b)) {
+              canonicalOccupancy[b.slot_id] = (canonicalOccupancy[b.slot_id] ?? 0) + 1;
+            }
+          }
+        }
+      }
 
       const slotBookingInfo: Record<string, { count: number; ratings: { rating: number; system: string }[] }> = {};
       bookingsData?.forEach((b) => {
@@ -235,16 +268,19 @@ export default function BookLesson() {
 
       const availableSlots = slotsData
         .filter((s) => {
-          const maxP = (s as any).max_participants || 4;
-          if ((slotBookingInfo[s.id]?.count || 0) >= maxP) return false;
+          // FULL SLOTS NEVER REACH A PUBLIC BOOKING SURFACE. The count is the canonical one, so
+          // pending_approval, live payment holds and a court held by a paid group all count —
+          // each of which previously let a server-full slot render as bookable.
+          const maxP = getSlotCapacity(s as { max_participants?: number | null });
+          if ((canonicalOccupancy[s.id] ?? 0) >= maxP) return false;
           if (!visibleIds.has(s.id)) return false;
           return true;
         })
         .map((s) => {
           const info = slotBookingInfo[s.id];
-          const bookingCount = info?.count || 0;
+          const bookingCount = canonicalOccupancy[s.id] ?? 0;
           const ratings = info?.ratings || [];
-          const maxP = (s as any).max_participants || 4;
+          const maxP = getSlotCapacity(s as { max_participants?: number | null });
           let averageRating: number | null = null;
           let ratingSystem: string | undefined = undefined;
           if (ratings.length > 0) {

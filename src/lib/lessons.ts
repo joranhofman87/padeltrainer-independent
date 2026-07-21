@@ -34,6 +34,35 @@ export function countOccupiedSeats(
   return (bookings ?? []).filter((b) => isOccupyingStatus(b.status)).length;
 }
 
+/**
+ * Does this booking hold a seat RIGHT NOW, by the same rule the database uses?
+ *
+ * CAPACITY_OCCUPYING_STATUSES is only half the server predicate: every DB capacity count also
+ * treats a `payment_pending` row with a LIVE hold as occupying (see get_public_slot_occupancy
+ * and enforce_booking_slot_tier). A client that checks the statuses alone therefore undercounts
+ * exactly while someone is at the payment screen — the window in which double-booking is most
+ * likely. Public surfaces should prefer get_public_slot_occupancy; this exists for the
+ * deploy-window fallback and for callers that already hold the rows.
+ */
+export function occupiesSeatNow(
+  booking: { status?: string | null; hold_expires_at?: string | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!booking) return false;
+  if (isOccupyingStatus(booking.status)) return true;
+  return booking.status === 'payment_pending'
+    && Boolean(booking.hold_expires_at)
+    && new Date(booking.hold_expires_at as string).getTime() > now.getTime();
+}
+
+/** Occupied seats using the FULL server predicate (statuses + live payment holds). */
+export function countOccupiedSeatsNow(
+  bookings: Array<{ status?: string | null; hold_expires_at?: string | null }> | null | undefined,
+  now: Date = new Date(),
+): number {
+  return (bookings ?? []).filter((b) => occupiesSeatNow(b, now)).length;
+}
+
 export interface Booking {
   id: string;
   slot_id: string;

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import type { PublicReleaseStatus } from '@/lib/priorityClaims';
 import { logger } from '@/lib/logger';
+import { effectiveCutoffMinutes, isSlotWithinCutoff } from '@/lib/bookingCutoff';
 import {
   mapAndGroupPublicSlots,
   type PublicDayGroup,
@@ -181,11 +182,51 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
           ? new Set([...visibleIds].filter((id) => paymentReadyIds!.has(id)))
           : visibleIds;
 
+        /**
+         * Player booking cutoff. Advisory: the server refuses independently using its own clock.
+         * These slots are DROPPED rather than dimmed — this surface's invariant is "only open,
+         * actionable slots", the same reason full ones never reach it.
+         *
+         * Per slot, because one calendar can span several trainers and academies, and the
+         * effective cutoff is the STRICTER of a slot's academy and its trainer.
+         */
+        const bookingClosedIds = new Set<string>();
+        {
+          const rows = slots as unknown as Array<{ id: string; start_time: string; trainer_id: string | null; academy_profile_id: string | null }>;
+          const academyIds = [...new Set(rows.map((r) => r.academy_profile_id).filter((v): v is string => Boolean(v)))];
+          const trainerIds = [...new Set(rows.map((r) => r.trainer_id).filter((v): v is string => Boolean(v)))];
+          const [academyRows, trainerRows] = await Promise.all([
+            academyIds.length
+              ? supabase.from('academy_profiles').select('id, player_booking_min_notice_minutes').in('id', academyIds)
+              : Promise.resolve({ data: [] as unknown[] }),
+            trainerIds.length
+              ? supabase.from('trainer_profiles').select('id, player_booking_min_notice_minutes').in('id', trainerIds)
+              : Promise.resolve({ data: [] as unknown[] }),
+          ]);
+          const byId = (list: unknown): Record<string, number> => {
+            const out: Record<string, number> = {};
+            for (const r of (list ?? []) as Array<{ id: string; player_booking_min_notice_minutes?: number | null }>) {
+              out[r.id] = r.player_booking_min_notice_minutes ?? 0;
+            }
+            return out;
+          };
+          const academyCut = byId(academyRows.data);
+          const trainerCut = byId(trainerRows.data);
+          for (const r of rows) {
+            const minutes = effectiveCutoffMinutes(
+              r.academy_profile_id ? academyCut[r.academy_profile_id] : 0,
+              r.trainer_id ? trainerCut[r.trainer_id] : 0,
+            );
+            if (isSlotWithinCutoff(r.start_time, minutes)) bookingClosedIds.add(r.id);
+          }
+        }
+
         const groups = mapAndGroupPublicSlots(slots as unknown as RawPublicSlotRow[], {
           bookingCounts,
           visibleIds: bookableIds,
           trainerMap,
           nameMap,
+          bookingClosedIds,
         });
         if (!cancelled) setDayGroups(groups);
       } catch (error) {
