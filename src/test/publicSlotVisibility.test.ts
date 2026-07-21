@@ -139,8 +139,10 @@ describe('BookLesson counts capacity the canonical way', () => {
     expect(src).toContain("'payment_pending'");
   });
 
-  it('falls back to the SHARED predicate, not a local copy of it', () => {
-    // a second hand-rolled predicate is how the client drifted from the server in the first place
+  it('uses the SHARED predicate wherever it reasons about seats, never a local copy', () => {
+    // a second hand-rolled predicate is how the client drifted from the server in the first
+    // place; BookLesson still reads bookings for RATINGS, and an expired hold is not a
+    // participant whose rating should skew the average
     expect(src).toContain('occupiesSeatNow');
   });
 
@@ -215,10 +217,37 @@ describe('public surfaces only select columns their source actually exposes', ()
     }
   });
 
-  it('the shared occupancy fallback uses the canonical predicate, not the narrow pair', () => {
-    // during a deploy window this path is the only thing standing between a full slot and a
-    // public page — counting pending/confirmed alone reintroduces the exact bug
-    expect(publicHook).not.toMatch(/\.in\('status', \['pending', 'confirmed'\]\)/);
-    expect(publicHook).toContain('occupiesSeatNow');
+  it('derives occupancy from ONE place — the RPC — and never from a bookings read', () => {
+    // THE TRAP: a correct predicate over an UNREADABLE table. Anonymous visitors have no SELECT
+    // on `bookings`, so a direct read returns EMPTY rather than erroring — every slot then looks
+    // unoccupied and full sessions go back on sale, silently, to exactly the visitors these
+    // surfaces serve. My earlier pin checked the predicate and missed that the data source was
+    // unreachable.
+    //
+    // Asserted as "one assignment site" rather than "never touches bookings": BookLesson still
+    // reads bookings legitimately for RATINGS, so a blanket ban would be both wrong and easy to
+    // work around. What must hold is that the occupancy MAP is only ever written from the RPC.
+    const assignments = (src: string, name: string) =>
+      [...src.matchAll(new RegExp(`${name}\\[[^\\]]+\\]\\s*=`, 'g'))].length;
+
+    expect(assignments(bookLesson, 'canonicalOccupancy'),
+      'BookLesson must fill canonicalOccupancy from the RPC alone').toBe(1);
+    expect(assignments(publicHook, 'bookingCounts'),
+      'usePublicAvailability must fill bookingCounts from the RPC alone').toBe(1);
+  });
+
+  it('FAILS CLOSED when canonical occupancy cannot be read', () => {
+    // unknown occupancy must never render as availability
+    expect(bookLesson, 'BookLesson must surface the retryable error')
+      .toMatch(/if \(occErr \|\| !occ\)[\s\S]{0,600}throw new Error/);
+    expect(publicHook, 'the shared hook must render nothing rather than guess')
+      .toMatch(/setOccupancyUnavailable\(true\)/);
+    expect(publicHook).toMatch(/setDayGroups\(\[\]\)/);
+  });
+
+  it('distinguishes "cannot tell" from "nothing free" in the hook contract', () => {
+    // a consumer that renders those identically tells the visitor a falsehood
+    expect(publicHook).toContain('occupancyUnavailable: boolean');
+    expect(publicHook).toMatch(/return \{ dayGroups, loading, occupancyUnavailable \}/);
   });
 });

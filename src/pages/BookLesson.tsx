@@ -224,8 +224,7 @@ export default function BookLesson() {
        * that was full server-side still rendered as bookable. It also cannot see a court held
        * by a paid rebook group, which the RPC reports as fully occupied.
        *
-       * Fallback mirrors usePublicAvailability's: on a deploy window where the RPC is missing,
-       * count locally using the SAME predicate rather than the old narrower one.
+       * There is deliberately NO local fallback — see the fail-closed note below.
        */
       const canonicalOccupancy: Record<string, number> = {};
       {
@@ -233,23 +232,26 @@ export default function BookLesson() {
           'get_public_slot_occupancy' as never,
           { _slot_ids: slotIds } as never,
         );
-        if (!occErr && occ) {
-          (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
-            canonicalOccupancy[r.slot_id] = r.occupied;
-          });
-        } else {
-          for (const b of (bookingsData ?? []) as Array<{ slot_id: string; status?: string | null; hold_expires_at?: string | null }>) {
-            if (occupiesSeatNow(b)) {
-              canonicalOccupancy[b.slot_id] = (canonicalOccupancy[b.slot_id] ?? 0) + 1;
-            }
-          }
+        if (occErr || !occ) {
+          // FAIL CLOSED. There is no viable local fallback: an anonymous visitor has NO SELECT
+          // on `bookings`, so a direct read returns EMPTY rather than erroring — every slot
+          // would look unoccupied and full sessions would go back on sale, silently. Surfacing
+          // the retryable error is the honest outcome; "we cannot tell what is free" must not
+          // render as "everything is free".
+          throw new Error(`Could not load slot availability: ${occErr?.message ?? 'occupancy unavailable'}`);
         }
+        (occ as unknown as { slot_id: string; occupied: number }[]).forEach((r) => {
+          canonicalOccupancy[r.slot_id] = r.occupied;
+        });
       }
 
-      const slotBookingInfo: Record<string, { count: number; ratings: { rating: number; system: string }[] }> = {};
+      // Ratings only — occupancy comes from the RPC below and is never derived from this read.
+      const slotBookingInfo: Record<string, { ratings: { rating: number; system: string }[] }> = {};
       bookingsData?.forEach((b) => {
-        if (!slotBookingInfo[b.slot_id]) slotBookingInfo[b.slot_id] = { count: 0, ratings: [] };
-        slotBookingInfo[b.slot_id].count++;
+        // An EXPIRED payment hold is not a participant, so their rating must not skew the
+        // session's average level. Same predicate the server counts with.
+        if (!occupiesSeatNow(b as { status?: string | null; hold_expires_at?: string | null })) return;
+        if (!slotBookingInfo[b.slot_id]) slotBookingInfo[b.slot_id] = { ratings: [] };
         const prof = b.profiles as { skill_rating: number | null; rating_system: string } | null;
         const guestPlayer = b.guest_players as { skill_rating: number | null; rating_system: string } | null;
         const rating = prof?.skill_rating ?? guestPlayer?.skill_rating;

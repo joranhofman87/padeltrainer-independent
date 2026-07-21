@@ -38,7 +38,7 @@ const slot = (id: string, start: string, over: Partial<PublicSlot> = {}): Public
 function setup(slots: PublicSlot[], loading = false) {
   // The hook groups browser-local; the picker re-groups by owner tz. One group is enough here.
   const dayGroups: PublicDayGroup[] = slots.length ? [{ date: new Date(slots[0].start_time), slots }] : [];
-  mockHook.mockReturnValue({ dayGroups, loading });
+  mockHook.mockReturnValue({ dayGroups, loading, occupancyUnavailable: false });
 }
 
 const AMS = 'Europe/Amsterdam';

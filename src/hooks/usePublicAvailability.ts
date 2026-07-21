@@ -3,7 +3,6 @@ import { supabase } from '@/lib/supabaseClient';
 import { filterVisibleSlotIds } from '@/lib/slotVisibility';
 import type { PublicReleaseStatus } from '@/lib/priorityClaims';
 import { logger } from '@/lib/logger';
-import { CAPACITY_OCCUPYING_STATUSES, occupiesSeatNow } from '@/lib/lessons';
 import {
   mapAndGroupPublicSlots,
   type PublicDayGroup,
@@ -61,9 +60,16 @@ async function resolveOwnerFilter(owner: AvailabilityOwner): Promise<string> {
 export function usePublicAvailability(owner: AvailabilityOwner): {
   dayGroups: PublicDayGroup[];
   loading: boolean;
+  /**
+   * TRUE when canonical occupancy could not be read, so NOTHING is offered. Distinct from an
+   * empty calendar: "we cannot tell what is free" is not "nothing is free", and a consumer that
+   * renders them identically tells the visitor a falsehood.
+   */
+  occupancyUnavailable: boolean;
 } {
   const [dayGroups, setDayGroups] = useState<PublicDayGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [occupancyUnavailable, setOccupancyUnavailable] = useState(false);
   const ownerKey =
     owner.type === 'academy' ? `a:${owner.academyId}`
     : owner.type === 'trainer' ? `t:${owner.trainerId}`
@@ -73,6 +79,7 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
+      setOccupancyUnavailable(false);
       try {
         const orFilter = await resolveOwnerFilter(owner);
         const { data: slotsRaw } = await supabase
@@ -137,19 +144,23 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
             bookingCounts[r.slot_id] = r.occupied;
           });
         } else {
-          // Deploy-window fallback (RPC not live yet). Uses the SAME predicate as the RPC —
-          // statuses PLUS live payment holds — because the old narrow pair reintroduced the very
-          // bug this path exists to avoid: a server-full slot shown as bookable.
-          const { data: bookingsData } = await supabase
-            .from('bookings')
-            .select('slot_id, status, hold_expires_at')
-            .in('slot_id', slotIds)
-            .in('status', [...CAPACITY_OCCUPYING_STATUSES, 'payment_pending']);
-          (bookingsData || []).forEach((b) => {
-            if (occupiesSeatNow(b as { status?: string | null; hold_expires_at?: string | null })) {
-              bookingCounts[b.slot_id] = (bookingCounts[b.slot_id] || 0) + 1;
-            }
-          });
+          /**
+           * FAIL CLOSED. There is no usable fallback here and pretending otherwise is the bug:
+           * anonymous visitors have NO SELECT on `bookings`, so a direct read returns EMPTY
+           * rather than erroring — every slot then looks unoccupied and FULL SESSIONS GO BACK
+           * ON SALE, silently, to exactly the visitors this surface serves. Unknown occupancy
+           * must never render as available.
+           */
+          logger.error(
+            'Public availability: canonical occupancy unavailable — refusing to render slots',
+            new Error(String((occErr as { message?: string } | null)?.message ?? 'occupancy rpc unavailable')),
+            { component: 'usePublicAvailability', owner: ownerKey },
+          );
+          if (!cancelled) {
+            setDayGroups([]);
+            setOccupancyUnavailable(true);
+          }
+          return;
         }
 
         // Payment readiness: drop PRICED slots whose payment owner has no working Mollie account,
@@ -232,5 +243,5 @@ export function usePublicAvailability(owner: AvailabilityOwner): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerKey]);
 
-  return { dayGroups, loading };
+  return { dayGroups, loading, occupancyUnavailable };
 }
