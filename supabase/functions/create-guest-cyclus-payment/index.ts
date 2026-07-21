@@ -265,6 +265,11 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (rpcError) {
+      // See create-guest-slot-payment: reachable on a race or a degraded pre-check.
+      if ((rpcError.message || "").includes("booking_cutoff")) {
+        logStep("Refused — booking cutoff", { cyclusId });
+        return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
+      }
       if ((rpcError.message || "").includes("slot_full")) {
         logStep("Refused — a session is full", { cyclusId });
         return json({ error: "slot_full" }, 409);

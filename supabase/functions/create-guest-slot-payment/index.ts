@@ -277,6 +277,13 @@ Deno.serve(async (req) => {
       _notes: notes,
     });
     if (bookingError) {
+      // The mutation-boundary cutoff guard. Reachable despite the pre-check above: a race across
+      // the boundary, or the pre-check degrading open when the RPC is briefly absent. Without
+      // this mapping the guest gets a generic 500 for a rule we have a clear message for.
+      if ((bookingError.message || "").includes("booking_cutoff")) {
+        logStep("Refused — booking cutoff", { slotId });
+        return json({ error: "booking_cutoff", message: "Deze training kan niet meer online geboekt worden. Neem contact op met de trainer." }, 400);
+      }
       if ((bookingError.message || "").includes("slot_full")) {
         logStep("Refused — slot full", { slotId });
         return json({ error: "slot_full" }, 409);

@@ -78,7 +78,8 @@ beforeAll(async () => {
       start_time timestamptz NOT NULL, end_time timestamptz NOT NULL,
       max_participants integer DEFAULT 1, source_cycle_id uuid,
       split_payment boolean DEFAULT false, whole_slot_booking boolean DEFAULT false,
-      cyclus_id uuid, price_per_session numeric);
+      cyclus_id uuid, price_per_session numeric,
+      allow_single_booking boolean DEFAULT true, is_public boolean DEFAULT true);
     CREATE TABLE public.bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid NOT NULL,
       player_id uuid, guest_player_id uuid, status text DEFAULT 'confirmed',
@@ -385,6 +386,50 @@ describe('the guest MUTATION BOUNDARY, not just the edge pre-check', () => {
     // edge-only enforcement was not enough
     await setNotice({ trainer: 24 * 60 });
     const s = await slot('01000000-0000-0000-0000-000000000022', 2);
+    await expect(
+      db.query(`SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`),
+    ).rejects.toThrow(/booking_cutoff/);
+  });
+
+  it('REUSES a live hold created OUTSIDE the cutoff, even once inside it', async () => {
+    // The rule gates booking CREATION, not payment completion. A guest who starts checkout at
+    // 50h out and returns from Mollie at 47h must still be able to finish paying for the hold
+    // they already have — guarding at the top of the function silently made the cutoff block
+    // payment continuation too, which is a different policy.
+    await setNotice({ academy: 48 * 60 });
+    const s = await slot('01000000-0000-0000-0000-000000000029', 5);   // now inside the cutoff
+    const existing = (await db.query<{ id: string }>(`
+      INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status, hold_expires_at)
+      VALUES ('${s}', '${G1}', 'payment_pending', 'pending', now() + interval '15 minutes')
+      RETURNING id`)).rows[0].id;
+
+    const returned = (await db.query<{ book_guest_slot_for_payment: string }>(
+      `SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`)).rows[0];
+    expect(returned.book_guest_slot_for_payment).toBe(existing);
+  });
+
+  it('…but still refuses a NEW hold on that same slot for a DIFFERENT guest', async () => {
+    // reuse is not an amnesty: only the guest who already holds it gets through
+    const G2 = '0b000000-0000-0000-0000-0000000000b2';
+    await db.exec(`INSERT INTO public.guest_players (id) VALUES ('${G2}') ON CONFLICT DO NOTHING;`);
+    await setNotice({ academy: 48 * 60 });
+    const s = await slot('01000000-0000-0000-0000-00000000002a', 5);
+    await db.exec(`
+      INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status, hold_expires_at)
+      VALUES ('${s}', '${G1}', 'payment_pending', 'pending', now() + interval '15 minutes');`);
+    await expect(
+      db.query(`SELECT public.book_guest_slot_for_payment('${s}', '${G2}', 25.00, 20, NULL)`),
+    ).rejects.toThrow(/booking_cutoff/);
+  });
+
+  it('an EXPIRED hold does not buy a way past the cutoff', async () => {
+    // the reuse branch requires hold_expires_at > now(); a dead hold must fall through to the
+    // guard rather than acting as a permanent exemption
+    await setNotice({ academy: 48 * 60 });
+    const s = await slot('01000000-0000-0000-0000-00000000002b', 5);
+    await db.exec(`
+      INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status, hold_expires_at)
+      VALUES ('${s}', '${G1}', 'payment_pending', 'pending', now() - interval '5 minutes');`);
     await expect(
       db.query(`SELECT public.book_guest_slot_for_payment('${s}', '${G1}', 25.00, 20, NULL)`),
     ).rejects.toThrow(/booking_cutoff/);

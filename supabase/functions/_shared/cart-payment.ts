@@ -153,8 +153,13 @@ export function priceCartItems(
  */
 export function mapCartRpcError(rpcError: { message?: string | null; details?: string | null }): CartRefusal | null {
   const message = rpcError.message ?? "";
-  const code = ["slot_full", "slot_not_public", "split_not_supported", "single_booking_not_allowed", "slot_unavailable", "invalid_input"]
-    .find((c) => message.includes(c));
+  const code = [
+    "slot_full", "slot_not_public", "split_not_supported", "single_booking_not_allowed",
+    "slot_unavailable", "invalid_input",
+    // The mutation-boundary cutoff guard. The edge pre-check normally refuses first, so this is
+    // the race / degraded-pre-check path — unmapped it would surface as a generic failure.
+    "booking_cutoff",
+  ].find((c) => message.includes(c));
   if (!code) return null;
   const detail = (rpcError.details ?? "").trim();
   const slotIds = /^[0-9a-f-]{36}$/i.test(detail) ? [detail] : undefined;

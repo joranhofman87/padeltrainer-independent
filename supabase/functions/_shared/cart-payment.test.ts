@@ -233,6 +233,13 @@ Deno.test("rpc-error map: slot_not_public collapses to slot_unavailable for the 
   assertEquals(mapCartRpcError({ message: "slot_not_public", details: id }), { error: "slot_unavailable", slotIds: [id] });
 });
 
+Deno.test("rpc-error map: booking_cutoff reaches the guest as its own refusal, not a generic failure", () => {
+  // The edge pre-check normally refuses first, so this is the race / degraded-pre-check path.
+  // Unmapped it would surface as a 500 for a rule we have clear copy for.
+  const id = "9f8e7d6c-5b4a-3210-fedc-ba9876543210";
+  assertEquals(mapCartRpcError({ message: "booking_cutoff", details: id }), { error: "booking_cutoff", slotIds: [id] });
+});
+
 Deno.test("rpc-error map: junk detail is dropped, unknown messages pass through as null", () => {
   assertEquals(mapCartRpcError({ message: "slot_full", details: "P0001 not-a-uuid" }), { error: "slot_full", slotIds: undefined });
   assertEquals(mapCartRpcError({ message: "deadlock detected", details: null }), null);
