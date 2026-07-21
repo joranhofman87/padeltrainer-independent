@@ -68,14 +68,6 @@ const REGISTER: Entry[] = [
   // ── v1-PREFERENCE-GATED: these BLOCK removal of the PR 8 "Other notifications" bridge ──
   // send-email maps each of these to a notification_preferences column, so the v1 settings
   // remain load-bearing until every one has moved.
-  { file: 'src/pages/BookLesson.tsx', type: 'booking_request',
-    status: 'pending', reason: 'Maps to notification_preferences.new_booking. Target: booking_request_staff (already in the catalog), via an actor-callable enqueue RPC.' },
-  { file: 'src/pages/BookLesson.tsx', type: 'manual_booking_confirmation',
-    status: 'pending', reason: 'Maps to notification_preferences.booking_confirmation. Needs a server-side owner whose idempotency key cannot collide with the paid path booking_confirmed_player.' },
-  { file: 'src/components/booking/BookForPlayerDialog.tsx', type: 'manual_booking_confirmation',
-    status: 'pending', reason: 'Staff booking on a player behalf; same server-side owner as the BookLesson manual confirmation.' },
-  { file: 'src/components/slots/DeleteSlotDialog.tsx', type: 'booking_cancelled',
-    status: 'pending', reason: 'MISSED BY THE FIRST REGISTER — reaches send-email through the sendBookingCancellation wrapper, so a file-text scan never saw it. Maps to notification_preferences.booking_cancelled. Target: booking_cancelled_player (already in the catalog).' },
   // Declared under the DYNAMIC key the scanner can actually see. The variable resolves to
   // 'slot_reopened' or 'new_availability' at runtime; naming the resolved types here instead
   // would make the register look precise while the guard matched on something else.
@@ -84,11 +76,14 @@ const REGISTER: Entry[] = [
 ];
 
 /** Wrappers that MUST no longer exist — dead code removed, kept as tombstones. */
-const REMOVED_WRAPPERS = ['sendReviewNotification', 'sendBookingConfirmation'];
+const REMOVED_WRAPPERS = ['sendReviewNotification', 'sendBookingConfirmation', 'sendBookingCancellation'];
 
 /** Files that must never call the legacy sender again (by any route). */
 const MIGRATED_AWAY = [
   { file: 'src/components/reviews/ReviewForm.tsx', to: 'review_received_trainer (trg_notify_review_received)' },
+  { file: 'src/pages/BookLesson.tsx', to: 'enqueue_booking_notification(request_staff | confirmation_player)' },
+  { file: 'src/components/booking/BookForPlayerDialog.tsx', to: 'enqueue_booking_notification(confirmation_player), one call per recipient' },
+  { file: 'src/components/slots/DeleteSlotDialog.tsx', to: 'enqueue_booking_notification(cancelled_player), complete cancelled set' },
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -188,13 +183,9 @@ describe('the legacy send-email register', () => {
     // columns. This asserts the blocking set is explicit, so "can we drop the bridge yet?"
     // is answered by the register instead of by memory.
     const blocking = REGISTER.filter((e) => e.status === 'pending').map((e) => e.file).sort();
-    expect(blocking).toEqual([
-      'src/components/booking/BookForPlayerDialog.tsx',
-      'src/components/slots/DeleteSlotDialog.tsx',
-      'src/pages/BookLesson.tsx',
-      'src/pages/BookLesson.tsx',
-      'supabase/functions/notify-followers/index.ts',
-    ]);
+    // Four booking routes migrated to enqueue_booking_notification; notify-followers is the
+    // last one standing, and it needs a v2 catalog event that does not exist yet.
+    expect(blocking).toEqual(['supabase/functions/notify-followers/index.ts']);
   });
 
   it('removed wrappers stay removed', () => {

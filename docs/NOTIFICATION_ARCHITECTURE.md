@@ -685,3 +685,35 @@ hard bounce → skipped/failed + recovery visibility · new-booking burst
 collapses/batches · provider failure retries then marks failed ·
 `public_summary` contains no raw token/email/phone. Every migration ships with
 a pglite test that executes the real migration file (repo standard).
+
+## Residual reliability limitation: non-atomic mutation → enqueue (PR 10b)
+
+The booking notifications migrated in PR 10b (`request_staff`, `confirmation_player`,
+`cancelled_player`) are enqueued by the **browser**, in a separate round trip from the
+mutation that created or cancelled the bookings:
+
+```
+1. INSERT / UPDATE bookings        → returns the ids
+2. rpc enqueue_booking_notification(those ids, intent)
+```
+
+These two steps are **not atomic**. A crash, a closed tab, or a network drop between them
+leaves a booking with no notification. Nothing retries it, and nothing currently detects it.
+
+**Why it is acceptable for now:** the ordering is deliberately chosen so the only possible
+failure is a MISSING notification, never a notification for a booking that does not exist —
+the enqueue runs after the mutation succeeds and uses the ids the mutation itself returned.
+A missing transactional email on a low-volume flow is recoverable by a human; a confirmation
+for a booking that was never created is not.
+
+**What would close it**, when it becomes worth doing:
+
+- a transactional outbox written by the same statement as the booking mutation (a trigger
+  cannot do this safely today — see the RPC's header comment on why a `bookings` trigger
+  would re-create the paid-path double-send), or
+- a reconciliation sweep comparing recently created/cancelled bookings against
+  `notification_outbox` and enqueueing anything with no corresponding row.
+
+**Do not delete this section when the migration is "done".** The gap is a property of the
+current design, not of the migration, and it will outlive the PR that introduced it.
+

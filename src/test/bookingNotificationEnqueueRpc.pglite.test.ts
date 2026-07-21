@@ -446,3 +446,31 @@ describe('values reaching the HTML are escaped', () => {
     expect(html).not.toContain('Hal <1>');
   });
 });
+
+describe('the ACL boundary is explicit', () => {
+  // This repo runs ALTER DEFAULT PRIVILEGES granting EXECUTE on new functions to anon and
+  // authenticated, and a bare REVOKE FROM PUBLIC does NOT undo it. The migration revokes
+  // explicitly and re-grants only to authenticated — but "the migration currently says the
+  // right thing" is not the same as "the boundary holds", which is what this asserts.
+  const canExec = async (role: string, sig: string) =>
+    (await db.query<{ ok: boolean }>(
+      `SELECT has_function_privilege($1, $2, 'EXECUTE') AS ok`, [role, sig])).rows[0].ok;
+
+  it('enqueue_booking_notification: anon=false, authenticated=true, service_role=true', async () => {
+    const sig = 'public.enqueue_booking_notification(uuid[],text)';
+    // authenticated CAN call it — that is the point of an actor-callable RPC; the actor
+    // validation inside is what protects it, not the grant.
+    expect(await canExec('authenticated', sig)).toBe(true);
+    expect(await canExec('service_role', sig)).toBe(true);
+    // anon must NOT: every intent here requires an identified actor.
+    expect(await canExec('anon', sig), 'anon must never reach the enqueue RPC').toBe(false);
+  });
+
+  it('notification_html_escape stays service_role only', async () => {
+    const sig = 'public.notification_html_escape(text)';
+    expect(await canExec('service_role', sig)).toBe(true);
+    expect(await canExec('anon', sig)).toBe(false);
+    expect(await canExec('authenticated', sig)).toBe(false);
+  });
+});
+

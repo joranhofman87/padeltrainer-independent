@@ -5,7 +5,7 @@ import { Trash2, AlertTriangle, Loader2, Bell, Calendar, Receipt, CreditCard } f
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
-import { sendBookingCancellation } from "@/lib/email";
+import { enqueueBookingNotification } from '@/lib/bookingNotifications';
 import { logger } from "@/lib/logger";
 import { recalculateInvoiceAfterRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
@@ -51,8 +51,6 @@ interface InvoiceInfo {
 
 // Minimal shapes for the supabase nested-join reads below — keeps this now-neutral component free of
 // `any` (the joins are only read for a display name / email).
-type TrainerJoin = { profiles?: { full_name?: string | null } | null } | null;
-type PlayerContact = { full_name?: string | null; email?: string | null } | null;
 
 export function DeleteSlotDialog({
   open,
@@ -234,14 +232,6 @@ export function DeleteSlotDialog({
         const slotIds = cyclusSlots?.map((s) => s.id) || [];
 
         if (slotIds.length > 0) {
-          const { data: slotsWithDetails } = await supabase
-            .from("availability_slots")
-            .select(`
-              id, start_time, end_time, cyclus_name,
-              trainer:trainer_profiles(id, user_id, profiles:user_id(full_name, email))
-            `)
-            .in("id", slotIds);
-
           const { data: bookingsToCancel } = await supabase
             .from("bookings")
             .select(`
@@ -261,29 +251,15 @@ export function DeleteSlotDialog({
               .in("id", cancelledBookingIds);
 
             if (notifyPlayers) {
-              for (const booking of bookingsToCancel) {
-                const slotDetails = slotsWithDetails?.find(s => s.id === booking.slot_id);
-                const trainerProfile = slotDetails?.trainer as unknown as TrainerJoin;
-                const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
-                const lessonTitle = slotDetails?.cyclus_name || "Training session";
-                const lessonDate = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "MMMM d, yyyy") : "";
-                const lessonTime = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "HH:mm") : "";
-
-                const playerInfo = booking.guest_player_id 
-                  ? (booking.guest_players as unknown as PlayerContact)
-                  : (booking.profiles as unknown as PlayerContact);
-
-                if (playerInfo?.email) {
-                  sendBookingCancellation(
-                    playerInfo.email,
-                    playerInfo.full_name || "Player",
-                    trainerName,
-                    lessonTitle,
-                    lessonDate,
-                    lessonTime
-                  ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
-                }
-              }
+              // v2: ONE call with the COMPLETE set just cancelled. The RPC groups per
+              // recipient and gives each only their own sessions — the old per-booking loop
+              // sent one mail PER BOOKING, so a player losing a whole cycle got N of them.
+              // Called AFTER the cancel update, because the RPC requires cancelled status.
+              await enqueueBookingNotification(
+                bookingsToCancel.map((bk) => bk.id),
+                'cancelled_player',
+                'DeleteSlotDialog',
+              );
             }
           }
 
@@ -339,37 +315,14 @@ export function DeleteSlotDialog({
               .in("status", ["pending", "confirmed"]);
 
             if (notifyPlayers) {
-              const { data: slotWithDetails } = await supabase
-                .from("availability_slots")
-                .select(`
-                  id, start_time, end_time, cyclus_name,
-                  trainer:trainer_profiles(id, user_id, profiles:user_id(full_name, email))
-                `)
-                .eq("id", slot.id)
-                .single();
-
-              const trainerProfile = slotWithDetails?.trainer as unknown as TrainerJoin;
-              const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
-              const lessonTitle = slotWithDetails?.cyclus_name || "Training session";
-              const lessonDate = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "MMMM d, yyyy") : "";
-              const lessonTime = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "HH:mm") : "";
-
-              for (const booking of bookingsToCancel) {
-                const playerInfo = booking.guest_player_id 
-                  ? (booking.guest_players as unknown as PlayerContact)
-                  : (booking.profiles as unknown as PlayerContact);
-
-                if (playerInfo?.email) {
-                  sendBookingCancellation(
-                    playerInfo.email,
-                    playerInfo.full_name || "Player",
-                    trainerName,
-                    lessonTitle,
-                    lessonDate,
-                    lessonTime
-                  ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
-                }
-              }
+              // Same single call. The slot/trainer lookup that fed the old email is gone:
+              // the server derives all of it, so the browser no longer decides who a
+              // cancellation is addressed to.
+              await enqueueBookingNotification(
+                bookingsToCancel.map((bk) => bk.id),
+                'cancelled_player',
+                'DeleteSlotDialog',
+              );
             }
           }
         }

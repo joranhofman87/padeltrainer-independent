@@ -73,6 +73,7 @@ import { logger } from "@/lib/logger";
 import { fetchBookableGuestPlayers } from '@/lib/playersOverview';
 import { useBookingLoginFlags } from "@/hooks/useBookingLoginFlags";
 import { isGuestForBadge } from "@/lib/bookingLoginFlags";
+import { enqueueBookingNotification } from '@/lib/bookingNotifications';
 
 // Lesson interface removed - pricing now on slots
 
@@ -681,37 +682,23 @@ export function BookForPlayerDialog({
         }
 
         // Send email notifications
-        const firstSlot = slotsToBook[0];
-        const lastSlot = slotsToBook[slotsToBook.length - 1];
         
-        const { data: { session } } = await supabase.auth.getSession();
-        // Email the STORED booking amount (authoritative — what the invoice has), not a
-        // re-computed client total, so the confirmation can't drift from the charge.
-        const storedByPlayer = new Map<string, number>();
+        // v2: ONE enqueue per RECIPIENT, carrying exactly that recipient's booking ids.
+        // Grouping comes from the rows the insert RETURNED, not from selectedPlayers, so the
+        // notification can only ever describe bookings that actually exist. The server
+        // derives the address (including for guests, who have no account) and the copy.
+        const idsByRecipient = new Map<string, string[]>();
         for (const row of insertedRows ?? []) {
-          const pid = row.guest_player_id ?? row.player_id;
-          if (pid) storedByPlayer.set(pid, (storedByPlayer.get(pid) ?? 0) + (row.payment_amount ?? 0));
+          const rid = (row as { guest_player_id?: string | null; player_id?: string | null }).guest_player_id
+            ?? (row as { player_id?: string | null }).player_id;
+          const bid = (row as { id?: string }).id;
+          if (!rid || !bid) continue;
+          idsByRecipient.set(rid, [...(idsByRecipient.get(rid) ?? []), bid]);
         }
         await Promise.all(
-          selectedPlayers.map((player, playerIndex) =>
-            supabase.functions.invoke("send-email", {
-              body: {
-                type: "manual_booking_confirmation",
-                to: player.email,
-                data: {
-                  playerName: player.full_name,
-                  lessonTitle: `${slot.cyclus_name || t("bookings.lesson")} (${slotsToBook.length} ${t("calendar.sessions")})`,
-                  lessonDate: `${format(new Date(firstSlot.start_time), "MMM d")} - ${format(new Date(lastSlot.start_time), "MMM d, yyyy")}`,
-                  lessonTime: `${format(new Date(firstSlot.start_time), "HH:mm")} - ${format(new Date(firstSlot.end_time), "HH:mm")}`,
-                  location: null,
-                  price: storedByPlayer.get(player.id) ?? pricePreview.perPlayerTotals[playerIndex] ?? 0,
-                },
-              },
-              headers: {
-                Authorization: `Bearer ${session?.access_token}`,
-              },
-            }).catch(err => logger.warn("Email notification failed", { error: err?.message }))
-          )
+          [...idsByRecipient.values()].map((ids) =>
+            enqueueBookingNotification(ids, 'confirmation_player', 'BookForPlayerDialog'),
+          ),
         );
 
         const totalBookings = selectedPlayers.length * slotsToBook.length;
@@ -796,32 +783,22 @@ export function BookForPlayerDialog({
         }
 
         // Send email notifications
-        const { data: { session: emailSession } } = await supabase.auth.getSession();
-        const storedByPlayer = new Map<string, number>();
+        // v2: ONE enqueue per RECIPIENT, carrying exactly that recipient's booking ids.
+        // Grouping comes from the rows the insert RETURNED, not from selectedPlayers, so the
+        // notification can only ever describe bookings that actually exist. The server
+        // derives the address (including for guests, who have no account) and the copy.
+        const idsByRecipient = new Map<string, string[]>();
         for (const row of insertedRows ?? []) {
-          const pid = row.guest_player_id ?? row.player_id;
-          if (pid) storedByPlayer.set(pid, (storedByPlayer.get(pid) ?? 0) + (row.payment_amount ?? 0));
+          const rid = (row as { guest_player_id?: string | null; player_id?: string | null }).guest_player_id
+            ?? (row as { player_id?: string | null }).player_id;
+          const bid = (row as { id?: string }).id;
+          if (!rid || !bid) continue;
+          idsByRecipient.set(rid, [...(idsByRecipient.get(rid) ?? []), bid]);
         }
         await Promise.all(
-          selectedPlayers.map((player, playerIndex) =>
-            supabase.functions.invoke("send-email", {
-              body: {
-                type: "manual_booking_confirmation",
-                to: player.email,
-                data: {
-                  playerName: player.full_name,
-                  lessonTitle: slot.cyclus_name || t("bookings.lesson"),
-                  lessonDate: format(new Date(slot.start_time), "EEEE, MMMM d, yyyy"),
-                  lessonTime: `${format(new Date(slot.start_time), "HH:mm")} - ${format(new Date(slot.end_time), "HH:mm")}`,
-                  location: null,
-                  price: storedByPlayer.get(player.id) ?? pricePreview.perPlayerTotals[playerIndex] ?? 0,
-                },
-              },
-              headers: {
-                Authorization: `Bearer ${emailSession?.access_token}`,
-              },
-            }).catch(err => logger.warn("Email notification failed", { error: err?.message }))
-          )
+          [...idsByRecipient.values()].map((ids) =>
+            enqueueBookingNotification(ids, 'confirmation_player', 'BookForPlayerDialog'),
+          ),
         );
 
         toast({

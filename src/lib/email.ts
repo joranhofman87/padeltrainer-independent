@@ -130,20 +130,4 @@ export const sendEmail = async (
 };
 
 
-export const sendBookingCancellation = async (
-  playerEmail: string,
-  playerName: string,
-  trainerName: string,
-  lessonTitle: string,
-  lessonDate: string,
-  lessonTime: string
-) => {
-  return sendEmail("booking_cancelled", playerEmail, {
-    playerName,
-    trainerName,
-    lessonTitle,
-    lessonDate,
-    lessonTime,
-  });
-};
 
