@@ -9085,6 +9085,7 @@ export type Database = {
           p_academy_profile_id?: string
           p_email: string
           p_guest_player_id: string
+          p_source?: string
           p_trainer_id?: string
         }
         Returns: string
