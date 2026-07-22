@@ -717,3 +717,26 @@ for a booking that was never created is not.
 **Do not delete this section when the migration is "done".** The gap is a property of the
 current design, not of the migration, and it will outlive the PR that introduced it.
 
+## PR 10b scope note (booking notifications only)
+
+PR 10b migrates the BOOKING notification routes off the legacy send-email path onto the v2
+outbox via `enqueue_booking_notification(booking_ids, kind)`:
+
+| former legacy send | v2 route |
+| --- | --- |
+| review_received (ReviewForm) | trg_notify_review_received → review_received_trainer |
+| booking_request (BookLesson) | enqueue_booking_notification 'request_staff' → booking_request_staff |
+| manual_booking_confirmation (BookLesson, BookForPlayerDialog) | 'confirmation_player' → booking_confirmed_player |
+| booking_cancelled (DeleteSlotDialog) | 'cancelled_player' → booking_cancelled_player |
+
+NOT in scope for 10b (deliberately retained, tracked in PR 10c): `notify-followers` /
+open-slots availability, the `notification_queue` + `send-digest-emails` digest path, and the
+PR 8 "Other notifications" settings bridge. **The legacy migration is NOT complete after 10b** —
+`send-email` remains live and the bridge stays until 10c ships the open-slots + v2 digest work.
+
+Guest deliverability (10b): a guest with no account is made reachable by an in-scope
+`notification_contacts` row (`ensure_guest_email_contact`). When a guest's authoritative email
+is later REMOVED, that contact is REVOKED rather than left usable — a required confirmation then
+resolves to a visible `no_email_contact` skip instead of sending to a stale address. Provenance
+(`consent_source`/`consent_at`) refreshes only when the address genuinely changes.
+

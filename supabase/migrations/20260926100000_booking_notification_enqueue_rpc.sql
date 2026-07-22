@@ -80,6 +80,16 @@ DECLARE
   v_scope_trainer uuid;
   v_id            uuid;
 BEGIN
+  -- No current authoritative email → FAIL CLOSED. Returning early WITHOUT touching an existing
+  -- contact used to leave a previously-stored address selectable, and the resolver would deliver
+  -- a confirmation to that STALE address. Revoke any live email contact for this guest instead:
+  -- the resolver requires revoked_at IS NULL, so a required confirmation now resolves to a
+  -- visible no_email_contact skip rather than a wrong-address send.
+  IF p_guest_player_id IS NOT NULL AND (v_email = '' OR position('@' IN v_email) < 2) THEN
+    UPDATE public.notification_contacts
+       SET revoked_at = now(), updated_at = now()
+     WHERE channel = 'email' AND guest_player_id = p_guest_player_id AND revoked_at IS NULL;
+  END IF;
   IF p_guest_player_id IS NULL OR v_email = '' OR position('@' IN v_email) < 2 THEN
     RETURN NULL;
   END IF;
@@ -113,6 +123,19 @@ BEGIN
     destination_redacted       = excluded.destination_redacted,
     consent_academy_profile_id = excluded.consent_academy_profile_id,
     consent_trainer_id         = excluded.consent_trainer_id,
+    -- Provenance (source + at) is the evidence for WHY and WHEN we captured THIS address, so it
+    -- is refreshed only when the address genuinely changed — an unchanged re-run keeps the
+    -- original provenance and does not bump consent_at. A fresh valid address also UN-REVOKES a
+    -- contact that a prior email-removal had revoked (the guest is reachable again).
+    consent_source = CASE WHEN public.notification_contacts.destination_normalized
+                               IS DISTINCT FROM excluded.destination_normalized
+                          THEN excluded.consent_source
+                          ELSE public.notification_contacts.consent_source END,
+    consent_at     = CASE WHEN public.notification_contacts.destination_normalized
+                               IS DISTINCT FROM excluded.destination_normalized
+                          THEN now()
+                          ELSE public.notification_contacts.consent_at END,
+    revoked_at                 = NULL,
     updated_at                 = now()
   RETURNING id INTO v_id;
 

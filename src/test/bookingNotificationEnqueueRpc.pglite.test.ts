@@ -89,7 +89,7 @@ beforeAll(async () => {
       channel text, destination_normalized text, destination_redacted text,
       consent_status text, consent_scope text, consent_academy_profile_id uuid,
       consent_trainer_id uuid, consent_source text, consent_at timestamptz,
-      updated_at timestamptz);
+      revoked_at timestamptz, updated_at timestamptz);
     CREATE UNIQUE INDEX ON public.notification_contacts (channel, guest_player_id)
       WHERE guest_player_id IS NOT NULL;
     CREATE OR REPLACE FUNCTION public.notification_redact_destination(d text, c text)

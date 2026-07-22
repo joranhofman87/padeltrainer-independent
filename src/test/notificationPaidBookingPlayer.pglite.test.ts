@@ -160,6 +160,54 @@ beforeEach(async () => {
   await db.exec(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_contacts; DELETE FROM public.email_address_state;`);
 });
 
+describe('guest contact lifecycle — a removed email must NOT fall back to a stale address (Codex #5)', () => {
+  const REVOKED = 'stale@example.com';
+  const contactState = (guest: string) =>
+    db.query<{ destination_normalized: string; revoked_at: string | null; consent_source: string; consent_at: string }>(
+      `SELECT destination_normalized, revoked_at, consent_source, consent_at
+         FROM public.notification_contacts WHERE guest_player_id = '${guest}' AND channel='email'`);
+
+  it('revokes the existing contact when the authoritative email is now empty — the resolver then skips, never sends stale', async () => {
+    // 1. a valid address is stored.
+    await ensureGuestContact(G1, REVOKED, A1, T1);
+    expect((await contactState(G1)).rows[0].revoked_at).toBeNull();
+
+    // 2. the address is later removed (empty). Old behaviour: early RETURN, contact untouched,
+    //    resolver still delivers to REVOKED. New behaviour: the contact is REVOKED.
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', NULL, '${A1}', '${T1}', 'staff_booking')`);
+    const c = (await contactState(G1)).rows[0];
+    expect(c.revoked_at, 'a removed email must revoke the stale contact').not.toBeNull();
+
+    // 3. the real resolver must NOT select the revoked contact — a required confirmation
+    //    resolves to a visible no_email_contact skip, not a send to the stale address.
+    const out = await enqueuePlayer({ guest: G1, academy: A1, trainer: T1, payment: 'tr_stale' });
+    const emailRow = out.rows.find((r) => r.channel === 'email');
+    expect(emailRow?.status).toBe('skipped');
+    expect(emailRow?.skip_reason).toBe('no_email_contact');
+    expect(emailRow?.destination_normalized ?? null, 'never resolve the stale address').not.toBe(REVOKED);
+  });
+
+  it('a fresh valid address UN-revokes and refreshes provenance; an unchanged re-run does not', async () => {
+    await ensureGuestContact(G1, REVOKED, A1, T1);
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', NULL, '${A1}', '${T1}', 'staff_booking')`);   // revoke
+    expect((await contactState(G1)).rows[0].revoked_at).not.toBeNull();
+
+    // new, different address → un-revoke + provenance refresh (new reason + time).
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', 'new@example.com', '${A1}', '${T1}', 'staff_booking')`);
+    const after = (await contactState(G1)).rows[0];
+    expect(after.revoked_at, 'a valid address makes the guest reachable again').toBeNull();
+    expect(after.destination_normalized).toBe('new@example.com');
+    expect(after.consent_source, 'provenance refreshes when the address genuinely changed').toBe('staff_booking');
+    const atAfterChange = new Date(after.consent_at).getTime();
+
+    // same address again → provenance is NOT bumped (no genuine change).
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', 'new@example.com', '${A1}', '${T1}', 'paid_booking')`);
+    const unchanged = (await contactState(G1)).rows[0];
+    expect(unchanged.consent_source, 'an unchanged re-run keeps the original provenance').toBe('staff_booking');
+    expect(new Date(unchanged.consent_at).getTime(), 'consent_at not bumped on a no-op').toBe(atAfterChange);
+  });
+});
+
 describe('ensure_guest_email_contact — tenant-scoped, redacted, idempotent', () => {
   it('PIN 1+6: a guest email → an academy-scoped, redacted contact (no marketing opt-in, no person_id)', async () => {
     const id = (await ensureGuestContact(G1, GUEST_EMAIL, A1, T1)).rows[0].ensure_guest_email_contact;
