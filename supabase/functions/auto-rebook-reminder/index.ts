@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.ts";
+import { personRefOf } from "../_shared/person-identity.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { hourInTimeZone, isWithinSendWindow, SEND_TIME_ZONE } from "../_shared/send-window.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
@@ -161,8 +162,12 @@ serve(async (req: Request) => {
         });
         if (sendErr) { totalFailed += 1; continue; }
         totalSent += 1;
-        if (rec.player_id) sentPlayerIds.push(rec.player_id);
-        else if (rec.guest_player_id) sentGuestIds.push(rec.guest_player_id);
+        // GUEST-FIRST stamp routing (FAM-02): the RPC row still carries both ids on a dual-key
+        // child, so route by personRefOf (guest wins) — else bump_rebook_reminders would stamp the
+        // parent's player_id. Pairs with the player-arm guest_player_id IS NULL guard in the RPC.
+        const ref = personRefOf({ player_id: rec.player_id, guest_player_id: rec.guest_player_id });
+        if (ref?.guestPlayerId) sentGuestIds.push(ref.guestPlayerId);
+        else if (ref?.playerId) sentPlayerIds.push(ref.playerId);
       }
 
       // Stamp reminded_at + bump reminder_count on the ones we actually emailed. Best-effort:
