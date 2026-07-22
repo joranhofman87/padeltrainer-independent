@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   computeMemberOpenAudience, recipientKey, resolveMemberOpenContact, runClaimedCycle,
-  type MemberOpenClaim, type MemberOpenRecipient,
+  type MemberOpenClaim, type MemberOpenContactMaps, type MemberOpenRecipient,
 } from "./rebook-member-open.ts";
 
 const claim = (over: Partial<MemberOpenClaim>): MemberOpenClaim => ({
@@ -165,50 +165,51 @@ Deno.test("FAM-02: existing pure-profile + guest-only persisted keys stay byte-f
   assertEquals(recipientKey({ player_id: "parent", guest_player_id: "child" }), "g:child");
 });
 
-const emptyMaps = (): import("./rebook-member-open.ts").MemberOpenContactMaps => ({
+const emptyMaps = (): MemberOpenContactMaps => ({
   profileName: new Map(), profileEmail: new Map(),
-  guestName: new Map(), guestOwnEmail: new Map(), guestLinkedEmail: new Map(), guestLinked: new Set(),
+  guestOwnName: new Map(), guestOwnEmail: new Map(), guestAccountName: new Map(), guestAccountEmail: new Map(),
+  guestHasAccount: new Set(),
 });
 
-Deno.test("FAM-02 contact: a dual-key child's OWN name + email win over the linked parent (no signup — account-backed)", () => {
+Deno.test("FAM-02 contact: a dual-key child's OWN name + email win; a verified account → no signup", () => {
   const m = emptyMaps();
-  m.profileName.set("parent", "Parent"); m.profileEmail.set("parent", "parent@x.com");
-  m.guestName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com");
+  m.guestOwnName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com");
+  m.guestHasAccount.add("child"); // resolved account (person_links/twin/linked)
   assertEquals(
     resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, m),
-    { name: "Child", email: "child@x.com", needsSignup: false }, // linked to the parent account → book link
+    { name: "Child", email: "child@x.com", needsSignup: false },
   );
 });
 
-Deno.test("FAM-02 contact: parent inbox is the fallback ONLY when the child has no email (child's NAME still wins)", () => {
+Deno.test("FAM-02 contact: the VERIFIED ACCOUNT email is the fallback when the guest has no own email (account name is the blank-name fallback)", () => {
   const m = emptyMaps();
-  m.profileName.set("parent", "Parent"); m.profileEmail.set("parent", "parent@x.com");
-  m.guestName.set("child", "Child"); // child has no own email
-  assertEquals(
-    resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, m),
-    { name: "Child", email: "parent@x.com", needsSignup: false },
-  );
-});
-
-Deno.test("FAM-02 contact: a GUEST-ONLY priority person with a linked account but no own email IS delivered (linked email), no signup", () => {
-  // Codex #3: the previous code dropped this recipient. Now the linked-profile email is used and,
-  // because they're account-backed, they get the book link — never a "create an account" CTA.
-  const m = emptyMaps();
-  m.guestName.set("g5", "Linked Guest");
-  m.guestLinkedEmail.set("g5", "account@x.com");
-  m.guestLinked.add("g5");
+  m.guestAccountName.set("g5", "Account Holder"); m.guestAccountEmail.set("g5", "account@x.com");
+  m.guestHasAccount.add("g5"); // no own name/email
   assertEquals(
     resolveMemberOpenContact({ player_id: null, guest_player_id: "g5" }, m),
-    { name: "Linked Guest", email: "account@x.com", needsSignup: false },
+    { name: "Account Holder", email: "account@x.com", needsSignup: false },
   );
 });
 
-Deno.test("FAM-02 contact: a genuinely accountless guest (own email, no link) gets the SIGNUP CTA", () => {
+Deno.test("FAM-02 contact: a genuinely accountless guest (own email, no verified account) gets the SIGNUP CTA", () => {
   const m = emptyMaps();
-  m.guestName.set("g6", "New Guest"); m.guestOwnEmail.set("g6", "new@x.com");
+  m.guestOwnName.set("g6", "New Guest"); m.guestOwnEmail.set("g6", "new@x.com"); // no guestHasAccount
   assertEquals(
     resolveMemberOpenContact({ player_id: null, guest_player_id: "g6" }, m),
     { name: "New Guest", email: "new@x.com", needsSignup: true },
+  );
+});
+
+Deno.test("FAM-02 contact PROOF: a raw dual-key player_id is NOT proof of account — no verified account → SIGNUP, and player_id's email is never used", () => {
+  // player_id is present (the legacy dual-key link) but the guest has NO verified account
+  // (person_links/twin/linked). needsSignup must be true and the address must be the guest's OWN,
+  // never the raw player_id profile's.
+  const m = emptyMaps();
+  m.guestOwnName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com"); // guestHasAccount NOT set
+  m.profileEmail.set("unverified-parent", "parent@x.com"); // present but MUST be ignored for a guest
+  assertEquals(
+    resolveMemberOpenContact({ player_id: "unverified-parent", guest_player_id: "child" }, m),
+    { name: "Child", email: "child@x.com", needsSignup: true },
   );
 });
 
@@ -217,7 +218,7 @@ Deno.test("FAM-02 contact: a pure profile uses its own name/email and never need
   m.profileName.set("p1", "Solo"); m.profileEmail.set("p1", "solo@x.com");
   assertEquals(resolveMemberOpenContact({ player_id: "p1", guest_player_id: null }, m),
     { name: "Solo", email: "solo@x.com", needsSignup: false });
-  // a guest with no own email, no linked account, no linked parent → null (caller drops it)
+  // a guest with no own email and no verified account email → null (caller drops it)
   assertEquals(resolveMemberOpenContact({ player_id: null, guest_player_id: "g9" }, m), null);
 });
 

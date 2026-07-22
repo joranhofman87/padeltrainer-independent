@@ -570,7 +570,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         invited: existing?.invited ?? false,
         claimIds: existing?.claimIds ?? [],
         lastRemindedAt: existing?.lastRemindedAt ?? null,
-        hasEmail: c.player_id ? true : guestHasEmail.has(pk),
+        // GUEST-FIRST (FAM-02): a dual-key guest's reachability is the GUEST's own contact
+        // availability (own email OR a linked account), NOT the raw player_id — otherwise the UI
+        // advertises a reminder route the sender now skips. A pure profile always has an auth email.
+        hasEmail: c.guest_player_id ? guestHasEmail.has(pk) : true,
         claimToken: c.claim_token ?? existing?.claimToken ?? null,
       });
     }

@@ -98,16 +98,17 @@ assertions in `rebookIdentityGuestFirst.pglite.test.ts`:
 
 ## PR 10c (durable outbox) — REQUIRED acceptance items carried from PR 10d review
 
-`notify-rebook-member-open` is now fail-loud + crash-recovers the idempotency claim, but it is still
-NOT crash-safe at scale and this must be closed by the PR 10c durable-outbox migration (do NOT expand
-10d):
-- It claims the whole cycle before an UNBOUNDED sequential send loop and persists per-recipient
-  successes only AFTER the loop. A timeout / process death mid-loop leaves part of the audience
-  unsent with the claim released (RB03 recovers the rest on retry) — acceptable now, but the outbox
-  should make each recipient a durable, individually-checkpointed unit.
-- No provider idempotency key on the member-open send (unlike the v2 email worker's
-  `notification-outbox-<id>`), so a retry after a timeout-post-accept can double-send. The outbox
-  must carry a deterministic idempotency key.
-- Acceptance for "the messaging migration is complete/scalable": bounded + resumable processing, a
-  deterministic provider idempotency key, and NO permanent claim after worker death — for the
-  member-open path as well as open_slots.
+PR 10d hardened `notify-rebook-member-open` substantially — every recipient is now checkpointed
+ATOMICALLY as it sends (`append_rebook_member_open_notified`, no whole-settings read-modify-write),
+the send carries a deterministic Resend `Idempotency-Key` (`member-open:<cycle>:<key>`), reads fail
+loud, and a returned OR thrown failure releases the claim (`runClaimedCycle`). But it is still NOT
+fully crash-safe at scale, and this residual must be closed by the PR 10c durable-outbox migration
+(do NOT expand 10d):
+- The cycle is CLAIMED (settings.rebook_member_open_notified_at) before an UNBOUNDED sequential send
+  loop. A hard PROCESS DEATH mid-loop BYPASSES the release, so the cycle stays PERMANENTLY CLAIMED —
+  the already-checkpointed recipients are safe, but the un-sent tail is never re-detected/delivered.
+  (A returned/thrown error DOES release + retry; only an abrupt death does not.) The outbox must make
+  each recipient a durable, independently-resumable unit so no death can strand an audience.
+- Acceptance for "the messaging migration is complete/scalable": bounded + resumable processing and
+  NO permanent claim after worker death — for the member-open path as well as open_slots. (The
+  deterministic idempotency key + atomic per-recipient checkpoint are already in place from 10d.)

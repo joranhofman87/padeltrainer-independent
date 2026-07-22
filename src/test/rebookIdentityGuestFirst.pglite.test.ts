@@ -57,7 +57,11 @@ beforeAll(async () => {
 
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, name text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text, email text);
-    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text, linked_profile_id uuid);
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text, linked_profile_id uuid, twin_of_profile_id uuid, split_frozen boolean DEFAULT false);
+    CREATE TABLE public.persons (id uuid PRIMARY KEY);
+    CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid, profile_id uuid, guest_player_id uuid);
+    CREATE FUNCTION public.is_guest_split_frozen(_guest_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $frz$
+      SELECT COALESCE((SELECT split_frozen FROM public.guest_players WHERE id = _guest_id), false) $frz$;
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);
     CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, cyclus_id uuid, priority_window_ends_at timestamptz);
     CREATE TABLE public.slot_priority_claims (
@@ -183,7 +187,14 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
       UNION ALL SELECT 'claim_auth',    has_function_privilege('authenticated','public.claim_rebook_member_open_notice(uuid)','execute')
       UNION ALL SELECT 'claim_svc',     has_function_privilege('service_role','public.claim_rebook_member_open_notice(uuid)','execute')
       UNION ALL SELECT 'unclaim_anon',  has_function_privilege('anon','public.unclaim_rebook_member_open_notice(uuid)','execute')
+      UNION ALL SELECT 'unclaim_auth',  has_function_privilege('authenticated','public.unclaim_rebook_member_open_notice(uuid)','execute')
       UNION ALL SELECT 'unclaim_svc',   has_function_privilege('service_role','public.unclaim_rebook_member_open_notice(uuid)','execute')
+      UNION ALL SELECT 'bump_auth',     has_function_privilege('authenticated','public.bump_rebook_reminders(uuid[],uuid[],uuid[])','execute')
+      UNION ALL SELECT 'append_anon',   has_function_privilege('anon','public.append_rebook_member_open_notified(uuid,text[])','execute')
+      UNION ALL SELECT 'append_auth',   has_function_privilege('authenticated','public.append_rebook_member_open_notified(uuid,text[])','execute')
+      UNION ALL SELECT 'append_svc',    has_function_privilege('service_role','public.append_rebook_member_open_notified(uuid,text[])','execute')
+      UNION ALL SELECT 'resolve_anon',  has_function_privilege('anon','public.resolve_guest_member_contacts(uuid[])','execute')
+      UNION ALL SELECT 'resolve_svc',   has_function_privilege('service_role','public.resolve_guest_member_contacts(uuid[])','execute')
     `)).rows;
     const by = Object.fromEntries(r.map((x) => [x.chk, x.v]));
     expect(by.anon).toBe(false);          // the cross-academy email/token leak is closed
@@ -199,6 +210,92 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
     expect(by.claim_auth).toBe(false);
     expect(by.claim_svc).toBe(true);
     expect(by.unclaim_anon).toBe(false);
+    expect(by.unclaim_auth).toBe(false);
     expect(by.unclaim_svc).toBe(true);
+    expect(by.bump_auth).toBe(false);
+    // new PR 10d service-role RPCs
+    expect(by.append_anon).toBe(false);
+    expect(by.append_auth).toBe(false);
+    expect(by.append_svc).toBe(true);
+    expect(by.resolve_anon).toBe(false);
+    expect(by.resolve_svc).toBe(true);
+  });
+
+  it('append_rebook_member_open_notified is ATOMIC + dedup (one UPDATE, no whole-settings clobber)', async () => {
+    const CY = 'c0000000-0000-0000-0000-0000000000d1';
+    await db.exec(`INSERT INTO public.cycles (id, name, owner_type, owner_id, settings) VALUES ('${CY}','Chk','academy','${ACAD}','{"other":"keep"}')`);
+    // append two keys, then re-append one of them + a new one — must dedup and PRESERVE other settings.
+    await db.query(`SELECT public.append_rebook_member_open_notified($1, $2::text[])`, [CY, ['g:a', 'p:b']]);
+    await db.query(`SELECT public.append_rebook_member_open_notified($1, $2::text[])`, [CY, ['g:a', 'p:c']]);
+    const row = (await db.query<{ settings: { rebook_member_open_notified_recipients: string[]; other: string } }>(
+      `SELECT settings FROM public.cycles WHERE id = '${CY}'`)).rows[0];
+    expect([...row.settings.rebook_member_open_notified_recipients].sort()).toEqual(['g:a', 'p:b', 'p:c']);
+    expect(row.settings.other).toBe('keep'); // sibling settings untouched
+  });
+});
+
+// ── Finding #3: guest ACCOUNT resolution mirrors can_book_member_window's authorization precedence
+//    (person_links → twin_of_profile_id → linked_profile_id, split-freeze). The claim's raw dual-key
+//    player_id is NOT proof of an account. Same resolver feeds member-open + the auto-reminder SQL. ──
+describe('PR 10d #3 — guest_verified_account_profile / resolve_guest_member_contacts', () => {
+  const ACC = 'ac000000-0000-0000-0000-0000000000a1';   // the verified account profile
+  const ACC2 = 'ac000000-0000-0000-0000-0000000000a2';  // a DIFFERENT profile (for conflicts)
+  const PL = 'be000000-0000-0000-0000-000000000001';    // person for the person_links arms
+  const PL2 = 'be000000-0000-0000-0000-000000000002';
+  const G_LINKS = 'cc000000-0000-0000-0000-0000000000f1'; // person-links only
+  const G_TWIN = 'cc000000-0000-0000-0000-0000000000f2';  // twin only
+  const G_LINKED = 'cc000000-0000-0000-0000-0000000000f3'; // linked_profile only
+  const G_CONFLICT = 'cc000000-0000-0000-0000-0000000000f4'; // twin=ACC, linked=ACC2 → twin wins
+  const G_LINKS_TWIN = 'cc000000-0000-0000-0000-0000000000f5'; // person_links=ACC, twin=ACC2 → links win
+  const G_FROZEN = 'cc000000-0000-0000-0000-0000000000f6'; // twin=ACC but split-frozen → NO account
+  const G_NONE = 'cc000000-0000-0000-0000-0000000000f7';  // no relationship at all → NO account
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.profiles (id, full_name, email) VALUES
+        ('${ACC}','Account','acc@example.com'), ('${ACC2}','Account2','acc2@example.com');
+      INSERT INTO public.persons (id) VALUES ('${PL}'), ('${PL2}');
+      INSERT INTO public.guest_players (id, full_name, email, linked_profile_id, twin_of_profile_id, split_frozen) VALUES
+        ('${G_LINKS}',      'Links',    NULL,               NULL,     NULL,     false),
+        ('${G_TWIN}',       'Twin',     NULL,               NULL,     '${ACC}', false),
+        ('${G_LINKED}',     'Linked',   NULL,               '${ACC}', NULL,     false),
+        ('${G_CONFLICT}',   'Conflict', NULL,               '${ACC2}','${ACC}', false),
+        ('${G_LINKS_TWIN}', 'LinksTwin',NULL,               NULL,     '${ACC2}',false),
+        ('${G_FROZEN}',     'Frozen',   'frozen@example.com',NULL,    '${ACC}', true),
+        ('${G_NONE}',       'Nobody',   'nobody@example.com',NULL,    NULL,     false);
+      -- person_links: guest ↔ person ↔ profile
+      INSERT INTO public.person_links (person_id, guest_player_id, profile_id) VALUES
+        ('${PL}',  '${G_LINKS}',      NULL), ('${PL}',  NULL, '${ACC}'),
+        ('${PL2}', '${G_LINKS_TWIN}', NULL), ('${PL2}', NULL, '${ACC}');
+    `);
+  });
+
+  const account = async (g: string) =>
+    (await db.query<{ p: string | null }>(`SELECT public.guest_verified_account_profile($1) AS p`, [g])).rows[0].p;
+
+  it('person_links only → the linked profile', async () => { expect(await account(G_LINKS)).toBe(ACC); });
+  it('twin only → the twin profile', async () => { expect(await account(G_TWIN)).toBe(ACC); });
+  it('linked_profile only → the linked profile', async () => { expect(await account(G_LINKED)).toBe(ACC); });
+  it('conflicting twin/link → the TWIN wins (link is transitional)', async () => { expect(await account(G_CONFLICT)).toBe(ACC); });
+  it('person_links outranks twin → person_links wins', async () => { expect(await account(G_LINKS_TWIN)).toBe(ACC); });
+  it('split-frozen → NO verified account (may be a different human)', async () => { expect(await account(G_FROZEN)).toBeNull(); });
+  it('no relationship → NO verified account (raw player_id is never consulted)', async () => { expect(await account(G_NONE)).toBeNull(); });
+
+  it('resolve_guest_member_contacts (batch): delivers to the account when no own email; flags has_account correctly', async () => {
+    const rows = (await db.query<{ guest_id: string; own_email: string | null; account_email: string | null; has_account: boolean }>(
+      `SELECT guest_id, own_email, account_email, has_account FROM public.resolve_guest_member_contacts($1::uuid[]) ORDER BY guest_id`,
+      [[G_TWIN, G_FROZEN, G_NONE]],
+    )).rows;
+    const by = Object.fromEntries(rows.map((r) => [r.guest_id, r]));
+    // twin-linked, no own email → delivered via the account, has_account
+    expect(by[G_TWIN].own_email).toBeNull();
+    expect(by[G_TWIN].account_email).toBe('acc@example.com');
+    expect(by[G_TWIN].has_account).toBe(true);
+    // split-frozen → own email only, NO account (so the sender would send signup CTA)
+    expect(by[G_FROZEN].account_email).toBeNull();
+    expect(by[G_FROZEN].has_account).toBe(false);
+    // genuinely accountless → own email, no account
+    expect(by[G_NONE].own_email).toBe('nobody@example.com');
+    expect(by[G_NONE].has_account).toBe(false);
   });
 });

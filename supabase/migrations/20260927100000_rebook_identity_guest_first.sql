@@ -43,6 +43,69 @@ $$;
 REVOKE ALL ON FUNCTION public.bump_rebook_reminders(uuid[], uuid[], uuid[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bump_rebook_reminders(uuid[], uuid[], uuid[]) TO service_role;
 
+-- (1b) guest_verified_account_profile — the profile a guest VERIFIABLY maps to, using the SAME
+--      precedence as can_book_member_window's authorization (20260830100000): curated person_links
+--      first, then the twin bridge (twin_of_profile_id), then the transitional linked_profile_id
+--      (only when there is no twin). A split-frozen guest may be a DIFFERENT human → NO verified
+--      account (NULL). The raw dual-key claim.player_id is NOT consulted — it is not proof of an
+--      account. Delivery/CTA must key off THIS, not the claim's player_id.
+CREATE OR REPLACE FUNCTION public.guest_verified_account_profile(_guest_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE WHEN public.is_guest_split_frozen(_guest_id) THEN NULL ELSE COALESCE(
+    -- (a) curated person_links: the profile linked to the SAME person as this guest
+    (SELECT plp.profile_id
+       FROM public.person_links plg
+       JOIN public.person_links plp ON plp.person_id = plg.person_id
+      WHERE plg.guest_player_id = _guest_id AND plp.profile_id IS NOT NULL
+      LIMIT 1),
+    -- (b) twin bridge (outranks the transitional link)
+    (SELECT gp.twin_of_profile_id FROM public.guest_players gp WHERE gp.id = _guest_id),
+    -- (c) transitional link, only when there is no twin
+    (SELECT gp.linked_profile_id FROM public.guest_players gp
+      WHERE gp.id = _guest_id AND gp.twin_of_profile_id IS NULL)
+  ) END;
+$$;
+REVOKE ALL ON FUNCTION public.guest_verified_account_profile(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guest_verified_account_profile(uuid) TO service_role;
+
+-- (1c) resolve_guest_member_contacts — BATCH contact/account resolution for member-open recipients
+--      (no per-recipient queries). Per guest: own name/email, the verified account's name/email
+--      (via guest_verified_account_profile), and has_account. Delivery = own email then account
+--      email; needsSignup = NOT has_account (decided independently of which address is used).
+CREATE OR REPLACE FUNCTION public.resolve_guest_member_contacts(_guest_ids uuid[])
+RETURNS TABLE (
+  guest_id uuid,
+  own_name text,
+  own_email text,
+  account_name text,
+  account_email text,
+  has_account boolean
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    gp.id AS guest_id,
+    gp.full_name AS own_name,
+    NULLIF(btrim(gp.email), '') AS own_email,
+    ap.full_name AS account_name,
+    NULLIF(btrim(ap.email), '') AS account_email,
+    (acct.profile_id IS NOT NULL) AS has_account
+  FROM public.guest_players gp
+  LEFT JOIN LATERAL (SELECT public.guest_verified_account_profile(gp.id) AS profile_id) acct ON true
+  LEFT JOIN public.profiles ap ON ap.id = acct.profile_id
+  WHERE gp.id = ANY(_guest_ids);
+$$;
+REVOKE ALL ON FUNCTION public.resolve_guest_member_contacts(uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_guest_member_contacts(uuid[]) TO service_role;
+
 -- (2) rebook_claims_needing_auto_reminder — one representative (cycle, PERSON) row per
 --     non-responder. Re-emits the latest body (20260806100000: app_now() test clock + per-cycle
 --     settings.rebook_reminder_lead_hours override, clamp 1h..336h) — same FLAT SELECT structure,
@@ -75,16 +138,17 @@ AS $$
     ap.name AS academy_name,
     spc.player_id,
     spc.guest_player_id,
-    -- GUEST-FIRST name: a dual-key child shows their OWN name; the linked profile name is only the
+    -- GUEST-FIRST name: a dual-key child shows their OWN name; the VERIFIED ACCOUNT's name is the
     -- blank-name fallback for a guest. A pure profile shows the profile name.
     CASE WHEN spc.guest_player_id IS NOT NULL
-         THEN COALESCE(NULLIF(btrim(gp.full_name), ''), pr.full_name)
+         THEN COALESCE(NULLIF(btrim(gp.full_name), ''), gacct.full_name)
          ELSE pr.full_name END AS recipient_name,
-    -- GUEST-FIRST email (parity with effectiveGuestEmail + personContactEmail): the guest's own
-    -- address, then the linked profile, then the profile joined via player_id; a pure profile uses
-    -- its own email.
+    -- GUEST-FIRST email, matching booking-authorization account resolution: the guest's OWN address,
+    -- then the VERIFIED ACCOUNT profile's email (person_links → twin → linked, split-freeze). The raw
+    -- dual-key player_id (pr) is NOT used for a guest — it is not proof of an account. A pure profile
+    -- uses its own email.
     CASE WHEN spc.guest_player_id IS NOT NULL
-         THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(lp.email), ''), NULLIF(btrim(pr.email), ''))
+         THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(gacct.email), ''))
          ELSE NULLIF(btrim(pr.email), '') END AS recipient_email,
     spc.claim_token
   FROM public.slot_priority_claims spc
@@ -93,7 +157,9 @@ AS $$
   JOIN public.academy_profiles ap ON ap.id = c.owner_id
   LEFT JOIN public.profiles pr ON pr.id = spc.player_id
   LEFT JOIN public.guest_players gp ON gp.id = spc.guest_player_id
-  LEFT JOIN public.profiles lp ON lp.id = gp.linked_profile_id  -- guest's linked-profile email fallback
+  -- the guest's VERIFIED account (same precedence as can_book_member_window), NOT the claim's player_id
+  LEFT JOIN LATERAL (SELECT public.guest_verified_account_profile(spc.guest_player_id) AS profile_id) gv ON spc.guest_player_id IS NOT NULL
+  LEFT JOIN public.profiles gacct ON gacct.id = gv.profile_id
   WHERE c.owner_type = 'academy'
     AND (c.settings->>'rebook_payment_mode') IS NOT NULL          -- a rebook round
     AND COALESCE((c.settings->>'rebook_auto_reminder')::boolean, true) = true  -- opt-out, default on
@@ -109,7 +175,7 @@ AS $$
       _lead_hours, 24))))
     -- has a deliverable (guest-first) address — same expression as recipient_email above
     AND (CASE WHEN spc.guest_player_id IS NOT NULL
-              THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(lp.email), ''), NULLIF(btrim(pr.email), ''))
+              THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(gacct.email), ''))
               ELSE NULLIF(btrim(pr.email), '') END) IS NOT NULL
   ORDER BY c.id,
            COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text),
@@ -121,6 +187,32 @@ $$;
 -- leaving this SECURITY DEFINER email/token reader anon-executable cross-academy.
 REVOKE ALL ON FUNCTION public.rebook_claims_needing_auto_reminder(int) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rebook_claims_needing_auto_reminder(int) TO service_role;
+
+-- (2c) append_rebook_member_open_notified — ATOMIC per-recipient RB03 checkpoint. A single UPDATE
+--      appends only keys not already present (dedup) to settings.rebook_member_open_notified_recipients,
+--      so the sender can checkpoint each recipient AS IT SENDS (no whole-settings read-modify-write
+--      that loses earlier successes on a mid-loop crash, and no clobber of a concurrent academy edit).
+CREATE OR REPLACE FUNCTION public.append_rebook_member_open_notified(_cycle_id uuid, _keys text[])
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE public.cycles
+     SET settings = jsonb_set(
+           COALESCE(settings, '{}'::jsonb),
+           '{rebook_member_open_notified_recipients}',
+           COALESCE(settings->'rebook_member_open_notified_recipients', '[]'::jsonb)
+             || to_jsonb(ARRAY(
+                  SELECT DISTINCT k FROM unnest(_keys) AS k
+                   WHERE k IS NOT NULL
+                     AND NOT (COALESCE(settings->'rebook_member_open_notified_recipients', '[]'::jsonb) ? k)
+                ))
+         )
+   WHERE id = _cycle_id;
+$$;
+REVOKE ALL ON FUNCTION public.append_rebook_member_open_notified(uuid, text[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.append_rebook_member_open_notified(uuid, text[]) TO service_role;
 
 -- (3) The MEMBER-OPEN cron trio (defined in 20260714110000 / 20260817100000) has the SAME
 --     default-privileges footgun: they only `REVOKE ... FROM PUBLIC`, so anon/authenticated retain

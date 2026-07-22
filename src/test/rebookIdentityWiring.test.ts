@@ -97,13 +97,29 @@ describe('PR 10d wiring — upstream producers preserve both people (proofs #1, 
   it('notify-rebook-member-open fails loud on recipient-discovery reads + releases the claim on failure', () => {
     const s = fn('notify-rebook-member-open');
     // load-bearing reads throw instead of masquerading as empty (→ no permanent claim / silent drop)
-    for (const m of ['cycle read failed', 'slots read failed', 'claims read failed', 'profiles read failed', 'guests read failed']) {
+    for (const m of ['cycle read failed', 'slots read failed', 'claims read failed', 'profiles read failed',
+                     'guest contact resolution failed', 'round lookup failed']) {
       expect(s, `must fail loud on: ${m}`).toContain(m);
     }
     // recovery is the shared, tested runClaimedCycle (release on partial/throw + surface unclaim errors)
-    expect(s).toContain('runClaimedCycle(supabase, cycleId, (id) => notifyCycle(supabase, resend, id))');
+    expect(s).toContain('runClaimedCycle(supabase, cycleId, (id) => notifyCycle(supabase, resendApiKey, id))');
     const h = shared('rebook-member-open.ts');
     expect(h).toContain('export async function runClaimedCycle(');
+    expect(h).toContain('export async function releaseMemberOpenClaim('); // catches a thrown unclaim too
+  });
+
+  it('member-open account resolution mirrors booking authorization + is crash-safe (findings #1/#3)', () => {
+    const s = fn('notify-rebook-member-open');
+    // #3: a guest's account/email come from the guest's OWN verified relationships (SQL RPC), not player_id
+    expect(s).toContain('resolve_guest_member_contacts');
+    // #1: deterministic idempotency key + ATOMIC per-recipient checkpoint (no whole-settings rewrite)
+    expect(s).toContain('idempotencyKey: `member-open:${cycleId}:${r.key}`');
+    expect(s).toContain('append_rebook_member_open_notified');
+    expect(s).not.toContain('rebook_member_open_notified_recipients: merged'); // the old read-modify-write is gone
+    // the migration provides the guest account resolver matching can_book_member_window
+    const mig = read('supabase', 'migrations', '20260927100000_rebook_identity_guest_first.sql');
+    expect(mig).toContain('guest_verified_account_profile');
+    expect(mig).toContain('is_guest_split_frozen'); // split-freeze respected
   });
 
   it('the other three senders fail loud on their load-bearing reads', () => {

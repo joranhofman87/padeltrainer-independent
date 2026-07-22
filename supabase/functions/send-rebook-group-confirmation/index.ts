@@ -73,12 +73,14 @@ serve(async (req: Request) => {
     const { token } = await req.json();
     if (!token || typeof token !== "string") return json({ ok: false, error: "token is required" }, 400);
 
-    // Token gate: a valid GROUP claim. Its holder is the captain.
-    const { data: cap } = await admin
+    // Token gate: a valid GROUP claim. Its holder is the captain. A READ error must fail loud —
+    // treating it as "claim_not_found" would silently drop a whole group's confirmations.
+    const { data: cap, error: capErr } = await admin
       .from("slot_priority_claims")
       .select("id, rebook_group_id, player_id, guest_player_id, profiles:player_id(full_name), guest_players:guest_player_id(full_name, first_name)")
       .eq("claim_token", token)
       .maybeSingle();
+    if (capErr) throw new Error(`token gate read failed: ${capErr.message}`);
     if (!cap) return json({ ok: false, error: "claim_not_found" }, 404);
     if (!cap.rebook_group_id) return json({ ok: false, reason: "not_a_group" });
     const groupId = cap.rebook_group_id as string;
@@ -138,7 +140,8 @@ serve(async (req: Request) => {
     const acadIds = [...new Set(claims.map((c) => c.availability_slots?.academy_profile_id).filter((x): x is string => !!x))];
     const tzByAcademy = new Map<string, string>();
     if (acadIds.length > 0) {
-      const { data: acads } = await admin.from("academy_profiles").select("id, timezone").in("id", acadIds);
+      const { data: acads, error: acadErr } = await admin.from("academy_profiles").select("id, timezone").in("id", acadIds);
+      if (acadErr) throw new Error(`academy timezone read failed: ${acadErr.message}`);
       for (const a of (acads ?? []) as Array<{ id: string; timezone: string | null }>) {
         tzByAcademy.set(a.id, a.timezone || "Europe/Amsterdam");
       }
@@ -147,7 +150,10 @@ serve(async (req: Request) => {
     const upfrontCycles = new Set<string>();
     const startByCycle = new Map<string, string>();
     if (cyclusIds.length > 0) {
-      const { data: cycleRows } = await admin.from("cycles").select("id, settings, start_date").in("id", cyclusIds);
+      const { data: cycleRows, error: cycleErr } = await admin.from("cycles").select("id, settings, start_date").in("id", cyclusIds);
+      // Fail loud: on error upfrontCycles stays empty → EVERY member gets the "pay your own share"
+      // (deferred) copy, wrong for an upfront round.
+      if (cycleErr) throw new Error(`cycle payment-mode read failed: ${cycleErr.message}`);
       for (const r of (cycleRows ?? []) as Array<{ id: string; settings: Record<string, unknown> | null; start_date: string | null }>) {
         if ((r.settings || {}).rebook_payment_mode === "upfront") upfrontCycles.add(r.id);
         if (r.start_date) startByCycle.set(r.id, r.start_date);
@@ -219,7 +225,11 @@ serve(async (req: Request) => {
       stampQ = ref?.guestPlayerId
         ? stampQ.eq("guest_player_id", ref.guestPlayerId)
         : stampQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
-      const { data: stamped } = await stampQ.select("id");
+      const { data: stamped, error: stampErr } = await stampQ.select("id");
+      // Fail loud: a stamp ERROR is NOT "already sent" — treating it as an ordinary skip would
+      // silently drop this member's confirmation. A genuine empty result (someone else won the row)
+      // is the legitimate skip.
+      if (stampErr) throw new Error(`confirmation claim-stamp failed: ${stampErr.message}`);
       if (!stamped || stamped.length === 0) { skipped++; continue; }
 
       const slot = m.rep.availability_slots!;
@@ -281,7 +291,12 @@ serve(async (req: Request) => {
         clearQ = ref?.guestPlayerId
           ? clearQ.eq("guest_player_id", ref.guestPlayerId)
           : clearQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
-        await clearQ.in("id", (stamped as Array<{ id: string }>).map((r) => r.id));
+        const { error: clearErr } = await clearQ.in("id", (stamped as Array<{ id: string }>).map((r) => r.id));
+        if (clearErr) {
+          // The stamp could not be cleared → confirmation_sent_at stays set → this member's
+          // confirmation is permanently suppressed (never retried). Surface it loudly.
+          await notifySlackEdgeError("send-rebook-group-confirmation", "stamp clear failed after a send error — confirmation permanently suppressed for a member", { groupId, error: String(clearErr.message ?? clearErr) });
+        }
         failed++;
       }
     }
