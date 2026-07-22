@@ -206,45 +206,56 @@ export async function sendPlayerBookingConfirmation(opts: {
   const recipientName = guest.guest_players?.full_name ?? "";
   const language: "nl" | "en" = "nl"; // guests have no profile language preference
 
-  // Single source of truth for the guest's address (honours a linked profile / academy
-  // billing-email override), falling back to the booking-form address.
+  // AUTHORITATIVE guest address (a linked profile / academy billing-email override), falling
+  // back to the booking-form address ONLY on a successful no-email answer.
+  //
+  // This is a RECIPIENT-DISCOVERY read, so it FAILS LOUD (PR 10a doctrine, and the exact
+  // pattern already removed from enqueue_booking_notification): a returned { error } OR a
+  // thrown exception aborts the lane. Swallowing it would let a lookup failure promote the raw
+  // guest_players.email — potentially stale — into the authoritative tenant contact.
   let recipientEmail: string | null = null;
   try {
-    const { data: idRows } = await supabase.rpc("get_invoice_recipient_identity", {
+    const { data: idRows, error: idErr } = await supabase.rpc("get_invoice_recipient_identity", {
       _player_id: null,
       _guest_player_id: guestPlayerId,
       _academy_profile_id: academyProfileId,
     });
+    if (idErr) {
+      logStep("Guest identity lookup returned an error — enqueue aborted", { error: idErr.message });
+      return { ok: false, reason: "enqueue_failed", isGuest: true, pdfAttached, detail: idErr.message.slice(0, 200) };
+    }
     const identity = Array.isArray(idRows) ? idRows[0] : idRows;
     recipientEmail = (identity as { email?: string } | null)?.email ?? null;
-  } catch (_e) {
-    // fall through to the joined address
+  } catch (e) {
+    logStep("Guest identity lookup threw — enqueue aborted", { error: String(e) });
+    return { ok: false, reason: "enqueue_failed", isGuest: true, pdfAttached, detail: String(e).slice(0, 200) };
   }
+  // The DESIGNED fallback: a successful identity answer that simply carries no email.
   if (!recipientEmail) recipientEmail = guest.guest_players?.email ?? null;
 
-  // Make the guest deliverable: upsert their tenant-scoped email contact. A missing email
-  // leaves NO contact → the required confirmation resolves to a visible 'skipped' row.
-  // But an UPSERT FAILURE (email was present) must fail LOUDLY, not fall through: enqueueing
-  // anyway would resolve to a misleading 'skipped'/no_email_contact that hides the real cause.
-  // supabase.rpc returns { error } (it does NOT throw), so inspect it AND guard the throw.
-  if (recipientEmail) {
-    let contactErr: string | null = null;
-    try {
-      const { error } = await supabase.rpc("ensure_guest_email_contact", {
-        p_guest_player_id: guestPlayerId,
-        p_email: recipientEmail,
-        p_academy_profile_id: academyProfileId,
-        p_trainer_id: trainerId,
-      });
-      if (error) contactErr = error.message;
-    } catch (e) {
-      contactErr = String(e);
-    }
-    if (contactErr) {
-      const detail = contactErr.slice(0, 200);
-      logStep("Guest contact upsert failed — enqueue aborted", { error: detail });
-      return { ok: false, reason: "enqueue_failed", isGuest: true, pdfAttached, detail };
-    }
+  // ALWAYS reconcile the guest's contact — INCLUDING when recipientEmail is null. The SQL
+  // helper owns the whole lifecycle: a present address upserts (un-revokes / refreshes
+  // provenance); a NULL address REVOKES any stale contact so the resolver cannot still deliver
+  // to it. Gating this on a present email was the hole — a guest whose email was removed kept a
+  // live contact and kept receiving mail. After a successful reconcile the enqueue proceeds, so
+  // a no-address guest resolves to the intended VISIBLE no_email_contact skip. A reconcile
+  // FAILURE (returned or thrown) aborts loudly rather than enqueueing a misleading skip.
+  let contactErr: string | null = null;
+  try {
+    const { error } = await supabase.rpc("ensure_guest_email_contact", {
+      p_guest_player_id: guestPlayerId,
+      p_email: recipientEmail,   // may be null → the helper revokes the stale contact
+      p_academy_profile_id: academyProfileId,
+      p_trainer_id: trainerId,
+    });
+    if (error) contactErr = error.message;
+  } catch (e) {
+    contactErr = String(e);
+  }
+  if (contactErr) {
+    const detail = contactErr.slice(0, 200);
+    logStep("Guest contact reconcile failed — enqueue aborted", { error: detail });
+    return { ok: false, reason: "enqueue_failed", isGuest: true, pdfAttached, detail };
   }
 
   const signInUrl = `${appBase}/app/signup/player?email=${encodeURIComponent(recipientEmail ?? "")}&name=${encodeURIComponent(recipientName)}&redirect=${encodeURIComponent("/app/player/agenda")}`;

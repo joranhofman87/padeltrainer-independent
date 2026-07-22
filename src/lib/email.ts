@@ -128,6 +128,3 @@ export const sendEmail = async (
     return { success: false, error: err.message };
   }
 };
-
-
-

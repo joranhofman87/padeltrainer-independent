@@ -739,4 +739,3 @@ Guest deliverability (10b): a guest with no account is made reachable by an in-s
 is later REMOVED, that contact is REVOKED rather than left usable — a required confirmation then
 resolves to a visible `no_email_contact` skip instead of sending to a stale address. Provenance
 (`consent_source`/`consent_at`) refreshes only when the address genuinely changes.
-

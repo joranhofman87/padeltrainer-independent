@@ -127,12 +127,20 @@ BEGIN
     -- is refreshed only when the address genuinely changed — an unchanged re-run keeps the
     -- original provenance and does not bump consent_at. A fresh valid address also UN-REVOKES a
     -- contact that a prior email-removal had revoked (the guest is reachable again).
-    consent_source = CASE WHEN public.notification_contacts.destination_normalized
-                               IS DISTINCT FROM excluded.destination_normalized
+    -- Provenance is a FRESH CAPTURE when any of: the address changed, the contact had been
+    -- REVOKED (reactivation is a new lifecycle even at the same address), or the effective
+    -- tenant scope changed. An unchanged, still-active re-run is a no-op that keeps the
+    -- original source + timestamp.
+    consent_source = CASE WHEN public.notification_contacts.destination_normalized IS DISTINCT FROM excluded.destination_normalized
+                            OR public.notification_contacts.revoked_at IS NOT NULL
+                            OR public.notification_contacts.consent_academy_profile_id IS DISTINCT FROM excluded.consent_academy_profile_id
+                            OR public.notification_contacts.consent_trainer_id IS DISTINCT FROM excluded.consent_trainer_id
                           THEN excluded.consent_source
                           ELSE public.notification_contacts.consent_source END,
-    consent_at     = CASE WHEN public.notification_contacts.destination_normalized
-                               IS DISTINCT FROM excluded.destination_normalized
+    consent_at     = CASE WHEN public.notification_contacts.destination_normalized IS DISTINCT FROM excluded.destination_normalized
+                            OR public.notification_contacts.revoked_at IS NOT NULL
+                            OR public.notification_contacts.consent_academy_profile_id IS DISTINCT FROM excluded.consent_academy_profile_id
+                            OR public.notification_contacts.consent_trainer_id IS DISTINCT FROM excluded.consent_trainer_id
                           THEN now()
                           ELSE public.notification_contacts.consent_at END,
     revoked_at                 = NULL,

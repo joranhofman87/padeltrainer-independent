@@ -128,4 +128,3 @@ export async function enqueueConfirmationsPerRecipient(
   const groups = groupBookingIdsByRecipient(rows);
   return Promise.all(groups.map((ids) => enqueueBookingNotification(ids, 'confirmation_player', context)));
 }
-

@@ -206,6 +206,28 @@ describe('guest contact lifecycle — a removed email must NOT fall back to a st
     expect(unchanged.consent_source, 'an unchanged re-run keeps the original provenance').toBe('staff_booking');
     expect(new Date(unchanged.consent_at).getTime(), 'consent_at not bumped on a no-op').toBe(atAfterChange);
   });
+  it('reactivating the SAME address after revocation is a FRESH capture (not stale provenance)', async () => {
+    // Codex #3: after a revoke, re-entering the SAME email clears revoked_at — but the
+    // provenance must ALSO refresh, because reactivation is a new lifecycle. An address change
+    // is not the only thing that counts as fresh.
+    await ensureGuestContact(G1, REVOKED, A1, T1);
+    // stamp an explicitly OLD provenance so a refresh is unambiguous.
+    await db.query(`UPDATE public.notification_contacts
+                      SET consent_at = '2020-01-01T00:00:00Z', consent_source = 'paid_booking'
+                    WHERE guest_player_id = '${G1}' AND channel='email'`);
+    // remove the email → revoke.
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', NULL, '${A1}', '${T1}', 'staff_booking')`);
+    expect((await contactState(G1)).rows[0].revoked_at).not.toBeNull();
+
+    // SAME address returns, with a new source → reactivation is a fresh capture.
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', '${REVOKED}', '${A1}', '${T1}', 'staff_booking')`);
+    const c = (await contactState(G1)).rows[0];
+    expect(c.revoked_at, 'reactivated').toBeNull();
+    expect(c.destination_normalized).toBe(REVOKED);
+    expect(c.consent_source, 'provenance refreshed on reactivation').toBe('staff_booking');
+    expect(new Date(c.consent_at).getTime(), 'consent_at refreshed past the old stamp')
+      .toBeGreaterThan(new Date('2020-01-01T00:00:00Z').getTime());
+  });
 });
 
 describe('ensure_guest_email_contact — tenant-scoped, redacted, idempotent', () => {
@@ -408,4 +430,3 @@ describe('staff-created GUEST confirmation reaches the real resolver as a pendin
     expect(out.rows[0].skip_reason).toBe('no_email_contact');
   });
 });
-
