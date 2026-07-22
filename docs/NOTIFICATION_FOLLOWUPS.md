@@ -40,29 +40,45 @@ free-text keys, NOT structured context (booking-id UUIDs etc., which `redactDeta
 rule would otherwise mangle). Not a PR 10b blocker (10b's own lanes are all redacted at the call
 site), but the right central defence. No task id yet.
 
-## Guest-first identity — remaining rebook/priority paths (P1 RECIPIENT-ROUTING, found by PR 10b sweep)
+## Guest-first identity — rebook/priority paths (P1 RECIPIENT-ROUTING) — FIXED IN PR 10d (pending deploy-verify)
 
 CORRECTION (Codex re-review): an earlier version of this entry called these "display-only". That
 was wrong. They are P1 WRONG-RECIPIENT bugs, not just wrong names.
 
 PR 10b built the canonical edge twin `supabase/functions/_shared/person-identity.ts`
 (`personKeyOf`/`personRefOf`/`personDisplayName`/`personContactEmail`, guest-first, keyed on the
-IDs — the keep-in-sync twin of `src/lib/personIdentity.ts`) and applied it to the two paid staff
-paths Codex named. Three MORE functions in the rebook/priority subsystem — OUTSIDE 10b's
-booking-notification diff — key PLAYER-FIRST off the ids and so misroute dual-key (child/guest)
-people, not merely mislabel them:
+IDs — the keep-in-sync twin of `src/lib/personIdentity.ts`). **PR 10d
+(`feat/notif-pr10d-rebook-identity`) applies it as the full-closure identity pass over the rebook
+subsystem.** An audit (completeness critic) proved the same player-first bug spanned more than the
+three originally-named senders — the upstream producers collapsed a dual-key child + linked parent
+BEFORE the senders ran, so fixing only the senders would have left green tests around
+already-corrupted input. Every audit-proven site is fixed guest-first:
 
-| location | wrong-recipient effect |
-| -------- | ---------------------- |
-| `send-rebook-group-confirmation/index.ts` (~L153) | `c.player_id ? 'p:' : 'g:'` — dual-key CLAIMS grouped, invited-state grouped, recipient email selected, and claims STAMPED/rolled back under the parent's key. A child with their own email can be mailed at the parent's address, collapsed into the parent's claim, or have the wrong claims stamped. |
-| `send-priority-claim-invitation/index.ts` (~L266) | `c.player_id ?? 'g:'` — same player-first key for invited-state + recipient grouping. |
-| `send-rebook-reminder/index.ts` (~L68) | `t.player_id ?? (t.guest_player_id ? 'g:' : '')` — player-first target key. |
+| location | was (player-first) | fix |
+| -------- | ------------------ | --- |
+| `_shared/priority-claim-invite.ts` `resolveRecipient` | `playerEmail \|\| guestEmail` | `personContactEmail(row, …)` |
+| `send-rebook-reminder` | target key, dedup, name, reminded-stamp routing | `personKeyOf`/`personDisplayName`/`personRefOf` |
+| `send-rebook-group-confirmation` | member grouping, invited-state, email, captain+recipient names, **claim-stamp scope** | `personKeyOf`/`personContactEmail`/`personDisplayName`; stamp scoped `personRefOf` (profile → `player_id AND guest_player_id IS NULL`) |
+| `send-priority-claim-invitation` | rep dedup, group aggregation, main-loop lookup, name | `personKeyOf`/`personDisplayName` |
+| `bulk-rebook-cycle` (~L988) `repByPlayer` | representative selection collapsed child+parent BEFORE the invite fn | `personKeyOf` |
+| `src/lib/rebookManage.ts` (~L531) `keyOf` | built the reminder `targets` player-first | `personKeyOf` (nameByKey renamespaced) |
+| `auto-rebook-reminder` (~L164) | reminded-stamp routing | `personRefOf` |
+| `rebook_claims_needing_auto_reminder` RPC (`20260721100000`) | player-first `DISTINCT ON` + profile-first name/email | guest-first CTE (migration `20260927100000`) |
+| `bump_rebook_reminders` RPC (`20260625130000`) | player arm had no `guest_player_id IS NULL` guard | guarded (migration `20260927100000`) |
 
-These are PRODUCTION P1s that exist independently of 10b (the rebook priority system, which
-touches seats/claims). Fix: route grouping, invited-state, recipient email, claim stamping AND
-display name through the new `person-identity.ts` twin (`personKeyOf` for grouping/stamping,
-`personContactEmail` for the address, `personDisplayName` for the name), with tests proving a
-dual-key child with their own email is mailed themselves, parent/child stay separate groups, and
-stamping a child never stamps the parent's claims. This is a dedicated structural pass over the
-rebook subsystem, deliberately NOT folded into 10b's booking-notification diff — see the PR
-discussion for the split decision.
+SECURITY (fixed in the same migration): `rebook_claims_needing_auto_reminder` is SECURITY DEFINER
+and returns recipient email + claim_token cross-academy, but its original migration only
+`REVOKE … FROM PUBLIC` — leaving the default `GRANT … TO anon, authenticated` in place (verified in
+prod: anon/authenticated = EXECUTE). Now REVOKEd from `PUBLIC, anon, authenticated`, GRANTed to
+`service_role` only.
+
+Proofs: `rebookIdentityGuestFirst.pglite.test.ts` (cross-layer — raw claims → RPC grouping →
+guest-first routing → stamp; dual-key child mailed at own email; linked-profile fallback only when
+absent; parent stamp never touches child and vice-versa; grants locked down — all mutation-verified),
+`priorityClaimInvite.test.ts` (resolveRecipient guest-first), `rebookIdentityWiring.test.ts` (every
+call site wired to the twin). NOT flipped to fully "resolved" until PR 10d is deployed and verified
+in prod (migration first, then all edge fns).
+
+`bulk-rebook-cycle:493` (`registeredPlayerIds` for `computeRebookExclusion`) is consciously left
+alone — it is eligibility bucketing, not notification identity; changing it would alter rebook
+eligibility semantics (an unrelated refactor).

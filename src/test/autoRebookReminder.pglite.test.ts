@@ -48,7 +48,7 @@ beforeAll(async () => {
 
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, name text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text, email text);
-    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text);
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text, linked_profile_id uuid);
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);
     CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, cyclus_id uuid, priority_window_ends_at timestamptz);
     CREATE TABLE public.slot_priority_claims (
@@ -100,8 +100,12 @@ beforeAll(async () => {
   // The app_now() clock migration re-emits the detection RPC with now() → app_now(); loading it
   // last lets the time-travel block below set app.fake_now and move "now" around a fixed deadline.
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260724100000_app_now_clock.sql'), 'utf8'));
-  // Per-cycle lead override (settings.rebook_reminder_lead_hours) — the version under test below.
+  // Per-cycle lead override (settings.rebook_reminder_lead_hours).
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260806100000_rebook_reminder_lead_per_cycle.sql'), 'utf8'));
+  // PR 10d: guest-first re-emit (+ the bump_rebook_reminders guard). This must preserve every
+  // eligibility/lead/app_now behaviour above for pure-profile + pure-guest rows (their guest-first
+  // key equals the old player-first key), so the existing suite is now regression coverage for it.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260927100000_rebook_identity_guest_first.sql'), 'utf8'));
 });
 
 describe('rebook_claims_needing_auto_reminder', () => {
