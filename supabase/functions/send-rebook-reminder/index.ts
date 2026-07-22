@@ -10,6 +10,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { buildClaimUrl, effectiveGuestEmail, resolveAppBase, resolveRecipient } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf, personRefOf, personDisplayName } from "../_shared/person-identity.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
@@ -64,8 +65,10 @@ serve(async (req: Request) => {
     if (!cycleId || !subj || !msg || targetList.length === 0) {
       return json({ ok: false, error: "cycleId, subject, message and targets are required" }, 400);
     }
+    // GUEST-FIRST canonical person keys (FAM-02): a dual-key target belongs to the GUEST, so it
+    // keys g:<guest> — never the linked parent's p:<player>. Must match the claim keying below.
     const targetKeys = new Set(
-      targetList.map((t) => t.player_id ?? (t.guest_player_id ? `g:${t.guest_player_id}` : "")).filter(Boolean),
+      targetList.map((t) => personKeyOf(t)).filter((k): k is string => !!k),
     );
 
     // Authorize: the caller must MANAGE this cycle's academy. Do NOT infer ownership from
@@ -105,8 +108,11 @@ serve(async (req: Request) => {
     const byPlayer = new Map<string, ClaimRow>();
     // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
     // runtime values are single objects — cast through unknown (same idiom as the invite fn).
+    // Dedup GUEST-FIRST: a dual-key child (g:<guest>) and their linked parent (p:<player>) are
+    // DISTINCT people — the old player-first key collapsed both under p:<player>, so only one of
+    // them got a reminder.
     for (const c of (claims ?? []) as unknown as ClaimRow[]) {
-      const key = c.player_id ?? (c.guest_player_id ? `g:${c.guest_player_id}` : "");
+      const key = personKeyOf(c);
       if (!key || !targetKeys.has(key) || byPlayer.has(key)) continue;
       byPlayer.set(key, c);
     }
@@ -128,7 +134,9 @@ serve(async (req: Request) => {
         playerEmail: c.profiles?.email, guestEmail: effectiveGuestEmail(c.guest_players),
       });
       if (!email) { skipped++; continue; }
-      const name = c.profiles?.full_name || c.guest_players?.full_name || "";
+      // GUEST-FIRST name (FAM-02): a dual-key child shows their OWN name; the linked profile name
+      // is only the blank-name fallback for a guest.
+      const name = personDisplayName(c, { profileName: c.profiles?.full_name, guestName: c.guest_players?.full_name }, "");
       const cta = buildClaimUrl(APP_BASE, c.claim_token, false);
       const body = substituteVars(msg, name).split("\n").map((line) => `<p style="color:#374151;line-height:1.6;">${escapeHtml(line)}</p>`).join("");
       const html = `
@@ -150,8 +158,12 @@ serve(async (req: Request) => {
       });
       if (sendErr) { console.error("send error", sendErr); failed++; continue; }
       sent++;
-      if (c.player_id) sentPlayerIds.push(c.player_id);
-      else if (c.guest_player_id) sentGuestIds.push(c.guest_player_id);
+      // GUEST-FIRST stamp routing (FAM-02): a dual-key child is stamped as the GUEST, never the
+      // parent's player_id — otherwise bump_rebook_reminders marks the parent (and every claim
+      // sharing that player_id) reminded. personRefOf picks the guest id on a dual-key row.
+      const ref = personRefOf(c);
+      if (ref?.guestPlayerId) sentGuestIds.push(ref.guestPlayerId);
+      else if (ref?.playerId) sentPlayerIds.push(ref.playerId);
     }
 
     // Stamp reminded_at + bump reminder_count on the claims we actually emailed (atomic RPC;

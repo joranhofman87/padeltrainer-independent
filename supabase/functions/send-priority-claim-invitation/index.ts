@@ -7,6 +7,7 @@ import {
   resolveAppBase,
   resolveRecipient,
 } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf, personDisplayName } from "../_shared/person-identity.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 
@@ -264,7 +265,11 @@ const handler = async (req: Request): Promise<Response> => {
         !!(c.profiles?.email?.trim() || effectiveGuestEmail(c.guest_players));
       const repByKey = new Map<string, { id: string; start: string; invited: boolean; sendable: boolean }>();
       for (const c of repClaims) {
-        const pkey = c.player_id ?? `g:${c.guest_player_id}`;
+        // GUEST-FIRST person key (FAM-02): a dual-key child (g:<guest>) and their linked parent
+        // (p:<player>) are DISTINCT reps — the old player-first key collapsed both, so only one of
+        // them was ever invited/drained.
+        const pkey = personKeyOf(c);
+        if (!pkey) continue;
         const gkey = c.rebook_group_id ?? c.slot_id;
         const start = c.availability_slots?.start_time ?? "";
         const k = `${gkey}|${pkey}`;
@@ -439,7 +444,9 @@ const handler = async (req: Request): Promise<Response> => {
         .eq("status", "pending");
       for (const gc of (groupClaims || []) as unknown as Array<{ rebook_group_id: string | null; player_id: string | null; guest_player_id: string | null; availability_slots: { start_time: string } | null }>) {
         if (!gc.rebook_group_id || !gc.availability_slots) continue;
-        const pkey = gc.player_id ?? `g:${gc.guest_player_id}`;
+        // GUEST-FIRST key so a dual-key child's sessions aggregate under the child, not the parent.
+        const pkey = personKeyOf(gc);
+        if (!pkey) continue;
         const key = `${gc.rebook_group_id}|${pkey}`;
         const start = gc.availability_slots.start_time;
         const cur = groupInfo.get(key);
@@ -477,7 +484,8 @@ const handler = async (req: Request): Promise<Response> => {
       }
       const slot = slotMap.get(c.slot_id);
       if (!slot) { skipped++; continue; }
-      const playerKey = c.player_id ?? `g:${c.guest_player_id}`;
+      const playerKey = personKeyOf(c);
+      if (!playerKey) { skipped++; continue; }
       const group = c.rebook_group_id ? groupInfo.get(`${c.rebook_group_id}|${playerKey}`) : undefined;
       const recipientEmail = resolveRecipient({
         isTest,
@@ -491,7 +499,8 @@ const handler = async (req: Request): Promise<Response> => {
       // No email on file → nothing we can send; count as skipped so the caller's
       // totals reconcile to the number of claims it asked us to invite.
       if (!recipientEmail) { skipped++; continue; }
-      const recipientName = c.profiles?.full_name || c.guest_players?.full_name || "";
+      // GUEST-FIRST name (FAM-02): a dual-key child shows their OWN name, not the linked parent's.
+      const recipientName = personDisplayName(c, { profileName: c.profiles?.full_name, guestName: c.guest_players?.full_name }, "");
 
       // Times are stored UTC; render in the academy's timezone (default
       // Europe/Amsterdam) so 18:00-local reads as 18:00, not 16:00.

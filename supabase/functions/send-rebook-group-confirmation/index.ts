@@ -19,6 +19,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf, personRefOf, personContactEmail, personDisplayName } from "../_shared/person-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,9 +82,16 @@ serve(async (req: Request) => {
     if (!cap) return json({ ok: false, error: "claim_not_found" }, 404);
     if (!cap.rebook_group_id) return json({ ok: false, reason: "not_a_group" });
     const groupId = cap.rebook_group_id as string;
+    // GUEST-FIRST captain name (FAM-02), keyed on the captain claim's ids: a dual-key captain
+    // shows their OWN name; the guest's first_name is preferred only when the captain IS the guest.
+    const capRef = personRefOf({ player_id: cap.player_id, guest_player_id: cap.guest_player_id });
     const captainName = firstNameOf(
-      (cap.profiles as NameEmail | null)?.full_name,
-      (cap.guest_players as NameEmail | null)?.first_name ?? (cap.guest_players as NameEmail | null)?.full_name,
+      personDisplayName(
+        { player_id: cap.player_id, guest_player_id: cap.guest_player_id },
+        { profileName: (cap.profiles as NameEmail | null)?.full_name, guestName: (cap.guest_players as NameEmail | null)?.full_name },
+        "",
+      ),
+      capRef?.guestPlayerId ? (cap.guest_players as NameEmail | null)?.first_name : null,
     ) || "Je groep";
 
     // Per-token throttle (best-effort read-modify-write over rate_limits; service-role bypasses its
@@ -150,7 +158,11 @@ serve(async (req: Request) => {
     const members = new Map<string, Member>();
     for (const c of claims) {
       if (!c.availability_slots) continue;
-      const key = c.player_id ? `p:${c.player_id}` : `g:${c.guest_player_id}`;
+      // GUEST-FIRST member key (FAM-02): a dual-key child (g:<guest>) and their linked parent
+      // (p:<player>) are DISTINCT members. The old player-first key collapsed both into one, so
+      // sessions merged and only ONE confirmation email went out.
+      const key = personKeyOf(c);
+      if (!key) continue;
       const start = c.availability_slots.start_time;
       const m = members.get(key);
       if (!m) {
@@ -175,24 +187,34 @@ serve(async (req: Request) => {
       .eq("rebook_group_id", groupId)
       .not("invited_at", "is", null);
     const invitedKeys = new Set(
-      (invitedRows ?? []).map((r: { player_id: string | null; guest_player_id: string | null }) =>
-        r.player_id ? `p:${r.player_id}` : `g:${r.guest_player_id}`),
+      (invitedRows ?? []).map((r: { player_id: string | null; guest_player_id: string | null }) => personKeyOf(r))
+        .filter((k): k is string => !!k),
     );
 
     let sent = 0, skipped = 0, failed = 0;
 
     for (const m of members.values()) {
-      // Guest email falls back to the linked profile's address (FAM-02: claims are guest-keyed;
-      // an email-less linked guest — e.g. a child added by the captain — stays reachable).
-      const recipientEmail = (m.rep.profiles?.email || effectiveGuestEmail(m.rep.guest_players) || "").trim();
+      // GUEST-FIRST contact email (FAM-02), keyed on the member's ids: the guest's OWN address
+      // wins (effectiveGuestEmail = guest.email ?? linked_profile.email); the linked profile is the
+      // fallback only when the guest has none. The old profile-first `||` mailed a child at the parent.
+      const recipientEmail = (personContactEmail(
+        { player_id: m.player_id, guest_player_id: m.guest_player_id },
+        { profileEmail: m.rep.profiles?.email, guestEmail: effectiveGuestEmail(m.rep.guest_players) },
+      ) || "").trim();
       if (!recipientEmail) { skipped++; continue; } // no email on file → can't send (leave unstamped)
 
       // Claim-before-send: stamp confirmation_sent_at on THIS member's still-NULL claims and only
       // proceed if we won the row (RETURNING non-empty). Prevents double-send across runs.
+      // GUEST-FIRST scope (FAM-02): stamp exactly this person's rows. A guest → guest_player_id;
+      // a profile → player_id AND guest_player_id IS NULL, so a profile stamp NEVER consumes a
+      // dual-key child's rows (which share the parent's player_id). personRefOf picks guest-first.
+      const ref = personRefOf({ player_id: m.player_id, guest_player_id: m.guest_player_id });
       let stampQ = admin.from("slot_priority_claims")
         .update({ confirmation_sent_at: new Date().toISOString() })
         .eq("rebook_group_id", groupId).is("confirmation_sent_at", null);
-      stampQ = m.player_id ? stampQ.eq("player_id", m.player_id) : stampQ.eq("guest_player_id", m.guest_player_id!);
+      stampQ = ref?.guestPlayerId
+        ? stampQ.eq("guest_player_id", ref.guestPlayerId)
+        : stampQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
       const { data: stamped } = await stampQ.select("id");
       if (!stamped || stamped.length === 0) { skipped++; continue; }
 
@@ -208,7 +230,15 @@ serve(async (req: Request) => {
         : null;
       const isUpfront = slot.cyclus_id ? upfrontCycles.has(slot.cyclus_id) : false;
 
-      const recipientFirst = escapeHtml(firstNameOf(m.rep.profiles?.full_name, m.rep.guest_players?.first_name ?? m.rep.guest_players?.full_name));
+      // GUEST-FIRST recipient name (FAM-02), keyed on the member's ids.
+      const recipientFirst = escapeHtml(firstNameOf(
+        personDisplayName(
+          { player_id: m.player_id, guest_player_id: m.guest_player_id },
+          { profileName: m.rep.profiles?.full_name, guestName: m.rep.guest_players?.full_name },
+          "",
+        ),
+        ref?.guestPlayerId ? m.rep.guest_players?.first_name : null,
+      ));
       const captain = escapeHtml(captainName);
       const cyclus = escapeHtml(slot.cyclus_name || "de volgende cyclus");
       const isNew = !invitedKeys.has(m.key);
@@ -239,11 +269,14 @@ serve(async (req: Request) => {
       if (outcome.ok) {
         sent++;
       } else {
-        // Send failed → clear the stamp so a later run retries this member.
+        // Send failed → clear the stamp so a later run retries this member. Bounded to the exact
+        // rows we won (.in id), and scoped guest-first to mirror the stamp above.
         let clearQ = admin.from("slot_priority_claims")
           .update({ confirmation_sent_at: null })
           .eq("rebook_group_id", groupId);
-        clearQ = m.player_id ? clearQ.eq("player_id", m.player_id) : clearQ.eq("guest_player_id", m.guest_player_id!);
+        clearQ = ref?.guestPlayerId
+          ? clearQ.eq("guest_player_id", ref.guestPlayerId)
+          : clearQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
         await clearQ.in("id", (stamped as Array<{ id: string }>).map((r) => r.id));
         failed++;
       }
