@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { computeMemberOpenAudience, recipientKey, type MemberOpenClaim } from "../_shared/rebook-member-open.ts";
+import { computeMemberOpenAudience, recipientKey, resolveMemberOpenContact, type MemberOpenClaim } from "../_shared/rebook-member-open.ts";
 
 // Cron-invoked (service-role) notifier: when a rebook round's MEMBER window opens
 // and seats have freed up, email the "second bucket" — the original-cohort players
@@ -200,18 +200,26 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
     playerIds.length ? supabase.from("profiles").select("id, full_name, email").in("id", playerIds) : Promise.resolve({ data: [] }),
     guestIds.length ? supabase.from("guest_players").select("id, full_name, email").in("id", guestIds) : Promise.resolve({ data: [] }),
   ]);
-  const infoByKey = new Map<string, { name: string; email: string }>();
+  // Split name/email so a dual-key child WITHOUT their own email still keeps their OWN name while
+  // falling back to the linked parent's inbox (names are populated regardless of email presence).
+  const nameByKey = new Map<string, string>();
+  const emailByKey = new Map<string, string>();
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
-    if (p.email?.trim()) infoByKey.set(p.id, { name: (p.full_name ?? "").trim(), email: p.email.trim() });
+    nameByKey.set(p.id, (p.full_name ?? "").trim());
+    if (p.email?.trim()) emailByKey.set(p.id, p.email.trim());
   }
   for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
-    if (g.email?.trim()) infoByKey.set(`g:${g.id}`, { name: (g.full_name ?? "").trim(), email: g.email.trim() });
+    nameByKey.set(`g:${g.id}`, (g.full_name ?? "").trim());
+    if (g.email?.trim()) emailByKey.set(`g:${g.id}`, g.email.trim());
   }
   const recipients = audience
     .map((a) => {
-      const key = recipientKey(a);
-      const info = key ? infoByKey.get(key) : undefined;
-      return key && info ? { key, name: info.name, email: info.email, isGuest: key.startsWith("g:") } : null;
+      const key = recipientKey(a); // GUEST-FIRST canonical key (grouping + RB03 persistence)
+      if (!key) return null;
+      // GUEST-FIRST (FAM-02): the guest's own name/email wins; the linked profile (via player_id) is
+      // the fallback ONLY when the guest has none. A dual-key child is a guest → account CTA.
+      const contact = resolveMemberOpenContact(a, nameByKey, emailByKey);
+      return contact ? { key, name: contact.name, email: contact.email, isGuest: !!a.guest_player_id } : null;
     })
     .filter((r): r is { key: string; name: string; email: string; isGuest: boolean } => !!r);
   if (recipients.length === 0) return { sent: 0, failed: 0 };

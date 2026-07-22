@@ -81,4 +81,15 @@ describe('PR 10d wiring — upstream producers preserve both people (proofs #1, 
     expect(s).toContain('nameByKey.set(`p:${p.id}`');                       // profile names renamespaced to match
     expect(s).not.toContain('c.player_id ?? `g:${c.guest_player_id}`;');    // the old player-first keyOf body
   });
+
+  it('notify-rebook-member-open keys recipients/stamp guest-first (helper) and resolves contact guest-first', () => {
+    const h = shared('rebook-member-open.ts');
+    // recipientKey is guest-first but format-preserving (pure profile bare id, guest g:<id>)
+    expect(h).toContain('r.guest_player_id ? `g:${r.guest_player_id}` : (r.player_id ?? null);');
+    expect(h).not.toContain('r.player_id ?? (r.guest_player_id ? `g:${r.guest_player_id}` : null);'); // old player-first
+    expect(h).toContain('export function resolveMemberOpenContact(');       // guest-first name/email + parent fallback
+    const s = fn('notify-rebook-member-open');
+    expect(s).toContain('resolveMemberOpenContact(a, nameByKey, emailByKey)');
+    expect(s).not.toContain('key.startsWith("g:")'); // isGuest now derived from the id, not the (moved) key format
+  });
 });

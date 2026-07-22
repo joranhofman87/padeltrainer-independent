@@ -26,12 +26,36 @@ export interface MemberOpenRecipient {
   guest_player_id: string | null;
 }
 
-/** Stable per-person key: a registered profile by its id, a guest as `g:<id>`. The
- *  notifier uses this to record which recipients have already been emailed (RB03). */
+/** Stable per-person key, GUEST-FIRST (FAM-02 Level 1): a dual-key row belongs to the GUEST, so a
+ *  child (guest_player_id) keys `g:<id>` — never the linked parent's player_id. A pure profile keys
+ *  by its bare id, a pure guest as `g:<id>` — both UNCHANGED from before, so the RB03 already-notified
+ *  keys persisted in cycles.settings stay byte-for-byte compatible; only a dual-key child's key moves
+ *  from the parent's id to its own `g:<id>` (so a previously-collapsed child gets its one correct
+ *  catch-up notification, then dedupes on retries). The notifier uses this for grouping, the
+ *  name/email lookup, AND the persisted already-emailed set — one canonical key for all three. */
 export const recipientKey = (r: { player_id: string | null; guest_player_id: string | null }): string | null =>
-  r.player_id ?? (r.guest_player_id ? `g:${r.guest_player_id}` : null);
+  r.guest_player_id ? `g:${r.guest_player_id}` : (r.player_id ?? null);
 
 const keyOf = recipientKey;
+
+/**
+ * Resolve a member-open recipient's contact, GUEST-FIRST (FAM-02): the guest's OWN name/email win;
+ * the linked profile (reached via the dual-key ref's player_id) is the fallback ONLY when the guest
+ * has none. Names are looked up regardless of email presence, so a dual-key child with no address of
+ * their own still shows THEIR name while borrowing the parent's inbox. Returns null when no
+ * deliverable email exists (the caller drops the recipient). Pure so it can be unit-tested.
+ */
+export function resolveMemberOpenContact(
+  ref: MemberOpenRecipient,
+  nameByKey: Map<string, string>,
+  emailByKey: Map<string, string>,
+): { name: string; email: string } | null {
+  const gkey = ref.guest_player_id ? `g:${ref.guest_player_id}` : null;
+  const pkey = ref.player_id ?? null; // on a dual-key ref this is the LINKED PARENT profile id
+  const name = (gkey ? nameByKey.get(gkey) : undefined) || (pkey ? nameByKey.get(pkey) : undefined) || "";
+  const email = (gkey ? emailByKey.get(gkey) : undefined) || (pkey ? emailByKey.get(pkey) : undefined) || null;
+  return email ? { name, email } : null;
+}
 
 export function computeMemberOpenAudience(
   claims: MemberOpenClaim[],
