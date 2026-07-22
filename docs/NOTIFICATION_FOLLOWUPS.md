@@ -40,22 +40,29 @@ free-text keys, NOT structured context (booking-id UUIDs etc., which `redactDeta
 rule would otherwise mangle). Not a PR 10b blocker (10b's own lanes are all redacted at the call
 site), but the right central defence. No task id yet.
 
-## Guest-first display identity — remaining rebook/priority paths (found by PR 10b sweep, 2026-07-22)
+## Guest-first identity — remaining rebook/priority paths (P1 RECIPIENT-ROUTING, found by PR 10b sweep)
 
-PR 10b introduced the canonical `canonicalPlayerName` (guest-first) helper in
-`supabase/functions/_shared/display-identity.ts` and applied it to the two paths Codex named —
-`mollie-booking-paid-side-effects.ts` (paid staff fan-out) and `mollie-webhook/index.ts` (the
-rebook-invoice staff path). A sweep for the SAME profile-first-then-guest name resolution found
-three MORE instances, in pre-existing rebook/priority functions OUTSIDE 10b's diff:
+CORRECTION (Codex re-review): an earlier version of this entry called these "display-only". That
+was wrong. They are P1 WRONG-RECIPIENT bugs, not just wrong names.
 
-| location | shape |
-| -------- | ----- |
-| `supabase/functions/send-rebook-group-confirmation/index.ts` (~L211) | `firstNameOf(m.rep.profiles?.full_name, m.rep.guest_players?.first_name ?? …)` — profile first |
-| `supabase/functions/send-priority-claim-invitation/index.ts` (~L491) | `c.profiles?.full_name \|\| c.guest_players?.full_name` — profile first |
-| `supabase/functions/send-rebook-reminder/index.ts` (~L129) | `c.profiles?.full_name \|\| c.guest_players?.full_name` — profile first |
+PR 10b built the canonical edge twin `supabase/functions/_shared/person-identity.ts`
+(`personKeyOf`/`personRefOf`/`personDisplayName`/`personContactEmail`, guest-first, keyed on the
+IDs — the keep-in-sync twin of `src/lib/personIdentity.ts`) and applied it to the two paid staff
+paths Codex named. Three MORE functions in the rebook/priority subsystem — OUTSIDE 10b's
+booking-notification diff — key PLAYER-FIRST off the ids and so misroute dual-key (child/guest)
+people, not merely mislabel them:
 
-Each can show a linked parent/profile name instead of the guest/child. Route each through the
-guest-first canonical helper (the group-confirmation one uses `first_name`, so it needs a
-`first_name`-aware variant or a small extension). Not a PR 10b blocker (these are rebook/
-priority notifications, not the booking confirmations/requests/cancellations 10b migrates), but
-the same class and worth closing so the helper is the single source. No task id yet.
+| location | wrong-recipient effect |
+| -------- | ---------------------- |
+| `send-rebook-group-confirmation/index.ts` (~L153) | `c.player_id ? 'p:' : 'g:'` — dual-key CLAIMS grouped, invited-state grouped, recipient email selected, and claims STAMPED/rolled back under the parent's key. A child with their own email can be mailed at the parent's address, collapsed into the parent's claim, or have the wrong claims stamped. |
+| `send-priority-claim-invitation/index.ts` (~L266) | `c.player_id ?? 'g:'` — same player-first key for invited-state + recipient grouping. |
+| `send-rebook-reminder/index.ts` (~L68) | `t.player_id ?? (t.guest_player_id ? 'g:' : '')` — player-first target key. |
+
+These are PRODUCTION P1s that exist independently of 10b (the rebook priority system, which
+touches seats/claims). Fix: route grouping, invited-state, recipient email, claim stamping AND
+display name through the new `person-identity.ts` twin (`personKeyOf` for grouping/stamping,
+`personContactEmail` for the address, `personDisplayName` for the name), with tests proving a
+dual-key child with their own email is mailed themselves, parent/child stay separate groups, and
+stamping a child never stamps the parent's claims. This is a dedicated structural pass over the
+rebook subsystem, deliberately NOT folded into 10b's booking-notification diff — see the PR
+discussion for the split decision.

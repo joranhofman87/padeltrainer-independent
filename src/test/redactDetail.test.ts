@@ -3,6 +3,7 @@
 // durable payment_audit_log. Codex #4: "sanitized" must mean redacted, not merely truncated.
 import { describe, it, expect } from 'vitest';
 import { redactDetail } from '../../supabase/functions/_shared/redact-detail.ts';
+import { redactTrackingString } from '@/lib/trackingPrivacy';
 
 describe('redactDetail', () => {
   it('redacts an email address', () => {
@@ -65,16 +66,18 @@ describe('redactDetail', () => {
     expect(out).toContain('/pay/[redacted-token]');
   });
 
-  it('PARITY: every sensitive route the frontend redactTrackingString redacts, the edge redactor also redacts', () => {
-    // Guards against the two policies drifting. If the frontend adds a sensitive route, this
-    // list should grow and both must cover it.
+  it('PARITY: BOTH the edge redactor and the frontend redactTrackingString redact the same sensitive routes', () => {
+    // Genuinely exercises both implementations (Codex #3: the old test called only redactDetail,
+    // so a change to the frontend rule left it green). If either policy drifts, this fails.
+    const secret = 'SECRETtok123';
     const cases = [
-      'https://padeltrainer.ai/pay/tok123',
-      'https://padeltrainer.ai/booking/tok123',
-      'https://padeltrainer.ai/academies/x/pay/tok123',
+      `https://padeltrainer.ai/pay/${secret}`,
+      `https://padeltrainer.ai/booking/${secret}`,
+      `https://padeltrainer.ai/academies/x/pay/${secret}`,
     ];
     for (const c of cases) {
-      expect(redactDetail(c), `edge redactor must cover ${c}`).not.toContain('tok123');
+      expect(redactDetail(c), `edge redactor must cover ${c}`).not.toContain(secret);
+      expect(redactTrackingString(c), `frontend redactor must cover ${c}`).not.toContain(secret);
     }
   });
 
