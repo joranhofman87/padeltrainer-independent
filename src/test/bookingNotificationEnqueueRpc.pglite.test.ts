@@ -633,3 +633,61 @@ describe('P1 #3 — academy-first tenant', () => {
     await expect(call([B1, B2], 'cancelled_player')).rejects.toThrow(/multiple academy scopes/);
   });
 });
+
+describe('P1 #2 — pure-profile authorization (a profile account cannot act for a guest booking)', () => {
+  it('request_staff is DENIED for a DUAL-KEY booking, even when the actor owns the profile', async () => {
+    // The booking carries guest_player_id → it belongs to the GUEST person, so the profile
+    // account (parent) must NOT be able to trigger staff mail for it.
+    await mkBooking(B1, S1, { player: PR1, guest: G1, status: 'pending_approval' });
+    await as(U_P1);   // the profile account whose id is on the booking
+    await expect(call([B1], 'request_staff')).rejects.toThrow(/not the player on every booking/);
+  });
+
+  it('confirmation_player is DENIED for a dual-key booking to a non-owner profile account', async () => {
+    await mkBooking(B1, S1, { player: PR1, guest: G1 });   // confirmed, dual-key
+    await as(U_P1);
+    await expect(call([B1], 'confirmation_player')).rejects.toThrow(/neither the player nor the slot owner/);
+  });
+
+  it('the SLOT OWNER still succeeds for a guest dual-key confirmation', async () => {
+    await mkBooking(B1, S1, { player: PR1, guest: G1 });
+    await as(U_T);   // trainer owns the slot → staff booking for the guest is allowed
+    expect((await call([B1], 'confirmation_player')).rows[0].v).toBe(1);
+  });
+
+  it('a PURE-PROFILE request_staff by that player still works', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'pending_approval' });   // no guest
+    await as(U_P1);
+    expect((await call([B1], 'request_staff')).rows[0].v).toBe(1);
+  });
+});
+
+describe('P2 #3 — the recipient-count bound is enforced', () => {
+  it('rejects a cancellation fanning out to 501 distinct recipients', async () => {
+    // 501 cancelled bookings, each a distinct guest → 501 recipients > MAX_RECIPIENTS (500).
+    // The bound fires before the fan-out loop, so this cannot synchronously call the resolver
+    // hundreds of times.
+    await db.exec(`
+      INSERT INTO public.bookings (id, slot_id, guest_player_id, status)
+      SELECT gen_random_uuid(), '${S1}', gen_random_uuid(), 'cancelled' FROM generate_series(1, 501);`);
+    const ids = (await db.query<{ id: string }>(`SELECT id FROM public.bookings WHERE status='cancelled'`)).rows.map((r) => r.id);
+    expect(ids).toHaveLength(501);
+    await as(U_T);
+    await expect(db.query(
+      `SELECT public.enqueue_booking_notification(ARRAY[${ids.map((i) => `'${i}'::uuid`).join(',')}]::uuid[], 'cancelled_player')`))
+      .rejects.toThrow(/too many recipients/);
+  });
+
+  it('accepts exactly 500 distinct recipients (the boundary)', async () => {
+    await db.exec(`
+      INSERT INTO public.bookings (id, slot_id, guest_player_id, status)
+      SELECT gen_random_uuid(), '${S1}', gen_random_uuid(), 'cancelled' FROM generate_series(1, 500);`);
+    const ids = (await db.query<{ id: string }>(`SELECT id FROM public.bookings WHERE status='cancelled'`)).rows.map((r) => r.id);
+    await as(U_T);
+    // does NOT raise the recipient bound (the guests have no email → rows are skipped, but the
+    // CALL is admitted, which is what the boundary asserts).
+    await expect(db.query(
+      `SELECT public.enqueue_booking_notification(ARRAY[${ids.map((i) => `'${i}'::uuid`).join(',')}]::uuid[], 'cancelled_player')`))
+      .resolves.toBeDefined();
+  });
+});

@@ -519,15 +519,16 @@ describe('PR 10a — one failing lane must not silence the others', () => {
   // The tests above exercise the STAFF lane's counting. The PLAYER lane short-circuits to
   // no_payer with the default fixture (its rows carry no payer identity), so give it a real
   // registered payer — otherwise playerRows is vacuously 0 and proves nothing.
+  const payerRow = (id: string) => ({
+    id, player_id: 'P1', guest_player_id: null,
+    profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' },
+    guest_players: null,
+    availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' },
+  });
   const payerFixture = {
-    staffBookings: [{
-      id: 'B1',
-      player_id: 'P1',
-      guest_player_id: null,
-      profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' },
-      guest_players: null,
-      availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' },
-    }],
+    // BOTH requested ids (run() asks for B1+B2), same recipient — the confirmation helper now
+    // requires every requested booking id to be returned.
+    staffBookings: [payerRow('B1'), payerRow('B2')],
     trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
     profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
   };
@@ -626,12 +627,13 @@ describe('PR 10a — one failing lane must not silence the others', () => {
 describe('PR 10b #4 — the confirmation failure DETAIL survives to the alert + durable audit', () => {
   // Production logs were unavailable during the original incident, so a short sanitized detail
   // must persist beyond the ephemeral log — into the Slack alert and the audit metadata.
+  const guestRow = (id: string) => ({
+    id, player_id: null, guest_player_id: 'G1',
+    availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1', cyclus_name: null },
+    profiles: null, guest_players: { full_name: 'Gast', email: 'g@example.com' },
+  });
   const guestPayer = {
-    staffBookings: [{
-      id: 'B1', player_id: null, guest_player_id: 'G1',
-      availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1', cyclus_name: null },
-      profiles: null, guest_players: { full_name: 'Gast', email: 'g@example.com' },
-    }],
+    staffBookings: [guestRow('B1'), guestRow('B2')],
     trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
     profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
   };
@@ -674,6 +676,25 @@ describe('PR 10b #4 — the confirmation failure DETAIL survives to the alert + 
     const alerted = notify.mock.calls.find((c) => String(c[1]).includes('THREW'));
     expect(alerted, 'a thrown confirmation alerts').toBeTruthy();
     expect(JSON.stringify(alerted![2]), 'the alert carries the sanitized detail').toContain('simulated transport fault');
+  });
+
+  it('REDACTS sensitive content (email / payment id) before the audit + alert, not just truncates', async () => {
+    // Codex #4: "sanitized" must redact, not merely slice. A detail echoing an email and a
+    // Mollie id must not reach Slack or the durable audit in the clear.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      identityRpcError: 'lookup for kim@home.nl on payment tr_NSYoSDqSqgSsegmsLiEUJ failed',
+      ...guestPayer,
+    });
+    const notify = await run(supabase);
+    const meta = (auditRows.find((r) => r.status === 'booking_paid_notifications')!.metadata) as Record<string, unknown>;
+    const detail = String(meta.playerDetail);
+    expect(detail, 'email redacted in the durable audit').not.toContain('kim@home.nl');
+    expect(detail, 'payment id redacted in the durable audit').not.toContain('tr_NSYoSDqSqgSsegmsLiEUJ');
+    expect(detail).toContain('[redacted-email]');
+    const alerted = notify.mock.calls.find((c) => String(c[1]).includes('could not be enqueued'));
+    expect(JSON.stringify(alerted![2]), 'alert also redacted').not.toContain('kim@home.nl');
   });
 });
 

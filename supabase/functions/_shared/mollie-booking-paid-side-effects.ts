@@ -2,6 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
 import { renderStaffBookingEmail } from "./staff-booking-email.ts";
 import { writePaymentAuditLog, PaymentAuditStatus } from "./payment-audit.ts";
+import { redactDetail } from "./redact-detail.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
 type NotifySlackError = (
@@ -189,7 +190,7 @@ export async function runBookingPaidSideEffects(opts: {
       // Preserve the helper's detail. Production logs were unavailable during the original
       // incident, so a short sanitized code/detail must survive to the DURABLE audit row and
       // the alert — not just the terminal 'reason'.
-      playerDetail = confirmation.detail ? String(confirmation.detail).replace(/\s+/g, " ").slice(0, 200) : null;
+      playerDetail = confirmation.detail ? redactDetail(confirmation.detail) : null;
       if (reason === "skipped") {
         skippedRows++;
         logStep("Paid booking confirmation is a visible skipped row (worker will alert)", { bookingIds, skipReason });
@@ -203,7 +204,7 @@ export async function runBookingPaidSideEffects(opts: {
     // the payer is owed a required email and nothing downstream will ever surface it.
     laneErrors++;
     playerStatus = "threw";
-    playerDetail = String(playerErr).replace(/\s+/g, " ").slice(0, 200);
+    playerDetail = redactDetail(String(playerErr));
     logStep("Player confirmation threw", { error: String(playerErr) });
     // Parity with the enqueue_failed branch: the alert carries the SAME sanitized,
     // length-bounded detail that goes to the durable audit, not a differently-shaped raw slice.

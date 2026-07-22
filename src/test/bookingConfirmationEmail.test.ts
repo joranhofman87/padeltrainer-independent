@@ -256,6 +256,70 @@ describe('sendPlayerBookingConfirmation', () => {
     expect(enqueueCall(rpcCalls)).toBeUndefined();
   });
 
+  it('P1 — a DUAL-KEY booking (player_id AND guest_player_id) is confirmed to the GUEST, not the profile', async () => {
+    // The old code found a registered row first and mailed the profile account. Guest-first
+    // routes a booking carrying a guest_player_id to the guest.
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: 'G1', availability_slots: SLOT(),
+        profiles: { user_id: 'U1', full_name: 'Parent', email: 'parent@example.com', preferred_language: 'nl' },
+        guest_players: { full_name: 'Kind', email: 'kid@example.com' } }],
+      identityEmail: 'kid@example.com',
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: null, logStep });
+    expect(res).toMatchObject({ ok: true, isGuest: true });
+    const enq = enqueueCall(rpcCalls);
+    expect(enq.p_recipient_guest_player_id, 'addressed as the guest').toBe('G1');
+    expect(enq.p_recipient_user_id ?? null, 'NOT the profile account').toBeNull();
+    expect(contactCall(rpcCalls)?.p_guest_player_id).toBe('G1');
+  });
+
+  it('P1 — a guest-only row and a dual-key row for the SAME guest are ONE recipient', async () => {
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [
+        { id: 'B1', player_id: null, guest_player_id: 'G1', availability_slots: SLOT(), profiles: null, guest_players: { full_name: 'Gast', email: 'g@example.com' } },
+        { id: 'B2', player_id: 'P1', guest_player_id: 'G1', availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: { full_name: 'Gast', email: 'g@example.com' } },
+      ],
+      identityEmail: 'g@example.com',
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: null, logStep });
+    expect(res.ok, 'not rejected as multiple recipients').toBe(true);
+    expect(enqueueCall(rpcCalls).p_recipient_guest_player_id).toBe('G1');
+  });
+
+  it('P1 — a pure REGISTERED player is confirmed to the account (guest field absent)', async () => {
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null }],
+    });
+    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: null, logStep });
+    const enq = enqueueCall(rpcCalls);
+    expect(enq.p_recipient_user_id).toBe('U1');
+    expect(enq.p_recipient_guest_player_id ?? null).toBeNull();
+    expect(contactCall(rpcCalls), 'no guest contact for a registered payer').toBeUndefined();
+  });
+
+  it('P1 — a MIXED-recipient set is refused, not sent to whichever appears first', async () => {
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [
+        { id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+        { id: 'B2', player_id: null, guest_player_id: 'G9', availability_slots: SLOT(), profiles: null, guest_players: { full_name: 'Someone else', email: 'x@example.com' } },
+      ],
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: null, logStep });
+    expect(res).toMatchObject({ ok: false, reason: 'enqueue_failed' });
+    expect(res.detail).toContain('multiple recipients');
+    expect(enqueueCall(rpcCalls), 'never enqueued to one arbitrary recipient').toBeUndefined();
+  });
+
+  it('P1 — an INCOMPLETE set (a requested id not returned) fails loudly, does not confirm a partial set', async () => {
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null }],
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: null, logStep });
+    expect(res).toMatchObject({ ok: false, reason: 'enqueue_failed' });
+    expect(res.detail).toContain('incomplete');
+    expect(enqueueCall(rpcCalls)).toBeUndefined();
+  });
+
   it('English preference: renders the English CTA in the enqueued payload', async () => {
     const { supabase, rpcCalls } = makeSupabase({
       bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'en' }, guest_players: null }],

@@ -160,11 +160,34 @@ export async function sendPlayerBookingConfirmation(opts: {
   const bookings = (rows ?? []) as unknown as BookingRow[];
   if (bookings.length === 0) return { ok: false, reason: "no_payer" };
 
-  // Payer type from ANY row (not just [0]): a same-guest cyclus stamps guest_player_id
-  // on every child row, but harden against a mixed set. Registered = an account holder
-  // (player_id + user_id) — the resolver delivers to their persons.email account address.
-  const registered = bookings.find((b) => b.player_id && b.profiles?.user_id);
-  const guest = bookings.find((b) => b.guest_player_id);
+  // Every requested id must have come back. A missing one means the set describes bookings
+  // that are not there (or are RLS-filtered) — proceeding would confirm a partial set.
+  const wanted = new Set(bookingIds);
+  const foundIds = new Set(bookings.map((b) => b.id));
+  if ([...wanted].some((id) => !foundIds.has(id))) {
+    logStep("Player confirmation: booking set incomplete", { wanted: wanted.size, found: foundIds.size });
+    return { ok: false, reason: "enqueue_failed", detail: "booking set incomplete (some ids not returned)" };
+  }
+
+  // GUEST-FIRST canonical recipient (FAM-02): a booking carrying a guest_player_id belongs to
+  // the GUEST regardless of any player_id, so a DUAL-KEY booking is NEVER emailed to the
+  // registered profile. Finding a registered row first (the old bug) mailed the profile
+  // account for a guest's booking. One confirmation is for ONE payer, so a set that resolves
+  // to several distinct recipients is refused rather than sent to whichever appears first.
+  const canonicalKey = (b: BookingRow): string | null =>
+    b.guest_player_id
+      ? `guest:${b.guest_player_id}`
+      : (b.player_id && b.profiles?.user_id ? `user:${b.profiles.user_id}` : null);
+  const keys = [...new Set(bookings.map(canonicalKey))];
+  if (keys.includes(null)) return { ok: false, reason: "no_payer" };   // a session with no recipient
+  if (keys.length !== 1) {
+    logStep("Player confirmation: set covers multiple recipients", { recipients: keys.length });
+    return { ok: false, reason: "enqueue_failed", detail: "confirmation set covers multiple recipients" };
+  }
+  const isGuestRecipient = keys[0]!.startsWith("guest:");
+  // XOR by construction: exactly one of these is defined, so the resolver never sees both.
+  const registered = isGuestRecipient ? undefined : bookings.find((b) => b.player_id && b.profiles?.user_id);
+  const guest = isGuestRecipient ? bookings.find((b) => b.guest_player_id) : undefined;
 
   // Tenant context from the booked slot (all rows of one payment share it; take any slot).
   const slot = bookings.find((b) => b.availability_slots)?.availability_slots ?? null;

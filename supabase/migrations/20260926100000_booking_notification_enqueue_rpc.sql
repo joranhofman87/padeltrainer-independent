@@ -306,11 +306,15 @@ BEGIN
 
   -- ── AUTH MATRIX + STATE VALIDATION, over the WHOLE set ────────────────────────────────
   IF p_kind = 'request_staff' THEN
+    -- PURE-PROFILE ownership (FAM-02): the `b.guest_player_id IS NULL` guard is load-bearing.
+    -- A DUAL-KEY booking belongs to the GUEST person, not the profile, so a parent/profile
+    -- account whose user_id matches must NOT be able to request staff mail for a guest's
+    -- booking. Without the guard, `pr.user_id = v_actor` alone would grant it.
     IF EXISTS (
       SELECT 1 FROM public.bookings b
       LEFT JOIN public.profiles pr ON pr.id = b.player_id
       WHERE b.id = ANY(v_ids)
-        AND ((pr.user_id IS NOT NULL AND pr.user_id = v_actor) IS NOT TRUE)
+        AND ((b.guest_player_id IS NULL AND pr.user_id IS NOT NULL AND pr.user_id = v_actor) IS NOT TRUE)
     ) THEN
       RAISE EXCEPTION 'enqueue_booking_notification: actor is not the player on every booking';
     END IF;
@@ -319,11 +323,13 @@ BEGIN
     END IF;
 
   ELSIF p_kind = 'confirmation_player' THEN
+    -- Same PURE-PROFILE guard: a profile account cannot self-confirm a guest's dual-key
+    -- booking. Either the slot owner (v_owner) or the player on every PURE-PROFILE booking.
     IF v_owner IS NOT TRUE AND EXISTS (
       SELECT 1 FROM public.bookings b
       LEFT JOIN public.profiles pr ON pr.id = b.player_id
       WHERE b.id = ANY(v_ids)
-        AND ((pr.user_id IS NOT NULL AND pr.user_id = v_actor) IS NOT TRUE)
+        AND ((b.guest_player_id IS NULL AND pr.user_id IS NOT NULL AND pr.user_id = v_actor) IS NOT TRUE)
     ) THEN
       RAISE EXCEPTION 'enqueue_booking_notification: actor is neither the player nor the slot owner';
     END IF;
