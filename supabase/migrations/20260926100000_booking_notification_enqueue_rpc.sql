@@ -124,7 +124,8 @@ BEGIN
     consent_academy_profile_id = excluded.consent_academy_profile_id,
     consent_trainer_id         = excluded.consent_trainer_id,
     -- Provenance (source + at) is the evidence for WHY and WHEN we captured THIS address, so it
-    -- is refreshed only when the address genuinely changed — an unchanged re-run keeps the
+    -- is refreshed on address change, reactivation (was revoked), OR effective tenant-scope
+    -- change — an unchanged, still-active re-run keeps the
     -- original provenance and does not bump consent_at. A fresh valid address also UN-REVOKES a
     -- contact that a prior email-removal had revoked (the guest is reachable again).
     -- Provenance is a FRESH CAPTURE when any of: the address changed, the contact had been
@@ -173,6 +174,10 @@ DECLARE
   v_actor     uuid := auth.uid();
   v_ids       uuid[];
   v_n         int;
+  v_scopes    int;
+  v_trn_count int;
+  v_recips    int;
+  v_maxper    int;
   v_trainer   uuid;
   v_academy   uuid;
   v_owner     boolean;
@@ -188,61 +193,96 @@ DECLARE
   v_title     text;
   v_contact   text;
   r           record;
+  -- Bounds on caller-controlled work. Cancellation receives one booking ROW per session per
+  -- player, so a 52-session cycle with several players is legitimately hundreds of rows — the
+  -- old flat "60 bookings" cap mistook rows for sessions and rejected real cancellations.
+  -- These are intent-aware: a hard total backstop, plus per-recipient and recipient-count
+  -- caps, all comfortably above a real season (52) while keeping abuse bounded.
+  MAX_TOTAL_ROWS            constant int := 2000;
+  MAX_RECIPIENTS            constant int := 500;
+  MAX_SESSIONS_PER_RECIPIENT constant int := 200;
+  -- Guest-first canonical recipient key (FAM-02): a booking that carries a guest_player_id
+  -- belongs to the GUEST regardless of any player_id, so it groups and addresses as the guest.
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'enqueue_booking_notification: no authenticated actor';
   END IF;
 
-  -- coalesce so a NULL kind cannot slip past NOT IN and fall through to a branch.
   IF coalesce(p_kind, '') NOT IN ('request_staff', 'confirmation_player', 'cancelled_player') THEN
     RAISE EXCEPTION 'enqueue_booking_notification: unknown kind %', coalesce(p_kind, '<null>');
   END IF;
 
-  -- CANONICAL SET: distinct + sorted. Everything downstream (validation, idempotency) uses
-  -- this, so argument order and duplicates cannot change the outcome.
+  -- CANONICAL SET: distinct + sorted, so argument order/duplicates cannot change the outcome.
   SELECT array_agg(DISTINCT b ORDER BY b) INTO v_ids
     FROM unnest(coalesce(p_booking_ids, ARRAY[]::uuid[])) AS b
    WHERE b IS NOT NULL;
-
   IF v_ids IS NULL OR array_length(v_ids, 1) IS NULL THEN
     RETURN 0;
   END IF;
   v_n := array_length(v_ids, 1);
 
-  -- BOUND the caller-controlled array. This is authenticated but not privileged input, and
-  -- everything downstream (joins, aggregation, HTML build, outbox payload) scales with it.
-  -- 60 is comfortably above the largest real cycle (a weekly season is ~52) while keeping a
-  -- single call cheap.
-  IF v_n > 60 THEN
-    RAISE EXCEPTION 'enqueue_booking_notification: too many bookings in one call (%)', v_n;
+  -- Absolute backstop on the caller-controlled array size.
+  IF v_n > MAX_TOTAL_ROWS THEN
+    RAISE EXCEPTION 'enqueue_booking_notification: too many bookings in one call (% > %)', v_n, MAX_TOTAL_ROWS;
   END IF;
 
-  -- EVERY id must exist. A missing id means the caller is describing bookings that are not
-  -- there, and we must not silently notify about the subset that happens to resolve.
+  -- EVERY id must exist — never notify about the subset that happens to resolve.
   IF (SELECT count(*) FROM public.bookings WHERE id = ANY(v_ids)) <> v_n THEN
     RAISE EXCEPTION 'enqueue_booking_notification: unknown booking id in set';
   END IF;
 
-  -- SINGLE TENANT. A cyclus spans several slots but one owner; a set spanning owners is
-  -- either a mistake or an attempt to borrow authorization from the one slot you do own.
-  -- NOTE: there is no min(uuid) in Postgres — take the first element of the DISTINCT
-  -- aggregate instead. (The CREATE succeeds either way: a plpgsql body is not executed at
-  -- definition time, so `supabase db reset` would never have surfaced this.)
-  SELECT count(DISTINCT s.trainer_id),
-         count(DISTINCT coalesce(s.academy_profile_id, '00000000-0000-0000-0000-000000000000'::uuid)),
-         (array_agg(DISTINCT s.trainer_id))[1],
-         (array_agg(DISTINCT s.academy_profile_id))[1]
-    INTO v_n, v_count, v_trainer, v_academy
+  -- TENANT = ACADEMY-FIRST. Cycle slots can move between trainers WITHIN one academy, so a
+  -- multi-trainer set inside a single academy is ONE tenant (the academy) — an academy manager
+  -- may act across its trainers. An INDEPENDENT set (no academy) must resolve to a single
+  -- trainer. A set spanning academies, or academy + independent, has no coherent tenant.
+  SELECT count(DISTINCT coalesce(s.academy_profile_id, '00000000-0000-0000-0000-000000000000'::uuid)),
+         (array_agg(DISTINCT s.academy_profile_id))[1],
+         count(DISTINCT s.trainer_id),
+         (array_agg(DISTINCT s.trainer_id))[1]
+    INTO v_scopes, v_academy, v_trn_count, v_trainer
     FROM public.bookings b
     JOIN public.availability_slots s ON s.id = b.slot_id
    WHERE b.id = ANY(v_ids);
-  IF v_n <> 1 OR v_count <> 1 THEN
-    RAISE EXCEPTION 'enqueue_booking_notification: booking set spans multiple tenants';
+  IF v_scopes <> 1 THEN
+    RAISE EXCEPTION 'enqueue_booking_notification: booking set spans multiple academy scopes';
   END IF;
-  v_count := 0;
+  IF v_academy IS NULL AND v_trn_count <> 1 THEN
+    RAISE EXCEPTION 'enqueue_booking_notification: independent slots span multiple trainers';
+  END IF;
+  -- Effective tenant trainer: the single trainer if the set has exactly one, else NULL (a
+  -- multi-trainer academy cycle) — so no single trainer is named falsely in the copy.
+  IF v_trn_count <> 1 THEN v_trainer := NULL; END IF;
+
+  -- request_staff addresses ONE trainer; there is no coherent approver across several.
+  IF p_kind = 'request_staff' AND v_trainer IS NULL THEN
+    RAISE EXCEPTION 'enqueue_booking_notification: request_staff needs a single trainer';
+  END IF;
+
+  -- INTENT-AWARE BOUNDS. request_staff/confirmation address one recipient (v_n sessions);
+  -- cancellation fans out to many. Prove-a-52x2-cancellation-succeeds sizing.
+  IF p_kind = 'request_staff' THEN
+    IF v_n > MAX_SESSIONS_PER_RECIPIENT THEN
+      RAISE EXCEPTION 'enqueue_booking_notification: too many sessions for one request (% > %)', v_n, MAX_SESSIONS_PER_RECIPIENT;
+    END IF;
+  ELSE
+    SELECT count(*), coalesce(max(cnt), 0) INTO v_recips, v_maxper FROM (
+      SELECT CASE WHEN b.guest_player_id IS NOT NULL THEN 'g:' || b.guest_player_id::text
+                  ELSE 'p:' || coalesce(pr.user_id::text, 'none') END AS rkey,
+             count(*) AS cnt
+        FROM public.bookings b
+        LEFT JOIN public.profiles pr ON pr.id = b.player_id
+       WHERE b.id = ANY(v_ids)
+       GROUP BY 1
+    ) g;
+    IF v_recips > MAX_RECIPIENTS THEN
+      RAISE EXCEPTION 'enqueue_booking_notification: too many recipients (% > %)', v_recips, MAX_RECIPIENTS;
+    END IF;
+    IF v_maxper > MAX_SESSIONS_PER_RECIPIENT THEN
+      RAISE EXCEPTION 'enqueue_booking_notification: too many sessions for one recipient (% > %)', v_maxper, MAX_SESSIONS_PER_RECIPIENT;
+    END IF;
+  END IF;
 
   -- Content the LEGACY templates carried, derived here rather than accepted from the caller.
-  -- Porting it is deliberate: a migration should not quietly reduce what a trainer can act on.
   SELECT sum(coalesce(b.payment_amount, s.price_per_session, 0)),
          max(nullif(btrim(coalesce(s.cyclus_name, '')), ''))
     INTO v_price, v_title
@@ -250,30 +290,22 @@ BEGIN
     JOIN public.availability_slots s ON s.id = b.slot_id
    WHERE b.id = ANY(v_ids);
 
+  -- The trainer name is NULL for a multi-trainer academy cycle (v_trainer NULL), so the copy
+  -- below degrades to a generic "je trainer" rather than naming one arbitrary trainer.
   SELECT tp.user_id INTO v_trn_user FROM public.trainer_profiles tp WHERE tp.id = v_trainer;
   SELECT pr.full_name INTO v_trn_name FROM public.profiles pr WHERE pr.user_id = v_trn_user;
 
-  -- Does the actor OWN this slot's tenant?
-  --
-  -- Three REDUNDANT layers stop an orphan trainer_profile (user_id NULL) turning the
-  -- comparison into NULL and sailing through a gate as "not rejected": the explicit
-  -- IS NOT NULL guards, the trailing IS TRUE, and IS NOT TRUE at the use site.
-  --
-  -- Isolated mutation testing (one change at a time) shows NONE of them is individually
-  -- necessary — removing any one, or even any two, still denies. Only removing all three
-  -- fails open. An earlier comment here claimed the IS NOT NULL guard was "the load-bearing
-  -- part"; that was drawn from a mutation which changed three things at once and attributed
-  -- the result to one of them. Keep all three, and do not let a future cleanup remove the
-  -- last one on the grounds that the others made it redundant.
+  -- Ownership. An individual trainer may act only when the set is theirs (single trainer, and
+  -- the actor owns it); an academy manager may act across the academy's trainers. Three
+  -- redundant fail-closed layers (IS NOT NULL guards + IS TRUE + IS NOT TRUE at the use site)
+  -- keep a NULL comparison from sailing through as "not rejected".
   v_owner := (
-    (v_trn_user IS NOT NULL AND v_actor = v_trn_user)
+    (v_trainer IS NOT NULL AND v_trn_user IS NOT NULL AND v_actor = v_trn_user)
     OR (v_academy IS NOT NULL AND public.is_academy_manager(v_actor, v_academy) IS TRUE)
   ) IS TRUE;
 
   -- ── AUTH MATRIX + STATE VALIDATION, over the WHOLE set ────────────────────────────────
   IF p_kind = 'request_staff' THEN
-    -- Player self-service only: the actor must be the player on EVERY booking, and every
-    -- booking must actually be awaiting approval.
     IF EXISTS (
       SELECT 1 FROM public.bookings b
       LEFT JOIN public.profiles pr ON pr.id = b.player_id
@@ -287,8 +319,6 @@ BEGIN
     END IF;
 
   ELSIF p_kind = 'confirmation_player' THEN
-    -- Either the player booking for THEMSELVES, or STAFF booking on their behalf (which is
-    -- how BookForPlayerDialog reaches this, including for guest players who have no account).
     IF v_owner IS NOT TRUE AND EXISTS (
       SELECT 1 FROM public.bookings b
       LEFT JOIN public.profiles pr ON pr.id = b.player_id
@@ -297,18 +327,16 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'enqueue_booking_notification: actor is neither the player nor the slot owner';
     END IF;
-    -- One recipient per confirmation: a set covering several players is not one confirmation.
-    IF (SELECT count(*) FROM (
-          SELECT DISTINCT b.player_id, b.guest_player_id
-            FROM public.bookings b WHERE b.id = ANY(v_ids)
-        ) d) <> 1 THEN
+    -- ONE recipient, by the GUEST-FIRST canonical key: a guest-only row and a dual-key row for
+    -- the SAME guest are one recipient, not two (the old DISTINCT (player_id, guest_player_id)
+    -- counted them separately and rejected the confirmation).
+    IF (SELECT count(DISTINCT CASE WHEN b.guest_player_id IS NOT NULL THEN 'g:' || b.guest_player_id::text
+                                   ELSE 'p:' || coalesce(pr.user_id::text, 'none') END)
+          FROM public.bookings b
+          LEFT JOIN public.profiles pr ON pr.id = b.player_id
+         WHERE b.id = ANY(v_ids)) <> 1 THEN
       RAISE EXCEPTION 'enqueue_booking_notification: confirmation set covers multiple recipients';
     END IF;
-    -- 'confirmed' ONLY, never 'pending'. BookLesson's upfront cycle flow inserts
-    -- status='pending', payment_status='pending' immediately BEFORE redirecting to Mollie,
-    -- so allowing 'pending' let a player call this and receive a false "booking confirmed,
-    -- pay your trainer directly" — followed later by the genuine paid confirmation. All
-    -- three intended manual call sites insert 'confirmed'; the Mollie path does not.
     IF EXISTS (
       SELECT 1 FROM public.bookings
        WHERE id = ANY(v_ids)
@@ -326,8 +354,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- Idempotency over the CANONICAL set, not the first id: reordering or de-duplicating the
-  -- argument cannot produce a second notification.
   v_key := p_kind || ':' || md5(array_to_string(v_ids, ','));
 
   IF p_kind = 'request_staff' THEN
@@ -352,8 +378,6 @@ BEGIN
       LEFT JOIN public.guest_players gp ON gp.id = b.guest_player_id
      WHERE b.id = v_ids[1];
 
-    -- The trainer acts from this mail, so it keeps what the legacy template gave them:
-    -- who, how to reach them, what it is worth, and a way in.
     v_html := '<div style="font-family:sans-serif"><h2>Nieuwe boekingsaanvraag</h2><p>Hoi '
       || public.notification_html_escape(v_trn_name) || ',</p><p>' || v_subject
       || ' heeft een aanvraag gedaan'
@@ -363,9 +387,6 @@ BEGIN
       || CASE WHEN coalesce(v_price, 0) > 0 THEN '<p>Bedrag: &euro;' || to_char(v_price, 'FM999999990.00') || '</p>' ELSE '' END
       || '<p><a href="https://padeltrainer.ai/app/trainer/agenda">Bekijk en beoordeel de aanvraag</a></p></div>';
 
-    -- count the rows the resolver ACTUALLY returned. PERFORM discards them, which made the
-    -- old `v_count := 1` a count of INTENDED recipients: a duplicate call returns no rows
-    -- (correct idempotent no-op) and would still have reported "1 enqueued".
     SELECT count(*) INTO v_count FROM public.enqueue_notification(
       p_event_key                 => 'booking_request_staff',
       p_recipient_user_id         => v_trn_user,
@@ -378,42 +399,41 @@ BEGIN
     );
 
   ELSE
-    -- confirmation_player and cancelled_player both fan out PER RECIPIENT, and each recipient
-    -- sees ONLY their own sessions. (confirmation_player is validated above to be exactly one
-    -- recipient; cancellation may legitimately cover many.)
+    -- confirmation_player and cancelled_player fan out PER RECIPIENT, each seeing ONLY their
+    -- own sessions, grouped by the GUEST-FIRST canonical key. ruser/rguest are XOR by
+    -- construction (uid is NULL for a guest row, gid NULL for a player row), so the resolver
+    -- never receives both and can never prefer a registered profile over the intended guest.
     FOR r IN
-      SELECT pr.user_id AS ruser, b.guest_player_id AS rguest,
-             coalesce(pr.full_name, gp.full_name, '') AS rname,
-             array_agg(b.id ORDER BY b.id) AS ids,
+      SELECT d.uid AS ruser, d.gid AS rguest, d.rname,
+             array_agg(d.id ORDER BY d.id) AS ids,
              string_agg(
-               '<tr><td style="padding:4px 12px 4px 0">' || to_char(s.start_time AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY')
-               || '</td><td style="padding:4px 12px 4px 0">' || to_char(s.start_time AT TIME ZONE 'Europe/Amsterdam', 'HH24:MI')
-               || '–' || to_char(s.end_time AT TIME ZONE 'Europe/Amsterdam', 'HH24:MI')
-               || '</td><td style="padding:4px 0">' || public.notification_html_escape(l.name) || '</td></tr>',
-               '' ORDER BY s.start_time) AS rows
-        FROM public.bookings b
-        JOIN public.availability_slots s ON s.id = b.slot_id
-        LEFT JOIN public.locations l ON l.id = s.location_id
-        LEFT JOIN public.profiles pr ON pr.id = b.player_id
-        LEFT JOIN public.guest_players gp ON gp.id = b.guest_player_id
-       WHERE b.id = ANY(v_ids)
-       GROUP BY pr.user_id, b.guest_player_id, coalesce(pr.full_name, gp.full_name, '')
+               '<tr><td style="padding:4px 12px 4px 0">' || to_char(d.start_time AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY')
+               || '</td><td style="padding:4px 12px 4px 0">' || to_char(d.start_time AT TIME ZONE 'Europe/Amsterdam', 'HH24:MI')
+               || '–' || to_char(d.end_time AT TIME ZONE 'Europe/Amsterdam', 'HH24:MI')
+               || '</td><td style="padding:4px 0">' || public.notification_html_escape(d.loc) || '</td></tr>',
+               '' ORDER BY d.start_time) AS rows
+        FROM (
+          SELECT b.id, s.start_time, s.end_time, l.name AS loc,
+                 b.guest_player_id AS gid,
+                 CASE WHEN b.guest_player_id IS NULL THEN pr.user_id ELSE NULL END AS uid,
+                 CASE WHEN b.guest_player_id IS NOT NULL THEN coalesce(gp.full_name, '')
+                      ELSE coalesce(pr.full_name, '') END AS rname
+            FROM public.bookings b
+            JOIN public.availability_slots s ON s.id = b.slot_id
+            LEFT JOIN public.locations l ON l.id = s.location_id
+            LEFT JOIN public.profiles pr ON pr.id = b.player_id
+            LEFT JOIN public.guest_players gp ON gp.id = b.guest_player_id
+           WHERE b.id = ANY(v_ids)
+        ) d
+       GROUP BY d.gid, d.uid, d.rname
     LOOP
       CONTINUE WHEN r.ruser IS NULL AND r.rguest IS NULL;   -- nobody to address
 
       -- A guest has no account for the resolver to fall back on, so make them deliverable
-      -- FIRST. Authoritative address: the invoice identity (honours a linked profile /
-      -- academy billing override), falling back to the address captured on the guest record.
+      -- FIRST. Recipient-discovery fails LOUD (PR 10a): an error would otherwise promote a
+      -- stale raw address into the tenant contact. A successful no-row/no-email answer uses
+      -- the designed guest-record fallback.
       IF r.rguest IS NOT NULL THEN
-        -- NO exception handler here, deliberately. This is a RECIPIENT-DISCOVERY read, and
-        -- PR 10a's doctrine is that those fail loudly: swallowing the error would fall back
-        -- to the raw guest address AND then permanently overwrite the tenant contact with it
-        -- (the upsert refreshes destination_normalized). A stale address would become the
-        -- authoritative one, which is worse than not sending.
-        --
-        -- Returning NO ROWS is a different thing entirely and stays supported: that is the
-        -- ordinary "no linked profile / no billing override" case, and the guest record is
-        -- the designed fallback for it.
         SELECT i.email INTO v_guest_email
           FROM public.get_invoice_recipient_identity(NULL, r.rguest, v_academy) AS i;
         IF coalesce(btrim(v_guest_email), '') = '' THEN
@@ -448,8 +468,6 @@ BEGIN
         p_recipient_guest_player_id => r.rguest,
         p_tenant_trainer_id         => v_trainer,
         p_tenant_academy_profile_id => v_academy,
-        -- Per-recipient key: the canonical set for THAT recipient, so one person's retry
-        -- cannot suppress another's notification.
         p_idempotency_subject       => v_key || ':' || md5(array_to_string(r.ids, ',')),
         p_related_booking_ids       => r.ids,
         p_payload                   => jsonb_build_object('subject', v_subject, 'html', v_html),

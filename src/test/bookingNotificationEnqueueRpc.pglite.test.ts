@@ -29,6 +29,8 @@ const A2 = '0a000000-0000-0000-0000-0000000000a2';   // a DIFFERENT academy
 const T1 = '0c000000-0000-0000-0000-0000000000c1';   // trainer (has an account)
 const T2 = '0c000000-0000-0000-0000-0000000000c2';   // trainer under A2
 const T3 = '0c000000-0000-0000-0000-0000000000c3';   // ORPHAN trainer: user_id IS NULL
+const T1B = '0c000000-0000-0000-0000-0000000000c4';  // a SECOND trainer, also under A1 (own account)
+const U_T1B = '0e000000-0000-0000-0000-0000000000eb';
 const U_T = '0e000000-0000-0000-0000-0000000000e2';  // T1's login
 const U_M = '0e000000-0000-0000-0000-0000000000e3';  // academy manager's login
 const U_P1 = '0e000000-0000-0000-0000-0000000000e1'; // player 1 login
@@ -130,10 +132,11 @@ beforeAll(async () => {
 
   await db.exec(`
     INSERT INTO public.academy_profiles (id) VALUES ('${A1}'), ('${A2}');
-    INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${T1}', '${U_T}'), ('${T2}', NULL), ('${T3}', NULL);
+    INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${T1}', '${U_T}'), ('${T2}', NULL), ('${T3}', NULL), ('${T1B}', '${U_T1B}');
     INSERT INTO public.profiles (id, user_id, full_name) VALUES
       ('${PR1}', '${U_P1}', 'Speler <Een>'), ('${PR2}', '${U_P2}', 'Speler Twee'),
-      ('0f000000-0000-0000-0000-0000000000f2', '${U_T}', 'Trainer T');
+      ('0f000000-0000-0000-0000-0000000000f2', '${U_T}', 'Trainer T'),
+      ('0f000000-0000-0000-0000-0000000000f5', '${U_T1B}', 'Trainer B');
     UPDATE public.profiles SET email = 'speler1@example.com' WHERE id = '${PR1}';
     INSERT INTO public.guest_players (id, full_name, email) VALUES ('${G1}', 'Gast G', 'gast@example.com');
     INSERT INTO public.locations (id, name, city) VALUES
@@ -142,7 +145,9 @@ beforeAll(async () => {
       ('01000000-0000-0000-0000-000000000001', '${T1}', '${A1}', '0d000000-0000-0000-0000-0000000000d1', now() + interval '3 days', now() + interval '3 days 1 hour'),
       ('01000000-0000-0000-0000-000000000002', '${T1}', '${A1}', '0d000000-0000-0000-0000-0000000000d1', now() + interval '4 days', now() + interval '4 days 1 hour'),
       ('01000000-0000-0000-0000-000000000003', '${T2}', '${A2}', NULL, now() + interval '5 days', now() + interval '5 days 1 hour'),
-      ('01000000-0000-0000-0000-000000000004', '${T3}', NULL,   NULL, now() + interval '6 days', now() + interval '6 days 1 hour');
+      ('01000000-0000-0000-0000-000000000004', '${T3}', NULL,   NULL, now() + interval '6 days', now() + interval '6 days 1 hour'),
+      ('01000000-0000-0000-0000-000000000006', '${T1B}', '${A1}', NULL, now() + interval '7 days', now() + interval '7 days 1 hour'),
+      ('01000000-0000-0000-0000-000000000007', '${T1B}', NULL,   NULL, now() + interval '8 days', now() + interval '8 days 1 hour');
     UPDATE public.availability_slots SET price_per_session = 25, cyclus_name = 'Herfst <reeks>'
      WHERE id IN ('01000000-0000-0000-0000-000000000001','01000000-0000-0000-0000-000000000002');
   `);
@@ -158,6 +163,8 @@ const S1 = '01000000-0000-0000-0000-000000000001';
 const S2 = '01000000-0000-0000-0000-000000000002';
 const S_OTHER = '01000000-0000-0000-0000-000000000003';
 const S_ORPHAN = '01000000-0000-0000-0000-000000000004';
+const S_A1B = '01000000-0000-0000-0000-000000000006';   // T1B's slot, in academy A1
+const S_INDEP2 = '01000000-0000-0000-0000-000000000007';   // T1B's slot, NO academy (independent)
 const B1 = '02000000-0000-0000-0000-000000000001';
 const B2 = '02000000-0000-0000-0000-000000000002';
 const B_OTHER = '02000000-0000-0000-0000-000000000003';
@@ -197,7 +204,7 @@ describe('the WHOLE set is validated, not the first id', () => {
     await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });
     await mkBooking(B_OTHER, S_OTHER, { player: PR1, status: 'cancelled' });
     await as(U_T);
-    await expect(call([B1, B_OTHER], 'cancelled_player')).rejects.toThrow(/multiple tenants/);
+    await expect(call([B1, B_OTHER], 'cancelled_player')).rejects.toThrow(/multiple academy scopes/);
   });
 
   it('refuses a set containing an id that does not exist', async () => {
@@ -387,11 +394,11 @@ describe('guests are made DELIVERABLE before enqueueing', () => {
 });
 
 describe('the caller-controlled array is bounded', () => {
-  it('refuses an oversized set', async () => {
+  it('refuses an oversized TOTAL set (bound fires before the existence check)', async () => {
     await as(U_P1);
-    const many = Array.from({ length: 61 }, (_, i) =>
+    const many = Array.from({ length: 2001 }, (_, i) =>
       `02000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
-    await expect(call(many, 'request_staff')).rejects.toThrow(/too many bookings/);
+    await expect(call(many, 'request_staff')).rejects.toThrow(/too many bookings in one call/);
   });
 });
 
@@ -499,5 +506,117 @@ describe('the ACL boundary is explicit', () => {
     expect(await canExec('service_role', sig)).toBe(true);
     expect(await canExec('anon', sig)).toBe(false);
     expect(await canExec('authenticated', sig)).toBe(false);
+  });
+});
+
+describe('P1 #1 — guest-first canonical identity (FAM-02)', () => {
+  const capturedFor = async () =>
+    (await db.query<{ ruser: string | null; rguest: string | null; ids: string[] }>(
+      `SELECT ruser, rguest, ids FROM public._captured ORDER BY id`)).rows;
+
+  it('a DUAL-KEY booking (player_id AND guest_player_id) is addressed to the GUEST, never the profile', async () => {
+    // The resolver prefers a registered profile if handed both, so passing both would mail the
+    // wrong identity. Guest-first + XOR args prevent it.
+    await mkBooking(B1, S1, { player: PR1, guest: G1, status: 'cancelled' });
+    await as(U_T);
+    expect((await call([B1], 'cancelled_player')).rows[0].v).toBe(1);
+    const [row] = await capturedFor();
+    expect(row.rguest, 'addressed as the guest').toBe(G1);
+    expect(row.ruser, 'NOT the registered profile').toBeNull();
+  });
+
+  it('a guest-only row and a dual-key row for the SAME guest are ONE recipient (confirmation not rejected)', async () => {
+    // The old DISTINCT (player_id, guest_player_id) counted these as two recipients and rejected
+    // the confirmation. Canonical guest-first collapses them.
+    await mkBooking(B1, S1, { guest: G1 });                    // guest-only
+    await mkBooking(B2, S2, { player: PR1, guest: G1 });       // dual-key, same guest
+    await as(U_T);
+    expect((await call([B1, B2], 'confirmation_player')).rows[0].v, 'one recipient, both sessions').toBe(1);
+    const rows = await capturedFor();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rguest).toBe(G1);
+    expect(rows[0].ruser).toBeNull();
+    expect(rows[0].ids).toHaveLength(2);
+  });
+
+  it('a pure REGISTERED player is addressed by user_id only (rguest null)', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });
+    await as(U_T);
+    await call([B1], 'cancelled_player');
+    const [row] = await capturedFor();
+    expect(row.ruser).toBe(U_P1);
+    expect(row.rguest).toBeNull();
+  });
+});
+
+describe('P1 #2 — intent-aware bounds (bookings are not sessions)', () => {
+  it('a legitimate 52-session x 2-player cancellation (104 rows) SUCCEEDS and fans out to 2 recipients', async () => {
+    // 52 slots would be ideal but the bound counts ROWS; 104 cancelled bookings under T1/A1,
+    // 52 per player, is the shape DeleteSlotDialog produces for a 2-player season.
+    await db.exec(`
+      INSERT INTO public.bookings (id, slot_id, player_id, status)
+      SELECT gen_random_uuid(), '${S1}', p.pid, 'cancelled'
+        FROM (VALUES ('${PR1}'::uuid), ('${PR2}'::uuid)) AS p(pid), generate_series(1, 52) g;`);
+    const ids = (await db.query<{ id: string }>(`SELECT id FROM public.bookings WHERE status='cancelled'`)).rows.map((r) => r.id);
+    expect(ids).toHaveLength(104);
+    await as(U_T);
+    const n = (await db.query<{ v: number }>(
+      `SELECT public.enqueue_booking_notification(ARRAY[${ids.map((i) => `'${i}'::uuid`).join(',')}]::uuid[], 'cancelled_player') AS v`)).rows[0].v;
+    expect(n, 'two recipients enqueued').toBe(2);
+    const perRecipient = (await db.query<{ n: number }>(
+      `SELECT array_length(ids,1) AS n FROM public._captured ORDER BY id`)).rows.map((r) => r.n);
+    expect(perRecipient.sort()).toEqual([52, 52]);
+  });
+
+  it('rejects when ONE recipient exceeds the session cap (201 sessions)', async () => {
+    await db.exec(`
+      INSERT INTO public.bookings (id, slot_id, player_id, status)
+      SELECT gen_random_uuid(), '${S1}', '${PR1}', 'cancelled' FROM generate_series(1, 201);`);
+    const ids = (await db.query<{ id: string }>(`SELECT id FROM public.bookings WHERE status='cancelled'`)).rows.map((r) => r.id);
+    await as(U_T);
+    await expect(db.query(
+      `SELECT public.enqueue_booking_notification(ARRAY[${ids.map((i) => `'${i}'::uuid`).join(',')}]::uuid[], 'cancelled_player')`))
+      .rejects.toThrow(/too many sessions for one recipient/);
+  });
+});
+
+describe('P1 #3 — academy-first tenant', () => {
+  it('an ACADEMY MANAGER may cancel a MULTI-TRAINER cycle within one academy, with no falsely-named trainer', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });       // T1, A1
+    await mkBooking(B2, S_A1B, { player: PR1, status: 'cancelled' });    // T1B, A1
+    await as(U_M);   // academy manager of A1
+    expect((await call([B1, B2], 'cancelled_player')).rows[0].v).toBe(1);
+    const html = (await db.query<{ h: string }>(`SELECT html AS h FROM public._captured LIMIT 1`)).rows[0].h;
+    // multi-trainer → generic copy, never one arbitrary trainer name
+    expect(html).toContain('Je trainer');
+    expect(html).not.toContain('Trainer T');
+    expect(html).not.toContain('Trainer B');
+  });
+
+  it('an INDIVIDUAL TRAINER may NOT cancel a multi-trainer cycle (does not own every slot)', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });       // T1
+    await mkBooking(B2, S_A1B, { player: PR1, status: 'cancelled' });    // T1B
+    await as(U_T);   // trainer T1, not the academy manager
+    await expect(call([B1, B2], 'cancelled_player')).rejects.toThrow(/does not own this slot/);
+  });
+
+  it('a SINGLE-trainer academy cancellation by that trainer still succeeds', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });
+    await as(U_T);
+    expect((await call([B1], 'cancelled_player')).rows[0].v).toBe(1);
+  });
+
+  it('rejects an INDEPENDENT set spanning multiple trainers (no coherent tenant)', async () => {
+    await mkBooking(B1, S_ORPHAN, { player: PR1, status: 'cancelled' });   // T3, no academy
+    await mkBooking(B2, S_INDEP2, { player: PR1, status: 'cancelled' });   // T1B, no academy
+    await as(U_T1B);
+    await expect(call([B1, B2], 'cancelled_player')).rejects.toThrow(/independent slots span multiple trainers/);
+  });
+
+  it('rejects an academy + INDEPENDENT (no-academy) mix', async () => {
+    await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });       // A1
+    await mkBooking(B2, S_ORPHAN, { player: PR1, status: 'cancelled' }); // no academy
+    await as(U_T);
+    await expect(call([B1, B2], 'cancelled_player')).rejects.toThrow(/multiple academy scopes/);
   });
 });

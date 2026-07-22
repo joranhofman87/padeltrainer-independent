@@ -105,6 +105,7 @@ export async function runBookingPaidSideEffects(opts: {
   // lane — which is exactly how three pins for this passed while the staff code was reverted.
   let staffErrors = 0;
   let playerStatus = "none";
+  let playerDetail: string | null = null;   // sanitized, length-bounded failure detail for the durable audit + alert
 
   // Booking context — display names for the Slack ping and the staff email only. Its
   // failure must NOT skip the fan-out: sendStaffBookingNotifications re-reads the
@@ -185,12 +186,16 @@ export async function runBookingPaidSideEffects(opts: {
       // log it here (double-alerting would be noise). no_payer / enqueue_failed enqueue
       // NOTHING, so nothing downstream surfaces them — alert LOUDLY.
       playerStatus = reason ?? "unknown";
+      // Preserve the helper's detail. Production logs were unavailable during the original
+      // incident, so a short sanitized code/detail must survive to the DURABLE audit row and
+      // the alert — not just the terminal 'reason'.
+      playerDetail = confirmation.detail ? String(confirmation.detail).replace(/\s+/g, " ").slice(0, 200) : null;
       if (reason === "skipped") {
         skippedRows++;
         logStep("Paid booking confirmation is a visible skipped row (worker will alert)", { bookingIds, skipReason });
       } else {
         laneErrors++;
-        await notifySlackError(source, "paid booking confirmation could not be enqueued", { bookingIds, reason });
+        await notifySlackError(source, "paid booking confirmation could not be enqueued", { bookingIds, reason, detail: playerDetail });
       }
     }
   } catch (playerErr) {
@@ -198,6 +203,7 @@ export async function runBookingPaidSideEffects(opts: {
     // the payer is owed a required email and nothing downstream will ever surface it.
     laneErrors++;
     playerStatus = "threw";
+    playerDetail = String(playerErr).replace(/\s+/g, " ").slice(0, 200);
     logStep("Player confirmation threw", { error: String(playerErr) });
     await notifySlackError(source, "paid booking confirmation THREW — payer has no confirmation", {
       bookingIds,
@@ -262,7 +268,7 @@ export async function runBookingPaidSideEffects(opts: {
     invoice_id: invoiceId ?? null,
     status: PaymentAuditStatus.bookingPaidNotifications,
     metadata: {
-      playerRows, playerNoop, playerStatus,
+      playerRows, playerNoop, playerStatus, playerDetail,
       staffRows, staffSkipped, staffNoop, staffErrors,
       skippedRows, laneErrors,
       bookingCount: bookingIds.length,

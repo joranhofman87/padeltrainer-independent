@@ -738,4 +738,11 @@ Guest deliverability (10b): a guest with no account is made reachable by an in-s
 `notification_contacts` row (`ensure_guest_email_contact`). When a guest's authoritative email
 is later REMOVED, that contact is REVOKED rather than left usable — a required confirmation then
 resolves to a visible `no_email_contact` skip instead of sending to a stale address. Provenance
-(`consent_source`/`consent_at`) refreshes only when the address genuinely changes.
+(`consent_source`/`consent_at`) refreshes on address change, reactivation (a previously-revoked contact returning), or an effective tenant-scope change; an unchanged, still-active re-run is a no-op.
+
+## Known follow-ups
+
+Out-of-scope findings surfaced during the migration are tracked in
+[NOTIFICATION_FOLLOWUPS.md](./NOTIFICATION_FOLLOWUPS.md) — currently the recipient-discovery
+fail-open sweep from PR 10b (send-invoice-email, notify-rebook-member-open, forward-invoice;
+notify-followers is covered by PR 10c).

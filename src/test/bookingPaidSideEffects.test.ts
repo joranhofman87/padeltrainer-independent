@@ -32,6 +32,8 @@ type FakeOpts = {
   enqueueEmpty?: boolean;
   /** resolver answers a 'skipped' row with NO error — a real row, but not a delivery. */
   enqueueSkipped?: boolean;
+  /** make get_invoice_recipient_identity (guest branch) resolve an ERROR → enqueue_failed w/ detail. */
+  identityRpcError?: string;
   /** table => error message: the query RESOLVES {data:null,error} (PostgREST 400 / RLS),
    *  which is the failure mode that used to read as "no rows" everywhere. */
   queryError?: Record<string, string>;
@@ -118,6 +120,9 @@ function makeFakeSupabase(opts: FakeOpts) {
   });
   // The staff fan-out (PR 6b) + the player confirmation (PR 6a) enqueue via rpc.
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
+    if (name === 'get_invoice_recipient_identity' && opts.identityRpcError) {
+      return { data: null, error: { message: opts.identityRpcError } };
+    }
     if (name === 'enqueue_notification') {
       if (opts.enqueueError) return { data: null, error: { message: opts.enqueueError } };
       if (opts.enqueueEmpty) return { data: [], error: null };
@@ -611,6 +616,38 @@ describe('PR 10a — one failing lane must not silence the others', () => {
     });
     await run(supabase);
     expect(auditOf(auditRows).playerStatus, 'a broken query is not a missing payer').toBe('enqueue_failed');
+  });
+});
+
+describe('PR 10b #4 — the confirmation failure DETAIL survives to the alert + durable audit', () => {
+  // Production logs were unavailable during the original incident, so a short sanitized detail
+  // must persist beyond the ephemeral log — into the Slack alert and the audit metadata.
+  const guestPayer = {
+    staffBookings: [{
+      id: 'B1', player_id: null, guest_player_id: 'G1',
+      availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1', cyclus_name: null },
+      profiles: null, guest_players: { full_name: 'Gast', email: 'g@example.com' },
+    }],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  it('an enqueue_failed confirmation carries its detail into the audit row AND the Slack alert', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      identityRpcError: 'identity backend unavailable',
+      ...guestPayer,
+    });
+    const notify = await run(supabase);
+    const row = auditRows.find((r) => r.status === 'booking_paid_notifications');
+    const meta = row!.metadata as Record<string, unknown>;
+    expect(meta.playerStatus).toBe('enqueue_failed');
+    expect(String(meta.playerDetail), 'detail persisted in the durable audit').toContain('identity backend unavailable');
+    // and the alert carries it too (not just the terminal reason)
+    const alerted = notify.mock.calls.find((c) => String(c[1]).includes('could not be enqueued'));
+    expect(alerted, 'a paid-confirmation failure alerts').toBeTruthy();
+    expect(JSON.stringify(alerted![2]), 'alert context includes the detail').toContain('identity backend unavailable');
   });
 });
 
