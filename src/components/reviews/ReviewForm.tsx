@@ -9,16 +9,16 @@ import { ReviewTagSelector } from './ReviewTagSelector';
 import { createReviewWithTags } from '@/lib/reviews';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { sendReviewNotification } from '@/lib/email';
 
 interface ReviewFormProps {
   bookingId: string;
   playerId: string;
   trainerId: string;
   trainerName: string;
-  trainerEmail?: string;
-  playerName?: string;
-  lessonTitle?: string;
+  // trainerEmail / playerName / lessonTitle used to exist ONLY to address the client-side
+  // review email. The trigger composes that server-side from the review row, so passing a
+  // recipient in from the browser is no longer needed — and shouldn't be: a client-supplied
+  // recipient address is exactly the sort of thing that should not decide where mail goes.
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -28,9 +28,6 @@ export function ReviewForm({
   playerId,
   trainerId,
   trainerName,
-  trainerEmail,
-  playerName,
-  lessonTitle,
   onSuccess,
   onCancel,
 }: ReviewFormProps) {
@@ -76,16 +73,11 @@ export function ReviewForm({
         description: 'Thank you for your feedback!',
       });
       
-      // Send notification to trainer
-      if (trainerEmail) {
-        sendReviewNotification(
-          trainerEmail,
-          trainerName,
-          playerName || 'A player',
-          lessonTitle || 'Training Session',
-          rating
-        );
-      }
+      // The trainer's notification is enqueued SERVER-SIDE by trg_notify_review_received
+      // (AFTER INSERT on reviews → review_received_trainer). The legacy client-side
+      // send-email call that used to live here was a DUPLICATE of that trigger: both fired
+      // for every review. It was invisible while the outbox never delivered; PR 10a fixed
+      // delivery, which would have made the next review send two identical emails.
       
       onSuccess?.();
     }

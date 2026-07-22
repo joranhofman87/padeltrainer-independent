@@ -10,6 +10,7 @@ import {
 } from "../_shared/mollie-webhook-metadata.ts";
 import { runBookingPaidSideEffects, sendStaffBookingNotifications } from "../_shared/mollie-booking-paid-side-effects.ts";
 import { sendPlayerBookingConfirmation } from "../_shared/booking-confirmation-email.ts";
+import { personDisplayName } from "../_shared/person-identity.ts";
 import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from "../_shared/payment-audit.ts";
 import {
   applyBookingPaymentWriteback,
@@ -811,13 +812,20 @@ serve(async (req) => {
             try {
               const { data: payerRow } = await supabase
                 .from("bookings")
-                .select("profiles:player_id(full_name), guest_players:guest_player_id(full_name)")
+                .select("player_id, guest_player_id, profiles:player_id(full_name), guest_players:guest_player_id(full_name)")
                 .eq("id", invoiceData.booking_ids[0])
                 .maybeSingle();
               const payer = payerRow as
-                | { profiles?: { full_name?: string | null } | null; guest_players?: { full_name?: string | null } | null }
+                | { player_id?: string | null; guest_player_id?: string | null;
+                    profiles?: { full_name?: string | null } | null; guest_players?: { full_name?: string | null } | null }
                 | null;
-              const playerName = payer?.profiles?.full_name ?? payer?.guest_players?.full_name ?? "Speler";
+              // GUEST-FIRST canonical identity (rebook-invoice path), keyed on the row's IDs:
+              // the guest/child name, never the linked parent/profile.
+              const playerName = personDisplayName(
+                payer ?? {},
+                { profileName: payer?.profiles?.full_name, guestName: payer?.guest_players?.full_name },
+                "Speler",
+              );
               await sendStaffBookingNotifications({
                 supabase: supabase as unknown as Parameters<typeof sendStaffBookingNotifications>[0]["supabase"],
                 bookingIds: invoiceData.booking_ids,

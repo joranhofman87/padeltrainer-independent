@@ -32,6 +32,9 @@ type FakeOpts = {
   enqueueEmpty?: boolean;
   /** resolver answers a 'skipped' row with NO error — a real row, but not a delivery. */
   enqueueSkipped?: boolean;
+  /** make get_invoice_recipient_identity (guest branch) resolve an ERROR → enqueue_failed w/ detail. */
+  identityRpcError?: string;
+  identityThrow?: string;
   /** table => error message: the query RESOLVES {data:null,error} (PostgREST 400 / RLS),
    *  which is the failure mode that used to read as "no rows" everywhere. */
   queryError?: Record<string, string>;
@@ -118,6 +121,12 @@ function makeFakeSupabase(opts: FakeOpts) {
   });
   // The staff fan-out (PR 6b) + the player confirmation (PR 6a) enqueue via rpc.
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
+    if (name === 'get_invoice_recipient_identity' && opts.identityThrow) {
+      throw new Error(opts.identityThrow);
+    }
+    if (name === 'get_invoice_recipient_identity' && opts.identityRpcError) {
+      return { data: null, error: { message: opts.identityRpcError } };
+    }
     if (name === 'enqueue_notification') {
       if (opts.enqueueError) return { data: null, error: { message: opts.enqueueError } };
       if (opts.enqueueEmpty) return { data: [], error: null };
@@ -295,6 +304,28 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
     expect(p.p_payload.html).not.toContain('Amount paid');
     expect(p.p_payload.subject).toContain('Gast Speler');
     expect(legacyStaffEmails(invoke)).toHaveLength(0); // no double-send
+  });
+
+  it('P1 — a DUAL-KEY booking shows the GUEST/child name to staff, never the linked parent profile', async () => {
+    // Codex #5: the staff-facing name resolution chose profiles.full_name first, leaking the
+    // parent's identity for a child/guest booking. Guest-first canonical identity fixes both
+    // the Slack ping and the staff email.
+    const { supabase, invoke, rpc } = makeFakeSupabase({
+      booking: { ...guestBooking, profiles: { full_name: 'Parent Naam' }, guest_players: { full_name: 'Kind Naam' } },
+      invoiceInvokeData: { invoiceId: 'INV-1' },
+      staffBookings: [staffBooking()],
+      trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+      profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+    });
+    await run(supabase);
+    // Slack ping: the child, not the parent
+    const ping = callsTo(invoke, 'slack-notify')[0][1] as { body: { data: { player: string } } };
+    expect(ping.body.data.player).toBe('Kind Naam');
+    expect(JSON.stringify(ping)).not.toContain('Parent Naam');
+    // staff email payload: the child, not the parent
+    const p = staffEnqueues(rpc)[0][1] as { p_payload: { subject: string; html: string } };
+    expect(p.p_payload.subject + p.p_payload.html).toContain('Kind Naam');
+    expect(p.p_payload.subject + p.p_payload.html, 'the parent name must NOT appear').not.toContain('Parent Naam');
   });
 
   it('enqueues academy managers WITH the paid amount (in the html), alongside the price-less trainer row', async () => {
@@ -510,15 +541,16 @@ describe('PR 10a — one failing lane must not silence the others', () => {
   // The tests above exercise the STAFF lane's counting. The PLAYER lane short-circuits to
   // no_payer with the default fixture (its rows carry no payer identity), so give it a real
   // registered payer — otherwise playerRows is vacuously 0 and proves nothing.
+  const payerRow = (id: string) => ({
+    id, player_id: 'P1', guest_player_id: null,
+    profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' },
+    guest_players: null,
+    availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' },
+  });
   const payerFixture = {
-    staffBookings: [{
-      id: 'B1',
-      player_id: 'P1',
-      guest_player_id: null,
-      profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' },
-      guest_players: null,
-      availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' },
-    }],
+    // BOTH requested ids (run() asks for B1+B2), same recipient — the confirmation helper now
+    // requires every requested booking id to be returned.
+    staffBookings: [payerRow('B1'), payerRow('B2')],
     trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
     profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
   };
@@ -611,6 +643,101 @@ describe('PR 10a — one failing lane must not silence the others', () => {
     });
     await run(supabase);
     expect(auditOf(auditRows).playerStatus, 'a broken query is not a missing payer').toBe('enqueue_failed');
+  });
+});
+
+describe('PR 10b #4 — the confirmation failure DETAIL survives to the alert + durable audit', () => {
+  // Production logs were unavailable during the original incident, so a short sanitized detail
+  // must persist beyond the ephemeral log — into the Slack alert and the audit metadata.
+  const guestRow = (id: string) => ({
+    id, player_id: null, guest_player_id: 'G1',
+    availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1', cyclus_name: null },
+    profiles: null, guest_players: { full_name: 'Gast', email: 'g@example.com' },
+  });
+  const guestPayer = {
+    staffBookings: [guestRow('B1'), guestRow('B2')],
+    trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+    profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+  };
+
+  it('an enqueue_failed confirmation carries its detail into the audit row AND the Slack alert', async () => {
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      identityRpcError: 'identity backend unavailable',
+      ...guestPayer,
+    });
+    const notify = await run(supabase);
+    const row = auditRows.find((r) => r.status === 'booking_paid_notifications');
+    const meta = row!.metadata as Record<string, unknown>;
+    expect(meta.playerStatus).toBe('enqueue_failed');
+    expect(String(meta.playerDetail), 'detail persisted in the durable audit').toContain('identity backend unavailable');
+    // and the alert carries it too (not just the terminal reason)
+    const alerted = notify.mock.calls.find((c) => String(c[1]).includes('could not be enqueued'));
+    expect(alerted, 'a paid-confirmation failure alerts').toBeTruthy();
+    expect(JSON.stringify(alerted![2]), 'alert context includes the detail').toContain('identity backend unavailable');
+  });
+
+  it('a THROWN confirmation carries the SAME sanitized detail to the audit AND the alert', async () => {
+    // Parity with enqueue_failed: the throw branch must not drop the detail or ship a
+    // differently-shaped raw slice.
+    // The confirmation helper THROWS (its bookings read rejects) — the identity/contact
+    // internal handlers cannot catch a read that throws before them, so it propagates to the
+    // side-effects LANE 1 catch. (An identity *error* is caught internally → enqueue_failed;
+    // this is the genuinely-thrown case.)
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      throwOnTable: 'bookings',
+      ...guestPayer,
+    });
+    const notify = await run(supabase);
+    const meta = (auditRows.find((r) => r.status === 'booking_paid_notifications')!.metadata) as Record<string, unknown>;
+    expect(meta.playerStatus).toBe('threw');
+    expect(String(meta.playerDetail)).toContain('simulated transport fault');
+    const alerted = notify.mock.calls.find((c) => String(c[1]).includes('THREW'));
+    expect(alerted, 'a thrown confirmation alerts').toBeTruthy();
+    expect(JSON.stringify(alerted![2]), 'the alert carries the sanitized detail').toContain('simulated transport fault');
+  });
+
+  it('REDACTS sensitive content (email / payment id) before the audit + alert, not just truncates', async () => {
+    // Codex #4: "sanitized" must redact, not merely slice. A detail echoing an email and a
+    // Mollie id must not reach Slack or the durable audit in the clear.
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      identityRpcError: 'lookup for kim@home.nl on payment tr_NSYoSDqSqgSsegmsLiEUJ failed',
+      ...guestPayer,
+    });
+    const notify = await run(supabase);
+    const meta = (auditRows.find((r) => r.status === 'booking_paid_notifications')!.metadata) as Record<string, unknown>;
+    const detail = String(meta.playerDetail);
+    expect(detail, 'email redacted in the durable audit').not.toContain('kim@home.nl');
+    expect(detail, 'payment id redacted in the durable audit').not.toContain('tr_NSYoSDqSqgSsegmsLiEUJ');
+    expect(detail).toContain('[redacted-email]');
+    const alerted = notify.mock.calls.find((c) => String(c[1]).includes('could not be enqueued'));
+    expect(JSON.stringify(alerted![2]), 'alert also redacted').not.toContain('kim@home.nl');
+  });
+
+  it('a STAFF-lane failure also redacts its error before the Slack alert (not just the player lane)', async () => {
+    // The adversarial pass caught this: the redactor was applied only to LANE 1. The staff
+    // fan-out and invoice lanes pushed raw error strings straight to Slack. A staff read that
+    // FAILS with sensitive text must be redacted too.
+    const { supabase } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      throwOnTable: 'trainer_profiles',   // staff fan-out read throws
+      queryError: { bookings: 'staff read failed for coach@example.com on tr_LEAKYPAYMENTID12345' },
+      staffBookings: [{ id: 'B1', availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' } }],
+      trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+      profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+    });
+    const notify = await run(supabase);
+    // whichever staff alert fired, no raw email / payment id may appear in ANY alert context
+    const anyRaw = notify.mock.calls.some((c) =>
+      String(JSON.stringify(c[2] ?? '')).includes('coach@example.com')
+      || String(JSON.stringify(c[2] ?? '')).includes('tr_LEAKYPAYMENTID12345'));
+    expect(anyRaw, 'no staff-lane alert may carry a raw email or payment id').toBe(false);
   });
 });
 

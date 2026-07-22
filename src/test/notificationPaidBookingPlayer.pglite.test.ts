@@ -37,7 +37,8 @@ const REG_EMAIL = 'player@example.com';
 const ensureGuestContact = (guest: string, email: string, academy: string | null, trainer: string | null) =>
   db.query<{ ensure_guest_email_contact: string | null }>(
     `SELECT public.ensure_guest_email_contact('${guest}', ${email === 'NULL' ? 'NULL' : `'${email}'`},
-       ${academy ? `'${academy}'` : 'NULL'}, ${trainer ? `'${trainer}'` : 'NULL'}) AS ensure_guest_email_contact`);
+       ${academy ? `'${academy}'` : 'NULL'}, ${trainer ? `'${trainer}'` : 'NULL'},
+       'paid_booking') AS ensure_guest_email_contact`);
 
 type OutRow = {
   outbox_id: string; channel: string; status: string; skip_reason: string | null;
@@ -123,6 +124,27 @@ beforeAll(async () => {
   await db.exec(MIG('20260910100000_notification_foundation_schema.sql'));
   await db.exec(MIG('20260911100000_notification_resolver.sql'));
   await db.exec(MIG('20260915100000_notification_paid_booking_player.sql'));
+  // PR 10b: the booking-notification RPC REPLACES ensure_guest_email_contact with a 5-arg
+  // form. Applying it here keeps this suite testing the signature that actually ships — the
+  // privilege pin below silently tested a function that no longer exists until it was added.
+  await db.exec(`
+    CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid, full_name text, email text);
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text);
+    CREATE TABLE public.locations (id uuid PRIMARY KEY, name text, city text);
+    CREATE TABLE public.availability_slots (
+      id uuid PRIMARY KEY, trainer_id uuid NOT NULL, academy_profile_id uuid, location_id uuid,
+      start_time timestamptz NOT NULL, end_time timestamptz NOT NULL, cyclus_name text,
+      price_per_session numeric);
+    CREATE TABLE public.bookings (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid NOT NULL, player_id uuid,
+      guest_player_id uuid, status text DEFAULT 'confirmed', payment_status text, payment_amount numeric);
+    CREATE OR REPLACE FUNCTION public.is_academy_manager(_user_id uuid, _academy uuid)
+      RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
+    CREATE OR REPLACE FUNCTION public.get_invoice_recipient_identity(
+      _player_id uuid DEFAULT NULL, _guest_player_id uuid DEFAULT NULL, _academy_profile_id uuid DEFAULT NULL)
+      RETURNS TABLE (email text) LANGUAGE sql STABLE AS $fn$ SELECT NULL::text WHERE false $fn$;
+  `);
+  await db.exec(MIG('20260926100000_booking_notification_enqueue_rpc.sql'));
   await db.exec(`
     INSERT INTO auth.users (id) VALUES ('${U_R}');
     INSERT INTO public.persons (id, user_id, email) VALUES
@@ -136,6 +158,76 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.exec(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_contacts; DELETE FROM public.email_address_state;`);
+});
+
+describe('guest contact lifecycle — a removed email must NOT fall back to a stale address (Codex #5)', () => {
+  const REVOKED = 'stale@example.com';
+  const contactState = (guest: string) =>
+    db.query<{ destination_normalized: string; revoked_at: string | null; consent_source: string; consent_at: string }>(
+      `SELECT destination_normalized, revoked_at, consent_source, consent_at
+         FROM public.notification_contacts WHERE guest_player_id = '${guest}' AND channel='email'`);
+
+  it('revokes the existing contact when the authoritative email is now empty — the resolver then skips, never sends stale', async () => {
+    // 1. a valid address is stored.
+    await ensureGuestContact(G1, REVOKED, A1, T1);
+    expect((await contactState(G1)).rows[0].revoked_at).toBeNull();
+
+    // 2. the address is later removed (empty). Old behaviour: early RETURN, contact untouched,
+    //    resolver still delivers to REVOKED. New behaviour: the contact is REVOKED.
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', NULL, '${A1}', '${T1}', 'staff_booking')`);
+    const c = (await contactState(G1)).rows[0];
+    expect(c.revoked_at, 'a removed email must revoke the stale contact').not.toBeNull();
+
+    // 3. the real resolver must NOT select the revoked contact — a required confirmation
+    //    resolves to a visible no_email_contact skip, not a send to the stale address.
+    const out = await enqueuePlayer({ guest: G1, academy: A1, trainer: T1, payment: 'tr_stale' });
+    const emailRow = out.rows.find((r) => r.channel === 'email');
+    expect(emailRow?.status).toBe('skipped');
+    expect(emailRow?.skip_reason).toBe('no_email_contact');
+    expect(emailRow?.destination_normalized ?? null, 'never resolve the stale address').not.toBe(REVOKED);
+  });
+
+  it('a fresh valid address UN-revokes and refreshes provenance; an unchanged re-run does not', async () => {
+    await ensureGuestContact(G1, REVOKED, A1, T1);
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', NULL, '${A1}', '${T1}', 'staff_booking')`);   // revoke
+    expect((await contactState(G1)).rows[0].revoked_at).not.toBeNull();
+
+    // new, different address → un-revoke + provenance refresh (new reason + time).
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', 'new@example.com', '${A1}', '${T1}', 'staff_booking')`);
+    const after = (await contactState(G1)).rows[0];
+    expect(after.revoked_at, 'a valid address makes the guest reachable again').toBeNull();
+    expect(after.destination_normalized).toBe('new@example.com');
+    expect(after.consent_source, 'provenance refreshes when the address genuinely changed').toBe('staff_booking');
+    const atAfterChange = new Date(after.consent_at).getTime();
+
+    // same address again → provenance is NOT bumped (no genuine change).
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', 'new@example.com', '${A1}', '${T1}', 'paid_booking')`);
+    const unchanged = (await contactState(G1)).rows[0];
+    expect(unchanged.consent_source, 'an unchanged re-run keeps the original provenance').toBe('staff_booking');
+    expect(new Date(unchanged.consent_at).getTime(), 'consent_at not bumped on a no-op').toBe(atAfterChange);
+  });
+  it('reactivating the SAME address after revocation is a FRESH capture (not stale provenance)', async () => {
+    // Codex #3: after a revoke, re-entering the SAME email clears revoked_at — but the
+    // provenance must ALSO refresh, because reactivation is a new lifecycle. An address change
+    // is not the only thing that counts as fresh.
+    await ensureGuestContact(G1, REVOKED, A1, T1);
+    // stamp an explicitly OLD provenance so a refresh is unambiguous.
+    await db.query(`UPDATE public.notification_contacts
+                      SET consent_at = '2020-01-01T00:00:00Z', consent_source = 'paid_booking'
+                    WHERE guest_player_id = '${G1}' AND channel='email'`);
+    // remove the email → revoke.
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', NULL, '${A1}', '${T1}', 'staff_booking')`);
+    expect((await contactState(G1)).rows[0].revoked_at).not.toBeNull();
+
+    // SAME address returns, with a new source → reactivation is a fresh capture.
+    await db.query(`SELECT public.ensure_guest_email_contact('${G1}', '${REVOKED}', '${A1}', '${T1}', 'staff_booking')`);
+    const c = (await contactState(G1)).rows[0];
+    expect(c.revoked_at, 'reactivated').toBeNull();
+    expect(c.destination_normalized).toBe(REVOKED);
+    expect(c.consent_source, 'provenance refreshed on reactivation').toBe('staff_booking');
+    expect(new Date(c.consent_at).getTime(), 'consent_at refreshed past the old stamp')
+      .toBeGreaterThan(new Date('2020-01-01T00:00:00Z').getTime());
+  });
 });
 
 describe('ensure_guest_email_contact — tenant-scoped, redacted, idempotent', () => {
@@ -270,11 +362,71 @@ describe('lockdown — ensure_guest_email_contact is service-role-only', () => {
   // (else it is a client-callable way to seed arbitrary tenant-scoped contacts).
   const canExec = async (role: string) =>
     (await db.query<{ ok: boolean }>(
-      `SELECT has_function_privilege($1, 'public.ensure_guest_email_contact(uuid,text,uuid,uuid)', 'EXECUTE') AS ok`, [role])).rows[0].ok;
+      `SELECT has_function_privilege($1, 'public.ensure_guest_email_contact(uuid,text,uuid,uuid,text)', 'EXECUTE') AS ok`, [role])).rows[0].ok;
 
+  // PR 10b widened this to 5 args (adding consent-source provenance). The pin referenced the
+  // OLD 4-arg signature and this suite never applied the new migration, so it was asserting
+  // the lockdown of a function that no longer exists — a green test proving nothing.
   it('anon + authenticated CANNOT execute; service_role CAN', async () => {
     expect(await canExec('anon')).toBe(false);
     expect(await canExec('authenticated')).toBe(false);
     expect(await canExec('service_role')).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CROSS-LAYER: the REAL resolver, not a capture stub.
+//
+// The dedicated RPC suite stubs enqueue_notification, so it proves contact creation and
+// enqueue ARGUMENTS separately — it cannot prove the resolver actually accepts a guest and
+// produces a deliverable row. That gap mattered: without a tenant-scoped contact a guest
+// resolves to no_email_contact, which is a visible 'skipped' row for a required event and NO
+// row at all for a non-required one. This is the end-to-end pin.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('staff-created GUEST confirmation reaches the real resolver as a pending row', () => {
+  const S9 = '01000000-0000-0000-0000-0000000000f9';
+  const B9 = '02000000-0000-0000-0000-0000000000f9';
+  const U_STAFF = '0e000000-0000-0000-0000-0000000000fa';
+
+  beforeEach(async () => {
+    await db.exec(`
+      DELETE FROM public.bookings; DELETE FROM public.availability_slots;
+      UPDATE public.trainer_profiles SET user_id = '${U_STAFF}' WHERE id = '${T1}';
+      INSERT INTO public.guest_players (id, full_name, email) VALUES ('${G1}', 'Gast G', 'gast-x@example.com')
+        ON CONFLICT (id) DO UPDATE SET email = excluded.email;
+      INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, start_time, end_time, price_per_session)
+        VALUES ('${S9}', '${T1}', '${A1}', now() + interval '3 days', now() + interval '3 days 1 hour', 20);
+      INSERT INTO public.bookings (id, slot_id, guest_player_id, status) VALUES ('${B9}', '${S9}', '${G1}', 'confirmed');
+      SELECT set_config('test.uid', '${U_STAFF}', false);`);
+    await db.exec(`CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
+      SELECT nullif(current_setting('test.uid', true), '')::uuid $fn$;`);
+  });
+
+  it('provisions the contact AND produces a pending email outbox row', async () => {
+    const n = await db.query<{ v: number }>(
+      `SELECT public.enqueue_booking_notification(ARRAY['${B9}']::uuid[], 'confirmation_player') AS v`);
+    expect(n.rows[0].v).toBe(1);
+
+    const contact = await db.query<{ destination_normalized: string; consent_source: string }>(
+      `SELECT destination_normalized, consent_source FROM public.notification_contacts WHERE guest_player_id = '${G1}'`);
+    expect(contact.rows[0].destination_normalized).toBe('gast-x@example.com');
+    expect(contact.rows[0].consent_source).toBe('staff_booking');
+
+    const out = await db.query<{ status: string; channel: string; skip_reason: string | null; destination_redacted: string }>(
+      `SELECT status, channel, skip_reason, destination_redacted FROM public.notification_outbox`);
+    expect(out.rows).toHaveLength(1);
+    expect(out.rows[0].channel).toBe('email');
+    expect(out.rows[0].status, 'a guest with a provisioned contact must be DELIVERABLE').toBe('pending');
+    expect(out.rows[0].skip_reason).toBeNull();
+  });
+
+  it('without the contact it would have been a no_email_contact skip — proving the provisioning is load-bearing', async () => {
+    // Same call, but the guest has no resolvable address at all.
+    await db.exec(`UPDATE public.guest_players SET email = NULL WHERE id = '${G1}';`);
+    await db.query(`SELECT public.enqueue_booking_notification(ARRAY['${B9}']::uuid[], 'confirmation_player')`);
+    const out = await db.query<{ status: string; skip_reason: string | null }>(
+      `SELECT status, skip_reason FROM public.notification_outbox`);
+    expect(out.rows[0].status).toBe('skipped');
+    expect(out.rows[0].skip_reason).toBe('no_email_contact');
   });
 });

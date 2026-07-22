@@ -685,3 +685,64 @@ hard bounce → skipped/failed + recovery visibility · new-booking burst
 collapses/batches · provider failure retries then marks failed ·
 `public_summary` contains no raw token/email/phone. Every migration ships with
 a pglite test that executes the real migration file (repo standard).
+
+## Residual reliability limitation: non-atomic mutation → enqueue (PR 10b)
+
+The booking notifications migrated in PR 10b (`request_staff`, `confirmation_player`,
+`cancelled_player`) are enqueued by the **browser**, in a separate round trip from the
+mutation that created or cancelled the bookings:
+
+```
+1. INSERT / UPDATE bookings        → returns the ids
+2. rpc enqueue_booking_notification(those ids, intent)
+```
+
+These two steps are **not atomic**. A crash, a closed tab, or a network drop between them
+leaves a booking with no notification. Nothing retries it, and nothing currently detects it.
+
+**Why it is acceptable for now:** the ordering is deliberately chosen so the only possible
+failure is a MISSING notification, never a notification for a booking that does not exist —
+the enqueue runs after the mutation succeeds and uses the ids the mutation itself returned.
+A missing transactional email on a low-volume flow is recoverable by a human; a confirmation
+for a booking that was never created is not.
+
+**What would close it**, when it becomes worth doing:
+
+- a transactional outbox written by the same statement as the booking mutation (a trigger
+  cannot do this safely today — see the RPC's header comment on why a `bookings` trigger
+  would re-create the paid-path double-send), or
+- a reconciliation sweep comparing recently created/cancelled bookings against
+  `notification_outbox` and enqueueing anything with no corresponding row.
+
+**Do not delete this section when the migration is "done".** The gap is a property of the
+current design, not of the migration, and it will outlive the PR that introduced it.
+
+## PR 10b scope note (booking notifications only)
+
+PR 10b migrates the BOOKING notification routes off the legacy send-email path onto the v2
+outbox via `enqueue_booking_notification(booking_ids, kind)`:
+
+| former legacy send | v2 route |
+| --- | --- |
+| review_received (ReviewForm) | trg_notify_review_received → review_received_trainer |
+| booking_request (BookLesson) | enqueue_booking_notification 'request_staff' → booking_request_staff |
+| manual_booking_confirmation (BookLesson, BookForPlayerDialog) | 'confirmation_player' → booking_confirmed_player |
+| booking_cancelled (DeleteSlotDialog) | 'cancelled_player' → booking_cancelled_player |
+
+NOT in scope for 10b (deliberately retained, tracked in PR 10c): `notify-followers` /
+open-slots availability, the `notification_queue` + `send-digest-emails` digest path, and the
+PR 8 "Other notifications" settings bridge. **The legacy migration is NOT complete after 10b** —
+`send-email` remains live and the bridge stays until 10c ships the open-slots + v2 digest work.
+
+Guest deliverability (10b): a guest with no account is made reachable by an in-scope
+`notification_contacts` row (`ensure_guest_email_contact`). When a guest's authoritative email
+is later REMOVED, that contact is REVOKED rather than left usable — a required confirmation then
+resolves to a visible `no_email_contact` skip instead of sending to a stale address. Provenance
+(`consent_source`/`consent_at`) refreshes on address change, reactivation (a previously-revoked contact returning), or an effective tenant-scope change; an unchanged, still-active re-run is a no-op.
+
+## Known follow-ups
+
+Out-of-scope findings surfaced during the migration are tracked in
+[NOTIFICATION_FOLLOWUPS.md](./NOTIFICATION_FOLLOWUPS.md) — currently the recipient-discovery
+fail-open sweep from PR 10b (send-invoice-email, notify-rebook-member-open, forward-invoice;
+notify-followers is covered by PR 10c).

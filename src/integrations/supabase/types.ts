@@ -9043,6 +9043,10 @@ export type Database = {
         Returns: string
       }
       digits_only: { Args: { _value: string }; Returns: string }
+      enqueue_booking_notification: {
+        Args: { p_booking_ids: string[]; p_kind: string }
+        Returns: number
+      }
       enqueue_notification: {
         Args: {
           p_event_key: string
@@ -9081,6 +9085,7 @@ export type Database = {
           p_academy_profile_id?: string
           p_email: string
           p_guest_player_id: string
+          p_source?: string
           p_trainer_id?: string
         }
         Returns: string
@@ -9855,6 +9860,7 @@ export type Database = {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
       }
+      notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string

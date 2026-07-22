@@ -2,6 +2,8 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
 import { renderStaffBookingEmail } from "./staff-booking-email.ts";
 import { writePaymentAuditLog, PaymentAuditStatus } from "./payment-audit.ts";
+import { redactDetail } from "./redact-detail.ts";
+import { personDisplayName } from "./person-identity.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
 type NotifySlackError = (
@@ -62,7 +64,7 @@ export async function runBookingPaidSideEffects(opts: {
       // invoice — alert so it can be created manually.
       await notifySlackError(source, "auto-create-invoice failed after paid transition", {
         bookingIds,
-        error: String(invoiceError),
+        error: redactDetail(String(invoiceError)),
       });
     } else {
       logStep("Auto-create invoice triggered");
@@ -72,7 +74,7 @@ export async function runBookingPaidSideEffects(opts: {
     logStep("Auto-create invoice error (non-fatal)", { error: String(invoiceErr) });
     await notifySlackError(source, "auto-create-invoice failed after paid transition", {
       bookingIds,
-      error: String(invoiceErr),
+      error: redactDetail(String(invoiceErr)),
     });
   }
 
@@ -105,11 +107,14 @@ export async function runBookingPaidSideEffects(opts: {
   // lane — which is exactly how three pins for this passed while the staff code was reverted.
   let staffErrors = 0;
   let playerStatus = "none";
+  let playerDetail: string | null = null;   // sanitized, length-bounded failure detail for the durable audit + alert
 
   // Booking context — display names for the Slack ping and the staff email only. Its
   // failure must NOT skip the fan-out: sendStaffBookingNotifications re-reads the
   // bookings itself and needs this purely for a name, so degrade to "Guest" instead.
   type BookingCtx = {
+    player_id?: string | null;
+    guest_player_id?: string | null;
     profiles?: { full_name?: string | null } | null;
     guest_players?: { full_name?: string | null } | null;
     availability_slots?: { trainer_id?: string | null } | null;
@@ -166,7 +171,13 @@ export async function runBookingPaidSideEffects(opts: {
     logStep("Booking context fetch threw (names degrade, fan-out continues)", { error: String(nameErr) });
   }
 
-  const playerName = booking?.profiles?.full_name ?? booking?.guest_players?.full_name ?? "Guest";
+  // GUEST-FIRST canonical identity, keyed on the row's IDs (person-identity twin): staff must
+  // see the guest/child name on a guest booking, never the linked parent/profile name.
+  const playerName = personDisplayName(
+    booking ?? {},
+    { profileName: booking?.profiles?.full_name, guestName: booking?.guest_players?.full_name },
+    "Guest",
+  );
 
   // LANE 1 — the payer's confirmation. Required delivery: a failure here is a paying
   // customer with no proof of purchase, so it alerts.
@@ -185,12 +196,16 @@ export async function runBookingPaidSideEffects(opts: {
       // log it here (double-alerting would be noise). no_payer / enqueue_failed enqueue
       // NOTHING, so nothing downstream surfaces them — alert LOUDLY.
       playerStatus = reason ?? "unknown";
+      // Preserve the helper's detail. Production logs were unavailable during the original
+      // incident, so a short sanitized code/detail must survive to the DURABLE audit row and
+      // the alert — not just the terminal 'reason'.
+      playerDetail = confirmation.detail ? redactDetail(confirmation.detail) : null;
       if (reason === "skipped") {
         skippedRows++;
         logStep("Paid booking confirmation is a visible skipped row (worker will alert)", { bookingIds, skipReason });
       } else {
         laneErrors++;
-        await notifySlackError(source, "paid booking confirmation could not be enqueued", { bookingIds, reason });
+        await notifySlackError(source, "paid booking confirmation could not be enqueued", { bookingIds, reason, detail: playerDetail });
       }
     }
   } catch (playerErr) {
@@ -198,10 +213,13 @@ export async function runBookingPaidSideEffects(opts: {
     // the payer is owed a required email and nothing downstream will ever surface it.
     laneErrors++;
     playerStatus = "threw";
+    playerDetail = redactDetail(String(playerErr));
     logStep("Player confirmation threw", { error: String(playerErr) });
+    // Parity with the enqueue_failed branch: the alert carries the SAME sanitized,
+    // length-bounded detail that goes to the durable audit, not a differently-shaped raw slice.
     await notifySlackError(source, "paid booking confirmation THREW — payer has no confirmation", {
       bookingIds,
-      error: String(playerErr).slice(0, 300),
+      detail: playerDetail,
     });
   }
 
@@ -248,7 +266,7 @@ export async function runBookingPaidSideEffects(opts: {
     logStep("Staff fan-out threw", { error: String(staffErr) });
     await notifySlackError(source, "staff booking fan-out THREW — no staff were notified", {
       bookingIds,
-      error: String(staffErr).slice(0, 300),
+      error: redactDetail(String(staffErr)),
     });
   }
 
@@ -262,7 +280,7 @@ export async function runBookingPaidSideEffects(opts: {
     invoice_id: invoiceId ?? null,
     status: PaymentAuditStatus.bookingPaidNotifications,
     metadata: {
-      playerRows, playerNoop, playerStatus,
+      playerRows, playerNoop, playerStatus, playerDetail,
       staffRows, staffSkipped, staffNoop, staffErrors,
       skippedRows, laneErrors,
       bookingCount: bookingIds.length,
@@ -337,7 +355,7 @@ export async function sendStaffBookingNotifications(opts: {
       logStep("Staff fan-out: booking read FAILED — recipients unknown", { error: rowsErr.message });
       await notifySlackError(source, "staff fan-out could not read bookings — no staff notified", {
         bookingIds,
-        error: rowsErr.message.slice(0, 300),
+        error: redactDetail(rowsErr.message),
       });
       return { enqueued: 0, skipped: 0, noop: 0, errors: 1 };
     }
@@ -381,7 +399,7 @@ export async function sendStaffBookingNotifications(opts: {
         logStep("Staff fan-out: academy manager read FAILED", { error: mgrErr.message });
         await notifySlackError(source, "academy managers could not be resolved — they were NOT notified", {
           bookingIds,
-          error: mgrErr.message.slice(0, 300),
+          error: redactDetail(mgrErr.message),
         });
       }
       const mgrRows = (managers ?? []) as Array<{ user_id: string; academy_profile_id: string }>;
@@ -415,7 +433,7 @@ export async function sendStaffBookingNotifications(opts: {
         logStep("Staff fan-out: trainer profile read FAILED", { error: tpsErr.message });
         await notifySlackError(source, "trainers could not be resolved — they were NOT notified", {
           bookingIds,
-          error: tpsErr.message.slice(0, 300),
+          error: redactDetail(tpsErr.message),
         });
       }
       const tpList = (tps ?? []) as Array<{ id: string; user_id: string | null }>;
@@ -526,7 +544,7 @@ export async function sendStaffBookingNotifications(opts: {
     logStep("Staff booking notification failed (non-fatal)", { error: String(staffErr) });
     await notifySlackError(source, "staff booking notification failed after paid transition", {
       bookingIds,
-      error: String(staffErr),
+      error: redactDetail(String(staffErr)),
     });
     return { enqueued: 0, skipped: 0, noop: 0, errors: 1 };
   }

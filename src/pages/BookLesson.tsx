@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { logger } from '@/lib/logger';
+import { enqueueBookingNotification } from '@/lib/bookingNotifications';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { trackEvent } from '@/lib/tracking';
 import FeatureErrorBoundary from '@/components/FeatureErrorBoundary';
@@ -9,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
-import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { insertBookings, insertBookingSingle } from '@/lib/bookings';
@@ -540,21 +540,16 @@ export default function BookLesson() {
         } catch { logger.warn('Slack notification failed (non-fatal)', { component: 'BookLesson' }); }
 
 
-        const firstSlot = selectedCyclus.slots[0];
-        const firstDate = formatDate(firstSlot.start_time, 'EEE d MMM yyyy');
-        const firstTime = formatDate(firstSlot.start_time, 'HH:mm');
         const cyclusLessonTitle = `${selectedCyclus.cyclus_name} (${t('booking.sessionsCount', { count: selectedCyclus.slots.length })})`;
 
         if (requiresApproval) {
-          await supabase.functions.invoke('send-email', {
-            body: { type: 'booking_request', to: trainer.profiles.email, data: {
-              trainerName: trainer.profiles.full_name, playerName: profile.full_name, playerEmail: profile.email,
-              lessonTitle: cyclusLessonTitle,
-              lessonDate: firstDate, lessonTime: firstTime,
-              location: selectedCyclus.location ? `${selectedCyclus.location.name}, ${selectedCyclus.location.city}` : null,
-              price: selectedCyclus.totalPrice,
-            }},
-          });
+          // v2: ids the insert actually returned, one call, single tenant. The server derives
+          // the trainer, the address and the copy — none of it travels from here.
+          await enqueueBookingNotification(
+            (insertedCycleBookings as { id: string }[] | null)?.map((b) => b.id) ?? [],
+            'request_staff',
+            'BookLesson',
+          );
           setRequestSent(true);
           toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
         } else if (paymentTiming === 'manual' || paymentTiming === 'invoice_after_weeks') {
@@ -563,15 +558,11 @@ export default function BookLesson() {
             try { await syncSplitCountForCycle(selectedCyclus.cyclus_id); }
             catch (err) { logger.warn('Split count sync failed after booking', { error: (err as Error)?.message }); }
           }
-          await supabase.functions.invoke('send-email', {
-            body: { type: 'manual_booking_confirmation', to: profile.email, data: {
-              playerName: profile.full_name, trainerName: trainer.profiles.full_name,
-              lessonTitle: cyclusLessonTitle,
-              lessonDate: firstDate, lessonTime: firstTime,
-              location: selectedCyclus.location ? `${selectedCyclus.location.name}, ${selectedCyclus.location.city}` : null,
-              price: selectedCyclus.totalPrice,
-            }},
-          });
+          await enqueueBookingNotification(
+            (insertedCycleBookings as { id: string }[] | null)?.map((b) => b.id) ?? [],
+            'confirmation_player',
+            'BookLesson',
+          );
           setBooked(true);
         } else {
           // Payment setup was already validated above (P-03), before the
@@ -620,19 +611,16 @@ export default function BookLesson() {
       const useManualInvoicing = trainer.use_manual_invoicing;
 
       if (requiresApproval) {
-        const { error } = await insertBookingSingle({
+        // 'id' so the enqueue can name the exact row that was created.
+        const { data: requestRow, error } = await insertBookingSingle({
           player_id: profile.id, slot_id: selectedSlot.id, notes: notes || null, status: 'pending_approval', payment_status: 'pending',
-        });
+        }, supabase, 'id');
         if (error) throw error;
-        const lessonDate = formatDate(selectedSlot.start_time, 'EEE d MMM yyyy');
-        const lessonTime = formatDate(selectedSlot.start_time, 'HH:mm');
-        await supabase.functions.invoke('send-email', {
-          body: { type: 'booking_request', to: trainer.profiles.email, data: {
-            trainerName: trainer.profiles.full_name, playerName: profile.full_name, playerEmail: profile.email,
-            lessonTitle: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), lessonDate, lessonTime,
-            location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null, price,
-          }},
-        });
+        await enqueueBookingNotification(
+          [(requestRow as { id: string } | null)?.id ?? ''],
+          'request_staff',
+          'BookLesson',
+        );
         setRequestSent(true);
         toast({ title: t('bookLesson.requestSent'), description: t('bookLesson.requestSentDescription') });
       } else if (useManualInvoicing) {
@@ -645,15 +633,11 @@ export default function BookLesson() {
           try { await supabase.functions.invoke('auto-create-invoice', { body: { bookingIds: [bookingData.id] } }); }
           catch (invoiceErr) { logger.error('Auto-create invoice failed (non-fatal)', invoiceErr as Error, { component: 'BookLesson', action: 'auto-invoice-single' }); }
         }
-        const lessonDate = formatDate(selectedSlot.start_time, 'EEE d MMM yyyy');
-        const lessonTime = formatDate(selectedSlot.start_time, 'HH:mm');
-        await supabase.functions.invoke('send-email', {
-          body: { type: 'manual_booking_confirmation', to: profile.email, data: {
-            playerName: profile.full_name, trainerName: trainer.profiles.full_name,
-            lessonTitle: selectedSlot.cyclus_name || t('booking.trainingSession', 'Training Session'), lessonDate, lessonTime,
-            location: selectedSlot.location ? `${selectedSlot.location.name}, ${selectedSlot.location.city}` : null, price,
-          }},
-        });
+        await enqueueBookingNotification(
+          [bookingData?.id ?? ''],
+          'confirmation_player',
+          'BookLesson',
+        );
         setBooked(true);
       } else {
         const paymentSetup = await hasValidPaymentSetup(trainerId!, trainer.id, trainer.use_manual_invoicing ?? false);

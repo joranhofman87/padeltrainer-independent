@@ -5,7 +5,7 @@ import { Trash2, AlertTriangle, Loader2, Bell, Calendar, Receipt, CreditCard } f
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getFriendlyErrorMessage } from "@/lib/friendlyError";
-import { sendBookingCancellation } from "@/lib/email";
+import { enqueueBookingNotification } from '@/lib/bookingNotifications';
 import { logger } from "@/lib/logger";
 import { recalculateInvoiceAfterRemoval, syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
@@ -51,8 +51,6 @@ interface InvoiceInfo {
 
 // Minimal shapes for the supabase nested-join reads below — keeps this now-neutral component free of
 // `any` (the joins are only read for a display name / email).
-type TrainerJoin = { profiles?: { full_name?: string | null } | null } | null;
-type PlayerContact = { full_name?: string | null; email?: string | null } | null;
 
 export function DeleteSlotDialog({
   open,
@@ -234,56 +232,43 @@ export function DeleteSlotDialog({
         const slotIds = cyclusSlots?.map((s) => s.id) || [];
 
         if (slotIds.length > 0) {
-          const { data: slotsWithDetails } = await supabase
-            .from("availability_slots")
-            .select(`
-              id, start_time, end_time, cyclus_name,
-              trainer:trainer_profiles(id, user_id, profiles:user_id(full_name, email))
-            `)
-            .in("id", slotIds);
-
-          const { data: bookingsToCancel } = await supabase
+          const { data: bookingsToCancel, error: readError } = await supabase
             .from("bookings")
-            .select(`
-              id, slot_id, guest_player_id, player_id,
-              guest_players(full_name, email),
-              profiles:player_id(full_name, email, user_id)
-            `)
+            // Only `id`. The names and addresses this used to join were for composing the
+            // cancellation email in the browser; the server derives them now, so pulling
+            // player PII here would be collecting data we no longer have a use for.
+            .select("id")
             .in("slot_id", slotIds)
             .in("status", ["pending", "confirmed"]);
 
-          if (bookingsToCancel && bookingsToCancel.length > 0) {
-            cancelledBookingIds.push(...bookingsToCancel.map(b => b.id));
+          // Inspect the read. A failed candidate query resolves {data: null} and would look
+          // exactly like "no bookings to cancel" — cancelling silently and notifying nobody.
+          if (readError) throw readError;
 
-            await supabase
+          if (bookingsToCancel && bookingsToCancel.length > 0) {
+            const candidateIds = bookingsToCancel.map((bk) => bk.id);
+
+            // Bound the UPDATE by the ids we actually READ, and take back exactly what it
+            // changed. Re-selecting by slot+status here would also cancel anything inserted
+            // between the read and the write — cancelled with no notification and missing
+            // from invoice reconciliation.
+            const { data: cancelledRows, error: cancelError } = await supabase
               .from("bookings")
               .update({ status: "cancelled" })
-              .in("id", cancelledBookingIds);
+              .in("id", candidateIds)
+              .in("status", ["pending", "confirmed"])
+              .select("id");
+            if (cancelError) throw cancelError;
 
-            if (notifyPlayers) {
-              for (const booking of bookingsToCancel) {
-                const slotDetails = slotsWithDetails?.find(s => s.id === booking.slot_id);
-                const trainerProfile = slotDetails?.trainer as unknown as TrainerJoin;
-                const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
-                const lessonTitle = slotDetails?.cyclus_name || "Training session";
-                const lessonDate = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "MMMM d, yyyy") : "";
-                const lessonTime = slotDetails?.start_time ? format(new Date(slotDetails.start_time), "HH:mm") : "";
+            const actuallyCancelled = (cancelledRows ?? []).map((bk) => bk.id);
+            cancelledBookingIds.push(...actuallyCancelled);
 
-                const playerInfo = booking.guest_player_id 
-                  ? (booking.guest_players as unknown as PlayerContact)
-                  : (booking.profiles as unknown as PlayerContact);
-
-                if (playerInfo?.email) {
-                  sendBookingCancellation(
-                    playerInfo.email,
-                    playerInfo.full_name || "Player",
-                    trainerName,
-                    lessonTitle,
-                    lessonDate,
-                    lessonTime
-                  ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
-                }
-              }
+            if (notifyPlayers && actuallyCancelled.length > 0) {
+              // ONE call with exactly the rows the UPDATE changed. The RPC groups per
+              // recipient and gives each only their own sessions — the old per-booking loop
+              // sent one mail PER BOOKING, so a player losing a whole cycle got N of them.
+              // After the update, because the RPC requires cancelled status.
+              await enqueueBookingNotification(actuallyCancelled, 'cancelled_player', 'DeleteSlotDialog');
             }
           }
 
@@ -318,58 +303,37 @@ export function DeleteSlotDialog({
       } else {
         // Delete single slot
         if (hasBookings) {
-          // Get bookings with player info
-          const { data: bookingsToCancel } = await supabase
+          // Candidate ids only — the player names/addresses this used to join were purely
+          // for composing the email client-side, and the server derives them now.
+          const { data: bookingsToCancel, error: readErrorSingle } = await supabase
             .from("bookings")
-            .select(`
-              id, guest_player_id, player_id,
-              guest_players(full_name, email),
-              profiles:player_id(full_name, email, user_id)
-            `)
+            .select("id")
             .eq("slot_id", slot.id)
             .in("status", ["pending", "confirmed"]);
 
-          if (bookingsToCancel && bookingsToCancel.length > 0) {
-            cancelledBookingIds.push(...bookingsToCancel.map(b => b.id));
+          if (readErrorSingle) throw readErrorSingle;
 
-            await supabase
+          if (bookingsToCancel && bookingsToCancel.length > 0) {
+            const candidateIds = bookingsToCancel.map((bk) => bk.id);
+
+            // THE RACE THIS FIXES: the UPDATE used to re-select by slot_id + status, so a
+            // booking created between the read and the write was cancelled anyway — with no
+            // notification and absent from invoice reconciliation. Bound to the read ids.
+            const { data: cancelledRows, error: cancelError } = await supabase
               .from("bookings")
               .update({ status: "cancelled" })
-              .eq("slot_id", slot.id)
-              .in("status", ["pending", "confirmed"]);
+              .in("id", candidateIds)
+              .in("status", ["pending", "confirmed"])
+              .select("id");
+            if (cancelError) throw cancelError;
 
-            if (notifyPlayers) {
-              const { data: slotWithDetails } = await supabase
-                .from("availability_slots")
-                .select(`
-                  id, start_time, end_time, cyclus_name,
-                  trainer:trainer_profiles(id, user_id, profiles:user_id(full_name, email))
-                `)
-                .eq("id", slot.id)
-                .single();
+            const actuallyCancelled = (cancelledRows ?? []).map((bk) => bk.id);
+            cancelledBookingIds.push(...actuallyCancelled);
 
-              const trainerProfile = slotWithDetails?.trainer as unknown as TrainerJoin;
-              const trainerName = trainerProfile?.profiles?.full_name || "Your trainer";
-              const lessonTitle = slotWithDetails?.cyclus_name || "Training session";
-              const lessonDate = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "MMMM d, yyyy") : "";
-              const lessonTime = slotWithDetails?.start_time ? format(new Date(slotWithDetails.start_time), "HH:mm") : "";
-
-              for (const booking of bookingsToCancel) {
-                const playerInfo = booking.guest_player_id 
-                  ? (booking.guest_players as unknown as PlayerContact)
-                  : (booking.profiles as unknown as PlayerContact);
-
-                if (playerInfo?.email) {
-                  sendBookingCancellation(
-                    playerInfo.email,
-                    playerInfo.full_name || "Player",
-                    trainerName,
-                    lessonTitle,
-                    lessonDate,
-                    lessonTime
-                  ).catch(err => logger.error("Failed to send cancellation email", err instanceof Error ? err : new Error(String(err)), { component: 'DeleteSlotDialog' }));
-                }
-              }
+            if (notifyPlayers && actuallyCancelled.length > 0) {
+              // The slot/trainer lookup that fed the old email is gone: the server derives
+              // all of it, so the browser no longer decides who a cancellation is addressed to.
+              await enqueueBookingNotification(actuallyCancelled, 'cancelled_player', 'DeleteSlotDialog');
             }
           }
         }
