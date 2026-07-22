@@ -482,6 +482,9 @@ const handler = async (req: Request): Promise<Response> => {
       const recipientEmail = resolveRecipient({
         isTest,
         callerEmail,
+        // GUEST-FIRST, keyed on the row's ids (FAM-02): the child's own email wins; the linked
+        // profile address is the fallback only when the guest has none.
+        row: { player_id: c.player_id, guest_player_id: c.guest_player_id },
         playerEmail: c.profiles?.email,
         guestEmail: effectiveGuestEmail(c.guest_players),
       });

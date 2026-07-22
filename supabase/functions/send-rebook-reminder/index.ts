@@ -121,8 +121,10 @@ serve(async (req: Request) => {
     for (const c of recipients) {
       const email = resolveRecipient({
         isTest: false, callerEmail: null,
-        // Guest email falls back to the linked profile's address (FAM-02: claims are
-        // guest-keyed; an email-less linked guest stays reachable via the parent's inbox).
+        // GUEST-FIRST, keyed on the row's ids (FAM-02): a dual-key child is reached at their OWN
+        // email; the linked profile's address is the fallback ONLY when the guest has none
+        // (effectiveGuestEmail already does guest.email ?? linked_profile.email).
+        row: { player_id: c.player_id, guest_player_id: c.guest_player_id },
         playerEmail: c.profiles?.email, guestEmail: effectiveGuestEmail(c.guest_players),
       });
       if (!email) { skipped++; continue; }
