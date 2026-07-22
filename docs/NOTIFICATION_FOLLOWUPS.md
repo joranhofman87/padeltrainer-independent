@@ -23,3 +23,19 @@ Fix each per the PR 10a doctrine: inspect the `{ error }` and guard the throw; a
 or thrown exception ABORTS the lane (non-200 / error result), and only a successful no-row/
 no-email answer uses the designed fallback. Add regression tests mirroring
 `src/test/bookingConfirmationEmail.test.ts` ('identity RPC returns an ERROR', 'identity RPC THROWS').
+
+## Slack alert redaction backstop (defence-in-depth, found by PR 10b adversarial verification)
+
+PR 10b routes every failure `detail` in `mollie-booking-paid-side-effects.ts` through
+`redactDetail` before it reaches Slack or the durable audit (player lane + all sibling
+invoice/staff lanes). But the Slack SINKS themselves do not redact: the per-function
+`notifySlackError` in `mollie-webhook/index.ts` and `verify-mollie-payment/index.ts`, and the
+shared `notifySlackEdgeError` in `_shared/edge-slack.ts`, spread `...context` verbatim and only
+`.slice()` the top-level `errorMessage`. Any OTHER edge function that passes a raw error string
+in `error:`/`detail:` context still leaks it to Slack.
+
+Follow-up: add a redaction backstop inside the Slack sink (`notifySlackEdge` / the per-function
+`notifySlackError`) so `error`/`detail` string fields are scrubbed centrally — redact only those
+free-text keys, NOT structured context (booking-id UUIDs etc., which `redactDetail`'s long-token
+rule would otherwise mangle). Not a PR 10b blocker (10b's own lanes are all redacted at the call
+site), but the right central defence. No task id yet.

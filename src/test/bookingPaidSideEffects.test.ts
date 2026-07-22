@@ -696,5 +696,26 @@ describe('PR 10b #4 — the confirmation failure DETAIL survives to the alert + 
     const alerted = notify.mock.calls.find((c) => String(c[1]).includes('could not be enqueued'));
     expect(JSON.stringify(alerted![2]), 'alert also redacted').not.toContain('kim@home.nl');
   });
+
+  it('a STAFF-lane failure also redacts its error before the Slack alert (not just the player lane)', async () => {
+    // The adversarial pass caught this: the redactor was applied only to LANE 1. The staff
+    // fan-out and invoice lanes pushed raw error strings straight to Slack. A staff read that
+    // FAILS with sensitive text must be redacted too.
+    const { supabase } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      throwOnTable: 'trainer_profiles',   // staff fan-out read throws
+      queryError: { bookings: 'staff read failed for coach@example.com on tr_LEAKYPAYMENTID12345' },
+      staffBookings: [{ id: 'B1', availability_slots: { ...SLOT, academy_profile_id: null, trainer_id: 'tp-1' } }],
+      trainerProfiles: [{ id: 'tp-1', user_id: 'user-trainer' }],
+      profileRows: [{ user_id: 'user-trainer', full_name: 'Trainer T' }],
+    });
+    const notify = await run(supabase);
+    // whichever staff alert fired, no raw email / payment id may appear in ANY alert context
+    const anyRaw = notify.mock.calls.some((c) =>
+      String(JSON.stringify(c[2] ?? '')).includes('coach@example.com')
+      || String(JSON.stringify(c[2] ?? '')).includes('tr_LEAKYPAYMENTID12345'));
+    expect(anyRaw, 'no staff-lane alert may carry a raw email or payment id').toBe(false);
+  });
 });
 

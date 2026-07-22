@@ -63,7 +63,7 @@ export async function runBookingPaidSideEffects(opts: {
       // invoice — alert so it can be created manually.
       await notifySlackError(source, "auto-create-invoice failed after paid transition", {
         bookingIds,
-        error: String(invoiceError),
+        error: redactDetail(String(invoiceError)),
       });
     } else {
       logStep("Auto-create invoice triggered");
@@ -73,7 +73,7 @@ export async function runBookingPaidSideEffects(opts: {
     logStep("Auto-create invoice error (non-fatal)", { error: String(invoiceErr) });
     await notifySlackError(source, "auto-create-invoice failed after paid transition", {
       bookingIds,
-      error: String(invoiceErr),
+      error: redactDetail(String(invoiceErr)),
     });
   }
 
@@ -257,7 +257,7 @@ export async function runBookingPaidSideEffects(opts: {
     logStep("Staff fan-out threw", { error: String(staffErr) });
     await notifySlackError(source, "staff booking fan-out THREW — no staff were notified", {
       bookingIds,
-      error: String(staffErr).slice(0, 300),
+      error: redactDetail(String(staffErr)),
     });
   }
 
@@ -346,7 +346,7 @@ export async function sendStaffBookingNotifications(opts: {
       logStep("Staff fan-out: booking read FAILED — recipients unknown", { error: rowsErr.message });
       await notifySlackError(source, "staff fan-out could not read bookings — no staff notified", {
         bookingIds,
-        error: rowsErr.message.slice(0, 300),
+        error: redactDetail(rowsErr.message),
       });
       return { enqueued: 0, skipped: 0, noop: 0, errors: 1 };
     }
@@ -390,7 +390,7 @@ export async function sendStaffBookingNotifications(opts: {
         logStep("Staff fan-out: academy manager read FAILED", { error: mgrErr.message });
         await notifySlackError(source, "academy managers could not be resolved — they were NOT notified", {
           bookingIds,
-          error: mgrErr.message.slice(0, 300),
+          error: redactDetail(mgrErr.message),
         });
       }
       const mgrRows = (managers ?? []) as Array<{ user_id: string; academy_profile_id: string }>;
@@ -424,7 +424,7 @@ export async function sendStaffBookingNotifications(opts: {
         logStep("Staff fan-out: trainer profile read FAILED", { error: tpsErr.message });
         await notifySlackError(source, "trainers could not be resolved — they were NOT notified", {
           bookingIds,
-          error: tpsErr.message.slice(0, 300),
+          error: redactDetail(tpsErr.message),
         });
       }
       const tpList = (tps ?? []) as Array<{ id: string; user_id: string | null }>;
@@ -535,7 +535,7 @@ export async function sendStaffBookingNotifications(opts: {
     logStep("Staff booking notification failed (non-fatal)", { error: String(staffErr) });
     await notifySlackError(source, "staff booking notification failed after paid transition", {
       bookingIds,
-      error: String(staffErr),
+      error: redactDetail(String(staffErr)),
     });
     return { enqueued: 0, skipped: 0, noop: 0, errors: 1 };
   }
