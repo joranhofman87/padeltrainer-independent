@@ -8756,6 +8756,10 @@ export type Database = {
         Returns: undefined
       }
       app_now: { Args: never; Returns: string }
+      append_rebook_member_open_notified: {
+        Args: { _cycle_id: string; _keys: string[] }
+        Returns: undefined
+      }
       apply_slot_delete_to_cycle: {
         Args: { _cycle_id: string; _slot_ids: string[] }
         Returns: {
@@ -9751,6 +9755,10 @@ export type Database = {
         Args: { _guest_id: string; _user_id: string }
         Returns: boolean
       }
+      guest_verified_account_profile: {
+        Args: { _guest_id: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -10010,6 +10018,17 @@ export type Database = {
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
+      resolve_guest_member_contacts: {
+        Args: { _guest_ids: string[] }
+        Returns: {
+          account_email: string
+          account_name: string
+          guest_id: string
+          has_account: boolean
+          own_email: string
+          own_name: string
+        }[]
+      }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       resolve_short_link: {
         Args: { _code: string }
