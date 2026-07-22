@@ -102,6 +102,16 @@ beforeAll(async () => {
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260724100000_app_now_clock.sql'), 'utf8'));
   // Per-cycle lead override (settings.rebook_reminder_lead_hours).
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260806100000_rebook_reminder_lead_per_cycle.sql'), 'utf8'));
+  // The member-open cron trio (real defs live in 20260714110000 / 20260817100000) — stubbed with the
+  // SAME signatures so the PR 10d migration's grant lockdown on them applies without erroring here.
+  await db.exec(`
+    CREATE FUNCTION public.rebook_cycles_needing_member_open_notice() RETURNS TABLE(cycle_id uuid)
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT NULL::uuid WHERE false $fn$;
+    CREATE FUNCTION public.claim_rebook_member_open_notice(_cycle_id uuid) RETURNS boolean
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT true $fn$;
+    CREATE FUNCTION public.unclaim_rebook_member_open_notice(_cycle_id uuid) RETURNS void
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT $fn$;
+  `);
   // PR 10d: guest-first re-emit (+ the bump_rebook_reminders guard). This must preserve every
   // eligibility/lead/app_now behaviour above for pure-profile + pure-guest rows (their guest-first
   // key equals the old player-first key), so the existing suite is now regression coverage for it.

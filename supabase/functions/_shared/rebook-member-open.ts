@@ -38,23 +38,80 @@ export const recipientKey = (r: { player_id: string | null; guest_player_id: str
 
 const keyOf = recipientKey;
 
+/** Contact lookups for member-open recipients, keyed by RAW id (profileId / guestId). */
+export interface MemberOpenContactMaps {
+  profileName: Map<string, string>;      // profileId -> name
+  profileEmail: Map<string, string>;     // profileId -> email
+  guestName: Map<string, string>;        // guestId -> name
+  guestOwnEmail: Map<string, string>;    // guestId -> the guest's OWN email
+  guestLinkedEmail: Map<string, string>; // guestId -> the guest's linked_profile email
+  guestLinked: Set<string>;              // guestIds that have a linked account (linked_profile_id)
+}
+
 /**
- * Resolve a member-open recipient's contact, GUEST-FIRST (FAM-02): the guest's OWN name/email win;
- * the linked profile (reached via the dual-key ref's player_id) is the fallback ONLY when the guest
- * has none. Names are looked up regardless of email presence, so a dual-key child with no address of
- * their own still shows THEIR name while borrowing the parent's inbox. Returns null when no
- * deliverable email exists (the caller drops the recipient). Pure so it can be unit-tested.
+ * Resolve a member-open recipient's contact, GUEST-FIRST (FAM-02), with the repo's canonical guest
+ * contact fallback and the correct CTA signal.
+ *
+ * name  — the guest's OWN name wins; the linked parent's name is the blank-name fallback.
+ * email — the guest's OWN address, then their linked-profile address (an account), then the linked
+ *         parent (via a dual-key ref's player_id). Matches effectiveGuestEmail / personContactEmail:
+ *         a guest-only priority person with no personal email but a linked account is STILL delivered.
+ * needsSignup — true ONLY for a genuinely accountless guest (a guest with no linked account and no
+ *         linked parent). An account-backed recipient (a profile, a dual-key child, or a linked
+ *         guest) must NOT get a "create an account" CTA sent to an address that already has one.
+ *
+ * Returns null when no deliverable email exists (the caller drops the recipient). Pure — unit-tested.
  */
 export function resolveMemberOpenContact(
   ref: MemberOpenRecipient,
-  nameByKey: Map<string, string>,
-  emailByKey: Map<string, string>,
-): { name: string; email: string } | null {
-  const gkey = ref.guest_player_id ? `g:${ref.guest_player_id}` : null;
-  const pkey = ref.player_id ?? null; // on a dual-key ref this is the LINKED PARENT profile id
-  const name = (gkey ? nameByKey.get(gkey) : undefined) || (pkey ? nameByKey.get(pkey) : undefined) || "";
-  const email = (gkey ? emailByKey.get(gkey) : undefined) || (pkey ? emailByKey.get(pkey) : undefined) || null;
-  return email ? { name, email } : null;
+  maps: MemberOpenContactMaps,
+): { name: string; email: string; needsSignup: boolean } | null {
+  const gid = ref.guest_player_id ?? null;
+  const pid = ref.player_id ?? null; // on a dual-key ref this is the LINKED PARENT profile id
+  const name = (gid ? maps.guestName.get(gid) : undefined) || (pid ? maps.profileName.get(pid) : undefined) || "";
+  const email =
+    (gid ? maps.guestOwnEmail.get(gid) : undefined) ||
+    (gid ? maps.guestLinkedEmail.get(gid) : undefined) ||
+    (pid ? maps.profileEmail.get(pid) : undefined) ||
+    null;
+  if (!email) return null;
+  const accountBacked = !!pid || (!!gid && maps.guestLinked.has(gid));
+  return { name, email, needsSignup: !!gid && !accountBacked };
+}
+
+/**
+ * Crash-recovery contract for ONE already-claimed member-open cycle: run `notify`, and RELEASE the
+ * idempotency claim whenever the cycle could not be fully notified — a partial send (failed > 0) OR
+ * a thrown DB read error — so a hiccup can never leave a cycle permanently claimed with its audience
+ * unsent. Successes are recorded per-recipient (RB03), so a retry re-sends only the failures. An
+ * unclaim failure is surfaced in `error` (released=false) so the caller can alert. Kept here
+ * (Resend-free) so it is unit-testable without importing the edge entrypoint. `notify` throwing is
+ * the load-bearing case: every recipient-discovery read in the real notifyCycle fails loud, and any
+ * such throw lands here and releases the claim.
+ */
+export async function runClaimedCycle(
+  // Minimal RPC surface — `unknown` return so the real SupabaseClient (a PostgrestFilterBuilder) and
+  // a test fake both satisfy it; the awaited result is narrowed at the call below.
+  supabase: { rpc: (name: string, args: Record<string, unknown>) => unknown },
+  cycleId: string,
+  notify: (cycleId: string) => Promise<{ sent: number; failed: number }>,
+): Promise<{ sent: number; failed: number; released: boolean; error: string | null }> {
+  const release = async (): Promise<string | null> => {
+    const { error } = await (supabase.rpc("unclaim_rebook_member_open_notice", { _cycle_id: cycleId }) as Promise<{ error: unknown }>);
+    return error ? `unclaim failed: ${(error as { message?: string })?.message ?? error}` : null;
+  };
+  try {
+    const { sent, failed } = await notify(cycleId);
+    if (failed > 0) {
+      const relErr = await release();
+      return { sent, failed, released: !relErr, error: relErr };
+    }
+    return { sent, failed, released: false, error: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const relErr = await release();
+    return { sent: 0, failed: 0, released: !relErr, error: relErr ? `${msg}; ${relErr}` : msg };
+  }
 }
 
 export function computeMemberOpenAudience(

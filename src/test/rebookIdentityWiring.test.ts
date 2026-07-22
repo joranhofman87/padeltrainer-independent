@@ -89,7 +89,28 @@ describe('PR 10d wiring — upstream producers preserve both people (proofs #1, 
     expect(h).not.toContain('r.player_id ?? (r.guest_player_id ? `g:${r.guest_player_id}` : null);'); // old player-first
     expect(h).toContain('export function resolveMemberOpenContact(');       // guest-first name/email + parent fallback
     const s = fn('notify-rebook-member-open');
-    expect(s).toContain('resolveMemberOpenContact(a, nameByKey, emailByKey)');
+    expect(s).toContain('resolveMemberOpenContact(a, maps)');
+    expect(s).toContain('needsSignup: contact.needsSignup');               // linked accounts don't get a signup CTA
     expect(s).not.toContain('key.startsWith("g:")'); // isGuest now derived from the id, not the (moved) key format
+  });
+
+  it('notify-rebook-member-open fails loud on recipient-discovery reads + releases the claim on failure', () => {
+    const s = fn('notify-rebook-member-open');
+    // load-bearing reads throw instead of masquerading as empty (→ no permanent claim / silent drop)
+    for (const m of ['cycle read failed', 'slots read failed', 'claims read failed', 'profiles read failed', 'guests read failed']) {
+      expect(s, `must fail loud on: ${m}`).toContain(m);
+    }
+    // recovery is the shared, tested runClaimedCycle (release on partial/throw + surface unclaim errors)
+    expect(s).toContain('runClaimedCycle(supabase, cycleId, (id) => notifyCycle(supabase, resend, id))');
+    const h = shared('rebook-member-open.ts');
+    expect(h).toContain('export async function runClaimedCycle(');
+  });
+
+  it('the other three senders fail loud on their load-bearing reads', () => {
+    expect(fn('send-rebook-reminder')).toContain('claims read failed');
+    expect(fn('send-rebook-reminder')).toContain('slot read failed');
+    expect(fn('send-rebook-group-confirmation')).toContain('member read failed');
+    expect(fn('send-rebook-group-confirmation')).toContain('invited-state read failed');
+    expect(fn('auto-rebook-reminder')).toContain('slot read failed — skipping cycle');
   });
 });

@@ -70,6 +70,17 @@ beforeAll(async () => {
       SELECT COALESCE(NULLIF(current_setting('app.fake_now', true), '')::timestamptz, now())
     $fn$;
 
+    -- The member-open cron trio (real defs live in 20260714110000 / 20260817100000). Stubbed here
+    -- with the SAME signatures so the migration's grant lockdown applies + can be pinned. A fresh
+    -- function is PUBLIC-executable by default, so anon/authenticated start able to run it — exactly
+    -- the leak the migration closes.
+    CREATE FUNCTION public.rebook_cycles_needing_member_open_notice() RETURNS TABLE(cycle_id uuid)
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT NULL::uuid WHERE false $fn$;
+    CREATE FUNCTION public.claim_rebook_member_open_notice(_cycle_id uuid) RETURNS boolean
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT true $fn$;
+    CREATE FUNCTION public.unclaim_rebook_member_open_notice(_cycle_id uuid) RETURNS void
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT $fn$;
+
     INSERT INTO public.academy_profiles VALUES ('${ACAD}', 'RL Padel');
     INSERT INTO public.profiles (id, full_name, email) VALUES ('${PARENT}', 'Parent', 'parent@example.com');
     INSERT INTO public.guest_players (id, full_name, email, linked_profile_id) VALUES
@@ -157,13 +168,22 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
     }
   });
 
-  it('proof #9: the SECURITY DEFINER detection RPC is locked to service_role (anon/authenticated cannot execute)', async () => {
+  it('proof #9: every SECURITY DEFINER rebook RPC is locked to service_role (anon/authenticated cannot execute)', async () => {
     const r = (await db.query<{ chk: string; v: boolean }>(`
       SELECT 'anon' AS chk, has_function_privilege('anon','public.rebook_claims_needing_auto_reminder(int)','execute') AS v
       UNION ALL SELECT 'authenticated', has_function_privilege('authenticated','public.rebook_claims_needing_auto_reminder(int)','execute')
       UNION ALL SELECT 'service_role',  has_function_privilege('service_role','public.rebook_claims_needing_auto_reminder(int)','execute')
       UNION ALL SELECT 'bump_anon',     has_function_privilege('anon','public.bump_rebook_reminders(uuid[],uuid[],uuid[])','execute')
       UNION ALL SELECT 'bump_service',  has_function_privilege('service_role','public.bump_rebook_reminders(uuid[],uuid[],uuid[])','execute')
+      -- the member-open cron trio (same footgun, now closed)
+      UNION ALL SELECT 'cycles_anon',   has_function_privilege('anon','public.rebook_cycles_needing_member_open_notice()','execute')
+      UNION ALL SELECT 'cycles_auth',   has_function_privilege('authenticated','public.rebook_cycles_needing_member_open_notice()','execute')
+      UNION ALL SELECT 'cycles_svc',    has_function_privilege('service_role','public.rebook_cycles_needing_member_open_notice()','execute')
+      UNION ALL SELECT 'claim_anon',    has_function_privilege('anon','public.claim_rebook_member_open_notice(uuid)','execute')
+      UNION ALL SELECT 'claim_auth',    has_function_privilege('authenticated','public.claim_rebook_member_open_notice(uuid)','execute')
+      UNION ALL SELECT 'claim_svc',     has_function_privilege('service_role','public.claim_rebook_member_open_notice(uuid)','execute')
+      UNION ALL SELECT 'unclaim_anon',  has_function_privilege('anon','public.unclaim_rebook_member_open_notice(uuid)','execute')
+      UNION ALL SELECT 'unclaim_svc',   has_function_privilege('service_role','public.unclaim_rebook_member_open_notice(uuid)','execute')
     `)).rows;
     const by = Object.fromEntries(r.map((x) => [x.chk, x.v]));
     expect(by.anon).toBe(false);          // the cross-academy email/token leak is closed
@@ -171,5 +191,14 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
     expect(by.service_role).toBe(true);
     expect(by.bump_anon).toBe(false);
     expect(by.bump_service).toBe(true);
+    // member-open trio: anon/authenticated locked out, service_role allowed
+    expect(by.cycles_anon).toBe(false);
+    expect(by.cycles_auth).toBe(false);
+    expect(by.cycles_svc).toBe(true);
+    expect(by.claim_anon).toBe(false);
+    expect(by.claim_auth).toBe(false);
+    expect(by.claim_svc).toBe(true);
+    expect(by.unclaim_anon).toBe(false);
+    expect(by.unclaim_svc).toBe(true);
   });
 });

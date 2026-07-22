@@ -15,7 +15,7 @@ diff.
 | # | location | shape | task id | notes |
 | - | -------- | ----- | ------- | ----- |
 | 1 | `supabase/functions/send-invoice-email/index.ts` (~L120) | `get_invoice_recipient_identity` error discarded → could send an INVOICE to a stale/fallback address | `task_0c403a91` | same RPC + same shape just fixed in booking-confirmation-email.ts; highest signal |
-| 2 | `supabase/functions/notify-rebook-member-open/index.ts` (~L175/186/199) | recipient-SET discovery reads (slots→cohort→emails) errors discarded → silent under-notification | `task_7b5df2fc` | rebooking cron path |
+| 2 | ~~`supabase/functions/notify-rebook-member-open/index.ts`~~ | recipient-SET discovery reads (slots→cohort→emails) errors discarded → silent under-notification / **permanent claim** | **RESOLVED in PR 10d** | all of cycle/slots/claims/profile+guest/academy reads now FAIL LOUD; a throw enters the tested `runClaimedCycle` recovery (release the claim → next tick retries); unclaim failure surfaced. Runtime tests in `rebook-member-open.test.ts`. |
 | 3 | `supabase/functions/forward-invoice/index.ts` (~L118/128) | bookkeeper recipient set (`invoice_forward_emails`) errors discarded | `task_7b5df2fc` | |
 | 4 | `supabase/functions/notify-followers/index.ts` (~L97/116) | legacy follower/profile recipient reads fail open | (fix in PR 10c) | notify-followers is REPLACED by the open_slots durable fan-out in PR 10c, which already fails loud; do not patch the legacy fn |
 
@@ -64,7 +64,7 @@ already-corrupted input. Every audit-proven site is fixed guest-first:
 | `src/lib/rebookManage.ts` (~L531) `keyOf` | built the reminder `targets` player-first | `personKeyOf` (nameByKey renamespaced) |
 | `auto-rebook-reminder` (~L164) | reminded-stamp routing | `personRefOf` |
 | `notify-rebook-member-open` + `_shared/rebook-member-open.ts` `recipientKey` | player-first grouping, name/email, **RB03 already-notified keys persisted to `cycles.settings`** | `recipientKey` guest-first (format-preserving: pure profile/guest keys byte-compatible, only a dual-key child moves to `g:<child>` for its one catch-up); `resolveMemberOpenContact` guest-first name/email + parent fallback |
-| `rebook_claims_needing_auto_reminder` RPC (`20260721100000`) | player-first `DISTINCT ON` + profile-first name/email | guest-first CTE (migration `20260927100000`) |
+| `rebook_claims_needing_auto_reminder` RPC (`20260721100000`) | player-first `DISTINCT ON` + profile-first name/email | guest-first FLAT re-emit (migration `20260927100000`; kept flat, not a CTE, to match the proven structure + avoid a PGlite plan-cache flake) |
 | `bump_rebook_reminders` RPC (`20260625130000`) | player arm had no `guest_player_id IS NULL` guard | guarded (migration `20260927100000`) |
 
 SECURITY (fixed in the same migration): `rebook_claims_needing_auto_reminder` is SECURITY DEFINER
@@ -83,3 +83,31 @@ in prod (migration first, then all edge fns).
 `bulk-rebook-cycle:493` (`registeredPlayerIds` for `computeRebookExclusion`) is consciously left
 alone — it is eligibility bucketing, not notification identity; changing it would alter rebook
 eligibility semantics (an unrelated refactor).
+
+## Rebook SECURITY DEFINER RPC lockdown (closed in PR 10d migration 20260927100000)
+
+The default-privileges footgun (`REVOKE … FROM PUBLIC` alone does NOT undo the project's default
+`GRANT EXECUTE TO anon, authenticated`) left FOUR service-role rebook RPCs client-executable — all
+verified live in prod (anon = authenticated = EXECUTE). Migration `20260927100000` REVOKEs each from
+`PUBLIC, anon, authenticated` and GRANTs `service_role` only, pinned by `has_function_privilege`
+assertions in `rebookIdentityGuestFirst.pglite.test.ts`:
+- `rebook_claims_needing_auto_reminder(int)` — leaked invitee emails + claim tokens cross-academy.
+- `rebook_cycles_needing_member_open_notice()` — leaked the cross-academy cycle list.
+- `claim_rebook_member_open_notice(uuid)` — an attacker could SUPPRESS a cycle's member-open notices.
+- `unclaim_rebook_member_open_notice(uuid)` — an attacker could force re-notification spam.
+
+## PR 10c (durable outbox) — REQUIRED acceptance items carried from PR 10d review
+
+`notify-rebook-member-open` is now fail-loud + crash-recovers the idempotency claim, but it is still
+NOT crash-safe at scale and this must be closed by the PR 10c durable-outbox migration (do NOT expand
+10d):
+- It claims the whole cycle before an UNBOUNDED sequential send loop and persists per-recipient
+  successes only AFTER the loop. A timeout / process death mid-loop leaves part of the audience
+  unsent with the claim released (RB03 recovers the rest on retry) — acceptable now, but the outbox
+  should make each recipient a durable, individually-checkpointed unit.
+- No provider idempotency key on the member-open send (unlike the v2 email worker's
+  `notification-outbox-<id>`), so a retry after a timeout-post-accept can double-send. The outbox
+  must carry a deterministic idempotency key.
+- Acceptance for "the messaging migration is complete/scalable": bounded + resumable processing, a
+  deterministic provider idempotency key, and NO permanent claim after worker death — for the
+  member-open path as well as open_slots.

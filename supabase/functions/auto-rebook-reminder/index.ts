@@ -138,7 +138,13 @@ serve(async (req: Request) => {
       cyclesProcessed += 1;
       // The cycle's slots — bump_rebook_reminders stamps every claim of the emailed
       // players across these slots (their whole commitment), one email covering all.
-      const { data: slotRows } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+      // Fail loud on a read error: without the slot ids we could not stamp reminded_at, so sending
+      // now would re-remind these players every tick. Skip this cycle and let the next tick retry.
+      const { data: slotRows, error: slotErr } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+      if (slotErr) {
+        await notifySlackEdgeError("auto-rebook-reminder", `slot read failed — skipping cycle to avoid unstampable re-reminders`, { cycleId, error: String(slotErr?.message ?? slotErr) });
+        continue;
+      }
       const slotIds = (slotRows ?? []).map((s: { id: string }) => s.id);
 
       // The academy's optional custom reminder text (set on the round) — falls back to the built-in copy.

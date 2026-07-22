@@ -83,7 +83,8 @@ serve(async (req: Request) => {
       .eq("academy_profile_id", cycle.owner_id).eq("user_id", user.id).maybeSingle();
     if (!mgr) return json({ ok: false, error: "Forbidden" }, 403);
 
-    const { data: slotRows } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+    const { data: slotRows, error: slotErr } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+    if (slotErr) throw new Error(`slot read failed: ${slotErr.message}`); // fail loud — not a zero-send success
     const slotIds = (slotRows ?? []).map((s: { id: string }) => s.id);
     if (slotIds.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0 });
 
@@ -93,11 +94,12 @@ serve(async (req: Request) => {
     // Resolve recipients from THIS cycle's claims, scoped to the requested targets, one per
     // player. Exclude declined/expired claims — a reminder must never re-ping someone who
     // already opted out (only pending and claimed players get one).
-    const { data: claims } = await supabase
+    const { data: claims, error: claimsErr } = await supabase
       .from("slot_priority_claims")
       .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
       .in("slot_id", slotIds)
       .in("status", ["pending", "claimed"]);
+    if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     type ClaimRow = {
       claim_token: string;
       player_id: string | null;

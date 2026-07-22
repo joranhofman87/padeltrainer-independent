@@ -119,7 +119,7 @@ serve(async (req: Request) => {
     if (rlCount > RL_MAX) return json({ ok: true, throttled: true, sent: 0, skipped: 0, failed: 0 });
 
     // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
-    const { data: rows } = await admin
+    const { data: rows, error: rowsErr } = await admin
       .from("slot_priority_claims")
       .select(
         "id, invited_at, slot_id, player_id, guest_player_id, " +
@@ -130,6 +130,7 @@ serve(async (req: Request) => {
       .eq("status", "claimed")
       .is("confirmation_sent_at", null)
       .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
+    if (rowsErr) throw new Error(`member read failed: ${rowsErr.message}`); // fail loud — not a silent zero-send
     const claims = (rows ?? []) as unknown as ClaimRow[];
     if (claims.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0 });
 
@@ -181,11 +182,14 @@ serve(async (req: Request) => {
     // i.e. ANY of their claims in this group carries invited_at (bulk-rebook-cycle stamps only one
     // representative claim per member, so check across all their rows, not just the booked subset).
     // Existing → "X re-booked you"; never-invited → a "you've been added by X" welcome.
-    const { data: invitedRows } = await admin
+    const { data: invitedRows, error: invitedErr } = await admin
       .from("slot_priority_claims")
       .select("player_id, guest_player_id")
       .eq("rebook_group_id", groupId)
       .not("invited_at", "is", null);
+    // Fail loud: an error here would leave invitedKeys empty → EVERY member wrongly treated as "new"
+    // → the wrong (welcome vs re-booked) email + GDPR-consent copy.
+    if (invitedErr) throw new Error(`invited-state read failed: ${invitedErr.message}`);
     const invitedKeys = new Set(
       (invitedRows ?? []).map((r: { player_id: string | null; guest_player_id: string | null }) => personKeyOf(r))
         .filter((k): k is string => !!k),

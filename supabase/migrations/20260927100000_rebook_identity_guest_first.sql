@@ -121,3 +121,16 @@ $$;
 -- leaving this SECURITY DEFINER email/token reader anon-executable cross-academy.
 REVOKE ALL ON FUNCTION public.rebook_claims_needing_auto_reminder(int) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rebook_claims_needing_auto_reminder(int) TO service_role;
+
+-- (3) The MEMBER-OPEN cron trio (defined in 20260714110000 / 20260817100000) has the SAME
+--     default-privileges footgun: they only `REVOKE ... FROM PUBLIC`, so anon/authenticated retain
+--     EXECUTE (verified in prod: anon=authenticated=true). These are SECURITY DEFINER — a client
+--     could claim an arbitrary cycle to SUPPRESS its member-open notifications, unclaim one to force
+--     re-notification spam, or read the detection RPC's cross-academy cycle list. notify-rebook-member-open
+--     joins 10d, so lock all three to service_role here (no function redefinition — grants only).
+REVOKE ALL ON FUNCTION public.rebook_cycles_needing_member_open_notice()  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.claim_rebook_member_open_notice(uuid)       FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.unclaim_rebook_member_open_notice(uuid)     FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rebook_cycles_needing_member_open_notice() TO service_role;
+GRANT EXECUTE ON FUNCTION public.claim_rebook_member_open_notice(uuid)      TO service_role;
+GRANT EXECUTE ON FUNCTION public.unclaim_rebook_member_open_notice(uuid)    TO service_role;

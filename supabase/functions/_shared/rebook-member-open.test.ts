@@ -1,6 +1,6 @@
-import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
-  computeMemberOpenAudience, recipientKey, resolveMemberOpenContact,
+  computeMemberOpenAudience, recipientKey, resolveMemberOpenContact, runClaimedCycle,
   type MemberOpenClaim, type MemberOpenRecipient,
 } from "./rebook-member-open.ts";
 
@@ -165,29 +165,105 @@ Deno.test("FAM-02: existing pure-profile + guest-only persisted keys stay byte-f
   assertEquals(recipientKey({ player_id: "parent", guest_player_id: "child" }), "g:child");
 });
 
-Deno.test("FAM-02 contact: a dual-key child's OWN name + email win over the linked parent", () => {
-  const nameByKey = new Map([["parent", "Parent"], ["g:child", "Child"]]);
-  const emailByKey = new Map([["parent", "parent@x.com"], ["g:child", "child@x.com"]]);
+const emptyMaps = (): import("./rebook-member-open.ts").MemberOpenContactMaps => ({
+  profileName: new Map(), profileEmail: new Map(),
+  guestName: new Map(), guestOwnEmail: new Map(), guestLinkedEmail: new Map(), guestLinked: new Set(),
+});
+
+Deno.test("FAM-02 contact: a dual-key child's OWN name + email win over the linked parent (no signup — account-backed)", () => {
+  const m = emptyMaps();
+  m.profileName.set("parent", "Parent"); m.profileEmail.set("parent", "parent@x.com");
+  m.guestName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com");
   assertEquals(
-    resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, nameByKey, emailByKey),
-    { name: "Child", email: "child@x.com" },
+    resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, m),
+    { name: "Child", email: "child@x.com", needsSignup: false }, // linked to the parent account → book link
   );
 });
 
 Deno.test("FAM-02 contact: parent inbox is the fallback ONLY when the child has no email (child's NAME still wins)", () => {
-  const nameByKey = new Map([["parent", "Parent"], ["g:child", "Child"]]);
-  const emailByKey = new Map([["parent", "parent@x.com"]]); // child has no own email
+  const m = emptyMaps();
+  m.profileName.set("parent", "Parent"); m.profileEmail.set("parent", "parent@x.com");
+  m.guestName.set("child", "Child"); // child has no own email
   assertEquals(
-    resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, nameByKey, emailByKey),
-    { name: "Child", email: "parent@x.com" },
+    resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, m),
+    { name: "Child", email: "parent@x.com", needsSignup: false },
   );
 });
 
-Deno.test("FAM-02 contact: a pure profile uses its own name/email; no deliverable email → dropped", () => {
-  const nameByKey = new Map([["p1", "Solo"]]);
-  const emailByKey = new Map([["p1", "solo@x.com"]]);
-  assertEquals(resolveMemberOpenContact({ player_id: "p1", guest_player_id: null }, nameByKey, emailByKey),
-    { name: "Solo", email: "solo@x.com" });
-  // a guest with no own email and no linked parent → null (caller drops it)
-  assertEquals(resolveMemberOpenContact({ player_id: null, guest_player_id: "g9" }, nameByKey, emailByKey), null);
+Deno.test("FAM-02 contact: a GUEST-ONLY priority person with a linked account but no own email IS delivered (linked email), no signup", () => {
+  // Codex #3: the previous code dropped this recipient. Now the linked-profile email is used and,
+  // because they're account-backed, they get the book link — never a "create an account" CTA.
+  const m = emptyMaps();
+  m.guestName.set("g5", "Linked Guest");
+  m.guestLinkedEmail.set("g5", "account@x.com");
+  m.guestLinked.add("g5");
+  assertEquals(
+    resolveMemberOpenContact({ player_id: null, guest_player_id: "g5" }, m),
+    { name: "Linked Guest", email: "account@x.com", needsSignup: false },
+  );
+});
+
+Deno.test("FAM-02 contact: a genuinely accountless guest (own email, no link) gets the SIGNUP CTA", () => {
+  const m = emptyMaps();
+  m.guestName.set("g6", "New Guest"); m.guestOwnEmail.set("g6", "new@x.com");
+  assertEquals(
+    resolveMemberOpenContact({ player_id: null, guest_player_id: "g6" }, m),
+    { name: "New Guest", email: "new@x.com", needsSignup: true },
+  );
+});
+
+Deno.test("FAM-02 contact: a pure profile uses its own name/email and never needs signup; no email → dropped", () => {
+  const m = emptyMaps();
+  m.profileName.set("p1", "Solo"); m.profileEmail.set("p1", "solo@x.com");
+  assertEquals(resolveMemberOpenContact({ player_id: "p1", guest_player_id: null }, m),
+    { name: "Solo", email: "solo@x.com", needsSignup: false });
+  // a guest with no own email, no linked account, no linked parent → null (caller drops it)
+  assertEquals(resolveMemberOpenContact({ player_id: null, guest_player_id: "g9" }, m), null);
+});
+
+// ── PR 10d: crash-recovery contract (Codex #2/#4) — a claimed cycle can never stay permanently
+//    claimed with an unsent audience. runClaimedCycle is Resend-free, so we drive it with a fake
+//    rpc client + a `notify` that throws/partials/succeeds. A throw stands in for ANY of notifyCycle's
+//    fail-loud recipient-discovery read errors (cycle/slots/claims/contact/academy). ────────────────
+const fakeRpc = (rpcError = false) => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const client = {
+    rpc: (name: string, args: Record<string, unknown>) => {
+      calls.push({ name, args });
+      return Promise.resolve({ error: rpcError ? { message: "unclaim boom" } : null });
+    },
+  };
+  return { client, calls };
+};
+const released = (calls: Array<{ name: string }>) => calls.some((c) => c.name === "unclaim_rebook_member_open_notice");
+
+Deno.test("runClaimedCycle: a thrown recipient-discovery read RELEASES the claim (never permanently claimed)", async () => {
+  const { client, calls } = fakeRpc();
+  const out = await runClaimedCycle(client, "cyc-1", () => Promise.reject(new Error("member-open slots read failed: boom")));
+  assert(out.error?.includes("slots read failed"), out.error ?? "no error");
+  assertEquals(out.released, true);
+  assert(released(calls), "expected the claim to be released after a read error");
+});
+
+Deno.test("runClaimedCycle: a PARTIAL send releases the claim so the retry re-sends only failures", async () => {
+  const { client, calls } = fakeRpc();
+  const out = await runClaimedCycle(client, "cyc-1", () => Promise.resolve({ sent: 2, failed: 1 }));
+  assertEquals(out.released, true);
+  assertEquals(out.error, null);
+  assert(released(calls));
+});
+
+Deno.test("runClaimedCycle: an UNCLAIM failure is surfaced (released=false)", async () => {
+  const { client } = fakeRpc(/* rpcError */ true);
+  const out = await runClaimedCycle(client, "cyc-1", () => Promise.reject(new Error("db down")));
+  assertEquals(out.released, false);
+  assert(out.error?.includes("unclaim failed"), out.error ?? "no error");
+  assert(out.error?.includes("db down"), "original error should be preserved too");
+});
+
+Deno.test("runClaimedCycle: a fully-successful cycle does NOT release the claim (idempotent)", async () => {
+  const { client, calls } = fakeRpc();
+  const out = await runClaimedCycle(client, "cyc-1", () => Promise.resolve({ sent: 3, failed: 0 }));
+  assertEquals(out, { sent: 3, failed: 0, released: false, error: null });
+  assert(!released(calls), "a clean send must keep the claim (no re-notify)");
 });

@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { computeMemberOpenAudience, recipientKey, resolveMemberOpenContact, type MemberOpenClaim } from "../_shared/rebook-member-open.ts";
+import { computeMemberOpenAudience, recipientKey, resolveMemberOpenContact, runClaimedCycle, type MemberOpenClaim, type MemberOpenContactMaps } from "../_shared/rebook-member-open.ts";
 
 // Cron-invoked (service-role) notifier: when a rebook round's MEMBER window opens
 // and seats have freed up, email the "second bucket" — the original-cohort players
@@ -96,43 +96,47 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const seenRounds = new Set<string>();
     const roundAlreadyNotified = async (round: string, selfId: string): Promise<boolean> => {
-      const { data } = await supabase.from("cycles").select("id")
+      const { data, error } = await supabase.from("cycles").select("id")
         .eq("settings->>rebook_round_id", round)
         .neq("id", selfId)
         .not("settings->>rebook_member_open_notified_at", "is", null)
         .limit(1);
+      if (error) throw new Error(`member-open round-sibling read failed: ${error.message}`);
       return (data ?? []).length > 0;
     };
 
     for (const cycleId of cycleIds) {
       // Atomic claim: stamp notified_at IF NULL. Lost race ⇒ another run has it. The
       // claim serializes this round so the per-recipient bookkeeping below is race-free.
-      const { data: claimed } = await supabase.rpc("claim_rebook_member_open_notice", { _cycle_id: cycleId });
+      const { data: claimed, error: claimErr } = await supabase.rpc("claim_rebook_member_open_notice", { _cycle_id: cycleId });
+      if (claimErr) { await notifySlackEdgeError("notify-rebook-member-open", `claim failed: ${claimErr.message}`, { cycleId }); continue; }
       if (claimed !== true) continue;
 
+      // Sibling-of-an-already-notified-round short-circuit (keep the claim, send nothing). A read
+      // error here must RELEASE the claim so the round is retried, not silently stranded as claimed.
       const round = roundOf.get(cycleId) ?? null;
-      if (round && (seenRounds.has(round) || (await roundAlreadyNotified(round, cycleId)))) {
-        // Sibling of an already-notified round: keep the claim stamped, send nothing.
-        cyclesProcessed += 1;
-        continue;
-      }
-      if (round) seenRounds.add(round);
-
-      try {
-        const { sent, failed } = await notifyCycle(supabase, resend, cycleId);
-        totalSent += sent;
-        cyclesProcessed += 1;
-        if (failed > 0) {
-          // Partial OR total failure → release the marker so the next tick re-detects the
-          // round. Successful recipients are already recorded in settings, so the retry
-          // re-sends ONLY the ones that failed (no duplicate to a successful recipient).
-          await supabase.rpc("unclaim_rebook_member_open_notice", { _cycle_id: cycleId });
-          await notifySlackEdgeError("notify-rebook-member-open", `partial send: ${sent} ok, ${failed} failed`, { cycleId });
+      if (round) {
+        let sibling = seenRounds.has(round);
+        if (!sibling) {
+          try {
+            sibling = await roundAlreadyNotified(round, cycleId);
+          } catch (e) {
+            await supabase.rpc("unclaim_rebook_member_open_notice", { _cycle_id: cycleId });
+            await notifySlackEdgeError("notify-rebook-member-open", e instanceof Error ? e.message : String(e), { cycleId });
+            continue;
+          }
         }
-      } catch (e) {
-        // Unexpected error (e.g. a DB read) → release the marker so the next tick retries.
-        await supabase.rpc("unclaim_rebook_member_open_notice", { _cycle_id: cycleId });
-        await notifySlackEdgeError("notify-rebook-member-open", e instanceof Error ? e.message : String(e), { cycleId });
+        if (sibling) { cyclesProcessed += 1; continue; }
+        seenRounds.add(round);
+      }
+
+      cyclesProcessed += 1;
+      const outcome = await runClaimedCycle(supabase, cycleId, (id) => notifyCycle(supabase, resend, id));
+      totalSent += outcome.sent;
+      if (outcome.error) {
+        await notifySlackEdgeError("notify-rebook-member-open", outcome.error, { cycleId });
+      } else if (outcome.failed > 0) {
+        await notifySlackEdgeError("notify-rebook-member-open", `partial send: ${outcome.sent} ok, ${outcome.failed} failed`, { cycleId });
       }
     }
 
@@ -151,9 +155,13 @@ const handler = async (req: Request): Promise<Response> => {
 // so it is typed loosely here — results are shaped via explicit casts below.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Promise<{ sent: number; failed: number }> {
-  // Cycle + academy context.
-  const { data: cycle } = await supabase
+  // Cycle + academy context. A READ error must FAIL LOUD (throw) — the caller releases the claim
+  // and the next tick retries. Swallowing it → {sent:0,failed:0} → the cycle stays permanently
+  // claimed with its audience never notified (a silent drop). A genuinely missing cycle is a
+  // legitimate no-op.
+  const { data: cycle, error: cycleErr } = await supabase
     .from("cycles").select("id, name, owner_id, settings").eq("id", cycleId).maybeSingle();
+  if (cycleErr) throw new Error(`member-open cycle read failed: ${cycleErr.message}`);
   if (!cycle) return { sent: 0, failed: 0 };
   const settings = (cycle.settings || {}) as Record<string, unknown>;
   const priorityPeople: string[] = Array.isArray(settings.rebook_priority_people)
@@ -171,9 +179,11 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
     ? (settings.rebook_member_open_notified_recipients as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
 
-  // The round's slots (source_cycle_id = this cycle) → their pending-window claims.
-  const { data: slots } = await supabase
+  // The round's slots (source_cycle_id = this cycle) → their pending-window claims. Fail loud: a
+  // read error must NOT masquerade as "no slots" (→ permanent claim, unsent audience).
+  const { data: slots, error: slotsErr } = await supabase
     .from("availability_slots").select("id, member_window_ends_at, academy_profile_id").eq("source_cycle_id", cycleId);
+  if (slotsErr) throw new Error(`member-open slots read failed: ${slotsErr.message}`);
   const slotIds = ((slots ?? []) as Array<{ id: string }>).map((s) => s.id);
   if (slotIds.length === 0) return { sent: 0, failed: 0 };
   const memberEnd = ((slots ?? []) as Array<{ member_window_ends_at: string | null }>)
@@ -183,51 +193,65 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
 
   const claims: MemberOpenClaim[] = [];
   for (let i = 0; i < slotIds.length; i += 200) {
-    const { data: rows } = await supabase
+    const { data: rows, error: claimsErr } = await supabase
       .from("slot_priority_claims")
       .select("player_id, guest_player_id, status, response_intent")
       .in("slot_id", slotIds.slice(i, i + 200));
+    if (claimsErr) throw new Error(`member-open claims read failed: ${claimsErr.message}`);
     claims.push(...((rows ?? []) as MemberOpenClaim[]));
   }
 
   const audience = computeMemberOpenAudience(claims, priorityPeople, priorityGuests, { alreadyNotifiedKeys });
   if (audience.length === 0) return { sent: 0, failed: 0 };
 
-  // Resolve names + emails; drop anyone without an email.
+  // Resolve names + emails; drop anyone without a deliverable address. Contact-discovery reads fail
+  // loud — an error here must not silently shrink/misroute the audience. Guests carry their linked
+  // profile (linked_profile_id) so an accountless-but-linked priority guest is still reachable.
   const playerIds = audience.map((a) => a.player_id).filter((x): x is string => !!x);
   const guestIds = audience.map((a) => a.guest_player_id).filter((x): x is string => !!x);
-  const [{ data: profiles }, { data: guests }] = await Promise.all([
-    playerIds.length ? supabase.from("profiles").select("id, full_name, email").in("id", playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from("guest_players").select("id, full_name, email").in("id", guestIds) : Promise.resolve({ data: [] }),
+  const [{ data: profiles, error: profErr }, { data: guests, error: guestErr }] = await Promise.all([
+    playerIds.length ? supabase.from("profiles").select("id, full_name, email").in("id", playerIds) : Promise.resolve({ data: [], error: null }),
+    guestIds.length ? supabase.from("guest_players").select("id, full_name, email, linked_profile:linked_profile_id(email)").in("id", guestIds) : Promise.resolve({ data: [], error: null }),
   ]);
-  // Split name/email so a dual-key child WITHOUT their own email still keeps their OWN name while
-  // falling back to the linked parent's inbox (names are populated regardless of email presence).
-  const nameByKey = new Map<string, string>();
-  const emailByKey = new Map<string, string>();
+  if (profErr) throw new Error(`member-open profiles read failed: ${profErr.message}`);
+  if (guestErr) throw new Error(`member-open guests read failed: ${guestErr.message}`);
+  // Canonical guest contact maps (keyed by RAW id). Names are populated regardless of email so a
+  // no-email child/guest still shows their OWN name while borrowing an account inbox.
+  const maps: MemberOpenContactMaps = {
+    profileName: new Map(), profileEmail: new Map(),
+    guestName: new Map(), guestOwnEmail: new Map(), guestLinkedEmail: new Map(), guestLinked: new Set(),
+  };
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
-    nameByKey.set(p.id, (p.full_name ?? "").trim());
-    if (p.email?.trim()) emailByKey.set(p.id, p.email.trim());
+    maps.profileName.set(p.id, (p.full_name ?? "").trim());
+    if (p.email?.trim()) maps.profileEmail.set(p.id, p.email.trim());
   }
-  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
-    nameByKey.set(`g:${g.id}`, (g.full_name ?? "").trim());
-    if (g.email?.trim()) emailByKey.set(`g:${g.id}`, g.email.trim());
+  for (
+    const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null; linked_profile: { email: string | null } | null }>
+  ) {
+    maps.guestName.set(g.id, (g.full_name ?? "").trim());
+    if (g.email?.trim()) maps.guestOwnEmail.set(g.id, g.email.trim());
+    // PostgREST types the to-one embed as an array; runtime is a single object (cast via unknown).
+    const linked = (g.linked_profile as unknown as { email: string | null } | null) ?? null;
+    if (linked?.email?.trim()) maps.guestLinkedEmail.set(g.id, linked.email.trim());
+    if (linked) maps.guestLinked.add(g.id);
   }
   const recipients = audience
     .map((a) => {
       const key = recipientKey(a); // GUEST-FIRST canonical key (grouping + RB03 persistence)
       if (!key) return null;
-      // GUEST-FIRST (FAM-02): the guest's own name/email wins; the linked profile (via player_id) is
-      // the fallback ONLY when the guest has none. A dual-key child is a guest → account CTA.
-      const contact = resolveMemberOpenContact(a, nameByKey, emailByKey);
-      return contact ? { key, name: contact.name, email: contact.email, isGuest: !!a.guest_player_id } : null;
+      const contact = resolveMemberOpenContact(a, maps);
+      // needsSignup: only a genuinely accountless guest gets the "create an account" CTA; a linked
+      // guest / dual-key child / profile is account-backed and gets the direct book link instead.
+      return contact ? { key, name: contact.name, email: contact.email, needsSignup: contact.needsSignup } : null;
     })
-    .filter((r): r is { key: string; name: string; email: string; isGuest: boolean } => !!r);
+    .filter((r): r is { key: string; name: string; email: string; needsSignup: boolean } => !!r);
   if (recipients.length === 0) return { sent: 0, failed: 0 };
 
-  // Academy slug + timezone for the deep-link + deadline formatting.
-  const { data: academy } = academyProfileId
+  // Academy slug + timezone for the deep-link + deadline formatting. Fail loud on a read error.
+  const { data: academy, error: academyErr } = academyProfileId
     ? await supabase.from("academy_profiles").select("slug, timezone").eq("id", academyProfileId).maybeSingle()
-    : { data: null };
+    : { data: null, error: null };
+  if (academyErr) throw new Error(`member-open academy read failed: ${academyErr.message}`);
   const slug = (academy as { slug?: string | null } | null)?.slug ?? null;
   const tz = (academy as { timezone?: string | null } | null)?.timezone || "Europe/Amsterdam";
   const bookUrl = slug ? `${APP_BASE}/nl/academies/${slug}?cycle=${cycleId}` : `${APP_BASE}/nl`;
@@ -258,7 +282,7 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
         ${renderCustomMessage(customMessage, r.name)}
         <p style="color:#374151;line-height:1.6;">Er zijn plekken vrijgekomen voor de volgende ronde en jij mag als eerste boeken — vóór het publiek.</p>
         ${deadline ? `<p style="color:#6b7280;font-size:13px;">Je hebt voorrang tot <strong>${deadline}</strong>. Daarna komen de plekken vrij voor iedereen.</p>` : ""}
-        ${r.isGuest ? `
+        ${r.needsSignup ? `
         <p style="color:#374151;line-height:1.6;">Maak eerst je account aan met dit e-mailadres, dan kun je je plek boeken.</p>
         <div style="text-align:center;margin:28px 0;">
           <a href="${signupUrl(r.name, r.email)}" style="display:inline-block;background:#16a34a;color:white;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Account aanmaken &amp; plek boeken</a>
@@ -294,7 +318,17 @@ async function notifyCycle(supabase: any, resend: Resend, cycleId: string): Prom
       .from("cycles")
       .update({ settings: { ...freshSettings, rebook_member_open_notified_recipients: merged } })
       .eq("id", cycleId);
-    if (persistErr) console.error("member-open persist notified recipients error", persistErr);
+    if (persistErr) {
+      // The emails already went out; a persist failure means those successes are NOT recorded, so a
+      // later retry could re-send. Do NOT release the claim here (that would guarantee the re-send) —
+      // keep it claimed and alert loudly so the drift is visible rather than silent.
+      console.error("member-open persist notified recipients error", persistErr);
+      await notifySlackEdgeError(
+        "notify-rebook-member-open",
+        `RB03 persist failed after ${newlyNotified.length} sends — recipients not recorded (possible re-send on retry)`,
+        { cycleId, error: String(persistErr?.message ?? persistErr) },
+      );
+    }
   }
 
   return { sent, failed };
