@@ -3,6 +3,7 @@ import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
 import { renderStaffBookingEmail } from "./staff-booking-email.ts";
 import { writePaymentAuditLog, PaymentAuditStatus } from "./payment-audit.ts";
 import { redactDetail } from "./redact-detail.ts";
+import { canonicalPlayerName } from "./display-identity.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
 type NotifySlackError = (
@@ -168,7 +169,9 @@ export async function runBookingPaidSideEffects(opts: {
     logStep("Booking context fetch threw (names degrade, fan-out continues)", { error: String(nameErr) });
   }
 
-  const playerName = booking?.profiles?.full_name ?? booking?.guest_players?.full_name ?? "Guest";
+  // GUEST-FIRST canonical identity: staff must see the guest/child name on a guest booking,
+  // never the linked parent/profile name.
+  const playerName = canonicalPlayerName(booking, "Guest");
 
   // LANE 1 — the payer's confirmation. Required delivery: a failure here is a paying
   // customer with no proof of purchase, so it alerts.

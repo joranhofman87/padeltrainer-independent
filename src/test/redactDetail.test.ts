@@ -48,6 +48,36 @@ describe('redactDetail', () => {
     expect(out).toContain('a b c');
   });
 
+  it('redacts a payment path token (/pay/<token>) even when short/hyphenated', () => {
+    expect(redactDetail('open https://padeltrainer.ai/pay/aB3-xY9 to retry'))
+      .toContain('/pay/[redacted-token]');
+    expect(redactDetail('open https://padeltrainer.ai/pay/aB3-xY9')).not.toContain('aB3-xY9');
+  });
+
+  it('redacts a booking path token (/booking/<token>)', () => {
+    expect(redactDetail('link https://padeltrainer.ai/booking/short1')).toContain('/booking/[redacted-token]');
+    expect(redactDetail('link https://padeltrainer.ai/booking/short1')).not.toContain('short1');
+  });
+
+  it('redacts the branded /academies/<slug>/pay/<token> route', () => {
+    const out = redactDetail('https://padeltrainer.ai/academies/rl-padel/pay/SECRETPAYTOKEN');
+    expect(out).not.toContain('SECRETPAYTOKEN');
+    expect(out).toContain('/pay/[redacted-token]');
+  });
+
+  it('PARITY: every sensitive route the frontend redactTrackingString redacts, the edge redactor also redacts', () => {
+    // Guards against the two policies drifting. If the frontend adds a sensitive route, this
+    // list should grow and both must cover it.
+    const cases = [
+      'https://padeltrainer.ai/pay/tok123',
+      'https://padeltrainer.ai/booking/tok123',
+      'https://padeltrainer.ai/academies/x/pay/tok123',
+    ];
+    for (const c of cases) {
+      expect(redactDetail(c), `edge redactor must cover ${c}`).not.toContain('tok123');
+    }
+  });
+
   it('leaves ordinary error text readable', () => {
     expect(redactDetail('confirmation set covers multiple recipients'))
       .toBe('confirmation set covers multiple recipients');

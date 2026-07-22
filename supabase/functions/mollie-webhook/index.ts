@@ -10,6 +10,7 @@ import {
 } from "../_shared/mollie-webhook-metadata.ts";
 import { runBookingPaidSideEffects, sendStaffBookingNotifications } from "../_shared/mollie-booking-paid-side-effects.ts";
 import { sendPlayerBookingConfirmation } from "../_shared/booking-confirmation-email.ts";
+import { canonicalPlayerName } from "../_shared/display-identity.ts";
 import { writePaymentAuditLog as auditLog, PaymentAuditStatus as AUDIT } from "../_shared/payment-audit.ts";
 import {
   applyBookingPaymentWriteback,
@@ -817,7 +818,9 @@ serve(async (req) => {
               const payer = payerRow as
                 | { profiles?: { full_name?: string | null } | null; guest_players?: { full_name?: string | null } | null }
                 | null;
-              const playerName = payer?.profiles?.full_name ?? payer?.guest_players?.full_name ?? "Speler";
+              // GUEST-FIRST canonical identity (rebook-invoice path): the guest/child name,
+              // never the linked parent/profile.
+              const playerName = canonicalPlayerName(payer, "Speler");
               await sendStaffBookingNotifications({
                 supabase: supabase as unknown as Parameters<typeof sendStaffBookingNotifications>[0]["supabase"],
                 bookingIds: invoiceData.booking_ids,

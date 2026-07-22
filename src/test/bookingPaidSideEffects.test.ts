@@ -306,6 +306,28 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
     expect(legacyStaffEmails(invoke)).toHaveLength(0); // no double-send
   });
 
+  it('P1 — a DUAL-KEY booking shows the GUEST/child name to staff, never the linked parent profile', async () => {
+    // Codex #5: the staff-facing name resolution chose profiles.full_name first, leaking the
+    // parent's identity for a child/guest booking. Guest-first canonical identity fixes both
+    // the Slack ping and the staff email.
+    const { supabase, invoke, rpc } = makeFakeSupabase({
+      booking: { ...guestBooking, profiles: { full_name: 'Parent Naam' }, guest_players: { full_name: 'Kind Naam' } },
+      invoiceInvokeData: { invoiceId: 'INV-1' },
+      staffBookings: [staffBooking()],
+      trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+      profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+    });
+    await run(supabase);
+    // Slack ping: the child, not the parent
+    const ping = callsTo(invoke, 'slack-notify')[0][1] as { body: { data: { player: string } } };
+    expect(ping.body.data.player).toBe('Kind Naam');
+    expect(JSON.stringify(ping)).not.toContain('Parent Naam');
+    // staff email payload: the child, not the parent
+    const p = staffEnqueues(rpc)[0][1] as { p_payload: { subject: string; html: string } };
+    expect(p.p_payload.subject + p.p_payload.html).toContain('Kind Naam');
+    expect(p.p_payload.subject + p.p_payload.html, 'the parent name must NOT appear').not.toContain('Parent Naam');
+  });
+
   it('enqueues academy managers WITH the paid amount (in the html), alongside the price-less trainer row', async () => {
     const { supabase, rpc } = makeFakeSupabase({
       booking: guestBooking,

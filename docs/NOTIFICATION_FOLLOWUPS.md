@@ -39,3 +39,23 @@ Follow-up: add a redaction backstop inside the Slack sink (`notifySlackEdge` / t
 free-text keys, NOT structured context (booking-id UUIDs etc., which `redactDetail`'s long-token
 rule would otherwise mangle). Not a PR 10b blocker (10b's own lanes are all redacted at the call
 site), but the right central defence. No task id yet.
+
+## Guest-first display identity — remaining rebook/priority paths (found by PR 10b sweep, 2026-07-22)
+
+PR 10b introduced the canonical `canonicalPlayerName` (guest-first) helper in
+`supabase/functions/_shared/display-identity.ts` and applied it to the two paths Codex named —
+`mollie-booking-paid-side-effects.ts` (paid staff fan-out) and `mollie-webhook/index.ts` (the
+rebook-invoice staff path). A sweep for the SAME profile-first-then-guest name resolution found
+three MORE instances, in pre-existing rebook/priority functions OUTSIDE 10b's diff:
+
+| location | shape |
+| -------- | ----- |
+| `supabase/functions/send-rebook-group-confirmation/index.ts` (~L211) | `firstNameOf(m.rep.profiles?.full_name, m.rep.guest_players?.first_name ?? …)` — profile first |
+| `supabase/functions/send-priority-claim-invitation/index.ts` (~L491) | `c.profiles?.full_name \|\| c.guest_players?.full_name` — profile first |
+| `supabase/functions/send-rebook-reminder/index.ts` (~L129) | `c.profiles?.full_name \|\| c.guest_players?.full_name` — profile first |
+
+Each can show a linked parent/profile name instead of the guest/child. Route each through the
+guest-first canonical helper (the group-confirmation one uses `first_name`, so it needs a
+`first_name`-aware variant or a small extension). Not a PR 10b blocker (these are rebook/
+priority notifications, not the booking confirmations/requests/cancellations 10b migrates), but
+the same class and worth closing so the helper is the single source. No task id yet.
