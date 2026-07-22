@@ -12,6 +12,7 @@ import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { updateCycleSettings } from '@/lib/cycleWrites';
 import type { CycleSettings } from '@/lib/cycleTypes';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
+import { personKeyOf } from '@/lib/personIdentity';
 import type { BulkResult, BulkFailure } from '@/lib/academyPlayerBulk';
 
 export type GroupStatus = 'rebooked' | 'awaiting' | 'declined' | 'members' | 'public';
@@ -516,7 +517,8 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // RB05: which invitees have NO email. Only guests can be emailless — a registered player
   // always has an auth email — so a guest key not in this set is the emailless case.
   const guestHasEmail = new Set<string>();
-  for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(p.id, (p.full_name ?? '').trim() || '—');
+  // Keyed to match personKeyOf (guest-first, namespaced): a profile is p:<id>, a guest is g:<id>.
+  for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(`p:${p.id}`, (p.full_name ?? '').trim() || '—');
   for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null; linked_profile_id: string | null }>) {
     nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
     // The invite/reminder senders fall back to the linked profile's email when the guest has
@@ -528,8 +530,11 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // Single-claim invoices → per identity; group invoices → per group (propagated to members).
   const { isPaid, hasInvoice: hasInvoiceFor, getPayToken } = buildRebookPaidResolver(singleInvoices, groupInvoices);
 
+  // GUEST-FIRST person key (FAM-02), namespaced (p:/g:): a dual-key child and their linked parent
+  // are DISTINCT people, so they stay two selectable rows — and the `targets` posted to
+  // send-rebook-reminder carry both, instead of the old player-first key collapsing them into one.
   const keyOf = (c: { player_id: string | null; guest_player_id: string | null }) =>
-    c.player_id ?? `g:${c.guest_player_id}`;
+    personKeyOf(c) ?? '';
   // Strongest response per (group, player) — a player on a multi-week series has one
   // claim per slot; collapse to claimed > pending > declined.
   const rank = { claimed: 3, pending: 2, declined: 1, expired: 0 } as const;

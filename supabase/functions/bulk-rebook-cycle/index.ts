@@ -8,6 +8,7 @@ import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
 import { canonicalizeSeriesCohort, cohortPersonKey } from "../_shared/rebook-cohort.ts";
 import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf } from "../_shared/person-identity.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -982,10 +983,15 @@ serve(async (req) => {
         }
         claimsCreated += insertedClaims.length;
 
-        // Representative = each player's claim on the EARLIEST week (min start_time).
+        // Representative = each PERSON's claim on the EARLIEST week (min start_time). GUEST-FIRST
+        // key (FAM-02): a dual-key child (g:<guest>) and their linked parent (p:<player>) are
+        // DISTINCT people, so each gets their own representative claim. The old player-first key
+        // collapsed both under p:<player>, dropping one person's rep BEFORE the invite fn ran — so
+        // that person was never invited (the invite fn's own fix cannot recover a rep it never sees).
         const repByPlayer = new Map<string, { claimId: string; start: string }>();
         for (const cl of insertedClaims) {
-          const pkey = cl.player_id ?? `g:${cl.guest_player_id}`;
+          const pkey = personKeyOf(cl);
+          if (!pkey) continue;
           const start = startBySlot.get(cl.slot_id) ?? "";
           const cur = repByPlayer.get(pkey);
           if (!cur || start < cur.start) repByPlayer.set(pkey, { claimId: cl.id, start });
