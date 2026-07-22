@@ -44,9 +44,13 @@ REVOKE ALL ON FUNCTION public.bump_rebook_reminders(uuid[], uuid[], uuid[]) FROM
 GRANT EXECUTE ON FUNCTION public.bump_rebook_reminders(uuid[], uuid[], uuid[]) TO service_role;
 
 -- (2) rebook_claims_needing_auto_reminder — one representative (cycle, PERSON) row per
---     non-responder. GUEST-FIRST throughout: the DISTINCT ON key, the display name, and the
---     contact email all resolve to the guest person on a dual-key row (matching the
---     person-identity twin + effectiveGuestEmail). Same RETURNS signature → no types-drift.
+--     non-responder. Re-emits the latest body (20260806100000: app_now() test clock + per-cycle
+--     settings.rebook_reminder_lead_hours override, clamp 1h..336h) — same FLAT SELECT structure,
+--     VERBATIM window bounds — and only changes identity to GUEST-FIRST: the DISTINCT ON key,
+--     recipient_name and recipient_email resolve to the guest person on a dual-key row
+--     (person-identity twin + effectiveGuestEmail parity). Same RETURNS signature → no types-drift.
+--     Kept flat (no CTE) to match the proven structure; the guest-first email is repeated in the
+--     has-email filter exactly as the original repeated its COALESCE email.
 CREATE OR REPLACE FUNCTION public.rebook_claims_needing_auto_reminder(_lead_hours int DEFAULT 24)
 RETURNS TABLE (
   cycle_id uuid,
@@ -63,51 +67,53 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  WITH candidate AS (
-    SELECT
-      c.id AS cycle_id,
-      c.name AS cycle_name,
-      ap.name AS academy_name,
-      spc.player_id,
-      spc.guest_player_id,
-      spc.claim_token,
-      s.priority_window_ends_at,
-      -- GUEST-FIRST namespaced person key (FAM-02): guest wins on a dual-key row, so a child and
-      -- their linked parent stay DISTINCT representatives (the old player-first key collapsed them).
-      COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text) AS person_key,
-      -- GUEST-FIRST name: a dual-key child shows their OWN name; the linked profile name is only the
-      -- blank-name fallback for a guest. A pure profile shows the profile name.
-      CASE WHEN spc.guest_player_id IS NOT NULL
-           THEN COALESCE(NULLIF(btrim(gp.full_name), ''), pr.full_name)
-           ELSE pr.full_name END AS recipient_name,
-      -- GUEST-FIRST email (parity with effectiveGuestEmail + personContactEmail): the guest's own
-      -- address, then the linked profile, then the profile joined via player_id; a pure profile uses
-      -- its own email.
-      CASE WHEN spc.guest_player_id IS NOT NULL
-           THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(lp.email), ''), NULLIF(btrim(pr.email), ''))
-           ELSE NULLIF(btrim(pr.email), '') END AS recipient_email
-    FROM public.slot_priority_claims spc
-    JOIN public.availability_slots s ON s.id = spc.slot_id
-    JOIN public.cycles c ON c.id = s.cyclus_id
-    JOIN public.academy_profiles ap ON ap.id = c.owner_id
-    LEFT JOIN public.profiles pr ON pr.id = spc.player_id
-    LEFT JOIN public.guest_players gp ON gp.id = spc.guest_player_id
-    LEFT JOIN public.profiles lp ON lp.id = gp.linked_profile_id  -- guest's linked-profile email fallback
-    WHERE c.owner_type = 'academy'
-      AND (c.settings->>'rebook_payment_mode') IS NOT NULL          -- a rebook round
-      AND COALESCE((c.settings->>'rebook_auto_reminder')::boolean, true) = true  -- opt-out, default on
-      AND spc.status = 'pending'                                    -- not booked (not 'claimed')
-      AND spc.response_intent IS DISTINCT FROM 'decline'            -- did not say no
-      AND spc.reminded_at IS NULL                                   -- not reminded yet (manual or auto)
-      AND s.priority_window_ends_at IS NOT NULL
-      AND s.priority_window_ends_at > now()                         -- window not closed yet
-      AND s.priority_window_ends_at <= now() + make_interval(hours => GREATEST(1, LEAST(168, COALESCE(_lead_hours, 24))))
-  )
-  SELECT DISTINCT ON (cycle_id, person_key)
-    cycle_id, cycle_name, academy_name, player_id, guest_player_id, recipient_name, recipient_email, claim_token
-  FROM candidate
-  WHERE recipient_email IS NOT NULL                                 -- has a deliverable (guest-first) address
-  ORDER BY cycle_id, person_key, priority_window_ends_at ASC;       -- earliest-closing slot as representative
+  -- GUEST-FIRST namespaced person key (FAM-02): guest wins on a dual-key row, so a child and their
+  -- linked parent stay DISTINCT representatives (the old player-first key collapsed them).
+  SELECT DISTINCT ON (c.id, COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text))
+    c.id AS cycle_id,
+    c.name AS cycle_name,
+    ap.name AS academy_name,
+    spc.player_id,
+    spc.guest_player_id,
+    -- GUEST-FIRST name: a dual-key child shows their OWN name; the linked profile name is only the
+    -- blank-name fallback for a guest. A pure profile shows the profile name.
+    CASE WHEN spc.guest_player_id IS NOT NULL
+         THEN COALESCE(NULLIF(btrim(gp.full_name), ''), pr.full_name)
+         ELSE pr.full_name END AS recipient_name,
+    -- GUEST-FIRST email (parity with effectiveGuestEmail + personContactEmail): the guest's own
+    -- address, then the linked profile, then the profile joined via player_id; a pure profile uses
+    -- its own email.
+    CASE WHEN spc.guest_player_id IS NOT NULL
+         THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(lp.email), ''), NULLIF(btrim(pr.email), ''))
+         ELSE NULLIF(btrim(pr.email), '') END AS recipient_email,
+    spc.claim_token
+  FROM public.slot_priority_claims spc
+  JOIN public.availability_slots s ON s.id = spc.slot_id
+  JOIN public.cycles c ON c.id = s.cyclus_id
+  JOIN public.academy_profiles ap ON ap.id = c.owner_id
+  LEFT JOIN public.profiles pr ON pr.id = spc.player_id
+  LEFT JOIN public.guest_players gp ON gp.id = spc.guest_player_id
+  LEFT JOIN public.profiles lp ON lp.id = gp.linked_profile_id  -- guest's linked-profile email fallback
+  WHERE c.owner_type = 'academy'
+    AND (c.settings->>'rebook_payment_mode') IS NOT NULL          -- a rebook round
+    AND COALESCE((c.settings->>'rebook_auto_reminder')::boolean, true) = true  -- opt-out, default on
+    AND spc.status = 'pending'                                    -- not booked (not 'claimed')
+    AND spc.response_intent IS DISTINCT FROM 'decline'            -- did not say no
+    AND spc.reminded_at IS NULL                                   -- not reminded yet (manual or auto)
+    AND s.priority_window_ends_at IS NOT NULL
+    AND s.priority_window_ends_at > public.app_now()              -- window not closed yet (test clock)
+    AND s.priority_window_ends_at <= public.app_now() + make_interval(hours => GREATEST(1, LEAST(336, COALESCE(
+      -- per-round override (digits-only parse; junk falls back, never errors the cron)
+      CASE WHEN c.settings->>'rebook_reminder_lead_hours' ~ '^[0-9]{1,4}$'
+           THEN (c.settings->>'rebook_reminder_lead_hours')::int END,
+      _lead_hours, 24))))
+    -- has a deliverable (guest-first) address — same expression as recipient_email above
+    AND (CASE WHEN spc.guest_player_id IS NOT NULL
+              THEN COALESCE(NULLIF(btrim(gp.email), ''), NULLIF(btrim(lp.email), ''), NULLIF(btrim(pr.email), ''))
+              ELSE NULLIF(btrim(pr.email), '') END) IS NOT NULL
+  ORDER BY c.id,
+           COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text),
+           s.priority_window_ends_at ASC;                         -- earliest-closing slot as representative
 $$;
 
 -- Correctly locked down: service-role only. The bare `REVOKE FROM PUBLIC` in the original
