@@ -600,6 +600,19 @@ describe('P1 #3 — academy-first tenant', () => {
     await expect(call([B1, B2], 'cancelled_player')).rejects.toThrow(/does not own this slot/);
   });
 
+  it('a multi-trainer academy CONFIRMATION also uses generic copy (no falsely-named trainer)', async () => {
+    // The #3 copy-safety must hold for confirmation_player too, not only cancellation. Staff
+    // (academy manager) confirms a set spanning two of the academy's trainers for ONE player.
+    await mkBooking(B1, S1, { player: PR1 });        // T1, A1, confirmed
+    await mkBooking(B2, S_A1B, { player: PR1 });     // T1B, A1, confirmed
+    await as(U_M);
+    expect((await call([B1, B2], 'confirmation_player')).rows[0].v).toBe(1);
+    const html = (await db.query<{ h: string }>(`SELECT html AS h FROM public._captured LIMIT 1`)).rows[0].h;
+    expect(html).toContain('je trainer');
+    expect(html).not.toContain('Trainer T');
+    expect(html).not.toContain('Trainer B');
+  });
+
   it('a SINGLE-trainer academy cancellation by that trainer still succeeds', async () => {
     await mkBooking(B1, S1, { player: PR1, status: 'cancelled' });
     await as(U_T);

@@ -205,9 +205,11 @@ export async function runBookingPaidSideEffects(opts: {
     playerStatus = "threw";
     playerDetail = String(playerErr).replace(/\s+/g, " ").slice(0, 200);
     logStep("Player confirmation threw", { error: String(playerErr) });
+    // Parity with the enqueue_failed branch: the alert carries the SAME sanitized,
+    // length-bounded detail that goes to the durable audit, not a differently-shaped raw slice.
     await notifySlackError(source, "paid booking confirmation THREW — payer has no confirmation", {
       bookingIds,
-      error: String(playerErr).slice(0, 300),
+      detail: playerDetail,
     });
   }
 

@@ -34,6 +34,7 @@ type FakeOpts = {
   enqueueSkipped?: boolean;
   /** make get_invoice_recipient_identity (guest branch) resolve an ERROR → enqueue_failed w/ detail. */
   identityRpcError?: string;
+  identityThrow?: string;
   /** table => error message: the query RESOLVES {data:null,error} (PostgREST 400 / RLS),
    *  which is the failure mode that used to read as "no rows" everywhere. */
   queryError?: Record<string, string>;
@@ -120,6 +121,9 @@ function makeFakeSupabase(opts: FakeOpts) {
   });
   // The staff fan-out (PR 6b) + the player confirmation (PR 6a) enqueue via rpc.
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
+    if (name === 'get_invoice_recipient_identity' && opts.identityThrow) {
+      throw new Error(opts.identityThrow);
+    }
     if (name === 'get_invoice_recipient_identity' && opts.identityRpcError) {
       return { data: null, error: { message: opts.identityRpcError } };
     }
@@ -648,6 +652,28 @@ describe('PR 10b #4 — the confirmation failure DETAIL survives to the alert + 
     const alerted = notify.mock.calls.find((c) => String(c[1]).includes('could not be enqueued'));
     expect(alerted, 'a paid-confirmation failure alerts').toBeTruthy();
     expect(JSON.stringify(alerted![2]), 'alert context includes the detail').toContain('identity backend unavailable');
+  });
+
+  it('a THROWN confirmation carries the SAME sanitized detail to the audit AND the alert', async () => {
+    // Parity with enqueue_failed: the throw branch must not drop the detail or ship a
+    // differently-shaped raw slice.
+    // The confirmation helper THROWS (its bookings read rejects) — the identity/contact
+    // internal handlers cannot catch a read that throws before them, so it propagates to the
+    // side-effects LANE 1 catch. (An identity *error* is caught internally → enqueue_failed;
+    // this is the genuinely-thrown case.)
+    const { supabase, auditRows } = makeFakeSupabase({
+      booking: guestBooking,
+      invoiceInvokeData: { success: true, invoiceId: 'INV-1' },
+      throwOnTable: 'bookings',
+      ...guestPayer,
+    });
+    const notify = await run(supabase);
+    const meta = (auditRows.find((r) => r.status === 'booking_paid_notifications')!.metadata) as Record<string, unknown>;
+    expect(meta.playerStatus).toBe('threw');
+    expect(String(meta.playerDetail)).toContain('simulated transport fault');
+    const alerted = notify.mock.calls.find((c) => String(c[1]).includes('THREW'));
+    expect(alerted, 'a thrown confirmation alerts').toBeTruthy();
+    expect(JSON.stringify(alerted![2]), 'the alert carries the sanitized detail').toContain('simulated transport fault');
   });
 });
 
