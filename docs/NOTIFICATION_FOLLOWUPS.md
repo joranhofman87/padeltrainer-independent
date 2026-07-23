@@ -355,13 +355,14 @@ Final release-readiness correction, not another architectural round:
 1. **P1 deploy blocker — stale runbook.** The PR-body deploy section listed 1 migration + 6 edge
    functions; the branch actually ships **3 migrations + 7 edge functions**. Corrected in the PR body
    AND captured durably below (§ PR 10d — DEPLOY RUNBOOK). It now names all 3 migrations
-   (`20260927100000`, `20260928100000`, `20260929100000`) and all 7 functions including the omitted
-   `create-rebook-invoice` (which had to be redeployed because it bundles the changed
-   `resend-send`/error-inspection `_shared` path even though its own `index.ts` is unchanged).
+   (`20260927100000`, `20260928100000`, `20260929100000`) and all 7 functions including the
+   previously-omitted `create-rebook-invoice` (its own `index.ts` changed — the `send-invoice-email`
+   error-inspection fix; all 7 entrypoints carry a changed `index.ts`).
 2. **P2 quiet window is now an enforceable switch + forward-only recovery.** "Hold send-rebook-reminder"
-   was an operator instruction, not a switch. The runbook now pins the **enforceable** control (pause
-   the two crons via `cron.unschedule`, verify in `cron.job`) and scopes the manual-sender exposure to
-   a short off-hours window whose residual risk is *bounded and not new*. Recovery is **forward-only**:
+   was an operator instruction, not a switch. The runbook now pins the **enforceable** control
+   (deactivate the two crons via `cron.alter_job(active := false)`, verified against `cron.job` +
+   `cron.job_run_details`) and scopes the manual-sender exposure to a short off-hours window whose
+   residual risk is *bounded and not new*. Recovery is **forward-only**:
    on an edge-deploy failure, keep crons paused and re-run the deploy — **never roll back
    `20260927100000`**, which closes the live ACL leak.
 3. **P2 index preflight — done (read-only prod, 2026-07-23).** `slot_priority_claims` = **3,205 rows /
@@ -391,6 +392,15 @@ Final release-readiness correction, not another architectural round:
    --linked` to identify which versions landed, fix forward, re-push only the remaining files; (d)
    `create-rebook-invoice` redeploy reason corrected (its OWN `index.ts` changed; it does not import
    `resend-send`).
+7. **Codex round 14 — two docs-only findings closed** (this section had stale narrative even after the
+   round-13 runbook fix): (a) the cron control now uses a reusable **cron-state query** joining
+   `cron.job` with `cron.job_run_details`, run at all three boundaries (before pause / after pause /
+   after resume) — it must show exactly two jobs, `running=false`, `active` transitioning
+   `true → false → true` (deactivating does NOT stop an in-flight run, so `running=false` is required
+   before migrating). (b) The round-12 items 1–2 above still carried the OLD wrong wording
+   (`create-rebook-invoice`'s `index.ts` "unchanged"/bundles `resend-send`; `cron.unschedule`) — both
+   corrected here, plus the runbook's generic "some entrypoints unchanged" claim removed: **all 7
+   entrypoints have a directly changed `index.ts`** (verified `git diff origin/main...HEAD`).
 
 ### PR 10d — DEPLOY RUNBOOK (authoritative; supersedes the PR-body notes if they ever drift)
 
@@ -409,24 +419,35 @@ Final release-readiness correction, not another architectural round:
 
 **Edge functions (redeploy ALL 7):** `auto-rebook-reminder`, `bulk-rebook-cycle`,
 `create-rebook-invoice`, `notify-rebook-member-open`, `send-priority-claim-invitation`,
-`send-rebook-group-confirmation`, `send-rebook-reminder`. Redeploy reasons differ: most carry a
-changed `index.ts`; `create-rebook-invoice`'s OWN `index.ts` changed (the `send-invoice-email`
-error-inspection fix — it does **not** import `resend-send`); functions whose `index.ts` is unchanged
-pick up a changed `_shared` bundle (`paginate`, `priority-claim-invite`, `rebook-group-confirm`,
+`send-rebook-group-confirmation`, `send-rebook-reminder`. **All 7 have a directly changed `index.ts`**
+(verified `git diff origin/main...HEAD` — incl. `create-rebook-invoice`, whose `index.ts` carries the
+`send-invoice-email` error-inspection fix and does **not** import `resend-send`); several also bundle
+changed `_shared` modules (`paginate`, `priority-claim-invite`, `rebook-group-confirm`,
 `rebook-guest-contact`, `rebook-invitation-context`, `rebook-member-open`, `resend-send`,
-`send-then-stamp`). All 7 redeploy either way.
+`send-then-stamp`). No entrypoint is skippable.
 
 **Steps:**
-1. **Deactivate** the two crons — do NOT `cron.unschedule` (that DELETES them and the resume step
-   has no exact recreation). `cron.alter_job(active := false)` preserves the Vault-backed command +
-   schedule. Confirm exactly two rows, both `active=true`, before (jobids 7 + 8 today):
+1. **Deactivate** the two crons — do NOT `cron.unschedule` (that DELETES them; the resume step then
+   has nothing exact to recreate). `cron.alter_job(active := false)` preserves the Vault-backed command
+   + schedule. Use this reusable **cron-state query** at EVERY boundary (before pause, after pause,
+   after resume) — it must always return exactly two rows with `running=false`:
    ```sql
-   SELECT jobid, jobname, schedule, active FROM cron.job
-   WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open') ORDER BY jobname;
+   -- CRON-STATE QUERY (reusable at every boundary)
+   SELECT j.jobid, j.jobname, j.schedule, j.active,
+          EXISTS (SELECT 1 FROM cron.job_run_details d
+                  WHERE d.jobid = j.jobid AND d.status = 'running') AS running
+   FROM cron.job j
+   WHERE j.jobname IN ('auto-rebook-reminder','notify-rebook-member-open')
+   ORDER BY j.jobname;
+   ```
+   (a) **BEFORE:** exactly two rows, `active=true`, `running=false` (jobids 7 + 8 today). If
+   `running=true`, WAIT — deactivating does NOT stop an in-flight execution. (b) **Deactivate:**
+   ```sql
    SELECT cron.alter_job(jobid, active := false)
    FROM cron.job WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open');
    ```
-   Off-hours, no round mid-send.
+   (c) **AFTER pause:** re-run the cron-state query — assert `active=false` on both, `running=false`,
+   still exactly two rows, before proceeding. Off-hours, no round mid-send.
 2. `supabase db push --linked` → applies the 3 migrations (each individually transactional; the
    dry-run pins the set). Re-run the `20260928100000` conflict count first; abort if > 0.
 3. **Verify grants** against the EXACT per-signature ACL matrix (post-migration). Every row must be
@@ -477,12 +498,13 @@ pick up a changed `_shared` bundle (`paginate`, `priority-claim-invite`, `rebook
 5. **Merge/deploy the frontend only AFTER step 2 (migrations live)** — `rebookManage.ts:61` calls the
    new `guests_have_rebook_contact` and THROWS on error, so shipping the client before `20260927100000`
    creates+grants it breaks every academy's rebook-manage page (fail-closed deploy ordering).
-6. **Reactivate** the two crons; confirm exactly two rows, both `active=true` again:
+6. **Reactivate** the two crons, then re-run the step-1 **cron-state query** — assert `active=true` on
+   both, `running=false`, exactly two rows (completing the proven `active: true → false → true`
+   transition across the three boundaries):
    ```sql
    SELECT cron.alter_job(jobid, active := true)
    FROM cron.job WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open');
-   SELECT jobid, jobname, schedule, active FROM cron.job
-   WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open') ORDER BY jobname;
+   -- then re-run the CRON-STATE QUERY from step 1: expect 2 rows, active=true, running=false
    ```
 7. Flip these open→resolved. **Blocks PR 10c.**
 
