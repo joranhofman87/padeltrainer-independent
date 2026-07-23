@@ -24,15 +24,33 @@ SET search_path = public
 AS $$
   WITH me AS (SELECT id FROM public.profiles WHERE user_id = _user_id LIMIT 1)
   SELECT
-    -- (a) existing rebooker
-    public.is_cycle_member(_user_id, _cycle_id)
-    -- (b) original cohort: any priority claim on a slot in this round
+    -- (a) existing rebooker — a booking in this cycle owned by ME as a PERSON (FAM-02). A pure-profile
+    --     booking (guest_player_id IS NULL) matches player_id = me; a GUEST booking matches only when
+    --     the guest's VERIFIED account (person_links → twin → linked, split-freeze) is me. The raw
+    --     player_id on a dual-key booking is NOT identity proof (the shared is_cycle_member primitive —
+    --     which matches raw player_id and is used by capacity/tier — is redefined + locked down in the
+    --     dedicated auth-hardening PR; here we inline the guest-safe check for the member window only).
+    EXISTS (
+      SELECT 1
+      FROM public.bookings b
+      JOIN public.availability_slots s ON s.id = b.slot_id
+      WHERE s.cyclus_id = _cycle_id
+        AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
+        AND (
+          (b.guest_player_id IS NULL AND b.player_id = (SELECT id FROM me))
+          OR (b.guest_player_id IS NOT NULL AND public.guest_verified_account_profile(b.guest_player_id) = (SELECT id FROM me))
+        )
+    )
+    -- (b) original cohort: a PURE-PROFILE priority claim on a slot in this round. A dual-key claim
+    --     belongs to the GUEST (guest_player_id set) and is handled guest-safely by (d) — so guard it
+    --     here with guest_player_id IS NULL, else the raw parent player_id would grant the parent.
     OR EXISTS (
       SELECT 1
       FROM public.slot_priority_claims spc
       JOIN public.availability_slots s ON s.id = spc.slot_id
       WHERE s.source_cycle_id = _cycle_id
         AND spc.player_id = (SELECT id FROM me)
+        AND spc.guest_player_id IS NULL
     )
     -- (c) registered priority list stored on the cycle's settings
     OR EXISTS (

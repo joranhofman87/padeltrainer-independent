@@ -51,6 +51,11 @@ beforeAll(async () => {
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text, linked_profile_id uuid, twin_of_profile_id uuid, split_frozen boolean DEFAULT false);
     CREATE TABLE public.persons (id uuid PRIMARY KEY);
     CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid, profile_id uuid, guest_player_id uuid);
+    CREATE TABLE public.rate_limits (identifier text, endpoint text, request_count int, window_start timestamptz, UNIQUE(identifier, endpoint));
+    CREATE TABLE public.academy_managers (academy_profile_id uuid, user_id uuid);
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $auth$
+      SELECT NULLIF(current_setting('test.uid', true), '')::uuid $auth$;
     CREATE FUNCTION public.is_guest_split_frozen(_guest_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $frz$
       SELECT COALESCE((SELECT split_frozen FROM public.guest_players WHERE id = _guest_id), false) $frz$;
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);

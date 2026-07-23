@@ -61,6 +61,10 @@ beforeAll(async () => {
     CREATE TABLE public.persons (id uuid PRIMARY KEY);
     CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid, profile_id uuid, guest_player_id uuid);
     CREATE TABLE public.rate_limits (identifier text, endpoint text, request_count int, window_start timestamptz, UNIQUE(identifier, endpoint));
+    CREATE TABLE public.academy_managers (academy_profile_id uuid, user_id uuid);
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $auth$
+      SELECT NULLIF(current_setting('test.uid', true), '')::uuid $auth$;
     CREATE FUNCTION public.is_guest_split_frozen(_guest_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $frz$
       SELECT COALESCE((SELECT split_frozen FROM public.guest_players WHERE id = _guest_id), false) $frz$;
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);
@@ -203,6 +207,10 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
       UNION ALL SELECT 'ratelimit_anon',has_function_privilege('anon','public.consume_rate_limit(text,text,int,int)','execute')
       UNION ALL SELECT 'ratelimit_auth',has_function_privilege('authenticated','public.consume_rate_limit(text,text,int,int)','execute')
       UNION ALL SELECT 'ratelimit_svc', has_function_privilege('service_role','public.consume_rate_limit(text,text,int,int)','execute')
+      -- guests_have_rebook_contact is authenticated-callable BUT academy-scoped inside its body (proven above)
+      UNION ALL SELECT 'ghrc_anon',     has_function_privilege('anon','public.guests_have_rebook_contact(uuid[])','execute')
+      UNION ALL SELECT 'ghrc_auth',     has_function_privilege('authenticated','public.guests_have_rebook_contact(uuid[])','execute')
+      UNION ALL SELECT 'ghrc_svc',      has_function_privilege('service_role','public.guests_have_rebook_contact(uuid[])','execute')
     `)).rows;
     const by = Object.fromEntries(r.map((x) => [x.chk, x.v]));
     expect(by.anon).toBe(false);          // the cross-academy email/token leak is closed
@@ -234,6 +242,9 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
     expect(by.ratelimit_anon).toBe(false);
     expect(by.ratelimit_auth).toBe(false);
     expect(by.ratelimit_svc).toBe(true);
+    expect(by.ghrc_anon).toBe(false);       // anon locked out
+    expect(by.ghrc_auth).toBe(true);        // authenticated managers, but academy-scoped in-body
+    expect(by.ghrc_svc).toBe(true);
   });
 
   it('append_rebook_member_open_notified is ATOMIC + dedup (one UPDATE, no whole-settings clobber)', async () => {
@@ -327,5 +338,40 @@ describe('PR 10d #3 — guest_verified_account_profile / resolve_guest_member_co
     // genuinely accountless → own email, no account
     expect(by[G_NONE].own_email).toBe('nobody@example.com');
     expect(by[G_NONE].has_account).toBe(false);
+  });
+});
+
+// ── Finding #1: guests_have_rebook_contact is SCOPED to the caller's managed academy — an ordinary
+//    or cross-tenant authenticated user cannot probe another academy's guests. ──────────────────────
+describe('PR 10d #1 — guests_have_rebook_contact is academy-scoped (no cross-tenant oracle)', () => {
+  const MGR = 'dd000000-0000-0000-0000-000000000001';   // manages ACAD (owns CYCLE with CHILD/CHILD2 claims)
+  const ACAD2 = 'a0000000-0000-0000-0000-0000000000a2'; // a different academy
+  const MGR2 = 'dd000000-0000-0000-0000-000000000002';  // manages ACAD2 (NOT ACAD)
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.academy_profiles (id, name) VALUES ('${ACAD2}', 'Other Academy') ON CONFLICT DO NOTHING;
+      INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ('${ACAD}', '${MGR}'), ('${ACAD2}', '${MGR2}');
+    `);
+  });
+  const asUser = async (uid: string | null, guestIds: string[]) => {
+    await db.query(`SELECT set_config('test.uid', $1, false)`, [uid ?? '']);
+    return (await db.query<{ guest_id: string; has_contact: boolean }>(
+      `SELECT guest_id, has_contact FROM public.guests_have_rebook_contact($1::uuid[]) ORDER BY guest_id`, [guestIds])).rows;
+  };
+
+  it('a manager of the owning academy gets contact for its guests', async () => {
+    const rows = await asUser(MGR, [CHILD, CHILD2]);
+    const by = Object.fromEntries(rows.map((r) => [r.guest_id, r.has_contact]));
+    expect(by[CHILD]).toBe(true);   // own email
+    expect(by[CHILD2]).toBe(true);  // no own email but a verified (linked) account with one
+  });
+
+  it('a manager of a DIFFERENT academy gets NOTHING (cross-tenant probe fails closed)', async () => {
+    expect(await asUser(MGR2, [CHILD, CHILD2])).toEqual([]);
+  });
+
+  it('an ordinary authenticated user managing no academy gets NOTHING', async () => {
+    expect(await asUser('dd000000-0000-0000-0000-0000000000ff', [CHILD, CHILD2])).toEqual([]);
   });
 });

@@ -217,9 +217,12 @@ GRANT EXECUTE ON FUNCTION public.append_rebook_member_open_notified(uuid, text[]
 -- (2e) guests_have_rebook_contact — academy-manager reachability for the manage UI (Codex #5). The
 --      client CANNOT read person_links/twin (definer/service only), so it cannot tell a person-links-
 --      or twin-only guest is reachable. Returns ONLY a per-guest BOOLEAN (own email OR a verified
---      account with an email) — never the resolved account ADDRESS — so it is safe to grant to
---      authenticated managers. Mirrors the delivery model, so the UI never advertises a route the
---      sender skips (and never hides one the sender would use).
+--      account with an email) — never the resolved account ADDRESS.
+--      SCOPED (Codex round-4 #1): a guest is returned ONLY if the CURRENT USER (auth.uid(), the
+--      caller even under SECURITY DEFINER) manages the academy that owns a cycle the guest has a
+--      rebook claim in. A cross-tenant / unauthorized guest id is simply ABSENT from the result
+--      (fail-closed), so an ordinary authenticated user cannot probe another tenant's guests. Input
+--      cardinality is bounded to prevent a large-array probe.
 CREATE OR REPLACE FUNCTION public.guests_have_rebook_contact(_guest_ids uuid[])
 RETURNS TABLE (guest_id uuid, has_contact boolean)
 LANGUAGE sql
@@ -227,15 +230,24 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT gp.id,
+  WITH authorized AS (
+    SELECT DISTINCT spc.guest_player_id AS gid
+    FROM public.slot_priority_claims spc
+    JOIN public.availability_slots s ON s.id = spc.slot_id
+    JOIN public.cycles c ON c.id = s.cyclus_id AND c.owner_type = 'academy'
+    JOIN public.academy_managers am ON am.academy_profile_id = c.owner_id AND am.user_id = auth.uid()
+    WHERE spc.guest_player_id = ANY(_guest_ids)
+      AND cardinality(_guest_ids) <= 1000
+  )
+  SELECT a.gid,
     (NULLIF(btrim(gp.email), '') IS NOT NULL
      OR EXISTS (
        SELECT 1 FROM public.profiles p
        WHERE p.id = public.guest_verified_account_profile(gp.id)
          AND NULLIF(btrim(p.email), '') IS NOT NULL
      ))
-  FROM public.guest_players gp
-  WHERE gp.id = ANY(_guest_ids);
+  FROM authorized a
+  JOIN public.guest_players gp ON gp.id = a.gid;
 $$;
 REVOKE ALL ON FUNCTION public.guests_have_rebook_contact(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.guests_have_rebook_contact(uuid[]) TO authenticated, service_role;

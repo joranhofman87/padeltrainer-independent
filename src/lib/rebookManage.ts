@@ -509,13 +509,22 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // Names.
   const playerIds = [...new Set(claimRows.map((c) => c.player_id).filter(Boolean))] as string[];
   const guestIds = [...new Set(claimRows.map((c) => c.guest_player_id).filter(Boolean))] as string[];
-  const [{ data: profiles }, { data: guests }, { data: guestContacts }] = await Promise.all([
-    playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from('guest_players').select('id, full_name').in('id', guestIds) : Promise.resolve({ data: [] }),
+  const [
+    { data: profiles, error: profErr },
+    { data: guests, error: guestErr },
+    { data: guestContacts, error: contactErr },
+  ] = await Promise.all([
+    playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [], error: null }),
+    guestIds.length ? supabase.from('guest_players').select('id, full_name').in('id', guestIds) : Promise.resolve({ data: [], error: null }),
     // RB05 reachability from the SAME verified-account model the senders deliver by (own email OR a
     // verified person_links/twin/linked account) — a boolean only, never the account address.
-    guestIds.length ? supabase.rpc('guests_have_rebook_contact', { _guest_ids: guestIds }) : Promise.resolve({ data: [] }),
+    guestIds.length ? supabase.rpc('guests_have_rebook_contact', { _guest_ids: guestIds }) : Promise.resolve({ data: [], error: null }),
   ]);
+  // Fail the view load on ANY of these — never render an RPC failure (transient/authorization) as
+  // "no contact", which would falsely tell the manager a reminder route is unavailable.
+  if (profErr) throw profErr;
+  if (guestErr) throw guestErr;
+  if (contactErr) throw contactErr;
   const nameByKey = new Map<string, string>();
   // RB05: which invitees have NO reachable contact. Only guests can be emailless — a registered
   // player always has an auth email — so a guest key not in this set is the emailless case.

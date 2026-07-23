@@ -42,7 +42,7 @@ beforeAll(async () => {
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid);
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, settings jsonb DEFAULT '{}'::jsonb);
     CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, source_cycle_id uuid, cyclus_id uuid);
-    CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, status text);
+    CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid, status text);
     CREATE TABLE public.slot_priority_claims (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid, status text);
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, linked_profile_id uuid, twin_of_profile_id uuid);
@@ -63,6 +63,16 @@ beforeAll(async () => {
           SELECT 1 FROM public.person_merge_review r
           WHERE r.guest_player_id = _guest_player_id AND r.status = 'pending'
             AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')) $fn$;
+    -- guest_verified_account_profile (defined by 20260927100000 in prod; inlined here so 20260928100000
+    -- — which now calls it in clause (a) — loads). Same body: person_links → twin → linked, split-freeze.
+    CREATE OR REPLACE FUNCTION public.guest_verified_account_profile(_guest_id uuid)
+      RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $gvap$
+        SELECT CASE WHEN public.is_guest_split_frozen(_guest_id) THEN NULL ELSE COALESCE(
+          (SELECT plp.profile_id FROM public.person_links plg JOIN public.person_links plp ON plp.person_id = plg.person_id
+            WHERE plg.guest_player_id = _guest_id AND plp.profile_id IS NOT NULL LIMIT 1),
+          (SELECT gp.twin_of_profile_id FROM public.guest_players gp WHERE gp.id = _guest_id),
+          (SELECT gp.linked_profile_id FROM public.guest_players gp WHERE gp.id = _guest_id AND gp.twin_of_profile_id IS NULL)
+        ) END $gvap$;
 
     INSERT INTO public.profiles (id, user_id) VALUES
       ('${MERGED.p}','${MERGED.u}'), ('${TWIN.p}','${TWIN.u}'), ('${LINKED.p}','${LINKED.u}'),
@@ -198,5 +208,40 @@ describe('can_book_member_window — Phase 3.3c person arm + bridge + freeze', (
 
   it('regression (c): a registered priority-list person is still eligible', async () => {
     expect(await canBook(PRIO.u)).toBe(true);
+  });
+});
+
+// PR 10d #2 (Codex round-4): clauses (a)/(b) must be FAM-02-safe too — a raw dual-key player_id must
+// not grant the parent through a booking (a) or a priority claim (b). (Codex reproduced both bypasses.)
+describe('can_book_member_window — dual-key booking/claim denies the raw parent (clause a/b)', () => {
+  const BACC = { p: 'a0000000-0000-0000-0000-0000000000b1', u: 'b0000000-0000-0000-0000-0000000000b1', per: 'e0000000-0000-0000-0000-0000000000b1' };
+  const BGUEST = '70000000-0000-0000-0000-0000000000b1'; // person_links → BACC, NO claim (booking-only, isolates clause a)
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.profiles (id, user_id) VALUES ('${BACC.p}', '${BACC.u}');
+      INSERT INTO public.persons (id) VALUES ('${BACC.per}');
+      INSERT INTO public.guest_players (id) VALUES ('${BGUEST}');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${BACC.per}', '${BACC.p}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${BACC.per}', '${BGUEST}');
+    `);
+  });
+  afterEach(async () => {
+    await db.exec(`DELETE FROM public.bookings;
+      DELETE FROM public.slot_priority_claims WHERE status='pending' AND player_id IS NOT NULL AND guest_player_id IS NOT NULL;`);
+  });
+
+  it('clause (a): a dual-key BOOKING grants the guest\'s VERIFIED account, DENIES the raw parent', async () => {
+    // BGUEST (person_links → BACC) booked with RANDOM as the raw dual-key player_id. Only route is (a).
+    await db.exec(`INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status) VALUES ('${SLOT}', '${RANDOM.p}', '${BGUEST}', 'confirmed');`);
+    expect(await canBook(BACC.u)).toBe(true);    // the guest's verified account IS a member via (a)
+    expect(await canBook(RANDOM.u)).toBe(false); // the raw player_id parent is NOT (Codex reproduced: was true)
+  });
+
+  it('clause (b): a dual-key CLAIM denies the raw parent (guest_player_id IS NULL guard)', async () => {
+    // GUEST (person_links → MERGED) with a dual-key claim under RANDOM as the raw player_id.
+    await db.exec(`INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status) VALUES ('${SLOT}', '${RANDOM.p}', '${GUEST}', 'pending');`);
+    expect(await canBook(RANDOM.u)).toBe(false); // the raw player_id parent is NOT granted (Codex reproduced: was true)
+    expect(await canBook(MERGED.u)).toBe(true);  // the guest resolves to MERGED via (d)
   });
 });

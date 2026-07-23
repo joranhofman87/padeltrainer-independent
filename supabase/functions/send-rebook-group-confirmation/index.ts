@@ -8,9 +8,12 @@
 //     → "you've been added by X". This welcome email is also the GDPR consent touchpoint.
 // The captain themselves is excluded (their own claims carry booked_by_* = NULL).
 //
-// Idempotency: claim-before-send. We atomically stamp confirmation_sent_at (only where still
-// NULL) BEFORE sending and clear it again on send failure, so concurrent runs / re-invocations
-// never double-send and a transient Resend error stays retryable.
+// Idempotency: SEND-THEN-STAMP with a deterministic per-(group, member) Resend idempotency key. We
+// send first, then stamp confirmation_sent_at only on a confirmed send — so a failed send never
+// leaves a stamp that permanently suppresses the confirmation. The idempotency key dedupes duplicate
+// sends only within Resend's 24h key window; it is NOT durable recovery. A post-send stamp failure is
+// reported as an UNRESOLVED send (ok:false, unresolved>0), and durable recovery of those is a
+// mandatory PR 10c acceptance item (the v2 outbox), NOT something this function guarantees.
 //
 // Token-gated + self-authenticating (verify_jwt = false): the anon captain may be logged out.
 // The claim_token is the capability; everything DB-side runs as the service role after the gate.
@@ -192,7 +195,7 @@ serve(async (req: Request) => {
         .filter((k): k is string => !!k),
     );
 
-    let sent = 0, skipped = 0, failed = 0;
+    let sent = 0, skipped = 0, failed = 0, unresolved = 0;
 
     for (const m of members.values()) {
       // VERIFIED contact email: a guest is reached at their OWN email then their VERIFIED account,
@@ -269,13 +272,18 @@ serve(async (req: Request) => {
         : stampQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
       const { error: stampErr } = await stampQ;
       if (stampErr) {
-        // The email went out (counted as sent); a stamp failure only risks a Resend-deduped re-send
-        // on a later retry — surface it, but it is NOT a failed send.
-        await notifySlackEdgeError("send-rebook-group-confirmation", "confirmation-sent stamp failed after a successful send — idempotent re-send possible on retry", { groupId, error: String(stampErr.message ?? stampErr) });
+        // The email went out (counted as sent), but its confirmation_sent_at stamp did NOT land, so
+        // the send is UNRESOLVED: a later retry will re-send. Provider idempotency only dedupes within
+        // Resend's 24h key window — beyond that (or on a different key) the recipient gets a duplicate.
+        // Durable recovery of these unresolved sends is a mandatory PR 10c acceptance item (v2 outbox).
+        unresolved++;
+        await notifySlackEdgeError("send-rebook-group-confirmation", "confirmation-sent stamp failed after a successful send — send is UNRESOLVED (idempotency dedupes for 24h only; durable recovery is a PR 10c item)", { groupId, memberKey: m.key, error: String(stampErr.message ?? stampErr) });
       }
     }
 
-    return json({ ok: true, sent, skipped, failed });
+    // ok ONLY when every send that left the building was also stamped. Any unresolved send (sent but
+    // un-stamped) degrades to a partial result the caller/cron must not treat as clean success.
+    return json({ ok: unresolved === 0, sent, skipped, failed, unresolved });
   } catch (e) {
     const message = String((e as Error)?.message ?? e);
     await notifySlackEdgeError("send-rebook-group-confirmation", message);

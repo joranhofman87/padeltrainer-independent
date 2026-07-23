@@ -122,18 +122,51 @@ were premature. Round-3 corrections:
    `resolve_guest_member_contacts`): `send-rebook-reminder`, `send-priority-claim-invitation`,
    `send-rebook-group-confirmation`. A guest is reached at their OWN email then their VERIFIED
    account, NEVER the raw `claim.player_id`. (Round 2 had only fixed member-open + auto-reminder.)
-2. **Authorization parity is now REAL** (owner-approved eligibility change): `can_book_member_window`
+2. **Twin/linked bridge suppression** (owner-approved eligibility change): `can_book_member_window`
    was a UNION (`person_links OR twin OR linked`) while the resolver gave person_links precedence.
    Migration `20260928100000` makes curated `person_links` SUPPRESS the twin/linked bridge in both
    guest arms, so a stale twin cannot grant a different account than the curated one. Pre-deploy
    audit: 0 conflicting guests in prod (0 with claims / priority) → no current access lost.
+   **NOT yet full parity** — see round-4 #2 below: clauses (a)/(b) still keyed the RAW `player_id`,
+   granting the parent of a dual-key row; closed in round 4, but the shared `is_cycle_member`
+   primitive (capacity/slot-tier) is still raw-keyed and is owned by the dedicated auth-hardening PR.
 3. **Group-confirmation** is now send-THEN-stamp with a deterministic Resend idempotency key (was:
-   claim-before-send with no key → timeout-dup + a failed clear permanently suppressed).
+   claim-before-send with no key → timeout-dup + a failed clear permanently suppressed). The key
+   dedupes for Resend's 24h window ONLY; a post-send stamp failure now returns `ok:false, unresolved>0`
+   (round-4 #3) and durable recovery of unresolved sends remains a PR 10c acceptance item.
 4. **Rate limiter** is one atomic `consume_rate_limit` RPC, fail-CLOSED (was: fail-open, race-prone
    read-modify-write on a `verify_jwt=false` endpoint).
 5. **Manage UI** reachability (`guests_have_rebook_contact`, a boolean-only academy RPC) mirrors the
    verified delivery model, so it no longer advertises a route the sender skips (person-links/twin
    guests). The account ADDRESS is never exposed.
+
+## Codex round 4 — resolved (PR 10d), + one OWNED follow-up PR
+
+1. **Oracle scoping** — `guests_have_rebook_contact` was a cross-tenant boolean oracle (any
+   authenticated user could probe any guest's contact-presence). Now scoped: the guest must belong
+   to an academy cycle the caller manages (`academy_managers.user_id = auth.uid()`), array capped at
+   1000, `anon` revoked. Returns rows ONLY for authorized guests.
+2. **FAM-02 across every `can_book_member_window` arm** — Codex reproduced that clauses (a) and (b)
+   still keyed the RAW `player_id`, so the PARENT of a dual-key row was granted the member window.
+   Closed in `20260928100000`: clause (a) is inlined guest-safe (pure-profile booking matches
+   `guest_player_id IS NULL AND player_id = me`; a guest booking matches only when its VERIFIED
+   account resolves to me — raw `player_id` is never identity proof); clause (b) is guarded with
+   `guest_player_id IS NULL` (a dual-key claim belongs to the guest, handled by (d)). Tests prove the
+   parent is DENIED while the guest's verified account remains ELIGIBLE (canBookMemberWindowPerson).
+   **OWNED FOLLOW-UP (dedicated auth-hardening PR, before PR 10c — do NOT leave unowned):** the shared
+   `is_cycle_member` primitive (used by capacity + slot-tier) is still raw-`player_id` keyed. That PR
+   must: redefine `is_cycle_member` guest-safe, add a current-user wrapper, migrate `priorityClaims.ts`
+   to the wrapper, REVOKE the arbitrary-user function from PUBLIC/anon/authenticated, and regression
+   across capacity/slot-tier/member-window/guest/pure-profile/dual-key.
+3. **Group-confirmation durability** — a post-send stamp failure no longer returns `ok:true`: it
+   increments `unresolved`, alerts with the member key, and returns `ok:false, unresolved>0`. Comments
+   corrected to state provider idempotency is a 24h mitigation ONLY; durable recovery of unresolved
+   sends is a mandatory PR 10c acceptance item (the v2 outbox), NOT guaranteed here.
+4. **rebookManage error propagation** — the three `Promise.all` reads (profiles, guests, guest
+   contacts) now destructure and THROW their errors instead of silently coercing a failed query to
+   "no email" (which would have mislabeled reachable members as unreachable).
+5. **Docs/comments** — this file (parity claim above), the group-confirmation header (was stale
+   "claim-before-send"), and the send-then-stamp comment all corrected.
 
 ### PR 10c (durable outbox) — additional REQUIRED acceptance item (Codex #6)
 
