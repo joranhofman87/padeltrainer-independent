@@ -381,6 +381,16 @@ Final release-readiness correction, not another architectural round:
    `guests_have_rebook_contact` (fail-closed: frontend must ship AFTER the migration); (d) "migrations
    apply transactionally (nothing partial)" overstated ACROSS-set atomicity — each file is its own
    txn, so a mid-set failure leaves `20260927100000` committed (which only reinforces never-roll-back).
+6. **Codex round 13 sharpened the runbook** (still no code change): (a) the prose grant carve-out is
+   now an EXACT per-signature ACL matrix (11 functions) + a copy-paste `has_function_privilege`
+   verification query — read-only prod baseline confirmed the live leak (`rebook_claims_needing_auto_reminder`
+   + the member-open trio are `anon/authenticated=true` today; the 5 resolvers absent); (b) crons are
+   paused via `cron.alter_job(active := false/true)` (preserves the Vault-backed command + schedule),
+   NOT `cron.unschedule` (which deletes them) — verify exactly two jobs (jobids 7 + 8) before and
+   after; (c) partial-migration recovery now says: keep crons inactive, `supabase migration list
+   --linked` to identify which versions landed, fix forward, re-push only the remaining files; (d)
+   `create-rebook-invoice` redeploy reason corrected (its OWN `index.ts` changed; it does not import
+   `resend-send`).
 
 ### PR 10d — DEPLOY RUNBOOK (authoritative; supersedes the PR-body notes if they ever drift)
 
@@ -399,31 +409,94 @@ Final release-readiness correction, not another architectural round:
 
 **Edge functions (redeploy ALL 7):** `auto-rebook-reminder`, `bulk-rebook-cycle`,
 `create-rebook-invoice`, `notify-rebook-member-open`, `send-priority-claim-invitation`,
-`send-rebook-group-confirmation`, `send-rebook-reminder`. Changed `_shared` (`paginate`,
-`priority-claim-invite`, `rebook-group-confirm`, `rebook-guest-contact`, `rebook-invitation-context`,
-`rebook-member-open`, `resend-send`, `send-then-stamp`) ships inside these bundles — so all 7 redeploy
-even where an `index.ts` is unchanged.
+`send-rebook-group-confirmation`, `send-rebook-reminder`. Redeploy reasons differ: most carry a
+changed `index.ts`; `create-rebook-invoice`'s OWN `index.ts` changed (the `send-invoice-email`
+error-inspection fix — it does **not** import `resend-send`); functions whose `index.ts` is unchanged
+pick up a changed `_shared` bundle (`paginate`, `priority-claim-invite`, `rebook-group-confirm`,
+`rebook-guest-contact`, `rebook-invitation-context`, `rebook-member-open`, `resend-send`,
+`send-then-stamp`). All 7 redeploy either way.
 
-**Steps:** (1) pause the two crons (`cron.unschedule`, verify `cron.job`); off-hours, no round
-mid-send. (2) `supabase db push --linked` (each migration individually transactional). (3) **verify
-grants** — `anon=false` + `service_role=true` on ALL new/changed RPCs, and `authenticated=false` on
-all **EXCEPT** `guests_have_rebook_contact`, which is `authenticated=`**`TRUE`** by design (the
-`auth.uid()`-scoped manage-UI reachability RPC called by `rebookManage.ts:61`; REVOKE authenticated
-would break the academy manage page). The enumerated verify set MUST include
-`rebook_claims_needing_auto_reminder` (**THE leak RPC** → `service_role` only) alongside the 4
-resolvers, `bump_rebook_reminders`, `can_book_member_window`, the member-open trio, and
-`consume_rate_limit`. Also: `idx_spc_guest_player_id` exists; dual-key+twin fixture returns
-guest-first (pglite proofs already assert this — no prod fixture writes). (4) redeploy all 7 fns;
-verify each `ACTIVE` at new version (`supabase functions list`). (5) **merge/deploy the frontend only
-AFTER step 2 (migrations live)** — `rebookManage.ts:61` calls the new `guests_have_rebook_contact`
-and THROWS on error, so shipping the client before `20260927100000` creates+grants it breaks every
-academy's rebook-manage page (fail-closed deploy ordering). (6) resume the two crons; confirm
-re-scheduled. (7) flip these open→resolved. **Blocks PR 10c.**
+**Steps:**
+1. **Deactivate** the two crons — do NOT `cron.unschedule` (that DELETES them and the resume step
+   has no exact recreation). `cron.alter_job(active := false)` preserves the Vault-backed command +
+   schedule. Confirm exactly two rows, both `active=true`, before (jobids 7 + 8 today):
+   ```sql
+   SELECT jobid, jobname, schedule, active FROM cron.job
+   WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open') ORDER BY jobname;
+   SELECT cron.alter_job(jobid, active := false)
+   FROM cron.job WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open');
+   ```
+   Off-hours, no round mid-send.
+2. `supabase db push --linked` → applies the 3 migrations (each individually transactional; the
+   dry-run pins the set). Re-run the `20260928100000` conflict count first; abort if > 0.
+3. **Verify grants** against the EXACT per-signature ACL matrix (post-migration). Every row must be
+   `anon=false, service_role=true`; `authenticated=true` ONLY for `guests_have_rebook_contact`,
+   `authenticated=false` for the other ten:
+
+   | function (exact signature) | anon | authenticated | service_role |
+   |---|---|---|---|
+   | `bump_rebook_reminders(uuid[], uuid[], uuid[])` | false | false | true |
+   | `guest_verified_account_profile(uuid)` | false | false | true |
+   | `resolve_guest_member_contacts(uuid[])` | false | false | true |
+   | `rebook_claims_needing_auto_reminder(int)` | false | false | true |
+   | `append_rebook_member_open_notified(uuid, text[])` | false | false | true |
+   | `guests_have_rebook_contact(uuid[])` | false | **true** | true |
+   | `consume_rate_limit(text, text, int, int)` | false | false | true |
+   | `rebook_cycles_needing_member_open_notice()` | false | false | true |
+   | `claim_rebook_member_open_notice(uuid)` | false | false | true |
+   | `unclaim_rebook_member_open_notice(uuid)` | false | false | true |
+   | `can_book_member_window(uuid, uuid)` | false | false | true |
+
+   ```sql
+   SELECT sig AS function_signature,
+     has_function_privilege('anon',          sig, 'EXECUTE') AS anon,
+     has_function_privilege('authenticated', sig, 'EXECUTE') AS authenticated,
+     has_function_privilege('service_role',  sig, 'EXECUTE') AS service_role
+   FROM (VALUES
+     ('public.bump_rebook_reminders(uuid[], uuid[], uuid[])'),
+     ('public.guest_verified_account_profile(uuid)'),
+     ('public.resolve_guest_member_contacts(uuid[])'),
+     ('public.rebook_claims_needing_auto_reminder(int)'),
+     ('public.append_rebook_member_open_notified(uuid, text[])'),
+     ('public.guests_have_rebook_contact(uuid[])'),
+     ('public.consume_rate_limit(text, text, int, int)'),
+     ('public.rebook_cycles_needing_member_open_notice()'),
+     ('public.claim_rebook_member_open_notice(uuid)'),
+     ('public.unclaim_rebook_member_open_notice(uuid)'),
+     ('public.can_book_member_window(uuid, uuid)')
+   ) AS t(sig)
+   ORDER BY function_signature;
+   ```
+   Any deviation from the matrix = STOP (do not "fix" `guests_have_rebook_contact` to
+   `authenticated=false` — that would break the manage UI at `rebookManage.ts:61`). Pre-deploy prod
+   baseline (2026-07-23) confirmed the leak this closes: `rebook_claims_needing_auto_reminder` + the
+   member-open trio are currently `anon=true, authenticated=true`; the 5 guest-first resolvers do not
+   exist yet. Also confirm `idx_spc_guest_player_id` exists; a dual-key+twin fixture returns
+   guest-first (pglite proofs already assert this — no prod fixture writes).
+4. Redeploy all 7 fns; verify each `ACTIVE` at new version (`supabase functions list`).
+5. **Merge/deploy the frontend only AFTER step 2 (migrations live)** — `rebookManage.ts:61` calls the
+   new `guests_have_rebook_contact` and THROWS on error, so shipping the client before `20260927100000`
+   creates+grants it breaks every academy's rebook-manage page (fail-closed deploy ordering).
+6. **Reactivate** the two crons; confirm exactly two rows, both `active=true` again:
+   ```sql
+   SELECT cron.alter_job(jobid, active := true)
+   FROM cron.job WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open');
+   SELECT jobid, jobname, schedule, active FROM cron.job
+   WHERE jobname IN ('auto-rebook-reminder','notify-rebook-member-open') ORDER BY jobname;
+   ```
+7. Flip these open→resolved. **Blocks PR 10c.**
 
 **Forward-only recovery (never roll back):** `20260927100000` closes a LIVE ACL leak — reverting it
-re-opens cross-academy exposure. Each migration is **individually** transactional; a mid-set failure
-leaves EARLIER migrations (incl. `20260927100000`'s ACL lockdown) already **committed** — which only
-reinforces the rule: fix forward by re-pushing the remaining files (committed ones are recorded in
-`schema_migrations` and skipped), **never roll back**. On an edge-deploy failure: keep crons paused,
-re-run/complete the failed deploy(s), re-verify (step 4), then resume. No rollback path exists by
-design.
+re-opens cross-academy exposure. `supabase db push` applies the files in order and RECORDS each
+successful version in migration history BEFORE the next runs, so a mid-set failure (e.g.
+`20260928100000` fails after `20260927100000` committed) leaves the earlier migration(s) — including
+the ACL lockdown — APPLIED (a partial-SET state, not "nothing applied"). That is the safe direction:
+1. Keep both crons **INACTIVE**.
+2. `supabase migration list --linked` → compare Local vs Remote; identify exactly which of the 3
+   versions landed.
+3. Fix forward: correct the failing migration file, then re-run `supabase db push` — already-recorded
+   versions are skipped, only the remaining file(s) apply.
+4. **Never** `db reset` / revert `20260927100000` to "recover" (re-opens the leak).
+5. Re-run the ACL matrix query + the `idx_spc_guest_player_id` check, then reactivate the crons (step 6).
+On an edge-deploy failure specifically: keep crons inactive, re-run/complete the failed function
+deploy(s), re-verify (step 4), then reactivate.
