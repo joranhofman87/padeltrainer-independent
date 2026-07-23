@@ -168,6 +168,32 @@ were premature. Round-3 corrections:
 5. **Docs/comments** — this file (parity claim above), the group-confirmation header (was stale
    "claim-before-send"), and the send-then-stamp comment all corrected.
 
+## Codex round 5 — resolved (PR 10d), + one OWNED reliability-sweep follow-up
+
+Contained reliability pass (no P1s remained). Four findings:
+1. **`guests_have_rebook_contact` silent cap → fail loud** — the `cardinality <= 1000` WHERE predicate
+   silently returned an EMPTY set for a >1000-id request (UI reads absent → "no contact"). Now plpgsql
+   that RAISEs above 1000 (signature unchanged → no drift); the client `fetchGuestRebookReachable`
+   chunks into <=1000 batches AND throws if any requested id is absent from the union.
+2. **`getCycleRebookStatus` fails loud as a class** — every read (cycle/siblings/slots/claims/single+
+   group-invoice/contacts) throws on error; only the 42703 missing-column deploy-window fallback is
+   tolerated (its own retry also throws). `AcademyRebookManage` renders an isError+retry state.
+3. **Group-confirmation partial result has a consumer + regression** — extracted the send/stamp loop
+   into `_shared/rebook-group-confirm.ts` (`groupConfirmOk = failed===0 && unresolved===0`, so a
+   provider send failure ALSO returns ok:false); the fire-and-forget client caller inspects the result
+   and `logger.warn`s on ok:false/unresolved/failed.
+4. **Stale `20260928100000` header** — corrected (it claimed clauses (a)/(b) unchanged; round 4 made
+   them guest-safe).
+
+**OWNED FOLLOW-UP (rebook reliability sweep — task #31, do NOT leave unowned):** a worktree-isolated
+same-class hunt found 5 MORE sites of the same swallowed-error/silent-cap class, kept OUT of 10d to
+honor the "contained" round-5 scope (verdict: FOLLOWUPS_ONLY, no P1):
+- `priorityClaims.ts` `getMyPendingPriorityClaims` cycles read swallows {error} → PlayerRebookCard
+  shows an UPFRONT rebook the DEFERRED payment copy on a transient error (P2, direct twin of #2 above).
+- `send-rebook-reminder` recipient read + `send-priority-claim-invitation` session-count read +
+  `notify-rebook-member-open` profiles/guest-contact reads are un-paginated (silent >1000 truncation).
+- `create-rebook-invoice` awaits `send-invoice-email` but discards its resolved {error} (silent).
+
 ### PR 10c (durable outbox) — additional REQUIRED acceptance item (Codex #6)
 
 The batch resolver is set-based enough for member-open's low volume but NOT high-volume ready:
