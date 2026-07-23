@@ -13,6 +13,7 @@ import { ArrowLeft, ChevronRight, Loader2, Send, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { createAndDrainRebookRound } from '@/lib/rebookInviteSend';
 import { getAcademyLocationsWithDetails } from '@/lib/academy';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
@@ -461,42 +462,41 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
     if (!inputsValid || !preview || preview.players <= 0 || submitting) return;
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-        body: baseBody,
+      // Create the round WITHOUT sending, then drain invites in bounded, resumable chunks — the SAME
+      // shared orchestration AcademyNewRoundWizard uses (Codex round-9 #1): never an inline blast that
+      // a timeout could leave half-sent on a committed round.
+      const result = await createAndDrainRebookRound(baseBody, {
+        invoke: (fn, args) => supabase.functions.invoke(fn, args),
       });
-      if (error) throw error;
-      if (data?.ok === false && data?.reason === 'already_exists') {
-        toast.error(
-          t('rebookCohort.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'),
-        );
+      if (result.phase === 'creation_failed') {
+        // Round NOT created (Codex round-9 #2) — show the reason, do NOT navigate.
+        if (result.reason === 'already_exists') toast.error(t('rebookCohort.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'));
+        else if (result.reason === 'slot_overlap') toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
+        else if (result.reason === 'nothing_to_rebook') toast.error(t('rebookCohort.nothingToRebook', 'Er zijn geen spelers om te herboeken.'));
+        else toast.error(getFriendlyErrorMessage(new Error(result.reason), t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
         return;
       }
-      if (data?.ok === false && data?.reason === 'slot_overlap') {
-        toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
-        return;
-      }
-      // The round IS created (navigate on targetCycleId), but ok:false here means some invites failed
-      // or went out un-stamped (Codex round-8 #2) — show a partial/retry state, never a false success.
-      const newCycleId = data?.targetCycleId as string | undefined;
-      if (data?.ok === false) {
+      // Round CREATED (navigable). leftover>0 (or an error outcome) ⇒ partial delivery — resend from
+      // the manage page; never a false "all invited" success.
+      if (result.leftover > 0 || result.outcome === 'error') {
         toast.warning(
-          t('rebookCohort.partial', 'Ronde aangemaakt, maar {{failed}} uitnodigingen mislukten en {{unresolved}} zijn onopgelost — verstuur ze opnieuw vanaf de beheerpagina.', {
-            failed: Number(data?.failed ?? 0),
-            unresolved: Number(data?.unresolved ?? 0),
+          t('rebookCohort.partial', 'Ronde aangemaakt, maar {{left}} van {{sent}} verstuurd — verstuur de rest opnieuw vanaf de beheerpagina.', {
+            sent: result.totalSent,
+            left: result.leftover,
           }),
         );
       } else {
         toast.success(
           t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
-            groups: Number(data?.groups ?? 0),
-            players: Number(data?.players ?? 0),
-            invites: Number(data?.invitesSent ?? 0),
+            groups: result.groups,
+            players: result.players,
+            invites: result.totalSent,
           }),
         );
       }
       // Land on the new cycle's rebook management view so the academy can track responses / payments
       // and (on a partial) resend the failed invites via the resume-sending drain.
-      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : effectiveBackHref);
+      navigate(result.targetCycleId ? `/app/academy/cycles/${result.targetCycleId}/rebook` : effectiveBackHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {

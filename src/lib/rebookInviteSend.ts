@@ -192,3 +192,76 @@ export async function drainRebookRoundInvites(
 
   return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: [...unresolvedClaimIds], sampleError };
 }
+
+// ===== Shared create-then-drain orchestration (Codex round-9 #1/#2) =====
+//
+// BOTH round wizards (RebookCohortWizard, AcademyNewRoundWizard) must create the round WITHOUT sending
+// (skipInvites + roundAware) and then drain invites in bounded, resumable chunks — never send inline,
+// which at volume leaves a committed round with partially-sent invites and no response to interpret.
+// This single helper is that orchestration, so the two wizards cannot diverge.
+
+/** Discriminated outcome: CREATION failed (no round exists) vs the round was CREATED (navigable via
+ *  targetCycleId) with a delivery result that may be partial. Clients show partial-delivery recovery
+ *  ONLY in the `created` phase. */
+export type RoundOrchestrationResult =
+  | { phase: 'creation_failed'; reason: string }
+  | {
+      phase: 'created';
+      targetCycleId: string;
+      roundId: string | null;
+      groups: number;
+      players: number;
+      totalSent: number;
+      /** Invites still not sent OR sent-but-un-stamped (0 ⇒ everything delivered). */
+      leftover: number;
+      /** 'inline' when a legacy edge sent inline; otherwise the drain's stoppedReason. */
+      outcome: DrainResult['stoppedReason'] | 'inline';
+      sampleError: string | null;
+    };
+
+export interface RoundOrchestrationDeps {
+  /** Injected for tests; production passes supabase.functions.invoke. */
+  invoke: (fn: string, args: { body: Record<string, unknown> }) => Promise<{ data: unknown; error: unknown }>;
+  /** Injected for tests; production uses the real round drain. */
+  drain?: typeof drainRebookRoundInvites;
+  onProgress?: (p: DrainProgress) => void;
+}
+
+export async function createAndDrainRebookRound(
+  body: Record<string, unknown>,
+  deps: RoundOrchestrationDeps,
+): Promise<RoundOrchestrationResult> {
+  const { data, error } = await deps.invoke('bulk-rebook-cycle', { body: { ...body, skipInvites: true, roundAware: true } });
+  if (error) throw error;
+  const d = (data ?? {}) as Record<string, unknown>;
+
+  // Discriminate CREATION failure (no round → no targetCycleId) from a created round with partial
+  // delivery. The authoritative signal is a valid targetCycleId; the `phase`/`reason` fields refine it.
+  const targetCycleId = typeof d.targetCycleId === 'string' ? d.targetCycleId : null;
+  if (!targetCycleId || d.phase === 'creation') {
+    return { phase: 'creation_failed', reason: String(d.reason ?? 'unknown') };
+  }
+
+  const roundId = typeof d.roundId === 'string' ? d.roundId : null;
+  const groups = Number(d.groups ?? 0);
+  const players = Number(d.players ?? 0);
+  const roundCycleIds: string[] = Array.isArray(d.targetCycles) && d.targetCycles.length > 0
+    ? (d.targetCycles as Array<{ id: string }>).map((c) => c.id)
+    : [targetCycleId];
+  const total = Number(d.representativeCount ?? d.players ?? 0);
+
+  // Deferred (current edge): create-then-drain — bounded + resumable.
+  if (d.invitesDeferred === true && roundCycleIds.length > 0 && total > 0) {
+    const drainRes = await (deps.drain ?? drainRebookRoundInvites)(roundCycleIds, {
+      customMessage: (body.invitationMessage as string | undefined) ?? null,
+      customSubject: (body.invitationSubject as string | undefined) ?? null,
+      onProgress: deps.onProgress,
+    });
+    return { phase: 'created', targetCycleId, roundId, groups, players, totalSent: drainRes.totalSent, leftover: drainRes.leftover, outcome: drainRes.stoppedReason, sampleError: drainRes.sampleError ?? null };
+  }
+
+  // Inline path (an older edge that ignored skipInvites, or nothing to send): use its own accounting.
+  const failed = Number(d.failed ?? (Array.isArray(d.failedClaimIds) ? d.failedClaimIds.length : 0));
+  const unresolved = Number(d.unresolved ?? (Array.isArray(d.unresolvedClaimIds) ? d.unresolvedClaimIds.length : 0));
+  return { phase: 'created', targetCycleId, roundId, groups, players, totalSent: Number(d.invitesSent ?? 0), leftover: failed + unresolved, outcome: 'inline', sampleError: null };
+}

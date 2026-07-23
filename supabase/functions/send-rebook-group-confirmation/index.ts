@@ -23,7 +23,7 @@ import { sendResendEmail } from "../_shared/resend-send.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
-import { groupConfirmOk, type MemberConfirmStep, runGroupConfirmations } from "../_shared/rebook-group-confirm.ts";
+import { gateGroupConfirmation, groupConfirmOk, type MemberConfirmStep, runGroupConfirmations } from "../_shared/rebook-group-confirm.ts";
 import { fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
@@ -101,43 +101,60 @@ serve(async (req: Request) => {
       capRef?.guestPlayerId ? (cap.guest_players as NameEmail | null)?.first_name : null,
     ) || "Je groep";
 
-    // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
-    // KEYSET-paginated by claim id (Codex round-8 #5): a large group (many members × many weeks) can
-    // exceed 1000 claims; an unpaginated read would truncate → some members get no confirmation.
-    const { rows, error: rowsErr } = await fetchAllKeyset<ClaimRow & { id: string }>(
-      (after, limit) => {
-        let q = admin
+    // Admission ordering (Codex round-9 #3): a CHEAP limit(1) work probe → the atomic rate-limit
+    // consume → only THEN the full (many-page) scan. A no-work call returns WITHOUT consuming an
+    // allowance; a throttled call returns WITHOUT scanning. On this verify_jwt=false endpoint that stops
+    // a valid token from forcing repeated expensive scans while throttled. Throttled is NOT clean
+    // success (the caller surfaces it); DURABLE recovery of a throttled/failed/unresolved confirmation
+    // is a PR 10c outbox item (this fn's idempotency key only dedupes 24h).
+    const gate = await gateGroupConfirmation<ClaimRow>({
+      hasWork: async () => {
+        const { data, error } = await admin
           .from("slot_priority_claims")
-          .select(
-            "id, invited_at, slot_id, player_id, guest_player_id, " +
-            "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email, linked_profile:linked_profile_id(email)), " +
-            "availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, academy_profile_id)",
-          )
+          .select("id")
           .eq("rebook_group_id", groupId)
           .eq("status", "claimed")
           .is("confirmation_sent_at", null)
-          .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
-        if (after) q = q.gt("id", after);
-        return q.order("id").limit(limit) as unknown as PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+          .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null")
+          .limit(1);
+        if (error) throw new Error(`member probe failed: ${error.message}`);
+        return (data?.length ?? 0) > 0;
       },
-      (r) => r.id,
-    );
-    if (rowsErr) throw new Error(`member read failed: ${rowsErr.message}`); // fail loud — not a silent zero-send
-    const claims = rows as unknown as ClaimRow[];
-
-    // Rate limit AFTER establishing there is work (Codex round-7 #5): a no-work invocation (nothing
-    // left to confirm) must NOT consume an allowance, else a benign retry burns the budget a genuine
-    // later edit needs. Per-token throttle via ONE atomic consume RPC — race-free + FAIL-CLOSED (a
-    // token-holder can't loop-invoke to burn Resend quota once there IS work). Throttled is NOT clean
-    // success: the caller surfaces it, and DURABLE recovery of a throttled/failed/unresolved
-    // confirmation is a PR 10c outbox acceptance item (this fn's idempotency key only dedupes 24h).
-    if (claims.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
-    const RL_KEY = "rbgc:" + (await sha256Hex(token)).slice(0, 32);
-    const { data: allowed, error: rlErr } = await admin.rpc("consume_rate_limit", {
-      _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
+      consumeAllowance: async () => {
+        const RL_KEY = "rbgc:" + (await sha256Hex(token)).slice(0, 32);
+        const { data: allowed, error: rlErr } = await admin.rpc("consume_rate_limit", {
+          _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
+        });
+        if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
+        return allowed === true;
+      },
+      // Full KEYSET scan (round-8 #5): bounded per page, no >1000-claim truncation.
+      scan: async () => {
+        const { rows, error: rowsErr } = await fetchAllKeyset<ClaimRow & { id: string }>(
+          (after, limit) => {
+            let q = admin
+              .from("slot_priority_claims")
+              .select(
+                "id, invited_at, slot_id, player_id, guest_player_id, " +
+                "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email, linked_profile:linked_profile_id(email)), " +
+                "availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, academy_profile_id)",
+              )
+              .eq("rebook_group_id", groupId)
+              .eq("status", "claimed")
+              .is("confirmation_sent_at", null)
+              .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
+            if (after) q = q.gt("id", after);
+            return q.order("id").limit(limit) as unknown as PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+          },
+          (r) => r.id,
+        );
+        if (rowsErr) throw new Error(`member read failed: ${rowsErr.message}`); // fail loud — not a silent zero-send
+        return rows as unknown as ClaimRow[];
+      },
     });
-    if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
-    if (allowed !== true) return json({ ok: false, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
+    if (gate.kind === "no_work") return json({ ok: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
+    if (gate.kind === "throttled") return json({ ok: false, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
+    const claims = gate.claims;
 
     // Academy timezone (slots stored UTC) + cycle payment-mode/start, mirrored from the invite fn.
     const acadIds = [...new Set(claims.map((c) => c.availability_slots?.academy_profile_id).filter((x): x is string => !!x))];

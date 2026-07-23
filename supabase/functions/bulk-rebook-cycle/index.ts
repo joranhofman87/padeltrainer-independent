@@ -355,7 +355,7 @@ serve(async (req) => {
       if (rrErr) throw rrErr;
       const rounds = (roundRows ?? []) as Array<{ id: string; name: string; status: string; settings: Record<string, unknown> | null }>;
       if (rounds.length === 0) {
-        return new Response(JSON.stringify({ ok: false, reason: "round_not_found" }), {
+        return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "round_not_found" }), {
           status: 404, headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
@@ -512,7 +512,7 @@ serve(async (req) => {
     const priorityPeopleWithExcluded = [...new Set([...priorityPeopleRaw, ...exclusion.secondBucketProfileIds])].slice(0, 200);
 
     if (!dryRun && includedSeries.length === 0) {
-      return new Response(JSON.stringify({ ok: false, reason: "nothing_to_rebook" }), {
+      return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "nothing_to_rebook" }), {
         status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -745,7 +745,7 @@ serve(async (req) => {
     if (existingNonDraft.length > 0) {
       // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
       return new Response(JSON.stringify({
-        ok: false, reason: "already_exists",
+        ok: false, phase: "creation", reason: "already_exists",
         existingCycleId: existingNonDraft[0].id,
         existingNames: existingNonDraft.map((e) => e.name),
       }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
@@ -843,7 +843,7 @@ serve(async (req) => {
     if (tcErr) {
       // 23505 = the concurrency unique index fired (a simultaneous run won the race).
       if (String((tcErr as { code?: string }).code) === "23505") {
-        return new Response(JSON.stringify({ ok: false, reason: "already_exists" }), {
+        return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "already_exists" }), {
           status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
@@ -1052,6 +1052,11 @@ serve(async (req) => {
         // the wizard show a partial/retry state instead of a false "all invited" success. Round-CREATION
         // failures (already_exists / slot_overlap) are separate earlier responses carrying a `reason`.
         ok: failedClaimIds.length === 0 && unresolvedClaimIds.length === 0,
+        // Discriminated contract (Codex round-9 #2): phase:"delivery" + a valid targetCycleId ⇒ the
+        // round WAS created; ok/failed/unresolved describe delivery only. Creation failures are separate
+        // responses carrying phase:"creation" and NO targetCycleId, so a client never confuses "created
+        // partially" with "not created".
+        phase: "delivery",
         // Backward compat: old clients navigate to targetCycleId (the primary cycle, whose manage
         // page aggregates the whole round). New clients read targetCycles + roundId.
         targetCycleId: targets[0].id,
@@ -1093,7 +1098,7 @@ serve(async (req) => {
     // picking another start date/time — the draft was already cleaned up). 200 +
     // reason so functions.invoke surfaces it as data, mirroring already_exists.
     if (message.includes("trainer_slot_overlap")) {
-      return new Response(JSON.stringify({ ok: false, reason: "slot_overlap" }), {
+      return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "slot_overlap" }), {
         status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }

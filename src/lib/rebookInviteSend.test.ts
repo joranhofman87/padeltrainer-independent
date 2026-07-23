@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { drainRebookInvites, drainRebookRoundInvites, type SendChunkResult } from './rebookInviteSend';
+import { createAndDrainRebookRound, drainRebookInvites, drainRebookRoundInvites, type DrainResult, type SendChunkResult } from './rebookInviteSend';
 
 /** Fill the SendChunkResult defaults so a scripted chunk can specify only the fields it exercises. */
 const chunk = (c: Partial<SendChunkResult>): SendChunkResult => ({
@@ -185,5 +185,59 @@ describe('drainRebookRoundInvites', () => {
     const r = await drainRebookRoundInvites(['solo'], { sender });
     expect(r.totalSent).toBe(4);
     expect(r.stoppedReason).toBe('drained');
+  });
+});
+
+const drainResult = (over: Partial<DrainResult>): DrainResult => ({
+  totalSent: 0, leftover: 0, stoppedReason: 'drained', failedClaimIds: [], unresolvedClaimIds: [], sampleError: null, ...over,
+});
+
+describe('createAndDrainRebookRound — shared create-then-drain orchestration (Codex round-9 #1/#2)', () => {
+  const invokeReturning = (data: unknown) => vi.fn(async () => ({ data, error: null }));
+
+  it('ALWAYS creates without inline sending (skipInvites + roundAware) then drains', async () => {
+    const invoke = invokeReturning({ targetCycleId: 'cy1', invitesDeferred: true, targetCycles: [{ id: 'cy1' }], representativeCount: 10 });
+    const drain = vi.fn(async () => drainResult({ totalSent: 10 }));
+    await createAndDrainRebookRound({ x: 1 }, { invoke, drain });
+    // The blocker Codex flagged: this is the ONLY way the round is created — never inline.
+    expect(invoke).toHaveBeenCalledWith('bulk-rebook-cycle', { body: { x: 1, skipInvites: true, roundAware: true } });
+    expect(drain).toHaveBeenCalledWith(['cy1'], expect.anything());
+  });
+
+  it('a CREATION failure (no targetCycleId) → phase creation_failed, never navigable', async () => {
+    const invoke = invokeReturning({ ok: false, reason: 'nothing_to_rebook' });
+    const drain = vi.fn();
+    const r = await createAndDrainRebookRound({}, { invoke, drain });
+    expect(r).toEqual({ phase: 'creation_failed', reason: 'nothing_to_rebook' });
+    expect(drain).not.toHaveBeenCalled();
+  });
+
+  it('an explicit phase:creation is a creation failure (already_exists)', async () => {
+    const invoke = invokeReturning({ ok: false, phase: 'creation', reason: 'already_exists' });
+    const r = await createAndDrainRebookRound({}, { invoke, drain: vi.fn() });
+    expect(r.phase).toBe('creation_failed');
+    if (r.phase === 'creation_failed') expect(r.reason).toBe('already_exists');
+  });
+
+  it('created + deferred + clean drain → created, leftover 0', async () => {
+    const invoke = invokeReturning({ targetCycleId: 'cy1', roundId: 'r1', groups: 2, players: 5, invitesDeferred: true, targetCycles: [{ id: 'cy1' }], representativeCount: 5 });
+    const drain = vi.fn(async () => drainResult({ totalSent: 5, leftover: 0, stoppedReason: 'drained' }));
+    const r = await createAndDrainRebookRound({}, { invoke, drain });
+    expect(r).toMatchObject({ phase: 'created', targetCycleId: 'cy1', leftover: 0, outcome: 'drained', totalSent: 5 });
+  });
+
+  it('created + deferred + PARTIAL drain (leftover>0) → created with leftover surfaced', async () => {
+    const invoke = invokeReturning({ targetCycleId: 'cy1', invitesDeferred: true, targetCycles: [{ id: 'cy1' }], representativeCount: 100 });
+    const drain = vi.fn(async () => drainResult({ totalSent: 40, leftover: 60, stoppedReason: 'iteration_limit', sampleError: 'x' }));
+    const r = await createAndDrainRebookRound({}, { invoke, drain });
+    expect(r).toMatchObject({ phase: 'created', leftover: 60, outcome: 'iteration_limit', sampleError: 'x' });
+  });
+
+  it('created + INLINE (legacy edge, no invitesDeferred) surfaces failed+unresolved as leftover — no drain', async () => {
+    const invoke = invokeReturning({ targetCycleId: 'cy1', invitesSent: 8, failed: 2, unresolved: 1, failedClaimIds: ['a', 'b'], unresolvedClaimIds: ['c'] });
+    const drain = vi.fn();
+    const r = await createAndDrainRebookRound({}, { invoke, drain });
+    expect(drain).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ phase: 'created', totalSent: 8, leftover: 3, outcome: 'inline' });
   });
 });

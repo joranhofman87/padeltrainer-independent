@@ -38,6 +38,32 @@ export async function fetchAllRows<T>(
  * `fetchPage(afterKey, limit)` must apply `.gt(keyCol, afterKey)` when afterKey is non-null,
  * `.order(keyCol)`, and `.limit(limit)`. `keyOf` extracts the key from a row (a UUID/id string).
  */
+/**
+ * Read every matching row for a large set of `ids` (Codex round-8/9 #4): the ids are batched at
+ * `chunkSize` to bound the PostgREST `.in()` list (a 1000+-UUID .in() can blow URL/param limits), and
+ * each batch is KEYSET-paginated so a batch holding >1000 rows can't truncate. This is the single
+ * shared implementation the priority-invitation / member-open / reminder discovery reads use — so the
+ * chunking + keyset is testable in one place and can't drift per sender. `buildPage(chunkIds, after,
+ * limit)` must apply `.in(idCol, chunkIds)`, the caller's filters, `.gt(keyCol, after)` when non-null,
+ * `.order(keyCol)`, and `.limit(limit)`.
+ */
+export async function fetchAllInChunks<T>(
+  ids: string[],
+  buildPage: (chunkIds: string[], afterKey: string | null, limit: number) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+  keyOf: (row: T) => string,
+  opts: { chunkSize?: number; pageSize?: number } = {},
+): Promise<{ rows: T[]; error: { message?: string } | null }> {
+  const chunkSize = opts.chunkSize ?? 200;
+  const rows: T[] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { rows: page, error } = await fetchAllKeyset<T>((after, limit) => buildPage(chunk, after, limit), keyOf, opts.pageSize);
+    if (error) return { rows, error };
+    rows.push(...page);
+  }
+  return { rows, error: null };
+}
+
 export async function fetchAllKeyset<T>(
   fetchPage: (afterKey: string | null, limit: number) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
   keyOf: (row: T) => string,

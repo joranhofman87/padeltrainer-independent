@@ -228,34 +228,10 @@ mutation-verified tests (no source-regex).
    (`common:retry` did not resolve → English users saw the Dutch fallback; now `common:queryError.retry`).
    Rendered error/retry state runtime-tested.
 
-## Codex round 8 — resolved (PR 10d): the round-7 contracts are now actually true
-
-Round 7 stated the contracts; round 8 makes them HOLD at the caller + query-shape level (Codex round-7
-tests didn't exercise the failing paths). What round 8 fixes:
-
-1. **Drain never reports outstanding work as `drained`** — the `sent:0 && remaining>0` exit is now
-   `no_progress` (was `drained`), and hitting `maxIterations` is a new `iteration_limit` outcome with
-   the real `leftover` (was the default `drained`/leftover 0 — a 100k run would have reported success
-   with 80k outstanding). Tests for both.
-2. **Inline round creation surfaces unresolved** — `bulk-rebook-cycle` returns `failed`, `unresolved`,
-   both id sets, and `ok = failed===0 && unresolved===0` (the round is still created; the caller
-   navigates on `targetCycleId`). RebookCohortWizard + AcademyNewRoundWizard now show a partial/retry
-   state instead of an unconditional success.
-3. **A configured-off / no-precise-retry-set reminder batch is a WHOLE-BATCH failure** — the client no
-   longer reads `{ok:false, failed:0}` (e.g. `email_not_configured`) as a clean send; it puts the whole
-   batch into `failedTargets`, and the UI branches on `!ok || failed>0` so it never shows success +
-   clears the retry selection. Regression added.
-4. **Reminder claims discovery is viable at slot volume** — slots are batched by 200 (bounds the
-   `.in()` list) and claims keyset-paged within each batch, matching the other two senders.
-5. **Group-confirmation member + invited-state reads are keyset-paginated** — a >1000-claim group no
-   longer truncates (omitted members / wrong "new member" copy). pglite fixture over a 1200-claim group.
-6. **The keyset helper fails CLOSED on a stalled cursor** — a non-advancing key returns an error, not
-   plausible-but-incomplete rows. Deno test.
-
 ## Codex round 7 — resolved (PR 10d): caller contracts + high-volume discovery
 
 Round 6 fixed the helpers; round 7 fixes the CALLER CONTRACTS and the high-volume DISCOVERY reads the
-helpers sit behind. What this PR TRULY closes:
+helpers sit behind:
 
 1. **Drain propagates `unresolved`** — `SendChunkResult` / `drainRebookInvites` /
    `drainRebookRoundInvites` / the `bulk-rebook-cycle` inline caller now carry `unresolved` +
@@ -265,19 +241,50 @@ helpers sit behind. What this PR TRULY closes:
 2. **Reminder = exact identity BATCHING** — the client dedups by person and sends `<=200`-identity
    batches (each identity exactly once, no dup on retry); the server processes ALL provided targets
    with NO silent cap (a defensive ceiling ERRORS loudly), returns `failedTargets`, and `ok = failed
-   === 0`. The UI keeps ONLY the failed identities selected + the composed text for a one-click retry
-   — never "select the unknowable rest", never clearing unprocessed work. 250-target + dedup + retry
-   tests.
+   === 0`. The UI keeps ONLY the failed identities selected + the composed text for a one-click retry.
 3. **KEYSET pagination on every discovery read** (`_shared/paginate.ts` `fetchAllKeyset`) — replaces
-   offset `.range()`, which skips a row when a claim leaves `status='pending'` mid-read. Applied to:
-   priority-invitation cycle-slots + representative-claims; member-open slots + claims; reminder slots
-   + claims. Deno stability test (an already-read row leaving the set does NOT skip a sibling) + a
-   pglite test over 1500 real rows with a concurrent status change.
-4. **Reminder `ok` reflects completion** — any send failure → `ok:false` (the UI renders a failure
-   state, not a success toast).
-5. **Fail-loud sweep completed** — the emailless-recipient stamp and the cycle-settings fallback read
-   in send-priority-claim-invitation now throw on error (were discarded → endless "resume" / mixed
-   invitation copy).
+   offset `.range()`, which skips a row when a claim leaves `status='pending'` mid-read.
+4. **Reminder `ok` reflects completion** — any send failure → `ok:false`.
+5. **Fail-loud sweep completed** — the emailless-recipient stamp + cycle-settings fallback read throw.
+
+## Codex round 8 — resolved (PR 10d): caller-contract + query-shape fixes
+
+Round 7 stated the contracts; round 8 fixes the failing paths its tests didn't exercise:
+
+1. **Drain never reports outstanding work as `drained`** — the `sent:0 && remaining>0` exit is now
+   `no_progress`, and hitting `maxIterations` is a new `iteration_limit` outcome with the real
+   `leftover` (was `drained`/leftover 0 — a 100k run would have reported success with 80k outstanding).
+2. **Inline round creation surfaces unresolved** — `bulk-rebook-cycle` returns `failed`, `unresolved`,
+   both id sets, and `ok = failed===0 && unresolved===0`; both wizards show a partial/retry state.
+3. **A configured-off reminder batch is a WHOLE-BATCH failure** — the client no longer reads
+   `{ok:false, failed:0}` (e.g. `email_not_configured`) as a clean send; UI branches on `!ok||failed>0`.
+4. **Reminder claims discovery viable at slot volume** — slots batched by 200 + claims keyset-paged.
+5. **Group-confirmation member + invited-state reads keyset-paginated** — a >1000-claim group no
+   longer truncates.
+6. **The keyset helper fails CLOSED on a stalled cursor** — a non-advancing key returns an error.
+
+## Codex round 9 — resolved (PR 10d): shared orchestration + production-connected tests
+
+Round 8 fixed the accounting but a live wizard still bypassed the resumable architecture, and several
+tests exercised toy paths. Round 9 makes the contracts hold in production and testably so:
+
+1. **ONE shared create-then-drain orchestration** (`createAndDrainRebookRound` in
+   `rebookInviteSend.ts`) — BOTH wizards (RebookCohortWizard was still sending inline) now create the
+   round without sending (`skipInvites + roundAware`) and drain in bounded resumable chunks. No inline
+   blast can leave a committed round half-sent. Unit-tested (create-skip-invites, deferred drain,
+   inline-legacy accounting), mutation-checkable.
+2. **Discriminated creation-vs-delivery contract** — `bulk-rebook-cycle` tags creation failures
+   (`nothing_to_rebook` / `already_exists` / `slot_overlap`) with `phase:"creation"` and NO
+   `targetCycleId`; the success path is `phase:"delivery"` + `targetCycleId`. The orchestration returns
+   `{phase:'creation_failed'}` vs `{phase:'created', ...}` so a client only shows partial-delivery
+   recovery when a valid round id exists. `nothing_to_rebook` no longer reads as "round created".
+3. **Group-confirmation gates the EXPENSIVE scan behind a cheap probe + the rate limit**
+   (`gateGroupConfirmation`): a `limit(1)` work probe first (no-work → no consume), then the atomic
+   allowance (throttled → no scan), then the full paginated scan. A throttled token can't force
+   repeated expensive scans on the `verify_jwt=false` endpoint. Ordering unit-tested.
+4. **Tests connect to production wiring** — the chunk+keyset the 3 senders use is the shared
+   `fetchAllInChunks` (batch-boundary + keyset + fail-loud tests); the group gate + the orchestration
+   are the exact production helpers, unit-tested; reverting the real wiring fails these.
 
 ### PR 10c (durable outbox) — REMAINING durability items NOT closed by this PR
 

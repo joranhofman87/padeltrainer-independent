@@ -4,7 +4,7 @@ import { sendResendEmail } from "../_shared/resend-send.ts";
 import { resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { computeMemberOpenAudience, recipientKey, releaseMemberOpenClaim, resolveMemberOpenContact, runClaimedCycle, type MemberOpenClaim, type MemberOpenContactMaps } from "../_shared/rebook-member-open.ts";
-import { fetchAllKeyset } from "../_shared/paginate.ts";
+import { fetchAllInChunks, fetchAllKeyset } from "../_shared/paginate.ts";
 
 // Cron-invoked (service-role) notifier: when a rebook round's MEMBER window opens
 // and seats have freed up, email the "second bucket" — the original-cohort players
@@ -188,20 +188,17 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
   // KEYSET-paginated by claim id within each 200-slot batch (bounds the .in() list AND avoids a
   // >1000-row truncation — a batch of 200 slots can hold >1000 claims). Stable vs. concurrent status
   // changes (Codex round-7 #3).
-  const claims: MemberOpenClaim[] = [];
-  for (let i = 0; i < slotIds.length; i += 200) {
-    const slotChunk = slotIds.slice(i, i + 200);
-    const { rows, error: claimsErr } = await fetchAllKeyset<MemberOpenClaim & { id: string }>(
-      (after, limit) => {
-        let q = supabase.from("slot_priority_claims").select("id, player_id, guest_player_id, status, response_intent").in("slot_id", slotChunk);
-        if (after) q = q.gt("id", after);
-        return q.order("id").limit(limit);
-      },
-      (r) => r.id,
-    );
-    if (claimsErr) throw new Error(`member-open claims read failed: ${claimsErr.message}`);
-    claims.push(...(rows as MemberOpenClaim[]));
-  }
+  const { rows: claimsRaw, error: claimsErr } = await fetchAllInChunks<MemberOpenClaim & { id: string }>(
+    slotIds,
+    (slotChunk, after, limit) => {
+      let q = supabase.from("slot_priority_claims").select("id, player_id, guest_player_id, status, response_intent").in("slot_id", slotChunk);
+      if (after) q = q.gt("id", after);
+      return q.order("id").limit(limit);
+    },
+    (r) => r.id,
+  );
+  if (claimsErr) throw new Error(`member-open claims read failed: ${claimsErr.message}`);
+  const claims = claimsRaw as MemberOpenClaim[];
 
   const audience = computeMemberOpenAudience(claims, priorityPeople, priorityGuests, { alreadyNotifiedKeys });
   if (audience.length === 0) return { sent: 0, failed: 0 };

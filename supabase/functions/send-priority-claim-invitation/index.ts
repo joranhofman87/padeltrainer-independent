@@ -11,7 +11,7 @@ import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { loadInvitationMetadata, type InvitationDb } from "../_shared/rebook-invitation-context.ts";
 import { sendThenStampOne } from "../_shared/send-then-stamp.ts";
-import { fetchAllKeyset } from "../_shared/paginate.ts";
+import { fetchAllInChunks, fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -192,25 +192,22 @@ const handler = async (req: Request): Promise<Response> => {
       // batch are KEYSET-paginated by claim id (Codex round-7 #4) — stable against pending claims
       // changing status mid-read, and no >1000-row truncation.
       type RepClaim = { id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null };
-      const repClaims: RepClaim[] = [];
-      for (let i = 0; i < cycleSlotIds.length; i += 200) {
-        const slotChunk = cycleSlotIds.slice(i, i + 200);
-        const { rows: rc, error: rcErr } = await fetchAllKeyset<RepClaim>(
-          (after, limit) => {
-            let q = supabase
-              .from("slot_priority_claims")
-              .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email, linked_profile:linked_profile_id(email))")
-              .in("slot_id", slotChunk)
-              .eq("status", "pending");
-            if (after) q = q.gt("id", after);
-            return q.order("id").limit(limit);
-          },
-          (r) => r.id,
-        );
-        if (rcErr) throw rcErr;
-        // PostgREST types the to-one embeds as arrays; the runtime values are single objects.
-        repClaims.push(...(rc as unknown as RepClaim[]));
-      }
+      const { rows: repClaimsRaw, error: rcErr } = await fetchAllInChunks<RepClaim>(
+        cycleSlotIds,
+        (slotChunk, after, limit) => {
+          let q = supabase
+            .from("slot_priority_claims")
+            .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email, linked_profile:linked_profile_id(email))")
+            .in("slot_id", slotChunk)
+            .eq("status", "pending");
+          if (after) q = q.gt("id", after);
+          return q.order("id").limit(limit);
+        },
+        (r) => r.id,
+      );
+      if (rcErr) throw rcErr;
+      // PostgREST types the to-one embeds as arrays; the runtime values are single objects.
+      const repClaims = repClaimsRaw as unknown as RepClaim[];
       // Sendability MUST match the actual delivery resolution: a guest is sendable iff they have a
       // VERIFIED contact (own → account, person_links/twin/linked), never the raw player_id — else a
       // guest deemed sendable here but skipped at send time would stall the drain's convergence.

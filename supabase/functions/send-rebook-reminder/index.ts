@@ -13,7 +13,7 @@ import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { fetchAllKeyset } from "../_shared/paginate.ts";
+import { fetchAllInChunks, fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,28 +113,23 @@ serve(async (req: Request) => {
       profiles: { full_name: string | null; email: string | null } | null;
       guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
     };
-    // Slots batched by 200 to bound the .in() list (a 1000-1500-UUID .in() can exceed PostgREST/URL
-    // limits — Codex round-8 #4), and claims within each batch KEYSET-paginated by claim id: a legacy
-    // single-cycle round can hold >1000 claims, and offset pagination would skip a row if a claim left
-    // the pending/claimed set mid-read (round-7 #3/#7).
-    const claims: ClaimRow[] = [];
-    for (let i = 0; i < slotIds.length; i += 200) {
-      const slotChunk = slotIds.slice(i, i + 200);
-      const { rows, error: claimsErr } = await fetchAllKeyset<ClaimRow>(
-        (after, limit) => {
-          let q = supabase
-            .from("slot_priority_claims")
-            .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
-            .in("slot_id", slotChunk)
-            .in("status", ["pending", "claimed"]);
-          if (after) q = q.gt("id", after);
-          return q.order("id").limit(limit);
-        },
-        (r) => r.id,
-      );
-      if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
-      claims.push(...rows);
-    }
+    // Slots batched (bounds the .in() list) + claims keyset-paged per batch — the shared discovery
+    // helper (Codex round-8/9 #4). A legacy single-cycle round can hold >1000 claims, and offset paging
+    // would skip a row if a claim left the pending/claimed set mid-read.
+    const { rows: claims, error: claimsErr } = await fetchAllInChunks<ClaimRow>(
+      slotIds,
+      (slotChunk, after, limit) => {
+        let q = supabase
+          .from("slot_priority_claims")
+          .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
+          .in("slot_id", slotChunk)
+          .in("status", ["pending", "claimed"]);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit);
+      },
+      (r) => r.id,
+    );
+    if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     const byPlayer = new Map<string, ClaimRow>();
     // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
     // runtime values are single objects — cast through unknown (same idiom as the invite fn).

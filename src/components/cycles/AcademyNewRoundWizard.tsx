@@ -15,7 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
+import { createAndDrainRebookRound } from '@/lib/rebookInviteSend';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/lib/cyclusLabel';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
@@ -245,78 +245,43 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       //    roundAware:true tells the engine we can drain a MULTI-cycle round (one cycle per
       //    series); without it a multi-target run sends inline so an old client never strands
       //    sibling cycles' invites.
-      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-        body: { ...baseBody, skipInvites: true, roundAware: true },
+      // Create the round WITHOUT sending, then drain invites in bounded, resumable chunks — the SHARED
+      // orchestration both wizards use, so neither can regress to an inline blast (Codex round-9 #1).
+      const total = Number(review?.players ?? 0);
+      setSendProgress({ sent: 0, total });
+      const result = await createAndDrainRebookRound(baseBody, {
+        invoke: (fn, args) => supabase.functions.invoke(fn, args),
+        onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
       });
-      if (error) throw error;
-      if (data?.ok === false && data?.reason === 'already_exists') {
-        toast.error(t('newRound.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'));
+      if (result.phase === 'creation_failed') {
+        // The round was NOT created (Codex round-9 #2) — show the reason and do NOT navigate.
+        if (result.reason === 'already_exists') toast.error(t('newRound.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'));
+        else if (result.reason === 'slot_overlap') toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
+        else if (result.reason === 'nothing_to_rebook') toast.error(t('newRound.nothingToRebook', 'Er zijn geen spelers om te herboeken.'));
+        else toast.error(t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.'));
         return;
       }
-      if (data?.ok === false && data?.reason === 'slot_overlap') {
-        toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
-        return;
-      }
-      const newCycleId = data?.targetCycleId as string | undefined;
-      // A per-series run returns all sibling cycles; drain invites across ALL of them.
-      const roundCycleIds: string[] = Array.isArray(data?.targetCycles) && data.targetCycles.length > 0
-        ? (data.targetCycles as Array<{ id: string }>).map((c) => c.id)
-        : (newCycleId ? [newCycleId] : []);
-      const total = Number(data?.representativeCount ?? data?.players ?? 0);
-
-      // 2. Drain the invites with live progress — but ONLY when the edge fn actually
-      //    deferred them (invitesDeferred). If an older bulk-rebook-cycle is still
-      //    deployed it sent inline and ignored skipInvites; fall back to its own
-      //    invitesSent/failedClaimIds so we never mis-report during a deploy gap.
-      if (roundCycleIds.length > 0 && total > 0 && data?.invitesDeferred === true) {
-        setSendProgress({ sent: 0, total });
-        const result = await drainRebookRoundInvites(roundCycleIds, {
-          customMessage: baseBody.invitationMessage,
-          customSubject: baseBody.invitationSubject,
-          // Prefer the drain's sendable total (excludes emailless reps) once known.
-          onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
-        });
-        if (result.leftover > 0 || result.stoppedReason === 'error') {
-          // Round is created; some invites still need sending — the owner can finish
-          // from the rebook page ("resume sending"), and players can also respond via
-          // their dashboard.
-          toast.warning(
-            t('newRound.invitesPartial', '{{sent}} van {{total}} uitnodigingen verstuurd. De ronde is aangemaakt — verstuur de rest via de ronde-pagina.', {
-              sent: result.totalSent,
-              total,
-            }),
-            // Surface WHY the rest didn't send (a Resend rejection / error reason from the edge fn),
-            // instead of leaving the owner to dig through logs.
-            result.sampleError ? { description: result.sampleError } : undefined,
-          );
-        } else {
-          toast.success(
-            t('newRound.success', '{{groups}} groep(en) · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
-              groups: Number(data?.groups ?? 0),
-              players: Number(data?.players ?? 0),
-              invites: result.totalSent,
-            }),
-          );
-        }
+      // Round CREATED (navigable). leftover>0 (or an error outcome) ⇒ partial delivery — the owner can
+      // finish from the rebook page ("resume sending"), and players can also respond via their dashboard.
+      if (result.leftover > 0 || result.outcome === 'error') {
+        toast.warning(
+          t('newRound.invitesPartial', '{{sent}} van {{total}} uitnodigingen verstuurd. De ronde is aangemaakt — verstuur de rest via de ronde-pagina.', {
+            sent: result.totalSent,
+            total: total || result.totalSent + result.leftover,
+          }),
+          result.sampleError ? { description: result.sampleError } : undefined,
+        );
       } else {
-        // Inline-send path (older edge fn, or nothing to send): report what it sent.
         toast.success(
           t('newRound.success', '{{groups}} groep(en) · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
-            groups: Number(data?.groups ?? 0),
-            players: Number(data?.players ?? 0),
-            invites: Number(data?.invitesSent ?? 0),
+            groups: result.groups,
+            players: result.players,
+            invites: result.totalSent,
           }),
         );
-        const failedCount = Array.isArray(data?.failedClaimIds) ? data.failedClaimIds.length : 0;
-        const unresolvedCount = Array.isArray(data?.unresolvedClaimIds) ? data.unresolvedClaimIds.length : 0;
-        if (failedCount > 0 || unresolvedCount > 0) {
-          toast.warning(
-            t('newRound.invitesPartialLegacy', '{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.', { count: failedCount + unresolvedCount }),
-          );
-        }
       }
       // Land on the new cycle's rebook management view (falls back to backHref).
-      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : backHref);
+      navigate(result.targetCycleId ? `/app/academy/cycles/${result.targetCycleId}/rebook` : backHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {

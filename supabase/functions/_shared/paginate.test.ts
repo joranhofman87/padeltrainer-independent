@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { fetchAllKeyset, fetchAllRows } from "./paginate.ts";
+import { fetchAllInChunks, fetchAllKeyset, fetchAllRows } from "./paginate.ts";
 
 // A fake PostgREST page source: .range(from,to) inclusive, server caps a page at `cap` rows.
 function pagedSource(all: Array<{ id: number }>, cap = 1000) {
@@ -108,4 +108,37 @@ Deno.test("fetchAllKeyset FAILS CLOSED when the cursor does not advance (Codex r
   const { error } = await fetchAllKeyset<{ id: string }>(fetchPage, (r) => r.id, 3);
   assertEquals(error !== null, true);
   assertEquals((error?.message ?? "").includes("did not advance"), true);
+});
+
+// ── fetchAllInChunks (Codex round-9 #4): batch the id list + keyset each batch ────────────────────
+
+Deno.test("fetchAllInChunks batches the id list at chunkSize and keyset-pages each batch (no truncation)", async () => {
+  // 500 ids, chunkSize 200 → batches of 200/200/100; pageSize 50 forces keyset paging WITHIN a batch.
+  const ids = Array.from({ length: 500 }, (_, i) => `s${String(i).padStart(4, "0")}`);
+  const batchSizes: number[] = [];
+  const { rows, error } = await fetchAllInChunks<{ id: string }>(
+    ids,
+    (chunkIds, after, limit) => {
+      if (after === null) batchSizes.push(chunkIds.length); // record once per batch (its first page)
+      const page = chunkIds.filter((id) => after === null || id > after).slice(0, limit).map((id) => ({ id }));
+      return Promise.resolve({ data: page, error: null });
+    },
+    (r) => r.id,
+    { chunkSize: 200, pageSize: 50 },
+  );
+  assertEquals(error, null);
+  assertEquals(rows.length, 500); // every id returned across the batches
+  assertEquals(new Set(rows.map((r) => r.id)).size, 500); // no duplicates
+  assertEquals(batchSizes, [200, 200, 100]); // the .in() list is bounded — reverting the chunking fails here
+});
+
+Deno.test("fetchAllInChunks surfaces a batch error (fail loud)", async () => {
+  const ids = ["a", "b", "c"];
+  const { error } = await fetchAllInChunks<{ id: string }>(
+    ids,
+    () => Promise.resolve({ data: null, error: { message: "chunk boom" } }),
+    (r) => r.id,
+    { chunkSize: 2 },
+  );
+  assertEquals(error?.message, "chunk boom");
 });
