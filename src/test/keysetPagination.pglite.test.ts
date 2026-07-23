@@ -60,3 +60,36 @@ describe('keyset pagination over >1000 real filtered rows (Codex round-7 #7)', (
     expect(new Set(ids).size).toBe(ids.length); // still no duplicates
   });
 });
+
+/**
+ * Codex round-8 #5: the group-confirmation reads are scoped by rebook_group_id and must page a
+ * >1000-claim group without truncation and without leaking another group's claims.
+ */
+describe('keyset pagination scoped to a >1000-claim group (Codex round-8 #5)', () => {
+  let db: PGlite;
+
+  beforeAll(async () => {
+    db = new PGlite();
+    await db.query(`CREATE TABLE gclaims (id text PRIMARY KEY, rebook_group_id text NOT NULL, status text NOT NULL)`);
+    // Group A: 1200 claimed rows; group B: 300 rows (must never leak into A's paging).
+    await db.query(`INSERT INTO gclaims (id, rebook_group_id, status) SELECT 'a' || lpad(g::text, 8, '0'), 'grpA', 'claimed' FROM generate_series(1, 1200) AS g`);
+    await db.query(`INSERT INTO gclaims (id, rebook_group_id, status) SELECT 'b' || lpad(g::text, 8, '0'), 'grpB', 'claimed' FROM generate_series(1, 300) AS g`);
+  });
+
+  it('returns ALL 1200 of group A, none of group B (no truncation, no cross-group leak)', async () => {
+    const all: string[] = [];
+    let after: string | null = null;
+    for (;;) {
+      const rows = (await db.query<{ id: string }>(
+        `SELECT id FROM gclaims WHERE rebook_group_id='grpA' AND status='claimed' AND ($1::text IS NULL OR id > $1) ORDER BY id LIMIT 1000`,
+        [after],
+      )).rows;
+      all.push(...rows.map((r) => r.id));
+      if (rows.length < 1000) break;
+      after = rows[rows.length - 1].id;
+    }
+    expect(all.length).toBe(1200);
+    expect(new Set(all).size).toBe(1200);
+    expect(all.every((id) => id.startsWith('a'))).toBe(true); // no group-B row leaked in
+  });
+});

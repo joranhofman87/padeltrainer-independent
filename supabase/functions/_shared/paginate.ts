@@ -52,8 +52,13 @@ export async function fetchAllKeyset<T>(
     rows.push(...page);
     if (page.length < pageSize) return { rows, error: null };
     const nextAfter = keyOf(page[page.length - 1]);
-    // Guard: if the key didn't advance, stop rather than loop forever (defensive against a bad keyOf).
-    if (nextAfter === after) return { rows, error: null };
+    // A FULL page whose last key did not advance past the cursor means a broken key extractor or a
+    // non-unique/unordered key — continuing would loop forever, and returning the rows so far would be
+    // plausible-but-INCOMPLETE data. Fail CLOSED (Codex round-8 #6): correctness-critical discovery
+    // must surface an error, never silent partial data.
+    if (nextAfter == null || nextAfter === after) {
+      return { rows, error: { message: `keyset cursor did not advance past ${String(after)} — broken key extractor or non-unique key` } };
+    }
     after = nextAfter;
   }
 }

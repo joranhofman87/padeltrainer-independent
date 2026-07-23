@@ -1047,7 +1047,11 @@ serve(async (req) => {
         await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} failed / ${unresolvedClaimIds.length} unresolved of ${representativeClaimIds.length} rebook invites`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds, unresolvedClaimIds });
       }
       return new Response(JSON.stringify({
-        ok: true,
+        // `ok` reflects the INVITE outcome (Codex round-8 #2): the round IS created regardless (the
+        // caller navigates on targetCycleId), but ok:false + the failed/unresolved counts + id sets let
+        // the wizard show a partial/retry state instead of a false "all invited" success. Round-CREATION
+        // failures (already_exists / slot_overlap) are separate earlier responses carrying a `reason`.
+        ok: failedClaimIds.length === 0 && unresolvedClaimIds.length === 0,
         // Backward compat: old clients navigate to targetCycleId (the primary cycle, whose manage
         // page aggregates the whole round). New clients read targetCycles + roundId.
         targetCycleId: targets[0].id,
@@ -1058,7 +1062,10 @@ serve(async (req) => {
         slotsCopied,
         claimsCreated,
         invitesSent,
+        failed: failedClaimIds.length,
+        unresolved: unresolvedClaimIds.length,
         failedClaimIds,
+        unresolvedClaimIds,
         // Total invites the client should drain (skipInvites mode); also lets the
         // caller show an accurate "X of Y" even on the inline path.
         representativeCount: representativeClaimIds.length,

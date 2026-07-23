@@ -935,6 +935,7 @@
     "previewEmpty": "No players found for this selection.",
     "confirm": "Create & invite players",
     "success": "{{groups}} groups · {{players}} players invited · {{invites}} emails",
+    "partial": "Round created, but {{failed}} invitations failed and {{unresolved}} are unresolved — resend them from the manage page.",
     "errLoadLocations": "Could not load the locations. Please try again.",
     "errFillRequired": "Pick at least one location and both dates.",
     "errPreview": "Could not load the preview. Please try again.",

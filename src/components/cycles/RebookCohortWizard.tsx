@@ -475,16 +475,27 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
         toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
         return;
       }
-      toast.success(
-        t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
-          groups: Number(data?.groups ?? 0),
-          players: Number(data?.players ?? 0),
-          invites: Number(data?.invitesSent ?? 0),
-        }),
-      );
-      // Land on the new cycle's rebook management view so the academy can track
-      // responses / payments and manage the round (falls back to backHref).
+      // The round IS created (navigate on targetCycleId), but ok:false here means some invites failed
+      // or went out un-stamped (Codex round-8 #2) — show a partial/retry state, never a false success.
       const newCycleId = data?.targetCycleId as string | undefined;
+      if (data?.ok === false) {
+        toast.warning(
+          t('rebookCohort.partial', 'Ronde aangemaakt, maar {{failed}} uitnodigingen mislukten en {{unresolved}} zijn onopgelost — verstuur ze opnieuw vanaf de beheerpagina.', {
+            failed: Number(data?.failed ?? 0),
+            unresolved: Number(data?.unresolved ?? 0),
+          }),
+        );
+      } else {
+        toast.success(
+          t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
+            groups: Number(data?.groups ?? 0),
+            players: Number(data?.players ?? 0),
+            invites: Number(data?.invitesSent ?? 0),
+          }),
+        );
+      }
+      // Land on the new cycle's rebook management view so the academy can track responses / payments
+      // and (on a partial) resend the failed invites via the resume-sending drain.
       navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : effectiveBackHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));

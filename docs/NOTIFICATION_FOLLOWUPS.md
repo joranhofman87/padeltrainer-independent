@@ -228,6 +228,30 @@ mutation-verified tests (no source-regex).
    (`common:retry` did not resolve → English users saw the Dutch fallback; now `common:queryError.retry`).
    Rendered error/retry state runtime-tested.
 
+## Codex round 8 — resolved (PR 10d): the round-7 contracts are now actually true
+
+Round 7 stated the contracts; round 8 makes them HOLD at the caller + query-shape level (Codex round-7
+tests didn't exercise the failing paths). What round 8 fixes:
+
+1. **Drain never reports outstanding work as `drained`** — the `sent:0 && remaining>0` exit is now
+   `no_progress` (was `drained`), and hitting `maxIterations` is a new `iteration_limit` outcome with
+   the real `leftover` (was the default `drained`/leftover 0 — a 100k run would have reported success
+   with 80k outstanding). Tests for both.
+2. **Inline round creation surfaces unresolved** — `bulk-rebook-cycle` returns `failed`, `unresolved`,
+   both id sets, and `ok = failed===0 && unresolved===0` (the round is still created; the caller
+   navigates on `targetCycleId`). RebookCohortWizard + AcademyNewRoundWizard now show a partial/retry
+   state instead of an unconditional success.
+3. **A configured-off / no-precise-retry-set reminder batch is a WHOLE-BATCH failure** — the client no
+   longer reads `{ok:false, failed:0}` (e.g. `email_not_configured`) as a clean send; it puts the whole
+   batch into `failedTargets`, and the UI branches on `!ok || failed>0` so it never shows success +
+   clears the retry selection. Regression added.
+4. **Reminder claims discovery is viable at slot volume** — slots are batched by 200 (bounds the
+   `.in()` list) and claims keyset-paged within each batch, matching the other two senders.
+5. **Group-confirmation member + invited-state reads are keyset-paginated** — a >1000-claim group no
+   longer truncates (omitted members / wrong "new member" copy). pglite fixture over a 1200-claim group.
+6. **The keyset helper fails CLOSED on a stalled cursor** — a non-advancing key returns an error, not
+   plausible-but-incomplete rows. Deno test.
+
 ## Codex round 7 — resolved (PR 10d): caller contracts + high-volume discovery
 
 Round 6 fixed the helpers; round 7 fixes the CALLER CONTRACTS and the high-volume DISCOVERY reads the

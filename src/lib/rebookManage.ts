@@ -832,12 +832,22 @@ export async function sendRebookReminder(args: {
       if (!reason) reason = error.message;
       continue;
     }
-    const r = (data ?? {}) as Partial<RebookReminderResult> & { failedTargets?: RebookReminderTarget[] };
-    if (!r.ok) ok = false;
+    const r = (data ?? {}) as Partial<RebookReminderResult> & { failedTargets?: RebookReminderTarget[]; reason?: string };
     sent += Number(r.sent ?? 0);
     skipped += Number(r.skipped ?? 0);
-    failed += Number(r.failed ?? 0);
-    if (Array.isArray(r.failedTargets)) failedTargets.push(...r.failedTargets);
+    const batchFailedTargets = Array.isArray(r.failedTargets) ? r.failedTargets : [];
+    if (r.ok === false && batchFailedTargets.length === 0) {
+      // A non-clean batch that returned NO precise retry set (e.g. email_not_configured, or any
+      // edge/config failure producing no per-recipient list) — treat the WHOLE batch as failed so it
+      // stays in the retry set and the UI never renders a false success (Codex round-8 #3).
+      ok = false;
+      failed += batch.length;
+      failedTargets.push(...batch);
+    } else {
+      if (r.ok === false) ok = false;
+      failed += Number(r.failed ?? 0);
+      failedTargets.push(...batchFailedTargets);
+    }
     if (!reason && r.reason) reason = r.reason;
   }
 

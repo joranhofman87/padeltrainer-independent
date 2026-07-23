@@ -113,21 +113,28 @@ serve(async (req: Request) => {
       profiles: { full_name: string | null; email: string | null } | null;
       guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
     };
-    // KEYSET-paginated by claim id (Codex round-7 #3/#7): a legacy single-cycle round can hold >1000
-    // claims; offset pagination would skip a row if a claim left the pending/claimed set mid-read.
-    const { rows: claims, error: claimsErr } = await fetchAllKeyset<ClaimRow>(
-      (after, limit) => {
-        let q = supabase
-          .from("slot_priority_claims")
-          .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
-          .in("slot_id", slotIds)
-          .in("status", ["pending", "claimed"]);
-        if (after) q = q.gt("id", after);
-        return q.order("id").limit(limit);
-      },
-      (r) => r.id,
-    );
-    if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
+    // Slots batched by 200 to bound the .in() list (a 1000-1500-UUID .in() can exceed PostgREST/URL
+    // limits — Codex round-8 #4), and claims within each batch KEYSET-paginated by claim id: a legacy
+    // single-cycle round can hold >1000 claims, and offset pagination would skip a row if a claim left
+    // the pending/claimed set mid-read (round-7 #3/#7).
+    const claims: ClaimRow[] = [];
+    for (let i = 0; i < slotIds.length; i += 200) {
+      const slotChunk = slotIds.slice(i, i + 200);
+      const { rows, error: claimsErr } = await fetchAllKeyset<ClaimRow>(
+        (after, limit) => {
+          let q = supabase
+            .from("slot_priority_claims")
+            .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
+            .in("slot_id", slotChunk)
+            .in("status", ["pending", "claimed"]);
+          if (after) q = q.gt("id", after);
+          return q.order("id").limit(limit);
+        },
+        (r) => r.id,
+      );
+      if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
+      claims.push(...rows);
+    }
     const byPlayer = new Map<string, ClaimRow>();
     // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
     // runtime values are single objects — cast through unknown (same idiom as the invite fn).

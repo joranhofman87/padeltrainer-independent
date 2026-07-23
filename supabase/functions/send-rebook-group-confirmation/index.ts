@@ -24,6 +24,7 @@ import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { groupConfirmOk, type MemberConfirmStep, runGroupConfirmations } from "../_shared/rebook-group-confirm.ts";
+import { fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,19 +102,28 @@ serve(async (req: Request) => {
     ) || "Je groep";
 
     // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
-    const { data: rows, error: rowsErr } = await admin
-      .from("slot_priority_claims")
-      .select(
-        "id, invited_at, slot_id, player_id, guest_player_id, " +
-        "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email, linked_profile:linked_profile_id(email)), " +
-        "availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, academy_profile_id)",
-      )
-      .eq("rebook_group_id", groupId)
-      .eq("status", "claimed")
-      .is("confirmation_sent_at", null)
-      .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
+    // KEYSET-paginated by claim id (Codex round-8 #5): a large group (many members × many weeks) can
+    // exceed 1000 claims; an unpaginated read would truncate → some members get no confirmation.
+    const { rows, error: rowsErr } = await fetchAllKeyset<ClaimRow & { id: string }>(
+      (after, limit) => {
+        let q = admin
+          .from("slot_priority_claims")
+          .select(
+            "id, invited_at, slot_id, player_id, guest_player_id, " +
+            "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email, linked_profile:linked_profile_id(email)), " +
+            "availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, academy_profile_id)",
+          )
+          .eq("rebook_group_id", groupId)
+          .eq("status", "claimed")
+          .is("confirmation_sent_at", null)
+          .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit) as unknown as PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+      },
+      (r) => r.id,
+    );
     if (rowsErr) throw new Error(`member read failed: ${rowsErr.message}`); // fail loud — not a silent zero-send
-    const claims = (rows ?? []) as unknown as ClaimRow[];
+    const claims = rows as unknown as ClaimRow[];
 
     // Rate limit AFTER establishing there is work (Codex round-7 #5): a no-work invocation (nothing
     // left to confirm) must NOT consume an allowance, else a benign retry burns the budget a genuine
@@ -185,16 +195,25 @@ serve(async (req: Request) => {
     // i.e. ANY of their claims in this group carries invited_at (bulk-rebook-cycle stamps only one
     // representative claim per member, so check across all their rows, not just the booked subset).
     // Existing → "X re-booked you"; never-invited → a "you've been added by X" welcome.
-    const { data: invitedRows, error: invitedErr } = await admin
-      .from("slot_priority_claims")
-      .select("player_id, guest_player_id")
-      .eq("rebook_group_id", groupId)
-      .not("invited_at", "is", null);
+    // KEYSET-paginated (Codex round-8 #5): a >1000-claim group would truncate here → members past the
+    // cap wrongly treated as "new" → the wrong (welcome vs re-booked) email + GDPR-consent copy.
+    const { rows: invitedRows, error: invitedErr } = await fetchAllKeyset<{ id: string; player_id: string | null; guest_player_id: string | null }>(
+      (after, limit) => {
+        let q = admin
+          .from("slot_priority_claims")
+          .select("id, player_id, guest_player_id")
+          .eq("rebook_group_id", groupId)
+          .not("invited_at", "is", null);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit) as unknown as PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+      },
+      (r) => r.id,
+    );
     // Fail loud: an error here would leave invitedKeys empty → EVERY member wrongly treated as "new"
     // → the wrong (welcome vs re-booked) email + GDPR-consent copy.
     if (invitedErr) throw new Error(`invited-state read failed: ${invitedErr.message}`);
     const invitedKeys = new Set(
-      (invitedRows ?? []).map((r: { player_id: string | null; guest_player_id: string | null }) => personKeyOf(r))
+      invitedRows.map((r: { player_id: string | null; guest_player_id: string | null }) => personKeyOf(r))
         .filter((k): k is string => !!k),
     );
 

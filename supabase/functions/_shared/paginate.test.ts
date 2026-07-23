@@ -100,3 +100,12 @@ Deno.test("fetchAllKeyset surfaces a page error", async () => {
   assertEquals(rows.length, 0);
   assertEquals(error?.message, "keyset boom");
 });
+
+Deno.test("fetchAllKeyset FAILS CLOSED when the cursor does not advance (Codex round-8 #6)", async () => {
+  // A FULL page whose last key never advances past the cursor (broken keyOf / non-unique key) would
+  // otherwise loop or silently truncate — it must return an ERROR, not partial rows with error:null.
+  const fetchPage = () => Promise.resolve({ data: [{ id: "x" }, { id: "x" }, { id: "x" }], error: null });
+  const { error } = await fetchAllKeyset<{ id: string }>(fetchPage, (r) => r.id, 3);
+  assertEquals(error !== null, true);
+  assertEquals((error?.message ?? "").includes("did not advance"), true);
+});

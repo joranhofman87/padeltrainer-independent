@@ -104,12 +104,24 @@ describe('drainRebookInvites', () => {
     expect(sender).toHaveBeenCalledTimes(1);
   });
 
-  it('honours maxIterations as a runaway backstop', async () => {
-    // A pathological sender that always claims progress but never drains.
+  it('hitting maxIterations reports iteration_limit + real leftover, NOT drained (Codex round-8 #1)', async () => {
+    // A large run that always sends a little but never fully drains — the 500-iteration backstop must
+    // NOT masquerade as a clean drain with leftover 0.
     const sender = vi.fn(async () => chunk({ sent: 1, failed: 0, remaining: 999 }));
     const r = await drainRebookInvites('cyc', { sender, maxIterations: 5 });
     expect(sender).toHaveBeenCalledTimes(5);
     expect(r.totalSent).toBe(5);
+    expect(r.stoppedReason).toBe('iteration_limit');
+    expect(r.leftover).toBe(999); // outstanding work is surfaced, not hidden
+  });
+
+  it('a chunk that sends NOTHING while work remains is no_progress, NOT drained (Codex round-8 #1)', async () => {
+    // sent:0 with remaining>0 (e.g. nothing eligible resolved this pass) — must not report drained.
+    const sender = vi.fn(async () => chunk({ sent: 0, failed: 0, remaining: 50 }));
+    const r = await drainRebookInvites('cyc', { sender });
+    expect(r.stoppedReason).toBe('no_progress');
+    expect(r.leftover).toBe(50);
+    expect(sender).toHaveBeenCalledTimes(1);
   });
 
   it('forwards the chunk limit and custom copy to the sender', async () => {

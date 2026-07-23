@@ -238,10 +238,12 @@ export default function AcademyRebookManage() {
         message: message.trim(),
       });
       refetch(); // refresh "last reminded" chips + already-reminded counts so we don't double-nudge
-      if (res.failed > 0) {
-        // Some sends failed. Keep ONLY the failed identities selected + the composed text + the dialog
-        // open, so the manager can retry exactly them — never asking them to reconstruct an unknowable
-        // remainder or clearing unprocessed work (Codex round-7 #2).
+      if (!res.ok || res.failed > 0) {
+        // Any non-clean outcome (a send failure OR a config/edge failure with no precise retry set,
+        // e.g. email_not_configured — Codex round-8 #3). Keep ONLY the failed identities selected + the
+        // composed text + the dialog open, so the manager can retry exactly them — never a false
+        // success, never asking them to reconstruct an unknowable remainder or clearing unprocessed
+        // work (Codex round-7 #2).
         const retry = new Map<string, RebookReminderTarget>();
         for (const target of res.failedTargets) { const k = personKeyOf(target); if (k) retry.set(k, target); }
         setSelectedGroups(new Set());

@@ -1060,6 +1060,7 @@
     "previewEmpty": "Geen spelers gevonden voor deze selectie.",
     "confirm": "Aanmaken & spelers uitnodigen",
     "success": "{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails",
+    "partial": "Ronde aangemaakt, maar {{failed}} uitnodigingen mislukten en {{unresolved}} zijn onopgelost — verstuur ze opnieuw vanaf de beheerpagina.",
     "errLoadLocations": "Kon de locaties niet laden. Probeer het opnieuw.",
     "errFillRequired": "Kies minstens één locatie en beide datums.",
     "errPreview": "Kon de preview niet ophalen. Probeer het opnieuw.",

@@ -308,9 +308,10 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
           }),
         );
         const failedCount = Array.isArray(data?.failedClaimIds) ? data.failedClaimIds.length : 0;
-        if (failedCount > 0) {
+        const unresolvedCount = Array.isArray(data?.unresolvedClaimIds) ? data.unresolvedClaimIds.length : 0;
+        if (failedCount > 0 || unresolvedCount > 0) {
           toast.warning(
-            t('newRound.invitesPartialLegacy', '{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.', { count: failedCount }),
+            t('newRound.invitesPartialLegacy', '{{count}} uitnodiging(en) konden niet worden verstuurd. De ronde is aangemaakt; deze spelers kunnen ook via hun dashboard reageren.', { count: failedCount + unresolvedCount }),
           );
         }
       }

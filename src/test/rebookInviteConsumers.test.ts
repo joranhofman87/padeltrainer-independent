@@ -89,6 +89,18 @@ describe('sendRebookReminder batches identities + returns the failed retry set (
     expect(res.failedTargets).toEqual([{ player_id: 'p2', guest_player_id: null }]); // the exact retry set
   });
 
+  it('a non-clean batch with NO precise retry set (e.g. email_not_configured) fails the WHOLE batch (round-8 #3)', async () => {
+    const targets = [{ player_id: 'p1', guest_player_id: null }, { player_id: 'p2', guest_player_id: null }];
+    // The edge returns 200 + ok:false + reason but NO failedTargets (a config failure) — the client
+    // must not read this as a clean send with 0 failures.
+    invokeMock.mockResolvedValue({ data: { ok: false, sent: 0, skipped: 0, failed: 0, reason: 'email_not_configured' }, error: null });
+    const res = await sendRebookReminder({ cycleId: 'cy', targets, subject: 's', message: 'm' });
+    expect(res.ok).toBe(false);
+    expect(res.failed).toBe(2); // the whole batch becomes the retry set
+    expect(res.failedTargets).toEqual(targets);
+    expect(res.reason).toBe('email_not_configured');
+  });
+
   it('a whole-batch invoke error puts the entire batch into failedTargets', async () => {
     const targets = [{ player_id: 'p1', guest_player_id: null }];
     invokeMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
