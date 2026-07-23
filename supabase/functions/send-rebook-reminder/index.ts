@@ -13,6 +13,7 @@ import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { fetchAllRows } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,12 +96,6 @@ serve(async (req: Request) => {
     // Resolve recipients from THIS cycle's claims, scoped to the requested targets, one per
     // player. Exclude declined/expired claims — a reminder must never re-ping someone who
     // already opted out (only pending and claimed players get one).
-    const { data: claims, error: claimsErr } = await supabase
-      .from("slot_priority_claims")
-      .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
-      .in("slot_id", slotIds)
-      .in("status", ["pending", "claimed"]);
-    if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     type ClaimRow = {
       claim_token: string;
       player_id: string | null;
@@ -108,6 +103,19 @@ serve(async (req: Request) => {
       profiles: { full_name: string | null; email: string | null } | null;
       guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
     };
+    // PAGINATED (Codex round-6 #3): a legacy single-cycle round can hold >1000 claims; an un-paginated
+    // read caps at ~1000, so a manager-selected target whose claims all landed beyond row 1000 would
+    // silently resolve to no recipient and never be reminded (the fn still reporting ok:true).
+    const { rows: claims, error: claimsErr } = await fetchAllRows<ClaimRow>((from, to) =>
+      supabase
+        .from("slot_priority_claims")
+        .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
+        .in("slot_id", slotIds)
+        .in("status", ["pending", "claimed"])
+        .order("claim_token")
+        .range(from, to),
+    );
+    if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     const byPlayer = new Map<string, ClaimRow>();
     // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
     // runtime values are single objects — cast through unknown (same idiom as the invite fn).
@@ -120,7 +128,12 @@ serve(async (req: Request) => {
       byPlayer.set(key, c);
     }
 
-    const recipients = [...byPlayer.values()].slice(0, MAX_RECIPIENTS);
+    // Per-invocation recipient cap (bounds Resend load + edge runtime). NOT a silent drop (Codex
+    // round-6 #3): the overflow is returned as a resumable `remaining` boundary and alerted, so the
+    // manager learns some targets weren't reminded rather than the fn falsely reporting everyone sent.
+    const allRecipients = [...byPlayer.values()];
+    const recipients = allRecipients.slice(0, MAX_RECIPIENTS);
+    const notSent = allRecipients.length - recipients.length;
     // VERIFIED guest contacts (person_links → twin → linked, split-freeze) — a guest is reached at
     // their OWN email then their VERIFIED account, NEVER the raw claim.player_id.
     const guestMap = await fetchGuestContacts(supabase, recipients.map((c) => c.guest_player_id));
@@ -182,12 +195,18 @@ serve(async (req: Request) => {
       }
     }
 
-    // Aggregate alert for per-recipient send failures (never per-item) before the 200 response.
+    // Aggregate alert for per-recipient send failures (never per-item).
     if (failed > 0) {
       await notifySlackEdgeError("send-rebook-reminder", `${failed} of ${recipients.length} reminder emails failed`, { cycleId, sent, skipped, failed, recipients: recipients.length });
     }
+    // Cap-overflow alert: some selected targets exceeded the per-call cap and were NOT reminded.
+    if (notSent > 0) {
+      await notifySlackEdgeError("send-rebook-reminder", `recipient cap hit: ${notSent} of ${allRecipients.length} selected targets not reminded this call (cap ${MAX_RECIPIENTS})`, { cycleId, requested: allRecipients.length, cap: MAX_RECIPIENTS });
+    }
 
-    return json({ ok: true, sent, skipped, failed });
+    // ok reflects completeness: a cap-overflow (`remaining` > 0) is not a clean full send. `remaining`
+    // is the resumable boundary the client surfaces so the truncation is never silent.
+    return json({ ok: notSent === 0, sent, skipped, failed, remaining: notSent });
   } catch (e) {
     // Unexpected failure (auth/DB/parse) — surface to Slack before the 500.
     await notifySlackEdgeError("send-rebook-reminder", String((e as Error)?.message ?? e));

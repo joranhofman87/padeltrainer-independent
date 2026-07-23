@@ -76,4 +76,22 @@ describe('getMyPendingPriorityClaims — linked-guest aware (B1)', () => {
     expect(claims).toHaveLength(1); // only the row whose player_id = 'me' (the .eq filter)
     expect(claims[0].claim_token).toBe('t1');
   });
+
+  it('THROWS on a cycles read error instead of silently showing deferred payment copy (round-6 #4)', async () => {
+    // The RPC returns a claim carrying a cyclus_id, so the mode-resolution `cycles` read runs; that
+    // read errors. Without the fix the card would default to 'deferred_split' + null start_date — an
+    // UPFRONT rebook shown the wrong (pay-later, split) copy. With the fix it fails loud → react-query
+    // renders the error/retry state instead.
+    setMockData(
+      {},
+      {
+        get_my_pending_priority_claims: () => ({
+          data: [{ id: 'c1', claim_token: 't', slot_id: 's1', rebook_group_id: null, start_time: '2026-09-01T17:00:00Z', end_time: '2026-09-01T18:00:00Z', cyclus_id: 'cy1', cyclus_name: 'X', price_per_session: 10, priority_window_ends_at: FUTURE }],
+          error: null,
+        }),
+      },
+      { cycles: { message: 'cycles read boom' } },
+    );
+    await expect(getMyPendingPriorityClaims('me')).rejects.toThrow(/cycles read boom/);
+  });
 });

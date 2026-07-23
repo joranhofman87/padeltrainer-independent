@@ -195,12 +195,29 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
   // batch RPC that mirrors can_book_member_window — the claim's player_id is NOT proof of an account.
   const playerIds = audience.filter((a) => !a.guest_player_id).map((a) => a.player_id).filter((x): x is string => !!x);
   const guestIds = audience.map((a) => a.guest_player_id).filter((x): x is string => !!x);
-  const [{ data: profiles, error: profErr }, { data: guestContacts, error: guestErr }] = await Promise.all([
-    playerIds.length ? supabase.from("profiles").select("id, full_name, email").in("id", playerIds) : Promise.resolve({ data: [], error: null }),
-    guestIds.length ? supabase.rpc("resolve_guest_member_contacts", { _guest_ids: guestIds }) : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (profErr) throw new Error(`member-open profiles read failed: ${profErr.message}`);
-  if (guestErr) throw new Error(`member-open guest contact resolution failed: ${guestErr.message}`);
+  // CHUNKED + EXACT-SET (Codex round-6 #3): a large member-open audience (>1000 pure-profile players)
+  // would truncate an un-chunked `.in("id", playerIds)` at ~1000 — the un-returned recipients then get
+  // no email AND are never checkpointed, so the cycle stays CLAIMED and they are never re-sent (a
+  // silent drop the fn explicitly promises never to do). Read in <=1000-id batches, fail loud, and
+  // assert every requested profile id came back (a player_id always has a profiles row).
+  const CHUNK = 1000;
+  const profiles: Array<{ id: string; full_name: string | null; email: string | null }> = [];
+  for (let i = 0; i < playerIds.length; i += CHUNK) {
+    const { data, error } = await supabase.from("profiles").select("id, full_name, email").in("id", playerIds.slice(i, i + CHUNK));
+    if (error) throw new Error(`member-open profiles read failed: ${error.message}`);
+    profiles.push(...((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>));
+  }
+  const returnedProfileIds = new Set(profiles.map((p) => p.id));
+  const missingProfiles = playerIds.filter((id) => !returnedProfileIds.has(id));
+  if (missingProfiles.length > 0) {
+    throw new Error(`member-open profiles read incomplete: ${missingProfiles.length} of ${playerIds.length} profile(s) missing — refusing to drop them silently`);
+  }
+  const guestContacts: Array<{ guest_id: string; own_name: string | null; own_email: string | null; account_name: string | null; account_email: string | null; has_account: boolean }> = [];
+  for (let i = 0; i < guestIds.length; i += CHUNK) {
+    const { data, error } = await supabase.rpc("resolve_guest_member_contacts", { _guest_ids: guestIds.slice(i, i + CHUNK) });
+    if (error) throw new Error(`member-open guest contact resolution failed: ${error.message}`);
+    guestContacts.push(...((data ?? []) as typeof guestContacts));
+  }
   const maps: MemberOpenContactMaps = {
     profileName: new Map(), profileEmail: new Map(),
     guestOwnName: new Map(), guestOwnEmail: new Map(), guestAccountName: new Map(), guestAccountEmail: new Map(), guestHasAccount: new Set(),

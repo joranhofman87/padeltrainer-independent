@@ -1240,6 +1240,8 @@
   },
   "rebookManage": {
     "title": "Herboeking beheren",
+    "loadFailedTitle": "Kon de herboeking niet laden",
+    "loadFailedBody": "Er ging iets mis bij het ophalen van de gegevens. Probeer het opnieuw.",
     "overview": {
       "searchPlaceholder": "Zoek op naam of locatie…",
       "columnsButton": "Kolommen",
@@ -1347,6 +1349,7 @@
     "bulkPartial": "{{ok}} gelukt, {{fail}} mislukt",
     "reminderFailed": "Kon de herinnering niet versturen. Probeer het later opnieuw.",
     "reminderPartial": "{{sent}} verstuurd, {{skip}} overgeslagen",
+    "reminderCapped": "{{sent}} verstuurd. {{left}} niet — te veel tegelijk geselecteerd; selecteer de rest en verstuur opnieuw.",
     "reminderDone": "{{sent}} herinneringen verstuurd",
     "empty": "Geen herboekingsgegevens voor deze cyclus.",
     "seatLine": "{{r}}/{{c}} geherboekt",

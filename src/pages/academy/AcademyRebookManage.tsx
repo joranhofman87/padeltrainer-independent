@@ -238,6 +238,9 @@ export default function AcademyRebookManage() {
       });
       if (!res.ok && res.sent === 0) {
         toast.error(t('rebookManage.reminderFailed', 'Kon de herinnering niet versturen. Probeer het later opnieuw.'));
+      } else if (res.remaining > 0) {
+        // Cap-overflow: some selected players weren't reminded this call — tell the manager, don't hide it.
+        toast.warning(t('rebookManage.reminderCapped', '{{sent}} verstuurd. {{left}} niet — te veel tegelijk geselecteerd; selecteer de rest en verstuur opnieuw.', { sent: res.sent, left: res.remaining }));
       } else if (res.skipped > 0 || res.failed > 0) {
         toast.success(t('rebookManage.reminderPartial', '{{sent}} verstuurd, {{skip}} overgeslagen', { sent: res.sent, skip: res.skipped + res.failed }));
       } else {
@@ -347,7 +350,7 @@ export default function AcademyRebookManage() {
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 mr-1${isFetching ? ' animate-spin' : ''}`} /> {t('common:retry', 'Opnieuw proberen')}
+            <RefreshCw className={`h-4 w-4 mr-1${isFetching ? ' animate-spin' : ''}`} /> {t('common:queryError.retry', 'Opnieuw proberen')}
           </Button>
         </div>
       </div>

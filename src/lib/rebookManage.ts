@@ -786,6 +786,9 @@ export interface RebookReminderResult {
   sent: number;
   skipped: number;
   failed: number;
+  /** Selected targets NOT reminded this call because the per-invocation recipient cap was hit — a
+   *  resumable boundary the UI surfaces so a truncated blast is never silent (Codex round-6). */
+  remaining: number;
   reason?: string;
 }
 
@@ -797,9 +800,9 @@ export async function sendRebookReminder(args: {
   message: string;
 }): Promise<RebookReminderResult> {
   const { data, error } = await supabase.functions.invoke('send-rebook-reminder', { body: args });
-  if (error) return { ok: false, sent: 0, skipped: 0, failed: args.targets.length, reason: error.message };
+  if (error) return { ok: false, sent: 0, skipped: 0, failed: args.targets.length, remaining: 0, reason: error.message };
   const r = (data ?? {}) as Partial<RebookReminderResult>;
-  return { ok: Boolean(r.ok), sent: Number(r.sent ?? 0), skipped: Number(r.skipped ?? 0), failed: Number(r.failed ?? 0), reason: r.reason };
+  return { ok: Boolean(r.ok), sent: Number(r.sent ?? 0), skipped: Number(r.skipped ?? 0), failed: Number(r.failed ?? 0), remaining: Number(r.remaining ?? 0), reason: r.reason };
 }
 
 // ===== Discovery: list an academy's rebook rounds =====

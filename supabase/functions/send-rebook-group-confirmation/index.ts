@@ -109,7 +109,9 @@ serve(async (req: Request) => {
       _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
     });
     if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
-    if (allowed !== true) return json({ ok: true, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
+    // Throttled is NOT clean success (Codex round-6 #2): a legitimate 7th group edit inside the window
+    // would send nothing. Return ok:false + throttled so the caller can surface it (and, later, retry).
+    if (allowed !== true) return json({ ok: false, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
 
     // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
     const { data: rows, error: rowsErr } = await admin

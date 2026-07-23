@@ -60,7 +60,8 @@ describe('PR 10d wiring — manual flows deliver independently to parent + dual-
     const s = fn('send-priority-claim-invitation');
     expect(s).toContain('from "../_shared/person-identity.ts"');
     expect(s).toContain('const pkey = personKeyOf(c);');       // representative dedup
-    expect(s).toContain('const pkey = personKeyOf(gc);');      // group aggregation
+    // group aggregation moved into _shared/rebook-invitation-context.ts (loadInvitationMetadata) and
+    // is now RUNTIME-tested there (a 1500-session series aggregates under `grp1|p:p1`, not the parent).
     expect(s).toContain('const playerKey = personKeyOf(c);');  // main-loop lookup
     expect(s).toContain('guestContactName(c.guest_player_id, guestMap)'); // verified name (never player_id)
     expect(s).not.toMatch(/c\.player_id \?\? `g:\$\{c\.guest_player_id\}`/); // old key gone

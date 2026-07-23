@@ -1115,6 +1115,8 @@
   },
   "rebookManage": {
     "title": "Manage rebooking",
+    "loadFailedTitle": "Could not load the rebooking",
+    "loadFailedBody": "Something went wrong while fetching the data. Please try again.",
     "overview": {
       "searchPlaceholder": "Search by name or location…",
       "columnsButton": "Columns",
@@ -1222,6 +1224,7 @@
     "bulkPartial": "{{ok}} done, {{fail}} failed",
     "reminderFailed": "Couldn't send the reminder. Please try again later.",
     "reminderPartial": "{{sent}} sent, {{skip}} skipped",
+    "reminderCapped": "{{sent}} sent. {{left}} not — too many selected at once; select the rest and send again.",
     "reminderDone": "{{sent}} reminders sent",
     "empty": "No rebooking data for this cycle.",
     "seatLine": "{{r}}/{{c}} rebooked",

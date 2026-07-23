@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@2.0.0";
 import {
   buildClaimUrl,
   resolveAppBase,
@@ -9,6 +8,9 @@ import { personKeyOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
+import { sendResendEmail } from "../_shared/resend-send.ts";
+import { loadInvitationMetadata, type InvitationDb } from "../_shared/rebook-invitation-context.ts";
+import { sendThenStampOne } from "../_shared/send-then-stamp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,55 +21,6 @@ const corsHeaders = {
 const APP_BASE = resolveAppBase(Deno.env.get("PUBLIC_APP_URL"));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * Serialize a send failure to a legible string. Resend errors (and thrown Supabase errors) are PLAIN
- * OBJECTS, so `String(err)` is the useless "[object Object]". Pull name/message/statusCode off them so
- * the actual reason (e.g. "validation_error … domain is not verified (403)", "rate_limit_exceeded") can
- * be surfaced to the caller + Slack instead of only console — otherwise a whole failed blast is a black
- * box (the caller only learns "N not sent", never WHY).
- */
-const describeSendError = (e: unknown): string => {
-  if (e instanceof Error) return e.message;
-  if (e && typeof e === "object") {
-    const o = e as { name?: unknown; message?: unknown; error?: unknown; statusCode?: unknown };
-    const parts = [
-      typeof o.name === "string" ? o.name : null,
-      typeof o.message === "string" ? o.message : null,
-      typeof o.error === "string" ? o.error : null,
-      o.statusCode != null ? `(${String(o.statusCode)})` : null,
-    ].filter(Boolean);
-    if (parts.length > 0) return parts.join(" ");
-    try { return JSON.stringify(e); } catch { return String(e); }
-  }
-  return String(e);
-};
-
-// Resend rate-limits bursts (HTTP 429). A bulk rebook can fire dozens of invites
-// back to back, so back off and retry on rate-limit errors instead of dropping the
-// invitation. Non-rate-limit errors are returned immediately (the caller releases
-// the claim so a later run can retry). Returns the final Resend error or null.
-async function sendInviteWithRetry(
-  resendClient: Resend,
-  payload: { from: string; to: string[]; subject: string; html: string; reply_to?: string; headers?: Record<string, string> },
-  maxAttempts = 4,
-): Promise<{ error: unknown | null }> {
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const { error } = await resendClient.emails.send(payload);
-    if (!error) return { error: null };
-    lastError = error;
-    const e = error as { statusCode?: number; name?: string };
-    // Prefer the structured fields; only fall back to scanning the serialized error
-    // when no statusCode is present, so a non-rate-limit error that merely contains
-    // "429" somewhere isn't retried as if it were throttled.
-    const isRateLimit = e?.statusCode === 429 || e?.name === "rate_limit_exceeded" ||
-      (e?.statusCode == null && /\b429\b|rate.?limit/i.test(JSON.stringify(error ?? {})));
-    if (!isRateLimit) return { error };
-    if (attempt < maxAttempts - 1) await sleep(800 * (attempt + 1)); // 0.8s, 1.6s, 2.4s
-  }
-  return { error: lastError };
-}
 
 interface ClaimRow {
   id: string;
@@ -82,17 +35,6 @@ interface ClaimRow {
   guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
 }
 
-interface SlotRow {
-  id: string;
-  start_time: string;
-  end_time: string;
-  cyclus_id: string | null;
-  cyclus_name: string | null;
-  price_per_session: number | null;
-  priority_window_ends_at: string | null;
-  academy_profile_id: string | null;
-}
-
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -101,10 +43,6 @@ const escapeHtml = (s: string) =>
 // safe once we wrap the whole display phrase in quotes.
 const sanitizeFromName = (s: string) =>
   (s || "").replace(/["\\<>\r\n]/g, "").replace(/\s+/g, " ").trim().slice(0, 64);
-
-// A basic email sanity check for the reply-to / unsubscribe mailto (no header injection).
-const isPlausibleEmail = (s: string | null | undefined): s is string =>
-  !!s && /^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(s.trim());
 
 // Personalization tokens — same set the reminder + invoice emails use.
 const substituteVars = (text: string, fullName: string) => {
@@ -377,95 +315,32 @@ const handler = async (req: Request): Promise<Response> => {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
 
-    // Fetch slot info for the first slot (assume all share or fetch per claim)
+    // Assemble every piece of invitation metadata — slot info, academy branding (tz/name/reply-to),
+    // per-cycle payment mode + start date, and the per-(group, player) session aggregation. FAIL-LOUD
+    // on any read error and PAGINATED for the group-claims (Codex round-6 #1/#3): a swallowed error
+    // here previously marked every invite "skipped" (slot read), sent the deferred-payment copy for an
+    // upfront round (cycle read), or described a whole series as one session (group-claims read /
+    // >1000-row truncation). Throws → the catch below → 500 + Slack, never a silent partial.
     const slotIds = [...new Set(eligible.map((c) => c.slot_id))];
-    const { data: slots } = await supabase
-      .from("availability_slots")
-      .select("id, start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at, academy_profile_id")
-      .in("id", slotIds);
-
-    // Academy timezone for DISPLAY (slots are stored UTC; default Europe/Amsterdam), plus
-    // the academy NAME + reply-to so the invite identifies the sender (a cold recipient who
-    // registered with the academy — not "PadelTrainer.ai" — must recognise who it's from).
-    const acadIds = [...new Set(((slots || []) as SlotRow[]).map((s) => s.academy_profile_id).filter((id): id is string => !!id))];
-    const tzByAcademy = new Map<string, string>();
-    const nameByAcademy = new Map<string, string>();
-    const replyToByAcademy = new Map<string, string>();
-    if (acadIds.length > 0) {
-      const { data: acads } = await supabase
-        .from("academy_profiles")
-        .select("id, timezone, name, business_name, contact_email, invoice_reply_to_email")
-        .in("id", acadIds);
-      for (const a of (acads || []) as Array<{ id: string; timezone: string | null; name: string | null; business_name: string | null; contact_email: string | null; invoice_reply_to_email: string | null }>) {
-        tzByAcademy.set(a.id, a.timezone || "Europe/Amsterdam");
-        const display = (a.business_name || a.name || "").trim();
-        if (display) nameByAcademy.set(a.id, display);
-        const replyTo = (a.invoice_reply_to_email || a.contact_email || "").trim();
-        if (isPlausibleEmail(replyTo)) replyToByAcademy.set(a.id, replyTo);
-      }
-    }
-    const slotMap = new Map<string, SlotRow>(
-      ((slots || []) as SlotRow[]).map((s) => [s.id, s])
-    );
-
-    // Payment-mode per cycle (cycles.settings.rebook_payment_mode): 'upfront'
-    // means the player checks out online on accept; the default
-    // 'deferred_split' is invoiced at cycle start. Drives the email copy.
-    const cyclusIds = [
-      ...new Set(
-        ((slots || []) as SlotRow[]).map((s) => s.cyclus_id).filter((id): id is string => !!id)
-      ),
-    ];
-    const upfrontCycleIds = new Set<string>();
-    const startDateByCycle = new Map<string, string>(); // cycleId -> yyyy-mm-dd (new round start)
-    if (cyclusIds.length > 0) {
-      const { data: cycleRows } = await supabase
-        .from("cycles")
-        .select("id, settings, start_date")
-        .in("id", cyclusIds);
-      for (const row of (cycleRows || []) as Array<{ id: string; settings: Record<string, unknown> | null; start_date: string | null }>) {
-        if ((row.settings || {}).rebook_payment_mode === "upfront") upfrontCycleIds.add(row.id);
-        if (row.start_date) startDateByCycle.set(row.id, row.start_date);
-      }
-    }
-
-    // Group rebooking: a player's claim belongs to a weekly SERIES (shared
-    // rebook_group_id). Compute per (group, player) the session count + date
-    // range + weekday/time so the email describes the whole group, not just the
-    // first week. One Yes books the entire series.
-    type GroupInfo = { sessions: number; firstStart: string; lastStart: string };
-    const groupInfo = new Map<string, GroupInfo>(); // key: `${rebook_group_id}|${playerKey}`
     const groupIds = [...new Set(eligible.map((c) => c.rebook_group_id).filter((id): id is string => !!id))];
-    if (groupIds.length > 0) {
-      const { data: groupClaims } = await supabase
-        .from("slot_priority_claims")
-        .select("rebook_group_id, player_id, guest_player_id, status, availability_slots:slot_id(start_time)")
-        .in("rebook_group_id", groupIds)
-        .eq("status", "pending");
-      for (const gc of (groupClaims || []) as unknown as Array<{ rebook_group_id: string | null; player_id: string | null; guest_player_id: string | null; availability_slots: { start_time: string } | null }>) {
-        if (!gc.rebook_group_id || !gc.availability_slots) continue;
-        // GUEST-FIRST key so a dual-key child's sessions aggregate under the child, not the parent.
-        const pkey = personKeyOf(gc);
-        if (!pkey) continue;
-        const key = `${gc.rebook_group_id}|${pkey}`;
-        const start = gc.availability_slots.start_time;
-        const cur = groupInfo.get(key);
-        if (!cur) groupInfo.set(key, { sessions: 1, firstStart: start, lastStart: start });
-        else {
-          cur.sessions++;
-          if (start < cur.firstStart) cur.firstStart = start;
-          if (start > cur.lastStart) cur.lastStart = start;
-        }
-      }
-    }
+    const { slotMap, tzByAcademy, nameByAcademy, replyToByAcademy, upfrontCycleIds, startDateByCycle, groupInfo } =
+      await loadInvitationMetadata(supabase as unknown as InvitationDb, slotIds, groupIds);
 
-    const resendClient = new Resend(resendApiKey);
     let sent = 0;
     let failed = 0;
+    // Sent-but-un-stamped (Codex round-6): the email went out but its invited_at stamp did not land, so
+    // a retry re-sends (deduped by the deterministic idempotency key within Resend's 24h window). NOT a
+    // clean success and NOT a permanent suppression — the claim stays eligible until it stamps.
+    let unresolved = 0;
     const failedClaimIds: string[] = [];
+    const unresolvedClaimIds: string[] = [];
     // First per-send failure reason (Resend rejection etc.) — surfaced to the caller + Slack so a
     // failed blast reports WHY, not just "N not sent" (the reason otherwise only reaches console).
     let firstSendError: string | null = null;
+    // A per-invocation nonce makes the idempotency key of an explicit resend/test send DIFFERENT from
+    // the original (so an owner-triggered re-nudge actually re-sends), while the key stays stable
+    // across THIS invocation's internal Resend retries.
+    const reqNonce = Date.now();
 
     // Wall-clock budget: under sustained Resend rate-limiting a big batch (pacing +
     // up to ~4.8s backoff per send) could blow the edge runtime's hard timeout, which
@@ -577,94 +452,100 @@ const handler = async (req: Request): Promise<Response> => {
         </div>
       `;
 
-      // Atomic claim-before-send (normal path): stamp invited_at only if it is
-      // still NULL, so a crash mid-loop or a concurrent run can't double-send the
-      // "reserve your spot" email. Test sends and explicit resends intentionally
-      // re-send, so they skip the claim.
-      if (!isTest && !resend) {
-        const { data: claimedRows } = await supabase
-          .from("slot_priority_claims")
-          .update({ invited_at: new Date().toISOString() })
-          .eq("id", c.id)
-          .is("invited_at", null)
-          .select("id");
-        if (!claimedRows || claimedRows.length === 0) {
-          skipped++;
-          continue;
-        }
-      }
-
-      // Pace sends a little so a big batch doesn't slam Resend's rate limit; the
-      // retry wrapper still covers any 429s that slip through.
-      if (sent > 0 || failed > 0) await sleep(120);
-      // Brand the sender with the academy name (a cold recipient recognises their academy,
-      // not "PadelTrainer.ai"); wrap the whole display phrase in quotes so a name with a
-      // comma/dot stays a valid RFC 5322 From. Reply-to routes replies to the academy, and a
-      // mailto List-Unsubscribe (to that same address — NOT the decline link, which would give
-      // up their spot) gives large mailbox providers the opt-out signal a bulk-ish blast needs.
+      // Pace sends a little so a big batch doesn't slam Resend's rate limit; sendResendEmail still
+      // backs off on any 429 that slips through.
+      if (sent > 0 || failed > 0 || unresolved > 0) await sleep(120);
+      // Brand the sender with the academy name (a cold recipient recognises their academy, not
+      // "PadelTrainer.ai"); wrap the whole display phrase in quotes so a name with a comma/dot stays a
+      // valid RFC 5322 From. Reply-to routes replies to the academy, and a mailto List-Unsubscribe (to
+      // that same address — NOT the decline link, which would give up their spot) gives large mailbox
+      // providers the opt-out signal a bulk-ish blast needs.
       const fromName = academyName ? `${sanitizeFromName(academyName)} via PadelTrainer.ai` : "PadelTrainer.ai";
       const inviteHeaders: Record<string, string> = {};
       if (replyTo) inviteHeaders["List-Unsubscribe"] = `<mailto:${replyTo}?subject=Uitschrijven>`;
-      const { error: sendErr } = await sendInviteWithRetry(resendClient, {
-        from: `"${fromName}" <noreply@app.padeltrainer.ai>`,
-        to: [recipientEmail],
-        reply_to: replyTo || undefined,
-        ...(Object.keys(inviteHeaders).length ? { headers: inviteHeaders } : {}),
-        subject: (() => {
-          // Academy-authored subject if set (with {first_name} etc. substituted per
-          // recipient), else the default (with the deadline appended when known, so the
-          // inbox preview carries the cutoff). Re-sanitized after substitution so a name with
-          // a stray newline can't defeat the header-injection guard. [TEST] prefix for tests.
-          const base = sanitizeEmailSubject(
-            inviteSubject
-              ? substituteVars(inviteSubject, recipientName)
-              : deadline
-                ? `Reserveer je plek voor de volgende cyclus (vóór ${deadline})`
-                : "Reserveer je plek voor de volgende cyclus",
-          );
-          return testEmail ? `[TEST] ${base}` : base;
-        })(),
-        html,
+      // Academy-authored subject if set (with {first_name} etc. substituted per recipient), else the
+      // default (deadline appended when known). Re-sanitized after substitution so a stray newline in
+      // a name can't defeat the header-injection guard. [TEST] prefix for tests.
+      const subject = (() => {
+        const base = sanitizeEmailSubject(
+          inviteSubject
+            ? substituteVars(inviteSubject, recipientName)
+            : deadline
+              ? `Reserveer je plek voor de volgende cyclus (vóór ${deadline})`
+              : "Reserveer je plek voor de volgende cyclus",
+        );
+        return testEmail ? `[TEST] ${base}` : base;
+      })();
+
+      // SEND-THEN-STAMP (Codex round-6): send FIRST with a deterministic idempotency key, then stamp
+      // invited_at only on a CONFIRMED send. A failed send therefore never leaves a stamp — removing
+      // the permanent-suppression window the old claim-before-send had (send-fail + a failed
+      // invited_at-clear left the claim stamped-but-unsent forever). A concurrent run re-sends the SAME
+      // key → Resend dedupes within 24h. A post-send stamp failure is UNRESOLVED (retryable), never a
+      // clean skip. Normal drain = a stable per-claim key; an explicit resend/test varies by nonce so
+      // it actually re-sends.
+      const idempotencyKey = (!isTest && !resend)
+        ? `priority-claim-invite:${c.id}`
+        : `priority-claim-invite:${c.id}:${reqNonce}`;
+      // Stamp AFTER a confirmed send. Normal path stamps only where still NULL (a concurrent run's
+      // stamp is then a harmless 0-row no-op, not an error); test sends never stamp.
+      const stamp = isTest ? null : (async () => {
+        let q = supabase.from("slot_priority_claims").update({ invited_at: new Date().toISOString() }).eq("id", c.id);
+        if (!resend) q = q.is("invited_at", null);
+        const { error } = await q;
+        return { error };
       });
-      if (sendErr) {
-        console.error("send error", sendErr);
-        if (!firstSendError) firstSendError = describeSendError(sendErr);
+      const { outcome, error: sendError } = await sendThenStampOne({
+        send: async () => {
+          const o = await sendResendEmail(
+            resendApiKey,
+            {
+              from: `"${fromName}" <noreply@app.padeltrainer.ai>`,
+              to: [recipientEmail],
+              subject,
+              html,
+              ...(replyTo ? { reply_to: replyTo } : {}),
+              ...(Object.keys(inviteHeaders).length ? { headers: inviteHeaders } : {}),
+            },
+            { idempotencyKey },
+          );
+          return { ok: o.ok, error: o.ok ? undefined : o.error };
+        },
+        stamp,
+      });
+      if (outcome === "send_failed") {
+        if (!firstSendError && sendError) firstSendError = sendError;
         failed++;
         failedClaimIds.push(c.id);
-        // Release the claim so a later run can retry this invitation.
-        if (!isTest && !resend) {
-          await supabase
-            .from("slot_priority_claims")
-            .update({ invited_at: null })
-            .eq("id", c.id);
-        }
+        continue; // invited_at stays NULL → the claim is still eligible for a later retry
+      }
+      if (outcome === "unresolved") {
+        // The email went out but invited_at did not stamp: surface it (NOT clean success). The claim
+        // stays eligible; a retry re-sends deduped by the idempotency key (24h) and re-stamps.
+        sent++;
+        unresolved++;
+        unresolvedClaimIds.push(c.id);
         continue;
       }
       sent++;
-      // Resend stamps the new send time here (the claim above was skipped).
-      if (!isTest && resend) {
-        await supabase
-          .from("slot_priority_claims")
-          .update({ invited_at: new Date().toISOString() })
-          .eq("id", c.id);
-      }
     }
 
-    // Partial-failure alert: a high-volume rebook blast can silently drop invites
-    // (per-send Resend errors or the time-budget early-stop). Alert ONCE with
-    // counts + claim IDs (no PII) instead of per recipient, before the 200.
-    if (failed > 0) {
+    // Partial-failure alert: a high-volume rebook blast can silently drop invites (per-send Resend
+    // errors, the time-budget early-stop, or a sent-but-un-stamped UNRESOLVED). Alert ONCE with counts
+    // + claim IDs (no PII) instead of per recipient.
+    if (failed > 0 || unresolved > 0) {
       await notifySlackEdgeError(
         "send-priority-claim-invitation",
-        `${failed} of ${eligible.length} priority-claim invites failed${firstSendError ? `: ${firstSendError}` : ""}`,
-        { sent, skipped, failed, failedClaimIds, sampleError: firstSendError, isTest, resend: resend === true },
+        `${failed} failed / ${unresolved} unresolved of ${eligible.length} priority-claim invites${firstSendError ? `: ${firstSendError}` : ""}`,
+        { sent, skipped, failed, unresolved, failedClaimIds, unresolvedClaimIds, sampleError: firstSendError, isTest, resend: resend === true },
       );
     }
-    // `remaining` (cycleId mode only): representative invites still un-sent for this
-    // round AFTER this chunk, so the client can loop until drained. Failures rolled
-    // invited_at back to NULL, so they reappear as eligible on the next call (transient
-    // 429s get retried); the client stops on no-progress to avoid an endless loop.
-    return new Response(JSON.stringify({ sent, skipped, failed, failedClaimIds, remaining: cycleRemaining, sampleError: firstSendError ?? undefined }), {
+    // `remaining` (cycleId mode only): representative invites still un-sent for this round AFTER this
+    // chunk, so the client can loop until drained. Send-then-stamp: a failed send never stamped
+    // invited_at, and an UNRESOLVED send left it NULL too, so both reappear as eligible on the next
+    // call (transient 429s retried; the recipient is protected from a duplicate by the idempotency key
+    // within 24h). The client stops on no-progress to avoid an endless loop.
+    return new Response(JSON.stringify({ sent, skipped, failed, unresolved, failedClaimIds, unresolvedClaimIds, remaining: cycleRemaining, sampleError: firstSendError ?? undefined }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });

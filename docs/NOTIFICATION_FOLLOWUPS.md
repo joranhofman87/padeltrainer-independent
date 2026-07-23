@@ -185,14 +185,42 @@ Contained reliability pass (no P1s remained). Four findings:
 4. **Stale `20260928100000` header** — corrected (it claimed clauses (a)/(b) unchanged; round 4 made
    them guest-safe).
 
-**OWNED FOLLOW-UP (rebook reliability sweep — task #31, do NOT leave unowned):** a worktree-isolated
-same-class hunt found 5 MORE sites of the same swallowed-error/silent-cap class, kept OUT of 10d to
-honor the "contained" round-5 scope (verdict: FOLLOWUPS_ONLY, no P1):
-- `priorityClaims.ts` `getMyPendingPriorityClaims` cycles read swallows {error} → PlayerRebookCard
-  shows an UPFRONT rebook the DEFERRED payment copy on a transient error (P2, direct twin of #2 above).
-- `send-rebook-reminder` recipient read + `send-priority-claim-invitation` session-count read +
-  `notify-rebook-member-open` profiles/guest-contact reads are un-paginated (silent >1000 truncation).
-- `create-rebook-invoice` awaits `send-invoice-email` but discards its resolved {error} (silent).
+**The round-5 "FOLLOWUPS_ONLY, no P1" verdict was WRONG (corrected by Codex round 6):** the send
+lifecycle held two P1 classes (a silent invitation permanent-suppression window + throttle reporting
+clean success). All of it is now closed in round 6 (below). The 5 same-class sites the round-5 hunt
+found (task #31) were also folded into round 6, not deferred.
+
+## Codex round 6 — resolved (PR 10d), the FULL reliability closure
+
+Consolidated pass; Codex reproduced two remaining P1 classes plus scale gaps. All fixed with runtime,
+mutation-verified tests (no source-regex).
+
+1. **send-priority-claim-invitation — fail loud across the WHOLE send lifecycle + no permanent
+   suppression.** Every metadata read (slot, academy, cycle, group-claims) now fails loud and the
+   group-claims read is PAGINATED — extracted into `_shared/rebook-invitation-context.ts`
+   (`loadInvitationMetadata`), runtime-tested per error path + a 1500-session no-truncation test. The
+   send loop is now SEND-THEN-STAMP with a deterministic idempotency key (`_shared/send-then-stamp.ts`
+   `sendThenStampOne`): a failed send never stamps (structurally removing the old claim-before-send
+   permanent-suppression window where send-fail + a failed invited_at-clear stranded the claim
+   forever); a post-send stamp failure is UNRESOLVED (surfaced), not an idempotent skip. Switched from
+   the Resend SDK to the shared `sendResendEmail` (idempotency-key + 429 backoff; `ResendSendPayload`
+   widened with reply_to/headers).
+2. **send-rebook-group-confirmation throttling is not clean success.** The throttle return is now
+   `ok:false, throttled:true`; the fire-and-forget client caller inspects `throttled` AND `skipped>0`
+   (a skipped member = no email for someone the captain just booked) and `logger.warn`s. Pinned incl.
+   the 7th-call throttle case.
+3. **Scale boundaries closed.** `send-rebook-reminder` claim discovery paginated + its 200-recipient
+   cap returns a resumable `remaining` boundary (Slack-alerted + surfaced in the manager UI, never a
+   silent slice); the priority-invitation group-claims paginated (in loadInvitationMetadata);
+   `notify-rebook-member-open` profile/contact reads chunked <=1000 + exact-set checked; NEW partial
+   index `slot_priority_claims(guest_player_id) WHERE guest_player_id IS NOT NULL`
+   (20260929100000) backs guests_have_rebook_contact. 1001/1500-row no-truncation tests added.
+4. **Task #31's fail-loud fixes landed here** (not deferred): `getMyPendingPriorityClaims` throws on
+   the cycles read error (was: wrong player-facing payment copy); `create-rebook-invoice` inspects
+   both thrown AND resolved `send-invoice-email` errors + alerts (kept non-blocking).
+5. **i18n:** `rebookManage.loadFailedTitle/loadFailedBody` added to en+nl; the retry button key fixed
+   (`common:retry` did not resolve → English users saw the Dutch fallback; now `common:queryError.retry`).
+   Rendered error/retry state runtime-tested.
 
 ### PR 10c (durable outbox) — additional REQUIRED acceptance item (Codex #6)
 
