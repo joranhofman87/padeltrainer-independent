@@ -372,6 +372,15 @@ Final release-readiness correction, not another architectural round:
    property existed. Tightened to `invokeBodyHasDryRunTrue` requiring the literal
    `TrueKeyword` initializer; mutation-verified that flipping a wizard's `dryRun: true → false` now
    FAILS the pin ("a direct bulk-rebook-cycle invoke is not dryRun:true ⇒ inline-send bug").
+5. **Post-fix adversarial self-review of the runbook** (3 independent lenses + completeness critic)
+   confirmed the deploy ACTIONS complete/correct (3 migrations + 7 fns) but caught VERIFY-step defects,
+   now fixed in the runbook below: (a) the blanket `authenticated=false` criterion was FALSE for
+   `guests_have_rebook_contact` (`authenticated=TRUE` by design — REVOKE would break the manage UI);
+   (b) `rebook_claims_needing_auto_reminder` (THE leak RPC) was missing from the enumerated verify set;
+   (c) NO frontend-ordering step existed although `rebookManage.ts:61` throws on the new
+   `guests_have_rebook_contact` (fail-closed: frontend must ship AFTER the migration); (d) "migrations
+   apply transactionally (nothing partial)" overstated ACROSS-set atomicity — each file is its own
+   txn, so a mid-set failure leaves `20260927100000` committed (which only reinforces never-roll-back).
 
 ### PR 10d — DEPLOY RUNBOOK (authoritative; supersedes the PR-body notes if they ever drift)
 
@@ -396,13 +405,25 @@ Final release-readiness correction, not another architectural round:
 even where an `index.ts` is unchanged.
 
 **Steps:** (1) pause the two crons (`cron.unschedule`, verify `cron.job`); off-hours, no round
-mid-send. (2) `supabase db push --linked` (transactional). (3) verify grants
-`anon/authenticated=false, service_role=true` on all new/changed RPCs, `idx_spc_guest_player_id`
-exists, dual-key+twin fixture returns guest-first (pglite proofs already assert this — no prod fixture
-writes). (4) redeploy all 7 fns; verify each `ACTIVE` at new version (`supabase functions list`).
-(5) resume the two crons; confirm re-scheduled. (6) flip these open→resolved. **Blocks PR 10c.**
+mid-send. (2) `supabase db push --linked` (each migration individually transactional). (3) **verify
+grants** — `anon=false` + `service_role=true` on ALL new/changed RPCs, and `authenticated=false` on
+all **EXCEPT** `guests_have_rebook_contact`, which is `authenticated=`**`TRUE`** by design (the
+`auth.uid()`-scoped manage-UI reachability RPC called by `rebookManage.ts:61`; REVOKE authenticated
+would break the academy manage page). The enumerated verify set MUST include
+`rebook_claims_needing_auto_reminder` (**THE leak RPC** → `service_role` only) alongside the 4
+resolvers, `bump_rebook_reminders`, `can_book_member_window`, the member-open trio, and
+`consume_rate_limit`. Also: `idx_spc_guest_player_id` exists; dual-key+twin fixture returns
+guest-first (pglite proofs already assert this — no prod fixture writes). (4) redeploy all 7 fns;
+verify each `ACTIVE` at new version (`supabase functions list`). (5) **merge/deploy the frontend only
+AFTER step 2 (migrations live)** — `rebookManage.ts:61` calls the new `guests_have_rebook_contact`
+and THROWS on error, so shipping the client before `20260927100000` creates+grants it breaks every
+academy's rebook-manage page (fail-closed deploy ordering). (6) resume the two crons; confirm
+re-scheduled. (7) flip these open→resolved. **Blocks PR 10c.**
 
 **Forward-only recovery (never roll back):** `20260927100000` closes a LIVE ACL leak — reverting it
-re-opens cross-academy exposure. On an edge-deploy failure: keep crons paused, re-run/complete the
-failed deploy(s), re-verify (step 4), then resume. Migrations are transactional (no partial state);
-fix forward and re-push. No rollback path exists in this runbook by design.
+re-opens cross-academy exposure. Each migration is **individually** transactional; a mid-set failure
+leaves EARLIER migrations (incl. `20260927100000`'s ACL lockdown) already **committed** — which only
+reinforces the rule: fix forward by re-pushing the remaining files (committed ones are recorded in
+`schema_migrations` and skipped), **never roll back**. On an edge-deploy failure: keep crons paused,
+re-run/complete the failed deploy(s), re-verify (step 4), then resume. No rollback path exists by
+design.
