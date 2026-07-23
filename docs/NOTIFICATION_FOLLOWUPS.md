@@ -347,3 +347,62 @@ fetches every due row and applies its 500 cap in JS. For high volume this become
 + unnecessary network materialization. PR 10c must resolve identities set-wise and push a
 deterministic limit/pagination boundary into SQL (with a scale test) — for the auto-reminder + open_slots
 paths as well.
+
+## Codex round 12 — resolved (PR 10d): release-readiness (no P1 implementation bug)
+
+Final release-readiness correction, not another architectural round:
+
+1. **P1 deploy blocker — stale runbook.** The PR-body deploy section listed 1 migration + 6 edge
+   functions; the branch actually ships **3 migrations + 7 edge functions**. Corrected in the PR body
+   AND captured durably below (§ PR 10d — DEPLOY RUNBOOK). It now names all 3 migrations
+   (`20260927100000`, `20260928100000`, `20260929100000`) and all 7 functions including the omitted
+   `create-rebook-invoice` (which had to be redeployed because it bundles the changed
+   `resend-send`/error-inspection `_shared` path even though its own `index.ts` is unchanged).
+2. **P2 quiet window is now an enforceable switch + forward-only recovery.** "Hold send-rebook-reminder"
+   was an operator instruction, not a switch. The runbook now pins the **enforceable** control (pause
+   the two crons via `cron.unschedule`, verify in `cron.job`) and scopes the manual-sender exposure to
+   a short off-hours window whose residual risk is *bounded and not new*. Recovery is **forward-only**:
+   on an edge-deploy failure, keep crons paused and re-run the deploy — **never roll back
+   `20260927100000`**, which closes the live ACL leak.
+3. **P2 index preflight — done (read-only prod, 2026-07-23).** `slot_priority_claims` = **3,205 rows /
+   1.5 MB table / 3 MB total**. The non-concurrent `CREATE INDEX` in `20260929100000` finishes in ms
+   with a brief write-lock; `CONCURRENTLY` is not warranted. Also re-ran the `20260928100000`
+   person_links-vs-twin conflict audit = **0 conflicting guests**.
+4. **P3 test gap — `invokeBodyHasDryRun` accepted `dryRun: false`.** The wiring pin only checked that the
+   property existed. Tightened to `invokeBodyHasDryRunTrue` requiring the literal
+   `TrueKeyword` initializer; mutation-verified that flipping a wizard's `dryRun: true → false` now
+   FAILS the pin ("a direct bulk-rebook-cycle invoke is not dryRun:true ⇒ inline-send bug").
+
+### PR 10d — DEPLOY RUNBOOK (authoritative; supersedes the PR-body notes if they ever drift)
+
+**Status: NOT deployed. Approval-gated.** Preflight + dry-run captured; no writes to prod.
+
+**Preflight (read-only prod, 2026-07-23):**
+- `supabase db push --dry-run --linked` → exactly **3 pending migrations** (below), nothing else.
+- `slot_priority_claims` = **3,205 rows / 1.5 MB / 3 MB total** → non-concurrent index safe.
+- person_links-vs-twin conflict re-audit for `20260928100000` = **0** conflicting guests. Re-run
+  immediately before applying `20260928100000`; do NOT apply if unexpectedly > 0.
+
+**Migrations (3, in order):** `20260927100000_rebook_identity_guest_first` (guest-first RPCs +
+`bump_rebook_reminders` guard + ACL lockdown closing the live cross-academy leak) →
+`20260928100000_can_book_member_window_person_links_precedence` (FAM-02 guest-safe clauses) →
+`20260929100000_spc_guest_player_id_index` (partial index backing `guests_have_rebook_contact`).
+
+**Edge functions (redeploy ALL 7):** `auto-rebook-reminder`, `bulk-rebook-cycle`,
+`create-rebook-invoice`, `notify-rebook-member-open`, `send-priority-claim-invitation`,
+`send-rebook-group-confirmation`, `send-rebook-reminder`. Changed `_shared` (`paginate`,
+`priority-claim-invite`, `rebook-group-confirm`, `rebook-guest-contact`, `rebook-invitation-context`,
+`rebook-member-open`, `resend-send`, `send-then-stamp`) ships inside these bundles — so all 7 redeploy
+even where an `index.ts` is unchanged.
+
+**Steps:** (1) pause the two crons (`cron.unschedule`, verify `cron.job`); off-hours, no round
+mid-send. (2) `supabase db push --linked` (transactional). (3) verify grants
+`anon/authenticated=false, service_role=true` on all new/changed RPCs, `idx_spc_guest_player_id`
+exists, dual-key+twin fixture returns guest-first (pglite proofs already assert this — no prod fixture
+writes). (4) redeploy all 7 fns; verify each `ACTIVE` at new version (`supabase functions list`).
+(5) resume the two crons; confirm re-scheduled. (6) flip these open→resolved. **Blocks PR 10c.**
+
+**Forward-only recovery (never roll back):** `20260927100000` closes a LIVE ACL leak — reverting it
+re-opens cross-academy exposure. On an edge-deploy failure: keep crons paused, re-run/complete the
+failed deploy(s), re-verify (step 4), then resume. Migrations are transactional (no partial state);
+fix forward and re-push. No rollback path exists in this runbook by design.

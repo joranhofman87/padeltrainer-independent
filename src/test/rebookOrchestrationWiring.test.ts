@@ -44,13 +44,15 @@ function gateScanProp(gate: ts.CallExpression): ts.Node | null {
   const scan = arg.properties.find((p) => (ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p)) && p.name && ts.isIdentifier(p.name) && p.name.text === 'scan');
   return scan ?? null;
 }
-/** Does a bulk-rebook-cycle invoke pass `body: { …, dryRun … }` (a preview, not an inline send)? */
-function invokeBodyHasDryRun(inv: ts.CallExpression): boolean {
+/** Does a bulk-rebook-cycle invoke pass `body: { …, dryRun: true }` (a preview, not an inline send)?
+ *  Requires the LITERAL `true` (Codex round-12 #4): `dryRun: false` (an inline send) must NOT pass. */
+function invokeBodyHasDryRunTrue(inv: ts.CallExpression): boolean {
   const arg = inv.arguments[1];
   if (!arg || !ts.isObjectLiteralExpression(arg)) return false;
   const body = arg.properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'body');
   if (!body || !ts.isPropertyAssignment(body) || !ts.isObjectLiteralExpression(body.initializer)) return false;
-  return body.initializer.properties.some((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name && ts.isIdentifier(p.name) && p.name.text === 'dryRun');
+  return body.initializer.properties.some((p) =>
+    ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'dryRun' && p.initializer.kind === ts.SyntaxKind.TrueKeyword);
 }
 
 describe('rebook orchestration wiring pins — AST-structural (Codex round-11 #3)', () => {
@@ -63,7 +65,7 @@ describe('rebook orchestration wiring pins — AST-structural (Codex round-11 #3
       const bulkInvokes = calls(sf, 'invoke').filter((c) => firstArgString(c) === 'bulk-rebook-cycle');
       expect(bulkInvokes.length, `${wizard} still has its dryRun preview call(s)`).toBeGreaterThan(0);
       for (const inv of bulkInvokes) {
-        expect(invokeBodyHasDryRun(inv), `${wizard}: a direct bulk-rebook-cycle invoke is not dryRun ⇒ inline-send bug`).toBe(true);
+        expect(invokeBodyHasDryRunTrue(inv), `${wizard}: a direct bulk-rebook-cycle invoke is not dryRun:true ⇒ inline-send bug`).toBe(true);
       }
     }
   });
