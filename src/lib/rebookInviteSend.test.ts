@@ -96,12 +96,25 @@ describe('drainRebookInvites', () => {
     expect(sender).toHaveBeenCalledTimes(1);
   });
 
-  it('stops on a thrown sender error without looping forever', async () => {
+  it('a FIRST-chunk throw reports leftover = null (UNKNOWN), never a fabricated 0 (Codex round-10 #1)', async () => {
     const sender = vi.fn(async () => { throw new Error('network'); });
     const r = await drainRebookInvites('cyc', { sender });
     expect(r.stoppedReason).toBe('error');
     expect(r.totalSent).toBe(0);
+    expect(r.leftover).toBe(null); // an error before any count was learned ⇒ unknown, NOT zero
     expect(sender).toHaveBeenCalledTimes(1);
+  });
+
+  it('a throw AFTER a chunk keeps the last known outstanding count (not null)', async () => {
+    let call = 0;
+    const sender = vi.fn(async () => {
+      if (call++ === 0) return chunk({ sent: 40, remaining: 50 });
+      throw new Error('network');
+    });
+    const r = await drainRebookInvites('cyc', { sender });
+    expect(r.stoppedReason).toBe('error');
+    expect(r.totalSent).toBe(40);
+    expect(r.leftover).toBe(50); // a real count WAS learned — surface it, don't collapse to null
   });
 
   it('hitting maxIterations reports iteration_limit + real leftover, NOT drained (Codex round-8 #1)', async () => {
@@ -169,6 +182,19 @@ describe('drainRebookRoundInvites', () => {
     expect(r.failedClaimIds.sort()).toEqual(['x', 'y']);
   });
 
+  it('a sibling cycle whose first chunk THROWS makes the round leftover null/unknown (Codex round-10 #1)', async () => {
+    // Cycle a drains cleanly; cycle b's first send throws before any count is learned. The round total
+    // outstanding is then genuinely unknown — it must NOT be summed to a fabricated number.
+    const sender = vi.fn(async ({ cycleId }: { cycleId: string }) => {
+      if (cycleId === 'a') return chunk({ sent: 5, remaining: 0 });
+      throw new Error('cycle b down');
+    });
+    const r = await drainRebookRoundInvites(['a', 'b'], { sender });
+    expect(r.stoppedReason).toBe('error');
+    expect(r.leftover).toBe(null); // once any cycle's count is unknown, the round leftover is unknown
+    expect(r.totalSent).toBe(5);
+  });
+
   it('reports round-level progress rebased across cycles', async () => {
     const sender = scriptedByCycle({
       a: [{ sent: 2, failed: 0, remaining: 0, failedClaimIds: [] }],
@@ -231,6 +257,13 @@ describe('createAndDrainRebookRound — shared create-then-drain orchestration (
     const drain = vi.fn(async () => drainResult({ totalSent: 40, leftover: 60, stoppedReason: 'iteration_limit', sampleError: 'x' }));
     const r = await createAndDrainRebookRound({}, { invoke, drain });
     expect(r).toMatchObject({ phase: 'created', leftover: 60, outcome: 'iteration_limit', sampleError: 'x' });
+  });
+
+  it('created + deferred drain that ERRORS before any count → leftover null (unknown), not 0 (round-10 #1)', async () => {
+    const invoke = invokeReturning({ targetCycleId: 'cy1', invitesDeferred: true, targetCycles: [{ id: 'cy1' }], representativeCount: 100 });
+    const drain = vi.fn(async () => drainResult({ totalSent: 0, leftover: null, stoppedReason: 'error' }));
+    const r = await createAndDrainRebookRound({}, { invoke, drain });
+    expect(r).toMatchObject({ phase: 'created', leftover: null, outcome: 'error' });
   });
 
   it('created + INLINE (legacy edge, no invitesDeferred) surfaces failed+unresolved as leftover — no drain', async () => {

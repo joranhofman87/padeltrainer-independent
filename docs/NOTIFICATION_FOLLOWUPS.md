@@ -284,7 +284,27 @@ tests exercised toy paths. Round 9 makes the contracts hold in production and te
    repeated expensive scans on the `verify_jwt=false` endpoint. Ordering unit-tested.
 4. **Tests connect to production wiring** — the chunk+keyset the 3 senders use is the shared
    `fetchAllInChunks` (batch-boundary + keyset + fail-loud tests); the group gate + the orchestration
-   are the exact production helpers, unit-tested; reverting the real wiring fails these.
+   are the exact production helpers, unit-tested. **Architectural pins added in round 10**
+   (`rebookOrchestrationWiring.test.ts`) read the real source so reverting the wiring fails.
+
+## Codex round 10 — resolved (PR 10d): honest error accounting + wiring pins
+
+Contained follow-up (no P1):
+
+1. **Drain error accounting is honest** — `DrainResult.leftover` / `RoundOrchestrationResult.leftover`
+   are now `number | null`: a send that THREW before any chunk count was learned yields `null`
+   (UNKNOWN), never a fabricated `0`; a throw AFTER a chunk keeps the last known count; once ANY sibling
+   cycle is unknown the round leftover is `null`. Tests: first-chunk throw, throw-after-chunk,
+   sibling-cycle throw, orchestration null.
+2. **Partial-delivery copy fixed** — the reversed "{{left}} of {{sent}} sent" is now "{{sent}} sent;
+   {{left}} remain" (EN + NL); a no-numbers `partialUnknown` / `invitesPartialUnknown` variant covers
+   the unknown-count case.
+3. **Mutation-verified caller pins** — `rebookOrchestrationWiring.test.ts` asserts both wizards call
+   `createAndDrainRebookRound` (never a non-dryRun inline `bulk-rebook-cycle`), the group handler keeps
+   the full scan behind `gateGroupConfirmation`, and all three discovery senders use `fetchAllInChunks`.
+   Mutation-verified: renaming a wizard's helper call fails the pin.
+4. **RebookCohortWizard shows drain progress** — it now forwards `onProgress` and renders "X/Y sending"
+   instead of an indefinite spinner, matching AcademyNewRoundWizard.
 
 ### PR 10c (durable outbox) — REMAINING durability items NOT closed by this PR
 

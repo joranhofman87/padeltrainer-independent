@@ -48,8 +48,10 @@ export interface DrainProgress {
 
 export interface DrainResult {
   totalSent: number;
-  /** Representative invites still not sent OR sent-but-un-stamped (0 ⇒ fully drained). */
-  leftover: number;
+  /** Representative invites still not sent OR sent-but-un-stamped (0 ⇒ fully drained). `null` ⇒ UNKNOWN
+   *  — a send THREW before any chunk count was learned, so the outstanding count is genuinely unknown
+   *  and must NOT be reported as 0 (Codex round-10 #1). */
+  leftover: number | null;
   /** 'unresolved' = a chunk's emails went out but their invited_at stamps didn't land; the claims stay
    *  eligible and a later drain re-stamps them (deduped by the idempotency key). 'iteration_limit' =
    *  the maxIterations backstop was hit with work still outstanding (a very large run). Only 'drained'
@@ -107,6 +109,7 @@ export async function drainRebookInvites(
   let lastUnresolved = 0;
   let lastUnresolvedClaimIds: string[] = [];
   let total = 0; // sendable total, learned from the first chunk
+  let sawChunk = false; // did at least one chunk return a count? (else an error leaves leftover UNKNOWN)
   const failedClaimIds = new Set<string>();
   // Default: if the loop runs to completion without a break, we hit the maxIterations backstop with
   // work still outstanding (Codex round-8 #1) — NOT a clean drain. A break below sets the real reason.
@@ -122,6 +125,7 @@ export async function drainRebookInvites(
       if (!sampleError) sampleError = e instanceof Error ? e.message : String(e);
       break;
     }
+    sawChunk = true;
     totalSent += chunk.sent;
     remaining = chunk.remaining;
     lastFailed = chunk.failed;
@@ -148,7 +152,12 @@ export async function drainRebookInvites(
     if (chunk.sent === 0) { stoppedReason = 'no_progress'; break; }
   }
 
-  const leftover = stoppedReason === 'drained' ? 0 : remaining + lastFailed + lastUnresolved;
+  // Honest leftover (Codex round-10 #1): drained ⇒ 0; an error BEFORE any chunk count ⇒ null (UNKNOWN,
+  // never a fabricated 0); otherwise the last known outstanding count.
+  const leftover: number | null =
+    stoppedReason === 'drained' ? 0
+    : (stoppedReason === 'error' && !sawChunk) ? null
+    : remaining + lastFailed + lastUnresolved;
   return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: lastUnresolvedClaimIds, sampleError };
 }
 
@@ -164,7 +173,9 @@ export async function drainRebookRoundInvites(
   opts: DrainOptions = {},
 ): Promise<DrainResult> {
   let totalSent = 0;
-  let leftover = 0;
+  // null once ANY sibling cycle's leftover is unknown (an error before that cycle learned a count) —
+  // the round total can't be honestly summed past an unknown (Codex round-10 #1).
+  let leftover: number | null = 0;
   const failedClaimIds = new Set<string>();
   const unresolvedClaimIds = new Set<string>();
   // Worst reason wins across the round's cycles (higher rank = worse). 'drained' only survives if
@@ -183,7 +194,8 @@ export async function drainRebookRoundInvites(
         : undefined,
     });
     totalSent += res.totalSent;
-    leftover += res.leftover;
+    if (res.leftover === null) leftover = null;
+    else if (leftover !== null) leftover += res.leftover;
     for (const id of res.failedClaimIds) failedClaimIds.add(id);
     for (const id of res.unresolvedClaimIds) unresolvedClaimIds.add(id);
     if (!sampleError && res.sampleError) sampleError = res.sampleError;
@@ -212,8 +224,9 @@ export type RoundOrchestrationResult =
       groups: number;
       players: number;
       totalSent: number;
-      /** Invites still not sent OR sent-but-un-stamped (0 ⇒ everything delivered). */
-      leftover: number;
+      /** Invites still not sent OR sent-but-un-stamped (0 ⇒ everything delivered). `null` ⇒ UNKNOWN (a
+       *  send threw before any count was learned — Codex round-10 #1); the UI shows a no-numbers copy. */
+      leftover: number | null;
       /** 'inline' when a legacy edge sent inline; otherwise the drain's stoppedReason. */
       outcome: DrainResult['stoppedReason'] | 'inline';
       sampleError: string | null;

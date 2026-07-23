@@ -261,9 +261,15 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         else toast.error(t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.'));
         return;
       }
-      // Round CREATED (navigable). leftover>0 (or an error outcome) ⇒ partial delivery — the owner can
-      // finish from the rebook page ("resume sending"), and players can also respond via their dashboard.
-      if (result.leftover > 0 || result.outcome === 'error') {
+      // Round CREATED (navigable). A partial/unknown delivery ⇒ resend from the rebook page. leftover
+      // ===null means the count is UNKNOWN (a send threw before any count was learned — Codex round-10
+      // #1): use a no-numbers copy, never a fabricated total.
+      if (result.leftover === null) {
+        toast.warning(
+          t('newRound.invitesPartialUnknown', 'De ronde is aangemaakt, maar het versturen van de uitnodigingen is onderbroken — verstuur de rest via de ronde-pagina.'),
+          result.sampleError ? { description: result.sampleError } : undefined,
+        );
+      } else if (result.leftover > 0 || result.outcome === 'error') {
         toast.warning(
           t('newRound.invitesPartial', '{{sent}} van {{total}} uitnodigingen verstuurd. De ronde is aangemaakt — verstuur de rest via de ronde-pagina.', {
             sent: result.totalSent,

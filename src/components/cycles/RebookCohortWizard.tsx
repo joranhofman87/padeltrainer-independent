@@ -128,6 +128,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Live drain progress (Codex round-10 #4): the client sends invites in chunks after creating the
+  // round, so show "X/Y" instead of an indefinite spinner during a potentially long send.
+  const [sendProgress, setSendProgress] = useState<{ sent: number; total: number } | null>(null);
   const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
@@ -467,6 +470,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       // a timeout could leave half-sent on a committed round.
       const result = await createAndDrainRebookRound(baseBody, {
         invoke: (fn, args) => supabase.functions.invoke(fn, args),
+        onProgress: ({ totalSent, total }) => setSendProgress({ sent: totalSent, total }),
       });
       if (result.phase === 'creation_failed') {
         // Round NOT created (Codex round-9 #2) — show the reason, do NOT navigate.
@@ -476,11 +480,14 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
         else toast.error(getFriendlyErrorMessage(new Error(result.reason), t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
         return;
       }
-      // Round CREATED (navigable). leftover>0 (or an error outcome) ⇒ partial delivery — resend from
-      // the manage page; never a false "all invited" success.
-      if (result.leftover > 0 || result.outcome === 'error') {
+      // Round CREATED (navigable). A partial/unknown delivery ⇒ resend from the manage page; never a
+      // false "all invited" success. leftover===null means the count is UNKNOWN (a send threw before
+      // any count was learned — Codex round-10 #1), so use a no-numbers copy, never a fabricated 0.
+      if (result.leftover === null) {
+        toast.warning(t('rebookCohort.partialUnknown', 'Ronde aangemaakt, maar het versturen van de uitnodigingen is onderbroken — verstuur ze opnieuw vanaf de beheerpagina.'));
+      } else if (result.leftover > 0 || result.outcome === 'error') {
         toast.warning(
-          t('rebookCohort.partial', 'Ronde aangemaakt, maar {{left}} van {{sent}} verstuurd — verstuur de rest opnieuw vanaf de beheerpagina.', {
+          t('rebookCohort.partial', '{{sent}} uitnodigingen verstuurd; {{left}} moeten nog worden verstuurd — via de beheerpagina.', {
             sent: result.totalSent,
             left: result.leftover,
           }),
@@ -501,6 +508,7 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {
       setSubmitting(false);
+      setSendProgress(null);
     }
   };
 
@@ -651,9 +659,11 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
           </Button>
           <Button onClick={handleSubmit} disabled={submitting || (confirmData.noEmailTotal > 0 && !ackNoEmail)}>
             {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-            {submitting
-              ? t('common:saving', 'Bezig...')
-              : t('rebookCohort.confirmSendCount', 'Verstuur {{count}} uitnodigingen', { count: emailCount })}
+            {sendProgress
+              ? t('rebookCohort.sending', 'Uitnodigingen versturen… {{sent}}/{{total}}', { sent: sendProgress.sent, total: sendProgress.total })
+              : submitting
+                ? t('common:saving', 'Bezig...')
+                : t('rebookCohort.confirmSendCount', 'Verstuur {{count}} uitnodigingen', { count: emailCount })}
           </Button>
         </div>
       </div>
