@@ -40,7 +40,7 @@ free-text keys, NOT structured context (booking-id UUIDs etc., which `redactDeta
 rule would otherwise mangle). Not a PR 10b blocker (10b's own lanes are all redacted at the call
 site), but the right central defence. No task id yet.
 
-## Guest-first identity — rebook/priority paths (P1 RECIPIENT-ROUTING) — FIXED IN PR 10d (pending deploy-verify)
+## Guest-first identity — rebook/priority paths (P1 RECIPIENT-ROUTING) — RESOLVED: DEPLOYED + PROD-VERIFIED 2026-07-23 (PR 10d)
 
 CORRECTION (Codex re-review): an earlier version of this entry called these "display-only". That
 was wrong. They are P1 WRONG-RECIPIENT bugs, not just wrong names.
@@ -77,8 +77,9 @@ Proofs: `rebookIdentityGuestFirst.pglite.test.ts` (cross-layer — raw claims �
 guest-first routing → stamp; dual-key child mailed at own email; linked-profile fallback only when
 absent; parent stamp never touches child and vice-versa; grants locked down — all mutation-verified),
 `priorityClaimInvite.test.ts` (resolveRecipient guest-first), `rebookIdentityWiring.test.ts` (every
-call site wired to the twin). NOT flipped to fully "resolved" until PR 10d is deployed and verified
-in prod (migration first, then all edge fns).
+call site wired to the twin). **RESOLVED — PR 10d deployed + prod-verified 2026-07-23** (3 migrations
+then all 7 edge fns; ACL leak closed, exact grant matrix verified; first `notify-rebook-member-open`
+run succeeded).
 
 `bulk-rebook-cycle:493` (`registeredPlayerIds` for `computeRebookExclusion`) is consciously left
 alone — it is eligibility bucketing, not notification identity; changing it would alter rebook
@@ -404,7 +405,14 @@ Final release-readiness correction, not another architectural round:
 
 ### PR 10d — DEPLOY RUNBOOK (authoritative; supersedes the PR-body notes if they ever drift)
 
-**Status: NOT deployed. Approval-gated.** Preflight + dry-run captured; no writes to prod.
+**Status: DEPLOYED + PROD-VERIFIED 2026-07-23** (executed under explicit owner authorization at
+`55368ded` — 3 migrations pushed, all 7 edge fns ACTIVE at bumped versions, Vercel production deploy
+success, exact ACL matrix verified [leak closed], crons cycled `active true→false→true`, first
+`notify-rebook-member-open` execution succeeded). Runbook retained below for the record + as the
+template for the follow-up. A follow-up (`20260930100000`) adds a `start_time > app_now()` guard so a
+past session can never auto-remind (no edge/frontend/cron change). Deploy it with a dry-run first:
+`supabase db push --dry-run --linked` → confirm **exactly `20260930100000` is pending** → then
+`supabase db push --linked`.
 
 **Preflight (read-only prod, 2026-07-23):**
 - `supabase db push --dry-run --linked` → exactly **3 pending migrations** (below), nothing else.
