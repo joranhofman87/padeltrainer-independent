@@ -105,16 +105,17 @@ describe('drainRebookInvites', () => {
     expect(sender).toHaveBeenCalledTimes(1);
   });
 
-  it('a throw AFTER a chunk keeps the last known outstanding count (not null)', async () => {
+  it('a throw AFTER a chunk still reports leftover null — the prior count is only a stale upper bound (Codex round-11 #1)', async () => {
     let call = 0;
     const sender = vi.fn(async () => {
       if (call++ === 0) return chunk({ sent: 40, remaining: 50 });
-      throw new Error('network');
+      throw new Error('network'); // may have landed AFTER the edge sent — the remainder is now UNKNOWN
     });
     const r = await drainRebookInvites('cyc', { sender });
     expect(r.stoppedReason).toBe('error');
     expect(r.totalSent).toBe(40);
-    expect(r.leftover).toBe(50); // a real count WAS learned — surface it, don't collapse to null
+    expect(r.leftover).toBe(null); // authoritative remainder is unknown on ANY error
+    expect(r.lastKnownLeftover).toBe(50); // the prior observation is exposed separately, non-authoritative
   });
 
   it('hitting maxIterations reports iteration_limit + real leftover, NOT drained (Codex round-8 #1)', async () => {
@@ -182,6 +183,27 @@ describe('drainRebookRoundInvites', () => {
     expect(r.failedClaimIds.sort()).toEqual(['x', 'y']);
   });
 
+  it('round progress is round-wide: total never decreases and is always >= sent (Codex round-11 #2)', async () => {
+    // Cycle a has 2 recipients, cycle b has 3. Progress must never render an impossible "5 / 3" — the
+    // denominator is round-wide (2 + 3) like the numerator, and both are monotonic non-decreasing.
+    const sender = scriptedByCycle({
+      a: [{ sent: 2, remaining: 0 }],
+      b: [{ sent: 3, remaining: 0 }],
+    });
+    const seen: Array<{ sent: number; total: number }> = [];
+    await drainRebookRoundInvites(['a', 'b'], { sender, onProgress: (p) => seen.push({ sent: p.totalSent, total: p.total }) });
+    expect(seen.length).toBeGreaterThan(0);
+    let prevTotal = 0, prevSent = 0;
+    for (const p of seen) {
+      expect(p.total, `total ${p.total} must not drop below the previous ${prevTotal}`).toBeGreaterThanOrEqual(prevTotal);
+      expect(p.total, `total ${p.total} must be >= sent ${p.sent}`).toBeGreaterThanOrEqual(p.sent);
+      expect(p.sent).toBeGreaterThanOrEqual(prevSent);
+      prevTotal = p.total;
+      prevSent = p.sent;
+    }
+    expect(seen[seen.length - 1]).toEqual({ sent: 5, total: 5 }); // final progress is the whole round
+  });
+
   it('a sibling cycle whose first chunk THROWS makes the round leftover null/unknown (Codex round-10 #1)', async () => {
     // Cycle a drains cleanly; cycle b's first send throws before any count is learned. The round total
     // outstanding is then genuinely unknown — it must NOT be summed to a fabricated number.
@@ -215,7 +237,7 @@ describe('drainRebookRoundInvites', () => {
 });
 
 const drainResult = (over: Partial<DrainResult>): DrainResult => ({
-  totalSent: 0, leftover: 0, stoppedReason: 'drained', failedClaimIds: [], unresolvedClaimIds: [], sampleError: null, ...over,
+  totalSent: 0, leftover: 0, lastKnownLeftover: 0, stoppedReason: 'drained', failedClaimIds: [], unresolvedClaimIds: [], sampleError: null, ...over,
 });
 
 describe('createAndDrainRebookRound — shared create-then-drain orchestration (Codex round-9 #1/#2)', () => {

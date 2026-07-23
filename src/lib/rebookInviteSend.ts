@@ -49,9 +49,12 @@ export interface DrainProgress {
 export interface DrainResult {
   totalSent: number;
   /** Representative invites still not sent OR sent-but-un-stamped (0 ⇒ fully drained). `null` ⇒ UNKNOWN
-   *  — a send THREW before any chunk count was learned, so the outstanding count is genuinely unknown
-   *  and must NOT be reported as 0 (Codex round-10 #1). */
+   *  — a send THREW, so the authoritative remainder is genuinely unknown (a network error can land after
+   *  the edge sent but before we saw the response) and must NOT be reported as a number (round-11 #1). */
   leftover: number | null;
+  /** The last OBSERVED outstanding count (non-authoritative — on an error it's a stale upper bound, not
+   *  the real remainder). `null` if no chunk was ever observed. For display only; never as truth. */
+  lastKnownLeftover: number | null;
   /** 'unresolved' = a chunk's emails went out but their invited_at stamps didn't land; the claims stay
    *  eligible and a later drain re-stamps them (deduped by the idempotency key). 'iteration_limit' =
    *  the maxIterations backstop was hit with work still outstanding (a very large run). Only 'drained'
@@ -152,13 +155,13 @@ export async function drainRebookInvites(
     if (chunk.sent === 0) { stoppedReason = 'no_progress'; break; }
   }
 
-  // Honest leftover (Codex round-10 #1): drained ⇒ 0; an error BEFORE any chunk count ⇒ null (UNKNOWN,
-  // never a fabricated 0); otherwise the last known outstanding count.
-  const leftover: number | null =
-    stoppedReason === 'drained' ? 0
-    : (stoppedReason === 'error' && !sawChunk) ? null
-    : remaining + lastFailed + lastUnresolved;
-  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: lastUnresolvedClaimIds, sampleError };
+  // Honest leftover (Codex round-11 #1): ANY thrown invocation makes the authoritative remainder
+  // UNKNOWN — a network exception can land AFTER the edge sent messages but before we saw the response,
+  // so even a prior chunk's count is only a stale UPPER BOUND, not the real remainder. So `error` ⇒
+  // null. `lastKnownLeftover` exposes that prior observation separately, clearly non-authoritative.
+  const knownCount: number | null = sawChunk ? remaining + lastFailed + lastUnresolved : null;
+  const leftover: number | null = stoppedReason === 'error' ? null : knownCount;
+  return { totalSent, leftover, lastKnownLeftover: knownCount, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: lastUnresolvedClaimIds, sampleError };
 }
 
 /**
@@ -174,8 +177,12 @@ export async function drainRebookRoundInvites(
 ): Promise<DrainResult> {
   let totalSent = 0;
   // null once ANY sibling cycle's leftover is unknown (an error before that cycle learned a count) —
-  // the round total can't be honestly summed past an unknown (Codex round-10 #1).
+  // the round total can't be honestly summed past an unknown (Codex round-10/11 #1).
   let leftover: number | null = 0;
+  let lastKnownLeftover = 0; // best-effort observed sum (non-authoritative)
+  // Round-wide progress denominator (Codex round-11 #2): sum of the denominators of the cycles that
+  // have finished, so `total` is round-wide like the numerator — never a per-cycle "5 / 3".
+  let completedTotal = 0;
   const failedClaimIds = new Set<string>();
   const unresolvedClaimIds = new Set<string>();
   // Worst reason wins across the round's cycles (higher rank = worse). 'drained' only survives if
@@ -186,23 +193,30 @@ export async function drainRebookRoundInvites(
 
   for (const cycleId of cycleIds) {
     const before = totalSent;
+    let cycleTotal = 0; // this cycle's denominator, learned from its first chunk
     const res = await drainRebookInvites(cycleId, {
       ...opts,
-      // Rebase this cycle's progress onto the round running total.
+      // Rebase BOTH numerator and denominator onto the round: sent = finished cycles' sent + this
+      // cycle's sent; total = finished cycles' totals + this cycle's total. Monotonic; total >= sent.
       onProgress: opts.onProgress
-        ? (p) => opts.onProgress!({ totalSent: before + p.totalSent, stillToSend: p.stillToSend, total: p.total })
+        ? (p) => {
+            cycleTotal = p.total;
+            opts.onProgress!({ totalSent: before + p.totalSent, stillToSend: p.stillToSend, total: completedTotal + p.total });
+          }
         : undefined,
     });
+    completedTotal += cycleTotal;
     totalSent += res.totalSent;
     if (res.leftover === null) leftover = null;
     else if (leftover !== null) leftover += res.leftover;
+    lastKnownLeftover += res.lastKnownLeftover ?? 0;
     for (const id of res.failedClaimIds) failedClaimIds.add(id);
     for (const id of res.unresolvedClaimIds) unresolvedClaimIds.add(id);
     if (!sampleError && res.sampleError) sampleError = res.sampleError;
     if (RANK[res.stoppedReason] > RANK[stoppedReason]) stoppedReason = res.stoppedReason;
   }
 
-  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: [...unresolvedClaimIds], sampleError };
+  return { totalSent, leftover, lastKnownLeftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: [...unresolvedClaimIds], sampleError };
 }
 
 // ===== Shared create-then-drain orchestration (Codex round-9 #1/#2) =====

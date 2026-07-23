@@ -292,10 +292,10 @@ tests exercised toy paths. Round 9 makes the contracts hold in production and te
 Contained follow-up (no P1):
 
 1. **Drain error accounting is honest** — `DrainResult.leftover` / `RoundOrchestrationResult.leftover`
-   are now `number | null`: a send that THREW before any chunk count was learned yields `null`
-   (UNKNOWN), never a fabricated `0`; a throw AFTER a chunk keeps the last known count; once ANY sibling
-   cycle is unknown the round leftover is `null`. Tests: first-chunk throw, throw-after-chunk,
-   sibling-cycle throw, orchestration null.
+   are now `number | null`: a send that threw yields `null` (UNKNOWN), never a fabricated `0`. (Round 10
+   still kept the prior count after a mid-drain throw; **round 11 tightened this** — ANY error ⇒ `null`,
+   because a network exception can land after the edge sent; the stale count is now exposed separately
+   as non-authoritative `lastKnownLeftover`.)
 2. **Partial-delivery copy fixed** — the reversed "{{left}} of {{sent}} sent" is now "{{sent}} sent;
    {{left}} remain" (EN + NL); a no-numbers `partialUnknown` / `invitesPartialUnknown` variant covers
    the unknown-count case.
@@ -305,6 +305,24 @@ Contained follow-up (no P1):
    Mutation-verified: renaming a wizard's helper call fails the pin.
 4. **RebookCohortWizard shows drain progress** — it now forwards `onProgress` and renders "X/Y sending"
    instead of an indefinite spinner, matching AcademyNewRoundWizard.
+
+## Codex round 11 — resolved (PR 10d): distributed-error semantics + genuinely load-bearing pins
+
+Final contained correction before deployment review (no P1):
+
+1. **ANY thrown send ⇒ unknown remainder** — not only a first-chunk throw. A network exception can land
+   AFTER the edge sent messages but before the client saw the response, so even a prior chunk's count is
+   a stale UPPER BOUND. `stoppedReason === 'error'` now always yields `leftover: null`; the prior
+   observation is exposed separately as non-authoritative `lastKnownLeftover`. Tests updated.
+2. **Round-wide progress** — `drainRebookRoundInvites` now rebases BOTH numerator and denominator onto
+   the round (was a per-cycle denominator → impossible "5 / 3"). Test asserts progress `total` never
+   decreases and is always `>= sent`.
+3. **AST-structural wiring pins** (`rebookOrchestrationWiring.test.ts`) replace the token-co-occurrence
+   pins (which a scan-before-gate or a dead-helper-call-plus-unbounded-query could false-pass). Using
+   the TypeScript AST they prove the real call graph: the member scan is INSIDE `gateGroupConfirmation`'s
+   `scan` step; every `.in("slot_id", …)` claims read is INSIDE `fetchAllInChunks`; every direct
+   `bulk-rebook-cycle` wizard invoke passes `dryRun`. **All three Codex-named mutations verified to
+   fail** the pins (scan-before-gate; unbounded query + dead helper call; non-dryRun wizard invoke).
 
 ### PR 10c (durable outbox) — REMAINING durability items NOT closed by this PR
 

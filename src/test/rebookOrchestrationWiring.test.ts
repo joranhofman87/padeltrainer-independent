@@ -1,49 +1,98 @@
 // @vitest-environment node
-// Codex round-10 #3: the helper unit tests prove the helpers, but NOT that production still wires to
-// them. These architectural pins read the real source so that reverting a caller to the old pattern
-// (a wizard sending inline, a sender dropping pagination, the group scan escaping its gate) FAILS here
-// even though the isolated helper tests stay green. Load-bearing given the repeated caller/helper
-// divergence across this PR.
+// Codex round-11 #3: token co-occurrence pins are false-green capable (moving the scan before the gate,
+// or a dead helper call beside a restored unbounded query, would still pass). These are AST-STRUCTURAL
+// assertions — they prove the real call GRAPH, not just that a token appears somewhere. Each is
+// mutation-verified against the exact bypass Codex named.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import ts from 'typescript';
 
-const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
-const component = (name: string) => read('src', 'components', 'cycles', name);
-const edge = (name: string) => read('supabase', 'functions', name, 'index.ts');
+function parse(path: string[], kind: ts.ScriptKind): ts.SourceFile {
+  const text = readFileSync(join(process.cwd(), ...path), 'utf8');
+  return ts.createSourceFile(path[path.length - 1], text, ts.ScriptTarget.Latest, /*setParentNodes*/ true, kind);
+}
+const component = (name: string) => parse(['src', 'components', 'cycles', name], ts.ScriptKind.TSX);
+const edge = (name: string) => parse(['supabase', 'functions', name, 'index.ts'], ts.ScriptKind.TS);
 
-describe('rebook orchestration wiring pins (Codex round-10 #3)', () => {
-  it('BOTH round wizards create-then-drain via createAndDrainRebookRound (never a direct inline send)', () => {
+/** All CallExpressions whose callee is `name(` or `x.name(`. */
+function calls(sf: ts.SourceFile, name: string): ts.CallExpression[] {
+  const out: ts.CallExpression[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n)) {
+      const e = n.expression;
+      const callee = ts.isIdentifier(e) ? e.text : ts.isPropertyAccessExpression(e) ? e.name.text : '';
+      if (callee === name) out.push(n);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+function within(node: ts.Node, ancestor: ts.Node): boolean {
+  for (let p: ts.Node | undefined = node.parent; p; p = p.parent) if (p === ancestor) return true;
+  return false;
+}
+function firstArgString(c: ts.CallExpression): string | null {
+  const a = c.arguments[0];
+  return a && ts.isStringLiteral(a) ? a.text : null;
+}
+/** The `scan:` property value node of a gate call's options object, if any. */
+function gateScanProp(gate: ts.CallExpression): ts.Node | null {
+  const arg = gate.arguments[0];
+  if (!arg || !ts.isObjectLiteralExpression(arg)) return null;
+  const scan = arg.properties.find((p) => (ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p)) && p.name && ts.isIdentifier(p.name) && p.name.text === 'scan');
+  return scan ?? null;
+}
+/** Does a bulk-rebook-cycle invoke pass `body: { …, dryRun … }` (a preview, not an inline send)? */
+function invokeBodyHasDryRun(inv: ts.CallExpression): boolean {
+  const arg = inv.arguments[1];
+  if (!arg || !ts.isObjectLiteralExpression(arg)) return false;
+  const body = arg.properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'body');
+  if (!body || !ts.isPropertyAssignment(body) || !ts.isObjectLiteralExpression(body.initializer)) return false;
+  return body.initializer.properties.some((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name && ts.isIdentifier(p.name) && p.name.text === 'dryRun');
+}
+
+describe('rebook orchestration wiring pins — AST-structural (Codex round-11 #3)', () => {
+  it('BOTH wizards create via createAndDrainRebookRound; every direct bulk-rebook-cycle invoke is a dryRun preview', () => {
     for (const wizard of ['RebookCohortWizard.tsx', 'AcademyNewRoundWizard.tsx']) {
-      const s = component(wizard);
-      expect(s, `${wizard} imports the shared orchestration`).toContain('createAndDrainRebookRound');
-      // The submit handler creates the round ONLY through the helper. The P1 regression (a wizard
-      // sending inline via a non-dryRun bulk-rebook-cycle invoke) reverts this call away → pin fails.
-      // (The wizards still call bulk-rebook-cycle for `dryRun` PREVIEWS — those never send.)
-      expect(s, `${wizard} calls the shared orchestration`).toMatch(/createAndDrainRebookRound\(/);
-      // Every direct bulk-rebook-cycle invoke in a wizard must be a DRY-RUN preview — a real
-      // (non-dryRun) invoke would be the inline-send bug. Assert no invoke body omits dryRun.
-      const directInvokes = [...s.matchAll(/invoke\(\s*['"]bulk-rebook-cycle['"][\s\S]{0,400}?\}\)/g)].map((m) => m[0]);
-      expect(directInvokes.length, `${wizard} should have at least the dryRun preview call(s)`).toBeGreaterThan(0);
-      for (const call of directInvokes) {
-        expect(call, `a direct bulk-rebook-cycle invoke in ${wizard} must be dryRun (else it sends inline)`).toContain('dryRun');
+      const sf = component(wizard);
+      expect(calls(sf, 'createAndDrainRebookRound').length, `${wizard} calls the shared orchestration`).toBeGreaterThan(0);
+      // A direct `invoke('bulk-rebook-cycle', …)` in a wizard MUST be a dryRun preview — a non-dryRun
+      // one is the inline-send bug. (The helper's own invoke passes fn as a VARIABLE, so it isn't here.)
+      const bulkInvokes = calls(sf, 'invoke').filter((c) => firstArgString(c) === 'bulk-rebook-cycle');
+      expect(bulkInvokes.length, `${wizard} still has its dryRun preview call(s)`).toBeGreaterThan(0);
+      for (const inv of bulkInvokes) {
+        expect(invokeBodyHasDryRun(inv), `${wizard}: a direct bulk-rebook-cycle invoke is not dryRun ⇒ inline-send bug`).toBe(true);
       }
     }
   });
 
-  it('send-rebook-group-confirmation keeps the full member scan BEHIND gateGroupConfirmation', () => {
-    const s = edge('send-rebook-group-confirmation');
-    expect(s, 'imports/uses the gate').toContain('gateGroupConfirmation');
-    expect(s, 'calls the gate with the probe/consume/scan steps').toMatch(/gateGroupConfirmation<[^>]*>\(\{/);
-    expect(s, 'the full paginated read is the gate\'s `scan` step').toContain('scan:');
-    expect(s, 'the keyset scan lives inside the gate').toContain('fetchAllKeyset<ClaimRow');
+  it('send-rebook-group-confirmation runs the full member scan INSIDE gateGroupConfirmation.scan (not before the gate)', () => {
+    const sf = edge('send-rebook-group-confirmation');
+    const gates = calls(sf, 'gateGroupConfirmation');
+    expect(gates.length, 'exactly one admission gate').toBe(1);
+    const scanProp = gateScanProp(gates[0]);
+    expect(scanProp, 'the gate has a `scan` step').not.toBeNull();
+    // The member scan (fetchAllKeyset) must live INSIDE the gate's scan step. Moving it before/outside
+    // the gate (Codex's mutation) leaves the scan step without a fetchAllKeyset → this fails.
+    const keysetInScan = calls(sf, 'fetchAllKeyset').filter((c) => within(c, scanProp!));
+    expect(keysetInScan.length, 'the paginated member scan is inside the gate.scan').toBeGreaterThan(0);
   });
 
-  it('all three discovery senders read via the shared fetchAllInChunks helper', () => {
+  it('all three discovery senders read claims ONLY through fetchAllInChunks (no unbounded slot_id query escapes it)', () => {
     for (const name of ['send-priority-claim-invitation', 'send-rebook-reminder', 'notify-rebook-member-open']) {
-      const s = edge(name);
-      expect(s, `${name} imports fetchAllInChunks`).toContain('fetchAllInChunks');
-      expect(s, `${name} calls fetchAllInChunks`).toMatch(/fetchAllInChunks[<(]/);
+      const sf = edge(name);
+      const chunks = calls(sf, 'fetchAllInChunks');
+      expect(chunks.length, `${name} uses fetchAllInChunks`).toBeGreaterThan(0);
+      // EVERY `.in("slot_id", …)` claims read must be inside a fetchAllInChunks call. A restored
+      // unbounded query (Codex's mutation) reads slot_id at the top level → not within any chunk → fails,
+      // even if a dead fetchAllInChunks call lingers.
+      const slotReads = calls(sf, 'in').filter((c) => firstArgString(c) === 'slot_id');
+      expect(slotReads.length, `${name} has a slot_id claims read`).toBeGreaterThan(0);
+      for (const r of slotReads) {
+        expect(chunks.some((ch) => within(r, ch)), `${name}: a slot_id read escapes fetchAllInChunks (unbounded)`).toBe(true);
+      }
     }
   });
 });
