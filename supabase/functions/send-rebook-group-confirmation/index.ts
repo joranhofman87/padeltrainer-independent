@@ -18,8 +18,8 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
-import { personKeyOf, personRefOf, personContactEmail, personDisplayName } from "../_shared/person-identity.ts";
+import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
+import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,12 +87,12 @@ serve(async (req: Request) => {
     // GUEST-FIRST captain name (FAM-02), keyed on the captain claim's ids: a dual-key captain
     // shows their OWN name; the guest's first_name is preferred only when the captain IS the guest.
     const capRef = personRefOf({ player_id: cap.player_id, guest_player_id: cap.guest_player_id });
+    // A guest captain's name resolves from the guest's OWN verified relationships, never player_id.
+    const capContacts = await fetchGuestContacts(admin, [cap.guest_player_id]);
     const captainName = firstNameOf(
-      personDisplayName(
-        { player_id: cap.player_id, guest_player_id: cap.guest_player_id },
-        { profileName: (cap.profiles as NameEmail | null)?.full_name, guestName: (cap.guest_players as NameEmail | null)?.full_name },
-        "",
-      ),
+      capRef?.guestPlayerId
+        ? guestContactName(capRef.guestPlayerId, capContacts)
+        : ((cap.profiles as NameEmail | null)?.full_name ?? ""),
       capRef?.guestPlayerId ? (cap.guest_players as NameEmail | null)?.first_name : null,
     ) || "Je groep";
 
@@ -184,6 +184,10 @@ serve(async (req: Request) => {
       }
     }
 
+    // VERIFIED guest contacts for the members — a guest is reached at their OWN email then their
+    // VERIFIED account (person_links → twin → linked, split-freeze), NEVER the raw claim.player_id.
+    const guestMap = await fetchGuestContacts(admin, [...members.values()].map((m) => m.guest_player_id));
+
     // New vs existing: a member is "existing" iff the academy already invited them this round —
     // i.e. ANY of their claims in this group carries invited_at (bulk-rebook-cycle stamps only one
     // representative claim per member, so check across all their rows, not just the booked subset).
@@ -204,33 +208,16 @@ serve(async (req: Request) => {
     let sent = 0, skipped = 0, failed = 0;
 
     for (const m of members.values()) {
-      // GUEST-FIRST contact email (FAM-02), keyed on the member's ids: the guest's OWN address
-      // wins (effectiveGuestEmail = guest.email ?? linked_profile.email); the linked profile is the
-      // fallback only when the guest has none. The old profile-first `||` mailed a child at the parent.
-      const recipientEmail = (personContactEmail(
-        { player_id: m.player_id, guest_player_id: m.guest_player_id },
-        { profileEmail: m.rep.profiles?.email, guestEmail: effectiveGuestEmail(m.rep.guest_players) },
-      ) || "").trim();
-      if (!recipientEmail) { skipped++; continue; } // no email on file → can't send (leave unstamped)
+      // VERIFIED contact email: a guest is reached at their OWN email then their VERIFIED account,
+      // never the raw player_id; a pure profile uses its own email.
+      const recipientEmail = (m.guest_player_id
+        ? guestContactEmail(m.guest_player_id, guestMap)
+        : (m.rep.profiles?.email?.trim() || null)) ?? "";
+      if (!recipientEmail) { skipped++; continue; } // no verified email → can't send (leave unstamped)
 
-      // Claim-before-send: stamp confirmation_sent_at on THIS member's still-NULL claims and only
-      // proceed if we won the row (RETURNING non-empty). Prevents double-send across runs.
-      // GUEST-FIRST scope (FAM-02): stamp exactly this person's rows. A guest → guest_player_id;
-      // a profile → player_id AND guest_player_id IS NULL, so a profile stamp NEVER consumes a
-      // dual-key child's rows (which share the parent's player_id). personRefOf picks guest-first.
+      // GUEST-FIRST stamp scope (FAM-02): a guest → guest_player_id; a profile → player_id AND
+      // guest_player_id IS NULL, so a profile stamp NEVER consumes a dual-key child's rows.
       const ref = personRefOf({ player_id: m.player_id, guest_player_id: m.guest_player_id });
-      let stampQ = admin.from("slot_priority_claims")
-        .update({ confirmation_sent_at: new Date().toISOString() })
-        .eq("rebook_group_id", groupId).is("confirmation_sent_at", null);
-      stampQ = ref?.guestPlayerId
-        ? stampQ.eq("guest_player_id", ref.guestPlayerId)
-        : stampQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
-      const { data: stamped, error: stampErr } = await stampQ.select("id");
-      // Fail loud: a stamp ERROR is NOT "already sent" — treating it as an ordinary skip would
-      // silently drop this member's confirmation. A genuine empty result (someone else won the row)
-      // is the legitimate skip.
-      if (stampErr) throw new Error(`confirmation claim-stamp failed: ${stampErr.message}`);
-      if (!stamped || stamped.length === 0) { skipped++; continue; }
 
       const slot = m.rep.availability_slots!;
       const tz = (slot.academy_profile_id && tzByAcademy.get(slot.academy_profile_id)) || "Europe/Amsterdam";
@@ -244,13 +231,9 @@ serve(async (req: Request) => {
         : null;
       const isUpfront = slot.cyclus_id ? upfrontCycles.has(slot.cyclus_id) : false;
 
-      // GUEST-FIRST recipient name (FAM-02), keyed on the member's ids.
+      // VERIFIED recipient name: a guest's own then their verified account name, never player_id.
       const recipientFirst = escapeHtml(firstNameOf(
-        personDisplayName(
-          { player_id: m.player_id, guest_player_id: m.guest_player_id },
-          { profileName: m.rep.profiles?.full_name, guestName: m.rep.guest_players?.full_name },
-          "",
-        ),
+        m.guest_player_id ? guestContactName(m.guest_player_id, guestMap) : (m.rep.profiles?.full_name ?? ""),
         ref?.guestPlayerId ? m.rep.guest_players?.first_name : null,
       ));
       const captain = escapeHtml(captainName);
@@ -279,25 +262,29 @@ serve(async (req: Request) => {
     <p style="color:#6b7280;font-size:13px;">Vragen of wil je toch niet meedoen? Neem contact op met de academy.</p>
   </div>`;
 
-      const outcome = await sendResendEmail(resendApiKey, { from: FROM, to: [recipientEmail], subject, html });
-      if (outcome.ok) {
-        sent++;
-      } else {
-        // Send failed → clear the stamp so a later run retries this member. Bounded to the exact
-        // rows we won (.in id), and scoped guest-first to mirror the stamp above.
-        let clearQ = admin.from("slot_priority_claims")
-          .update({ confirmation_sent_at: null })
-          .eq("rebook_group_id", groupId);
-        clearQ = ref?.guestPlayerId
-          ? clearQ.eq("guest_player_id", ref.guestPlayerId)
-          : clearQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
-        const { error: clearErr } = await clearQ.in("id", (stamped as Array<{ id: string }>).map((r) => r.id));
-        if (clearErr) {
-          // The stamp could not be cleared → confirmation_sent_at stays set → this member's
-          // confirmation is permanently suppressed (never retried). Surface it loudly.
-          await notifySlackEdgeError("send-rebook-group-confirmation", "stamp clear failed after a send error — confirmation permanently suppressed for a member", { groupId, error: String(clearErr.message ?? clearErr) });
-        }
-        failed++;
+      // SEND-THEN-STAMP with a deterministic per-(group, member) idempotency key. A timeout after
+      // Resend accepted the send cannot become a duplicate (the retry's key is a no-op at Resend),
+      // and because we stamp ONLY after a confirmed send, a failed send never leaves a stamp that
+      // permanently suppresses the confirmation. A concurrent run re-sends (deduped) and both stamp.
+      const outcome = await sendResendEmail(
+        resendApiKey,
+        { from: FROM, to: [recipientEmail], subject, html },
+        { idempotencyKey: `rebook-group-confirm:${groupId}:${m.key}` },
+      );
+      if (!outcome.ok) { failed++; continue; }
+      sent++;
+      // Record the send: stamp confirmation_sent_at on this person's still-NULL rows (guest-first).
+      let stampQ = admin.from("slot_priority_claims")
+        .update({ confirmation_sent_at: new Date().toISOString() })
+        .eq("rebook_group_id", groupId).is("confirmation_sent_at", null);
+      stampQ = ref?.guestPlayerId
+        ? stampQ.eq("guest_player_id", ref.guestPlayerId)
+        : stampQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
+      const { error: stampErr } = await stampQ;
+      if (stampErr) {
+        // The email went out (counted as sent); a stamp failure only risks a Resend-deduped re-send
+        // on a later retry — surface it, but it is NOT a failed send.
+        await notifySlackEdgeError("send-rebook-group-confirmation", "confirmation-sent stamp failed after a successful send — idempotent re-send possible on retry", { groupId, error: String(stampErr.message ?? stampErr) });
       }
     }
 

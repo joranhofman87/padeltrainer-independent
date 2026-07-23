@@ -17,44 +17,48 @@ const fn = (name: string) => read('supabase', 'functions', name, 'index.ts');
 const shared = (name: string) => read('supabase', 'functions', '_shared', name);
 
 describe('PR 10d wiring — manual flows deliver independently to parent + dual-key child (proof #3)', () => {
-  it('shared resolveRecipient is guest-first (personContactEmail), not profile-first', () => {
-    const s = shared('priority-claim-invite.ts');
-    expect(s).toContain('import { personContactEmail, type PersonIdRow } from "./person-identity.ts";');
-    expect(s).toContain('return personContactEmail(args.row, { profileEmail: args.playerEmail, guestEmail: args.guestEmail });');
-    expect(s).not.toContain('return args.playerEmail || args.guestEmail || null;'); // the old profile-first bug
+  // Codex round-3 #1: all THREE manual senders resolve a guest's email via the VERIFIED account
+  // resolver (own → account, person_links/twin/linked), NEVER the raw claim.player_id.
+  it('all three manual senders use the verified guest-contact resolver, never raw player_id', () => {
+    for (const name of ['send-rebook-reminder', 'send-priority-claim-invitation', 'send-rebook-group-confirmation']) {
+      const s = fn(name);
+      expect(s, `${name} imports the verified resolver`).toContain('from "../_shared/rebook-guest-contact.ts"');
+      expect(s, `${name} resolves guest email via guestContactEmail`).toContain('guestContactEmail(');
+      expect(s, `${name} batch-fetches via fetchGuestContacts`).toContain('fetchGuestContacts(');
+      // the old profile-first fallbacks that could route to the raw player_id are gone
+      expect(s, `${name} no longer uses resolveRecipient`).not.toContain('resolveRecipient(');
+      expect(s, `${name} no longer uses personContactEmail`).not.toContain('personContactEmail(');
+      expect(s, `${name} no longer uses effectiveGuestEmail`).not.toContain('effectiveGuestEmail(');
+    }
   });
 
-  it('send-rebook-reminder keys, names and stamps guest-first', () => {
+  it('send-rebook-reminder keys + stamps guest-first', () => {
     const s = fn('send-rebook-reminder');
-    expect(s).toContain('from "../_shared/person-identity.ts"');
     expect(s).toContain('targetList.map((t) => personKeyOf(t))');      // target keys
     expect(s).toContain('const key = personKeyOf(c);');                // dedup
-    expect(s).toContain('const name = personDisplayName(c,');          // greeting/token name
     expect(s).toMatch(/const ref = personRefOf\(c\);[\s\S]*sentGuestIds\.push\(ref\.guestPlayerId\)/); // stamp routing
     expect(s).not.toMatch(/if \(c\.player_id\) sentPlayerIds\.push\(c\.player_id\)/);                   // old routing gone
-    expect(s).not.toMatch(/c\.player_id \?\? \(c\.guest_player_id \? `g:/);                             // old key gone
   });
 
-  it('send-rebook-group-confirmation groups/emails/names guest-first AND scopes the stamp with a guest-null guard', () => {
+  it('send-rebook-group-confirmation groups guest-first, scopes the stamp with a guest-null guard, and SENDS-THEN-STAMPS with idempotency (#3)', () => {
     const s = fn('send-rebook-group-confirmation');
-    expect(s).toContain('from "../_shared/person-identity.ts"');
     expect(s).toContain('const key = personKeyOf(c);');                        // member grouping
     expect(s).toMatch(/personKeyOf\(r\)/);                                     // invitedKeys
-    expect(s).toContain('personContactEmail(');                               // email
-    expect(s).toContain('personDisplayName(');                                // captain + recipient names
     // the seat/claim guard: a profile-scoped stamp must add guest_player_id IS NULL
     expect(s).toMatch(/stampQ\.eq\("player_id", ref!\.playerId\)\.is\("guest_player_id", null\)/);
-    expect(s).not.toMatch(/stampQ\.eq\("player_id", m\.player_id\) : stampQ\.eq\("guest_player_id"/); // old player-first stamp
-    expect(s).not.toMatch(/c\.player_id \? `p:\$\{c\.player_id\}` : `g:/);                              // old member key
+    // #3: deterministic idempotency key + send-THEN-stamp (no fragile claim-before-send + clear)
+    expect(s).toContain('idempotencyKey: `rebook-group-confirm:${groupId}:${m.key}`');
+    expect(s).not.toContain('confirmation_sent_at: null'); // the clear-on-failure (permanent-suppression) path is gone
+    expect(s).toMatch(/if \(!outcome\.ok\) \{ failed\+\+; continue; \}[\s\S]*sent\+\+;/); // send first, then stamp
   });
 
-  it('send-priority-claim-invitation keys and names guest-first', () => {
+  it('send-priority-claim-invitation keys guest-first', () => {
     const s = fn('send-priority-claim-invitation');
     expect(s).toContain('from "../_shared/person-identity.ts"');
     expect(s).toContain('const pkey = personKeyOf(c);');       // representative dedup
     expect(s).toContain('const pkey = personKeyOf(gc);');      // group aggregation
     expect(s).toContain('const playerKey = personKeyOf(c);');  // main-loop lookup
-    expect(s).toContain('const recipientName = personDisplayName(c,');
+    expect(s).toContain('guestContactName(c.guest_player_id, guestMap)'); // verified name (never player_id)
     expect(s).not.toMatch(/c\.player_id \?\? `g:\$\{c\.guest_player_id\}`/); // old key gone
   });
 });

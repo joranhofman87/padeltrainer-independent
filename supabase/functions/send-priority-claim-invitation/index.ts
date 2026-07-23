@@ -3,11 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import {
   buildClaimUrl,
-  effectiveGuestEmail,
   resolveAppBase,
-  resolveRecipient,
 } from "../_shared/priority-claim-invite.ts";
-import { personKeyOf, personDisplayName } from "../_shared/person-identity.ts";
+import { personKeyOf } from "../_shared/person-identity.ts";
+import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 
@@ -258,11 +257,12 @@ const handler = async (req: Request): Promise<Response> => {
         // objects. Cast through unknown (same idiom as the ClaimRow cast below).
         repClaims.push(...((rc || []) as unknown as typeof repClaims));
       }
-      // Guest emails fall back to the linked profile's address (effectiveGuestEmail) — FAM-02
-      // Level 1 keys claims to the guest person, so an email-less linked guest (e.g. a child
-      // under a parent's account) must stay reachable via the parent's inbox.
-      const hasEmail = (c: { profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null }) =>
-        !!(c.profiles?.email?.trim() || effectiveGuestEmail(c.guest_players));
+      // Sendability MUST match the actual delivery resolution: a guest is sendable iff they have a
+      // VERIFIED contact (own → account, person_links/twin/linked), never the raw player_id — else a
+      // guest deemed sendable here but skipped at send time would stall the drain's convergence.
+      const repGuestMap = await fetchGuestContacts(supabase, repClaims.map((c) => c.guest_player_id));
+      const hasEmail = (c: { player_id: string | null; guest_player_id: string | null; profiles: { email: string | null } | null }) =>
+        c.guest_player_id ? !!guestContactEmail(c.guest_player_id, repGuestMap) : !!c.profiles?.email?.trim();
       const repByKey = new Map<string, { id: string; start: string; invited: boolean; sendable: boolean }>();
       for (const c of repClaims) {
         // GUEST-FIRST person key (FAM-02): a dual-key child (g:<guest>) and their linked parent
@@ -475,6 +475,10 @@ const handler = async (req: Request): Promise<Response> => {
     const startedAt = Date.now();
     const TIME_BUDGET_MS = 100_000;
 
+    // VERIFIED guest contacts (person_links → twin → linked, split-freeze) — a guest is reached at
+    // their OWN email then their VERIFIED account, NEVER the raw claim.player_id.
+    const guestMap = await fetchGuestContacts(supabase, eligible.map((c) => c.guest_player_id));
+
     for (let idx = 0; idx < eligible.length; idx++) {
       const c = eligible[idx];
       if (Date.now() - startedAt > TIME_BUDGET_MS) {
@@ -487,20 +491,18 @@ const handler = async (req: Request): Promise<Response> => {
       const playerKey = personKeyOf(c);
       if (!playerKey) { skipped++; continue; }
       const group = c.rebook_group_id ? groupInfo.get(`${c.rebook_group_id}|${playerKey}`) : undefined;
-      const recipientEmail = resolveRecipient({
-        isTest,
-        callerEmail,
-        // GUEST-FIRST, keyed on the row's ids (FAM-02): the child's own email wins; the linked
-        // profile address is the fallback only when the guest has none.
-        row: { player_id: c.player_id, guest_player_id: c.guest_player_id },
-        playerEmail: c.profiles?.email,
-        guestEmail: effectiveGuestEmail(c.guest_players),
-      });
+      // A test/preview send goes ONLY to the caller (never an attacker-chosen address); a real send
+      // uses the VERIFIED guest contact (own → account, never player_id) or the pure profile's email.
+      const recipientEmail = isTest
+        ? (callerEmail?.trim() || null)
+        : (c.guest_player_id ? guestContactEmail(c.guest_player_id, guestMap) : (c.profiles?.email?.trim() || null));
       // No email on file → nothing we can send; count as skipped so the caller's
       // totals reconcile to the number of claims it asked us to invite.
       if (!recipientEmail) { skipped++; continue; }
-      // GUEST-FIRST name (FAM-02): a dual-key child shows their OWN name, not the linked parent's.
-      const recipientName = personDisplayName(c, { profileName: c.profiles?.full_name, guestName: c.guest_players?.full_name }, "");
+      // GUEST-FIRST name: a guest shows their own then their verified account name, never player_id.
+      const recipientName = c.guest_player_id
+        ? guestContactName(c.guest_player_id, guestMap)
+        : (c.profiles?.full_name?.trim() || "");
 
       // Times are stored UTC; render in the academy's timezone (default
       // Europe/Amsterdam) so 18:00-local reads as 18:00, not 16:00.

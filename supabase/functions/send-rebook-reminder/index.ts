@@ -9,8 +9,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
-import { buildClaimUrl, effectiveGuestEmail, resolveAppBase, resolveRecipient } from "../_shared/priority-claim-invite.ts";
-import { personKeyOf, personRefOf, personDisplayName } from "../_shared/person-identity.ts";
+import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
+import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
@@ -120,6 +121,9 @@ serve(async (req: Request) => {
     }
 
     const recipients = [...byPlayer.values()].slice(0, MAX_RECIPIENTS);
+    // VERIFIED guest contacts (person_links → twin → linked, split-freeze) — a guest is reached at
+    // their OWN email then their VERIFIED account, NEVER the raw claim.player_id.
+    const guestMap = await fetchGuestContacts(supabase, recipients.map((c) => c.guest_player_id));
     const resend = new Resend(resendKey);
     let sent = 0, skipped = 0, failed = 0;
     // Player/guest ids that actually received a reminder — used to stamp reminded_at after the loop.
@@ -127,18 +131,13 @@ serve(async (req: Request) => {
     const sentGuestIds: string[] = [];
 
     for (const c of recipients) {
-      const email = resolveRecipient({
-        isTest: false, callerEmail: null,
-        // GUEST-FIRST, keyed on the row's ids (FAM-02): a dual-key child is reached at their OWN
-        // email; the linked profile's address is the fallback ONLY when the guest has none
-        // (effectiveGuestEmail already does guest.email ?? linked_profile.email).
-        row: { player_id: c.player_id, guest_player_id: c.guest_player_id },
-        playerEmail: c.profiles?.email, guestEmail: effectiveGuestEmail(c.guest_players),
-      });
+      const email = c.guest_player_id
+        ? guestContactEmail(c.guest_player_id, guestMap)
+        : (c.profiles?.email?.trim() || null);
       if (!email) { skipped++; continue; }
-      // GUEST-FIRST name (FAM-02): a dual-key child shows their OWN name; the linked profile name
-      // is only the blank-name fallback for a guest.
-      const name = personDisplayName(c, { profileName: c.profiles?.full_name, guestName: c.guest_players?.full_name }, "");
+      const name = c.guest_player_id
+        ? guestContactName(c.guest_player_id, guestMap)
+        : (c.profiles?.full_name?.trim() || "");
       const cta = buildClaimUrl(APP_BASE, c.claim_token, false);
       const body = substituteVars(msg, name).split("\n").map((line) => `<p style="color:#374151;line-height:1.6;">${escapeHtml(line)}</p>`).join("");
       const html = `
