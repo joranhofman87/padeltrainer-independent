@@ -113,10 +113,18 @@ serve(async (req: Request) => {
     // Non-blocking: the invoice already exists and is shown on /pay/{token}, so an
     // email hiccup must never fail the accept. Skip for an already-paid invoice.
     if (invoice.status !== "paid" && invoice.status !== "cancelled") {
+      // Non-blocking, but NOT silent (Codex round-6 #4): supabase-js `functions.invoke` RESOLVES with
+      // `error` set on a non-2xx (it does NOT throw), so the old bare try/catch swallowed a failed
+      // invoice email entirely. Inspect BOTH the resolved error and any thrown error and alert — a
+      // dropped bank-transfer invoice email otherwise leaves no trace (the invoice stays visible at
+      // /pay/{token}, so we still never fail the accept on it).
       try {
-        await admin.functions.invoke("send-invoice-email", { body: { invoiceId: invoice.id }, headers: serviceAuth });
+        const { error: emailErr } = await admin.functions.invoke("send-invoice-email", { body: { invoiceId: invoice.id }, headers: serviceAuth });
+        if (emailErr) {
+          await notifySlackEdgeError("create-rebook-invoice", "send-invoice-email returned an error (non-blocking; invoice still at /pay/{token})", { invoiceId: invoice.id, error: String(emailErr.message ?? emailErr) });
+        }
       } catch (e) {
-        console.error("send-invoice-email failed (non-blocking):", String((e as Error)?.message ?? e));
+        await notifySlackEdgeError("create-rebook-invoice", "send-invoice-email threw (non-blocking; invoice still at /pay/{token})", { invoiceId: invoice.id, error: String((e as Error)?.message ?? e) });
       }
     }
 

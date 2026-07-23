@@ -9,9 +9,9 @@
 //
 // This module is the single TS home of that rule (person key, XOR ref, booking match scope,
 // display name). SQL surfaces encode the same rule inline (e.g. get_academy_cyclus_groups
-// person keys 'g:<id>'/'p:<id>'; get_players_overview 'g_'/'p_'). There is deliberately no
-// edge-function twin yet — create supabase/functions/_shared/person-identity.ts as a
-// keep-in-sync twin (profileName.ts pattern) the day an edge feature needs it.
+// person keys 'g:<id>'/'p:<id>'; get_players_overview 'g_'/'p_'). The edge-function twin now
+// EXISTS at supabase/functions/_shared/person-identity.ts (added in the notification work; keep it
+// in sync — personIdentityEdge.test.ts pins contract parity against this module).
 
 /** Any row shape that can carry the two identity columns (booking, claim, invoice, intake). */
 export interface PersonIdRow {

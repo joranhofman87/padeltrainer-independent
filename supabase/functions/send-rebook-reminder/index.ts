@@ -9,8 +9,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
-import { buildClaimUrl, effectiveGuestEmail, resolveAppBase, resolveRecipient } from "../_shared/priority-claim-invite.ts";
+import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
+import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { fetchAllInChunks, fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,8 +67,10 @@ serve(async (req: Request) => {
     if (!cycleId || !subj || !msg || targetList.length === 0) {
       return json({ ok: false, error: "cycleId, subject, message and targets are required" }, 400);
     }
+    // GUEST-FIRST canonical person keys (FAM-02): a dual-key target belongs to the GUEST, so it
+    // keys g:<guest> — never the linked parent's p:<player>. Must match the claim keying below.
     const targetKeys = new Set(
-      targetList.map((t) => t.player_id ?? (t.guest_player_id ? `g:${t.guest_player_id}` : "")).filter(Boolean),
+      targetList.map((t) => personKeyOf(t)).filter((k): k is string => !!k),
     );
 
     // Authorize: the caller must MANAGE this cycle's academy. Do NOT infer ownership from
@@ -80,8 +85,18 @@ serve(async (req: Request) => {
       .eq("academy_profile_id", cycle.owner_id).eq("user_id", user.id).maybeSingle();
     if (!mgr) return json({ ok: false, error: "Forbidden" }, 403);
 
-    const { data: slotRows } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
-    const slotIds = (slotRows ?? []).map((s: { id: string }) => s.id);
+    // KEYSET-paginated by slot id (Codex round-7 #3): an unpaginated cycle-slots read caps at ~1000,
+    // dropping every claim on the missing slots from the target match.
+    const { rows: slotRows, error: slotErr } = await fetchAllKeyset<{ id: string }>(
+      (after, limit) => {
+        let q = supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit);
+      },
+      (r) => r.id,
+    );
+    if (slotErr) throw new Error(`slot read failed: ${slotErr.message}`); // fail loud — not a zero-send success
+    const slotIds = slotRows.map((s) => s.id);
     if (slotIds.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0 });
 
     const { data: acad } = await supabase.from("academy_profiles").select("name").eq("id", cycle.owner_id).maybeSingle();
@@ -90,43 +105,71 @@ serve(async (req: Request) => {
     // Resolve recipients from THIS cycle's claims, scoped to the requested targets, one per
     // player. Exclude declined/expired claims — a reminder must never re-ping someone who
     // already opted out (only pending and claimed players get one).
-    const { data: claims } = await supabase
-      .from("slot_priority_claims")
-      .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
-      .in("slot_id", slotIds)
-      .in("status", ["pending", "claimed"]);
     type ClaimRow = {
+      id: string;
       claim_token: string;
       player_id: string | null;
       guest_player_id: string | null;
       profiles: { full_name: string | null; email: string | null } | null;
       guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
     };
+    // Slots batched (bounds the .in() list) + claims keyset-paged per batch — the shared discovery
+    // helper (Codex round-8/9 #4). A legacy single-cycle round can hold >1000 claims, and offset paging
+    // would skip a row if a claim left the pending/claimed set mid-read.
+    const { rows: claims, error: claimsErr } = await fetchAllInChunks<ClaimRow>(
+      slotIds,
+      (slotChunk, after, limit) => {
+        let q = supabase
+          .from("slot_priority_claims")
+          .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
+          .in("slot_id", slotChunk)
+          .in("status", ["pending", "claimed"]);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit);
+      },
+      (r) => r.id,
+    );
+    if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     const byPlayer = new Map<string, ClaimRow>();
     // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
     // runtime values are single objects — cast through unknown (same idiom as the invite fn).
+    // Dedup GUEST-FIRST: a dual-key child (g:<guest>) and their linked parent (p:<player>) are
+    // DISTINCT people — the old player-first key collapsed both under p:<player>, so only one of
+    // them got a reminder.
     for (const c of (claims ?? []) as unknown as ClaimRow[]) {
-      const key = c.player_id ?? (c.guest_player_id ? `g:${c.guest_player_id}` : "");
+      const key = personKeyOf(c);
       if (!key || !targetKeys.has(key) || byPlayer.has(key)) continue;
       byPlayer.set(key, c);
     }
 
-    const recipients = [...byPlayer.values()].slice(0, MAX_RECIPIENTS);
+    // NO silent cap (Codex round-7 #2): the client chunks the selected targets into <=200-identity
+    // batches and calls once per batch, so each identity is reminded EXACTLY ONCE (no duplicate on
+    // retry). This fn processes ALL provided targets; the per-call ceiling is a DEFENSIVE guard that
+    // ERRORS loudly against a rogue unbounded caller, never a silent slice.
+    const recipients = [...byPlayer.values()];
+    if (recipients.length > MAX_RECIPIENTS) {
+      throw new Error(`too many reminder recipients in one call (${recipients.length} > ${MAX_RECIPIENTS}); the client must batch the targets`);
+    }
+    // VERIFIED guest contacts (person_links → twin → linked, split-freeze) — a guest is reached at
+    // their OWN email then their VERIFIED account, NEVER the raw claim.player_id.
+    const guestMap = await fetchGuestContacts(supabase, recipients.map((c) => c.guest_player_id));
     const resend = new Resend(resendKey);
     let sent = 0, skipped = 0, failed = 0;
+    // The target identities whose send FAILED — returned so the client can re-select exactly them for
+    // a retry, never asking the manager to reconstruct an unknowable remainder.
+    const failedTargets: Array<{ player_id: string | null; guest_player_id: string | null }> = [];
     // Player/guest ids that actually received a reminder — used to stamp reminded_at after the loop.
     const sentPlayerIds: string[] = [];
     const sentGuestIds: string[] = [];
 
     for (const c of recipients) {
-      const email = resolveRecipient({
-        isTest: false, callerEmail: null,
-        // Guest email falls back to the linked profile's address (FAM-02: claims are
-        // guest-keyed; an email-less linked guest stays reachable via the parent's inbox).
-        playerEmail: c.profiles?.email, guestEmail: effectiveGuestEmail(c.guest_players),
-      });
+      const email = c.guest_player_id
+        ? guestContactEmail(c.guest_player_id, guestMap)
+        : (c.profiles?.email?.trim() || null);
       if (!email) { skipped++; continue; }
-      const name = c.profiles?.full_name || c.guest_players?.full_name || "";
+      const name = c.guest_player_id
+        ? guestContactName(c.guest_player_id, guestMap)
+        : (c.profiles?.full_name?.trim() || "");
       const cta = buildClaimUrl(APP_BASE, c.claim_token, false);
       const body = substituteVars(msg, name).split("\n").map((line) => `<p style="color:#374151;line-height:1.6;">${escapeHtml(line)}</p>`).join("");
       const html = `
@@ -146,10 +189,14 @@ serve(async (req: Request) => {
         subject: subj,
         html,
       });
-      if (sendErr) { console.error("send error", sendErr); failed++; continue; }
+      if (sendErr) { console.error("send error", sendErr); failed++; failedTargets.push({ player_id: c.player_id, guest_player_id: c.guest_player_id }); continue; }
       sent++;
-      if (c.player_id) sentPlayerIds.push(c.player_id);
-      else if (c.guest_player_id) sentGuestIds.push(c.guest_player_id);
+      // GUEST-FIRST stamp routing (FAM-02): a dual-key child is stamped as the GUEST, never the
+      // parent's player_id — otherwise bump_rebook_reminders marks the parent (and every claim
+      // sharing that player_id) reminded. personRefOf picks the guest id on a dual-key row.
+      const ref = personRefOf(c);
+      if (ref?.guestPlayerId) sentGuestIds.push(ref.guestPlayerId);
+      else if (ref?.playerId) sentPlayerIds.push(ref.playerId);
     }
 
     // Stamp reminded_at + bump reminder_count on the claims we actually emailed (atomic RPC;
@@ -167,12 +214,14 @@ serve(async (req: Request) => {
       }
     }
 
-    // Aggregate alert for per-recipient send failures (never per-item) before the 200 response.
+    // Aggregate alert for per-recipient send failures (never per-item).
     if (failed > 0) {
       await notifySlackEdgeError("send-rebook-reminder", `${failed} of ${recipients.length} reminder emails failed`, { cycleId, sent, skipped, failed, recipients: recipients.length });
     }
 
-    return json({ ok: true, sent, skipped, failed });
+    // ok reflects FULL completion (Codex round-7 #6): any send failure makes it not-ok, so the UI
+    // renders a failure state (not a success toast). `failedTargets` are the exact identities to retry.
+    return json({ ok: failed === 0, sent, skipped, failed, failedTargets });
   } catch (e) {
     // Unexpected failure (auth/DB/parse) — surface to Slack before the 500.
     await notifySlackEdgeError("send-rebook-reminder", String((e as Error)?.message ?? e));

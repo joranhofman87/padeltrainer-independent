@@ -8,6 +8,7 @@
  *    token, and
  *  - the recipient of a test send is the caller's own email only.
  */
+import { personContactEmail, type PersonIdRow } from "./person-identity.ts";
 
 /** Resolve the app base URL, never falling back to a stale external domain. */
 export function resolveAppBase(publicAppUrl: string | undefined | null): string {
@@ -61,16 +62,22 @@ export function buildClaimUrl(
 /**
  * Decide the recipient for a single claim email.
  * - test send: always the caller's own email (never an attacker-chosen one)
- * - real send: the claim's player/guest email
+ * - real send: the claim's contact email under FAM-02 Level 1 — GUEST-FIRST, keyed on the row's
+ *   ids (person-identity twin), NOT profile-first. A dual-key person (player_id = the linked
+ *   parent profile, guest_player_id = the child) is the GUEST, so their OWN email (guestEmail,
+ *   already resolved via effectiveGuestEmail = guest.email ?? linked_profile.email) wins; the
+ *   linked profile's address (playerEmail) is the fallback ONLY when the guest has none. The old
+ *   `playerEmail || guestEmail` was profile-first and mailed a child at the parent's inbox.
  */
 export function resolveRecipient(args: {
   isTest: boolean;
   callerEmail: string | null | undefined;
+  row: PersonIdRow;
   playerEmail: string | null | undefined;
   guestEmail: string | null | undefined;
 }): string | null {
   if (args.isTest) {
     return args.callerEmail?.trim() || null;
   }
-  return args.playerEmail || args.guestEmail || null;
+  return personContactEmail(args.row, { profileEmail: args.playerEmail, guestEmail: args.guestEmail });
 }

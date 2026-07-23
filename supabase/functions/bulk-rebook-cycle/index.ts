@@ -8,6 +8,7 @@ import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
 import { canonicalizeSeriesCohort, cohortPersonKey } from "../_shared/rebook-cohort.ts";
 import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
+import { personKeyOf } from "../_shared/person-identity.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -354,7 +355,7 @@ serve(async (req) => {
       if (rrErr) throw rrErr;
       const rounds = (roundRows ?? []) as Array<{ id: string; name: string; status: string; settings: Record<string, unknown> | null }>;
       if (rounds.length === 0) {
-        return new Response(JSON.stringify({ ok: false, reason: "round_not_found" }), {
+        return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "round_not_found" }), {
           status: 404, headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
@@ -511,7 +512,7 @@ serve(async (req) => {
     const priorityPeopleWithExcluded = [...new Set([...priorityPeopleRaw, ...exclusion.secondBucketProfileIds])].slice(0, 200);
 
     if (!dryRun && includedSeries.length === 0) {
-      return new Response(JSON.stringify({ ok: false, reason: "nothing_to_rebook" }), {
+      return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "nothing_to_rebook" }), {
         status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -744,7 +745,7 @@ serve(async (req) => {
     if (existingNonDraft.length > 0) {
       // 200 (not 409) so supabase.functions.invoke returns it as data, not an error.
       return new Response(JSON.stringify({
-        ok: false, reason: "already_exists",
+        ok: false, phase: "creation", reason: "already_exists",
         existingCycleId: existingNonDraft[0].id,
         existingNames: existingNonDraft.map((e) => e.name),
       }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
@@ -842,7 +843,7 @@ serve(async (req) => {
     if (tcErr) {
       // 23505 = the concurrency unique index fired (a simultaneous run won the race).
       if (String((tcErr as { code?: string }).code) === "23505") {
-        return new Response(JSON.stringify({ ok: false, reason: "already_exists" }), {
+        return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "already_exists" }), {
           status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
@@ -982,10 +983,15 @@ serve(async (req) => {
         }
         claimsCreated += insertedClaims.length;
 
-        // Representative = each player's claim on the EARLIEST week (min start_time).
+        // Representative = each PERSON's claim on the EARLIEST week (min start_time). GUEST-FIRST
+        // key (FAM-02): a dual-key child (g:<guest>) and their linked parent (p:<player>) are
+        // DISTINCT people, so each gets their own representative claim. The old player-first key
+        // collapsed both under p:<player>, dropping one person's rep BEFORE the invite fn ran — so
+        // that person was never invited (the invite fn's own fix cannot recover a rep it never sees).
         const repByPlayer = new Map<string, { claimId: string; start: string }>();
         for (const cl of insertedClaims) {
-          const pkey = cl.player_id ?? `g:${cl.guest_player_id}`;
+          const pkey = personKeyOf(cl);
+          if (!pkey) continue;
           const start = startBySlot.get(cl.slot_id) ?? "";
           const cur = repByPlayer.get(pkey);
           if (!cur || start < cur.start) repByPlayer.set(pkey, { claimId: cl.id, start });
@@ -1012,6 +1018,9 @@ serve(async (req) => {
       const deferInvites = skipInvites && (targets.length <= 1 || roundAware);
       let invitesSent = 0;
       const failedClaimIds: string[] = [];
+      // Sent-but-un-stamped invites (Codex round-7 #1): the email went out but invited_at didn't land,
+      // so the claim stays eligible and needs a later drain/resend to re-stamp — NOT a completed send.
+      const unresolvedClaimIds: string[] = [];
       if (!deferInvites) {
         for (let i = 0; i < representativeClaimIds.length; i += 50) {
           const batch = representativeClaimIds.slice(i, i + 50);
@@ -1026,17 +1035,28 @@ serve(async (req) => {
             // partial send inside a batch was logged as the full batch length).
             invitesSent += Number(data.sent ?? 0);
             if (Array.isArray(data.failedClaimIds)) failedClaimIds.push(...data.failedClaimIds);
+            if (Array.isArray(data.unresolvedClaimIds)) unresolvedClaimIds.push(...data.unresolvedClaimIds);
           }
         }
       }
 
-      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, extended: Boolean(extendRound), alreadySentGroups, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
-      // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
-      if (failedClaimIds.length > 0) {
-        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds });
+      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, extended: Boolean(extendRound), alreadySentGroups, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, unresolved: unresolvedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
+      // Partial-send: cycle is committed but some invites never went out (failed) OR went out un-stamped
+      // (unresolved, needs a resend to stamp) — alert once (IDs/counts only, no PII) so a resend can be triggered.
+      if (failedClaimIds.length > 0 || unresolvedClaimIds.length > 0) {
+        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} failed / ${unresolvedClaimIds.length} unresolved of ${representativeClaimIds.length} rebook invites`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds, unresolvedClaimIds });
       }
       return new Response(JSON.stringify({
-        ok: true,
+        // `ok` reflects the INVITE outcome (Codex round-8 #2): the round IS created regardless (the
+        // caller navigates on targetCycleId), but ok:false + the failed/unresolved counts + id sets let
+        // the wizard show a partial/retry state instead of a false "all invited" success. Round-CREATION
+        // failures (already_exists / slot_overlap) are separate earlier responses carrying a `reason`.
+        ok: failedClaimIds.length === 0 && unresolvedClaimIds.length === 0,
+        // Discriminated contract (Codex round-9 #2): phase:"delivery" + a valid targetCycleId ⇒ the
+        // round WAS created; ok/failed/unresolved describe delivery only. Creation failures are separate
+        // responses carrying phase:"creation" and NO targetCycleId, so a client never confuses "created
+        // partially" with "not created".
+        phase: "delivery",
         // Backward compat: old clients navigate to targetCycleId (the primary cycle, whose manage
         // page aggregates the whole round). New clients read targetCycles + roundId.
         targetCycleId: targets[0].id,
@@ -1047,7 +1067,10 @@ serve(async (req) => {
         slotsCopied,
         claimsCreated,
         invitesSent,
+        failed: failedClaimIds.length,
+        unresolved: unresolvedClaimIds.length,
         failedClaimIds,
+        unresolvedClaimIds,
         // Total invites the client should drain (skipInvites mode); also lets the
         // caller show an accurate "X of Y" even on the inline path.
         representativeCount: representativeClaimIds.length,
@@ -1075,7 +1098,7 @@ serve(async (req) => {
     // picking another start date/time — the draft was already cleaned up). 200 +
     // reason so functions.invoke surfaces it as data, mirroring already_exists.
     if (message.includes("trainer_slot_overlap")) {
-      return new Response(JSON.stringify({ ok: false, reason: "slot_overlap" }), {
+      return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "slot_overlap" }), {
         status: 200, headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }

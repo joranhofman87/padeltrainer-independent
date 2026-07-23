@@ -40,35 +40,68 @@ describe('buildClaimUrl', () => {
   });
 });
 
-describe('resolveRecipient', () => {
-  it('real send goes to the claim player/guest email', () => {
+describe('resolveRecipient — GUEST-FIRST (FAM-02), keyed on the row ids', () => {
+  it('a pure profile goes to the profile email', () => {
     expect(
       resolveRecipient({
-        isTest: false,
-        callerEmail: 'manager@club.com',
-        playerEmail: 'player@example.com',
-        guestEmail: null,
+        isTest: false, callerEmail: 'manager@club.com',
+        row: { player_id: 'P1', guest_player_id: null },
+        playerEmail: 'player@example.com', guestEmail: null,
       }),
     ).toBe('player@example.com');
+  });
+
+  it('a pure guest goes to the guest email', () => {
     expect(
-      resolveRecipient({ isTest: false, callerEmail: null, playerEmail: null, guestEmail: 'guest@example.com' }),
+      resolveRecipient({
+        isTest: false, callerEmail: null,
+        row: { player_id: null, guest_player_id: 'G1' },
+        playerEmail: null, guestEmail: 'guest@example.com',
+      }),
     ).toBe('guest@example.com');
+  });
+
+  it('PROOF: a DUAL-KEY child with their OWN email is mailed at the CHILD, not the linked parent', () => {
+    // The bug: `playerEmail || guestEmail` mailed the child at the parent's inbox. Guest-first
+    // keys on the ids, so the child's own address wins.
+    expect(
+      resolveRecipient({
+        isTest: false, callerEmail: null,
+        row: { player_id: 'P1', guest_player_id: 'G1' },
+        playerEmail: 'parent@example.com', guestEmail: 'child@example.com',
+      }),
+    ).toBe('child@example.com');
+  });
+
+  it('PROOF: the linked parent email is used ONLY when the dual-key guest has none of their own', () => {
+    // guestEmail here is already effectiveGuestEmail(guest) = guest.email ?? linked_profile.email;
+    // when that is null (no own address, no linked profile), fall back to the profile via player_id.
+    expect(
+      resolveRecipient({
+        isTest: false, callerEmail: null,
+        row: { player_id: 'P1', guest_player_id: 'G1' },
+        playerEmail: 'parent@example.com', guestEmail: null,
+      }),
+    ).toBe('parent@example.com');
   });
 
   it('test send always goes to the caller, never an attacker-chosen address', () => {
     expect(
       resolveRecipient({
-        isTest: true,
-        callerEmail: 'manager@club.com',
-        playerEmail: 'victim@example.com',
-        guestEmail: null,
+        isTest: true, callerEmail: 'manager@club.com',
+        row: { player_id: 'P1', guest_player_id: 'G1' },
+        playerEmail: 'victim@example.com', guestEmail: 'victim2@example.com',
       }),
     ).toBe('manager@club.com');
   });
 
   it('test send with no caller email yields no recipient', () => {
     expect(
-      resolveRecipient({ isTest: true, callerEmail: null, playerEmail: 'x@y.com', guestEmail: null }),
+      resolveRecipient({
+        isTest: true, callerEmail: null,
+        row: { player_id: 'P1', guest_player_id: null },
+        playerEmail: 'x@y.com', guestEmail: null,
+      }),
     ).toBe(null);
   });
 });

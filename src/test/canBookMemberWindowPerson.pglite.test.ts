@@ -15,8 +15,9 @@ let db: PGlite;
 
 const CYCLE = 'c0000000-0000-0000-0000-000000000001';
 const SLOT = '50000000-0000-0000-0000-000000000001';
-const GUEST = '70000000-0000-0000-0000-000000000001'; // guest with a claim in the round (clause d)
-const PGUEST = '70000000-0000-0000-0000-000000000002'; // guest on the priority-guest list (clause e)
+const GUEST = '70000000-0000-0000-0000-000000000001'; // guest with a claim in the round (clause d), person_links → MERGED
+const PGUEST = '70000000-0000-0000-0000-000000000002'; // guest on the priority-guest list (clause e), person_links → MERGED
+const BRIDGE_GUEST = '70000000-0000-0000-0000-000000000004'; // claim in the round, NO person_links → the twin/linked BRIDGE arms apply
 
 const MERGED = { p: 'a0000000-0000-0000-0000-000000000001', u: 'b0000000-0000-0000-0000-000000000001', per: 'e0000000-0000-0000-0000-000000000001' };
 const TWIN = { p: 'a0000000-0000-0000-0000-000000000002', u: 'b0000000-0000-0000-0000-000000000002' };   // twin_of_profile_id bridge
@@ -41,7 +42,7 @@ beforeAll(async () => {
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid);
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, settings jsonb DEFAULT '{}'::jsonb);
     CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, source_cycle_id uuid, cyclus_id uuid);
-    CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, status text);
+    CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid, status text);
     CREATE TABLE public.slot_priority_claims (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid, status text);
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, linked_profile_id uuid, twin_of_profile_id uuid);
@@ -62,6 +63,16 @@ beforeAll(async () => {
           SELECT 1 FROM public.person_merge_review r
           WHERE r.guest_player_id = _guest_player_id AND r.status = 'pending'
             AND r.kind IN ('twin_detached_needs_split', 'merged_guest_email_moved')) $fn$;
+    -- guest_verified_account_profile (defined by 20260927100000 in prod; inlined here so 20260928100000
+    -- — which now calls it in clause (a) — loads). Same body: person_links → twin → linked, split-freeze.
+    CREATE OR REPLACE FUNCTION public.guest_verified_account_profile(_guest_id uuid)
+      RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $gvap$
+        SELECT CASE WHEN public.is_guest_split_frozen(_guest_id) THEN NULL ELSE COALESCE(
+          (SELECT plp.profile_id FROM public.person_links plg JOIN public.person_links plp ON plp.person_id = plg.person_id
+            WHERE plg.guest_player_id = _guest_id AND plp.profile_id IS NOT NULL LIMIT 1),
+          (SELECT gp.twin_of_profile_id FROM public.guest_players gp WHERE gp.id = _guest_id),
+          (SELECT gp.linked_profile_id FROM public.guest_players gp WHERE gp.id = _guest_id AND gp.twin_of_profile_id IS NULL)
+        ) END $gvap$;
 
     INSERT INTO public.profiles (id, user_id) VALUES
       ('${MERGED.p}','${MERGED.u}'), ('${TWIN.p}','${TWIN.u}'), ('${LINKED.p}','${LINKED.u}'),
@@ -90,11 +101,18 @@ beforeAll(async () => {
     -- EONLY's ONLY route is clause (e): EGUEST is on the priority-guest list with NO claim in the round
     INSERT INTO public.guest_players (id) VALUES ('${EGUEST}');
     INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${EONLY.per}', '${EGUEST}');
+
+    -- BRIDGE_GUEST: a claim in the round with NO person_links, so the twin/linked bridge arms apply.
+    INSERT INTO public.guest_players (id) VALUES ('${BRIDGE_GUEST}');
+    INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status) VALUES
+      ('${SLOT}', NULL, '${BRIDGE_GUEST}', 'declined');
   `);
-  await db.exec(
-    readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260830100000_phase33c_can_book_member_window_person.sql'), 'utf8')
-      .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n'),
-  );
+  const loadNoGrants = (file: string) =>
+    db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', file), 'utf8')
+      .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n'));
+  await loadNoGrants('20260830100000_phase33c_can_book_member_window_person.sql');
+  // PR 10d #2: curated person_links suppresses the twin/linked bridge (person_links precedence).
+  await loadNoGrants('20260928100000_can_book_member_window_person_links_precedence.sql');
 });
 
 beforeEach(async () => {
@@ -122,14 +140,35 @@ describe('can_book_member_window — Phase 3.3c person arm + bridge + freeze', (
     expect(await canBook(OTHER.u)).toBe(false);
   });
 
-  it('BRIDGE (d): a linked-but-unmerged guest with twin_of_profile_id=me → eligible', async () => {
-    await db.exec(`UPDATE public.guest_players SET twin_of_profile_id = '${TWIN.p}' WHERE id = '${GUEST}';`);
+  it('BRIDGE (d): a linked-but-unmerged guest (NO person_links) with twin_of_profile_id=me → eligible', async () => {
+    await db.exec(`UPDATE public.guest_players SET twin_of_profile_id = '${TWIN.p}' WHERE id = '${BRIDGE_GUEST}';`);
     expect(await canBook(TWIN.u)).toBe(true);
   });
 
-  it('BRIDGE (d): linked_profile_id=me with twin NULL → eligible (Phase-0c precedence fallback)', async () => {
-    await db.exec(`UPDATE public.guest_players SET linked_profile_id = '${LINKED.p}' WHERE id = '${GUEST}';`);
+  it('BRIDGE (d): linked_profile_id=me with twin NULL (NO person_links) → eligible (Phase-0c fallback)', async () => {
+    await db.exec(`UPDATE public.guest_players SET linked_profile_id = '${LINKED.p}' WHERE id = '${BRIDGE_GUEST}';`);
     expect(await canBook(LINKED.u)).toBe(true);
+  });
+
+  // PR 10d #2: curated person_links SUPPRESSES the twin/linked bridge (person_links precedence).
+  it('CONFLICT (d): person_links → A allowed, a STALE twin → B DENIED (A wins, bridge suppressed)', async () => {
+    // GUEST has person_links → MERGED (A). Stamp a stale twin → TWIN (B).
+    await db.exec(`UPDATE public.guest_players SET twin_of_profile_id = '${TWIN.p}' WHERE id = '${GUEST}';`);
+    expect(await canBook(MERGED.u)).toBe(true);  // A: curated person_links account still books
+    expect(await canBook(TWIN.u)).toBe(false);   // B: stale twin is suppressed by the person_links account
+  });
+
+  it('CONFLICT (d): person_links → A allowed, a STALE linked_profile_id → B DENIED', async () => {
+    await db.exec(`UPDATE public.guest_players SET linked_profile_id = '${LINKED.p}' WHERE id = '${GUEST}';`);
+    expect(await canBook(MERGED.u)).toBe(true);
+    expect(await canBook(LINKED.u)).toBe(false);
+  });
+
+  it('CONFLICT (e): on the priority-guest list, person_links A allowed, stale twin B denied', async () => {
+    // PGUEST is on rebook_priority_guests and person_links → MERGED. Stamp a stale twin → TWIN.
+    await db.exec(`UPDATE public.guest_players SET twin_of_profile_id = '${TWIN.p}' WHERE id = '${PGUEST}';`);
+    expect(await canBook(MERGED.u)).toBe(true);
+    expect(await canBook(TWIN.u)).toBe(false);
   });
 
   it('FREEZE: person-linked guests under a pending split review → NOT eligible on either arm', async () => {
@@ -140,11 +179,11 @@ describe('can_book_member_window — Phase 3.3c person arm + bridge + freeze', (
     expect(await canBook(MERGED.u)).toBe(false); // frozen → excluded from the person arm on (d) AND (e)
   });
 
-  it('FREEZE (d): a split-frozen guest also does not grant via the twin bridge', async () => {
+  it('FREEZE (d): a split-frozen bridge guest (no person_links) does not grant via the twin bridge', async () => {
     await db.exec(`
-      UPDATE public.guest_players SET twin_of_profile_id = '${TWIN.p}' WHERE id = '${GUEST}';
+      UPDATE public.guest_players SET twin_of_profile_id = '${TWIN.p}' WHERE id = '${BRIDGE_GUEST}';
       INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id)
-        VALUES ('twin_detached_needs_split', 'pending', '${GUEST}', '${MERGED.per}');`);
+        VALUES ('twin_detached_needs_split', 'pending', '${BRIDGE_GUEST}', '${MERGED.per}');`);
     expect(await canBook(TWIN.u)).toBe(false);
   });
 
@@ -169,5 +208,40 @@ describe('can_book_member_window — Phase 3.3c person arm + bridge + freeze', (
 
   it('regression (c): a registered priority-list person is still eligible', async () => {
     expect(await canBook(PRIO.u)).toBe(true);
+  });
+});
+
+// PR 10d #2 (Codex round-4): clauses (a)/(b) must be FAM-02-safe too — a raw dual-key player_id must
+// not grant the parent through a booking (a) or a priority claim (b). (Codex reproduced both bypasses.)
+describe('can_book_member_window — dual-key booking/claim denies the raw parent (clause a/b)', () => {
+  const BACC = { p: 'a0000000-0000-0000-0000-0000000000b1', u: 'b0000000-0000-0000-0000-0000000000b1', per: 'e0000000-0000-0000-0000-0000000000b1' };
+  const BGUEST = '70000000-0000-0000-0000-0000000000b1'; // person_links → BACC, NO claim (booking-only, isolates clause a)
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.profiles (id, user_id) VALUES ('${BACC.p}', '${BACC.u}');
+      INSERT INTO public.persons (id) VALUES ('${BACC.per}');
+      INSERT INTO public.guest_players (id) VALUES ('${BGUEST}');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${BACC.per}', '${BACC.p}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${BACC.per}', '${BGUEST}');
+    `);
+  });
+  afterEach(async () => {
+    await db.exec(`DELETE FROM public.bookings;
+      DELETE FROM public.slot_priority_claims WHERE status='pending' AND player_id IS NOT NULL AND guest_player_id IS NOT NULL;`);
+  });
+
+  it('clause (a): a dual-key BOOKING grants the guest\'s VERIFIED account, DENIES the raw parent', async () => {
+    // BGUEST (person_links → BACC) booked with RANDOM as the raw dual-key player_id. Only route is (a).
+    await db.exec(`INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status) VALUES ('${SLOT}', '${RANDOM.p}', '${BGUEST}', 'confirmed');`);
+    expect(await canBook(BACC.u)).toBe(true);    // the guest's verified account IS a member via (a)
+    expect(await canBook(RANDOM.u)).toBe(false); // the raw player_id parent is NOT (Codex reproduced: was true)
+  });
+
+  it('clause (b): a dual-key CLAIM denies the raw parent (guest_player_id IS NULL guard)', async () => {
+    // GUEST (person_links → MERGED) with a dual-key claim under RANDOM as the raw player_id.
+    await db.exec(`INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status) VALUES ('${SLOT}', '${RANDOM.p}', '${GUEST}', 'pending');`);
+    expect(await canBook(RANDOM.u)).toBe(false); // the raw player_id parent is NOT granted (Codex reproduced: was true)
+    expect(await canBook(MERGED.u)).toBe(true);  // the guest resolves to MERGED via (d)
   });
 });

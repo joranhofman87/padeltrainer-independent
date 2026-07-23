@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, UserPlus, CreditCard, Plus, Pencil } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, UserPlus, CreditCard, Plus, Pencil, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -27,6 +27,7 @@ import {
   type GroupStatus, type RebookManageGroup, type RebookManagePlayer, type RebookReminderTarget,
 } from '@/lib/rebookManage';
 import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
+import { personKeyOf } from '@/lib/personIdentity';
 import { formatCurrency } from '@/lib/format';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { RebookRoundTextsDialog } from '@/components/cycles/RebookRoundTextsDialog';
@@ -73,7 +74,7 @@ export default function AcademyRebookManage() {
   const [releaseOpen, setReleaseOpen] = useState(false);
   const academyTimezone = activeAcademy?.timezone || 'Europe/Amsterdam';
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['rebook-manage', cycleId],
     queryFn: () => getCycleRebookStatus(cycleId!),
     enabled: !!cycleId,
@@ -236,15 +237,26 @@ export default function AcademyRebookManage() {
         subject: subject.trim(),
         message: message.trim(),
       });
-      if (!res.ok && res.sent === 0) {
-        toast.error(t('rebookManage.reminderFailed', 'Kon de herinnering niet versturen. Probeer het later opnieuw.'));
-      } else if (res.skipped > 0 || res.failed > 0) {
-        toast.success(t('rebookManage.reminderPartial', '{{sent}} verstuurd, {{skip}} overgeslagen', { sent: res.sent, skip: res.skipped + res.failed }));
+      refetch(); // refresh "last reminded" chips + already-reminded counts so we don't double-nudge
+      if (!res.ok || res.failed > 0) {
+        // Any non-clean outcome (a send failure OR a config/edge failure with no precise retry set,
+        // e.g. email_not_configured — Codex round-8 #3). Keep ONLY the failed identities selected + the
+        // composed text + the dialog open, so the manager can retry exactly them — never a false
+        // success, never asking them to reconstruct an unknowable remainder or clearing unprocessed
+        // work (Codex round-7 #2).
+        const retry = new Map<string, RebookReminderTarget>();
+        for (const target of res.failedTargets) { const k = personKeyOf(target); if (k) retry.set(k, target); }
+        setSelectedGroups(new Set());
+        setSelectedPlayers(retry);
+        toast.error(t('rebookManage.reminderRetryFailed', '{{sent}} verstuurd, {{failed}} mislukt — de mislukte staan nog geselecteerd, probeer opnieuw.', { sent: res.sent, failed: res.failed }));
+        return; // keep the compose dialog + subject/message for the retry
+      }
+      if (res.skipped > 0) {
+        toast.success(t('rebookManage.reminderPartial', '{{sent}} verstuurd, {{skip}} overgeslagen', { sent: res.sent, skip: res.skipped }));
       } else {
         toast.success(t('rebookManage.reminderDone', '{{sent}} herinneringen verstuurd', { sent: res.sent }));
       }
       setComposeOpen(false); setSubject(''); setMessage(''); clearSelection();
-      refetch(); // refresh "last reminded" chips + already-reminded counts so we don't double-nudge
     } finally { setBusy(false); }
   };
 
@@ -327,6 +339,31 @@ export default function AcademyRebookManage() {
 
   if (isLoading) {
     return <div className="p-4 space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /></div>;
+  }
+
+  // Codex round-5 #2: getCycleRebookStatus now fails loud on any read error (claims, invoices,
+  // contacts, …). Render an explicit, retryable error state instead of an empty/mislabelled page —
+  // an empty round or an "everyone unpaid" table would silently misinform the manager.
+  if (isError) {
+    return (
+      <div className="p-4 max-w-6xl mx-auto">
+        <Button variant="ghost" size="sm" onClick={() => navigate(`/app/academy/cycles/${cycleId}`)}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> {t('common:back', 'Terug')}
+        </Button>
+        <div className="mt-8 flex flex-col items-center justify-center gap-4 text-center">
+          <AlertTriangle className="h-10 w-10 text-destructive" />
+          <div>
+            <p className="font-medium">{t('rebookManage.loadFailedTitle', 'Kon de herboeking niet laden')}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {t('rebookManage.loadFailedBody', 'Er ging iets mis bij het ophalen van de gegevens. Probeer het opnieuw.')}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 mr-1${isFetching ? ' animate-spin' : ''}`} /> {t('common:queryError.retry', 'Opnieuw proberen')}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

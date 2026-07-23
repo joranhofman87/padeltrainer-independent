@@ -12,6 +12,7 @@ import { cancelPlayerBookingsInCycle } from '@/lib/bookings';
 import { updateCycleSettings } from '@/lib/cycleWrites';
 import type { CycleSettings } from '@/lib/cycleTypes';
 import { fetchTrainerDisplayNamesByProfileIds } from '@/lib/trainerDisplayNames';
+import { personKeyOf } from '@/lib/personIdentity';
 import type { BulkResult, BulkFailure } from '@/lib/academyPlayerBulk';
 
 export type GroupStatus = 'rebooked' | 'awaiting' | 'declined' | 'members' | 'public';
@@ -39,6 +40,39 @@ export async function fetchAllPages<T>(
     rows.push(...page);
     if (page.length < FETCH_PAGE) return { rows, error: null };
   }
+}
+
+/**
+ * RB05 reachability: which of these guests can be reached (own email OR a verified account), keyed
+ * `g:<id>` to match personKeyOf. Chunked into <=1000-id batches so it never trips the RPC's hard cap
+ * (which now RAISES rather than silently truncating — Codex round-5 #1). Throws on any RPC error, and
+ * — because in the academy-manager view EVERY requested guest is authorized (they hold a claim in this
+ * academy's round) — throws if any requested id is ABSENT from the union of results, so an
+ * authorization/data anomaly can never be misread as "no contact" (which would show a reachable
+ * member as unreachable, or vice-versa).
+ */
+export async function fetchGuestRebookReachable(guestIds: string[]): Promise<Set<string>> {
+  const reachable = new Set<string>();
+  if (guestIds.length === 0) return reachable;
+  const RPC_CAP = 1000;
+  const returned = new Set<string>();
+  for (let i = 0; i < guestIds.length; i += RPC_CAP) {
+    const batch = guestIds.slice(i, i + RPC_CAP);
+    const { data, error } = await supabase.rpc('guests_have_rebook_contact', { _guest_ids: batch });
+    if (error) throw error;
+    for (const r of (data ?? []) as Array<{ guest_id: string; has_contact: boolean }>) {
+      returned.add(r.guest_id);
+      if (r.has_contact) reachable.add(`g:${r.guest_id}`);
+    }
+  }
+  const missing = guestIds.filter((id) => !returned.has(id));
+  if (missing.length > 0) {
+    throw new Error(
+      `guests_have_rebook_contact: ${missing.length} of ${guestIds.length} requested guest(s) missing ` +
+        `from the authorized result — refusing to render absence as "no contact"`,
+    );
+  }
+  return reachable;
 }
 
 export type ClaimResponse = 'claimed' | 'pending' | 'declined' | 'expired';
@@ -362,14 +396,17 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // settings.rebook_round_id. The manage/progress view shows the WHOLE round combined (the owner's
   // "one combined view on how the rebooking is going"), while the cycles stay separate elsewhere.
   // Legacy single-cycle rounds (no rebook_round_id) resolve to just [cycleId] → identical to before.
-  const { data: cycle } = await supabase
+  const { data: cycle, error: cycleErr } = await supabase
     .from('cycles').select('name, owner_type, owner_id, settings').eq('id', cycleId).maybeSingle();
+  // Fail loud (Codex round-5 #2): a swallowed error here would render a nameless, mode-defaulted view
+  // (deferred_split, no round aggregation) as if the cycle simply had no rebook settings.
+  if (cycleErr) throw cycleErr;
   const roundSettings = (cycle?.settings ?? {}) as Record<string, unknown>;
   const roundId = typeof roundSettings.rebook_round_id === 'string' ? roundSettings.rebook_round_id : null;
   let cycleIds = [cycleId];
   const cycleNameById = new Map<string, string>([[cycleId, cycle?.name ?? '']]);
   if (roundId && cycle?.owner_id) {
-    const { data: siblings } = await supabase
+    const { data: siblings, error: sibErr } = await supabase
       .from('cycles')
       .select('id, name')
       .eq('owner_type', cycle.owner_type)
@@ -377,13 +414,16 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       // Match this engine's own cycles only (rebook marker) sharing the round id.
       .eq('settings->>rebook_round_id', roundId)
       .not('settings->>rebook_payment_mode', 'is', null);
+    // Fail loud (Codex round-5 #2): a swallowed error would silently collapse the round to just
+    // [cycleId], showing ONE cycle's members as if that were the whole round.
+    if (sibErr) throw sibErr;
     if (siblings && siblings.length > 0) {
       cycleIds = siblings.map((c) => c.id);
       cycleNameById.clear();
       for (const c of siblings) cycleNameById.set(c.id, c.name);
     }
   }
-  const { rows: slots } = await fetchAllPages<SlotRow>((from, to) =>
+  const { rows: slots, error: slotErr } = await fetchAllPages<SlotRow>((from, to) =>
     supabase
       .from('availability_slots')
       .select('id, start_time, trainer_id, location_id, max_participants, is_public, public_release_status, priority_window_ends_at, member_window_starts_at, member_window_ends_at, cyclus_id')
@@ -391,6 +431,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       .order('id')
       .range(from, to),
   );
+  // Fail loud (Codex round-5 #2): a swallowed slots error would leave slotRows empty → the function
+  // returns the `empty` view (slotRows.length === 0) as if the round genuinely had no slots.
+  if (slotErr) throw slotErr;
   const settingsObj = (cycle?.settings ?? null) as {
     rebook_invitation_message?: unknown; rebook_reminder_message?: unknown; rebook_reminder_subject?: unknown;
   } | null;
@@ -476,14 +519,19 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
       .range(from, to),
   );
   let claimRows = primaryClaims.rows;
-  if (
-    primaryClaims.error &&
-    (primaryClaims.error.code === '42703' ||
-      /reminded_at|response_intent/.test(primaryClaims.error.message ?? ''))
-  ) {
+  if (primaryClaims.error) {
+    // Retain ONLY the intentional deploy-window fallback: reminded_at/response_intent are added by an
+    // owner-deployed migration, so before it lands the extended select 400s (42703 / missing-column).
+    // ANY OTHER error (transient/network/authorization) must fail loud (Codex round-5 #2) — silently
+    // using the empty primaryClaims.rows would render a claim-less round, omitting players.
+    const isMissingColumn =
+      primaryClaims.error.code === '42703' ||
+      /reminded_at|response_intent/.test(primaryClaims.error.message ?? '');
+    if (!isMissingColumn) throw primaryClaims.error;
     const fb = await fetchAllPages<ClaimRow>((from, to) =>
       supabase.from('slot_priority_claims').select(claimCols).in('slot_id', slotIds).order('id').range(from, to),
     );
+    if (fb.error) throw fb.error; // the base-column fallback failing is a real error, not a second fallback
     claimRows = fb.rows;
   }
 
@@ -498,38 +546,50 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     // cast the key to a known column so `.in` type-resolves — the runtime value is unchanged.
     // Round-aware: single-claim invoices span every sibling cycle of the round.
     .in('rebook_cyclus_id' as 'id', cycleIds);
+  // Fail loud (Codex round-5 #2): a swallowed invoice error labels every PAID rebooker as UNPAID —
+  // the manager then chases people who already paid (and the paid/outstanding totals are wrong).
+  if (singleRes.error) throw singleRes.error;
   const singleInvoices = (singleRes.data ?? []) as SingleInvoiceRow[];
   let groupInvoices: GroupInvoiceRow[] = [];
   if (groupIds.length) {
     const groupRes = await supabase.from('invoices').select('rebook_group_id, status, total, public_token').in('rebook_group_id', groupIds);
+    if (groupRes.error) throw groupRes.error; // same paid→unpaid mislabel, for group invoices
     groupInvoices = (groupRes.data ?? []) as GroupInvoiceRow[];
   }
 
   // Names.
   const playerIds = [...new Set(claimRows.map((c) => c.player_id).filter(Boolean))] as string[];
   const guestIds = [...new Set(claimRows.map((c) => c.guest_player_id).filter(Boolean))] as string[];
-  const [{ data: profiles }, { data: guests }] = await Promise.all([
-    playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from('guest_players').select('id, full_name, email, linked_profile_id').in('id', guestIds) : Promise.resolve({ data: [] }),
+  const [
+    { data: profiles, error: profErr },
+    { data: guests, error: guestErr },
+    guestHasEmail,
+  ] = await Promise.all([
+    playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [], error: null }),
+    guestIds.length ? supabase.from('guest_players').select('id, full_name').in('id', guestIds) : Promise.resolve({ data: [], error: null }),
+    // RB05 reachability from the SAME verified-account model the senders deliver by (own email OR a
+    // verified person_links/twin/linked account) — a boolean only, never the account address. Chunked
+    // + fail-loud: a rejected promise here rejects the whole Promise.all → the view load fails loud,
+    // never rendering an RPC failure as "no contact".
+    fetchGuestRebookReachable(guestIds),
   ]);
+  if (profErr) throw profErr;
+  if (guestErr) throw guestErr;
   const nameByKey = new Map<string, string>();
-  // RB05: which invitees have NO email. Only guests can be emailless — a registered player
-  // always has an auth email — so a guest key not in this set is the emailless case.
-  const guestHasEmail = new Set<string>();
-  for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(p.id, (p.full_name ?? '').trim() || '—');
-  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null; linked_profile_id: string | null }>) {
+  // Keyed to match personKeyOf (guest-first, namespaced): a profile is p:<id>, a guest is g:<id>.
+  for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(`p:${p.id}`, (p.full_name ?? '').trim() || '—');
+  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null }>) {
     nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
-    // The invite/reminder senders fall back to the linked profile's email when the guest has
-    // none on file (effectiveGuestEmail, FAM-02 Level 1) — and a linked profile is an auth
-    // account, which always has an email. So a linked guest counts as reachable here.
-    if (g.email?.trim() || g.linked_profile_id) guestHasEmail.add(`g:${g.id}`);
   }
 
   // Single-claim invoices → per identity; group invoices → per group (propagated to members).
   const { isPaid, hasInvoice: hasInvoiceFor, getPayToken } = buildRebookPaidResolver(singleInvoices, groupInvoices);
 
+  // GUEST-FIRST person key (FAM-02), namespaced (p:/g:): a dual-key child and their linked parent
+  // are DISTINCT people, so they stay two selectable rows — and the `targets` posted to
+  // send-rebook-reminder carry both, instead of the old player-first key collapsing them into one.
   const keyOf = (c: { player_id: string | null; guest_player_id: string | null }) =>
-    c.player_id ?? `g:${c.guest_player_id}`;
+    personKeyOf(c) ?? '';
   // Strongest response per (group, player) — a player on a multi-week series has one
   // claim per slot; collapse to claimed > pending > declined.
   const rank = { claimed: 3, pending: 2, declined: 1, expired: 0 } as const;
@@ -565,7 +625,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
         invited: existing?.invited ?? false,
         claimIds: existing?.claimIds ?? [],
         lastRemindedAt: existing?.lastRemindedAt ?? null,
-        hasEmail: c.player_id ? true : guestHasEmail.has(pk),
+        // GUEST-FIRST (FAM-02): a dual-key guest's reachability is the GUEST's own contact
+        // availability (own email OR a linked account), NOT the raw player_id — otherwise the UI
+        // advertises a reminder route the sender now skips. A pure profile always has an auth email.
+        hasEmail: c.guest_player_id ? guestHasEmail.has(pk) : true,
         claimToken: c.claim_token ?? existing?.claimToken ?? null,
       });
     }
@@ -723,20 +786,72 @@ export interface RebookReminderResult {
   sent: number;
   skipped: number;
   failed: number;
+  /** The exact target identities whose send FAILED — the retry set (Codex round-7 #2). The UI
+   *  re-selects only these, never asking the manager to reconstruct an unknowable remainder. */
+  failedTargets: RebookReminderTarget[];
   reason?: string;
 }
 
-/** Email a custom reminder to the selected players of this cycle (server resolves + scopes). */
+/**
+ * Email a custom reminder to the selected players of this cycle (server resolves + scopes). Dedups the
+ * targets by person and sends them in <=200-identity BATCHES (Codex round-7 #2): each identity is
+ * reminded EXACTLY ONCE across the batches — no silent server-side cap, no duplicate on retry, and no
+ * "select the unknowable rest". Aggregates the per-batch results; `ok` is true only when every batch
+ * fully completed.
+ */
 export async function sendRebookReminder(args: {
   cycleId: string;
   targets: RebookReminderTarget[];
   subject: string;
   message: string;
 }): Promise<RebookReminderResult> {
-  const { data, error } = await supabase.functions.invoke('send-rebook-reminder', { body: args });
-  if (error) return { ok: false, sent: 0, skipped: 0, failed: args.targets.length, reason: error.message };
-  const r = (data ?? {}) as Partial<RebookReminderResult>;
-  return { ok: Boolean(r.ok), sent: Number(r.sent ?? 0), skipped: Number(r.skipped ?? 0), failed: Number(r.failed ?? 0), reason: r.reason };
+  const BATCH = 200;
+  const seen = new Set<string>();
+  const deduped = args.targets.filter((t) => {
+    const k = personKeyOf(t) ?? '';
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  let ok = true;
+  let sent = 0, skipped = 0, failed = 0;
+  const failedTargets: RebookReminderTarget[] = [];
+  let reason: string | undefined;
+
+  for (let i = 0; i < deduped.length; i += BATCH) {
+    const batch = deduped.slice(i, i + BATCH);
+    const { data, error } = await supabase.functions.invoke('send-rebook-reminder', {
+      body: { cycleId: args.cycleId, targets: batch, subject: args.subject, message: args.message },
+    });
+    if (error) {
+      // The whole batch invocation failed — none went out; they are ALL part of the retry set.
+      ok = false;
+      failed += batch.length;
+      failedTargets.push(...batch);
+      if (!reason) reason = error.message;
+      continue;
+    }
+    const r = (data ?? {}) as Partial<RebookReminderResult> & { failedTargets?: RebookReminderTarget[]; reason?: string };
+    sent += Number(r.sent ?? 0);
+    skipped += Number(r.skipped ?? 0);
+    const batchFailedTargets = Array.isArray(r.failedTargets) ? r.failedTargets : [];
+    if (r.ok === false && batchFailedTargets.length === 0) {
+      // A non-clean batch that returned NO precise retry set (e.g. email_not_configured, or any
+      // edge/config failure producing no per-recipient list) — treat the WHOLE batch as failed so it
+      // stays in the retry set and the UI never renders a false success (Codex round-8 #3).
+      ok = false;
+      failed += batch.length;
+      failedTargets.push(...batch);
+    } else {
+      if (r.ok === false) ok = false;
+      failed += Number(r.failed ?? 0);
+      failedTargets.push(...batchFailedTargets);
+    }
+    if (!reason && r.reason) reason = r.reason;
+  }
+
+  return { ok, sent, skipped, failed, failedTargets, reason };
 }
 
 // ===== Discovery: list an academy's rebook rounds =====

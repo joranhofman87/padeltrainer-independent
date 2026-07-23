@@ -15,20 +15,38 @@
 type Row = Record<string, any>;
 type RpcHandler = (args: any) => { data?: any; error?: any };
 
+type MockError = { code?: string; message?: string };
+
 let _data: Record<string, Row[]> = {};
 let _rpc: Record<string, RpcHandler> = {};
+let _errors: Record<string, MockError> = {};
 
-/** Configure the rows each table returns + optional rpc handlers (call in beforeEach). */
-export function setMockData(data: Record<string, Row[]>, rpc: Record<string, RpcHandler> = {}): void {
+/**
+ * Configure the rows each table returns + optional rpc handlers (call in beforeEach). The optional
+ * third arg injects a per-table error: any terminal read of that table resolves to `{ data: null,
+ * error }`, letting a test exercise a lib's fail-loud path.
+ */
+export function setMockData(
+  data: Record<string, Row[]>,
+  rpc: Record<string, RpcHandler> = {},
+  errors: Record<string, MockError> = {},
+): void {
   _data = data;
   _rpc = rpc;
+  _errors = errors;
 }
 
 function builder(table: string) {
   const filters: Array<(r: Row) => boolean> = [];
-  const applied = (): Row[] => (_data[table] ?? []).filter((r) => filters.every((f) => f(r)));
-  const result = () => ({ data: applied(), error: null });
-  const first = () => ({ data: applied()[0] ?? null, error: null });
+  let rangeFrom: number | null = null;
+  let rangeTo: number | null = null;
+  const applied = (): Row[] => {
+    const rows = (_data[table] ?? []).filter((r) => filters.every((f) => f(r)));
+    return rangeFrom == null ? rows : rows.slice(rangeFrom, (rangeTo ?? rows.length) + 1);
+  };
+  const err = (): MockError | null => _errors[table] ?? null;
+  const result = () => (err() ? { data: null, error: err() } : { data: applied(), error: null });
+  const first = () => (err() ? { data: null, error: err() } : { data: applied()[0] ?? null, error: null });
 
   const api: any = {
     select: () => api,
@@ -58,10 +76,17 @@ function builder(table: string) {
     },
     order: () => api,
     limit: () => api,
+    // `.range(from, to)` (inclusive) for fetchAllPages-style pagination; a small fixture returns a
+    // short first page so the caller's page loop terminates after one request.
+    range: (from: number, to: number) => {
+      rangeFrom = from;
+      rangeTo = to;
+      return api;
+    },
     maybeSingle: () => Promise.resolve(first()),
     single: () => Promise.resolve(first()),
     // make the builder awaitable → `{ data, error }`
-    then: (resolve: (v: { data: Row[]; error: null }) => unknown) => Promise.resolve(result()).then(resolve),
+    then: (resolve: (v: { data: Row[] | null; error: MockError | null }) => unknown) => Promise.resolve(result()).then(resolve),
   };
   return api;
 }

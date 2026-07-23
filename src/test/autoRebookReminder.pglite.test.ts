@@ -6,7 +6,7 @@
 // genuine non-responders due for a reminder: claim still 'pending' (not booked), did NOT
 // decline, NOT already reminded, priority window closing within the lead time, has an email,
 // on a rebook round with auto-reminder not disabled — one representative row per invitee.
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,7 +48,16 @@ beforeAll(async () => {
 
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, name text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text, email text);
-    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text);
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text, linked_profile_id uuid, twin_of_profile_id uuid, split_frozen boolean DEFAULT false);
+    CREATE TABLE public.persons (id uuid PRIMARY KEY);
+    CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid, profile_id uuid, guest_player_id uuid);
+    CREATE TABLE public.rate_limits (identifier text, endpoint text, request_count int, window_start timestamptz, UNIQUE(identifier, endpoint));
+    CREATE TABLE public.academy_managers (academy_profile_id uuid, user_id uuid);
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $auth$
+      SELECT NULLIF(current_setting('test.uid', true), '')::uuid $auth$;
+    CREATE FUNCTION public.is_guest_split_frozen(_guest_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $frz$
+      SELECT COALESCE((SELECT split_frozen FROM public.guest_players WHERE id = _guest_id), false) $frz$;
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);
     CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, cyclus_id uuid, priority_window_ends_at timestamptz);
     CREATE TABLE public.slot_priority_claims (
@@ -100,8 +109,22 @@ beforeAll(async () => {
   // The app_now() clock migration re-emits the detection RPC with now() → app_now(); loading it
   // last lets the time-travel block below set app.fake_now and move "now" around a fixed deadline.
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260724100000_app_now_clock.sql'), 'utf8'));
-  // Per-cycle lead override (settings.rebook_reminder_lead_hours) — the version under test below.
+  // Per-cycle lead override (settings.rebook_reminder_lead_hours).
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260806100000_rebook_reminder_lead_per_cycle.sql'), 'utf8'));
+  // The member-open cron trio (real defs live in 20260714110000 / 20260817100000) — stubbed with the
+  // SAME signatures so the PR 10d migration's grant lockdown on them applies without erroring here.
+  await db.exec(`
+    CREATE FUNCTION public.rebook_cycles_needing_member_open_notice() RETURNS TABLE(cycle_id uuid)
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT NULL::uuid WHERE false $fn$;
+    CREATE FUNCTION public.claim_rebook_member_open_notice(_cycle_id uuid) RETURNS boolean
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT true $fn$;
+    CREATE FUNCTION public.unclaim_rebook_member_open_notice(_cycle_id uuid) RETURNS void
+      LANGUAGE sql SECURITY DEFINER AS $fn$ SELECT $fn$;
+  `);
+  // PR 10d: guest-first re-emit (+ the bump_rebook_reminders guard). This must preserve every
+  // eligibility/lead/app_now behaviour above for pure-profile + pure-guest rows (their guest-first
+  // key equals the old player-first key), so the existing suite is now regression coverage for it.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260927100000_rebook_identity_guest_first.sql'), 'utf8'));
 });
 
 describe('rebook_claims_needing_auto_reminder', () => {
@@ -192,5 +215,43 @@ describe('app_now() time-travel (fake clock)', () => {
   it('after the deadline has passed → NOT due', async () => {
     await db.query(atOffset(`+ interval '1 hour'`));
     expect(await dueKeys()).not.toContain(P1);
+  });
+});
+
+// Finding #3 end-to-end: the auto-reminder RPC delivers a twin-linked guest (no own email) to their
+// VERIFIED ACCOUNT profile's email — proving the RPC's guest_verified_account_profile join, not just
+// the shared helper. Isolated in its own cycle + cleaned up so the shared assertions are unaffected.
+describe('auto-reminder RPC: guest account-email fallback (finding #3)', () => {
+  const C_ACC = 'c1000000-0000-0000-0000-0000000000e1';
+  const S_ACC = '50000000-0000-0000-0000-0000000000e1';
+  const ACC = 'ac000000-0000-0000-0000-0000000000e1';       // account profile
+  const G_TWIN = 'bb000000-0000-0000-0000-0000000000e1';    // twin guest, NO own email
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.profiles (id, full_name, email) VALUES ('${ACC}','Account','acc@example.com');
+      INSERT INTO public.guest_players (id, full_name, email, twin_of_profile_id) VALUES ('${G_TWIN}','Twin Guest', NULL, '${ACC}');
+      INSERT INTO public.cycles (id, name, owner_type, owner_id, settings) VALUES ('${C_ACC}','AccRonde','academy','${ACAD}','{"rebook_payment_mode":"upfront"}');
+      INSERT INTO public.availability_slots (id, cyclus_id, priority_window_ends_at) VALUES ('${S_ACC}','${C_ACC}', now() + interval '12 hours');
+      INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status, response_intent, reminded_at) VALUES ('${S_ACC}', NULL, '${G_TWIN}', 'pending', NULL, NULL);
+    `);
+  });
+  afterAll(async () => {
+    await db.exec(`
+      DELETE FROM public.slot_priority_claims WHERE slot_id = '${S_ACC}';
+      DELETE FROM public.availability_slots WHERE id = '${S_ACC}';
+      DELETE FROM public.cycles WHERE id = '${C_ACC}';
+      DELETE FROM public.guest_players WHERE id = '${G_TWIN}';
+      DELETE FROM public.profiles WHERE id = '${ACC}';
+    `);
+  });
+
+  it('a twin-linked guest with no own email is delivered to the verified ACCOUNT email + shows their own name', async () => {
+    const row = (await db.query<{ guest_player_id: string | null; recipient_email: string; recipient_name: string }>(
+      `SELECT guest_player_id, recipient_email, recipient_name FROM public.rebook_claims_needing_auto_reminder(24) WHERE guest_player_id = '${G_TWIN}'`,
+    )).rows[0];
+    expect(row).toBeTruthy();
+    expect(row.recipient_email).toBe('acc@example.com'); // NOT dropped, NOT the raw player_id
+    expect(row.recipient_name).toBe('Twin Guest');       // own name wins
   });
 });

@@ -13,6 +13,7 @@ import { ArrowLeft, ChevronRight, Loader2, Send, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { createAndDrainRebookRound } from '@/lib/rebookInviteSend';
 import { getAcademyLocationsWithDetails } from '@/lib/academy';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
 import { HolidayRangeEditor } from './HolidayRangeEditor';
@@ -127,6 +128,9 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Live drain progress (Codex round-10 #4): the client sends invites in chunks after creating the
+  // round, so show "X/Y" instead of an indefinite spinner during a potentially long send.
+  const [sendProgress, setSendProgress] = useState<{ sent: number; total: number } | null>(null);
   const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [ackNoEmail, setAckNoEmail] = useState(false);
@@ -461,35 +465,50 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
     if (!inputsValid || !preview || preview.players <= 0 || submitting) return;
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-        body: baseBody,
+      // Create the round WITHOUT sending, then drain invites in bounded, resumable chunks — the SAME
+      // shared orchestration AcademyNewRoundWizard uses (Codex round-9 #1): never an inline blast that
+      // a timeout could leave half-sent on a committed round.
+      const result = await createAndDrainRebookRound(baseBody, {
+        invoke: (fn, args) => supabase.functions.invoke(fn, args),
+        onProgress: ({ totalSent, total }) => setSendProgress({ sent: totalSent, total }),
       });
-      if (error) throw error;
-      if (data?.ok === false && data?.reason === 'already_exists') {
-        toast.error(
-          t('rebookCohort.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'),
+      if (result.phase === 'creation_failed') {
+        // Round NOT created (Codex round-9 #2) — show the reason, do NOT navigate.
+        if (result.reason === 'already_exists') toast.error(t('rebookCohort.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'));
+        else if (result.reason === 'slot_overlap') toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
+        else if (result.reason === 'nothing_to_rebook') toast.error(t('rebookCohort.nothingToRebook', 'Er zijn geen spelers om te herboeken.'));
+        else toast.error(getFriendlyErrorMessage(new Error(result.reason), t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
+        return;
+      }
+      // Round CREATED (navigable). A partial/unknown delivery ⇒ resend from the manage page; never a
+      // false "all invited" success. leftover===null means the count is UNKNOWN (a send threw before
+      // any count was learned — Codex round-10 #1), so use a no-numbers copy, never a fabricated 0.
+      if (result.leftover === null) {
+        toast.warning(t('rebookCohort.partialUnknown', 'Ronde aangemaakt, maar het versturen van de uitnodigingen is onderbroken — verstuur ze opnieuw vanaf de beheerpagina.'));
+      } else if (result.leftover > 0 || result.outcome === 'error') {
+        toast.warning(
+          t('rebookCohort.partial', '{{sent}} uitnodigingen verstuurd; {{left}} moeten nog worden verstuurd — via de beheerpagina.', {
+            sent: result.totalSent,
+            left: result.leftover,
+          }),
         );
-        return;
+      } else {
+        toast.success(
+          t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
+            groups: result.groups,
+            players: result.players,
+            invites: result.totalSent,
+          }),
+        );
       }
-      if (data?.ok === false && data?.reason === 'slot_overlap') {
-        toast.error(t('newRound.slotOverlap', 'De nieuwe periode botst met bestaande sessies van deze trainer. Kies een andere startdatum of tijd.'));
-        return;
-      }
-      toast.success(
-        t('rebookCohort.success', '{{groups}} groepen · {{players}} spelers uitgenodigd · {{invites}} e-mails', {
-          groups: Number(data?.groups ?? 0),
-          players: Number(data?.players ?? 0),
-          invites: Number(data?.invitesSent ?? 0),
-        }),
-      );
-      // Land on the new cycle's rebook management view so the academy can track
-      // responses / payments and manage the round (falls back to backHref).
-      const newCycleId = data?.targetCycleId as string | undefined;
-      navigate(newCycleId ? `/app/academy/cycles/${newCycleId}/rebook` : effectiveBackHref);
+      // Land on the new cycle's rebook management view so the academy can track responses / payments
+      // and (on a partial) resend the failed invites via the resume-sending drain.
+      navigate(result.targetCycleId ? `/app/academy/cycles/${result.targetCycleId}/rebook` : effectiveBackHref);
     } catch (e) {
       toast.error(getFriendlyErrorMessage(e, t('rebookCohort.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {
       setSubmitting(false);
+      setSendProgress(null);
     }
   };
 
@@ -640,9 +659,11 @@ export default function RebookCohortWizard({ academyProfileId, backHref, extendR
           </Button>
           <Button onClick={handleSubmit} disabled={submitting || (confirmData.noEmailTotal > 0 && !ackNoEmail)}>
             {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-            {submitting
-              ? t('common:saving', 'Bezig...')
-              : t('rebookCohort.confirmSendCount', 'Verstuur {{count}} uitnodigingen', { count: emailCount })}
+            {sendProgress
+              ? t('rebookCohort.sending', 'Uitnodigingen versturen… {{sent}}/{{total}}', { sent: sendProgress.sent, total: sendProgress.total })
+              : submitting
+                ? t('common:saving', 'Bezig...')
+                : t('rebookCohort.confirmSendCount', 'Verstuur {{count}} uitnodigingen', { count: emailCount })}
           </Button>
         </div>
       </div>

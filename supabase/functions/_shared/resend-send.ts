@@ -9,6 +9,10 @@ export type ResendSendPayload = {
   subject: string;
   html: string;
   attachments?: Array<{ filename: string; content: string | Uint8Array }>;
+  // Optional Resend body fields — the request body is JSON.stringify(payload), so these pass straight
+  // through when present and are omitted otherwise (backward-compatible for existing callers).
+  reply_to?: string | string[];
+  headers?: Record<string, string>;
 };
 
 export type ResendSendOutcome =

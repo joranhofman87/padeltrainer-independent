@@ -546,10 +546,15 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
   // Resolve each cycle's payment mode so the card copy can be mode-aware.
   const cyclusIds = [...new Set(claims.map((c) => c.cyclus_id).filter((id): id is string => !!id))];
   if (cyclusIds.length > 0) {
-    const { data: cycleRows } = await supabase
+    const { data: cycleRows, error: cycleErr } = await supabase
       .from('cycles')
       .select('id, settings, start_date')
       .in('id', cyclusIds);
+    // Fail loud (Codex round-6 #4): a swallowed error here leaves modeByCycle/startDateByCycle empty
+    // → every pending claim silently defaults to 'deferred_split' + null start_date, so an UPFRONT
+    // rebook shows the player the DEFERRED "pay later, split" copy on PlayerRebookCard. The card is
+    // wrapped in react-query, which renders its own error/retry state, so throwing is safe.
+    if (cycleErr) throw cycleErr;
     const modeByCycle = new Map<string, RebookPaymentMode>(
       (cycleRows || []).map((row) => {
         const settings = (row.settings ?? {}) as Record<string, unknown>;
@@ -806,12 +811,42 @@ export async function manageRebookGroup(token: string, args: {
 }
 
 /** Phase 4: fire-and-forget — email the people the captain just booked ("X re-booked you" /
- *  "you've been added by X"). Idempotent server-side via confirmation_sent_at, so a dropped call
- *  is recovered on the next group action; never block the UI on it. */
+ *  "you've been added by X"). We never block the UI on it, but we DO surface a non-clean result for
+ *  observability (Codex round-5 #3): the edge fn only dedupes duplicate sends within Resend's 24h
+ *  idempotency-key window — it is NOT durable recovery (that is a PR 10c acceptance item), so an
+ *  invoke error, ok:false, or any unresolved (sent-but-un-stamped) send is a real signal, not a no-op. */
 export function sendRebookGroupConfirmations(token: string): void {
   void supabase.functions
     .invoke('send-rebook-group-confirmation', { body: { token } })
-    .catch(() => { /* best-effort; the edge fn is idempotent */ });
+    .then(({ data, error }) => {
+      const result = data as { ok?: boolean; throttled?: boolean; failed?: number; skipped?: number; unresolved?: number } | null;
+      // Surface any non-clean outcome (Codex round-6 #2): an invoke error, ok:false, a THROTTLED call
+      // (a legitimate group edit that sent nothing and needs a later retry), an unresolved/failed send,
+      // OR a skip — a skipped member means we had no email for someone the captain just booked (a
+      // newly-added member REQUIRES the welcome email), which is a contact/invariant signal.
+      if (
+        error || result?.ok === false || result?.throttled === true ||
+        (result?.unresolved ?? 0) > 0 || (result?.failed ?? 0) > 0 || (result?.skipped ?? 0) > 0
+      ) {
+        logger.warn('rebook group-confirmation did not fully resolve', {
+          component: 'priorityClaims',
+          action: 'sendRebookGroupConfirmations',
+          invokeError: error?.message ?? null,
+          ok: result?.ok ?? null,
+          throttled: result?.throttled ?? null,
+          failed: result?.failed ?? null,
+          skipped: result?.skipped ?? null,
+          unresolved: result?.unresolved ?? null,
+        });
+      }
+    })
+    .catch((e) => {
+      logger.warn('rebook group-confirmation invoke threw', {
+        component: 'priorityClaims',
+        action: 'sendRebookGroupConfirmations',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
 }
 
 export interface AcceptAndPayResult {
