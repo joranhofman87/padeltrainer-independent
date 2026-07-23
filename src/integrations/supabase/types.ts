@@ -8918,6 +8918,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      consume_rate_limit: {
+        Args: {
+          _endpoint: string
+          _identifier: string
+          _max: number
+          _window_ms: number
+        }
+        Returns: boolean
+      }
       count_cycles_intakes: {
         Args: { _cycle_ids: string[] }
         Returns: {
@@ -9758,6 +9767,13 @@ export type Database = {
       guest_verified_account_profile: {
         Args: { _guest_id: string }
         Returns: string
+      }
+      guests_have_rebook_contact: {
+        Args: { _guest_ids: string[] }
+        Returns: {
+          guest_id: string
+          has_contact: boolean
+        }[]
       }
       has_role: {
         Args: {
