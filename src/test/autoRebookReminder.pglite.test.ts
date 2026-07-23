@@ -59,7 +59,7 @@ beforeAll(async () => {
     CREATE FUNCTION public.is_guest_split_frozen(_guest_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $frz$
       SELECT COALESCE((SELECT split_frozen FROM public.guest_players WHERE id = _guest_id), false) $frz$;
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);
-    CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, cyclus_id uuid, priority_window_ends_at timestamptz);
+    CREATE TABLE public.availability_slots (id uuid PRIMARY KEY, cyclus_id uuid, start_time timestamptz, priority_window_ends_at timestamptz);
     CREATE TABLE public.slot_priority_claims (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid, guest_player_id uuid,
       status text, response_intent text, reminded_at timestamptz, reminder_count int DEFAULT 0,
@@ -79,13 +79,18 @@ beforeAll(async () => {
       ('${C_OPTOUT}','Ronde opt-out','academy','${ACAD}','{"rebook_payment_mode":"upfront","rebook_auto_reminder":false}'),
       ('${C_NOTREBOOK}','Gewone cyclus','academy','${ACAD}','{}');
 
-    INSERT INTO public.availability_slots (id, cyclus_id, priority_window_ends_at) VALUES
-      ('${S_SOON_A}','${C_REBOOK}', now() + interval '12 hours'),
-      ('${S_SOON_B}','${C_REBOOK}', now() + interval '12 hours'),
-      ('${S_FAR}','${C_REBOOK}',    now() + interval '48 hours'),
-      ('${S_PAST}','${C_REBOOK}',   now() - interval '2 hours'),
-      ('${S_OPTOUT}','${C_OPTOUT}', now() + interval '12 hours'),
-      ('${S_NOTREBOOK}','${C_NOTREBOOK}', now() + interval '12 hours');
+    -- start_time (the SESSION time) is set for every slot so the PR 10d future-session guard
+    -- (s.start_time > app_now()) leaves each existing eligibility decision unchanged: future sessions
+    -- for the open windows, a past session for the already-closed window (S_PAST). Session starts an
+    -- hour+ after its priority window closes; S_SOON_A sits 2h past its window so the app_now
+    -- time-travel block never brushes the guard against equality (window drives those cases).
+    INSERT INTO public.availability_slots (id, cyclus_id, start_time, priority_window_ends_at) VALUES
+      ('${S_SOON_A}','${C_REBOOK}', now() + interval '14 hours', now() + interval '12 hours'),
+      ('${S_SOON_B}','${C_REBOOK}', now() + interval '14 hours', now() + interval '12 hours'),
+      ('${S_FAR}','${C_REBOOK}',    now() + interval '50 hours', now() + interval '48 hours'),
+      ('${S_PAST}','${C_REBOOK}',   now() - interval '1 hour',   now() - interval '2 hours'),
+      ('${S_OPTOUT}','${C_OPTOUT}', now() + interval '14 hours', now() + interval '12 hours'),
+      ('${S_NOTREBOOK}','${C_NOTREBOOK}', now() + interval '14 hours', now() + interval '12 hours');
 
     INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status, response_intent, reminded_at) VALUES
       ('${S_SOON_A}','${P1}', NULL, 'pending', NULL, NULL),                       -- ELIGIBLE
@@ -125,6 +130,10 @@ beforeAll(async () => {
   // eligibility/lead/app_now behaviour above for pure-profile + pure-guest rows (their guest-first
   // key equals the old player-first key), so the existing suite is now regression coverage for it.
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260927100000_rebook_identity_guest_first.sql'), 'utf8'));
+  // PR 10d follow-up: the future-session guard (s.start_time > app_now()). A past session can never
+  // qualify even with a malformed future priority deadline. Must preserve every eligibility decision
+  // above (all the existing assertions become its regression coverage), and adds the new guard.
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations', '20260930100000_rebook_auto_reminder_future_slot_guard.sql'), 'utf8'));
 });
 
 describe('rebook_claims_needing_auto_reminder', () => {
@@ -232,7 +241,7 @@ describe('auto-reminder RPC: guest account-email fallback (finding #3)', () => {
       INSERT INTO public.profiles (id, full_name, email) VALUES ('${ACC}','Account','acc@example.com');
       INSERT INTO public.guest_players (id, full_name, email, twin_of_profile_id) VALUES ('${G_TWIN}','Twin Guest', NULL, '${ACC}');
       INSERT INTO public.cycles (id, name, owner_type, owner_id, settings) VALUES ('${C_ACC}','AccRonde','academy','${ACAD}','{"rebook_payment_mode":"upfront"}');
-      INSERT INTO public.availability_slots (id, cyclus_id, priority_window_ends_at) VALUES ('${S_ACC}','${C_ACC}', now() + interval '12 hours');
+      INSERT INTO public.availability_slots (id, cyclus_id, start_time, priority_window_ends_at) VALUES ('${S_ACC}','${C_ACC}', now() + interval '14 hours', now() + interval '12 hours');
       INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status, response_intent, reminded_at) VALUES ('${S_ACC}', NULL, '${G_TWIN}', 'pending', NULL, NULL);
     `);
   });
@@ -253,5 +262,48 @@ describe('auto-reminder RPC: guest account-email fallback (finding #3)', () => {
     expect(row).toBeTruthy();
     expect(row.recipient_email).toBe('acc@example.com'); // NOT dropped, NOT the raw player_id
     expect(row.recipient_name).toBe('Twin Guest');       // own name wins
+  });
+});
+
+// PR 10d follow-up (owner-requested): a PAST session must NEVER produce an auto-reminder, even if its
+// priority deadline is MALFORMED and still in the future. Migration 20260930100000 adds the guard
+// `s.start_time > app_now()`. This row is eligible on EVERY other axis (rebook round, pending, not
+// declined, not reminded, has email, window future + within the 24h lead) — so the past start_time is
+// the ONLY thing excluding it, proven load-bearing by flipping start_time to the future.
+describe('future-session guard: a past session never reminds (PR 10d follow-up)', () => {
+  const C_PS = 'c1000000-0000-0000-0000-0000000000f1';
+  const S_PS = '50000000-0000-0000-0000-0000000000f1';
+  const P_PS = 'aa000000-0000-0000-0000-0000000000f1';
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.profiles (id, full_name, email) VALUES ('${P_PS}','PastSession','ps@example.com');
+      INSERT INTO public.cycles (id, name, owner_type, owner_id, settings) VALUES ('${C_PS}','PastRonde','academy','${ACAD}','{"rebook_payment_mode":"upfront"}');
+      -- session ALREADY happened (start_time in the past) but the priority deadline is malformed-future (+12h, within lead)
+      INSERT INTO public.availability_slots (id, cyclus_id, start_time, priority_window_ends_at)
+        VALUES ('${S_PS}','${C_PS}', now() - interval '2 hours', now() + interval '12 hours');
+      INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, status, response_intent, reminded_at)
+        VALUES ('${S_PS}','${P_PS}', NULL, 'pending', NULL, NULL);
+    `);
+  });
+  afterAll(async () => {
+    await db.exec(`
+      DELETE FROM public.slot_priority_claims WHERE slot_id = '${S_PS}';
+      DELETE FROM public.availability_slots WHERE id = '${S_PS}';
+      DELETE FROM public.cycles WHERE id = '${C_PS}';
+      DELETE FROM public.profiles WHERE id = '${P_PS}';
+    `);
+  });
+
+  it('a past session with a future priority deadline returns NO reminder', async () => {
+    const keys = (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+    expect(keys).not.toContain(P_PS);
+  });
+
+  it('is excluded ONLY by the past start_time — moving the session into the future makes it due (guard is load-bearing)', async () => {
+    await db.query(`UPDATE public.availability_slots SET start_time = now() + interval '13 hours' WHERE id = '${S_PS}'`);
+    const keys = (await rows()).map((x) => x.player_id ?? `g:${x.guest_player_id}`);
+    expect(keys).toContain(P_PS); // only the start_time axis changed → it flips to eligible
+    await db.query(`UPDATE public.availability_slots SET start_time = now() - interval '2 hours' WHERE id = '${S_PS}'`);
   });
 });
