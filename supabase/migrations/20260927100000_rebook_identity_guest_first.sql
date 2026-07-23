@@ -222,14 +222,26 @@ GRANT EXECUTE ON FUNCTION public.append_rebook_member_open_notified(uuid, text[]
 --      caller even under SECURITY DEFINER) manages the academy that owns a cycle the guest has a
 --      rebook claim in. A cross-tenant / unauthorized guest id is simply ABSENT from the result
 --      (fail-closed), so an ordinary authenticated user cannot probe another tenant's guests. Input
---      cardinality is bounded to prevent a large-array probe.
+--      cardinality is capped at 1000 — over the cap RAISES (never a silent truncation, which the UI
+--      would misread as "nobody has contact"); the client chunks into <=1000 batches.
 CREATE OR REPLACE FUNCTION public.guests_have_rebook_contact(_guest_ids uuid[])
 RETURNS TABLE (guest_id uuid, has_contact boolean)
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+BEGIN
+  -- Oversize input FAILS LOUD (Codex round-5 #1). A silent WHERE cap (`cardinality <= 1000`) would
+  -- return an EMPTY set for a >1000-id request, and getCycleRebookStatus reads every ABSENT id as
+  -- has_contact=false → a reachable member shown as unreachable. The client chunks into <=1000
+  -- batches; this guard turns any un-chunked over-cap call into an explicit error, never a silent
+  -- truncation. Signature unchanged (LANGUAGE only) → no types drift.
+  IF cardinality(_guest_ids) > 1000 THEN
+    RAISE EXCEPTION 'guests_have_rebook_contact: too many ids (%); max 1000 per call', cardinality(_guest_ids)
+      USING ERRCODE = 'program_limit_exceeded';
+  END IF;
+  RETURN QUERY
   WITH authorized AS (
     SELECT DISTINCT spc.guest_player_id AS gid
     FROM public.slot_priority_claims spc
@@ -237,7 +249,6 @@ AS $$
     JOIN public.cycles c ON c.id = s.cyclus_id AND c.owner_type = 'academy'
     JOIN public.academy_managers am ON am.academy_profile_id = c.owner_id AND am.user_id = auth.uid()
     WHERE spc.guest_player_id = ANY(_guest_ids)
-      AND cardinality(_guest_ids) <= 1000
   )
   SELECT a.gid,
     (NULLIF(btrim(gp.email), '') IS NOT NULL
@@ -248,6 +259,7 @@ AS $$
      ))
   FROM authorized a
   JOIN public.guest_players gp ON gp.id = a.gid;
+END;
 $$;
 REVOKE ALL ON FUNCTION public.guests_have_rebook_contact(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.guests_have_rebook_contact(uuid[]) TO authenticated, service_role;

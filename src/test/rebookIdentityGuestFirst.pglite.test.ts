@@ -374,4 +374,26 @@ describe('PR 10d #1 — guests_have_rebook_contact is academy-scoped (no cross-t
   it('an ordinary authenticated user managing no academy gets NOTHING', async () => {
     expect(await asUser('dd000000-0000-0000-0000-0000000000ff', [CHILD, CHILD2])).toEqual([]);
   });
+
+  // Codex round-5 #1: the 1000-id cap must FAIL LOUD, not silently truncate to an empty set (which the
+  // UI reads as "nobody has contact"). The client chunks <=1000; an un-chunked over-cap call errors.
+  it('an over-cap request (1001 ids) RAISES instead of silently returning empty', async () => {
+    const oversized = Array.from({ length: 1001 }, (_, i) => `d1000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
+    await expect(asUser(MGR, oversized)).rejects.toThrow(/too many ids/i);
+  });
+
+  it('exactly 1000 ids is allowed (boundary is > 1000, not >= 1000)', async () => {
+    const atCap = Array.from({ length: 1000 }, (_, i) => `d1000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
+    // None of these synthetic ids are CHILD/CHILD2, so the authorized set is empty — but it does NOT raise.
+    expect(await asUser(MGR, atCap)).toEqual([]);
+  });
+
+  // A partial request (one authorized guest + one the manager has no claim for) returns a row ONLY for
+  // the authorized guest; the other is ABSENT — which the client treats as an anomaly (throws), never
+  // as has_contact=false. This pins that absence is authorization, not reachability.
+  it('a mixed request returns rows only for authorized guests (unrelated guest absent)', async () => {
+    const UNRELATED = 'd2000000-0000-0000-0000-000000000099'; // no claim in MGR's academy
+    const rows = await asUser(MGR, [CHILD, UNRELATED]);
+    expect(rows.map((r) => r.guest_id)).toEqual([CHILD]); // UNRELATED omitted, not returned false
+  });
 });

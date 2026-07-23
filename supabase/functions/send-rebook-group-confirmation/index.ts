@@ -23,6 +23,7 @@ import { sendResendEmail } from "../_shared/resend-send.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
+import { groupConfirmOk, type MemberConfirmStep, runGroupConfirmations } from "../_shared/rebook-group-confirm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,7 +109,7 @@ serve(async (req: Request) => {
       _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
     });
     if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
-    if (allowed !== true) return json({ ok: true, throttled: true, sent: 0, skipped: 0, failed: 0 });
+    if (allowed !== true) return json({ ok: true, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
 
     // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
     const { data: rows, error: rowsErr } = await admin
@@ -124,7 +125,7 @@ serve(async (req: Request) => {
       .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
     if (rowsErr) throw new Error(`member read failed: ${rowsErr.message}`); // fail loud — not a silent zero-send
     const claims = (rows ?? []) as unknown as ClaimRow[];
-    if (claims.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0 });
+    if (claims.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
 
     // Academy timezone (slots stored UTC) + cycle payment-mode/start, mirrored from the invite fn.
     const acadIds = [...new Set(claims.map((c) => c.availability_slots?.academy_profile_id).filter((x): x is string => !!x))];
@@ -195,15 +196,13 @@ serve(async (req: Request) => {
         .filter((k): k is string => !!k),
     );
 
-    let sent = 0, skipped = 0, failed = 0, unresolved = 0;
-
-    for (const m of members.values()) {
+    const tally = await runGroupConfirmations(members.values(), async (m): Promise<MemberConfirmStep> => {
       // VERIFIED contact email: a guest is reached at their OWN email then their VERIFIED account,
       // never the raw player_id; a pure profile uses its own email.
       const recipientEmail = (m.guest_player_id
         ? guestContactEmail(m.guest_player_id, guestMap)
         : (m.rep.profiles?.email?.trim() || null)) ?? "";
-      if (!recipientEmail) { skipped++; continue; } // no verified email → can't send (leave unstamped)
+      if (!recipientEmail) return "skipped"; // no verified email → can't send (leave unstamped)
 
       // GUEST-FIRST stamp scope (FAM-02): a guest → guest_player_id; a profile → player_id AND
       // guest_player_id IS NULL, so a profile stamp NEVER consumes a dual-key child's rows.
@@ -261,8 +260,7 @@ serve(async (req: Request) => {
         { from: FROM, to: [recipientEmail], subject, html },
         { idempotencyKey: `rebook-group-confirm:${groupId}:${m.key}` },
       );
-      if (!outcome.ok) { failed++; continue; }
-      sent++;
+      if (!outcome.ok) return "send_failed";
       // Record the send: stamp confirmation_sent_at on this person's still-NULL rows (guest-first).
       let stampQ = admin.from("slot_priority_claims")
         .update({ confirmation_sent_at: new Date().toISOString() })
@@ -272,18 +270,20 @@ serve(async (req: Request) => {
         : stampQ.eq("player_id", ref!.playerId).is("guest_player_id", null);
       const { error: stampErr } = await stampQ;
       if (stampErr) {
-        // The email went out (counted as sent), but its confirmation_sent_at stamp did NOT land, so
-        // the send is UNRESOLVED: a later retry will re-send. Provider idempotency only dedupes within
-        // Resend's 24h key window — beyond that (or on a different key) the recipient gets a duplicate.
-        // Durable recovery of these unresolved sends is a mandatory PR 10c acceptance item (v2 outbox).
-        unresolved++;
+        // The email went out, but its confirmation_sent_at stamp did NOT land, so the send is
+        // UNRESOLVED: a later retry will re-send. Provider idempotency only dedupes within Resend's
+        // 24h key window — beyond that (or on a different key) the recipient gets a duplicate. Durable
+        // recovery of these unresolved sends is a mandatory PR 10c acceptance item (v2 outbox).
         await notifySlackEdgeError("send-rebook-group-confirmation", "confirmation-sent stamp failed after a successful send — send is UNRESOLVED (idempotency dedupes for 24h only; durable recovery is a PR 10c item)", { groupId, memberKey: m.key, error: String(stampErr.message ?? stampErr) });
+        return "unresolved";
       }
-    }
+      return "sent";
+    });
 
-    // ok ONLY when every send that left the building was also stamped. Any unresolved send (sent but
-    // un-stamped) degrades to a partial result the caller/cron must not treat as clean success.
-    return json({ ok: unresolved === 0, sent, skipped, failed, unresolved });
+    // ok ONLY when nothing failed to send AND every send was stamped. A provider send failure OR an
+    // unresolved (sent-but-un-stamped) send degrades this to a partial result the caller/cron must
+    // not treat as clean success.
+    return json({ ok: groupConfirmOk(tally), ...tally });
   } catch (e) {
     const message = String((e as Error)?.message ?? e);
     await notifySlackEdgeError("send-rebook-group-confirmation", message);

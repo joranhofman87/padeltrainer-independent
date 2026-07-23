@@ -12,7 +12,13 @@
 -- Owner-approved as the intended security correction. Pre-deploy read-only audit: 0 guests in prod
 -- have a person_links account conflicting with twin/linked (0 with active claims, 0 on priority
 -- lists) — so this loses NO current booking access; it hardens against a future stale bridge.
--- Split-freeze, the person arm, and clauses (a)/(b)/(c) are unchanged. Signature unchanged → no drift.
+--
+-- FAM-02 (Codex round-4 #2): this migration ALSO makes clauses (a) and (b) guest-safe — Codex
+-- reproduced that both still keyed the RAW player_id, granting the PARENT of a dual-key row. Clause
+-- (a) now matches a pure-profile booking (guest_player_id IS NULL AND player_id = me) or a guest
+-- booking only via the guest's VERIFIED account; clause (b) is guarded with guest_player_id IS NULL
+-- (a dual-key claim belongs to the guest, handled guest-safely by (d)). Split-freeze, the person arm,
+-- and clause (c) are unchanged. Signature unchanged → no types drift.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.can_book_member_window(_user_id uuid, _cycle_id uuid)

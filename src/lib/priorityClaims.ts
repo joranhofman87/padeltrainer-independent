@@ -806,12 +806,33 @@ export async function manageRebookGroup(token: string, args: {
 }
 
 /** Phase 4: fire-and-forget — email the people the captain just booked ("X re-booked you" /
- *  "you've been added by X"). Idempotent server-side via confirmation_sent_at, so a dropped call
- *  is recovered on the next group action; never block the UI on it. */
+ *  "you've been added by X"). We never block the UI on it, but we DO surface a non-clean result for
+ *  observability (Codex round-5 #3): the edge fn only dedupes duplicate sends within Resend's 24h
+ *  idempotency-key window — it is NOT durable recovery (that is a PR 10c acceptance item), so an
+ *  invoke error, ok:false, or any unresolved (sent-but-un-stamped) send is a real signal, not a no-op. */
 export function sendRebookGroupConfirmations(token: string): void {
   void supabase.functions
     .invoke('send-rebook-group-confirmation', { body: { token } })
-    .catch(() => { /* best-effort; the edge fn is idempotent */ });
+    .then(({ data, error }) => {
+      const result = data as { ok?: boolean; failed?: number; unresolved?: number } | null;
+      if (error || result?.ok === false || (result?.unresolved ?? 0) > 0 || (result?.failed ?? 0) > 0) {
+        logger.warn('rebook group-confirmation did not fully resolve', {
+          component: 'priorityClaims',
+          action: 'sendRebookGroupConfirmations',
+          invokeError: error?.message ?? null,
+          ok: result?.ok ?? null,
+          failed: result?.failed ?? null,
+          unresolved: result?.unresolved ?? null,
+        });
+      }
+    })
+    .catch((e) => {
+      logger.warn('rebook group-confirmation invoke threw', {
+        component: 'priorityClaims',
+        action: 'sendRebookGroupConfirmations',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
 }
 
 export interface AcceptAndPayResult {

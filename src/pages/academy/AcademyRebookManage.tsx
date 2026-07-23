@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, UserPlus, CreditCard, Plus, Pencil } from 'lucide-react';
+import { ArrowLeft, Globe, EyeOff, Mail, MailCheck, Send, CheckCircle2, Clock, XCircle, ChevronRight, ChevronDown, Search, Copy, MailX, UserMinus, UserPlus, CreditCard, Plus, Pencil, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -73,7 +73,7 @@ export default function AcademyRebookManage() {
   const [releaseOpen, setReleaseOpen] = useState(false);
   const academyTimezone = activeAcademy?.timezone || 'Europe/Amsterdam';
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['rebook-manage', cycleId],
     queryFn: () => getCycleRebookStatus(cycleId!),
     enabled: !!cycleId,
@@ -327,6 +327,31 @@ export default function AcademyRebookManage() {
 
   if (isLoading) {
     return <div className="p-4 space-y-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /></div>;
+  }
+
+  // Codex round-5 #2: getCycleRebookStatus now fails loud on any read error (claims, invoices,
+  // contacts, …). Render an explicit, retryable error state instead of an empty/mislabelled page —
+  // an empty round or an "everyone unpaid" table would silently misinform the manager.
+  if (isError) {
+    return (
+      <div className="p-4 max-w-6xl mx-auto">
+        <Button variant="ghost" size="sm" onClick={() => navigate(`/app/academy/cycles/${cycleId}`)}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> {t('common:back', 'Terug')}
+        </Button>
+        <div className="mt-8 flex flex-col items-center justify-center gap-4 text-center">
+          <AlertTriangle className="h-10 w-10 text-destructive" />
+          <div>
+            <p className="font-medium">{t('rebookManage.loadFailedTitle', 'Kon de herboeking niet laden')}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {t('rebookManage.loadFailedBody', 'Er ging iets mis bij het ophalen van de gegevens. Probeer het opnieuw.')}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 mr-1${isFetching ? ' animate-spin' : ''}`} /> {t('common:retry', 'Opnieuw proberen')}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

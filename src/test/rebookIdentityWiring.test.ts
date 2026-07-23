@@ -49,7 +49,11 @@ describe('PR 10d wiring — manual flows deliver independently to parent + dual-
     // #3: deterministic idempotency key + send-THEN-stamp (no fragile claim-before-send + clear)
     expect(s).toContain('idempotencyKey: `rebook-group-confirm:${groupId}:${m.key}`');
     expect(s).not.toContain('confirmation_sent_at: null'); // the clear-on-failure (permanent-suppression) path is gone
-    expect(s).toMatch(/if \(!outcome\.ok\) \{ failed\+\+; continue; \}[\s\S]*sent\+\+;/); // send first, then stamp
+    // Codex round-5 #3: the send/stamp loop is the testable runGroupConfirmations driver, and `ok`
+    // comes from groupConfirmOk (failed===0 && unresolved===0) — a stamp failure returns "unresolved".
+    expect(s).toContain('runGroupConfirmations(members.values()');
+    expect(s).toContain('ok: groupConfirmOk(tally)');
+    expect(s).toMatch(/if \(!outcome\.ok\) return "send_failed";[\s\S]*return "unresolved";[\s\S]*return "sent";/); // send first, then stamp
   });
 
   it('send-priority-claim-invitation keys guest-first', () => {
