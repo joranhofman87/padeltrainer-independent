@@ -13,7 +13,7 @@ import { buildClaimUrl, resolveAppBase } from "../_shared/priority-claim-invite.
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { fetchGuestContacts, guestContactEmail, guestContactName } from "../_shared/rebook-guest-contact.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { fetchAllRows } from "../_shared/paginate.ts";
+import { fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,9 +85,18 @@ serve(async (req: Request) => {
       .eq("academy_profile_id", cycle.owner_id).eq("user_id", user.id).maybeSingle();
     if (!mgr) return json({ ok: false, error: "Forbidden" }, 403);
 
-    const { data: slotRows, error: slotErr } = await supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+    // KEYSET-paginated by slot id (Codex round-7 #3): an unpaginated cycle-slots read caps at ~1000,
+    // dropping every claim on the missing slots from the target match.
+    const { rows: slotRows, error: slotErr } = await fetchAllKeyset<{ id: string }>(
+      (after, limit) => {
+        let q = supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit);
+      },
+      (r) => r.id,
+    );
     if (slotErr) throw new Error(`slot read failed: ${slotErr.message}`); // fail loud — not a zero-send success
-    const slotIds = (slotRows ?? []).map((s: { id: string }) => s.id);
+    const slotIds = slotRows.map((s) => s.id);
     if (slotIds.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0 });
 
     const { data: acad } = await supabase.from("academy_profiles").select("name").eq("id", cycle.owner_id).maybeSingle();
@@ -97,23 +106,26 @@ serve(async (req: Request) => {
     // player. Exclude declined/expired claims — a reminder must never re-ping someone who
     // already opted out (only pending and claimed players get one).
     type ClaimRow = {
+      id: string;
       claim_token: string;
       player_id: string | null;
       guest_player_id: string | null;
       profiles: { full_name: string | null; email: string | null } | null;
       guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
     };
-    // PAGINATED (Codex round-6 #3): a legacy single-cycle round can hold >1000 claims; an un-paginated
-    // read caps at ~1000, so a manager-selected target whose claims all landed beyond row 1000 would
-    // silently resolve to no recipient and never be reminded (the fn still reporting ok:true).
-    const { rows: claims, error: claimsErr } = await fetchAllRows<ClaimRow>((from, to) =>
-      supabase
-        .from("slot_priority_claims")
-        .select("claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
-        .in("slot_id", slotIds)
-        .in("status", ["pending", "claimed"])
-        .order("claim_token")
-        .range(from, to),
+    // KEYSET-paginated by claim id (Codex round-7 #3/#7): a legacy single-cycle round can hold >1000
+    // claims; offset pagination would skip a row if a claim left the pending/claimed set mid-read.
+    const { rows: claims, error: claimsErr } = await fetchAllKeyset<ClaimRow>(
+      (after, limit) => {
+        let q = supabase
+          .from("slot_priority_claims")
+          .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
+          .in("slot_id", slotIds)
+          .in("status", ["pending", "claimed"]);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit);
+      },
+      (r) => r.id,
     );
     if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     const byPlayer = new Map<string, ClaimRow>();
@@ -128,17 +140,22 @@ serve(async (req: Request) => {
       byPlayer.set(key, c);
     }
 
-    // Per-invocation recipient cap (bounds Resend load + edge runtime). NOT a silent drop (Codex
-    // round-6 #3): the overflow is returned as a resumable `remaining` boundary and alerted, so the
-    // manager learns some targets weren't reminded rather than the fn falsely reporting everyone sent.
-    const allRecipients = [...byPlayer.values()];
-    const recipients = allRecipients.slice(0, MAX_RECIPIENTS);
-    const notSent = allRecipients.length - recipients.length;
+    // NO silent cap (Codex round-7 #2): the client chunks the selected targets into <=200-identity
+    // batches and calls once per batch, so each identity is reminded EXACTLY ONCE (no duplicate on
+    // retry). This fn processes ALL provided targets; the per-call ceiling is a DEFENSIVE guard that
+    // ERRORS loudly against a rogue unbounded caller, never a silent slice.
+    const recipients = [...byPlayer.values()];
+    if (recipients.length > MAX_RECIPIENTS) {
+      throw new Error(`too many reminder recipients in one call (${recipients.length} > ${MAX_RECIPIENTS}); the client must batch the targets`);
+    }
     // VERIFIED guest contacts (person_links → twin → linked, split-freeze) — a guest is reached at
     // their OWN email then their VERIFIED account, NEVER the raw claim.player_id.
     const guestMap = await fetchGuestContacts(supabase, recipients.map((c) => c.guest_player_id));
     const resend = new Resend(resendKey);
     let sent = 0, skipped = 0, failed = 0;
+    // The target identities whose send FAILED — returned so the client can re-select exactly them for
+    // a retry, never asking the manager to reconstruct an unknowable remainder.
+    const failedTargets: Array<{ player_id: string | null; guest_player_id: string | null }> = [];
     // Player/guest ids that actually received a reminder — used to stamp reminded_at after the loop.
     const sentPlayerIds: string[] = [];
     const sentGuestIds: string[] = [];
@@ -170,7 +187,7 @@ serve(async (req: Request) => {
         subject: subj,
         html,
       });
-      if (sendErr) { console.error("send error", sendErr); failed++; continue; }
+      if (sendErr) { console.error("send error", sendErr); failed++; failedTargets.push({ player_id: c.player_id, guest_player_id: c.guest_player_id }); continue; }
       sent++;
       // GUEST-FIRST stamp routing (FAM-02): a dual-key child is stamped as the GUEST, never the
       // parent's player_id — otherwise bump_rebook_reminders marks the parent (and every claim
@@ -199,14 +216,10 @@ serve(async (req: Request) => {
     if (failed > 0) {
       await notifySlackEdgeError("send-rebook-reminder", `${failed} of ${recipients.length} reminder emails failed`, { cycleId, sent, skipped, failed, recipients: recipients.length });
     }
-    // Cap-overflow alert: some selected targets exceeded the per-call cap and were NOT reminded.
-    if (notSent > 0) {
-      await notifySlackEdgeError("send-rebook-reminder", `recipient cap hit: ${notSent} of ${allRecipients.length} selected targets not reminded this call (cap ${MAX_RECIPIENTS})`, { cycleId, requested: allRecipients.length, cap: MAX_RECIPIENTS });
-    }
 
-    // ok reflects completeness: a cap-overflow (`remaining` > 0) is not a clean full send. `remaining`
-    // is the resumable boundary the client surfaces so the truncation is never silent.
-    return json({ ok: notSent === 0, sent, skipped, failed, remaining: notSent });
+    // ok reflects FULL completion (Codex round-7 #6): any send failure makes it not-ok, so the UI
+    // renders a failure state (not a success toast). `failedTargets` are the exact identities to retry.
+    return json({ ok: failed === 0, sent, skipped, failed, failedTargets });
   } catch (e) {
     // Unexpected failure (auth/DB/parse) — surface to Slack before the 500.
     await notifySlackEdgeError("send-rebook-reminder", String((e as Error)?.message ?? e));

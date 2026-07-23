@@ -1349,7 +1349,7 @@
     "bulkPartial": "{{ok}} gelukt, {{fail}} mislukt",
     "reminderFailed": "Kon de herinnering niet versturen. Probeer het later opnieuw.",
     "reminderPartial": "{{sent}} verstuurd, {{skip}} overgeslagen",
-    "reminderCapped": "{{sent}} verstuurd. {{left}} niet — te veel tegelijk geselecteerd; selecteer de rest en verstuur opnieuw.",
+    "reminderRetryFailed": "{{sent}} verstuurd, {{failed}} mislukt — de mislukte staan nog geselecteerd, probeer opnieuw.",
     "reminderDone": "{{sent}} herinneringen verstuurd",
     "empty": "Geen herboekingsgegevens voor deze cyclus.",
     "seatLine": "{{r}}/{{c}} geherboekt",

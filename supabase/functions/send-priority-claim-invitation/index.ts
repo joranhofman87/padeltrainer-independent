@@ -11,6 +11,7 @@ import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { loadInvitationMetadata, type InvitationDb } from "../_shared/rebook-invitation-context.ts";
 import { sendThenStampOne } from "../_shared/send-then-stamp.ts";
+import { fetchAllKeyset } from "../_shared/paginate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -170,30 +171,45 @@ const handler = async (req: Request): Promise<Response> => {
           });
         }
       }
-      // The cycle's slots (SERVICE client — trusted + complete; authorization is the
-      // academy_managers gate above, not a per-row read).
-      const cycleSlotIds: string[] = [];
-      {
-        const { data: s, error: sErr } = await supabase
-          .from("availability_slots").select("id").eq("cyclus_id", cycleId);
-        if (sErr) throw sErr;
-        for (const r of (s || []) as Array<{ id: string }>) cycleSlotIds.push(r.id);
-      }
-      // All pending claims on the round's slots, with slot start_time + recipient
-      // email presence, so we can pick each (series, player)'s earliest-week claim as
-      // the representative AND skip claims with no email (which can never be sent, so
-      // must not be counted as "remaining" or the drain would never converge).
-      const repClaims: Array<{ id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null }> = [];
+      // The cycle's slots (SERVICE client — trusted + complete; authorization is the academy_managers
+      // gate above, not a per-row read). KEYSET-paginated by id (Codex round-7 #4) so a cycle with
+      // >1000 slots can't silently truncate the slot set (which would drop every claim on the missing
+      // slots from discovery → the drain reports completion while those recipients are untouched).
+      const { rows: slotRows, error: sErr } = await fetchAllKeyset<{ id: string }>(
+        (after, limit) => {
+          let q = supabase.from("availability_slots").select("id").eq("cyclus_id", cycleId);
+          if (after) q = q.gt("id", after);
+          return q.order("id").limit(limit);
+        },
+        (r) => r.id,
+      );
+      if (sErr) throw sErr;
+      const cycleSlotIds = slotRows.map((r) => r.id);
+      // All pending claims on the round's slots, with slot start_time + recipient email presence, so
+      // we can pick each (series, player)'s earliest-week claim as the representative AND skip claims
+      // with no email (which can never be sent, so must not be counted as "remaining" or the drain
+      // would never converge). Slots are batched by 200 to bound the .in() list; claims within each
+      // batch are KEYSET-paginated by claim id (Codex round-7 #4) — stable against pending claims
+      // changing status mid-read, and no >1000-row truncation.
+      type RepClaim = { id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null };
+      const repClaims: RepClaim[] = [];
       for (let i = 0; i < cycleSlotIds.length; i += 200) {
-        const { data: rc, error: rcErr } = await supabase
-          .from("slot_priority_claims")
-          .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email, linked_profile:linked_profile_id(email))")
-          .in("slot_id", cycleSlotIds.slice(i, i + 200))
-          .eq("status", "pending");
+        const slotChunk = cycleSlotIds.slice(i, i + 200);
+        const { rows: rc, error: rcErr } = await fetchAllKeyset<RepClaim>(
+          (after, limit) => {
+            let q = supabase
+              .from("slot_priority_claims")
+              .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email, linked_profile:linked_profile_id(email))")
+              .in("slot_id", slotChunk)
+              .eq("status", "pending");
+            if (after) q = q.gt("id", after);
+            return q.order("id").limit(limit);
+          },
+          (r) => r.id,
+        );
         if (rcErr) throw rcErr;
-        // PostgREST types the to-one embeds as arrays; the runtime values are single
-        // objects. Cast through unknown (same idiom as the ClaimRow cast below).
-        repClaims.push(...((rc || []) as unknown as typeof repClaims));
+        // PostgREST types the to-one embeds as arrays; the runtime values are single objects.
+        repClaims.push(...(rc as unknown as RepClaim[]));
       }
       // Sendability MUST match the actual delivery resolution: a guest is sendable iff they have a
       // VERIFIED contact (own → account, person_links/twin/linked), never the raw player_id — else a
@@ -223,11 +239,14 @@ const handler = async (req: Request): Promise<Response> => {
       // no-email count in the wizard.
       const emaillessRepIds = [...repByKey.values()].filter((r) => !r.invited && !r.sendable).map((r) => r.id);
       for (let i = 0; i < emaillessRepIds.length; i += 200) {
-        await supabase
+        const { error: emaillessErr } = await supabase
           .from("slot_priority_claims")
           .update({ invited_at: new Date().toISOString() })
           .in("id", emaillessRepIds.slice(i, i + 200))
           .is("invited_at", null);
+        // Fail loud (Codex round-7 #8): a swallowed error here leaves emailless reps un-stamped → they
+        // stay in `remaining` and the drain never converges (an endless "resume" that sends nothing).
+        if (emaillessErr) throw emaillessErr;
       }
       // Only un-invited AND sendable (has email) reps are drainable.
       const eligibleReps = [...repByKey.values()].filter((r) => !r.invited && r.sendable).map((r) => r.id);
@@ -242,7 +261,11 @@ const handler = async (req: Request): Promise<Response> => {
       // Consistent copy on resume: fall back to the message/subject stored on the
       // cycle at creation when the caller didn't pass them (e.g. the recovery button).
       if (!inviteMessage || !inviteSubject) {
-        const { data: cy } = await supabase.from("cycles").select("settings").eq("id", cycleId).maybeSingle();
+        const { data: cy, error: cyErr } = await supabase.from("cycles").select("settings").eq("id", cycleId).maybeSingle();
+        // Fail loud (Codex round-7 #8): a swallowed error here silently drops the academy-authored
+        // invitation copy → the drain's later chunks send the GENERIC default while the first chunk
+        // used the custom text, so recipients of the same round get inconsistent emails.
+        if (cyErr) throw cyErr;
         const st = (cy?.settings || {}) as Record<string, unknown>;
         if (!inviteMessage && typeof st.rebook_invitation_message === "string") {
           inviteMessage = (st.rebook_invitation_message as string).trim().slice(0, 2000);

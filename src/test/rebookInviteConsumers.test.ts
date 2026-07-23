@@ -51,18 +51,57 @@ describe('sendRebookGroupConfirmations surfaces non-clean results (Codex round-6
   });
 });
 
-describe('sendRebookReminder surfaces the resumable cap boundary (Codex round-6 #3)', () => {
-  it('maps `remaining` from the response and reports ok:false when the cap was hit', async () => {
-    invokeMock.mockResolvedValue({ data: { ok: false, sent: 200, skipped: 0, failed: 0, remaining: 15 }, error: null });
-    const res = await sendRebookReminder({ cycleId: 'cy', targets: [], subject: 's', message: 'm' });
-    expect(res.remaining).toBe(15);
-    expect(res.ok).toBe(false);
+describe('sendRebookReminder batches identities + returns the failed retry set (Codex round-7 #2)', () => {
+  const okBatch = (_fn: string, opts: { body: { targets: unknown[] } }) => {
+    return Promise.resolve({ data: { ok: true, sent: opts.body.targets.length, skipped: 0, failed: 0, failedTargets: [] }, error: null });
+  };
+
+  it('sends each identity exactly once across <=200-target batches (no duplicate, no silent cap)', async () => {
+    const targets = Array.from({ length: 250 }, (_, i) => ({ player_id: `p${i}`, guest_player_id: null }));
+    const batchSizes: number[] = [];
+    invokeMock.mockImplementation((_fn: string, opts: { body: { targets: unknown[] } }) => {
+      batchSizes.push(opts.body.targets.length);
+      return okBatch(_fn, opts);
+    });
+    const res = await sendRebookReminder({ cycleId: 'cy', targets, subject: 's', message: 'm' });
+    expect(batchSizes).toEqual([200, 50]); // 250 identities → two bounded batches
+    expect(res.sent).toBe(250); // each sent exactly once
+    expect(res.ok).toBe(true);
   });
 
-  it('defaults remaining to 0 when absent (clean full send)', async () => {
-    invokeMock.mockResolvedValue({ data: { ok: true, sent: 5, skipped: 0, failed: 0 }, error: null });
+  it('dedups duplicate identities so no recipient is reminded twice', async () => {
+    const targets = [{ player_id: 'p1', guest_player_id: null }, { player_id: 'p1', guest_player_id: null }, { player_id: 'p2', guest_player_id: null }];
+    let totalSent = 0;
+    invokeMock.mockImplementation((_fn: string, opts: { body: { targets: unknown[] } }) => {
+      totalSent += opts.body.targets.length;
+      return okBatch(_fn, opts);
+    });
+    await sendRebookReminder({ cycleId: 'cy', targets, subject: 's', message: 'm' });
+    expect(totalSent).toBe(2); // the duplicate p1 collapsed to one
+  });
+
+  it('aggregates failedTargets across batches and reports ok:false', async () => {
+    const targets = Array.from({ length: 3 }, (_, i) => ({ player_id: `p${i}`, guest_player_id: null }));
+    invokeMock.mockResolvedValue({ data: { ok: false, sent: 2, skipped: 0, failed: 1, failedTargets: [{ player_id: 'p2', guest_player_id: null }] }, error: null });
+    const res = await sendRebookReminder({ cycleId: 'cy', targets, subject: 's', message: 'm' });
+    expect(res.ok).toBe(false);
+    expect(res.failed).toBe(1);
+    expect(res.failedTargets).toEqual([{ player_id: 'p2', guest_player_id: null }]); // the exact retry set
+  });
+
+  it('a whole-batch invoke error puts the entire batch into failedTargets', async () => {
+    const targets = [{ player_id: 'p1', guest_player_id: null }];
+    invokeMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const res = await sendRebookReminder({ cycleId: 'cy', targets, subject: 's', message: 'm' });
+    expect(res.ok).toBe(false);
+    expect(res.failedTargets).toEqual([{ player_id: 'p1', guest_player_id: null }]);
+    expect(res.reason).toBe('boom');
+  });
+
+  it('an empty selection is a clean no-op (never calls the edge)', async () => {
     const res = await sendRebookReminder({ cycleId: 'cy', targets: [], subject: 's', message: 'm' });
-    expect(res.remaining).toBe(0);
     expect(res.ok).toBe(true);
+    expect(res.sent).toBe(0);
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 });

@@ -100,19 +100,6 @@ serve(async (req: Request) => {
       capRef?.guestPlayerId ? (cap.guest_players as NameEmail | null)?.first_name : null,
     ) || "Je groep";
 
-    // Per-token throttle via ONE atomic consume RPC (INSERT ... ON CONFLICT DO UPDATE ... RETURNING)
-    // — race-free (no lost increments), and FAIL-CLOSED: if the allowance cannot be consumed (error
-    // or over-limit) the request is denied, so a token-holder can't loop-invoke to burn Resend quota.
-    // 6/15min is ample for the legit apply (+ later manage) flow.
-    const RL_KEY = "rbgc:" + (await sha256Hex(token)).slice(0, 32);
-    const { data: allowed, error: rlErr } = await admin.rpc("consume_rate_limit", {
-      _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
-    });
-    if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
-    // Throttled is NOT clean success (Codex round-6 #2): a legitimate 7th group edit inside the window
-    // would send nothing. Return ok:false + throttled so the caller can surface it (and, later, retry).
-    if (allowed !== true) return json({ ok: false, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
-
     // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
     const { data: rows, error: rowsErr } = await admin
       .from("slot_priority_claims")
@@ -127,7 +114,20 @@ serve(async (req: Request) => {
       .or("booked_by_player_id.not.is.null,booked_by_guest_player_id.not.is.null");
     if (rowsErr) throw new Error(`member read failed: ${rowsErr.message}`); // fail loud — not a silent zero-send
     const claims = (rows ?? []) as unknown as ClaimRow[];
+
+    // Rate limit AFTER establishing there is work (Codex round-7 #5): a no-work invocation (nothing
+    // left to confirm) must NOT consume an allowance, else a benign retry burns the budget a genuine
+    // later edit needs. Per-token throttle via ONE atomic consume RPC — race-free + FAIL-CLOSED (a
+    // token-holder can't loop-invoke to burn Resend quota once there IS work). Throttled is NOT clean
+    // success: the caller surfaces it, and DURABLE recovery of a throttled/failed/unresolved
+    // confirmation is a PR 10c outbox acceptance item (this fn's idempotency key only dedupes 24h).
     if (claims.length === 0) return json({ ok: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
+    const RL_KEY = "rbgc:" + (await sha256Hex(token)).slice(0, 32);
+    const { data: allowed, error: rlErr } = await admin.rpc("consume_rate_limit", {
+      _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
+    });
+    if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
+    if (allowed !== true) return json({ ok: false, throttled: true, sent: 0, skipped: 0, failed: 0, unresolved: 0 });
 
     // Academy timezone (slots stored UTC) + cycle payment-mode/start, mirrored from the invite fn.
     const acadIds = [...new Set(claims.map((c) => c.availability_slots?.academy_profile_id).filter((x): x is string => !!x))];

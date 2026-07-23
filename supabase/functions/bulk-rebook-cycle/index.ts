@@ -1018,6 +1018,9 @@ serve(async (req) => {
       const deferInvites = skipInvites && (targets.length <= 1 || roundAware);
       let invitesSent = 0;
       const failedClaimIds: string[] = [];
+      // Sent-but-un-stamped invites (Codex round-7 #1): the email went out but invited_at didn't land,
+      // so the claim stays eligible and needs a later drain/resend to re-stamp — NOT a completed send.
+      const unresolvedClaimIds: string[] = [];
       if (!deferInvites) {
         for (let i = 0; i < representativeClaimIds.length; i += 50) {
           const batch = representativeClaimIds.slice(i, i + 50);
@@ -1032,14 +1035,16 @@ serve(async (req) => {
             // partial send inside a batch was logged as the full batch length).
             invitesSent += Number(data.sent ?? 0);
             if (Array.isArray(data.failedClaimIds)) failedClaimIds.push(...data.failedClaimIds);
+            if (Array.isArray(data.unresolvedClaimIds)) unresolvedClaimIds.push(...data.unresolvedClaimIds);
           }
         }
       }
 
-      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, extended: Boolean(extendRound), alreadySentGroups, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
-      // Partial-send: cycle is committed but some invites never went out — alert once (IDs/counts only, no PII) so a resend can be triggered.
-      if (failedClaimIds.length > 0) {
-        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} of ${representativeClaimIds.length} rebook invites failed to send`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds });
+      logStep("done", { targetCycles: targets.map((t) => t.id), roundId, extended: Boolean(extendRound), alreadySentGroups, groups: includedSeries.length, players: includedPlayerSet.size, slotsCopied, claimsCreated, invitesSent, failed: failedClaimIds.length, unresolved: unresolvedClaimIds.length, deferred: skipInvites, representativeCount: representativeClaimIds.length, skippedOverlapSlots });
+      // Partial-send: cycle is committed but some invites never went out (failed) OR went out un-stamped
+      // (unresolved, needs a resend to stamp) — alert once (IDs/counts only, no PII) so a resend can be triggered.
+      if (failedClaimIds.length > 0 || unresolvedClaimIds.length > 0) {
+        await notifySlackEdgeError("bulk-rebook-cycle", `${failedClaimIds.length} failed / ${unresolvedClaimIds.length} unresolved of ${representativeClaimIds.length} rebook invites`, { targetCycleId: targets[0].id, roundId, invitesSent, failedClaimIds, unresolvedClaimIds });
       }
       return new Response(JSON.stringify({
         ok: true,

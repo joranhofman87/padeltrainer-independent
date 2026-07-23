@@ -4,6 +4,7 @@ import { sendResendEmail } from "../_shared/resend-send.ts";
 import { resolveAppBase } from "../_shared/priority-claim-invite.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { computeMemberOpenAudience, recipientKey, releaseMemberOpenClaim, resolveMemberOpenContact, runClaimedCycle, type MemberOpenClaim, type MemberOpenContactMaps } from "../_shared/rebook-member-open.ts";
+import { fetchAllKeyset } from "../_shared/paginate.ts";
 
 // Cron-invoked (service-role) notifier: when a rebook round's MEMBER window opens
 // and seats have freed up, email the "second bucket" — the original-cohort players
@@ -166,24 +167,40 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
 
   // The round's slots (source_cycle_id = this cycle) → their pending-window claims. Fail loud: a
   // read error must NOT masquerade as "no slots" (→ permanent claim, unsent audience).
-  const { data: slots, error: slotsErr } = await supabase
-    .from("availability_slots").select("id, member_window_ends_at, academy_profile_id").eq("source_cycle_id", cycleId);
+  // KEYSET-paginated by slot id (Codex round-7 #3): an unpaginated read caps at ~1000 slots — the
+  // missing slots' claims never enter the audience, `failed` stays 0, and the cycle stays CLAIMED,
+  // permanently suppressing those recipients (the exact silent drop this fn promises never to do).
+  type SlotRow = { id: string; member_window_ends_at: string | null; academy_profile_id: string | null };
+  const { rows: slots, error: slotsErr } = await fetchAllKeyset<SlotRow>(
+    (after, limit) => {
+      let q = supabase.from("availability_slots").select("id, member_window_ends_at, academy_profile_id").eq("source_cycle_id", cycleId);
+      if (after) q = q.gt("id", after);
+      return q.order("id").limit(limit);
+    },
+    (r) => r.id,
+  );
   if (slotsErr) throw new Error(`member-open slots read failed: ${slotsErr.message}`);
-  const slotIds = ((slots ?? []) as Array<{ id: string }>).map((s) => s.id);
+  const slotIds = slots.map((s) => s.id);
   if (slotIds.length === 0) return { sent: 0, failed: 0 };
-  const memberEnd = ((slots ?? []) as Array<{ member_window_ends_at: string | null }>)
-    .map((s) => s.member_window_ends_at).filter((x): x is string => !!x).sort()[0] ?? null;
-  const academyProfileId = ((slots ?? []) as Array<{ academy_profile_id: string | null }>)
-    .find((s) => s.academy_profile_id)?.academy_profile_id ?? cycle.owner_id;
+  const memberEnd = slots.map((s) => s.member_window_ends_at).filter((x): x is string => !!x).sort()[0] ?? null;
+  const academyProfileId = slots.find((s) => s.academy_profile_id)?.academy_profile_id ?? cycle.owner_id;
 
+  // KEYSET-paginated by claim id within each 200-slot batch (bounds the .in() list AND avoids a
+  // >1000-row truncation — a batch of 200 slots can hold >1000 claims). Stable vs. concurrent status
+  // changes (Codex round-7 #3).
   const claims: MemberOpenClaim[] = [];
   for (let i = 0; i < slotIds.length; i += 200) {
-    const { data: rows, error: claimsErr } = await supabase
-      .from("slot_priority_claims")
-      .select("player_id, guest_player_id, status, response_intent")
-      .in("slot_id", slotIds.slice(i, i + 200));
+    const slotChunk = slotIds.slice(i, i + 200);
+    const { rows, error: claimsErr } = await fetchAllKeyset<MemberOpenClaim & { id: string }>(
+      (after, limit) => {
+        let q = supabase.from("slot_priority_claims").select("id, player_id, guest_player_id, status, response_intent").in("slot_id", slotChunk);
+        if (after) q = q.gt("id", after);
+        return q.order("id").limit(limit);
+      },
+      (r) => r.id,
+    );
     if (claimsErr) throw new Error(`member-open claims read failed: ${claimsErr.message}`);
-    claims.push(...((rows ?? []) as MemberOpenClaim[]));
+    claims.push(...(rows as MemberOpenClaim[]));
   }
 
   const audience = computeMemberOpenAudience(claims, priorityPeople, priorityGuests, { alreadyNotifiedKeys });

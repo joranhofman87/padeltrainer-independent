@@ -27,6 +27,7 @@ import {
   type GroupStatus, type RebookManageGroup, type RebookManagePlayer, type RebookReminderTarget,
 } from '@/lib/rebookManage';
 import { drainRebookRoundInvites } from '@/lib/rebookInviteSend';
+import { personKeyOf } from '@/lib/personIdentity';
 import { formatCurrency } from '@/lib/format';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { RebookRoundTextsDialog } from '@/components/cycles/RebookRoundTextsDialog';
@@ -236,18 +237,24 @@ export default function AcademyRebookManage() {
         subject: subject.trim(),
         message: message.trim(),
       });
-      if (!res.ok && res.sent === 0) {
-        toast.error(t('rebookManage.reminderFailed', 'Kon de herinnering niet versturen. Probeer het later opnieuw.'));
-      } else if (res.remaining > 0) {
-        // Cap-overflow: some selected players weren't reminded this call — tell the manager, don't hide it.
-        toast.warning(t('rebookManage.reminderCapped', '{{sent}} verstuurd. {{left}} niet — te veel tegelijk geselecteerd; selecteer de rest en verstuur opnieuw.', { sent: res.sent, left: res.remaining }));
-      } else if (res.skipped > 0 || res.failed > 0) {
-        toast.success(t('rebookManage.reminderPartial', '{{sent}} verstuurd, {{skip}} overgeslagen', { sent: res.sent, skip: res.skipped + res.failed }));
+      refetch(); // refresh "last reminded" chips + already-reminded counts so we don't double-nudge
+      if (res.failed > 0) {
+        // Some sends failed. Keep ONLY the failed identities selected + the composed text + the dialog
+        // open, so the manager can retry exactly them — never asking them to reconstruct an unknowable
+        // remainder or clearing unprocessed work (Codex round-7 #2).
+        const retry = new Map<string, RebookReminderTarget>();
+        for (const target of res.failedTargets) { const k = personKeyOf(target); if (k) retry.set(k, target); }
+        setSelectedGroups(new Set());
+        setSelectedPlayers(retry);
+        toast.error(t('rebookManage.reminderRetryFailed', '{{sent}} verstuurd, {{failed}} mislukt — de mislukte staan nog geselecteerd, probeer opnieuw.', { sent: res.sent, failed: res.failed }));
+        return; // keep the compose dialog + subject/message for the retry
+      }
+      if (res.skipped > 0) {
+        toast.success(t('rebookManage.reminderPartial', '{{sent}} verstuurd, {{skip}} overgeslagen', { sent: res.sent, skip: res.skipped }));
       } else {
         toast.success(t('rebookManage.reminderDone', '{{sent}} herinneringen verstuurd', { sent: res.sent }));
       }
       setComposeOpen(false); setSubject(''); setMessage(''); clearSelection();
-      refetch(); // refresh "last reminded" chips + already-reminded counts so we don't double-nudge
     } finally { setBusy(false); }
   };
 

@@ -18,8 +18,12 @@ import { supabase } from '@/lib/supabaseClient';
 export interface SendChunkResult {
   sent: number;
   failed: number;
+  /** Emails that went out but whose invited_at stamp did NOT land — still need a retry to stamp, so
+   *  a chunk of all-unresolved is NOT a completed drain (Codex round-7 #1). */
+  unresolved: number;
   remaining: number;
   failedClaimIds: string[];
+  unresolvedClaimIds: string[];
   /** First per-send failure reason from the edge fn (e.g. a Resend rejection), if any. */
   sampleError?: string | null;
 }
@@ -44,10 +48,14 @@ export interface DrainProgress {
 
 export interface DrainResult {
   totalSent: number;
-  /** Representative invites still not sent (0 ⇒ fully drained). */
+  /** Representative invites still not sent OR sent-but-un-stamped (0 ⇒ fully drained). */
   leftover: number;
-  stoppedReason: 'drained' | 'no_progress' | 'error';
+  /** 'unresolved' = a chunk's emails went out but their invited_at stamps didn't land; the claims stay
+   *  eligible and a later drain re-stamps them (deduped by the idempotency key). NOT 'drained'. */
+  stoppedReason: 'drained' | 'no_progress' | 'error' | 'unresolved';
   failedClaimIds: string[];
+  /** Claims still un-stamped at stop (sent but unresolved) — the retry set. */
+  unresolvedClaimIds: string[];
   /** A sample failure reason (first Resend rejection / thrown error) — so the UI can show WHY, not
    *  just "N not sent". Null when nothing failed. */
   sampleError?: string | null;
@@ -66,8 +74,10 @@ const defaultSender: ChunkSender = async ({ cycleId, limit, customMessage, custo
   return {
     sent: Number(data.sent ?? 0),
     failed: Number(data.failed ?? 0),
+    unresolved: Number(data.unresolved ?? 0),
     remaining: Number(data.remaining ?? 0),
     failedClaimIds: Array.isArray(data.failedClaimIds) ? data.failedClaimIds : [],
+    unresolvedClaimIds: Array.isArray(data.unresolvedClaimIds) ? data.unresolvedClaimIds : [],
     sampleError: typeof data.sampleError === 'string' ? data.sampleError : null,
   };
 };
@@ -92,6 +102,8 @@ export async function drainRebookInvites(
   let totalSent = 0;
   let remaining = 0;
   let lastFailed = 0;
+  let lastUnresolved = 0;
+  let lastUnresolvedClaimIds: string[] = [];
   let total = 0; // sendable total, learned from the first chunk
   const failedClaimIds = new Set<string>();
   let stoppedReason: DrainResult['stoppedReason'] = 'drained';
@@ -109,22 +121,29 @@ export async function drainRebookInvites(
     totalSent += chunk.sent;
     remaining = chunk.remaining;
     lastFailed = chunk.failed;
+    lastUnresolved = chunk.unresolved;
+    lastUnresolvedClaimIds = chunk.unresolvedClaimIds;
     if (!sampleError && chunk.sampleError) sampleError = chunk.sampleError;
     // The first chunk reveals the full sendable set (this chunk's attempts + what's
     // left); pin it so a progress bar has a stable, emailless-excluded denominator.
     if (i === 0) total = chunk.sent + chunk.failed + chunk.remaining;
     for (const id of chunk.failedClaimIds) failedClaimIds.add(id);
-    opts.onProgress?.({ totalSent, stillToSend: remaining + chunk.failed, total });
+    opts.onProgress?.({ totalSent, stillToSend: remaining + chunk.failed + chunk.unresolved, total });
 
-    // Fully drained: nothing left and this chunk had no failures.
-    if (chunk.remaining === 0 && chunk.failed === 0) { stoppedReason = 'drained'; break; }
-    // No forward progress (a whole chunk failed, or nothing was eligible) — stop
-    // instead of looping. Failures rolled invited_at back, so a later re-run retries.
+    // Fully drained ONLY when nothing remains, nothing failed, AND nothing is unresolved (Codex
+    // round-7 #1) — a chunk of sent-but-un-stamped emails is NOT a completed drain.
+    if (chunk.remaining === 0 && chunk.failed === 0 && chunk.unresolved === 0) { stoppedReason = 'drained'; break; }
+    // Terminal all-unresolved: the emails went out but their stamps didn't land, and nothing else is
+    // left. Stop as retryable 'unresolved' instead of looping to re-send (deduped) forever — a later
+    // drain re-stamps them. (invited_at stays NULL, so they remain eligible.)
+    if (chunk.remaining === 0 && chunk.failed === 0 && chunk.unresolved > 0) { stoppedReason = 'unresolved'; break; }
+    // No forward progress on SENDING (a whole chunk failed to send, or nothing was eligible) — stop
+    // instead of looping. Failures never stamped invited_at, so a later re-run retries.
     if (chunk.sent === 0) { stoppedReason = chunk.failed > 0 ? 'no_progress' : 'drained'; break; }
   }
 
-  const leftover = stoppedReason === 'drained' ? 0 : remaining + lastFailed;
-  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], sampleError };
+  const leftover = stoppedReason === 'drained' ? 0 : remaining + lastFailed + lastUnresolved;
+  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: lastUnresolvedClaimIds, sampleError };
 }
 
 /**
@@ -141,7 +160,8 @@ export async function drainRebookRoundInvites(
   let totalSent = 0;
   let leftover = 0;
   const failedClaimIds = new Set<string>();
-  // 'error' if any cycle errored; else 'no_progress' if any stalled with work left; else 'drained'.
+  const unresolvedClaimIds = new Set<string>();
+  // 'error' > 'no_progress' > 'unresolved' > 'drained' (worst wins) across the round's cycles.
   let stoppedReason: DrainResult['stoppedReason'] = 'drained';
   let sampleError: string | null = null;
 
@@ -157,10 +177,12 @@ export async function drainRebookRoundInvites(
     totalSent += res.totalSent;
     leftover += res.leftover;
     for (const id of res.failedClaimIds) failedClaimIds.add(id);
+    for (const id of res.unresolvedClaimIds) unresolvedClaimIds.add(id);
     if (!sampleError && res.sampleError) sampleError = res.sampleError;
     if (res.stoppedReason === 'error') stoppedReason = 'error';
     else if (res.stoppedReason === 'no_progress' && stoppedReason !== 'error') stoppedReason = 'no_progress';
+    else if (res.stoppedReason === 'unresolved' && stoppedReason !== 'error' && stoppedReason !== 'no_progress') stoppedReason = 'unresolved';
   }
 
-  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], sampleError };
+  return { totalSent, leftover, stoppedReason, failedClaimIds: [...failedClaimIds], unresolvedClaimIds: [...unresolvedClaimIds], sampleError };
 }

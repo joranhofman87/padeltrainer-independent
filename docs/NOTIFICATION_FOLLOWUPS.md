@@ -190,7 +190,13 @@ lifecycle held two P1 classes (a silent invitation permanent-suppression window 
 clean success). All of it is now closed in round 6 (below). The 5 same-class sites the round-5 hunt
 found (task #31) were also folded into round 6, not deferred.
 
-## Codex round 6 — resolved (PR 10d), the FULL reliability closure
+## Codex round 6 — resolved (PR 10d)
+
+**NOTE (corrected by round 7):** the round-6 "full reliability closure" / "scale boundaries closed"
+claims below were PREMATURE — they validated the isolated helpers, not the production caller contracts
+or the high-volume discovery paths. Round 7 (next section) closes those. The round-6 fixes themselves
+are correct.
+
 
 Consolidated pass; Codex reproduced two remaining P1 classes plus scale gaps. All fixed with runtime,
 mutation-verified tests (no source-regex).
@@ -221,6 +227,47 @@ mutation-verified tests (no source-regex).
 5. **i18n:** `rebookManage.loadFailedTitle/loadFailedBody` added to en+nl; the retry button key fixed
    (`common:retry` did not resolve → English users saw the Dutch fallback; now `common:queryError.retry`).
    Rendered error/retry state runtime-tested.
+
+## Codex round 7 — resolved (PR 10d): caller contracts + high-volume discovery
+
+Round 6 fixed the helpers; round 7 fixes the CALLER CONTRACTS and the high-volume DISCOVERY reads the
+helpers sit behind. What this PR TRULY closes:
+
+1. **Drain propagates `unresolved`** — `SendChunkResult` / `drainRebookInvites` /
+   `drainRebookRoundInvites` / the `bulk-rebook-cycle` inline caller now carry `unresolved` +
+   `unresolvedClaimIds`. A drain is `drained` ONLY when `remaining + failed + unresolved === 0`; a
+   terminal all-unresolved batch stops as retryable `'unresolved'` (not `drained`). Runtime test:
+   `{sent:40, unresolved:40, remaining:0}` is NOT drained (mutation-verified).
+2. **Reminder = exact identity BATCHING** — the client dedups by person and sends `<=200`-identity
+   batches (each identity exactly once, no dup on retry); the server processes ALL provided targets
+   with NO silent cap (a defensive ceiling ERRORS loudly), returns `failedTargets`, and `ok = failed
+   === 0`. The UI keeps ONLY the failed identities selected + the composed text for a one-click retry
+   — never "select the unknowable rest", never clearing unprocessed work. 250-target + dedup + retry
+   tests.
+3. **KEYSET pagination on every discovery read** (`_shared/paginate.ts` `fetchAllKeyset`) — replaces
+   offset `.range()`, which skips a row when a claim leaves `status='pending'` mid-read. Applied to:
+   priority-invitation cycle-slots + representative-claims; member-open slots + claims; reminder slots
+   + claims. Deno stability test (an already-read row leaving the set does NOT skip a sibling) + a
+   pglite test over 1500 real rows with a concurrent status change.
+4. **Reminder `ok` reflects completion** — any send failure → `ok:false` (the UI renders a failure
+   state, not a success toast).
+5. **Fail-loud sweep completed** — the emailless-recipient stamp and the cycle-settings fallback read
+   in send-priority-claim-invitation now throw on error (were discarded → endless "resume" / mixed
+   invitation copy).
+
+### PR 10c (durable outbox) — REMAINING durability items NOT closed by this PR
+
+To be honest about the boundary (Codex round-7): this PR makes the current behavior CORRECT and
+HONEST at volume, but does NOT build durable delivery. These stay PR 10c acceptance items:
+- **Throttled / failed / unresolved GROUP CONFIRMATIONS have no durable queue.** Round 7 stops a
+  no-work call from consuming the rate-limit allowance and surfaces the non-clean result, but a
+  throttled 7th-in-15min confirmation still relies on an idempotent re-trigger, not a queue. The
+  durable retry belongs in the v2 outbox.
+- **Unresolved invite/confirmation sends** (email out, stamp failed) are surfaced + retryable via a
+  re-drain, but their durable, crash-safe recovery is the v2 outbox (the deterministic idempotency key
+  is only a 24h mitigation).
+- **Member-open** remains claim-then-unbounded-loop; a hard process death mid-loop still strands the
+  un-sent tail (documented below) — the durable per-recipient outbox unit closes it.
 
 ### PR 10c (durable outbox) — additional REQUIRED acceptance item (Codex #6)
 

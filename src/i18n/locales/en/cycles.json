@@ -1224,7 +1224,7 @@
     "bulkPartial": "{{ok}} done, {{fail}} failed",
     "reminderFailed": "Couldn't send the reminder. Please try again later.",
     "reminderPartial": "{{sent}} sent, {{skip}} skipped",
-    "reminderCapped": "{{sent}} sent. {{left}} not — too many selected at once; select the rest and send again.",
+    "reminderRetryFailed": "{{sent}} sent, {{failed}} failed — the failed ones are still selected, please try again.",
     "reminderDone": "{{sent}} reminders sent",
     "empty": "No rebooking data for this cycle.",
     "seatLine": "{{r}}/{{c}} rebooked",

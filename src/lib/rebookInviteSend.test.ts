@@ -1,10 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { drainRebookInvites, drainRebookRoundInvites, type SendChunkResult } from './rebookInviteSend';
 
+/** Fill the SendChunkResult defaults so a scripted chunk can specify only the fields it exercises. */
+const chunk = (c: Partial<SendChunkResult>): SendChunkResult => ({
+  sent: 0, failed: 0, unresolved: 0, remaining: 0, failedClaimIds: [], unresolvedClaimIds: [], sampleError: null, ...c,
+});
+
 /** A fake sender that replays a scripted list of chunk results. */
-const scripted = (chunks: SendChunkResult[]) => {
+const scripted = (chunks: Array<Partial<SendChunkResult>>) => {
   let i = 0;
-  return vi.fn(async () => chunks[Math.min(i++, chunks.length - 1)]);
+  return vi.fn(async () => chunk(chunks[Math.min(i++, chunks.length - 1)]));
 };
 
 describe('drainRebookInvites', () => {
@@ -58,6 +63,30 @@ describe('drainRebookInvites', () => {
     expect(sender).toHaveBeenCalledTimes(2);
   });
 
+  it('a chunk of all-UNRESOLVED sends is NOT drained (Codex round-7 #1)', async () => {
+    // Every email went out but every invited_at stamp failed: sent=40, unresolved=40, remaining=0.
+    // The claims are still un-stamped and need a retry — this must NOT report `drained`.
+    const sender = scripted([
+      { sent: 40, failed: 0, unresolved: 40, remaining: 0, unresolvedClaimIds: ['u1', 'u2'] },
+    ]);
+    const r = await drainRebookInvites('cyc', { sender });
+    expect(r.stoppedReason).toBe('unresolved');
+    expect(r.leftover).toBe(40); // the 40 un-stamped sends still need resolving
+    expect(r.unresolvedClaimIds.sort()).toEqual(['u1', 'u2']);
+    expect(sender).toHaveBeenCalledTimes(1); // stops immediately (retryable), never loops re-sending
+  });
+
+  it('drains cleanly once a follow-up chunk resolves the earlier remaining work', async () => {
+    const sender = scripted([
+      { sent: 40, failed: 0, unresolved: 0, remaining: 10 },
+      { sent: 10, failed: 0, unresolved: 0, remaining: 0 },
+    ]);
+    const r = await drainRebookInvites('cyc', { sender });
+    expect(r.stoppedReason).toBe('drained');
+    expect(r.totalSent).toBe(50);
+    expect(r.leftover).toBe(0);
+  });
+
   it('treats an immediate "nothing to send" as drained (already all invited)', async () => {
     const sender = scripted([{ sent: 0, failed: 0, remaining: 0, failedClaimIds: [] }]);
     const r = await drainRebookInvites('cyc', { sender });
@@ -77,27 +106,27 @@ describe('drainRebookInvites', () => {
 
   it('honours maxIterations as a runaway backstop', async () => {
     // A pathological sender that always claims progress but never drains.
-    const sender = vi.fn(async () => ({ sent: 1, failed: 0, remaining: 999, failedClaimIds: [] }));
+    const sender = vi.fn(async () => chunk({ sent: 1, failed: 0, remaining: 999 }));
     const r = await drainRebookInvites('cyc', { sender, maxIterations: 5 });
     expect(sender).toHaveBeenCalledTimes(5);
     expect(r.totalSent).toBe(5);
   });
 
   it('forwards the chunk limit and custom copy to the sender', async () => {
-    const sender = vi.fn(async () => ({ sent: 0, failed: 0, remaining: 0, failedClaimIds: [] }));
+    const sender = vi.fn(async () => chunk({ sent: 0, failed: 0, remaining: 0 }));
     await drainRebookInvites('cyc', { sender, limit: 25, customMessage: 'hi', customSubject: 'subj' });
     expect(sender).toHaveBeenCalledWith({ cycleId: 'cyc', limit: 25, customMessage: 'hi', customSubject: 'subj' });
   });
 });
 
 /** A sender that scripts chunk results PER cycleId (for round-level drain across sibling cycles). */
-const scriptedByCycle = (byCycle: Record<string, SendChunkResult[]>) => {
+const scriptedByCycle = (byCycle: Record<string, Array<Partial<SendChunkResult>>>) => {
   const idx: Record<string, number> = {};
   return vi.fn(async ({ cycleId }: { cycleId: string }) => {
-    const chunks = byCycle[cycleId] ?? [{ sent: 0, failed: 0, remaining: 0, failedClaimIds: [] }];
+    const chunks = byCycle[cycleId] ?? [{}];
     const i = idx[cycleId] ?? 0;
     idx[cycleId] = i + 1;
-    return chunks[Math.min(i, chunks.length - 1)];
+    return chunk(chunks[Math.min(i, chunks.length - 1)]);
   });
 };
 

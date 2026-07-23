@@ -786,23 +786,62 @@ export interface RebookReminderResult {
   sent: number;
   skipped: number;
   failed: number;
-  /** Selected targets NOT reminded this call because the per-invocation recipient cap was hit — a
-   *  resumable boundary the UI surfaces so a truncated blast is never silent (Codex round-6). */
-  remaining: number;
+  /** The exact target identities whose send FAILED — the retry set (Codex round-7 #2). The UI
+   *  re-selects only these, never asking the manager to reconstruct an unknowable remainder. */
+  failedTargets: RebookReminderTarget[];
   reason?: string;
 }
 
-/** Email a custom reminder to the selected players of this cycle (server resolves + scopes). */
+/**
+ * Email a custom reminder to the selected players of this cycle (server resolves + scopes). Dedups the
+ * targets by person and sends them in <=200-identity BATCHES (Codex round-7 #2): each identity is
+ * reminded EXACTLY ONCE across the batches — no silent server-side cap, no duplicate on retry, and no
+ * "select the unknowable rest". Aggregates the per-batch results; `ok` is true only when every batch
+ * fully completed.
+ */
 export async function sendRebookReminder(args: {
   cycleId: string;
   targets: RebookReminderTarget[];
   subject: string;
   message: string;
 }): Promise<RebookReminderResult> {
-  const { data, error } = await supabase.functions.invoke('send-rebook-reminder', { body: args });
-  if (error) return { ok: false, sent: 0, skipped: 0, failed: args.targets.length, remaining: 0, reason: error.message };
-  const r = (data ?? {}) as Partial<RebookReminderResult>;
-  return { ok: Boolean(r.ok), sent: Number(r.sent ?? 0), skipped: Number(r.skipped ?? 0), failed: Number(r.failed ?? 0), remaining: Number(r.remaining ?? 0), reason: r.reason };
+  const BATCH = 200;
+  const seen = new Set<string>();
+  const deduped = args.targets.filter((t) => {
+    const k = personKeyOf(t) ?? '';
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  let ok = true;
+  let sent = 0, skipped = 0, failed = 0;
+  const failedTargets: RebookReminderTarget[] = [];
+  let reason: string | undefined;
+
+  for (let i = 0; i < deduped.length; i += BATCH) {
+    const batch = deduped.slice(i, i + BATCH);
+    const { data, error } = await supabase.functions.invoke('send-rebook-reminder', {
+      body: { cycleId: args.cycleId, targets: batch, subject: args.subject, message: args.message },
+    });
+    if (error) {
+      // The whole batch invocation failed — none went out; they are ALL part of the retry set.
+      ok = false;
+      failed += batch.length;
+      failedTargets.push(...batch);
+      if (!reason) reason = error.message;
+      continue;
+    }
+    const r = (data ?? {}) as Partial<RebookReminderResult> & { failedTargets?: RebookReminderTarget[] };
+    if (!r.ok) ok = false;
+    sent += Number(r.sent ?? 0);
+    skipped += Number(r.skipped ?? 0);
+    failed += Number(r.failed ?? 0);
+    if (Array.isArray(r.failedTargets)) failedTargets.push(...r.failedTargets);
+    if (!reason && r.reason) reason = r.reason;
+  }
+
+  return { ok, sent, skipped, failed, failedTargets, reason };
 }
 
 // ===== Discovery: list an academy's rebook rounds =====
