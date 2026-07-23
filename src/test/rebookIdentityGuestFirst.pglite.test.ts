@@ -60,6 +60,7 @@ beforeAll(async () => {
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, full_name text, email text, linked_profile_id uuid, twin_of_profile_id uuid, split_frozen boolean DEFAULT false);
     CREATE TABLE public.persons (id uuid PRIMARY KEY);
     CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid, profile_id uuid, guest_player_id uuid);
+    CREATE TABLE public.rate_limits (identifier text, endpoint text, request_count int, window_start timestamptz, UNIQUE(identifier, endpoint));
     CREATE FUNCTION public.is_guest_split_frozen(_guest_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $frz$
       SELECT COALESCE((SELECT split_frozen FROM public.guest_players WHERE id = _guest_id), false) $frz$;
     CREATE TABLE public.cycles (id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, settings jsonb);
@@ -194,7 +195,14 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
       UNION ALL SELECT 'append_auth',   has_function_privilege('authenticated','public.append_rebook_member_open_notified(uuid,text[])','execute')
       UNION ALL SELECT 'append_svc',    has_function_privilege('service_role','public.append_rebook_member_open_notified(uuid,text[])','execute')
       UNION ALL SELECT 'resolve_anon',  has_function_privilege('anon','public.resolve_guest_member_contacts(uuid[])','execute')
+      UNION ALL SELECT 'resolve_auth',  has_function_privilege('authenticated','public.resolve_guest_member_contacts(uuid[])','execute')
       UNION ALL SELECT 'resolve_svc',   has_function_privilege('service_role','public.resolve_guest_member_contacts(uuid[])','execute')
+      UNION ALL SELECT 'gvap_anon',     has_function_privilege('anon','public.guest_verified_account_profile(uuid)','execute')
+      UNION ALL SELECT 'gvap_auth',     has_function_privilege('authenticated','public.guest_verified_account_profile(uuid)','execute')
+      UNION ALL SELECT 'gvap_svc',      has_function_privilege('service_role','public.guest_verified_account_profile(uuid)','execute')
+      UNION ALL SELECT 'ratelimit_anon',has_function_privilege('anon','public.consume_rate_limit(text,text,int,int)','execute')
+      UNION ALL SELECT 'ratelimit_auth',has_function_privilege('authenticated','public.consume_rate_limit(text,text,int,int)','execute')
+      UNION ALL SELECT 'ratelimit_svc', has_function_privilege('service_role','public.consume_rate_limit(text,text,int,int)','execute')
     `)).rows;
     const by = Object.fromEntries(r.map((x) => [x.chk, x.v]));
     expect(by.anon).toBe(false);          // the cross-academy email/token leak is closed
@@ -218,7 +226,14 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
     expect(by.append_auth).toBe(false);
     expect(by.append_svc).toBe(true);
     expect(by.resolve_anon).toBe(false);
+    expect(by.resolve_auth).toBe(false);
     expect(by.resolve_svc).toBe(true);
+    expect(by.gvap_anon).toBe(false);
+    expect(by.gvap_auth).toBe(false);
+    expect(by.gvap_svc).toBe(true);
+    expect(by.ratelimit_anon).toBe(false);
+    expect(by.ratelimit_auth).toBe(false);
+    expect(by.ratelimit_svc).toBe(true);
   });
 
   it('append_rebook_member_open_notified is ATOMIC + dedup (one UPDATE, no whole-settings clobber)', async () => {
@@ -280,6 +295,21 @@ describe('PR 10d #3 — guest_verified_account_profile / resolve_guest_member_co
   it('person_links outranks twin → person_links wins', async () => { expect(await account(G_LINKS_TWIN)).toBe(ACC); });
   it('split-frozen → NO verified account (may be a different human)', async () => { expect(await account(G_FROZEN)).toBeNull(); });
   it('no relationship → NO verified account (raw player_id is never consulted)', async () => { expect(await account(G_NONE)).toBeNull(); });
+
+  it('consume_rate_limit is atomic + fail-closed: consumes up to max, denies over, resets after the window (#4)', async () => {
+    const consume = async (win = 60000) =>
+      (await db.query<{ ok: boolean }>(`SELECT public.consume_rate_limit('tok-1','ep', 3, $1) AS ok`, [win])).rows[0].ok;
+    expect(await consume()).toBe(true);  // 1
+    expect(await consume()).toBe(true);  // 2
+    expect(await consume()).toBe(true);  // 3 (== max)
+    expect(await consume()).toBe(false); // 4 > max → denied (fail-closed on over-limit)
+    // a SEPARATE token has its own bucket
+    expect((await db.query<{ ok: boolean }>(`SELECT public.consume_rate_limit('tok-2','ep',3,60000) AS ok`)).rows[0].ok).toBe(true);
+    // window expiry resets the count (window_ms=0 → the window is already past → reset to 1)
+    expect(await consume(0)).toBe(true);
+    const row = (await db.query<{ request_count: number }>(`SELECT request_count FROM public.rate_limits WHERE identifier='tok-1'`)).rows[0];
+    expect(row.request_count).toBe(1); // reset, not accumulated (proves the RETURNING count is authoritative)
+  });
 
   it('resolve_guest_member_contacts (batch): delivers to the account when no own email; flags has_account correctly', async () => {
     const rows = (await db.query<{ guest_id: string; own_email: string | null; account_email: string | null; has_account: boolean }>(

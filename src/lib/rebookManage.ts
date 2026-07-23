@@ -509,22 +509,24 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // Names.
   const playerIds = [...new Set(claimRows.map((c) => c.player_id).filter(Boolean))] as string[];
   const guestIds = [...new Set(claimRows.map((c) => c.guest_player_id).filter(Boolean))] as string[];
-  const [{ data: profiles }, { data: guests }] = await Promise.all([
+  const [{ data: profiles }, { data: guests }, { data: guestContacts }] = await Promise.all([
     playerIds.length ? supabase.from('profiles_public').select('id, full_name').in('id', playerIds) : Promise.resolve({ data: [] }),
-    guestIds.length ? supabase.from('guest_players').select('id, full_name, email, linked_profile_id').in('id', guestIds) : Promise.resolve({ data: [] }),
+    guestIds.length ? supabase.from('guest_players').select('id, full_name').in('id', guestIds) : Promise.resolve({ data: [] }),
+    // RB05 reachability from the SAME verified-account model the senders deliver by (own email OR a
+    // verified person_links/twin/linked account) — a boolean only, never the account address.
+    guestIds.length ? supabase.rpc('guests_have_rebook_contact', { _guest_ids: guestIds }) : Promise.resolve({ data: [] }),
   ]);
   const nameByKey = new Map<string, string>();
-  // RB05: which invitees have NO email. Only guests can be emailless — a registered player
-  // always has an auth email — so a guest key not in this set is the emailless case.
+  // RB05: which invitees have NO reachable contact. Only guests can be emailless — a registered
+  // player always has an auth email — so a guest key not in this set is the emailless case.
   const guestHasEmail = new Set<string>();
   // Keyed to match personKeyOf (guest-first, namespaced): a profile is p:<id>, a guest is g:<id>.
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) nameByKey.set(`p:${p.id}`, (p.full_name ?? '').trim() || '—');
-  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null; email: string | null; linked_profile_id: string | null }>) {
+  for (const g of (guests ?? []) as Array<{ id: string; full_name: string | null }>) {
     nameByKey.set(`g:${g.id}`, (g.full_name ?? '').trim() || '—');
-    // The invite/reminder senders fall back to the linked profile's email when the guest has
-    // none on file (effectiveGuestEmail, FAM-02 Level 1) — and a linked profile is an auth
-    // account, which always has an email. So a linked guest counts as reachable here.
-    if (g.email?.trim() || g.linked_profile_id) guestHasEmail.add(`g:${g.id}`);
+  }
+  for (const r of (guestContacts ?? []) as Array<{ guest_id: string; has_contact: boolean }>) {
+    if (r.has_contact) guestHasEmail.add(`g:${r.guest_id}`);
   }
 
   // Single-claim invoices → per identity; group invoices → per group (propagated to members).

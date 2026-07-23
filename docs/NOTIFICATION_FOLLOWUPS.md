@@ -48,7 +48,7 @@ was wrong. They are P1 WRONG-RECIPIENT bugs, not just wrong names.
 PR 10b built the canonical edge twin `supabase/functions/_shared/person-identity.ts`
 (`personKeyOf`/`personRefOf`/`personDisplayName`/`personContactEmail`, guest-first, keyed on the
 IDs — the keep-in-sync twin of `src/lib/personIdentity.ts`). **PR 10d
-(`feat/notif-pr10d-rebook-identity`) applies it as the full-closure identity pass over the rebook
+(`feat/notif-pr10d-rebook-identity`) applies it as the identity + verified-account pass over the rebook
 subsystem.** An audit (completeness critic) proved the same player-first bug spanned more than the
 three originally-named senders — the upstream producers collapsed a dual-key child + linked parent
 BEFORE the senders ran, so fixing only the senders would have left green tests around
@@ -112,3 +112,35 @@ fully crash-safe at scale, and this residual must be closed by the PR 10c durabl
 - Acceptance for "the messaging migration is complete/scalable": bounded + resumable processing and
   NO permanent claim after worker death — for the member-open path as well as open_slots. (The
   deterministic idempotency key + atomic per-recipient checkpoint are already in place from 10d.)
+
+## Codex round 3 — resolved (PR 10d), + corrected claims
+
+Round-2's account resolver initially claimed "exact authorization parity" and "full closure"; both
+were premature. Round-3 corrections:
+
+1. **All THREE manual senders now use the verified resolver** (`_shared/rebook-guest-contact.ts` →
+   `resolve_guest_member_contacts`): `send-rebook-reminder`, `send-priority-claim-invitation`,
+   `send-rebook-group-confirmation`. A guest is reached at their OWN email then their VERIFIED
+   account, NEVER the raw `claim.player_id`. (Round 2 had only fixed member-open + auto-reminder.)
+2. **Authorization parity is now REAL** (owner-approved eligibility change): `can_book_member_window`
+   was a UNION (`person_links OR twin OR linked`) while the resolver gave person_links precedence.
+   Migration `20260928100000` makes curated `person_links` SUPPRESS the twin/linked bridge in both
+   guest arms, so a stale twin cannot grant a different account than the curated one. Pre-deploy
+   audit: 0 conflicting guests in prod (0 with claims / priority) → no current access lost.
+3. **Group-confirmation** is now send-THEN-stamp with a deterministic Resend idempotency key (was:
+   claim-before-send with no key → timeout-dup + a failed clear permanently suppressed).
+4. **Rate limiter** is one atomic `consume_rate_limit` RPC, fail-CLOSED (was: fail-open, race-prone
+   read-modify-write on a `verify_jwt=false` endpoint).
+5. **Manage UI** reachability (`guests_have_rebook_contact`, a boolean-only academy RPC) mirrors the
+   verified delivery model, so it no longer advertises a route the sender skips (person-links/twin
+   guests). The account ADDRESS is never exposed.
+
+### PR 10c (durable outbox) — additional REQUIRED acceptance item (Codex #6)
+
+The batch resolver is set-based enough for member-open's low volume but NOT high-volume ready:
+`resolve_guest_member_contacts` invokes the `SECURITY DEFINER` scalar `guest_verified_account_profile`
+per guest via a LATERAL join, and the auto-reminder SQL invokes it per claim; the member-open edge
+fetches every due row and applies its 500 cap in JS. For high volume this becomes repeated subqueries
++ unnecessary network materialization. PR 10c must resolve identities set-wise and push a
+deterministic limit/pagination boundary into SQL (with a scale test) — for the auto-reminder + open_slots
+paths as well.

@@ -214,6 +214,63 @@ $$;
 REVOKE ALL ON FUNCTION public.append_rebook_member_open_notified(uuid, text[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.append_rebook_member_open_notified(uuid, text[]) TO service_role;
 
+-- (2e) guests_have_rebook_contact — academy-manager reachability for the manage UI (Codex #5). The
+--      client CANNOT read person_links/twin (definer/service only), so it cannot tell a person-links-
+--      or twin-only guest is reachable. Returns ONLY a per-guest BOOLEAN (own email OR a verified
+--      account with an email) — never the resolved account ADDRESS — so it is safe to grant to
+--      authenticated managers. Mirrors the delivery model, so the UI never advertises a route the
+--      sender skips (and never hides one the sender would use).
+CREATE OR REPLACE FUNCTION public.guests_have_rebook_contact(_guest_ids uuid[])
+RETURNS TABLE (guest_id uuid, has_contact boolean)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT gp.id,
+    (NULLIF(btrim(gp.email), '') IS NOT NULL
+     OR EXISTS (
+       SELECT 1 FROM public.profiles p
+       WHERE p.id = public.guest_verified_account_profile(gp.id)
+         AND NULLIF(btrim(p.email), '') IS NOT NULL
+     ))
+  FROM public.guest_players gp
+  WHERE gp.id = ANY(_guest_ids);
+$$;
+REVOKE ALL ON FUNCTION public.guests_have_rebook_contact(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.guests_have_rebook_contact(uuid[]) TO authenticated, service_role;
+
+-- (2d) consume_rate_limit — ONE atomic token-bucket consume (Codex round-3 #4). The public
+--      token-gated senders (verify_jwt=false) previously did a read-modify-write over rate_limits
+--      that discarded errors (fail-OPEN) and lost increments under concurrency. This is a single
+--      INSERT ... ON CONFLICT DO UPDATE ... RETURNING: it atomically bumps the count within the
+--      window (or resets it), and returns whether the caller is WITHIN the allowance. Callers treat
+--      an error/throw as fail-CLOSED (deny).
+CREATE OR REPLACE FUNCTION public.consume_rate_limit(_identifier text, _endpoint text, _max int, _window_ms int)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+BEGIN
+  INSERT INTO public.rate_limits (identifier, endpoint, request_count, window_start)
+  VALUES (_identifier, _endpoint, 1, now())
+  ON CONFLICT (identifier, endpoint) DO UPDATE SET
+    request_count = CASE
+      WHEN public.rate_limits.window_start > now() - make_interval(secs => _window_ms / 1000.0)
+      THEN public.rate_limits.request_count + 1 ELSE 1 END,
+    window_start = CASE
+      WHEN public.rate_limits.window_start > now() - make_interval(secs => _window_ms / 1000.0)
+      THEN public.rate_limits.window_start ELSE now() END
+  RETURNING request_count INTO v_count;
+  RETURN v_count <= _max;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.consume_rate_limit(text, text, int, int) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.consume_rate_limit(text, text, int, int) TO service_role;
+
 -- (3) The MEMBER-OPEN cron trio (defined in 20260714110000 / 20260817100000) has the SAME
 --     default-privileges footgun: they only `REVOKE ... FROM PUBLIC`, so anon/authenticated retain
 --     EXECUTE (verified in prod: anon=authenticated=true). These are SECURITY DEFINER — a client

@@ -96,29 +96,16 @@ serve(async (req: Request) => {
       capRef?.guestPlayerId ? (cap.guest_players as NameEmail | null)?.first_name : null,
     ) || "Je groep";
 
-    // Per-token throttle (best-effort read-modify-write over rate_limits; service-role bypasses its
-    // RLS). confirmation_sent_at clears on send failure (so a transient Resend blip stays retryable),
-    // which would otherwise let a token-holder loop-invoke to burn Resend quota via an always-failing
-    // recipient. 6/15min is ample for the legit apply (+ later manage) flow; a small over-count under
-    // concurrency is harmless for an abuse bound.
+    // Per-token throttle via ONE atomic consume RPC (INSERT ... ON CONFLICT DO UPDATE ... RETURNING)
+    // — race-free (no lost increments), and FAIL-CLOSED: if the allowance cannot be consumed (error
+    // or over-limit) the request is denied, so a token-holder can't loop-invoke to burn Resend quota.
+    // 6/15min is ample for the legit apply (+ later manage) flow.
     const RL_KEY = "rbgc:" + (await sha256Hex(token)).slice(0, 32);
-    const RL_ENDPOINT = "send-rebook-group-confirmation";
-    const RL_MAX = 6, RL_WINDOW_MS = 15 * 60 * 1000;
-    const nowMs = Date.now();
-    const { data: rl } = await admin.from("rate_limits")
-      .select("request_count, window_start")
-      .eq("identifier", RL_KEY).eq("endpoint", RL_ENDPOINT).maybeSingle();
-    const inWindow = rl?.window_start && new Date(rl.window_start).getTime() > nowMs - RL_WINDOW_MS;
-    const rlCount = inWindow ? ((rl?.request_count ?? 0) + 1) : 1;
-    if (inWindow) {
-      await admin.from("rate_limits").update({ request_count: rlCount })
-        .eq("identifier", RL_KEY).eq("endpoint", RL_ENDPOINT);
-    } else {
-      await admin.from("rate_limits").upsert(
-        { identifier: RL_KEY, endpoint: RL_ENDPOINT, request_count: 1, window_start: new Date(nowMs).toISOString() },
-        { onConflict: "identifier,endpoint" });
-    }
-    if (rlCount > RL_MAX) return json({ ok: true, throttled: true, sent: 0, skipped: 0, failed: 0 });
+    const { data: allowed, error: rlErr } = await admin.rpc("consume_rate_limit", {
+      _identifier: RL_KEY, _endpoint: "send-rebook-group-confirmation", _max: 6, _window_ms: 15 * 60 * 1000,
+    });
+    if (rlErr) throw new Error(`rate-limit consume failed: ${rlErr.message}`); // fail CLOSED
+    if (allowed !== true) return json({ ok: true, throttled: true, sent: 0, skipped: 0, failed: 0 });
 
     // Everyone the captain booked, not yet confirmed. booked_by_* set ⇒ not the captain's own row.
     const { data: rows, error: rowsErr } = await admin

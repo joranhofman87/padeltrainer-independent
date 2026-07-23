@@ -19,13 +19,13 @@ export interface GuestContactRow {
 
 export type GuestContactMap = Map<string, GuestContactRow>;
 
-// deno-lint-ignore no-explicit-any
-type RpcOnly = { rpc: (name: string, args: Record<string, unknown>) => any };
+// `unknown` return so the real SupabaseClient and a test fake both satisfy it; narrowed at the await.
+type RpcOnly = { rpc: (name: string, args: Record<string, unknown>) => unknown };
 
 export async function fetchGuestContacts(supabase: RpcOnly, guestIds: Array<string | null | undefined>): Promise<GuestContactMap> {
   const ids = [...new Set(guestIds.filter((x): x is string => !!x))];
   if (ids.length === 0) return new Map();
-  const { data, error } = await supabase.rpc("resolve_guest_member_contacts", { _guest_ids: ids });
+  const { data, error } = await (supabase.rpc("resolve_guest_member_contacts", { _guest_ids: ids }) as Promise<{ data: GuestContactRow[] | null; error: unknown }>);
   if (error) throw new Error(`guest contact resolution failed: ${(error as { message?: string })?.message ?? error}`);
   return new Map(((data ?? []) as GuestContactRow[]).map((g) => [g.guest_id, g]));
 }
