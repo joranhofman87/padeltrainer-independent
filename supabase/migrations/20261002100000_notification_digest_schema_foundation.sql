@@ -8,8 +8,11 @@
 -- FK cascades that it triggers. Owner-effective guards (triggers fire regardless of caller privilege)
 -- additionally constrain WHAT may be deleted/mutated even by future SECURITY DEFINER code:
 --   * audit rows (attempts, ledger, provider_events) may leave ONLY via a group cascade — never a direct
---     top-level delete. Discriminated by pg_trigger_depth()>1 (a referential side effect runs the child
---     guard nested; a direct DML runs it at depth 1). Verified in PGlite.
+--     top-level delete. Legitimacy is proven by the FK PRECONDITION, not by pg_trigger_depth() (which any
+--     unrelated nested trigger can satisfy): a cascade delete is allowed only when the referenced parent
+--     GROUP is already gone, and a back-reference SET NULL only when the referenced RUN is gone. This
+--     server-ordering contract is verified on a real Postgres server (embedded-postgres integration suite),
+--     not only in PGlite.
 --   * a group may be deleted ONLY in a terminal state; a worker_run ONLY once finished.
 --   * identity/snapshot columns are write-once. Attempts are born unrecorded; runs are born unfinished.
 -- The previous caller-settable GUC (app.digest_purge) is REMOVED — a GUC is not authorization.
