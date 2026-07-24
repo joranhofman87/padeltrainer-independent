@@ -1221,13 +1221,3 @@ export async function swapMemberBooking(oldBookingId: string, newSlotId: string)
   return data as { ok: boolean; new_booking_id: string };
 }
 
-export async function isCycleMember(cycleId: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data, error } = await supabase.rpc('is_cycle_member' as never, {
-    _user_id: user.id, _cycle_id: cycleId,
-  } as never);
-  if (error) return false;
-  return Boolean(data);
-}
-
