@@ -133,8 +133,12 @@ lease; if the probe group makes no breaker-transitioning record within the lease
 or after-HTTP-before-record cannot leave the breaker permanently half-open. When the probe group's stale
 attempt is reclaimed and a **replacement** attempt is created, `begin_digest_attempt` **re-binds
 `probe_attempt_id` to the replacement** (§P5), so the live attempt is always the one that may transition.
-A late record from the *superseded* probe attempt only annotates its row (it is not `current_attempt_id`
-and not `probe_attempt_id`). The breaker never writes `available_at`; a group behind an open breaker keeps
+A late record from the *superseded* probe attempt: a **late `accepted`** still **completes the digest group
+and its members and clears uncertainty per §P6** (acceptance is monotonic evidence, valid even when a newer
+attempt owns the group), but **does not transition the breaker** (the re-armed breaker only advances for
+`circuit.probe_attempt_id`); a **late non-accepted** result only annotates its attempt row (no group change,
+no breaker transition). "Only annotates" thus governs **breaker-transition authority and non-accepted
+outcomes**, never a late acceptance's §P6 completion. The breaker never writes `available_at`; a group behind an open breaker keeps
 its `available_at` and is simply not claimable — no NULL assignment.
 
 ## Phase A — MATERIALIZE (atomic per group; deterministic 50-item cap; fixes #3)
@@ -350,7 +354,10 @@ UPDATE/DELETE blocked by grants; retention cascade + order; scrub nulls payload/
 Scheduling: daily next-09:00-local + weekly next-Monday-09:00-local incl DST. Two-worker concurrency; ACL
 guard; catalog constraint; 100k scale on real PG amid disabled/instant; back-compat instant-path.
 **Rev-11 pins:** (1) breaker two-stage — CAS binds `probe_group_id`, `begin` binds `current_attempt_id`
-+ `probe_attempt_id`, only that attempt transitions. (2) `awaiting_evidence AND available_at ≤ now`
++ `probe_attempt_id`, only that attempt transitions. **(Rev-12 acceptance pin) after a bound probe crashes
+and the breaker is re-armed, a late old-probe `accepted` result finalizes the group/members and clears
+uncertainty (§P6) but does NOT alter the re-armed breaker; a late non-accepted old-probe result only
+annotates its attempt.** (2) `awaiting_evidence AND available_at ≤ now`
 age-out → `delivery_unknown` (members + reservations finalized). (3) callback `bounced` **before** HTTP
 record then `accepted` → group stays `failed_terminal`/bounced (rank-guard); `complained` before record →
 delivered+complained; `sent` after a worker crash → resolves acceptance uncertainty; all seven callbacks
