@@ -1,344 +1,296 @@
-# ADR 0008 — v2 notification digest materializer (durable attempts, sticky uncertainty, late evidence)
+# ADR 0008 — v2 notification digest materializer (attempt-aware reservations, evidence-gated terminals)
 
-Status: **Proposed — Rev 9** (self-contained; addresses the Codex review of Rev 8; design-only, PR 10c-a)
+Status: **Proposed — Rev 10** (self-contained; addresses the Codex review of Rev 9; design-only, PR 10c-a)
 Date: 2026-07-24
 
-> Scope: **PR 10c-a only** — the digest ENGINE + observability. No live route; ships inert (no live event
-> `digest_engine_enabled`). Four-stage plan: **10c-a** foundation · **10c-b** open_slots→v2 (+ event
-> pre-send policy hook; enables the first digest event) · **10c-c** durability closure · **10c-d** legacy
-> retirement. Intended **implementation contract** — self-contained.
+> Scope: **PR 10c-a only** — the digest ENGINE + observability. No live route; ships inert. Four-stage
+> plan: 10c-a foundation · 10c-b open_slots→v2 (+ event pre-send policy hook; enables the first digest
+> event) · 10c-c durability closure · 10c-d legacy retirement. Intended **implementation contract**.
 
-## Core model (Rev 9)
+## Core model (Rev 9 preserved + Rev 10 corrections)
 
-- **One durable attempt row per HTTP dispatch** (`notification_digest_attempts`, PK `attempt_id`); a
-  **fresh `attempt_id` for every replay**, but the group's **frozen provider idempotency key is reused**
-  (Resend dedups within 24 h). "≤1 HTTP per attempt row"; record is **idempotent in SQL** by `attempt_id`.
-- **Late `accepted` monotonically completes the group** even if a newer attempt owns it; a stale
-  non-accepted result may only **annotate its own attempt row**, never regress group state.
-- **Uncertainty is sticky:** once `uncertain_since` is set it clears **only** by positive evidence — an
-  `accepted` result, a correlated provider delivery/bounce event, or operator reconciliation. A later
-  definite failure of a *different* attempt says nothing about an earlier possibly-accepted one.
-- **Immutable `digest_boundary_at`** (in the canonical key) is separated from a mutable **`available_at`**
-  (scheduling); the boundary is never mutated.
+Preserved: **durable attempt rows** (fresh `attempt_id` per HTTP dispatch, one **frozen** provider key
+`dg:v1:<group_id>` reused), **SQL-idempotent record**, **late `accepted` monotonically completes the group**,
+**sticky uncertainty**, **immutable `digest_boundary_at`** vs mutable **`available_at`**. Rev 10 adds:
+**attempt-aware reservations that are never released while uncertain** (+ an explicit **`awaiting_evidence`**
+state), a **durable half-open probe identity**, the **restored worker-run/ledger/reconciliation contracts**,
+a **transport+status+name error taxonomy** (unknown 4xx = definite global hold, not ambiguous), a
+**rendered single-item oversize** terminal, an **exact provider-callback table**, and **precise
+persistence/retention/scrub/scheduling** rules.
 
-## Rev 9 review-response map
+## Rev 10 review-response map
 
 | # | Finding | Fix |
 |---|---|---|
-| 1 | Attempt identity contradictory; record not schema-idempotent; late accept rejected | Durable attempt rows; fresh `attempt_id`/replay + frozen key; SQL-idempotent record; **late `accepted` completes monotonically**, stale non-accepted only annotates (§ATT, §P6) |
-| 2 | Ambiguity cleared by a later definite failure | **Sticky uncertainty** — cleared only by accepted / correlated provider event / operator reconcile; capacity held meanwhile (§UNC, §P6) |
-| 3 | `digest_boundary_at` mutated; idempotency key formula absent | Mutable **`available_at`** for scheduling; boundary immutable. Key = **`'dg:v1:' || digest_group_id`** (≤256, server-set at `store`, reused) (§SCHED, §KEY) |
-| 4 | Callback-before-record + late evidence missing | **Resend tag = `digest_group_id`**; **orphan provider events** by email id reconciled later; monotonic **late-evidence** `delivery_unknown → delivered/bounced`; full status set (sent/delivered/delivery_delayed/bounced/complained/failed/suppressed); at-least-once/unordered safe (§PV) |
-| 5 | Error handling not exhaustive | **Allow-list + conservative fallback** (unknown → `ambiguous` + alert, never terminal); `invalid_idempotent_request` → **invariant-breach alert + global hold**, distinct from `concurrent_idempotent_requests` (§ERR) |
-| 6 | Lifecycle gaps | `parent_group_id` on each child (split → many children); **drop `forming`** (materialize is atomic per group); **single-item >90 KB → terminal `oversize_failed`** + alert; `delivery_unknown` → reservations **`committed`** (terminal, purgeable) (§SPLIT, §MAT, §CH, §CAPS) |
-| 7 | Breaker transitions incomplete | Full half-open outcome table (accepted/429/terminal/ambiguous/probe-death) + **explicit deny of non-probe workers** while half-open (§CB) |
-| 8 | Audit/privacy/scheduling/retention | Append-only **enforced by grants** (INSERT/SELECT only); terminal scrub nulls the **outbox `payload`** too; **retention for all** tables; exact **daily/weekly boundary** rules incl. weekday + DST (§AUDIT, §SCRUB, §RET, §BND) |
+| 1 | Sticky uncertainty still releases capacity; "instead ages" undefined | Reservations carry **`attempt_id`**; **never release while `uncertain_since` is set** (ambiguous → reservation `committed`); a definite outcome received while uncertain → explicit **`awaiting_evidence`** state (capacity committed, `available_at = uncertain_deadline_at`) (§CAPS, §AE) |
+| 2 | Half-open has no durable identity; `available_at` can't be NULL | Persist **`probe_group_id` + `probe_attempt_id`**; only that attempt transitions half-open; the **breaker gate** holds the row — `available_at` is never set to a NULL `retry_at` (§CB) |
+| 3 | Observability contract regressed | **Restored** `notification_worker_runs`, ledger `notification_digest_group_attempts`, `reconcile_notification_digest_run`, dimensional invariants; Phase A **hard 50-item cap** (not `p_max_members`) (§LEDGER, §MAT) |
+| 4 | Unknown errors mis-classified as ambiguous | Classify by **transport + HTTP status + error name**: timeout/no-response/5xx/409 → ambiguous; **unknown 4xx → definite `global_config` (hold+alert), never ambiguous/row-terminal**; known-terminal allow-list only; `invalid_idempotent_request` → invariant-breach/manual hold (§ERR) |
+| 5 | Rendered single item can dead-end | The **render-time** 90 KB check: multi-item → split; **single-item oversize → terminal `oversize_failed`** (finalize/scrub member, alert) (§CH) |
+| 6 | Provider callbacks underspecified | Exact per-callback transition table for `sent`/`delivery_delayed`/`delivered`/`bounced`/`failed`/`suppressed`/`complained` — group state, member status, reservation, suppression call, late-evidence override; **delivered/complained prove delivery**, bounced/failed/suppressed do not (§PV) |
+| 7 | Persistence imprecise | Attempt-row **trigger** (only NULL→recorded; identity/request immutable); retention = **purge** with FK `ON DELETE CASCADE` + deletion order; **scrub = set whole `payload`/`digest_item`/`frozen_request` to NULL**; **weekly = fixed Monday** (§AUDIT, §RET, §SCRUB, §BND) |
 
-Owner params: 50 items / ~90 KB / academy→trainer→Amsterdam / 35-day counter retention / 23 h uncertainty
-deadline (24 h − 1 h) / breaker timings.
+Owner params: 50 items / ~90 KB / academy→trainer→Amsterdam / 35-day counter + 90-day audit retention /
+23 h uncertainty / breaker timings / weekly = Monday.
 
 ## Data model (self-contained)
 
-### M1 — immutable snapshot + canonical key + idempotency key
+### M1 — immutable snapshot, canonical key, idempotency key (unchanged)
 
-`enqueue_notification` writes immutably per outbox row: `delivery_mode ('instant'|'digest')` (once from
-`digest_engine_enabled` + resolved frequency; later flips affect new rows only), `recipient_key`
-(`p:/u:/g:`), `digest_frequency`, `group_locale`, `recipient_timezone` (§TZ), **`digest_boundary_at`**
-(§BND — immutable), `template_version`, `destination_fingerprint` (sha256 normalized destination),
-service-role `digest_item` jsonb `{v:1, occurred_at, summary_text, deep_link}` (NOT `public_summary`) +
-server-computed `digest_item_bytes`. `canonical_group_key = jsonb_build_array('v1', channel, recipient_key,
+`enqueue_notification` snapshots immutably: `delivery_mode ('instant'|'digest')`, `recipient_key`
+(`p:/u:/g:`), `digest_frequency`, `group_locale`, `recipient_timezone`, **`digest_boundary_at`** (§BND,
+immutable), `template_version`, `destination_fingerprint`, service-role `digest_item` + server-computed
+`digest_item_bytes`. `canonical_group_key = jsonb_build_array('v1', channel, recipient_key,
 destination_fingerprint, tenant_academy_profile_id, tenant_trainer_id, event_type, template_key,
-template_version, group_locale, digest_frequency, digest_boundary_at)`; `group_key_hash` = its sha256 (hint
-only). **§KEY:** `provider_idempotency_key = 'dg:v1:' || digest_group_id` (36+6 chars ≪ 256; server-set at
-`store_digest_request`, **reused across every attempt** — load-bearing since Resend retains keys 24 h).
-`digest_eligible(o) := coalesce(o.delivery_mode='digest', false)`. Outbox `status` gains `'delivery_unknown'`;
-adds `digest_group_id`, `skip_reason`.
+template_version, group_locale, digest_frequency, digest_boundary_at)`; `group_key_hash` = its sha256 (hint).
+`provider_idempotency_key = 'dg:v1:'||digest_group_id` (set at `store`, reused). `digest_eligible(o) :=
+coalesce(o.delivery_mode='digest', false)`. Outbox gains `status='delivery_unknown'`, `digest_group_id`,
+`skip_reason`.
 
-### M2 — durable group (no `forming`; `available_at`; sticky uncertainty; lineage)
+### M2 — group (adds `awaiting_evidence`; `available_at`; lineage)
 
-```sql
-CREATE TABLE public.notification_digest_groups (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  parent_group_id uuid REFERENCES public.notification_digest_groups(id),   -- set on split children
-  canonical_group_key jsonb NOT NULL, group_key_hash text NOT NULL, chunk_ordinal int NOT NULL DEFAULT 0,
-  channel text NOT NULL, event_type text NOT NULL, recipient_key text NOT NULL, destination_fingerprint text NOT NULL,
-  tenant_academy_profile_id uuid, tenant_trainer_id uuid, recipient_timezone text NOT NULL,
-  digest_boundary_at timestamptz NOT NULL,          -- IMMUTABLE (part of canonical key)
-  available_at timestamptz NOT NULL,                -- MUTABLE scheduling (quiet-hours/cap/backoff)
-  state text NOT NULL DEFAULT 'pending' CHECK (state IN
-    ('pending','leased','prepared','request_ready','sending',
-     'sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped','no_work','superseded')),
-  item_count int NOT NULL DEFAULT 0, total_item_bytes int NOT NULL DEFAULT 0,
-  provider_attempts_started int NOT NULL DEFAULT 0,     -- MONOTONIC audit
-  delivery_budget_used int NOT NULL DEFAULT 0, max_delivery_budget int NOT NULL DEFAULT 5,
-  locked_by text, locked_at timestamptz, worker_run_id uuid,
-  frozen_request jsonb, request_hash text, provider_idempotency_key text,
-  uncertain_since timestamptz, uncertain_deadline_at timestamptz,      -- sticky; +23h
-  provider_message_id text, provider_status text NOT NULL DEFAULT 'none', provider_status_rank int NOT NULL DEFAULT 0,
-  terminal_reason text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_digest_group UNIQUE (canonical_group_key, chunk_ordinal),
-  CONSTRAINT uq_digest_group_provider UNIQUE (provider_message_id));
-```
+`notification_digest_groups` as Rev 9, with `state ∈ ('pending','leased','prepared','request_ready',
+'sending','awaiting_evidence','sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped',
+'no_work','superseded')`, `parent_group_id`, immutable `digest_boundary_at`, mutable `available_at NOT NULL`,
+`provider_attempts_started` (monotonic), `delivery_budget_used`/`max_delivery_budget`, `uncertain_since`/
+`uncertain_deadline_at`, `frozen_request`/`request_hash`/`provider_idempotency_key`, `provider_message_id
+UNIQUE`, `provider_status`/`provider_status_rank`, `terminal_reason`, `UNIQUE(canonical_group_key,
+chunk_ordinal)`.
 
-### ATT — durable attempt rows (append-only; SQL-idempotent record)
+### ATT — attempt rows + append-only trigger (fixes #7)
 
 ```sql
 CREATE TABLE public.notification_digest_attempts (
   attempt_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  digest_group_id uuid NOT NULL REFERENCES public.notification_digest_groups(id),
-  worker_run_id uuid NOT NULL, provider_idempotency_key text NOT NULL,
-  started_at timestamptz NOT NULL DEFAULT now(),
-  outcome_class text, resend_error_name text, http_status int, provider_message_id text,
-  recorded_at timestamptz);   -- NULL until record(); record is idempotent (UPDATE … WHERE recorded_at IS NULL)
+  digest_group_id uuid NOT NULL REFERENCES public.notification_digest_groups(id) ON DELETE CASCADE,
+  worker_run_id uuid NOT NULL, provider_idempotency_key text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(),
+  outcome_class text, resend_error_name text, http_status int, provider_message_id text, recorded_at timestamptz);
 ```
 
-`begin_digest_attempt` INSERTs one row (fresh `attempt_id`, the group's frozen key). `record` sets its
-outcome once (`WHERE recorded_at IS NULL` → idempotent; a replay after crash is a no-op). Append-only via
-grants (§AUDIT). **HTTP calls ≤ attempt rows**; a crash may leave an attempt row with no HTTP.
+A `BEFORE UPDATE` trigger permits **only** the transition `recorded_at IS NULL → recorded_at set` (writing
+`outcome_class/resend_error_name/http_status/provider_message_id/recorded_at`) and **rejects** any change to
+`attempt_id/digest_group_id/provider_idempotency_key/started_at`; a `BEFORE DELETE` trigger raises (rows go
+only by retention cascade). Record is idempotent (`WHERE recorded_at IS NULL`).
 
-## Phase A — MATERIALIZE (atomic per group; no `forming`; fixes #6-mat)
+### LEDGER — worker runs, event ledger, reconciliation (restored; fixes #3)
 
-`materialize_notification_digest_groups(p_run_id, p_channel, p_now, p_max_members, p_max_chunks) → int`:
-per `canonical_group_key`, `pg_try_advisory_xact_lock(group_key_hash)`, `chunk_ordinal =
-coalesce(max(existing),-1)+1` under the lock; **create the group row AND assign its members in one
-transaction** — a group is either fully `pending` or not created (rollback). So there is **no persisted
-`forming` state**; a crash mid-materialize leaves nothing partial; re-materialize creates it fresh (or the
-`UNIQUE(canonical_group_key, chunk_ordinal)` no-ops a completed one). `available_at = digest_boundary_at`.
-Bounded by `p_max_members` AND `p_max_chunks`. **Single-item oversize:** if one item's `digest_item_bytes`
-alone exceeds the render budget, the group is created directly as **`oversize_failed`** (terminal, member
-`failed`/`single_item_oversize`, alert) — it can never render.
+```sql
+CREATE TABLE public.notification_worker_runs (
+  run_id uuid PRIMARY KEY DEFAULT gen_random_uuid(), worker text NOT NULL, channel text NOT NULL,
+  phase text NOT NULL, status text, started_at timestamptz NOT NULL DEFAULT now(), ended_at timestamptz);
+CREATE TABLE public.notification_digest_group_attempts (            -- the event ledger (append-only)
+  event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(), seq bigint GENERATED BY DEFAULT AS IDENTITY,
+  worker_run_id uuid NOT NULL, digest_group_id uuid NOT NULL, attempt_id uuid, action text NOT NULL,
+  item_count int NOT NULL DEFAULT 0, occurred_at timestamptz NOT NULL DEFAULT now());
+```
+
+`start_notification_worker_run(worker, channel, phase) → run_id`;
+`finish_notification_worker_run(run_id, status)` with `status ∈ ('succeeded','failed','abandoned')`. Every
+state-changing RPC appends one ledger row **in the same transaction**; `action` ∈
+`materialized|leased|deferred|prepared|no_work|superseded|request_ready|attempt|sent|retryable|ambiguous|
+terminal|global_config|awaiting_evidence|delivery_unknown|retry_stopped|oversize_failed`. Repeated deferrals
+are distinct events. `reconcile_notification_digest_run(run_id) → TABLE(family text, metric text, count int)`
+returns two **families**: **event counts** (ledger rows; `attempt` == `provider_attempts_started` deltas)
+and **distinct-group** terminal counts. Invariant (distinct groups touched):
+`groups_touched = sent + failed_terminal + oversize_failed + no_work + retry_stopped + delivery_unknown +
+in_flight`; a 50-item email = **1 group / 50 items / 1 provider-send** — never conflated. HTTP calls ≤
+`attempt` rows (crash gap permitted).
+
+### CB — breaker with durable probe identity (fixes #2)
+
+`notification_provider_circuit(channel PK, state CHECK('closed','open','half_open'), reason, tripped_at,
+retry_at, probe_group_id uuid, probe_attempt_id uuid, probe_locked_at timestamptz)`. Trip → `open` +
+reason-aware `retry_at` (auth/config +15m; daily quota +coalesce(Retry-After,24h); monthly quota /
+invariant-breach `retry_at=NULL` manual hold). **Claim gate:** `open` (with `retry_at NULL OR now<retry_at`)
+OR `half_open` → non-probe workers get `none`. At `now≥retry_at`, one worker CAS `open→half_open` **and
+records the `probe_group_id` it claims + that group's `probe_attempt_id`**; **only `probe_attempt_id`'s
+record may transition the breaker** (accepted→`closed`; rate-limit/validation→`closed`; global_config→re-`open`;
+ambiguous→re-`open` short; stale `probe_locked_at`→re-CAS). The breaker never writes `available_at`; a
+group behind an open breaker keeps its `available_at` and is simply not claimable — no NULL assignment.
+
+## Phase A — MATERIALIZE (atomic per group; deterministic 50-item cap; fixes #3)
+
+`materialize_notification_digest_groups(p_run_id, p_channel, p_now, p_max_groups, p_max_members_per_call) →
+int`: per `canonical_group_key`, advisory-lock on `group_key_hash`, `chunk_ordinal =
+coalesce(max(existing),-1)+1`; **create group + assign members in one txn** (no persisted `forming`).
+Members: `ORDER BY created_at, id`, **hard cap 50 items per group** AND cumulative `digest_item_bytes` under
+budget — a 51st member starts a new `chunk_ordinal`. The call is bounded by `p_max_groups` and
+`p_max_members_per_call` (work per invocation), but the **per-group 50-item cap is invariant**. `available_at
+= digest_boundary_at`. **Raw single-item oversize** (`digest_item_bytes` alone > budget) → group created
+`oversize_failed` (member `failed`/`single_item_oversize`, alert). (Rendered oversize is caught later, §CH.)
 
 ## Phase B — the RPCs
 
-**P1 · claim** (breaker-gated §CB): ONE group `FOR UPDATE SKIP LOCKED`, `ORDER BY available_at`, from:
-fresh `pending` (`available_at ≤ p_now`, quiet-hours §QH → defer bumps **`available_at`**, never the
-boundary); **due owned `request_ready`** (`available_at ≤ p_now AND locked_by IS NULL` → set ownership,
-stay `request_ready`); **crash reclaim** (stale-locked, `locked_at < p_now − stale`) in
-`leased|prepared|request_ready|sending` — a stale `sending` (record never ran) → set `uncertain_since` if
-null, → owned `request_ready` (reservation held), due.
+**P1 · claim** (breaker-gated §CB): ONE group `FOR UPDATE SKIP LOCKED`, `ORDER BY available_at`, from fresh
+`pending` (quiet-hours §QH bumps `available_at`), **due owned `request_ready`** (`available_at ≤ p_now AND
+locked_by IS NULL`), or **crash reclaim** (stale-locked; a stale `sending` → set `uncertain_since` if null →
+owned `request_ready`, reservation retained).
 
-**P2 · prepare** (from `leased`): pre-send validation (§PS); **finalize each rejected member immediately**
-(§MEM) even in mixed groups; ≥1 survivor → freeze member manifest → `prepared`; else `no_work`.
+**P2 · prepare** (from `leased`): validation §PS; finalize rejected members immediately (§MEM); survivors →
+`prepared` else `no_work`.
 
-Worker **renders**; hard-check ≤ 90 KB; oversize (multi-item) → **P3 split**.
+Worker **renders**; **§CH** 90 KB check → split or `oversize_failed`.
 
-**P3 · split** `split_digest_group(p_run_id, p_worker, p_digest_group_id) → int` (ownership-gated,
-`pending|prepared`): create child groups (`chunk_ordinal max+1` under key lock) each with
-**`parent_group_id = this.id`**, move members; original → `superseded`; ledger.
+**P3 · split** (ownership-gated, `pending|prepared`): children with `parent_group_id`, move members, original
+`superseded`.
 
-**P4 · store** `store_digest_request(p_run_id, p_worker, p_digest_group_id, p_frozen_request)` (from
-`prepared`): recompute `request_hash` server-side; validate destination == fingerprint / schema / ≤90 KB;
-store request; set **`provider_idempotency_key = 'dg:v1:'||id`** (§KEY); → `request_ready`,
-`available_at=now()`, ledger.
+**P4 · store** (from `prepared`): recompute+validate request; set `provider_idempotency_key='dg:v1:'||id`;
+→ `request_ready`, `available_at=now()`.
 
-**P5 · begin attempt** `begin_digest_attempt(p_run_id, p_worker, p_digest_group_id, p_now) →
-TABLE(attempt_id uuid, provider_idempotency_key text, outcome text)`, ownership-gated, from
-`request_ready`, one txn:
-1. **All stop-only re-checks (§PS):** preference / current contact / destination / suppression / event
-   policy. Stop & `uncertain_since IS NULL` → `retry_stopped`; stop & uncertain → `delivery_unknown` (held).
-2. **Uncertainty age-out:** uncertain & `p_now ≥ uncertain_deadline_at` → `delivery_unknown`.
-3. **Breaker** open → stay `request_ready`, `available_at = circuit.retry_at`, clear ownership.
-4. **Quiet hours** (§QH, from `p_now`) outside `[09:00,20:00)` → stay `request_ready`, `available_at = next
-   local 09:00`, clear ownership.
-5. **Budget:** `delivery_budget_used ≥ max` → uncertain ? `delivery_unknown` : `failed_terminal`.
-6. **Capacity (§CAPS):** reuse active held reservation (current buckets) else acquire fresh; unavailable →
-   `request_ready`, bump `available_at`, clear ownership.
-7. **INSERT an attempt row** (fresh `attempt_id`, frozen key); `provider_attempts_started++`;
-   `delivery_budget_used++`; ledger `attempt`(attempt_id); → `sending`; return `attempt_id` + key.
+**P5 · begin attempt** (ownership-gated, `request_ready`): stop-only re-checks §PS; uncertainty age-out
+(→`delivery_unknown`); breaker gate; quiet-hours (bump `available_at`); budget bound; **reserve** (attempt-aware,
+§CAPS); **INSERT attempt row** (fresh `attempt_id`, frozen key); `provider_attempts_started++`;
+`delivery_budget_used++`; ledger `attempt`; → `sending`; return `attempt_id`+key. Worker POSTs via
+`sendResendDigestOnce` (Resend tag `digest_group_id`) — one HTTP.
 
-Worker **POSTs** via **`sendResendDigestOnce`** with the frozen key + **Resend tag `digest_group_id`**
-(§PV) — one HTTP for this attempt row.
+**P6 · record** (idempotent by `attempt_id`, §ERR mapping): write the attempt-row outcome; then the group:
+- **`accepted`** → monotonic `sent` (applies even if a newer attempt owns it); commit reservations; scrub;
+  members `sent`; clears uncertainty.
+- stale attempt & non-accepted → **annotate the attempt row only**.
+- **`retryable_definite`** → **if `uncertain_since` set: → `awaiting_evidence`** (capacity stays committed);
+  else `request_ready`, release this attempt's reservation, clear ownership, `available_at=now()+max(Retry-After,
+  backoff)`.
+- **`ambiguous`** → `request_ready`; **set/keep `uncertain_since`**; this attempt's reservation → **committed**
+  (never released); clear ownership; `available_at=now()+backoff`.
+- **`terminal`** → **if uncertain: `awaiting_evidence`**; else `failed_terminal`, release reservation, scrub,
+  members `failed`.
+- **`global_config`** → record attempt; `delivery_budget_used--`; **if uncertain: `awaiting_evidence`** (keep
+  committed) else release reservation; trip breaker; → `request_ready` (or `awaiting_evidence`), clear
+  ownership.
 
-**P6 · record** `record_notification_digest_result(p_run_id, p_worker, p_digest_group_id, p_attempt_id,
-p_outcome_class, p_provider_message_id, p_resend_error_name, p_http_status, p_retry_after_seconds) → text`,
-one txn: **write the attempt row's outcome idempotently** (`UPDATE notification_digest_attempts SET … WHERE
-attempt_id=p_attempt_id AND recorded_at IS NULL`; already-recorded → no-op). Then update the GROUP:
-- **`accepted`** → **monotonic complete**: `state='sent'`, `provider_message_id`, commit reservations,
-  scrub (§SCRUB), members `sent` — **applied even if a newer attempt now owns the group** (acceptance is
-  positive evidence; it wins). Clears uncertainty.
-- If the attempt is **stale** (group `locked_by`/`worker_run_id`/`attempt_id` no longer this one) and
-  `p_outcome_class ≠ accepted` → **annotate the attempt row only**; do not change group state.
-- **`retryable_definite`** (429 `rate_limit_exceeded`) → `request_ready`; release reservations; clear
-  ownership; `available_at = now()+max(Retry-After, backoff)`. **Uncertainty unchanged** (a later definite
-  failure does not clear a prior ambiguity, §UNC).
-- **`ambiguous`** (5xx/network/timeout, 409 `concurrent_idempotent_requests`) → `request_ready`; **set/keep
-  `uncertain_since`**; **retain** reservation; clear ownership; `available_at = now()+backoff`.
-- **`terminal`** (422/validation/invalid payload) → `failed_terminal`; release; scrub; members `failed`.
-  (If uncertain from a prior attempt, uncertainty persists and the group instead ages to
-  `delivery_unknown` — a terminal on a *new* attempt cannot prove an earlier possible acceptance did not
-  deliver.)
-- **`global_config`** (401/403 auth/config, `daily_quota_exceeded`, `monthly_quota_exceeded`) → record the
-  attempt; **`delivery_budget_used--`** (refund); release reservations; **trip breaker** (§CB); →
-  `request_ready`, clear ownership, `available_at = circuit.retry_at`. Uncertainty unchanged.
+### AE — awaiting_evidence (fixes #1)
 
-### UNC — sticky uncertainty (fixes #2)
+A group with `uncertain_since` set that receives a definite outcome (terminal / budget-exhausted / global_config)
+→ **`awaiting_evidence`**: capacity **committed** (held), `available_at = uncertain_deadline_at`. It resolves
+by: a positive provider event (`delivered`/`complained` → `sent`; `bounced`/`failed`/`suppressed` → not-delivered
+outcome, §PV), operator reconciliation, or aging at `uncertain_deadline_at` → `delivery_unknown`. It is never
+re-sent (a definite outcome exists) and capacity is never released.
 
-`uncertain_since` is set on the first `ambiguous` outcome and **persists** until: an `accepted` record (this
-key delivered), a **correlated provider event** proving the send's fate (§PV late evidence), or explicit
-operator reconciliation. It is **never** cleared by a later definite failure of a different attempt. While
-uncertain, capacity stays held/committed. `delivery_unknown` (age-out) → reservations **`committed`**
-(terminal), so retention purges them (§CAPS).
-
-### ERR — allow-list + conservative fallback (fixes #5)
-
-Classify by **Resend error name** (allow-list):
-
-| name / signal | class |
-|---|---|
-| 2xx | `accepted` |
-| `rate_limit_exceeded` (429) | `retryable_definite` (Retry-After) |
-| `daily_quota_exceeded` / `monthly_quota_exceeded` (429) | `global_config` |
-| `restricted_api_key` / `invalid_api_key` / 401 / 403 | `global_config` |
-| 5xx / network / timeout / `application_error` | `ambiguous` |
-| `concurrent_idempotent_requests` (409) | `ambiguous` (original may still complete) |
-| `validation_error` / `invalid_from_address` / `invalid_attachment` / 422 | `terminal` |
-| **`invalid_idempotent_request`** | **invariant-breach**: alert + **global hold** (our key reuse is wrong — do not treat as concurrent) |
-| **unknown / unmapped name** | **`ambiguous` + alert** (conservative: a new 4xx must NOT terminal-fail the queue) |
-
-### CB — provider circuit breaker (full transitions; fixes #7)
-
-`notification_provider_circuit(channel PK, state CHECK('closed','open','half_open'), reason, tripped_at,
-retry_at, probe_locked_by, probe_locked_at)`. Trip (`global_config`/invariant-breach): `open`, reason-aware
-`retry_at` — auth/config `+15m`; daily quota `+coalesce(Retry-After,24h)`; monthly quota / invariant-breach
-`retry_at=NULL` (manual hold). **Claim gate:** any `open` (with `retry_at NULL or now<retry_at`) OR
-`half_open` → non-probe workers get `none` (explicit deny). At `now≥retry_at`, one worker CAS
-`open→half_open` (probe lease); it claims **one** probe group. Half-open outcomes:
-
-| probe result | breaker → |
-|---|---|
-| `accepted` | `closed` |
-| `retryable_definite` (rate-limit) / `terminal` validation | `closed` (API reachable; per-request issue) |
-| `global_config` | `open` (new reason-aware `retry_at`) |
-| `ambiguous` | `open` (short `retry_at`; recovery unconfirmed) |
-| probe process death (`probe_locked_at` stale) | re-CAS-able by another worker |
-
-### PV — callbacks: tags, orphans, late evidence, full status (fixes #4)
-
-Send tags carry `digest_group_id`. `notification_provider_events(resend_event_id text PK, provider_message_id
-text, digest_group_id uuid, status text, occurred_at timestamptz, received_at timestamptz DEFAULT now())`,
-**append-only** (`ON CONFLICT (resend_event_id) DO NOTHING`; at-least-once/unordered safe). Correlation:
-prefer the tag `digest_group_id`; else resolve via `provider_message_id`; a webhook arriving **before**
-`record` is stored as an **orphan** (group null, `provider_message_id` set) and linked when the group's
-`provider_message_id` lands. Status set + **monotonic rank**: `sent 1 < delivery_delayed 2 < delivered 3`
-(terminal-good) and side outcomes `bounced/failed/suppressed 4 < complained 5` (terminal-bad); a lower-rank
-late event never regresses a higher one. **Late-evidence monotonic transitions:** a `delivered` for a
-`delivery_unknown` group → `sent` (resolved) with provider_status `delivered`; a `bounced`/`failed` →
-resolves the unknown as not-delivered (audit + suppression via `record_email_event`). The webhook calls
-**`record_email_event` once per group destination** so suppression stays authoritative.
-
-### CAPS — reuse/acquire, key, release/commit, retention (fixes #4-key, #6-du)
+### CAPS — attempt-aware, never-release-while-uncertain (fixes #1)
 
 `notification_send_counters(counter_key PK, bucket_kind CHECK('hour','day'), bucket_start, used int CHECK(used>=0), cap int)`;
-`notification_send_reservations(digest_group_id, counter_key, bucket_start, state CHECK('reserved','committed','released'),
-created_at DEFAULT now(), updated_at DEFAULT now(), PRIMARY KEY(digest_group_id, counter_key))`.
-**`counter_key = channel || ':' || event_type || ':' || destination_fingerprint || ':' || bucket_kind || ':'
-|| bucket_start::text`** (per destination → no shared-mailbox bypass). `begin` reuses an active `reserved`
-pair on current buckets, else acquires fresh (ensure rows; `FOR UPDATE` **hour then day**; verify `used<cap`;
-`used++`; upsert `reserved`). **Commit** on `accepted` and on `delivery_unknown` (`reserved→committed` —
-capacity may have been consumed; terminal). **Release-once** on `retryable_definite`/`terminal`/
-`global_config`/pre-attempt `retry_stopped`. Retention: purge counters `bucket_start<now()-35d`, terminal
-reservations (`committed`/`released`) `updated_at<now()-35d`.
+`notification_send_reservations(digest_group_id, counter_key, attempt_id uuid, bucket_start, state
+CHECK('reserved','committed','released'), created_at DEFAULT now(), updated_at DEFAULT now(),
+PRIMARY KEY(digest_group_id, counter_key))`. `counter_key = channel||':'||event_type||':'||destination_fingerprint
+||':'||bucket_kind||':'||bucket_start::text` (per destination). `begin` **reuses** an active reservation
+(`reserved`/`committed`) on current buckets, else **acquires fresh** (ensure rows; `FOR UPDATE` hour then day;
+`used<cap`; `used++`; upsert `reserved` with this `attempt_id`). **Transitions:** `accepted`/`ambiguous` →
+`committed` (capacity consumed / possibly consumed). **Release-once** (`reserved→released`, `used=used-1`)
+**only** for a definite outcome **while `uncertain_since IS NULL`** (`retryable_definite`/`terminal`/`global_config`).
+**Never release while uncertain** (already `committed`). Retention: counters `bucket_start<now()-35d`, terminal
+reservations `updated_at<now()-35d`.
 
-### MEM — member finalization (mixed groups; fixes #5)
+### ERR — transport + status + name taxonomy (fixes #4)
 
-At `prepare`, each rejected member is finalized immediately (even with survivors). Every group terminal
-finalizes members in the same txn:
+| Transport / status / name | class |
+|---|---|
+| no response / timeout / network | `ambiguous` |
+| 5xx / `application_error` | `ambiguous` |
+| 409 `concurrent_idempotent_requests` | `ambiguous` |
+| 429 `rate_limit_exceeded` | `retryable_definite` (Retry-After) |
+| 429 `daily_quota_exceeded` / `monthly_quota_exceeded` | `global_config` |
+| 401/403 `invalid_api_key`/`restricted_api_key` | `global_config` |
+| 4xx **known-terminal allow-list** (`validation_error`, `invalid_from_address`, `invalid_attachment`, `missing_required_field`) | `terminal` |
+| **4xx unknown name (definite HTTP response)** | **`global_config`** — hold + alert (definite rejection, NOT ambiguous, NOT row-terminal) |
+| `invalid_idempotent_request` | **invariant breach** — alert + manual-hold breaker |
 
-| terminal | member `status` | reason |
-|---|---|---|
-| prepare reject | `cancelled` | validation reason (`preference_off`/`suppressed`/`contact_revoked`/`destination_mismatch`/`opted_out`/`unfollowed`) |
-| `sent` | `sent` | — |
-| `failed_terminal` | `failed` | `provider_terminal` |
-| `oversize_failed` | `failed` | `single_item_oversize` |
-| `retry_stopped` | `cancelled` | `opted_out_before_send` |
-| `delivery_unknown` | `delivery_unknown` | `ambiguous_window_expired`/`opted_out_after_ambiguous_attempt` |
-| `superseded` | (moved to child `digest_group_id`) | — |
+Rationale: a completed 4xx is a **definite** answer (no uncertainty); an unknown 4xx pauses the channel for
+operator review rather than terminal-failing a row or holding false ambiguity. Only transport/5xx/409 are
+genuinely ambiguous.
 
-### PS / QH / TZ / BND / SCRUB / AUDIT / RET / MIG / ACL / IX
+### CH — chunking + rendered single-item oversize (fixes #5)
 
-- **PS:** stop-only checks (preference, contact revoked/replaced, destination mismatch, `is_email_suppressed`,
-  event policy hook [10c-b]) at `prepare` (drop members) AND before every attempt (whole-group stop, no
-  manifest rewrite). Required-delivery exempt from opt-out.
-- **QH:** `[09:00,20:00)` in `recipient_timezone` (DST via `AT TIME ZONE`), at claim AND in `begin`; outside
-  → next local 09:00; bumps `available_at` (never the boundary).
+`digest_item` service-role, server-verified bytes; per-group **≤ 50 items** + cumulative byte budget under
+~90 KB. At **render time**, `octet_length(html)`: **> 90 KB & item_count > 1 → `split_digest_group`**; **>
+90 KB & item_count = 1 → terminal `oversize_failed`** (member `failed`/`single_item_oversize`, scrub, alert)
+— a single item can't be split, so it dead-ends explicitly here (covering post-render overhead a raw check
+misses).
+
+### PV — provider callback transition table (fixes #6)
+
+Tag `digest_group_id` on send; `notification_provider_events(resend_event_id PK, provider_message_id,
+digest_group_id, status, occurred_at, received_at)` append-only, orphan-then-link, at-least-once/unordered
+safe; monotonic `provider_status_rank`. Per callback (correlate via tag or `provider_message_id`):
+
+| callback | provider_status | group (if `sending`/`awaiting_evidence`/`delivery_unknown`) | member | reservation | `record_email_event` |
+|---|---|---|---|---|---|
+| `sent` | sent (rank 1) | informational (no state change) | — | — | no |
+| `delivery_delayed` | delivery_delayed (2) | informational | — | — | no |
+| `delivered` | delivered (3) | **resolve → `sent`** (proves delivery) | `sent` | commit | no |
+| `complained` | complained (5) | **resolve → `sent`** then flag complaint (proves delivery) | `sent` | commit | **yes** (suppress) |
+| `bounced` | bounced (4) | **resolve → not-delivered** (`delivery_unknown`→`failed_terminal`/`bounced`) | `failed` | commit | **yes** (suppress) |
+| `failed` | failed (4) | **resolve → not-delivered** | `failed` | commit | **yes** |
+| `suppressed` | suppressed (4) | **resolve → not-delivered** | `cancelled`/`suppressed` | commit | **yes** |
+
+`delivered`/`complained` are the **only** delivery-proving events (they can override `delivery_unknown`/
+`awaiting_evidence` to `sent`); `bounced`/`failed`/`suppressed` prove non-delivery and resolve the group as
+not-sent — they do **not** share a rank-only outcome. A lower-rank late event never regresses a higher one.
+
+### MEM / PS / QH / TZ / BND / SCRUB / AUDIT / RET / MIG / ACL / IX
+
+- **MEM:** finalize each rejected member at `prepare` (mixed groups) and all members at every terminal — no member left `pending` (`sent`/`cancelled`/`failed`/`delivery_unknown` with reasons; `superseded` → moved to child).
+- **PS:** stop-only checks (preference / current contact / destination / `is_email_suppressed` / event policy hook [10c-b]) at prepare (drop members) AND before every attempt (whole-group stop, no rewrite). Required-delivery exempt.
+- **QH:** `[09:00,20:00)` in `recipient_timezone` at claim AND `begin`; bumps `available_at` only.
 - **TZ:** academy → trainer → `Europe/Amsterdam`.
-- **BND (fixes #8-sched):** `digest_boundary_at` at enqueue in `recipient_timezone`, DST-correct: **daily** =
-  the next `09:00` local ≥ enqueue (today if before 09:00 local, else tomorrow); **weekly** = the next
-  configured weekday (default **Monday**) `09:00` local ≥ enqueue. Computed with
-  `date_trunc('day', now() AT TIME ZONE tz)` + interval then back to UTC `AT TIME ZONE tz`; a DST-shift day
-  still yields 09:00 wall-clock. Immutable once set.
-- **SCRUB (fixes #8-priv):** on `sent`/`failed_terminal`/`oversize_failed`/`retry_stopped`/`delivery_unknown`:
-  `frozen_request = NULL`, null the member `digest_item` token payload AND the **original outbox `payload`**
-  token-bearing fields; retain `request_hash` + safe-metadata allow-list (`recipient_key, item_count,
-  total_item_bytes, provider_message_id, digest_boundary_at, terminal_reason`).
-- **AUDIT (fixes #8-append):** `notification_digest_attempts`, `..._group_attempts` (ledger), and
-  `..._provider_events` are **append-only enforced by grants** — `GRANT INSERT, SELECT` to service_role,
-  **no `UPDATE`/`DELETE` grant** (record sets an initially-NULL outcome column via a narrow SECURITY DEFINER
-  RPC that is the only writer; a `BEFORE UPDATE/DELETE` trigger raises on any other path).
-- **RET (fixes #8-ret):** retention/archival — terminal groups + their attempts + provider events purged/
-  archived after **90 days**; finished `worker_runs` after 90 days; counters/reservations 35 days (§CAPS).
-- **MIG:** legacy NULL `delivery_mode` → instant-path (strict boolean). Catalog `CHECK (NOT
-  digest_engine_enabled OR supports_digest)`. Engine exercised by **test fixtures only**.
-- **ACL:** each of the 8 new tables (groups, attempts, group_attempts, worker_runs, provider_events,
-  provider_circuit, send_counters, send_reservations): RLS on, no policy, `REVOKE … FROM PUBLIC, anon,
-  authenticated`, service-role grants only (append-only tables per §AUDIT). RPCs `SECURITY DEFINER`,
-  `SET search_path=public`, service-role only. Migration-wide ACL guard test.
-- **IX:** forming `notification_outbox (channel, digest_boundary_at) WHERE delivery_mode='digest' AND
-  digest_group_id IS NULL AND status='pending'`; due `notification_digest_groups (channel, available_at)
-  WHERE state IN ('pending','request_ready') AND locked_by IS NULL`; stale `(channel, locked_at) WHERE state
-  IN ('leased','prepared','request_ready','sending')`; attempts `(digest_group_id)`; provider-event orphans
-  `(provider_message_id) WHERE digest_group_id IS NULL`; member `notification_outbox (digest_group_id)`;
-  dedup `UNIQUE(canonical_group_key, chunk_ordinal)`, `UNIQUE(provider_message_id)`.
+- **BND (fixes #7-weekly):** `digest_boundary_at` at enqueue in `recipient_timezone`, DST-correct: **daily** = next 09:00 local ≥ enqueue; **weekly** = next **Monday** 09:00 local ≥ enqueue (**Monday is fixed** — no per-event weekday column in 10c-a). Immutable.
+- **SCRUB (fixes #7-scrub):** on every terminal (`sent`/`failed_terminal`/`oversize_failed`/`retry_stopped`/`delivery_unknown`): set the group `frozen_request = NULL` **and** each member's `notification_outbox.payload = NULL` **and** `digest_item = NULL` (whole columns, not enumerated fields); retain `request_hash` + safe-metadata allow-list.
+- **AUDIT (fixes #7):** `notification_digest_attempts`, `notification_digest_group_attempts`, `notification_provider_events`, `notification_worker_runs` are append-only — `GRANT INSERT, SELECT` service_role only, **no UPDATE/DELETE grant**; the attempt-row NULL→recorded transition is the sole exception via its trigger; a BEFORE UPDATE/DELETE trigger raises on the ledger/events/runs.
+- **RET (fixes #7-ret):** retention = **purge** (not archive). `notification_digest_attempts` and `notification_provider_events` FK → `notification_digest_groups(id)` **ON DELETE CASCADE**; a retention job deletes **terminal groups** older than **90 days** (cascading their attempts + events), then `finished worker_runs` older than 90 days, then counters/reservations at 35 days. Deletion order: groups (cascade attempts+events) → worker_runs → counters/reservations. Retained `email_delivery_events`/timelines follow their existing lifecycle.
+- **MIG:** legacy NULL `delivery_mode` → instant-path (strict boolean). Catalog `CHECK (NOT digest_engine_enabled OR supports_digest)`. Test-fixture event only.
+- **ACL:** each of the 8 new tables: RLS on, no policy, `REVOKE … FROM PUBLIC, anon, authenticated`, service-role grants only (append-only tables INSERT/SELECT only). RPCs `SECURITY DEFINER`, `SET search_path=public`, service-role only. Migration-wide ACL guard test.
+- **IX:** forming `notification_outbox (channel, digest_boundary_at) WHERE delivery_mode='digest' AND digest_group_id IS NULL AND status='pending'`; due `notification_digest_groups (channel, available_at) WHERE state IN ('pending','request_ready') AND locked_by IS NULL`; awaiting-age `(available_at) WHERE state='awaiting_evidence'`; stale `(channel, locked_at) WHERE state IN ('leased','prepared','request_ready','sending')`; attempts `(digest_group_id)`; provider-event orphans `(provider_message_id) WHERE digest_group_id IS NULL`; member `notification_outbox (digest_group_id)`.
 
 ## Crash / race → single recovery route
 
 | Event | State | Route |
 |---|---|---|
-| crash mid-materialize | (none; rolled back) | re-materialize creates fresh; `UNIQUE` no-ops a completed group |
-| crash after claim/prepare/store | `leased`/`prepared`/`request_ready` | due/stale claim → next step |
-| crash after begin, before HTTP | `sending`, attempt row unrecorded | reclaim → `uncertain_since` set → new attempt row, **same key** → re-POST (Resend dedups) |
-| crash after HTTP accept, before record | `sending` | reclaim re-POSTs same key (dedup); the accepted idempotent replay completes the group; >23h uncertain → `delivery_unknown` (capacity committed) |
-| **callback before record** | `sending` | orphan provider event stored; linked when `provider_message_id` lands; can complete a later `delivery_unknown` |
-| **late `accepted` after reclaim** | any | monotonically completes the group; stale non-accepted only annotates its attempt |
-| webhook double / unordered | — | `ON CONFLICT DO NOTHING`; monotonic rank |
+| crash mid-materialize | (rolled back) | re-materialize; `UNIQUE` no-ops a completed group |
+| crash after begin, before HTTP | `sending`, attempt unrecorded | reclaim → `uncertain_since` set → new attempt row, same key → re-POST (dedup) |
+| crash after accept, before record | `sending` | reclaim re-POSTs same key; accepted idempotent replay completes; >23h → `delivery_unknown` |
+| definite outcome while uncertain | `awaiting_evidence` | capacity committed; resolves on provider event / operator / age-out |
+| callback before record | `sending`/`awaiting_evidence` | orphan event linked on `provider_message_id`; delivered/complained → `sent` |
+| late `accepted` after reclaim | any non-terminal | monotonically completes; stale non-accepted annotates only |
+| half-open probe crash | breaker `half_open` | stale `probe_locked_at` → re-CAS by another worker |
+| webhook double/unordered | — | `ON CONFLICT DO NOTHING`; monotonic rank; lower never regresses higher |
 
-## Test plan (named crash/race cases)
+## Test plan (named race/mutation cases)
 
-Real-Postgres: **attempt rows** — fresh `attempt_id`/replay, one frozen key; record idempotent (double =
-one effect); HTTP ≤ attempt rows; **late `accepted` after another worker reclaimed** completes the group;
-stale non-accepted only annotates. **Sticky uncertainty** — `timeout→429`, `timeout→401`, `timeout→422`:
-uncertainty persists (not cleared), capacity held, resolves only on accepted/provider-event/operator.
-**Boundary immutability** — quiet-hours/cap defer bumps `available_at`, never `digest_boundary_at`; the
-canonical key is unchanged. **Callback-before-record** — orphan event linked on `provider_message_id`;
-`delivery_unknown → delivered` on a late webhook; bounced/failed/suppressed/delivery_delayed handled;
-unordered/at-least-once idempotent. **Errors** — allow-list mapping; unknown name → ambiguous+alert (no
-terminal); `invalid_idempotent_request` → invariant-breach alert + hold. **Breaker** — one half-open probe
-(CAS); non-probe denied; every probe outcome transition; stale probe re-claim; monthly-quota manual hold.
-**Lifecycle** — split → multiple children each with `parent_group_id`; no persisted `forming`; single-item
->90 KB → `oversize_failed`; `delivery_unknown` reservations `committed` then purged at 35 days. **Scrub** —
-frozen_request + member digest_item + outbox payload token fields nulled on every terminal. **Audit** —
-UPDATE/DELETE on append-only tables blocked by grants/trigger. **Retention** — groups/attempts/events/runs
-purged at 90 days. **Boundary rules** — daily/weekly next-09:00-local incl. DST-shift day and weekday.
-Two-worker concurrency; ACL guard; catalog constraint; 100k scale on real PG; back-compat instant-path.
+Real-Postgres: attempt rows (fresh id/replay, one frozen key, idempotent record, late-accepted monotonic
+completion, stale-non-accepted annotate-only); **capacity while uncertain never released** across
+`timeout→429`, `timeout→terminal`, `timeout→global_config` (each → `awaiting_evidence`, reservation
+`committed`, resolves only on evidence/age-out); attempt-aware reservation (a later attempt's release can't
+touch an ambiguous attempt's committed reservation). Breaker: durable `probe_group_id`/`probe_attempt_id` —
+only that attempt transitions; concurrent workers denied; every half-open outcome; stale-probe re-CAS;
+monthly-quota manual hold; `available_at` never NULL. Observability: worker-run lifecycle; ledger same-txn;
+reconcile event-vs-group families + invariant; deferred-then-sent = many events/one sent group. Errors:
+transport/status/name taxonomy — timeout/5xx/409 ambiguous; **unknown 4xx → global_config hold+alert (not
+ambiguous)**; known-terminal allow-list; `invalid_idempotent_request` → invariant breach. Render oversize:
+single-item post-render >90 KB → `oversize_failed` (pin the rendered-overhead case); multi → split. Provider
+callbacks: each of the 7 → its exact group/member/reservation/suppression/late-override row; delivered/
+complained resolve delivery_unknown→sent; bounced/failed/suppressed → not-delivered; unordered/at-least-once.
+Persistence: attempt-row trigger allows only NULL→recorded, blocks identity/DELETE; ledger/events/runs
+UPDATE/DELETE blocked by grants; retention cascade + order; scrub nulls payload/digest_item/frozen_request.
+Scheduling: daily next-09:00-local + weekly next-Monday-09:00-local incl DST. Two-worker concurrency; ACL
+guard; catalog constraint; 100k scale on real PG amid disabled/instant; back-compat instant-path.
 
 ## Alternatives considered
 
-- **One attempt_id reused on replay (Rev 8)** — rejected (#1): breaks ≤1-HTTP-per-attempt; durable attempt
-  rows + one frozen key + SQL-idempotent record + monotonic late accept.
-- **Definite failure clears uncertainty (Rev 8)** — rejected (#2): sticky until positive evidence.
-- **Mutating `digest_boundary_at` (Rev 8)** — rejected (#3): separate `available_at`.
-- **Correlate only via stored `provider_message_id` (Rev 8)** — rejected (#4): tag + orphan + late evidence.
-- **Closed error table / `superseded_by` scalar / `forming` state / attachment-only scrub (Rev 8)** —
-  rejected (#5,#6,#8): fallback+allow-list, `parent_group_id`, atomic materialize, full scrub.
+- **Group-keyed reservation release (Rev 9)** — rejected (#1): a retry could release an ambiguous send's
+  capacity; attempt-aware + never-release-while-uncertain + `awaiting_evidence`.
+- **`probe_locked_by` only (Rev 9)** — rejected (#2): no durable probe identity; `probe_group_id/attempt_id`.
+- **Compressed observability "as prose" (Rev 9)** — rejected (#3): full worker-run/ledger/reconcile restored.
+- **Unknown → ambiguous (Rev 9)** — rejected (#4): a completed 4xx is definite; transport/status/name taxonomy.
+- **Raw-only oversize check (Rev 9)** — rejected (#5): render-time single-item terminal.
+- **Rank-only callbacks (Rev 9)** — rejected (#6): delivered/complained prove delivery; bounced/failed/suppressed don't.
+- **"purge/archive", enumerated scrub, configurable weekday (Rev 9)** — rejected (#7): purge+cascade, whole-column NULL, Monday fixed.
 
 ## Consequences
 
-- Attempt identity is now sound across the network boundary: replays are distinct rows under one Resend
-  key; acceptance (even late) completes monotonically; ambiguity is conservatively sticky and capacity is
-  never wrongly released.
-- Immutability of the group key is preserved; scheduling moves to `available_at`.
-- Callback-before-record and late evidence are handled; the breaker is fully specified; the lifecycle and
-  retention are complete; audit tables are append-only by grant; all token-bearing bytes are scrubbed.
+- Capacity accounting is now attempt-correct and evidence-gated: an ambiguous send's capacity is held until
+  proven, and `awaiting_evidence` is the explicit home for "definite-failure-after-possible-acceptance".
+- The breaker's single probe is durably identified; observability (runs/ledger/reconcile) is fully specified.
+- The error taxonomy no longer manufactures false ambiguity; single-item render oversize can't dead-end;
+  every provider callback has one transition; persistence/retention/scrub/scheduling are exact.
 - Confirmations before implementation (all set): 50 / ~90 KB / 09:00–20:00 / academy→trainer→Amsterdam /
-  35-day counter + 90-day audit retention / 23 h uncertainty / breaker timings / weekly weekday = Monday.
+  35-day counter + 90-day audit retention / 23 h uncertainty / breaker timings / weekly = Monday.
 - Legacy `notification_queue`/`send-digest-emails` untouched until 10c-d.
