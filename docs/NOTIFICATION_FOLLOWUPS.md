@@ -131,8 +131,8 @@ were premature. Round-3 corrections:
    **NOT yet full parity** — see round-4 #2 below: clauses (a)/(b) still keyed the RAW `player_id`,
    granting the parent of a dual-key row; closed in round 4 for `can_book_member_window`. The shared
    `is_cycle_member` primitive (a latent oracle; the 2026-07-24 live audit found ZERO callers — NOT
-   capacity/slot-tier, which moved off it) is made guest-safe + service-role-only in PR #607
-   (task #30, pending merge/deploy).
+   capacity/slot-tier, which moved off it) was made guest-safe + service-role-only in PR #607
+   (task #30) — **DEPLOYED + PROD-VERIFIED 2026-07-24**.
 3. **Group-confirmation** is now send-THEN-stamp with a deterministic Resend idempotency key (was:
    claim-before-send with no key → timeout-dup + a failed clear permanently suppressed). The key
    dedupes for Resend's 24h window ONLY; a post-send stamp failure now returns `ok:false, unresolved>0`
@@ -156,7 +156,7 @@ were premature. Round-3 corrections:
    account resolves to me — raw `player_id` is never identity proof); clause (b) is guarded with
    `guest_player_id IS NULL` (a dual-key claim belongs to the guest, handled by (d)). Tests prove the
    parent is DENIED while the guest's verified account remains ELIGIBLE (canBookMemberWindowPerson).
-   **OWNED FOLLOW-UP — IMPLEMENTED IN PR #607 (pending merge/deploy; task #30):** a 2026-07-24
+   **OWNED FOLLOW-UP — RESOLVED: DEPLOYED + PROD-VERIFIED 2026-07-24 (PR #607, task #30):** a 2026-07-24
    live-prod caller audit corrected the earlier assumption. `is_cycle_member` has **ZERO live callers** —
    capacity + slot-tier moved to `can_book_slot` / `can_book_member_window` (which `20260928100000` made
    guest-safe and no longer calls it — the only remaining reference is a deferral COMMENT); no RLS policy
@@ -165,8 +165,10 @@ were premature. Round-3 corrections:
    PR #607: redefines `is_cycle_member(uuid,uuid)` guest-safe (reusing `guest_verified_account_profile`),
    `REVOKE`s PUBLIC/anon/authenticated + `GRANT`s `service_role` only, DELETES the dead helper, and adds
    identity + ACL regression (incl. a statement-parsed migration-wide guard covering multiline / `TO
-   PUBLIC` / schema-wide grants). **No wrapper** (owner decision). Mark RESOLVED only after production
-   ACL/body verification.
+   PUBLIC` / schema-wide `FUNCTIONS`|`ROUTINES` grants). **No wrapper** (owner decision). **Prod verify
+   (2026-07-24) PASSED:** `anon=false, authenticated=false, service_role=true`; live `pg_get_functiondef`
+   has the `guest_verified_account_profile` branch and restricts the raw player arm to
+   `guest_player_id IS NULL`.
 3. **Group-confirmation durability** — a post-send stamp failure no longer returns `ok:true`: it
    increments `unresolved`, alerts with the member key, and returns `ok:false, unresolved>0`. Comments
    corrected to state provider idempotency is a 24h mitigation ONLY; durable recovery of unresolved
