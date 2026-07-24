@@ -34,10 +34,17 @@ function findIsCycleMemberReopeningGrants(sql: string): string[] {
     if (!/^GRANT\b/i.test(st)) continue;
     const toIdx = st.toUpperCase().lastIndexOf(' TO ');
     if (toIdx < 0) continue;
+    const objectPart = st.slice(0, toIdx);
     const rolesPart = st.slice(toIdx + 4);
     if (!/\b(PUBLIC|anon|authenticated)\b/i.test(rolesPart)) continue; // grants only to service_role etc. are fine
-    const directOnFn = /\bis_cycle_member\b/i.test(st.slice(0, toIdx));
-    const schemaWide = /ALL\s+FUNCTIONS\s+IN\s+SCHEMA\s+public\b/i.test(st);
+    const directOnFn = /\bis_cycle_member\b/i.test(objectPart);
+    // Schema-wide grant that covers public.is_cycle_member: PostgreSQL allows ALL FUNCTIONS **or**
+    // ALL ROUTINES, a comma-separated schema list, and quoted identifiers. Parse + normalize the list
+    // and check for `public`. (Conservative: a quoted "Public" is treated as public too — over-inclusion
+    // fails safe for a security guard.)
+    const schemaList = objectPart.match(/\bON\s+ALL\s+(?:FUNCTIONS|ROUTINES)\s+IN\s+SCHEMA\s+(.+)$/i);
+    const schemaWide = !!schemaList
+      && schemaList[1].split(',').some((s) => s.trim().replace(/^"(.*)"$/, '$1').toLowerCase() === 'public');
     if (directOnFn || schemaWide) offenders.push(st);
   }
   return offenders;
@@ -173,6 +180,14 @@ describe('is_cycle_member — ACL lockdown (oracle closed)', () => {
     // MUST catch — a schema-wide function grant (covers is_cycle_member), multiline
     expect(findIsCycleMemberReopeningGrants(
       'GRANT EXECUTE\n  ON ALL FUNCTIONS IN SCHEMA public\n  TO authenticated;')).toHaveLength(1);
+    // MUST catch — ALL ROUTINES variant (PostgreSQL synonym covering functions + procedures)
+    expect(findIsCycleMemberReopeningGrants(
+      'GRANT EXECUTE ON ALL ROUTINES IN SCHEMA public TO authenticated;')).toHaveLength(1);
+    // MUST catch — comma-separated schema list with a quoted "public"
+    expect(findIsCycleMemberReopeningGrants(
+      'GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA private, "public" TO anon;')).toHaveLength(1);
+    // MUST NOT catch — a schema-wide grant to a NON-public schema only (does not cover public.is_cycle_member)
+    expect(findIsCycleMemberReopeningGrants('GRANT EXECUTE ON ALL ROUTINES IN SCHEMA private TO anon;')).toEqual([]);
     // MUST NOT catch — a commented-out grant
     expect(findIsCycleMemberReopeningGrants(
       '-- GRANT EXECUTE ON FUNCTION public.is_cycle_member(uuid,uuid) TO anon;\n/* GRANT ... TO PUBLIC; */')).toEqual([]);
