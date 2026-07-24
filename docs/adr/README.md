@@ -25,7 +25,7 @@ stable* — do not open one for a still-open product question.
 | [0004](./0004-rebooking-priority-claims.md) | Rebooking via priority-claim invites + a group captain who books the whole group & pays once | Accepted (shipped incrementally) |
 | [0006](./0006-invoice-public-token-payment-links.md) | An invoice is payable by an unauthenticated party via a public `/pay/:token` URL reusing the Mollie pay → webhook → PDF stack | Accepted |
 | [0007](./0007-edge-functions-as-backend-boundary.md) | All privileged / cross-tenant / money server work lives in `supabase/functions/*` (verify_jwt=false, self-authenticating) or `SECURITY DEFINER` RPCs; the SPA never holds a service-role key | Accepted |
-| [0008](./0008-notification-digest-materializer.md) | v2 notification digest materializer: an atomic group-claim (never claim-then-group-in-JS) + homogeneous composite grouping + run-level reconciliation, gated by a switch and shipped inert (PR 10c-a) | Proposed |
+| [0008](./0008-notification-digest-materializer.md) | v2 notification digest materializer: durable group + attempt rows, sticky uncertainty, evidence-gated terminals, run-level reconciliation, gated by a per-event switch and shipped inert (PR 10c-a) | Accepted |
 
 ## Planned / needed ADRs
 

@@ -1,6 +1,7 @@
 # ADR 0008 — v2 notification digest materializer (attempt-aware reservations, evidence-gated terminals)
 
-Status: **Proposed — Rev 12** (self-contained; addresses the Codex review of Rev 11; design-only, PR 10c-a)
+Status: **Accepted** (Rev 12; self-contained implementation contract for PR 10c-a — being implemented in
+the 10c-a1/2/3 slices)
 Date: 2026-07-24
 
 > **Rev 12 (surgical) — five corrections only, no other section redesigned:**

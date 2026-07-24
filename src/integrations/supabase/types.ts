@@ -4322,6 +4322,267 @@ export type Database = {
           },
         ]
       }
+      notification_digest_attempts: {
+        Row: {
+          attempt_id: string
+          digest_group_id: string
+          http_status: number | null
+          outcome_class: string | null
+          provider_idempotency_key: string
+          provider_message_id: string | null
+          recorded_at: string | null
+          resend_error_name: string | null
+          started_at: string
+          worker_run_id: string | null
+        }
+        Insert: {
+          attempt_id?: string
+          digest_group_id: string
+          http_status?: number | null
+          outcome_class?: string | null
+          provider_idempotency_key: string
+          provider_message_id?: string | null
+          recorded_at?: string | null
+          resend_error_name?: string | null
+          started_at?: string
+          worker_run_id?: string | null
+        }
+        Update: {
+          attempt_id?: string
+          digest_group_id?: string
+          http_status?: number | null
+          outcome_class?: string | null
+          provider_idempotency_key?: string
+          provider_message_id?: string | null
+          recorded_at?: string | null
+          resend_error_name?: string | null
+          started_at?: string
+          worker_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_digest_attempts_digest_group_id_fkey"
+            columns: ["digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_digest_attempts_worker_run_id_fkey"
+            columns: ["worker_run_id"]
+            isOneToOne: false
+            referencedRelation: "notification_worker_runs"
+            referencedColumns: ["run_id"]
+          },
+        ]
+      }
+      notification_digest_group_attempts: {
+        Row: {
+          action: string
+          attempt_id: string | null
+          digest_group_id: string
+          event_id: string
+          item_count: number
+          occurred_at: string
+          seq: number
+          worker_run_id: string | null
+        }
+        Insert: {
+          action: string
+          attempt_id?: string | null
+          digest_group_id: string
+          event_id?: string
+          item_count?: number
+          occurred_at?: string
+          seq?: number
+          worker_run_id?: string | null
+        }
+        Update: {
+          action?: string
+          attempt_id?: string | null
+          digest_group_id?: string
+          event_id?: string
+          item_count?: number
+          occurred_at?: string
+          seq?: number
+          worker_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ledger_attempt"
+            columns: ["attempt_id", "digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "notification_digest_group_attempts_digest_group_id_fkey"
+            columns: ["digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_digest_group_attempts_worker_run_id_fkey"
+            columns: ["worker_run_id"]
+            isOneToOne: false
+            referencedRelation: "notification_worker_runs"
+            referencedColumns: ["run_id"]
+          },
+        ]
+      }
+      notification_digest_groups: {
+        Row: {
+          available_at: string
+          canonical_group_key: Json
+          channel: string
+          chunk_ordinal: number
+          created_at: string
+          current_attempt_id: string | null
+          delivery_budget_used: number
+          destination_fingerprint: string
+          digest_boundary_at: string
+          event_type: string
+          first_send_at: string | null
+          frozen_request: Json | null
+          group_key_hash: string
+          id: string
+          item_count: number
+          locked_at: string | null
+          locked_by: string | null
+          max_delivery_budget: number
+          parent_group_id: string | null
+          provider_attempts_started: number
+          provider_idempotency_key: string | null
+          provider_message_id: string | null
+          provider_status: string
+          provider_status_rank: number
+          recipient_key: string
+          recipient_timezone: string
+          request_hash: string | null
+          state: string
+          superseded_by: string | null
+          tenant_academy_profile_id: string | null
+          tenant_trainer_id: string | null
+          terminal_at: string | null
+          terminal_reason: string | null
+          total_item_bytes: number
+          uncertain_deadline_at: string | null
+          uncertain_since: string | null
+          updated_at: string
+          worker_run_id: string | null
+        }
+        Insert: {
+          available_at: string
+          canonical_group_key: Json
+          channel: string
+          chunk_ordinal?: number
+          created_at?: string
+          current_attempt_id?: string | null
+          delivery_budget_used?: number
+          destination_fingerprint: string
+          digest_boundary_at: string
+          event_type: string
+          first_send_at?: string | null
+          frozen_request?: Json | null
+          group_key_hash: string
+          id?: string
+          item_count?: number
+          locked_at?: string | null
+          locked_by?: string | null
+          max_delivery_budget?: number
+          parent_group_id?: string | null
+          provider_attempts_started?: number
+          provider_idempotency_key?: string | null
+          provider_message_id?: string | null
+          provider_status?: string
+          provider_status_rank?: number
+          recipient_key: string
+          recipient_timezone: string
+          request_hash?: string | null
+          state?: string
+          superseded_by?: string | null
+          tenant_academy_profile_id?: string | null
+          tenant_trainer_id?: string | null
+          terminal_at?: string | null
+          terminal_reason?: string | null
+          total_item_bytes?: number
+          uncertain_deadline_at?: string | null
+          uncertain_since?: string | null
+          updated_at?: string
+          worker_run_id?: string | null
+        }
+        Update: {
+          available_at?: string
+          canonical_group_key?: Json
+          channel?: string
+          chunk_ordinal?: number
+          created_at?: string
+          current_attempt_id?: string | null
+          delivery_budget_used?: number
+          destination_fingerprint?: string
+          digest_boundary_at?: string
+          event_type?: string
+          first_send_at?: string | null
+          frozen_request?: Json | null
+          group_key_hash?: string
+          id?: string
+          item_count?: number
+          locked_at?: string | null
+          locked_by?: string | null
+          max_delivery_budget?: number
+          parent_group_id?: string | null
+          provider_attempts_started?: number
+          provider_idempotency_key?: string | null
+          provider_message_id?: string | null
+          provider_status?: string
+          provider_status_rank?: number
+          recipient_key?: string
+          recipient_timezone?: string
+          request_hash?: string | null
+          state?: string
+          superseded_by?: string | null
+          tenant_academy_profile_id?: string | null
+          tenant_trainer_id?: string | null
+          terminal_at?: string | null
+          terminal_reason?: string | null
+          total_item_bytes?: number
+          uncertain_deadline_at?: string | null
+          uncertain_since?: string | null
+          updated_at?: string
+          worker_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_digest_group_current_attempt"
+            columns: ["current_attempt_id", "id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "fk_digest_group_parent"
+            columns: ["parent_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_digest_group_superseded"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_digest_groups_worker_run_id_fkey"
+            columns: ["worker_run_id"]
+            isOneToOne: false
+            referencedRelation: "notification_worker_runs"
+            referencedColumns: ["run_id"]
+          },
+        ]
+      }
       notification_event_types: {
         Row: {
           audience: string
@@ -4331,6 +4592,7 @@ export type Database = {
           default_email_frequency: string
           default_push_frequency: string
           default_whatsapp_frequency: string
+          digest_engine_enabled: boolean
           key: string
           max_per_user_per_day: number | null
           max_per_user_per_hour: number | null
@@ -4355,6 +4617,7 @@ export type Database = {
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
+          digest_engine_enabled?: boolean
           key: string
           max_per_user_per_day?: number | null
           max_per_user_per_hour?: number | null
@@ -4379,6 +4642,7 @@ export type Database = {
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
+          digest_engine_enabled?: boolean
           key?: string
           max_per_user_per_day?: number | null
           max_per_user_per_hour?: number | null
@@ -4405,10 +4669,18 @@ export type Database = {
           contact_id: string | null
           created_at: string
           delivered_at: string | null
+          delivery_mode: string | null
+          destination_fingerprint: string | null
           destination_normalized: string | null
           destination_redacted: string | null
+          digest_boundary_at: string | null
+          digest_frequency: string | null
+          digest_group_id: string | null
+          digest_item: Json | null
+          digest_item_bytes: number | null
           event_type: string
           failed_at: string | null
+          group_locale: string | null
           id: string
           idempotency_key: string
           last_error: string | null
@@ -4424,7 +4696,9 @@ export type Database = {
           provider_message_id: string | null
           public_summary: Json | null
           recipient_guest_player_id: string | null
+          recipient_key: string | null
           recipient_person_id: string | null
+          recipient_timezone: string | null
           recipient_user_id: string | null
           related_booking_ids: string[] | null
           related_invoice_id: string | null
@@ -4434,6 +4708,7 @@ export type Database = {
           skip_reason: string | null
           status: string
           template_key: string | null
+          template_version: number | null
           tenant_academy_profile_id: string | null
           tenant_trainer_id: string | null
           updated_at: string
@@ -4446,10 +4721,18 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           delivered_at?: string | null
+          delivery_mode?: string | null
+          destination_fingerprint?: string | null
           destination_normalized?: string | null
           destination_redacted?: string | null
+          digest_boundary_at?: string | null
+          digest_frequency?: string | null
+          digest_group_id?: string | null
+          digest_item?: Json | null
+          digest_item_bytes?: number | null
           event_type: string
           failed_at?: string | null
+          group_locale?: string | null
           id?: string
           idempotency_key: string
           last_error?: string | null
@@ -4465,7 +4748,9 @@ export type Database = {
           provider_message_id?: string | null
           public_summary?: Json | null
           recipient_guest_player_id?: string | null
+          recipient_key?: string | null
           recipient_person_id?: string | null
+          recipient_timezone?: string | null
           recipient_user_id?: string | null
           related_booking_ids?: string[] | null
           related_invoice_id?: string | null
@@ -4475,6 +4760,7 @@ export type Database = {
           skip_reason?: string | null
           status?: string
           template_key?: string | null
+          template_version?: number | null
           tenant_academy_profile_id?: string | null
           tenant_trainer_id?: string | null
           updated_at?: string
@@ -4487,10 +4773,18 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           delivered_at?: string | null
+          delivery_mode?: string | null
+          destination_fingerprint?: string | null
           destination_normalized?: string | null
           destination_redacted?: string | null
+          digest_boundary_at?: string | null
+          digest_frequency?: string | null
+          digest_group_id?: string | null
+          digest_item?: Json | null
+          digest_item_bytes?: number | null
           event_type?: string
           failed_at?: string | null
+          group_locale?: string | null
           id?: string
           idempotency_key?: string
           last_error?: string | null
@@ -4506,7 +4800,9 @@ export type Database = {
           provider_message_id?: string | null
           public_summary?: Json | null
           recipient_guest_player_id?: string | null
+          recipient_key?: string | null
           recipient_person_id?: string | null
+          recipient_timezone?: string | null
           recipient_user_id?: string | null
           related_booking_ids?: string[] | null
           related_invoice_id?: string | null
@@ -4516,6 +4812,7 @@ export type Database = {
           skip_reason?: string | null
           status?: string
           template_key?: string | null
+          template_version?: number | null
           tenant_academy_profile_id?: string | null
           tenant_trainer_id?: string | null
           updated_at?: string
@@ -4527,6 +4824,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "notification_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_digest_group_id_fkey"
+            columns: ["digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
             referencedColumns: ["id"]
           },
           {
@@ -4705,6 +5009,89 @@ export type Database = {
           },
         ]
       }
+      notification_provider_circuit: {
+        Row: {
+          channel: string
+          probe_attempt_id: string | null
+          probe_group_id: string | null
+          probe_locked_at: string | null
+          reason: string | null
+          retry_at: string | null
+          state: string
+          tripped_at: string | null
+        }
+        Insert: {
+          channel: string
+          probe_attempt_id?: string | null
+          probe_group_id?: string | null
+          probe_locked_at?: string | null
+          reason?: string | null
+          retry_at?: string | null
+          state?: string
+          tripped_at?: string | null
+        }
+        Update: {
+          channel?: string
+          probe_attempt_id?: string | null
+          probe_group_id?: string | null
+          probe_locked_at?: string | null
+          reason?: string | null
+          retry_at?: string | null
+          state?: string
+          tripped_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_circuit_probe_attempt"
+            columns: ["probe_attempt_id", "probe_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "notification_provider_circuit_probe_group_id_fkey"
+            columns: ["probe_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_provider_events: {
+        Row: {
+          digest_group_id: string | null
+          occurred_at: string
+          provider_message_id: string
+          received_at: string
+          resend_event_id: string
+          status: string
+        }
+        Insert: {
+          digest_group_id?: string | null
+          occurred_at: string
+          provider_message_id: string
+          received_at?: string
+          resend_event_id: string
+          status: string
+        }
+        Update: {
+          digest_group_id?: string | null
+          occurred_at?: string
+          provider_message_id?: string
+          received_at?: string
+          resend_event_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_provider_event_group"
+            columns: ["digest_group_id", "provider_message_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id", "provider_message_id"]
+          },
+        ]
+      }
       notification_queue: {
         Row: {
           created_at: string
@@ -4735,6 +5122,82 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_send_counters: {
+        Row: {
+          bucket_kind: string
+          bucket_start: string
+          cap: number
+          counter_key: string
+          used: number
+        }
+        Insert: {
+          bucket_kind: string
+          bucket_start: string
+          cap: number
+          counter_key: string
+          used?: number
+        }
+        Update: {
+          bucket_kind?: string
+          bucket_start?: string
+          cap?: number
+          counter_key?: string
+          used?: number
+        }
+        Relationships: []
+      }
+      notification_send_reservations: {
+        Row: {
+          attempt_id: string | null
+          bucket_start: string
+          counter_key: string
+          created_at: string
+          digest_group_id: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_id?: string | null
+          bucket_start: string
+          counter_key: string
+          created_at?: string
+          digest_group_id: string
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_id?: string | null
+          bucket_start?: string
+          counter_key?: string
+          created_at?: string
+          digest_group_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_reservation_attempt"
+            columns: ["attempt_id", "digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "fk_reservation_counter"
+            columns: ["counter_key", "bucket_start"]
+            isOneToOne: false
+            referencedRelation: "notification_send_counters"
+            referencedColumns: ["counter_key", "bucket_start"]
+          },
+          {
+            foreignKeyName: "notification_send_reservations_digest_group_id_fkey"
+            columns: ["digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_sends: {
         Row: {
           created_at: string
@@ -4750,6 +5213,36 @@ export type Database = {
           created_at?: string
           dedup_key?: string
           id?: string
+        }
+        Relationships: []
+      }
+      notification_worker_runs: {
+        Row: {
+          channel: string
+          ended_at: string | null
+          phase: string
+          run_id: string
+          started_at: string
+          status: string | null
+          worker: string
+        }
+        Insert: {
+          channel: string
+          ended_at?: string | null
+          phase: string
+          run_id?: string
+          started_at?: string
+          status?: string | null
+          worker: string
+        }
+        Update: {
+          channel?: string
+          ended_at?: string | null
+          phase?: string
+          run_id?: string
+          started_at?: string
+          status?: string | null
+          worker?: string
         }
         Relationships: []
       }
@@ -9865,6 +10358,10 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
+      link_notification_provider_event: {
+        Args: { p_digest_group_id: string; p_resend_event_id: string }
+        Returns: boolean
+      }
       mark_skipped_alerts_sent: { Args: { p_ids: string[] }; Returns: number }
       merge_guest_players: {
         Args: {
@@ -9910,6 +10407,20 @@ export type Database = {
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean
+      }
+      purge_notification_digest: {
+        Args: {
+          p_counter_days?: number
+          p_group_days?: number
+          p_limit?: number
+        }
+        Returns: {
+          counters_deleted: number
+          groups_deleted: number
+          orphan_events_deleted: number
+          reservations_deleted: number
+          runs_deleted: number
+        }[]
       }
       queue_onboarding_emails: {
         Args: {
