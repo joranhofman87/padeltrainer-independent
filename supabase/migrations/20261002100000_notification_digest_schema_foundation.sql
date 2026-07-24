@@ -356,6 +356,11 @@ DECLARE terminal_states text[] :=
 BEGIN
   IF TG_OP = 'INSERT' THEN
     NEW.terminal_at := CASE WHEN NEW.state = ANY(terminal_states) THEN now() ELSE NULL END;  -- forced, never trusted
+    -- a newly materialized group starts with NO delivery/attempt/provider state (callers cannot inject it,
+    -- which would otherwise corrupt the monotonic reconciliation below).
+    NEW.provider_status := 'none'; NEW.provider_status_rank := 0;
+    NEW.provider_attempts_started := 0; NEW.delivery_budget_used := 0;
+    NEW.provider_message_id := NULL; NEW.current_attempt_id := NULL; NEW.first_send_at := NULL;
     RETURN NEW;
   END IF;
   IF TG_OP = 'DELETE' THEN
@@ -387,6 +392,21 @@ BEGIN
   END IF;
   IF (OLD.state = ANY(terminal_states)) AND NOT (NEW.state = ANY(terminal_states)) THEN
     RAISE EXCEPTION 'digest group % is terminal (%); cannot reopen to %', OLD.id, OLD.state, NEW.state;
+  END IF;
+  -- MONOTONIC delivery reconciliation (ADR §PV): out-of-order provider callbacks must never regress a
+  -- completed delivery. The provider_status rank is strictly non-decreasing, a same-rank status cannot flip,
+  -- and the monotonic attempt-audit counter cannot go backwards.
+  IF NEW.provider_status_rank < OLD.provider_status_rank THEN
+    RAISE EXCEPTION 'digest group % provider_status_rank cannot regress (% -> %)',
+      OLD.id, OLD.provider_status_rank, NEW.provider_status_rank;
+  END IF;
+  IF NEW.provider_status_rank = OLD.provider_status_rank AND NEW.provider_status IS DISTINCT FROM OLD.provider_status THEN
+    RAISE EXCEPTION 'digest group % provider_status cannot change within the same rank (% -> %)',
+      OLD.id, OLD.provider_status, NEW.provider_status;
+  END IF;
+  IF NEW.provider_attempts_started < OLD.provider_attempts_started THEN
+    RAISE EXCEPTION 'digest group % provider_attempts_started cannot decrease (% -> %)',
+      OLD.id, OLD.provider_attempts_started, NEW.provider_attempts_started;
   END IF;
   -- schema-owned retention clock: stamp on entry into terminal, freeze while terminal, clear if it leaves.
   IF (NEW.state = ANY(terminal_states)) AND NOT (OLD.state = ANY(terminal_states)) THEN
@@ -500,19 +520,27 @@ CREATE TRIGGER trg_provider_events_guard BEFORE INSERT OR UPDATE OR DELETE ON pu
 -- composite FK additionally rejects a group whose provider_message_id ≠ the event's.
 CREATE OR REPLACE FUNCTION public.link_notification_provider_event(p_resend_event_id text, p_digest_group_id uuid)
   RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_current uuid;
+DECLARE v_current uuid; v_n int;
 BEGIN
+  -- FOR UPDATE serializes concurrent webhook retries: a second caller blocks until the first commits, then
+  -- re-reads the now-linked row and returns the idempotent no-op — never a spurious trigger failure. If the
+  -- event was purged, the lock finds no row → NOT FOUND (we never return true after a zero-row update).
   SELECT digest_group_id INTO v_current
-    FROM public.notification_provider_events WHERE resend_event_id = p_resend_event_id;
+    FROM public.notification_provider_events WHERE resend_event_id = p_resend_event_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'provider event % not found', p_resend_event_id;
   END IF;
   IF v_current IS NOT NULL THEN
-    IF v_current = p_digest_group_id THEN RETURN true; END IF;   -- idempotent retry
+    IF v_current = p_digest_group_id THEN RETURN true; END IF;   -- idempotent retry (same group)
     RAISE EXCEPTION 'provider event % already linked to a different group', p_resend_event_id;
   END IF;
   UPDATE public.notification_provider_events
-     SET digest_group_id = p_digest_group_id WHERE resend_event_id = p_resend_event_id;
+     SET digest_group_id = p_digest_group_id
+   WHERE resend_event_id = p_resend_event_id AND digest_group_id IS NULL;   -- conditional atomic link
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'provider event % link affected % rows (concurrent change)', p_resend_event_id, v_n;
+  END IF;
   RETURN true;
 END $$;
 

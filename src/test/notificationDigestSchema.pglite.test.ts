@@ -514,6 +514,38 @@ describe('10c-a1 digest schema — provider-event orphan-then-link lifecycle', (
   });
 });
 
+describe('10c-a1 digest schema — monotonic delivery reconciliation', () => {
+  it('a materialized group cannot carry caller-injected provider/attempt state', async () => {
+    const r = (await db.query<{ provider_status: string; provider_status_rank: number; provider_attempts_started: number; provider_message_id: string | null; first_send_at: string | null }>(`
+      INSERT INTO public.notification_digest_groups
+        (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint, recipient_timezone, digest_boundary_at, available_at,
+         provider_status, provider_status_rank, provider_attempts_started, provider_message_id, first_send_at)
+      VALUES ('["inj"]'::jsonb,'h','email','ev','p','df','Europe/Amsterdam',now(),now(), 'delivered', 3, 5, 'injected', now())
+      RETURNING provider_status, provider_status_rank, provider_attempts_started, provider_message_id, first_send_at`)).rows[0];
+    expect(r.provider_status).toBe('none');
+    expect(r.provider_status_rank).toBe(0);
+    expect(r.provider_attempts_started).toBe(0);
+    expect(r.provider_message_id).toBeNull();
+    expect(r.first_send_at).toBeNull();
+  });
+
+  it('provider_status_rank is strictly non-decreasing; a same-rank status flip is rejected', async () => {
+    const g = await newGroup();
+    await db.query(`UPDATE public.notification_digest_groups SET provider_status='delivered', provider_status_rank=3 WHERE id='${g}'`); // 0→3 progress
+    await expect(db.query(`UPDATE public.notification_digest_groups SET provider_status='sent', provider_status_rank=1 WHERE id='${g}'`)).rejects.toThrow(/regress/i);
+    await db.query(`UPDATE public.notification_digest_groups SET provider_status='bounced', provider_status_rank=4 WHERE id='${g}'`); // 3→4 ok
+    await expect(db.query(`UPDATE public.notification_digest_groups SET provider_status='failed', provider_status_rank=4 WHERE id='${g}'`)).rejects.toThrow(/same rank/i);
+    await db.query(`UPDATE public.notification_digest_groups SET provider_status='complained', provider_status_rank=5 WHERE id='${g}'`); // 4→5 ok
+  });
+
+  it('the monotonic attempt-audit counter cannot decrease', async () => {
+    const g = await newGroup();
+    await db.query(`UPDATE public.notification_digest_groups SET provider_attempts_started=5 WHERE id='${g}'`);
+    await expect(db.query(`UPDATE public.notification_digest_groups SET provider_attempts_started=1 WHERE id='${g}'`)).rejects.toThrow(/cannot decrease/i);
+    await db.query(`UPDATE public.notification_digest_groups SET provider_attempts_started=6 WHERE id='${g}'`); // increase ok
+  });
+});
+
 describe('10c-a1 digest schema — nested-trigger soundness (FK precondition, not trigger depth)', () => {
   beforeAll(async () => {
     // an UNRELATED nested trigger context — pg_trigger_depth()>1 here, exactly Codex's bypass vector.
