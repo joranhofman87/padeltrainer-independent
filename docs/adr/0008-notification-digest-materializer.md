@@ -1,231 +1,129 @@
 # ADR 0008 — v2 notification digest materializer (group-claim) + run-level reconciliation
 
-Status: **Proposed** — for review BEFORE implementation (PR 10c-a)
+Status: **Proposed — Rev 2** (addresses the Codex review of Rev 1; still design-only, PR 10c-a)
 Date: 2026-07-24
 
-> Scope note: this ADR covers **PR 10c-a only** — the digest ENGINE + observability. It migrates **no
-> live route** (open_slots stays legacy until 10c-b). It ships **inert**: no live event opts into a
-> digest frequency, so there is zero live digest traffic until 10c-b flips one on. That makes 10c-a
-> testable end-to-end on synthetic outbox rows and reversible by a switch.
->
-> The four-stage plan (owner-approved 2026-07-24): **10c-a** foundation+observability · **10c-b**
-> open_slots→v2 · **10c-c** durability closure (group-confirmation / unresolved-send / member-open
-> resumable outbox + set-based resolver) · **10c-d** legacy retirement. The rebuild is not complete
-> until all four are deployed + verified.
+> Scope: **PR 10c-a only** — the digest ENGINE + observability. Migrates **no live route** (open_slots
+> stays legacy until 10c-b) and ships **structurally inert** (§9). Four-stage plan (owner-approved):
+> **10c-a** foundation+observability · **10c-b** open_slots→v2 · **10c-c** durability closure · **10c-d**
+> legacy retirement.
+
+## What changed in Rev 2 (review response map)
+
+The Rev-1 guarantees rested on **re-computing** the group at claim time from live joins. Rev 2 moves to
+**snapshot-at-enqueue + freeze-at-first-claim + per-group identity + per-run identity**. Every finding:
+
+| # | Finding | Rev-2 fix |
+|---|---|---|
+| 1 | Group claim can split across workers (`SKIP LOCKED` lets two workers lock disjoint subsets of one group) | **`pg_try_advisory_xact_lock(group_hash)` is taken BEFORE member selection**; only the lock holder claims the group's members (§C1) |
+| 2 | Retry membership not stable (`claim_now` not persisted) | **First claim FREEZES the group**: assigns `digest_group_id` + `group_cutoff_at` and stamps them on members; reclaim re-selects by `digest_group_id` only (§C2) |
+| 3 | Grouping inputs incomplete + mutable (`default_email_frequency` ≠ resolved pref; locale/config mutate; guest-only missing; UUIDs unnamespaced) | **Resolver SNAPSHOTS immutable grouping columns onto the outbox row** at enqueue: `recipient_key` (`p:/u:/g:`), effective `digest_frequency`, `group_locale`, `recipient_timezone`, `digest_boundary_at`, `template_version`, `digest_group_hash` (§B, §C0) |
+| 4 | Overflow can lose/strand; "+K more" contradicts leaving items pending | **Deterministic chunking at CLAIM** (row-count cap + per-item byte budget); each chunk is its own frozen `digest_group_id`+`chunk_ordinal`; no "+K more", no post-render surprise; a defined item schema (§C3, §D) |
+| 5 | No-dup claim exceeds Resend's 24h | Persist **`first_send_at`**; an ambiguous outcome aged past the provider window → explicit **`delivery_unknown`** (manual reconcile), never blind resend (§C5) |
+| 6 | Reconciliation not run-level (time window can't isolate a run; joins multiply counts) | **`notification_worker_runs` + `worker_run_id` stamped on every claim/outcome**; reconcile by `run_id`, delivery resolved through the group provider-event (no fan-out) (§C6) |
+| 7 | Provider callbacks won't link to all members (webhook writes one null-`outbox_id` event; shared `resend_email_id` ≠ per-member visibility) | **One provider-event row keyed by `digest_group_id`**; the Resend webhook maps `resend_email_id → digest_group_id`; member timelines/reconcile resolve THROUGH the group; `resend_event_id` idempotency preserved (§C7) |
+| 8 | Rollout not structurally inert (`supports_digest=true` on live events; users hold daily/weekly prefs) | **New per-event `digest_engine_enabled` (default false)**, separate from `supports_digest`; the eligibility predicate keys on it; only a synthetic event is enabled in 10c-a (§C9) |
+| 9 | Rate caps not retry-safe (key omits channel/event; no reservation; hour/day non-atomic; deferral consumes attempts) | **Reservation model keyed by `(channel,event,recipient,bucket)` + `digest_group_id`**: reserve hour+day in one atomic step, commit on provider acceptance, release on failure; **deferral never increments `attempts`** (§C9b) |
+| 10 | Query not bounded at 100k (group-by scans the due set) | **Candidate selection is index-only** on a partial index over `(digest_group_hash, digest_boundary_at)`; pick ONE group, then fetch its bounded members; **100k `EXPLAIN` on real Postgres**, not PGlite (§C10, §E) |
+| 11 | Delayed opt-outs undefined | **Claim-time re-validation**: a row whose recipient opted out / unfollowed after enqueue is `cancelled` (skip_reason), not sent; for optional open-slot messages the opt-out wins (§C11) |
+| tz | Timezone source | **Option A + snapshot**: snapshot `recipient_timezone` per row NOW via precedence `person → tenant → Europe/Amsterdam` (today resolves to Amsterdam); group identity never needs redesign when richer tz data arrives (§B) |
 
 ## Context
 
-The v2 pipeline (`enqueue_notification` → `notification_outbox` → `notification-email-worker`) sends
-**1:1**: `claim_notification_outbox_batch` claims due `pending` rows by `scheduled_for` with
-`FOR UPDATE SKIP LOCKED` and the worker sends each individually
-([`20260912100000_notification_email_worker.sql:30`](../../supabase/migrations/20260912100000_notification_email_worker.sql),
-[`notification-email-worker/index.ts:103`](../../supabase/functions/notification-email-worker/index.ts)).
-The outbox already carries `collapse_key` + `scheduled_for` + a partial index
-`idx_notification_outbox_collapse` and the resolver *sets* both
-([`20260911100000_notification_resolver.sql:302`](../../supabase/migrations/20260911100000_notification_resolver.sql)),
-and `notification_event_types` carries `supports_digest`, `default_email_frequency`
-(`instant|daily|weekly|off`), `collapse_window_minutes`, `max_per_user_per_hour|day`,
-`quiet_hours_respect` ([`20260910100000_notification_foundation_schema.sql:33`](../../supabase/migrations/20260910100000_notification_foundation_schema.sql))
-— but **nothing collapses**. Digest collapse exists only in the legacy `notification_queue` +
-`send-digest-emails` (collapse-by-count). ([`NOTIFICATION_ARCHITECTURE.md:355`](../NOTIFICATION_ARCHITECTURE.md).)
-
-10c-a builds the missing engine and the observability to prove it.
+The v2 worker sends **1:1** (`claim_notification_outbox_batch` + `notification-email-worker`); the outbox
+carries `collapse_key`/`scheduled_for` but nothing collapses; digest collapse lives only in legacy
+`notification_queue`+`send-digest-emails`. 10c-a builds the engine and the observability to prove it,
+inert until 10c-b enables a real event. (Full current-state citations in `NOTIFICATION_FOLLOWUPS.md` /
+`NOTIFICATION_ARCHITECTURE.md`.)
 
 ## Decision
 
-Add a **second claim/collapse/record path in the same worker**, gated by a switch, built to nine
-invariants. A row is processed by **exactly one** path — instant (existing 1:1) or digest (new
-group-claim) — partitioned by frequency-eligibility so the two can never both send it.
+A second claim/collapse/record path in the same worker. Every guarantee rests on **immutable snapshots**
+(set once at enqueue) and a **frozen group identity** (assigned once at first claim), never on live
+re-computation. A row is processed by exactly one path — instant or digest — via a shared predicate.
 
-### 1 — Atomic GROUP claim (never claim rows then group in JS)
+### B. Snapshot columns set by the resolver at enqueue (immutable)
 
-New RPC **`claim_notification_digest_group(p_channel, p_worker, p_now, p_max_group_rows, p_stale_after_minutes)`**.
-In **one statement** it (a) picks the single earliest-due **group** (by the composite key of §3),
-(b) locks all its member rows `FOR UPDATE SKIP LOCKED`, capped + ordered deterministically, and
-(c) flips them to `processing` under the run's `locked_by`/`locked_at`, `attempts+1`. Sketch:
+`enqueue_notification` writes these onto each `notification_outbox` row and **never** recomputes them:
+- `recipient_key text` — `p:<person_id>` | `u:<user_id>` | `g:<guest_player_id>` (covers guest-only; namespaced).
+- `digest_frequency text` — the **resolved effective** frequency (prefs_v2 override → event default), one of `instant|daily|weekly`.
+- `group_locale text` — snapshot of the recipient's locale (`persons.preferred_language`).
+- `recipient_timezone text` — precedence **person tz → tenant tz → `Europe/Amsterdam`** (today: Amsterdam).
+- `digest_boundary_at timestamptz` — the immutable target send boundary (next daily/weekly slot, quiet-hours pre-applied at enqueue for the *nominal* boundary; claim re-checks live).
+- `template_version int` — snapshot of the event's template version.
+- `digest_group_hash text` — `encode(sha256(channel || recipient_key || destination || tenant_academy || tenant_trainer || event_type || template_key || template_version || group_locale || digest_frequency || digest_boundary_at), 'hex')`. **This is the only thing grouping keys on** — a stable hash of the immutable snapshot, so cross-recipient/tenant/locale mixing is impossible and config drift after enqueue cannot move a row between groups. `collapse_key` is retired for digests.
 
-```sql
-WITH candidate AS (           -- the next due group (one row: the group key + its min schedule)
-  SELECT <group_key_cols>, min(o.scheduled_for) AS due
-  FROM public.notification_outbox o
-  JOIN public.notification_event_types et ON et.key = o.event_type
-  WHERE o.channel = p_channel
-    AND o.scheduled_for <= p_now
-    AND digest_eligible(et, o)                    -- shared predicate (§9): supports_digest AND freq<>'instant'
-    AND ( o.status = 'pending'
-          OR (o.status = 'processing' AND o.locked_at < p_now - make_interval(mins => p_stale_after_minutes)
-              AND o.attempts < o.max_attempts) )  -- stale-claim reclaim (§5)
-  GROUP BY <group_key_cols>
-  ORDER BY due ASC
-  LIMIT 1
-), locked AS (
-  SELECT o.id
-  FROM public.notification_outbox o
-  JOIN candidate c USING (<group_key_cols>)
-  WHERE o.scheduled_for <= p_now
-    AND o.created_at   <= p_now                    -- membership boundary (§4): late arrivals excluded
-    AND ( o.status = 'pending'
-          OR (o.status='processing' AND o.locked_at < p_now - make_interval(mins => p_stale_after_minutes)) )
-  ORDER BY o.created_at, o.id                       -- deterministic continuation ordering (§2)
-  LIMIT p_max_group_rows
-  FOR UPDATE SKIP LOCKED
-)
-UPDATE public.notification_outbox o
-SET status='processing', locked_by=p_worker, locked_at=now(), attempts=o.attempts+1
-FROM locked WHERE o.id = locked.id
-RETURNING o.id, o.event_type, o.template_key, o.recipient_person_id, o.recipient_user_id,
-          o.tenant_academy_profile_id, o.tenant_trainer_id, o.payload, o.public_summary,
-          o.idempotency_key, o.scheduled_for, o.created_at;
-```
+### C. Lifecycle + the guarantees
 
-The worker renders **one** email from the returned member set. It never SELECTs rows and groups them
-in application code — a crash between two claims could otherwise split a digest or double-send.
+**C0 — eligibility (shared predicate, no overlap with instant):**
+`digest_eligible(row) := row.digest_frequency IN ('daily','weekly') AND EXISTS(event_types WHERE key=row.event_type AND digest_engine_enabled)`. The instant claim (`claim_notification_outbox_batch`) is amended with `AND NOT digest_eligible(o)`. A row is claimable by exactly one path.
 
-### 2 — Bounded group + payload + deterministic continuation
+**C1 — atomic whole-group claim (fixes #1).** `claim_notification_digest_group`:
+1. Pick ONE candidate `digest_group_hash` = the earliest `min(digest_boundary_at) <= p_now` among pending digest-eligible rows, via the partial index (§C10) — index-bounded, `LIMIT 1`.
+2. `IF NOT pg_try_advisory_xact_lock(hashtextextended(digest_group_hash, 0)) THEN` skip to the next candidate. The advisory lock (txn-scoped) serializes the **entire** group so no two workers select disjoint subsets.
+3. Holding the lock, freeze + claim the group (C2/C3).
 
-`p_max_group_rows` (proposed default **500**) caps membership per claim; excess rows sharing the key
-form the **next** claim, and because `locked` orders by `(created_at, id)` the split is deterministic
-(chunk 1 = first N, chunk 2 = next N…). A rendered-payload byte ceiling (proposed **256 KB**) bounds
-the email; if a full group would exceed it the render truncates to "+K more" with the overflow left
-`pending` for the next window (never dropped). Each chunk is one email with its own idempotency key
-(§4) so re-rendering a chunk is stable.
+**C2 — freeze membership at first claim (fixes #2).** On the first claim of a group this window: assign a fresh `digest_group_id uuid` and `group_cutoff_at = p_now`; stamp both (plus `chunk_ordinal`, `worker_run_id`, `status='processing'`, `locked_by`, `locked_at`) onto the selected members. **Reclaim** (stale) re-selects strictly by `WHERE digest_group_id = X AND status='processing'` — the frozen set, never a fresh `created_at <= now` scan. Membership therefore cannot change across retries, so the idempotency key (§C4) is stable. Late arrivals (`created_at > group_cutoff_at`, or a later `digest_boundary_at`) belong to the **next** group.
 
-### 3 — Homogeneous grouping (composite key — NOT `collapse_key` alone)
+**C3 — deterministic chunking at claim, defined item schema (fixes #4).** Members are selected `ORDER BY created_at, id` and capped by BOTH a row count (`p_max_group_rows`, default 500) AND a conservative per-item byte budget (`p_max_group_rows_by_size = floor(256KB / max_item_bytes)`), whichever is smaller — computed at claim, **before** render, so overflow never surprises the renderer. A group larger than the cap splits into consecutive chunks (`chunk_ordinal` 0,1,2…), each its own frozen `digest_group_id`; every item appears in exactly one chunk (no "+K more" while pending). The render consumes a fixed **digest item schema** (`{ occurred_at, summary_line, deep_link }` from each member's `public_summary`), so item size is bounded and known.
 
-`collapse_key` is an **index hint**, never the trust boundary. The claim GROUPs on the full tuple, so
-a mis-computed `collapse_key` can never mix recipients, tenants, or locales:
+**C4 — deterministic idempotency (fixes #2, bounds #5).** Provider `Idempotency-Key = 'digest:v1:' || digest_group_id || ':' || chunk_ordinal`. Because `digest_group_id` is assigned once and membership is frozen, the key is byte-identical across every reclaim.
 
-```
-group_key = ( channel,
-              coalesce(recipient_person_id::text, 'u:'||recipient_user_id::text),   -- recipient
-              contact_id / destination,                                            -- destination
-              tenant_academy_profile_id, tenant_trainer_id,                         -- tenant / branding
-              event_type, template_key,                                            -- event / template
-              locale (persons.preferred_language),                                 -- locale
-              default_email_frequency,                                             -- frequency
-              digest_bucket(scheduled_for, collapse_window_minutes) )              -- digest boundary
-```
+**C5 — beyond Resend's 24h window (fixes #5).** Persist `first_send_at` when a group is first handed to Resend. The ADR does **not** claim duplicates are impossible: within 24h the key dedups; if an outcome is still ambiguous after `now - first_send_at > provider_idempotency_window (24h)`, the group moves to explicit status **`delivery_unknown`** (a terminal state that surfaces in reconciliation for manual resolution) rather than being re-sent.
 
-**One `event_type` per digest** (a "3 new open slots" digest is N payloads of the *same* event, not a
-mixed daily summary). Cross-event digests are explicitly OUT of 10c-a. Cross-tenant / cross-recipient
-mixing is structurally impossible because those columns are equality-partitioned in the key.
+**C6 — run-level reconciliation (fixes #6).** New table `notification_worker_runs(run_id uuid pk, worker text, channel text, started_at, ended_at, claimed int, sent int, failed int, skipped int, deferred int, unknown int)`. Every claim/record stamps `worker_run_id`. `reconcile_notification_worker_run(p_run_id uuid)` (and a windowed variant for trend) counts **distinct outbox rows** by terminal status and resolves delivery via the group provider-event (C7) — no join fan-out. Handles `pending|processing|sent|failed|cancelled|delivery_unknown|delivered|bounced`. Invariant proven: `claimed = sent + failed + cancelled + deferred + unknown + still_processing`.
 
-### 4 — Stable membership + deterministic idempotency across retries
+**C7 — group-level provider event + webhook (fixes #7).** On send, write ONE `notification_provider_events(digest_group_id uuid, resend_email_id text, status text, resend_event_id text, occurred_at, PRIMARY KEY(digest_group_id))` row (`UNIQUE(resend_event_id)` for webhook idempotency). The Resend webhook resolves `resend_email_id → digest_group_id` and updates this one row (`delivered|bounced|complained`). Each member's timeline/reconcile resolves delivery **through** `digest_group_id → notification_provider_events` — so a bounce on the shared email shows on every member's timeline without duplicating N provider rows. `email_delivery_events` still gets one row per member for the `queued/sent` audit (linked via `digest_group_id`), but the provider-callback truth is the single group row.
 
-Membership is defined by immutable facts: the group key + `scheduled_for <= claim_now` +
-`created_at <= claim_now`. A reclaim after a crash re-forms the **same** set. **Late arrivals**
-(`created_at > claim_now`, or a later `scheduled_for` bucket) belong to the **next** group.
+**C9 — structurally inert rollout (fixes #8).** New column `notification_event_types.digest_engine_enabled boolean NOT NULL DEFAULT false`, **separate** from `supports_digest`. `digest_eligible` (C0) keys on `digest_engine_enabled`, NOT `supports_digest`. 10c-a enables it for **one synthetic test event only**; every live event stays false, so pre-existing daily/weekly prefs cannot activate the engine. Rollback = flip the flag off (no live digest rows exist to strand).
 
-Provider idempotency key = `digest:v1:<sha256(group_key)>:<sha256(sorted member idempotency_keys)>:<chunk_ordinal>`
-→ passed as the Resend `Idempotency-Key`. A retry (send accepted, crash before record) re-sends the
-**identical** email; Resend dedups within its 24h window → no duplicate. Stable membership is what
-makes the key stable.
+**C9b — retry-safe caps + deferral without consuming attempts (fixes #9).** New table `notification_send_reservations(reservation_key text PRIMARY KEY, digest_group_id uuid, channel text, event_type text, recipient_key text, bucket_hour timestamptz, bucket_day timestamptz, state text CHECK in ('reserved','committed','released'), created_at)`. At claim, reserve BOTH the hour and day buckets in ONE statement keyed by `digest_group_id` (idempotent — re-reserving the same group is a no-op). If either cap is exhausted → **defer**: bump `digest_boundary_at` to the next window, release the members to `pending` (clear digest_group_id/processing), **do not increment `attempts`**, record `deferred` on the run. `attempts` increments only on an actual provider send attempt (C-send). Commit the reservation on provider acceptance; release on failure.
 
-### 5 — Ownership-checked all-row completion + stale / crash recovery
+**C11 — claim-time opt-out re-validation (fixes #11).** At claim, re-check each candidate member's **current** consent / preference (and follow-status for open-slot). A member now opted-out/unfollowed → `status='cancelled', skip_reason='opted_out_after_enqueue'`, excluded from the group (not sent). For optional open-slot messages, a pre-send opt-out **wins**. (Required-delivery events are exempt, matching existing semantics.)
 
-New RPC **`record_notification_digest_result(p_worker, p_outbox_ids uuid[], p_status, p_provider_message_id, p_error, p_terminal, p_max_backoff_minutes)`** → `text`:
-- **Ownership gate:** every id must be `status='processing' AND locked_by=p_worker`; otherwise returns
-  `'stale'` and touches nothing (a reclaim now owns them). Mirrors `record_notification_send_result`'s
-  guard ([`20260912100000:124`](../../supabase/migrations/20260912100000_notification_email_worker.sql)).
-- **All-or-nothing:** on `sent`, ALL members → `sent` + `sent_at`, and **one `email_delivery_events`
-  row per member** (§7). On `failed`, the WHOLE group → failed-with-backoff (or terminal). A digest is
-  never partially sent.
-- **Stale/crash recovery:** rows left `processing` past the lease are re-claimable by the reclaim arm
-  (§1); stable membership + the deterministic key guarantee no double send when the group re-forms.
+**C10 — bounded at scale (fixes #10).** Partial index `idx_outbox_digest_candidate ON notification_outbox (digest_group_hash, digest_boundary_at) WHERE status='pending' AND digest_frequency IN ('daily','weekly')`. Candidate selection reads ONE group via this index (no group-by over the due set); member fetch is bounded by `chunk cap`. The 100k scale test asserts the plan on **real Postgres** (CI `supabase db reset` job / a dedicated plan test), not PGlite.
 
-### 6 — Concurrency-safe quiet hours + per-user caps (timezone / DST)
+**C-send / C-record (worker):** render one email from the frozen ordered member set → `first_send_at` if unset → provider send with the C4 key → `record_notification_digest_result(p_run_id, p_worker, p_digest_group_id, p_status, …)` (ownership gate `worker_run_id=p_run_id AND locked_by=p_worker AND status='processing'`; all-or-nothing; commits/releases the reservation; writes the group provider-event + per-member delivery rows). Failure → group failed-with-backoff (`attempts` already counted at send), reservation released.
 
-- **Quiet hours** (`quiet_hours_respect`): at claim time, if the recipient's **local** hour (their
-  timezone, IANA + DST-aware) is inside quiet hours, the claim **defers** — bumps the group's
-  `scheduled_for` to the next allowed boundary instead of sending. Atomic within the claim UPDATE.
-- **Caps** (`max_per_user_per_hour|day`): a new atomic counter table
-  `notification_send_counters(recipient_key text, bucket_kind text, bucket_start timestamptz, sent int,
-  PRIMARY KEY(recipient_key,bucket_kind,bucket_start))` consumed via `INSERT … ON CONFLICT … DO UPDATE
-  SET sent = sent+1 WHERE sent < cap RETURNING` (the `consume_rate_limit` pattern — atomic, so two
-  workers can't both pass the cap). On cap-hit the group **defers** (not dropped).
-- **⚠ OPEN DECISION — timezone source.** `persons` has `preferred_language` but **no timezone column**
-  ([`20260826260000_persons_expand.sql:42`](../../supabase/migrations/20260826260000_persons_expand.sql)).
-  Options: **(A)** a documented global default `Europe/Amsterdam` (matches
-  [`_shared/send-window.ts`](../../supabase/functions/_shared/send-window.ts) `SEND_TIME_ZONE`), add
-  per-recipient tz later; **(B)** the tenant academy's timezone; **(C)** add `persons.timezone` now.
-  **Recommendation: (A)** for 10c-a (constant, DST-aware via Postgres `AT TIME ZONE`), with a flagged
-  follow-up for per-recipient tz. Needs your call.
+### D / RPC contracts (revised, for review)
 
-### 7 — Delivery-event linkage + run-level reconciliation
+**New/changed columns** — `notification_outbox`: `recipient_key`, `digest_frequency`, `group_locale`, `recipient_timezone`, `digest_boundary_at`, `template_version`, `digest_group_hash` (snapshot, at enqueue); `digest_group_id`, `group_cutoff_at`, `chunk_ordinal`, `worker_run_id`, `first_send_at` (frozen, at claim/send); `status` CHECK gains `'delivery_unknown'`. `notification_event_types`: `+digest_engine_enabled boolean default false`. `email_delivery_events`: `+digest_group_id uuid`.
 
-- Every digest member gets an `email_delivery_events` row (`outbox_id`, `channel`,
-  `destination_redacted`, `resend_email_id`, + new `digest_group_id`) so the per-recipient audit and
-  the tenant timelines reflect **each intended notification**, even though they shared one email.
-- New RPC **`reconcile_notification_outbox(p_since timestamptz, p_until timestamptz)`** →
-  `TABLE(channel, intended int, sent int, skipped int, failed int, unresolved int, processing_stuck int)`
-  over `notification_outbox ⟕ email_delivery_events` in the window, so a **cron run is provable**
-  (`intended = sent + skipped + failed + unresolved`). This closes the observability gap that made a
-  `sent>0` run only inspectable via the HTTP response + Slack (no queryable audit) — the exact gap hit
-  verifying the auto-reminder run. Service-role only.
+**New tables** — `notification_worker_runs`, `notification_provider_events`, `notification_send_reservations` (shapes above). All service-role only.
 
-### 8 — Tests (concurrency, crash-point, scale)
+**New RPCs** (all `SECURITY DEFINER`, `REVOKE … FROM PUBLIC, anon, authenticated`, `GRANT … service_role`):
+- `start_notification_worker_run(p_worker text, p_channel text) RETURNS uuid`
+- `claim_notification_digest_group(p_run_id uuid, p_worker text, p_channel text, p_now timestamptz DEFAULT now(), p_max_group_rows int DEFAULT 500, p_max_item_bytes int DEFAULT 512, p_stale_after_minutes int DEFAULT 15) RETURNS TABLE(digest_group_id uuid, chunk_ordinal int, member cols…, outcome text)` — `outcome ∈ ('claimed','deferred','none')`.
+- `record_notification_digest_result(p_run_id uuid, p_worker text, p_digest_group_id uuid, p_status text, p_provider_message_id text, p_error text, p_terminal boolean, p_max_backoff_minutes int) RETURNS text`
+- `reconcile_notification_worker_run(p_run_id uuid) RETURNS TABLE(channel text, claimed int, sent int, failed int, cancelled int, deferred int, unknown int, processing int, delivered int, bounced int)`
+- `record_notification_provider_event(p_resend_email_id text, p_status text, p_resend_event_id text) RETURNS text` (webhook path; idempotent on `resend_event_id`).
 
-- **Two-worker concurrency:** two `claim_notification_digest_group` calls race → disjoint groups, no
-  row in two groups, no group split across workers.
-- **Crash-point:** claim→(crash)→reclaim yields the **same** member set; send-accepted→(crash before
-  record)→reclaim yields the **same** idempotency key (assert byte-equal) → no double send; all rows
-  eventually `sent`.
-- **Scale:** a synthetic **100 000-row** outbox → assert the claim uses the `collapse`/`scheduled_for`
-  index + `LIMIT` (no seq scan; check the plan), bounded memory, and deterministic chunk boundaries.
-- Quiet-hours/cap: DST-boundary cases; cap-hit defers not drops; counter atomic under two workers.
+**Amended** — `claim_notification_outbox_batch`: `+ AND NOT digest_eligible(o)` (no-op until an event is engine-enabled). **Types drift** → apply the CI-generated `types.ts` artifact.
 
-### 9 — Feature switches, rollout, rollback, double-send prevention
+### E. Test plan
 
-- **Switch:** a global `notification_digest_enabled` flag (a `notification_settings` row / GUC) AND the
-  per-event `supports_digest`. 10c-a ships with **no live event digest-enabled** (only a synthetic test
-  event), so the path is inert in prod.
-- **Double-send prevention:** the shared `digest_eligible(event_type, row)` predicate partitions the
-  outbox — the **instant** claim (`claim_notification_outbox_batch`) is amended to **exclude**
-  digest-eligible rows, and the digest claim includes only them. A row is claimable by exactly one
-  path. (This amendment to the instant claim is the one change 10c-a makes to an existing RPC; it is a
-  no-op today because no event is digest-enabled.)
-- **Rollback:** flip the switch off → the digest claim returns nothing. With no live digest event in
-  10c-a nothing is stranded. (10c-b, which enables a real digest event, will ship the drain/rollback
-  for a live digest audience.)
-
-## Exact schema / RPC contracts (for review)
-
-**Columns (additive, nullable):**
-- `notification_outbox.digest_group_id uuid` — set at send to link a group's members (audit + reconcile).
-- `email_delivery_events.digest_group_id uuid` — same, on the delivery row.
-
-**New table:** `notification_send_counters(recipient_key text, bucket_kind text CHECK in ('hour','day'), bucket_start timestamptz, sent int NOT NULL DEFAULT 0, PRIMARY KEY(recipient_key, bucket_kind, bucket_start))` — service-role only.
-
-**New RPCs** (all `SECURITY DEFINER`, service-role only, `REVOKE … FROM PUBLIC, anon, authenticated`):
-- `claim_notification_digest_group(p_channel text, p_worker text, p_now timestamptz DEFAULT now(), p_max_group_rows int DEFAULT 500, p_stale_after_minutes int DEFAULT 15) RETURNS TABLE(...member cols... , digest_group_id uuid)`
-- `record_notification_digest_result(p_worker text, p_outbox_ids uuid[], p_status text, p_provider_message_id text DEFAULT NULL, p_error text DEFAULT NULL, p_terminal boolean DEFAULT false, p_max_backoff_minutes int DEFAULT 60) RETURNS text`
-- `reconcile_notification_outbox(p_since timestamptz, p_until timestamptz) RETURNS TABLE(channel text, intended int, sent int, skipped int, failed int, unresolved int, processing_stuck int)`
-
-**Amended:** `claim_notification_outbox_batch` — add `AND NOT digest_eligible(et, o)` to its WHERE
-(no-op until an event is digest-enabled). **Reused as-is:** `locked_by/locked_at/attempts/max_attempts/status/scheduled_for/collapse_key`, the ownership-guard pattern, the `email_delivery_events` linkage.
-
-**Types drift:** the 3 new RPCs + the amended one → apply the CI-generated `types.ts` artifact (do not hand-splice).
+- **Concurrency (real PG):** two `claim_notification_digest_group` racing on one group → advisory lock lets exactly one claim it; the other gets a different group or `none`; **no group split**, no row in two groups.
+- **Crash-point:** claim→(kill)→reclaim yields the SAME `digest_group_id` + member set + idempotency key (byte-equal); send-accepted→(kill before record)→reclaim re-sends same key (Resend dedups); aged-out ambiguous → `delivery_unknown`.
+- **Scale (real Postgres):** 100 000 due rows across many groups → `EXPLAIN (ANALYZE, BUFFERS)` shows the candidate select uses `idx_outbox_digest_candidate` (index scan, not seq), bounded member fetch, deterministic chunk boundaries. **Not PGlite.**
+- **Caps/quiet-hours:** reservation idempotent under two workers; hour+day reserved atomically; cap-hit + quiet-hours **defer without incrementing `attempts`**; DST-boundary tz cases via snapshot `recipient_timezone`.
+- **Opt-out:** member opted-out after enqueue → `cancelled`, not in the digest; required events exempt.
+- **Provider webhook:** a bounce on the group email surfaces on every member's timeline via `digest_group_id`; `resend_event_id` idempotent (double webhook = one update).
+- **Reconciliation:** `claimed = sent+failed+cancelled+deferred+unknown+processing`; no count multiplication under N members.
 
 ## Alternatives considered
 
-- **Claim rows individually, then group in JavaScript** — rejected (owner constraint #1): a crash
-  between per-row claims splits a digest and risks double-send; grouping must be one atomic statement.
-- **Trust `collapse_key`** — rejected (#3): a single mis-set key would mix recipients/tenants; the
-  composite equality-partitioned key is the only safe boundary.
-- **A separate pre-collapse materializer function/cron** that synthesizes one outbox row per group for
-  the existing 1:1 worker — rejected: adds a component, a second cron, and a two-stage state machine
-  with its own crash/double-send window; the architecture doc's intent is that *the worker* honors
-  collapse. Revisit only if the worker path proves too heavy.
-- **Per-event mixed daily digest** (multiple event types in one email) — deferred (out of 10c-a):
-  needs a cross-event template + ordering policy; homogeneous per-event digests cover open_slots.
+- **Re-compute the group at claim (Rev 1)** — rejected by the review: config/preference drift + `SKIP LOCKED` subsetting + un-persisted `claim_now` break stability. Snapshot+freeze is required.
+- **Claim rows individually + group in JS** — rejected (owner #1): a crash between per-row claims splits a digest.
+- **Trust `collapse_key`** — rejected (#3): replaced by `digest_group_hash` over immutable snapshots.
+- **Per-member provider rows** — rejected (#7): the callback is one email; a single group provider-event that timelines resolve through is correct and avoids N-way duplication.
+- **Global digest switch** — rejected (#8): per-event `digest_engine_enabled` is the only structurally-inert gate given live `supports_digest=true` events.
+- **Separate pre-collapse function/cron** — deferred: extra component + two-stage state; revisit only if the in-worker path proves heavy.
 
 ## Consequences
 
-- One worker, two claim paths; the digest path is dormant until 10c-b enables a real event.
-- `reconcile_notification_outbox` becomes the standing run-level proof for **all** v2 sends (not just
-  digests), retiring the "HTTP response + Slack only" observability gap.
-- `notification_send_counters` + the quiet-hours defer are reusable by every future digest event.
-- The timezone decision (§6) is the one open input needed before implementation; (A) unblocks 10c-a
-  with a global default and a follow-up for per-recipient tz.
-- Legacy `notification_queue` + `send-digest-emails` are **not** touched here — they retire in 10c-d
-  only after 10c-b proves the v2 digest in production.
+- The resolver (`enqueue_notification`) gains the snapshot responsibility — the correctness pivot. 10c-a ships this even though only the synthetic event exercises it.
+- `notification_worker_runs` + `reconcile_notification_worker_run` become the standing run-level proof for **all** v2 sends, closing the observability gap hit on the auto-reminder verification.
+- `delivery_unknown` + `first_send_at` make the >24h ambiguity explicit rather than silently assumed-safe.
+- Timezone: resolved to **A + snapshot** — `recipient_timezone` is stored per row now (precedence person→tenant→Amsterdam), so enabling per-recipient tz later needs no group-identity redesign.
+- Legacy `notification_queue`/`send-digest-emails` are untouched here; they retire in 10c-d after 10c-b proves the v2 digest in production.
+- Open input for the owner: confirm the **A+snapshot** timezone precedence and the two default caps (`p_max_group_rows=500`, `p_max_item_bytes=512`) before implementation.
