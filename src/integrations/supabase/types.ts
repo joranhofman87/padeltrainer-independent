@@ -4464,6 +4464,7 @@ export type Database = {
           superseded_by: string | null
           tenant_academy_profile_id: string | null
           tenant_trainer_id: string | null
+          terminal_at: string | null
           terminal_reason: string | null
           total_item_bytes: number
           uncertain_deadline_at: string | null
@@ -4503,6 +4504,7 @@ export type Database = {
           superseded_by?: string | null
           tenant_academy_profile_id?: string | null
           tenant_trainer_id?: string | null
+          terminal_at?: string | null
           terminal_reason?: string | null
           total_item_bytes?: number
           uncertain_deadline_at?: string | null
@@ -4542,6 +4544,7 @@ export type Database = {
           superseded_by?: string | null
           tenant_academy_profile_id?: string | null
           tenant_trainer_id?: string | null
+          terminal_at?: string | null
           terminal_reason?: string | null
           total_item_bytes?: number
           uncertain_deadline_at?: string | null
@@ -10355,6 +10358,10 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
+      link_notification_provider_event: {
+        Args: { p_digest_group_id: string; p_resend_event_id: string }
+        Returns: boolean
+      }
       mark_skipped_alerts_sent: { Args: { p_ids: string[] }; Returns: number }
       merge_guest_players: {
         Args: {
@@ -10410,6 +10417,7 @@ export type Database = {
         Returns: {
           counters_deleted: number
           groups_deleted: number
+          orphan_events_deleted: number
           reservations_deleted: number
           runs_deleted: number
         }[]
