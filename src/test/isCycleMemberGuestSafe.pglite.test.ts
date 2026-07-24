@@ -14,6 +14,35 @@ import { join } from 'node:path';
 
 let db: PGlite;
 
+/**
+ * Migration-wide ACL guard (Codex round on PR #607): find every GRANT that would (re)open EXECUTE on
+ * is_cycle_member to PUBLIC / anon / authenticated. Parses COMPLETE statements (not lines), strips
+ * block + line comments, and catches BOTH a direct grant of the function AND a schema-wide
+ * `GRANT ... ON ALL FUNCTIONS IN SCHEMA public ...` (which would cover is_cycle_member too). Handles
+ * multiline grants and `TO PUBLIC`.
+ */
+function findIsCycleMemberReopeningGrants(sql: string): string[] {
+  const noComments = sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
+    .replace(/--[^\n]*/g, ' ');        // line comments
+  const statements = noComments
+    .split(';')
+    .map((s) => s.replace(/\s+/g, ' ').trim()) // collapse newlines/whitespace ⇒ multiline grants become one string
+    .filter(Boolean);
+  const offenders: string[] = [];
+  for (const st of statements) {
+    if (!/^GRANT\b/i.test(st)) continue;
+    const toIdx = st.toUpperCase().lastIndexOf(' TO ');
+    if (toIdx < 0) continue;
+    const rolesPart = st.slice(toIdx + 4);
+    if (!/\b(PUBLIC|anon|authenticated)\b/i.test(rolesPart)) continue; // grants only to service_role etc. are fine
+    const directOnFn = /\bis_cycle_member\b/i.test(st.slice(0, toIdx));
+    const schemaWide = /ALL\s+FUNCTIONS\s+IN\s+SCHEMA\s+public\b/i.test(st);
+    if (directOnFn || schemaWide) offenders.push(st);
+  }
+  return offenders;
+}
+
 // profiles (p) + their auth user_id (u)
 const OWNER = { p: '11111111-0000-0000-0000-000000000001', u: '11111111-0000-0000-0000-0000000000a1' }; // pure-profile member
 const OTHER = { p: '11111111-0000-0000-0000-000000000002', u: '11111111-0000-0000-0000-0000000000a2' }; // no booking
@@ -125,16 +154,33 @@ describe('is_cycle_member — ACL lockdown (oracle closed)', () => {
     expect(r.svc).toBe(true);
   });
 
-  it('no migration ever GRANTs is_cycle_member to anon/authenticated (defense-in-depth textual guard)', () => {
+  it('no migration (re)opens is_cycle_member to PUBLIC/anon/authenticated — direct or schema-wide (statement-parsed)', () => {
     const dir = join(process.cwd(), 'supabase', 'migrations');
     const offenders: string[] = [];
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql'))) {
-      for (const line of readFileSync(join(dir, f), 'utf8').split('\n')) {
-        if (/\bGRANT\b/i.test(line) && /is_cycle_member/i.test(line) && /\b(anon|authenticated)\b/i.test(line)) {
-          offenders.push(`${f}: ${line.trim()}`);
-        }
-      }
+      for (const st of findIsCycleMemberReopeningGrants(readFileSync(join(dir, f), 'utf8'))) offenders.push(`${f}: ${st}`);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('the guard catches the shapes it must (mutation-verified) and not comments/service_role/unrelated', () => {
+    // MUST catch — a multiline direct grant
+    expect(findIsCycleMemberReopeningGrants(
+      'GRANT EXECUTE\n  ON FUNCTION public.is_cycle_member(uuid, uuid)\n  TO anon, authenticated;')).toHaveLength(1);
+    // MUST catch — TO PUBLIC (reopens to everyone)
+    expect(findIsCycleMemberReopeningGrants(
+      'GRANT EXECUTE ON FUNCTION public.is_cycle_member(uuid,uuid) TO PUBLIC;')).toHaveLength(1);
+    // MUST catch — a schema-wide function grant (covers is_cycle_member), multiline
+    expect(findIsCycleMemberReopeningGrants(
+      'GRANT EXECUTE\n  ON ALL FUNCTIONS IN SCHEMA public\n  TO authenticated;')).toHaveLength(1);
+    // MUST NOT catch — a commented-out grant
+    expect(findIsCycleMemberReopeningGrants(
+      '-- GRANT EXECUTE ON FUNCTION public.is_cycle_member(uuid,uuid) TO anon;\n/* GRANT ... TO PUBLIC; */')).toEqual([]);
+    // MUST NOT catch — the legitimate service_role lockdown grant
+    expect(findIsCycleMemberReopeningGrants(
+      'GRANT EXECUTE ON FUNCTION public.is_cycle_member(uuid, uuid) TO service_role;')).toEqual([]);
+    // MUST NOT catch — unrelated grants (schema USAGE; another function to anon)
+    expect(findIsCycleMemberReopeningGrants('GRANT USAGE ON SCHEMA public TO anon;')).toEqual([]);
+    expect(findIsCycleMemberReopeningGrants('GRANT EXECUTE ON FUNCTION public.some_other_fn(uuid) TO anon;')).toEqual([]);
   });
 });

@@ -129,8 +129,10 @@ were premature. Round-3 corrections:
    guest arms, so a stale twin cannot grant a different account than the curated one. Pre-deploy
    audit: 0 conflicting guests in prod (0 with claims / priority) → no current access lost.
    **NOT yet full parity** — see round-4 #2 below: clauses (a)/(b) still keyed the RAW `player_id`,
-   granting the parent of a dual-key row; closed in round 4, but the shared `is_cycle_member`
-   primitive (capacity/slot-tier) is still raw-keyed and is owned by the dedicated auth-hardening PR.
+   granting the parent of a dual-key row; closed in round 4 for `can_book_member_window`. The shared
+   `is_cycle_member` primitive (a latent oracle; the 2026-07-24 live audit found ZERO callers — NOT
+   capacity/slot-tier, which moved off it) is made guest-safe + service-role-only in PR #607
+   (task #30, pending merge/deploy).
 3. **Group-confirmation** is now send-THEN-stamp with a deterministic Resend idempotency key (was:
    claim-before-send with no key → timeout-dup + a failed clear permanently suppressed). The key
    dedupes for Resend's 24h window ONLY; a post-send stamp failure now returns `ok:false, unresolved>0`
@@ -154,11 +156,17 @@ were premature. Round-3 corrections:
    account resolves to me — raw `player_id` is never identity proof); clause (b) is guarded with
    `guest_player_id IS NULL` (a dual-key claim belongs to the guest, handled by (d)). Tests prove the
    parent is DENIED while the guest's verified account remains ELIGIBLE (canBookMemberWindowPerson).
-   **OWNED FOLLOW-UP (dedicated auth-hardening PR, before PR 10c — do NOT leave unowned):** the shared
-   `is_cycle_member` primitive (used by capacity + slot-tier) is still raw-`player_id` keyed. That PR
-   must: redefine `is_cycle_member` guest-safe, add a current-user wrapper, migrate `priorityClaims.ts`
-   to the wrapper, REVOKE the arbitrary-user function from PUBLIC/anon/authenticated, and regression
-   across capacity/slot-tier/member-window/guest/pure-profile/dual-key.
+   **OWNED FOLLOW-UP — IMPLEMENTED IN PR #607 (pending merge/deploy; task #30):** a 2026-07-24
+   live-prod caller audit corrected the earlier assumption. `is_cycle_member` has **ZERO live callers** —
+   capacity + slot-tier moved to `can_book_slot` / `can_book_member_window` (which `20260928100000` made
+   guest-safe and no longer calls it — the only remaining reference is a deferral COMMENT); no RLS policy
+   uses it; and the sole client reference (`priorityClaims.ts` `isCycleMember()`) was DEAD. So **no
+   current-user wrapper and no client migration were needed** (contrary to this bullet's earlier text).
+   PR #607: redefines `is_cycle_member(uuid,uuid)` guest-safe (reusing `guest_verified_account_profile`),
+   `REVOKE`s PUBLIC/anon/authenticated + `GRANT`s `service_role` only, DELETES the dead helper, and adds
+   identity + ACL regression (incl. a statement-parsed migration-wide guard covering multiline / `TO
+   PUBLIC` / schema-wide grants). **No wrapper** (owner decision). Mark RESOLVED only after production
+   ACL/body verification.
 3. **Group-confirmation durability** — a post-send stamp failure no longer returns `ok:true`: it
    increments `unresolved`, alerts with the member key, and returns `ok:false, unresolved>0`. Comments
    corrected to state provider idempotency is a 24h mitigation ONLY; durable recovery of unresolved
