@@ -4333,7 +4333,7 @@ export type Database = {
           recorded_at: string | null
           resend_error_name: string | null
           started_at: string
-          worker_run_id: string
+          worker_run_id: string | null
         }
         Insert: {
           attempt_id?: string
@@ -4345,7 +4345,7 @@ export type Database = {
           recorded_at?: string | null
           resend_error_name?: string | null
           started_at?: string
-          worker_run_id: string
+          worker_run_id?: string | null
         }
         Update: {
           attempt_id?: string
@@ -4357,7 +4357,7 @@ export type Database = {
           recorded_at?: string | null
           resend_error_name?: string | null
           started_at?: string
-          worker_run_id?: string
+          worker_run_id?: string | null
         }
         Relationships: [
           {
@@ -4385,7 +4385,7 @@ export type Database = {
           item_count: number
           occurred_at: string
           seq: number
-          worker_run_id: string
+          worker_run_id: string | null
         }
         Insert: {
           action: string
@@ -4395,7 +4395,7 @@ export type Database = {
           item_count?: number
           occurred_at?: string
           seq?: number
-          worker_run_id: string
+          worker_run_id?: string | null
         }
         Update: {
           action?: string
@@ -4405,7 +4405,7 @@ export type Database = {
           item_count?: number
           occurred_at?: string
           seq?: number
-          worker_run_id?: string
+          worker_run_id?: string | null
         }
         Relationships: [
           {
@@ -4551,7 +4551,14 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "notification_digest_groups_parent_group_id_fkey"
+            foreignKeyName: "fk_digest_group_current_attempt"
+            columns: ["current_attempt_id", "id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "fk_digest_group_parent"
             columns: ["parent_group_id"]
             isOneToOne: false
             referencedRelation: "notification_digest_groups"
@@ -5023,7 +5030,22 @@ export type Database = {
           state?: string
           tripped_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_circuit_probe_attempt"
+            columns: ["probe_attempt_id", "probe_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "notification_provider_circuit_probe_group_id_fkey"
+            columns: ["probe_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notification_provider_events: {
         Row: {
@@ -5143,6 +5165,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_reservation_attempt"
+            columns: ["attempt_id", "digest_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_attempts"
+            referencedColumns: ["attempt_id", "digest_group_id"]
+          },
+          {
+            foreignKeyName: "notification_send_reservations_counter_key_fkey"
+            columns: ["counter_key"]
+            isOneToOne: false
+            referencedRelation: "notification_send_counters"
+            referencedColumns: ["counter_key"]
+          },
           {
             foreignKeyName: "notification_send_reservations_digest_group_id_fkey"
             columns: ["digest_group_id"]
@@ -10331,6 +10367,7 @@ export type Database = {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
       }
+      notif_digest_purge_active: { Args: never; Returns: boolean }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
@@ -10357,6 +10394,10 @@ export type Database = {
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean
+      }
+      purge_notification_digest: {
+        Args: { p_counter_days?: number; p_group_days?: number }
+        Returns: undefined
       }
       queue_onboarding_emails: {
         Args: {
