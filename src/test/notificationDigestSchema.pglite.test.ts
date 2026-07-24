@@ -49,8 +49,22 @@ async function newRun(): Promise<string> {
     `INSERT INTO public.notification_worker_runs (worker, channel, phase) VALUES ('w','email','dispatch') RETURNING run_id`);
   return r.rows[0].run_id;
 }
-async function finishRunOld(run: string): Promise<void> {
+// a coherently-old finished run: started 201 days ago, ended 200 days ago (ended_at >= started_at, > 90d old)
+async function oldFinishedRun(): Promise<string> {
+  seq += 1;
+  const r = await db.query<{ run_id: string }>(
+    `INSERT INTO public.notification_worker_runs (worker, channel, phase, started_at)
+     VALUES ('w','email','dispatch', now()-interval '201 days') RETURNING run_id`);
+  const run = r.rows[0].run_id;
   await db.query(`UPDATE public.notification_worker_runs SET status='succeeded', ended_at=now()-interval '200 days' WHERE run_id='${run}'`);
+  return run;
+}
+// terminal_at is guard-owned and cannot be backdated by a caller, so to simulate a 200-day-old terminal
+// group we briefly disable the guard (a superuser/DDL power the app never has) and set it directly.
+async function makeGroupTerminalOld(gid: string): Promise<void> {
+  await db.exec(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_guard;
+    UPDATE public.notification_digest_groups SET state='sent', terminal_at=now()-interval '200 days' WHERE id='${gid}';
+    ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_guard;`);
 }
 async function asServiceRole<T>(sql: string): Promise<T> {
   await db.exec('SET ROLE service_role');
@@ -206,10 +220,21 @@ describe('10c-a1 digest schema — worker-run lifecycle guard', () => {
     await expect(db.query(`UPDATE public.notification_worker_runs SET status='failed' WHERE run_id='${run}'`)).rejects.toThrow();
   });
 
-  it('an unfinished run cannot be deleted even by the owner; a finished run can', async () => {
+  it('a run cannot end before it starts (temporal validity)', async () => {
+    const run = await newRun(); // started_at defaults to now()
+    await expect(db.query(`UPDATE public.notification_worker_runs
+      SET status='succeeded', ended_at=now()-interval '1 day' WHERE run_id='${run}'`)).rejects.toThrow(/before it starts/i);
+    await expect(db.query(`UPDATE public.notification_worker_runs
+      SET status='succeeded', ended_at=now() WHERE run_id='${run}'`)).resolves.toBeTruthy();
+  });
+
+  it('an unfinished run cannot be deleted; a fresh finished run cannot; a >90-day finished run can', async () => {
     const running = await newRun();
-    await expect(db.query(`DELETE FROM public.notification_worker_runs WHERE run_id='${running}'`)).rejects.toThrow();
-    const done = await newRun(); await finishRunOld(done);
+    await expect(db.query(`DELETE FROM public.notification_worker_runs WHERE run_id='${running}'`)).rejects.toThrow(/unfinished/i);
+    const fresh = await newRun();
+    await db.query(`UPDATE public.notification_worker_runs SET status='succeeded', ended_at=now() WHERE run_id='${fresh}'`);
+    await expect(db.query(`DELETE FROM public.notification_worker_runs WHERE run_id='${fresh}'`)).rejects.toThrow(/retention age/i);
+    const done = await oldFinishedRun();
     await expect(db.query(`DELETE FROM public.notification_worker_runs WHERE run_id='${done}'`)).resolves.toBeTruthy();
   });
 });
@@ -232,7 +257,7 @@ describe('10c-a1 digest schema — append-only audit tables', () => {
 describe('10c-a1 digest schema — controlled + bounded retention', () => {
   it('service_role cannot DELETE groups/runs directly even with a spoofed GUC in the statement', async () => {
     const g = await newGroup({ state: TERMINAL });
-    const run = await newRun(); await finishRunOld(run);
+    const run = await oldFinishedRun();
     await expect(asServiceRole(`DELETE FROM public.notification_digest_groups WHERE id='${g}'`)).rejects.toThrow(/permission denied/i);
     await expect(asServiceRole(
       `DELETE FROM public.notification_worker_runs WHERE run_id='${run}' AND set_config('app.digest_purge','on',true) IS NOT NULL`))
@@ -244,20 +269,39 @@ describe('10c-a1 digest schema — controlled + bounded retention', () => {
     await expect(db.query(`DELETE FROM public.notification_digest_groups WHERE id='${active}'`)).rejects.toThrow(/not terminal/i);
   });
 
-  it('rejects non-positive retention windows and limit (fail closed)', async () => {
+  it('enforces the ADR policy windows (group>=90, counter>=35) and a hard limit cap (fail closed)', async () => {
     await expect(db.query(`SELECT public.purge_notification_digest(-1, 35, 500)`)).rejects.toThrow();
-    await expect(db.query(`SELECT public.purge_notification_digest(90, 0, 500)`)).rejects.toThrow();
-    await expect(db.query(`SELECT public.purge_notification_digest(90, 35, 0)`)).rejects.toThrow();
+    await expect(db.query(`SELECT public.purge_notification_digest(89, 35, 500)`)).rejects.toThrow();   // < 90
+    await expect(db.query(`SELECT public.purge_notification_digest(90, 34, 500)`)).rejects.toThrow();   // < 35
+    await expect(db.query(`SELECT public.purge_notification_digest(90, 35, 0)`)).rejects.toThrow();     // limit < 1
+    await expect(db.query(`SELECT public.purge_notification_digest(90, 35, 20000)`)).rejects.toThrow(); // limit > 10000
+    await expect(db.query(`SELECT public.purge_notification_digest(90, 35, 500)`)).resolves.toBeTruthy();
+  });
+
+  it('an old-but-newly-terminal group survives 90 days; a fresh terminal group cannot be deleted', async () => {
+    // Codex repro: an old pending group transitions to terminal — the schema-owned clock starts NOW.
+    const g = await newGroup({ state: `'pending'`, updated_at: `now()-interval '200 days'` });
+    await db.query(`UPDATE public.notification_digest_groups SET state='sent' WHERE id='${g}'`); // terminal_at := now()
+    await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_digest_groups WHERE id='${g}'`)).rows[0].n).toBe(1);
+    await expect(db.query(`DELETE FROM public.notification_digest_groups WHERE id='${g}'`)).rejects.toThrow(/retention age/i);
+  });
+
+  it('a caller cannot backdate the retention clock by presetting terminal_at at insert', async () => {
+    const g = await newGroup({ state: TERMINAL, terminal_at: `now()-interval '200 days'` }); // guard overwrites → now()
+    await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_digest_groups WHERE id='${g}'`)).rows[0].n).toBe(1);
   });
 
   it('purge deletes eligible terminal groups (cascading audit) + finished runs, returning counts', async () => {
-    const g = await newGroup({ state: TERMINAL, updated_at: `now()-interval '200 days'` });
+    const g = await newGroup();
     const a = await newAttempt(g);
     await db.query(`UPDATE public.notification_digest_groups SET current_attempt_id='${a}' WHERE id='${g}'`);
     await db.query(`INSERT INTO public.notification_digest_group_attempts (digest_group_id, attempt_id, action) VALUES ('${g}','${a}','attempt')`);
     const ob = (await db.query<{ id: string }>(`INSERT INTO public.notification_outbox (status) VALUES ('pending') RETURNING id`)).rows[0].id;
     await db.query(`UPDATE public.notification_outbox SET digest_group_id='${g}' WHERE id='${ob}'`);
-    const run = await newRun(); await finishRunOld(run);
+    await makeGroupTerminalOld(g);
+    await oldFinishedRun(); // an old finished run for the runs_deleted assertion
 
     const r = (await db.query<{ groups_deleted: number; runs_deleted: number }>(
       `SELECT groups_deleted, runs_deleted FROM public.purge_notification_digest(90, 35, 500)`)).rows[0];
@@ -277,7 +321,7 @@ describe('10c-a1 digest schema — reservations are never released while uncerta
       VALUES ('cpres','day', date_trunc('day', now()-interval '200 days'), 100)`);
     await db.query(`INSERT INTO public.notification_send_reservations (digest_group_id, counter_key, bucket_start, state)
       VALUES ('${g}','cpres', date_trunc('day', now()-interval '200 days'), 'reserved')`);
-    await db.query(`SELECT public.purge_notification_digest(90, 1, 500)`);
+    await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
     expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_send_counters WHERE counter_key='cpres'`)).rows[0].n).toBe(1);
     expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_send_reservations WHERE digest_group_id='${g}'`)).rows[0].n).toBe(1);
   });
@@ -302,8 +346,13 @@ describe('10c-a1 digest schema — immutable snapshots + identities', () => {
     await expect(db.query(`UPDATE public.notification_outbox SET digest_boundary_at=now()+interval '1 day' WHERE id='${ob}'`)).rejects.toThrow(/write-once/i);
     await expect(db.query(`UPDATE public.notification_outbox SET delivery_mode='instant' WHERE id='${ob}'`)).rejects.toThrow(/write-once/i);
     await expect(db.query(`UPDATE public.notification_outbox SET status='processing' WHERE id='${ob}'`)).resolves.toBeTruthy(); // benign
-    await expect(db.query(`UPDATE public.notification_outbox SET digest_group_id='${g1}' WHERE id='${ob}'`)).resolves.toBeTruthy(); // attach
-    await expect(db.query(`UPDATE public.notification_outbox SET digest_group_id='${g2}' WHERE id='${ob}'`)).rejects.toThrow(/re-pointed/i);
+    await expect(db.query(`UPDATE public.notification_outbox SET digest_group_id='${g1}' WHERE id='${ob}'`)).resolves.toBeTruthy(); // attach (NULL→group)
+    await expect(db.query(`UPDATE public.notification_outbox SET digest_group_id='${g2}' WHERE id='${ob}'`)).rejects.toThrow(/retention cascade/i); // re-point
+    await expect(db.query(`UPDATE public.notification_outbox SET digest_group_id=NULL WHERE id='${ob}'`)).rejects.toThrow(/retention cascade/i); // top-level detach
+    // only the retention cascade (a group delete → outbox FK SET NULL, depth>1) may detach a member:
+    await makeGroupTerminalOld(g1);
+    await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
+    expect((await db.query<{ digest_group_id: string | null }>(`SELECT digest_group_id FROM public.notification_outbox WHERE id='${ob}'`)).rows[0].digest_group_id).toBeNull();
   });
 
   it('group canonical identity + boundary are immutable; provider_message_id is write-once', async () => {
@@ -347,10 +396,11 @@ describe('10c-a1 digest schema — cross-table referential identity', () => {
   });
 
   it('purging a probe group clears BOTH probe_group_id and probe_attempt_id atomically', async () => {
-    const g = await newGroup({ state: TERMINAL, updated_at: `now()-interval '200 days'` });
+    const g = await newGroup();
     const a = await newAttempt(g);
     await db.query(`INSERT INTO public.notification_provider_circuit (channel, state, probe_group_id, probe_attempt_id)
       VALUES ('email-probe','half_open','${g}','${a}')`);
+    await makeGroupTerminalOld(g);
     await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
     const c = (await db.query<{ probe_group_id: string | null; probe_attempt_id: string | null }>(
       `SELECT probe_group_id, probe_attempt_id FROM public.notification_provider_circuit WHERE channel='email-probe'`)).rows[0];
@@ -359,10 +409,11 @@ describe('10c-a1 digest schema — cross-table referential identity', () => {
   });
 
   it('superseded_by has a real FK and SET-NULLs when the superseding group is purged', async () => {
-    const sup = await newGroup({ state: TERMINAL, updated_at: `now()-interval '200 days'` });
+    const sup = await newGroup();
     const child = await newGroup({ state: `'pending'` });
     await expect(db.query(`UPDATE public.notification_digest_groups SET superseded_by='99999999-0000-0000-0000-000000000000' WHERE id='${child}'`)).rejects.toThrow();
     await db.query(`UPDATE public.notification_digest_groups SET superseded_by='${sup}' WHERE id='${child}'`);
+    await makeGroupTerminalOld(sup);
     await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
     const c = (await db.query<{ superseded_by: string | null }>(`SELECT superseded_by FROM public.notification_digest_groups WHERE id='${child}'`)).rows[0];
     expect(c.superseded_by).toBeNull();
@@ -375,6 +426,54 @@ describe('10c-a1 digest schema — cross-table referential identity', () => {
       VALUES ('${g}','cbucket', date_trunc('hour',now())+interval '1 hour', 'reserved')`)).rejects.toThrow();
     await expect(db.query(`INSERT INTO public.notification_send_reservations (digest_group_id, counter_key, bucket_start, state)
       VALUES ('${g}','cbucket', date_trunc('hour',now()), 'reserved')`)).resolves.toBeTruthy();
+  });
+});
+
+describe('10c-a1 digest schema — provider-event orphan-then-link lifecycle', () => {
+  it('an orphan links to its matching group exactly once, via the RPC, then is immutable', async () => {
+    const g = await newGroup(); await db.query(`UPDATE public.notification_digest_groups SET provider_message_id='pm-link' WHERE id='${g}'`);
+    await db.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, status, occurred_at)
+      VALUES ('orph-1','pm-link','delivered',now())`); // arrives before correlation (digest_group_id NULL)
+    await expect(db.query(`SELECT public.link_notification_provider_event('orph-1','${g}')`)).resolves.toBeTruthy();
+    expect((await db.query<{ digest_group_id: string | null }>(`SELECT digest_group_id FROM public.notification_provider_events WHERE resend_event_id='orph-1'`)).rows[0].digest_group_id).toBe(g);
+    // second re-link rejected
+    await expect(db.query(`SELECT public.link_notification_provider_event('orph-1','${g}')`)).rejects.toThrow(/already linked/i);
+  });
+
+  it('linking to a group whose provider_message_id does not match the event is rejected', async () => {
+    const g = await newGroup(); await db.query(`UPDATE public.notification_digest_groups SET provider_message_id='pm-a' WHERE id='${g}'`);
+    await db.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, status, occurred_at)
+      VALUES ('orph-mismatch','pm-b','delivered',now())`); // event carries pm-b, group has pm-a
+    await expect(db.query(`SELECT public.link_notification_provider_event('orph-mismatch','${g}')`)).rejects.toThrow();
+  });
+
+  it('service_role cannot link by direct UPDATE (only the SECURITY DEFINER RPC can)', async () => {
+    const g = await newGroup(); await db.query(`UPDATE public.notification_digest_groups SET provider_message_id='pm-direct' WHERE id='${g}'`);
+    await db.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, status, occurred_at)
+      VALUES ('orph-direct','pm-direct','delivered',now())`);
+    await expect(asServiceRole(`UPDATE public.notification_provider_events SET digest_group_id='${g}' WHERE resend_event_id='orph-direct'`)).rejects.toThrow(/permission denied/i);
+  });
+
+  it('a linked event is removed when its group is purged (callback-before-record → correlate → purge)', async () => {
+    const g = await newGroup(); await db.query(`UPDATE public.notification_digest_groups SET provider_message_id='pm-purge' WHERE id='${g}'`);
+    await db.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, status, occurred_at)
+      VALUES ('orph-purge','pm-purge','delivered',now())`);
+    await db.query(`SELECT public.link_notification_provider_event('orph-purge','${g}')`);
+    await makeGroupTerminalOld(g);
+    await db.query(`SELECT public.purge_notification_digest(90, 35, 500)`);
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_provider_events WHERE resend_event_id='orph-purge'`)).rows[0].n).toBe(0);
+  });
+
+  it('stale unlinked orphans are pruned by retention; fresh orphans and direct deletes are not', async () => {
+    await db.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, status, occurred_at, received_at)
+      VALUES ('orph-stale','pm-s','delivered', now()-interval '40 days', now()-interval '40 days')`);
+    await db.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, status, occurred_at, received_at)
+      VALUES ('orph-fresh','pm-f','delivered', now(), now())`);
+    await expect(db.query(`DELETE FROM public.notification_provider_events WHERE resend_event_id='orph-fresh'`)).rejects.toThrow(/not yet stale/i);
+    const r = (await db.query<{ orphan_events_deleted: number }>(`SELECT orphan_events_deleted FROM public.purge_notification_digest(90, 35, 500)`)).rows[0];
+    expect(r.orphan_events_deleted).toBeGreaterThanOrEqual(1);
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_provider_events WHERE resend_event_id='orph-stale'`)).rows[0].n).toBe(0);
+    expect((await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.notification_provider_events WHERE resend_event_id='orph-fresh'`)).rows[0].n).toBe(1);
   });
 });
 

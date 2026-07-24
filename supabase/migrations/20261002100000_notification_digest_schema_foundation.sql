@@ -93,6 +93,9 @@ CREATE TABLE IF NOT EXISTS public.notification_digest_groups (
                               ('none','sent','delivery_delayed','delivered','bounced','failed','suppressed','complained')),
   provider_status_rank      int  NOT NULL DEFAULT 0 CHECK (provider_status_rank >= 0),
   terminal_reason           text,
+  terminal_at               timestamptz,   -- SCHEMA-OWNED retention clock: guard stamps it on entry into a
+                                           -- terminal state, freezes it after, clears it if it leaves. Callers
+                                           -- can never set/backdate it (the guard always overwrites).
   created_at                timestamptz NOT NULL DEFAULT now(),
   updated_at                timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT uq_digest_group UNIQUE (canonical_group_key, chunk_ordinal),
@@ -233,8 +236,10 @@ CREATE INDEX IF NOT EXISTS idx_digest_groups_awaiting ON public.notification_dig
 CREATE INDEX IF NOT EXISTS idx_digest_groups_stale ON public.notification_digest_groups (channel, locked_at)
   WHERE state IN ('leased','prepared','request_ready','sending');
 CREATE INDEX IF NOT EXISTS idx_digest_groups_key_hash ON public.notification_digest_groups (group_key_hash);
-CREATE INDEX IF NOT EXISTS idx_digest_groups_retention ON public.notification_digest_groups (updated_at)
+CREATE INDEX IF NOT EXISTS idx_digest_groups_retention ON public.notification_digest_groups (terminal_at)
   WHERE state IN ('sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped','no_work','superseded');
+CREATE INDEX IF NOT EXISTS idx_provider_events_orphan_retention ON public.notification_provider_events (received_at)
+  WHERE digest_group_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_digest_attempts_group ON public.notification_digest_attempts (digest_group_id);
 CREATE INDEX IF NOT EXISTS idx_digest_ledger_group ON public.notification_digest_group_attempts (digest_group_id);
 CREATE INDEX IF NOT EXISTS idx_provider_events_orphan ON public.notification_provider_events (provider_message_id)
@@ -286,8 +291,8 @@ DROP TRIGGER IF EXISTS trg_digest_attempts_guard ON public.notification_digest_a
 CREATE TRIGGER trg_digest_attempts_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_digest_attempts
   FOR EACH ROW EXECUTE FUNCTION public.notification_digest_attempts_guard();
 
--- worker_runs: born unfinished; the ONLY update is finish (valid status AND ended_at together, once);
--- identity immutable; deletable only once finished (retention age gate lives in the purge function).
+-- worker_runs: born unfinished; the ONLY update is finish (valid status AND ended_at>=started_at together,
+-- once); identity immutable; deletable only once finished AND >= 90 days old (owner-effective retention age).
 CREATE OR REPLACE FUNCTION public.notification_worker_runs_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
@@ -298,14 +303,20 @@ BEGIN
     RETURN NEW;
   END IF;
   IF TG_OP = 'DELETE' THEN
-    IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;   -- (defensive: nothing cascades into worker_runs)
+    IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;   -- defensive: nothing cascades into worker_runs
     IF OLD.ended_at IS NULL THEN RAISE EXCEPTION 'cannot delete an unfinished worker run %', OLD.run_id; END IF;
+    IF OLD.ended_at > now() - interval '90 days' THEN
+      RAISE EXCEPTION 'worker run % has not reached the 90-day retention age', OLD.run_id;
+    END IF;
     RETURN OLD;
   END IF;
   IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;
   IF OLD.ended_at IS NOT NULL THEN RAISE EXCEPTION 'worker run % already finished', OLD.run_id; END IF;
   IF NEW.ended_at IS NULL OR NEW.status IS NULL OR NEW.status NOT IN ('succeeded','failed','abandoned') THEN
     RAISE EXCEPTION 'worker run finish must set a valid status AND ended_at together';
+  END IF;
+  IF NEW.ended_at < NEW.started_at THEN
+    RAISE EXCEPTION 'worker run % cannot end (%) before it starts (%)', OLD.run_id, NEW.ended_at, NEW.started_at;
   END IF;
   IF NEW.run_id <> OLD.run_id OR NEW.worker <> OLD.worker OR NEW.channel <> OLD.channel
      OR NEW.phase <> OLD.phase OR NEW.started_at <> OLD.started_at THEN
@@ -317,16 +328,26 @@ DROP TRIGGER IF EXISTS trg_worker_runs_guard ON public.notification_worker_runs;
 CREATE TRIGGER trg_worker_runs_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_worker_runs
   FOR EACH ROW EXECUTE FUNCTION public.notification_worker_runs_guard();
 
--- groups: identity + boundary immutable, provider_message_id write-once; deletable only in a terminal state
--- (owner-effective retention eligibility). Referential side effects (parent/superseded/worker_run SET NULL,
--- cascade) bypass at depth>1.
+-- groups: identity + boundary immutable, provider_message_id write-once; terminal_at is the SCHEMA-OWNED
+-- retention clock (stamped on entry into a terminal state, frozen after, cleared if it leaves — callers can
+-- never set/backdate it). Deletable only when terminal AND that clock is >= 90 days old (owner-effective, so
+-- even a future SECURITY DEFINER caller cannot erase a fresh group). Referential side effects bypass at depth>1.
 CREATE OR REPLACE FUNCTION public.notification_digest_groups_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE terminal_states text[] :=
+  ARRAY['sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped','no_work','superseded'];
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.terminal_at := CASE WHEN NEW.state = ANY(terminal_states) THEN now() ELSE NULL END;  -- forced, never trusted
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;
-    IF OLD.state NOT IN ('sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped','no_work','superseded') THEN
+    IF NOT (OLD.state = ANY(terminal_states)) THEN
       RAISE EXCEPTION 'digest group % is not terminal; only retention-eligible groups may be deleted', OLD.id;
+    END IF;
+    IF OLD.terminal_at IS NULL OR OLD.terminal_at > now() - interval '90 days' THEN
+      RAISE EXCEPTION 'digest group % has not reached the 90-day retention age', OLD.id;
     END IF;
     -- clear any breaker probe pinned to this group BEFORE it (and its attempt) disappear, so both probe
     -- fields drop together — an FK SET NULL cannot (nulling probe_group_id detaches the composite probe FK).
@@ -351,10 +372,18 @@ BEGIN
   IF OLD.provider_message_id IS NOT NULL AND NEW.provider_message_id IS DISTINCT FROM OLD.provider_message_id THEN
     RAISE EXCEPTION 'digest group provider_message_id is write-once';
   END IF;
+  -- schema-owned retention clock: stamp on entry into terminal, freeze while terminal, clear if it leaves.
+  IF (NEW.state = ANY(terminal_states)) AND NOT (OLD.state = ANY(terminal_states)) THEN
+    NEW.terminal_at := now();
+  ELSIF (NEW.state = ANY(terminal_states)) THEN
+    NEW.terminal_at := OLD.terminal_at;   -- immutable once terminal
+  ELSE
+    NEW.terminal_at := NULL;
+  END IF;
   RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS trg_digest_groups_guard ON public.notification_digest_groups;
-CREATE TRIGGER trg_digest_groups_guard BEFORE UPDATE OR DELETE ON public.notification_digest_groups
+CREATE TRIGGER trg_digest_groups_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_digest_groups
   FOR EACH ROW EXECUTE FUNCTION public.notification_digest_groups_guard();
 
 -- reservations: identity immutable, originating attempt_id write-once; a 'reserved' (uncertain) row may
@@ -383,7 +412,7 @@ DROP TRIGGER IF EXISTS trg_reservations_guard ON public.notification_send_reserv
 CREATE TRIGGER trg_reservations_guard BEFORE UPDATE OR DELETE ON public.notification_send_reservations
   FOR EACH ROW EXECUTE FUNCTION public.notification_send_reservations_guard();
 
--- append-only ledger + provider events: no direct update/delete; cascade delete / SET NULL (depth>1) allowed.
+-- ledger: strictly append-only (no direct update/delete); cascade delete / SET NULL (depth>1) allowed.
 CREATE OR REPLACE FUNCTION public.notification_append_only_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
@@ -396,9 +425,57 @@ END $$;
 DROP TRIGGER IF EXISTS trg_ledger_append_only ON public.notification_digest_group_attempts;
 CREATE TRIGGER trg_ledger_append_only BEFORE UPDATE OR DELETE ON public.notification_digest_group_attempts
   FOR EACH ROW EXECUTE FUNCTION public.notification_append_only_guard();
+
+-- provider events: append-only EXCEPT one controlled orphan→group link. The only permitted update is a
+-- NULL→group transition on digest_group_id (all callback fields immutable; the composite FK enforces the
+-- (group,message) match); a second re-link or any field edit is rejected. Direct delete: only a STALE ORPHAN
+-- (unlinked, >= 35 days old) may be pruned by retention — a linked event leaves only via group cascade. This
+-- transition is reachable only through link_notification_provider_event() (service_role has no UPDATE grant).
+CREATE OR REPLACE FUNCTION public.notification_provider_events_guard() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END; END IF;  -- group cascade
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.digest_group_id IS NOT NULL THEN
+      RAISE EXCEPTION 'linked provider event % leaves only via group cascade', OLD.resend_event_id;
+    END IF;
+    IF OLD.received_at > now() - interval '35 days' THEN
+      RAISE EXCEPTION 'orphan provider event % is not yet stale (35-day retention)', OLD.resend_event_id;
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF OLD.digest_group_id IS NOT NULL THEN
+    RAISE EXCEPTION 'provider event % already linked; callbacks are append-only', OLD.resend_event_id;
+  END IF;
+  IF NEW.digest_group_id IS NULL THEN
+    RAISE EXCEPTION 'provider event update may only LINK an orphan to a group (NULL->group)';
+  END IF;
+  IF NEW.resend_event_id <> OLD.resend_event_id OR NEW.provider_message_id <> OLD.provider_message_id
+     OR NEW.status <> OLD.status OR NEW.occurred_at <> OLD.occurred_at OR NEW.received_at <> OLD.received_at THEN
+    RAISE EXCEPTION 'provider event callback fields are immutable; only NULL->group linking is allowed';
+  END IF;
+  RETURN NEW;
+END $$;
 DROP TRIGGER IF EXISTS trg_provider_events_append_only ON public.notification_provider_events;
-CREATE TRIGGER trg_provider_events_append_only BEFORE UPDATE OR DELETE ON public.notification_provider_events
-  FOR EACH ROW EXECUTE FUNCTION public.notification_append_only_guard();
+DROP TRIGGER IF EXISTS trg_provider_events_guard ON public.notification_provider_events;
+CREATE TRIGGER trg_provider_events_guard BEFORE UPDATE OR DELETE ON public.notification_provider_events
+  FOR EACH ROW EXECUTE FUNCTION public.notification_provider_events_guard();
+
+-- the one sanctioned orphan→group link (service-role SECURITY DEFINER; the composite FK rejects a wrong
+-- group/message pair, and the guard rejects re-linking an already-linked event).
+CREATE OR REPLACE FUNCTION public.link_notification_provider_event(p_resend_event_id text, p_digest_group_id uuid)
+  RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_count int;
+BEGIN
+  UPDATE public.notification_provider_events
+     SET digest_group_id = p_digest_group_id
+   WHERE resend_event_id = p_resend_event_id AND digest_group_id IS NULL;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  IF v_count = 0 THEN
+    RAISE EXCEPTION 'provider event % not found or already linked', p_resend_event_id;
+  END IF;
+  RETURN true;
+END $$;
 
 -- outbox snapshot columns are write-once; digest_group_id may attach (NULL→id) and retention-null (id→NULL)
 -- but never re-point. digest_item/payload stay mutable (terminal scrubbing). Referential SET NULL bypasses.
@@ -416,9 +493,10 @@ BEGIN
    OR (OLD.destination_fingerprint IS NOT NULL AND NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint) THEN
     RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
   END IF;
-  IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS NOT NULL
-     AND NEW.digest_group_id <> OLD.digest_group_id THEN
-    RAISE EXCEPTION 'notification_outbox.digest_group_id cannot be re-pointed once attached';
+  -- once attached, digest_group_id is frozen at top level: no detach (→NULL) and no re-point (→other).
+  -- Only the nested FK retention cascade (depth>1, bypassed above) may set it back to NULL.
+  IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id THEN
+    RAISE EXCEPTION 'notification_outbox.digest_group_id may only detach via retention cascade, never directly';
   END IF;
   RETURN NEW;
 END $$;
@@ -428,18 +506,21 @@ CREATE TRIGGER trg_outbox_snapshot_guard BEFORE UPDATE ON public.notification_ou
 
 -- ===========================================================================
 -- 12. Controlled, bounded, resumable retention (ADR §RET). SECURITY DEFINER → deletes with the table
---     owner's privilege (no role holds service_role DELETE). Validates windows/limit (fail closed on <1),
---     deletes in deterministic, bounded, SKIP LOCKED batches, and RETURNS the per-table counts so the cron
---     can loop until all four are 0. Order preserves reservations: settled reservations of terminal groups
---     first → unreferenced old counters → terminal old groups (cascade audit) → finished old runs.
+--     owner's privilege (no role holds service_role DELETE). Enforces the ADR's fixed policy windows
+--     (group >= 90 days, counter >= 35 days) and a hard batch cap (1..10000) so no caller can widen the
+--     clock or recreate an unbounded transaction. Group retention keys on the SCHEMA-OWNED terminal_at
+--     (never the caller-mutable updated_at), reservation retention on the group's terminal_at. Deletes in
+--     deterministic, bounded, SKIP LOCKED batches and RETURNS per-table counts so the cron loops until all
+--     are 0. Order preserves reservations: settled reservations of terminal groups first → unreferenced old
+--     counters → terminal old groups (cascade audit) → finished old runs → stale unlinked provider orphans.
 CREATE OR REPLACE FUNCTION public.purge_notification_digest(
     p_group_days int DEFAULT 90, p_counter_days int DEFAULT 35, p_limit int DEFAULT 500)
-  RETURNS TABLE (reservations_deleted int, counters_deleted int, groups_deleted int, runs_deleted int)
+  RETURNS TABLE (reservations_deleted int, counters_deleted int, groups_deleted int, runs_deleted int, orphan_events_deleted int)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_res int; v_cnt int; v_grp int; v_run int;
+DECLARE v_res int; v_cnt int; v_grp int; v_run int; v_orph int;
 BEGIN
-  IF p_group_days < 1 OR p_counter_days < 1 OR p_limit < 1 THEN
-    RAISE EXCEPTION 'purge_notification_digest: windows and limit must be >= 1 (got group=%, counter=%, limit=%)',
+  IF p_group_days < 90 OR p_counter_days < 35 OR p_limit < 1 OR p_limit > 10000 THEN
+    RAISE EXCEPTION 'purge_notification_digest: require group_days>=90, counter_days>=35, 1<=limit<=10000 (got group=%, counter=%, limit=%)',
       p_group_days, p_counter_days, p_limit;
   END IF;
 
@@ -449,8 +530,8 @@ BEGIN
       JOIN public.notification_digest_groups g ON g.id = r.digest_group_id
      WHERE r.state IN ('committed','released')
        AND g.state IN ('sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped','no_work','superseded')
-       AND r.updated_at < now() - make_interval(days => p_counter_days)
-     ORDER BY r.updated_at, r.digest_group_id, r.counter_key
+       AND g.terminal_at IS NOT NULL AND g.terminal_at < now() - make_interval(days => p_counter_days)
+     ORDER BY g.terminal_at, r.digest_group_id, r.counter_key
      LIMIT p_limit FOR UPDATE OF r SKIP LOCKED)
   DELETE FROM public.notification_send_reservations r USING victims v
    WHERE r.digest_group_id = v.digest_group_id AND r.counter_key = v.counter_key;
@@ -468,8 +549,8 @@ BEGIN
   WITH victims AS (
     SELECT g.id FROM public.notification_digest_groups g
      WHERE g.state IN ('sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped','no_work','superseded')
-       AND g.updated_at < now() - make_interval(days => p_group_days)
-     ORDER BY g.updated_at, g.id
+       AND g.terminal_at IS NOT NULL AND g.terminal_at < now() - make_interval(days => p_group_days)
+     ORDER BY g.terminal_at, g.id
      LIMIT p_limit FOR UPDATE SKIP LOCKED)
   DELETE FROM public.notification_digest_groups g USING victims v WHERE g.id = v.id;
   GET DIAGNOSTICS v_grp = ROW_COUNT;
@@ -482,7 +563,16 @@ BEGIN
   DELETE FROM public.notification_worker_runs w USING victims v WHERE w.run_id = v.run_id;
   GET DIAGNOSTICS v_run = ROW_COUNT;
 
-  reservations_deleted := v_res; counters_deleted := v_cnt; groups_deleted := v_grp; runs_deleted := v_run;
+  WITH victims AS (
+    SELECT e.resend_event_id FROM public.notification_provider_events e
+     WHERE e.digest_group_id IS NULL AND e.received_at < now() - make_interval(days => p_counter_days)
+     ORDER BY e.received_at, e.resend_event_id
+     LIMIT p_limit FOR UPDATE SKIP LOCKED)
+  DELETE FROM public.notification_provider_events e USING victims v WHERE e.resend_event_id = v.resend_event_id;
+  GET DIAGNOSTICS v_orph = ROW_COUNT;
+
+  reservations_deleted := v_res; counters_deleted := v_cnt; groups_deleted := v_grp;
+  runs_deleted := v_run; orphan_events_deleted := v_orph;
   RETURN NEXT;
 END $$;
 
@@ -514,3 +604,5 @@ GRANT INSERT, SELECT, UPDATE ON public.notification_send_reservations  TO servic
 
 REVOKE ALL ON FUNCTION public.purge_notification_digest(int, int, int) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.purge_notification_digest(int, int, int) TO service_role;
+REVOKE ALL ON FUNCTION public.link_notification_provider_event(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.link_notification_provider_event(text, uuid) TO service_role;
