@@ -4409,11 +4409,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "notification_digest_group_attempts_attempt_id_fkey"
-            columns: ["attempt_id"]
+            foreignKeyName: "fk_ledger_attempt"
+            columns: ["attempt_id", "digest_group_id"]
             isOneToOne: false
             referencedRelation: "notification_digest_attempts"
-            referencedColumns: ["attempt_id"]
+            referencedColumns: ["attempt_id", "digest_group_id"]
           },
           {
             foreignKeyName: "notification_digest_group_attempts_digest_group_id_fkey"
@@ -4560,6 +4560,13 @@ export type Database = {
           {
             foreignKeyName: "fk_digest_group_parent"
             columns: ["parent_group_id"]
+            isOneToOne: false
+            referencedRelation: "notification_digest_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_digest_group_superseded"
+            columns: ["superseded_by"]
             isOneToOne: false
             referencedRelation: "notification_digest_groups"
             referencedColumns: ["id"]
@@ -5074,11 +5081,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "notification_provider_events_digest_group_id_fkey"
-            columns: ["digest_group_id"]
+            foreignKeyName: "fk_provider_event_group"
+            columns: ["digest_group_id", "provider_message_id"]
             isOneToOne: false
             referencedRelation: "notification_digest_groups"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "provider_message_id"]
           },
         ]
       }
@@ -5173,11 +5180,11 @@ export type Database = {
             referencedColumns: ["attempt_id", "digest_group_id"]
           },
           {
-            foreignKeyName: "notification_send_reservations_counter_key_fkey"
-            columns: ["counter_key"]
+            foreignKeyName: "fk_reservation_counter"
+            columns: ["counter_key", "bucket_start"]
             isOneToOne: false
             referencedRelation: "notification_send_counters"
-            referencedColumns: ["counter_key"]
+            referencedColumns: ["counter_key", "bucket_start"]
           },
           {
             foreignKeyName: "notification_send_reservations_digest_group_id_fkey"
@@ -10367,7 +10374,6 @@ export type Database = {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
       }
-      notif_digest_purge_active: { Args: never; Returns: boolean }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
@@ -10396,8 +10402,17 @@ export type Database = {
         Returns: boolean
       }
       purge_notification_digest: {
-        Args: { p_counter_days?: number; p_group_days?: number }
-        Returns: undefined
+        Args: {
+          p_counter_days?: number
+          p_group_days?: number
+          p_limit?: number
+        }
+        Returns: {
+          counters_deleted: number
+          groups_deleted: number
+          reservations_deleted: number
+          runs_deleted: number
+        }[]
       }
       queue_onboarding_emails: {
         Args: {
