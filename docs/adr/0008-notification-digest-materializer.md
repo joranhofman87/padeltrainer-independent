@@ -1,7 +1,21 @@
 # ADR 0008 — v2 notification digest materializer (attempt-aware reservations, evidence-gated terminals)
 
-Status: **Proposed — Rev 10** (self-contained; addresses the Codex review of Rev 9; design-only, PR 10c-a)
+Status: **Proposed — Rev 11** (self-contained; addresses the Codex review of Rev 10; design-only, PR 10c-a)
 Date: 2026-07-24
+
+> **Rev 11 (narrow) — five corrections only, no other section redesigned:**
+> **(1)** add `group.current_attempt_id`; the breaker binds `probe_group_id` at CAS and
+> `probe_attempt_id` only when `begin_digest_attempt` creates the attempt (§CB, §M2, §P6).
+> **(2)** an executable no-send age-out: `awaiting_evidence AND available_at ≤ now → delivery_unknown`
+> in `claim` (§AE, §P1). **(3)** provider callbacks are monotonic against a later HTTP `accepted`
+> (rank-guarded); `email.sent` is positive **acceptance** evidence; all seven callbacks call
+> `record_email_event` once — 10c-a extends the webhook map + delivery-event constraint +
+> `record_email_event` for `email.suppressed` (§PV). **(4)** `retryable_definite`/`global_config` stay
+> **retryable** (`request_ready`) under sticky uncertainty; only `terminal`/stop/budget-exhaustion while
+> uncertain → `awaiting_evidence`; the reservation's originating `attempt_id` is immutable (§P6, §CAPS).
+> **(5)** `worker_runs` allows only unfinished→finished; ledger→group/run/attempt FKs + cascades; the
+> outbox→group FK is `ON DELETE SET NULL` (row + timeline survive a 90-day group purge); `superseded`
+> parents are excluded from `groups_touched` (§AUDIT, §RET, §LEDGER).
 
 > Scope: **PR 10c-a only** — the digest ENGINE + observability. No live route; ships inert. Four-stage
 > plan: 10c-a foundation · 10c-b open_slots→v2 (+ event pre-send policy hook; enables the first digest
@@ -53,7 +67,8 @@ coalesce(o.delivery_mode='digest', false)`. Outbox gains `status='delivery_unkno
 'sending','awaiting_evidence','sent','failed_terminal','oversize_failed','delivery_unknown','retry_stopped',
 'no_work','superseded')`, `parent_group_id`, immutable `digest_boundary_at`, mutable `available_at NOT NULL`,
 `provider_attempts_started` (monotonic), `delivery_budget_used`/`max_delivery_budget`, `uncertain_since`/
-`uncertain_deadline_at`, `frozen_request`/`request_hash`/`provider_idempotency_key`, `provider_message_id
+`uncertain_deadline_at`, `frozen_request`/`request_hash`/`provider_idempotency_key`, **`current_attempt_id
+uuid`** (the group's live attempt — P6 distinguishes current from stale by it), `provider_message_id
 UNIQUE`, `provider_status`/`provider_status_rank`, `terminal_reason`, `UNIQUE(canonical_group_key,
 chunk_ordinal)`.
 
@@ -91,10 +106,11 @@ state-changing RPC appends one ledger row **in the same transaction**; `action` 
 terminal|global_config|awaiting_evidence|delivery_unknown|retry_stopped|oversize_failed`. Repeated deferrals
 are distinct events. `reconcile_notification_digest_run(run_id) → TABLE(family text, metric text, count int)`
 returns two **families**: **event counts** (ledger rows; `attempt` == `provider_attempts_started` deltas)
-and **distinct-group** terminal counts. Invariant (distinct groups touched):
-`groups_touched = sent + failed_terminal + oversize_failed + no_work + retry_stopped + delivery_unknown +
-in_flight`; a 50-item email = **1 group / 50 items / 1 provider-send** — never conflated. HTTP calls ≤
-`attempt` rows (crash gap permitted).
+and **distinct-group** terminal counts. Invariant (distinct **deliverable** groups touched, **superseded parents excluded** — their members moved
+to children and are counted there): `groups_touched = sent + failed_terminal + oversize_failed + no_work +
+retry_stopped + delivery_unknown + awaiting_evidence + in_flight`, with `groups_superseded` reported as a
+separate lineage count. A 50-item email = **1 group / 50 items / 1 provider-send** — never conflated. HTTP
+calls ≤ `attempt` rows (crash gap permitted).
 
 ### CB — breaker with durable probe identity (fixes #2)
 
@@ -102,11 +118,14 @@ in_flight`; a 50-item email = **1 group / 50 items / 1 provider-send** — never
 retry_at, probe_group_id uuid, probe_attempt_id uuid, probe_locked_at timestamptz)`. Trip → `open` +
 reason-aware `retry_at` (auth/config +15m; daily quota +coalesce(Retry-After,24h); monthly quota /
 invariant-breach `retry_at=NULL` manual hold). **Claim gate:** `open` (with `retry_at NULL OR now<retry_at`)
-OR `half_open` → non-probe workers get `none`. At `now≥retry_at`, one worker CAS `open→half_open` **and
-records the `probe_group_id` it claims + that group's `probe_attempt_id`**; **only `probe_attempt_id`'s
-record may transition the breaker** (accepted→`closed`; rate-limit/validation→`closed`; global_config→re-`open`;
-ambiguous→re-`open` short; stale `probe_locked_at`→re-CAS). The breaker never writes `available_at`; a
-group behind an open breaker keeps its `available_at` and is simply not claimable — no NULL assignment.
+OR `half_open` → non-probe workers get `none`. At `now≥retry_at`, the two-stage bind: (i) one worker CAS
+`open→half_open` **records only `probe_group_id`** (+ `probe_locked_at`) — the attempt does not exist yet;
+(ii) when that group's `begin_digest_attempt` creates the attempt, it **atomically sets both
+`group.current_attempt_id` AND `circuit.probe_attempt_id`** to the new id (guarded `WHERE
+probe_group_id=this AND probe_attempt_id IS NULL`). **Only `probe_attempt_id`'s record may transition the
+breaker** (accepted→`closed`; rate-limit/validation→`closed`; global_config→re-`open`; ambiguous→re-`open`
+short; stale `probe_locked_at` before an attempt binds → re-CAS). The breaker never writes `available_at`;
+a group behind an open breaker keeps its `available_at` and is simply not claimable — no NULL assignment.
 
 ## Phase A — MATERIALIZE (atomic per group; deterministic 50-item cap; fixes #3)
 
@@ -123,8 +142,11 @@ budget — a 51st member starts a new `chunk_ordinal`. The call is bounded by `p
 
 **P1 · claim** (breaker-gated §CB): ONE group `FOR UPDATE SKIP LOCKED`, `ORDER BY available_at`, from fresh
 `pending` (quiet-hours §QH bumps `available_at`), **due owned `request_ready`** (`available_at ≤ p_now AND
-locked_by IS NULL`), or **crash reclaim** (stale-locked; a stale `sending` → set `uncertain_since` if null →
-owned `request_ready`, reservation retained).
+locked_by IS NULL`), **due `awaiting_evidence` age-out** (`state='awaiting_evidence' AND available_at ≤ p_now`
+→ a **no-send** transition to `delivery_unknown`: finalize members (§MEM) + reservations (`committed`, §CAPS)
+atomically, ledger `delivery_unknown`, then continue to the next group), or **crash reclaim** (stale-locked;
+a stale `sending` → set `uncertain_since` if null → owned `request_ready`, reservation retained). *(The
+age-out is also exposed as a standalone `reconcile`-time sweep for operators.)*
 
 **P2 · prepare** (from `leased`): validation §PS; finalize rejected members immediately (§MEM); survivors →
 `prepared` else `no_work`.
@@ -144,27 +166,36 @@ Worker **renders**; **§CH** 90 KB check → split or `oversize_failed`.
 `sendResendDigestOnce` (Resend tag `digest_group_id`) — one HTTP.
 
 **P6 · record** (idempotent by `attempt_id`, §ERR mapping): write the attempt-row outcome; then the group:
-- **`accepted`** → monotonic `sent` (applies even if a newer attempt owns it); commit reservations; scrub;
-  members `sent`; clears uncertainty.
-- stale attempt & non-accepted → **annotate the attempt row only**.
-- **`retryable_definite`** → **if `uncertain_since` set: → `awaiting_evidence`** (capacity stays committed);
-  else `request_ready`, release this attempt's reservation, clear ownership, `available_at=now()+max(Retry-After,
-  backoff)`.
+- **`accepted`** → positive **acceptance** evidence; monotonic completion, **rank-guarded (§PV, fixes #3):**
+  it sets `provider_status=sent` and `state=sent` **only if `provider_status_rank < 3`** — if a stronger
+  provider callback (`delivered`/`bounced`/`complained`/`failed`/`suppressed`) already landed, the group
+  keeps THAT delivery outcome and `accepted` merely confirms API acceptance (clears uncertainty). Applies
+  even if a newer attempt owns the group; commit reservations; scrub; members per the resolved outcome.
+- stale attempt & non-accepted → **annotate the attempt row only** (no group change).
+- **`retryable_definite`** (429) → **stays retryable: `request_ready`**, `available_at=now()+max(Retry-After,
+  backoff)`, clear ownership. Sticky uncertainty: **if `uncertain_since` set, do NOT release** (reservation
+  stays `committed`); else release this attempt's reservation.
 - **`ambiguous`** → `request_ready`; **set/keep `uncertain_since`**; this attempt's reservation → **committed**
   (never released); clear ownership; `available_at=now()+backoff`.
-- **`terminal`** → **if uncertain: `awaiting_evidence`**; else `failed_terminal`, release reservation, scrub,
+- **`global_config`** → record attempt; `delivery_budget_used--`; trip breaker (§CB); **stays retryable:
+  `request_ready`** behind the breaker hold, clear ownership. Sticky uncertainty: **if uncertain, keep
+  `committed`**; else release. *(429 and global_config are recoverable and keep retrying inside the 23 h
+  window — they never force `awaiting_evidence`.)*
+- **`terminal`** (definite un-retryable) → **if `uncertain_since` set: `awaiting_evidence`** (reservations →
+  `committed`, `available_at=uncertain_deadline_at`); else `failed_terminal`, release reservation, scrub,
   members `failed`.
-- **`global_config`** → record attempt; `delivery_budget_used--`; **if uncertain: `awaiting_evidence`** (keep
-  committed) else release reservation; trip breaker; → `request_ready` (or `awaiting_evidence`), clear
-  ownership.
+- **Stop / budget-exhaustion while uncertain** (from §P5/§PS) → `awaiting_evidence` (reservations →
+  `committed`). *(`awaiting_evidence` is reserved for terminal/stop/budget cases only.)*
 
 ### AE — awaiting_evidence (fixes #1)
 
-A group with `uncertain_since` set that receives a definite outcome (terminal / budget-exhausted / global_config)
-→ **`awaiting_evidence`**: capacity **committed** (held), `available_at = uncertain_deadline_at`. It resolves
-by: a positive provider event (`delivered`/`complained` → `sent`; `bounced`/`failed`/`suppressed` → not-delivered
-outcome, §PV), operator reconciliation, or aging at `uncertain_deadline_at` → `delivery_unknown`. It is never
-re-sent (a definite outcome exists) and capacity is never released.
+A group with `uncertain_since` set that reaches an **un-retryable** definite state — a **`terminal`**
+provider outcome, a **stop** condition, or **budget exhaustion** (Rev 11 #4: `429`/`global_config` are
+recoverable and stay `request_ready`, NOT here) → **`awaiting_evidence`**: capacity **committed** (held),
+`available_at = uncertain_deadline_at`. It resolves by: a positive provider event (`delivered`/`complained`
+→ `sent`; `bounced`/`failed`/`suppressed` → not-delivered outcome, §PV), operator reconciliation, or the
+`claim` age-out at `uncertain_deadline_at` → `delivery_unknown` (§P1). It is never re-sent (an un-retryable
+outcome exists) and capacity is never released.
 
 ### CAPS — attempt-aware, never-release-while-uncertain (fixes #1)
 
@@ -173,8 +204,9 @@ re-sent (a definite outcome exists) and capacity is never released.
 CHECK('reserved','committed','released'), created_at DEFAULT now(), updated_at DEFAULT now(),
 PRIMARY KEY(digest_group_id, counter_key))`. `counter_key = channel||':'||event_type||':'||destination_fingerprint
 ||':'||bucket_kind||':'||bucket_start::text` (per destination). `begin` **reuses** an active reservation
-(`reserved`/`committed`) on current buckets, else **acquires fresh** (ensure rows; `FOR UPDATE` hour then day;
-`used<cap`; `used++`; upsert `reserved` with this `attempt_id`). **Transitions:** `accepted`/`ambiguous` →
+(`reserved`/`committed`) on current buckets **without overwriting its originating `attempt_id`** (immutable),
+else **acquires fresh** (ensure rows; `FOR UPDATE` hour then day; `used<cap`; `used++`; insert `reserved`
+stamped with this `attempt_id`). **Transitions:** `accepted`/`ambiguous` →
 `committed` (capacity consumed / possibly consumed). **Release-once** (`reserved→released`, `used=used-1`)
 **only** for a definite outcome **while `uncertain_since IS NULL`** (`retryable_definite`/`terminal`/`global_config`).
 **Never release while uncertain** (already `committed`). Retention: counters `bucket_start<now()-35d`, terminal
@@ -212,19 +244,24 @@ Tag `digest_group_id` on send; `notification_provider_events(resend_event_id PK,
 digest_group_id, status, occurred_at, received_at)` append-only, orphan-then-link, at-least-once/unordered
 safe; monotonic `provider_status_rank`. Per callback (correlate via tag or `provider_message_id`):
 
-| callback | provider_status | group (if `sending`/`awaiting_evidence`/`delivery_unknown`) | member | reservation | `record_email_event` |
+| callback | provider_status | group (from `sending`/`awaiting_evidence`/`delivery_unknown`) | member | reservation | `record_email_event` |
 |---|---|---|---|---|---|
-| `sent` | sent (rank 1) | informational (no state change) | — | — | no |
-| `delivery_delayed` | delivery_delayed (2) | informational | — | — | no |
-| `delivered` | delivered (3) | **resolve → `sent`** (proves delivery) | `sent` | commit | no |
-| `complained` | complained (5) | **resolve → `sent`** then flag complaint (proves delivery) | `sent` | commit | **yes** (suppress) |
-| `bounced` | bounced (4) | **resolve → not-delivered** (`delivery_unknown`→`failed_terminal`/`bounced`) | `failed` | commit | **yes** (suppress) |
-| `failed` | failed (4) | **resolve → not-delivered** | `failed` | commit | **yes** |
-| `suppressed` | suppressed (4) | **resolve → not-delivered** | `cancelled`/`suppressed` | commit | **yes** |
+| `sent` | sent (rank 1) | **positive ACCEPTANCE evidence** — resolves acceptance uncertainty (crash before HTTP record → confirms the API accepted); awaits delivery | — | commit | **yes** |
+| `delivery_delayed` | delivery_delayed (2) | acceptance-confirmed; still in flight | — | commit | **yes** |
+| `delivered` | delivered (3) | **resolve → `sent`** (proves delivery) | `sent` | commit | **yes** |
+| `complained` | complained (5) | **resolve → `sent`** + complaint flag (proves delivery) | `sent` | commit | **yes** (suppress) |
+| `bounced` | bounced (4) | **resolve → not-delivered** (`→ failed_terminal`, reason `bounced`) | `failed` | commit | **yes** (suppress) |
+| `failed` | failed (4) | **resolve → not-delivered** (`→ failed_terminal`) | `failed` | commit | **yes** |
+| `suppressed` | suppressed (4) | **resolve → not-delivered** | `cancelled`/`suppressed` | commit | **yes** (suppress) |
 
-`delivered`/`complained` are the **only** delivery-proving events (they can override `delivery_unknown`/
-`awaiting_evidence` to `sent`); `bounced`/`failed`/`suppressed` prove non-delivery and resolve the group as
-not-sent — they do **not** share a rank-only outcome. A lower-rank late event never regresses a higher one.
+`email.sent` is **positive acceptance evidence** (the API request succeeded), so a `sent` callback after a
+worker crash resolves acceptance uncertainty. `delivered`/`complained` additionally **prove delivery**
+(override `delivery_unknown`/`awaiting_evidence` → `sent`); `bounced`/`failed`/`suppressed` prove
+**non-delivery** and resolve the group as not-sent — distinct outcomes, not a rank-only tie. A lower-rank
+late event never regresses a higher one. **All seven callbacks call `record_email_event` exactly once** (per
+group destination; the webhook event id is globally idempotent). **10c-a explicitly extends** the current
+`supabase/functions/resend-webhook/index.ts` status map, the `email_delivery_events` status CHECK
+constraint, and `record_email_event` to support the currently-unhandled **`email.suppressed`**.
 
 ### MEM / PS / QH / TZ / BND / SCRUB / AUDIT / RET / MIG / ACL / IX
 
@@ -234,8 +271,23 @@ not-sent — they do **not** share a rank-only outcome. A lower-rank late event 
 - **TZ:** academy → trainer → `Europe/Amsterdam`.
 - **BND (fixes #7-weekly):** `digest_boundary_at` at enqueue in `recipient_timezone`, DST-correct: **daily** = next 09:00 local ≥ enqueue; **weekly** = next **Monday** 09:00 local ≥ enqueue (**Monday is fixed** — no per-event weekday column in 10c-a). Immutable.
 - **SCRUB (fixes #7-scrub):** on every terminal (`sent`/`failed_terminal`/`oversize_failed`/`retry_stopped`/`delivery_unknown`): set the group `frozen_request = NULL` **and** each member's `notification_outbox.payload = NULL` **and** `digest_item = NULL` (whole columns, not enumerated fields); retain `request_hash` + safe-metadata allow-list.
-- **AUDIT (fixes #7):** `notification_digest_attempts`, `notification_digest_group_attempts`, `notification_provider_events`, `notification_worker_runs` are append-only — `GRANT INSERT, SELECT` service_role only, **no UPDATE/DELETE grant**; the attempt-row NULL→recorded transition is the sole exception via its trigger; a BEFORE UPDATE/DELETE trigger raises on the ledger/events/runs.
-- **RET (fixes #7-ret):** retention = **purge** (not archive). `notification_digest_attempts` and `notification_provider_events` FK → `notification_digest_groups(id)` **ON DELETE CASCADE**; a retention job deletes **terminal groups** older than **90 days** (cascading their attempts + events), then `finished worker_runs` older than 90 days, then counters/reservations at 35 days. Deletion order: groups (cascade attempts+events) → worker_runs → counters/reservations. Retained `email_delivery_events`/timelines follow their existing lifecycle.
+- **AUDIT (fixes #7, #5):** `notification_digest_group_attempts` (ledger) and `notification_provider_events`
+  are strictly append-only — `GRANT INSERT, SELECT` service_role only, a `BEFORE UPDATE/DELETE` trigger
+  raises. `notification_digest_attempts` permits **only** the `recorded_at IS NULL → recorded_at set`
+  transition (its trigger, §ATT); identity/request columns immutable. `notification_worker_runs` is **not**
+  strictly append-only (`finish_notification_worker_run` writes it) — its trigger permits **only** the
+  `ended_at IS NULL → ended_at/status set` transition and rejects any other update or delete. Rows leave
+  only via retention (§RET).
+- **RET (fixes #7-ret, #5):** retention = **purge** (not archive). FKs + cascade: `notification_digest_attempts.digest_group_id`
+  and `notification_provider_events.digest_group_id` → `notification_digest_groups(id)` **ON DELETE CASCADE**;
+  the **ledger** `notification_digest_group_attempts`: `digest_group_id → groups ON DELETE CASCADE`,
+  `attempt_id → notification_digest_attempts ON DELETE SET NULL`, `worker_run_id → notification_worker_runs
+  ON DELETE SET NULL`; **`notification_outbox.digest_group_id → notification_digest_groups(id) ON DELETE SET
+  NULL`** — so after a group is purged the member outbox row **survives** (its terminal `status`/`skip_reason`
+  and `email_delivery_events` timeline remain; `digest_group_id` becomes NULL). A retention job deletes
+  **terminal groups** older than **90 days** (cascading attempts + provider events + ledger group-refs; the
+  ledger's `attempt_id`/`worker_run_id` null out), then finished `worker_runs` older than 90 days, then
+  counters/reservations at 35 days. Deletion order: groups → worker_runs → counters/reservations.
 - **MIG:** legacy NULL `delivery_mode` → instant-path (strict boolean). Catalog `CHECK (NOT digest_engine_enabled OR supports_digest)`. Test-fixture event only.
 - **ACL:** each of the 8 new tables: RLS on, no policy, `REVOKE … FROM PUBLIC, anon, authenticated`, service-role grants only (append-only tables INSERT/SELECT only). RPCs `SECURITY DEFINER`, `SET search_path=public`, service-role only. Migration-wide ACL guard test.
 - **IX:** forming `notification_outbox (channel, digest_boundary_at) WHERE delivery_mode='digest' AND digest_group_id IS NULL AND status='pending'`; due `notification_digest_groups (channel, available_at) WHERE state IN ('pending','request_ready') AND locked_by IS NULL`; awaiting-age `(available_at) WHERE state='awaiting_evidence'`; stale `(channel, locked_at) WHERE state IN ('leased','prepared','request_ready','sending')`; attempts `(digest_group_id)`; provider-event orphans `(provider_message_id) WHERE digest_group_id IS NULL`; member `notification_outbox (digest_group_id)`.
@@ -272,6 +324,17 @@ Persistence: attempt-row trigger allows only NULL→recorded, blocks identity/DE
 UPDATE/DELETE blocked by grants; retention cascade + order; scrub nulls payload/digest_item/frozen_request.
 Scheduling: daily next-09:00-local + weekly next-Monday-09:00-local incl DST. Two-worker concurrency; ACL
 guard; catalog constraint; 100k scale on real PG amid disabled/instant; back-compat instant-path.
+**Rev-11 pins:** (1) breaker two-stage — CAS binds `probe_group_id`, `begin` binds `current_attempt_id`
++ `probe_attempt_id`, only that attempt transitions. (2) `awaiting_evidence AND available_at ≤ now`
+age-out → `delivery_unknown` (members + reservations finalized). (3) callback `bounced` **before** HTTP
+record then `accepted` → group stays `failed_terminal`/bounced (rank-guard); `complained` before record →
+delivered+complained; `sent` after a worker crash → resolves acceptance uncertainty; all seven callbacks
+call `record_email_event` once; `email.suppressed` end-to-end (webhook + constraint + record_email_event).
+(4) after uncertainty: `retryable_definite`/`global_config` stay retryable (`request_ready`, reservation
+`committed`, retry within 23 h); only `terminal`/stop/budget → `awaiting_evidence`; reservation
+originating `attempt_id` immutable across reuse. (5) `worker_runs` allows only unfinished→finished;
+ledger→group/run/attempt FK cascades; `outbox.digest_group_id` nulls on group purge while the row +
+timeline survive; `superseded` excluded from `groups_touched`.
 
 ## Alternatives considered
 
