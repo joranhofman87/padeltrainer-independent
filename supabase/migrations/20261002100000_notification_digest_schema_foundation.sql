@@ -247,14 +247,21 @@ CREATE INDEX IF NOT EXISTS idx_provider_events_orphan ON public.notification_pro
 CREATE INDEX IF NOT EXISTS idx_provider_events_group ON public.notification_provider_events (digest_group_id);
 CREATE INDEX IF NOT EXISTS idx_worker_runs_retention ON public.notification_worker_runs (ended_at)
   WHERE ended_at IS NOT NULL;
+-- retention scale (100k-row): purge filters/orders counters by bucket_start and anti-joins reservations by counter_key
+CREATE INDEX IF NOT EXISTS idx_send_counters_retention ON public.notification_send_counters (bucket_start, counter_key);
+CREATE INDEX IF NOT EXISTS idx_send_reservations_counter ON public.notification_send_reservations (counter_key);
 
 -- ===========================================================================
--- 11. Owner-effective guards. `pg_trigger_depth()>1` marks an FK-driven referential side effect (cascade
---     delete / SET NULL) — always allowed; a direct top-level DML runs at depth 1 and follows strict rules.
---     (No caller-settable GUC anywhere — authorization is the absence of a service_role DELETE grant.)
+-- 11. Owner-effective guards. Legitimacy of an FK-driven side effect is proven by the FK PRECONDITION, not
+--     by pg_trigger_depth() (which any unrelated nested trigger can satisfy): a cascade delete is allowed
+--     only when the referenced parent row is already GONE; a SET NULL of a back-reference only when the
+--     referenced row is gone. Root rows (groups, outbox) carry NO depth bypass at all — their invariants are
+--     enforced for every caller, nested or not. (No caller-settable GUC anywhere; authorization is the
+--     absence of a service_role DELETE grant.)
 
--- attempts: born unrecorded; the ONLY update is the recorded_at NULL→non-NULL transition (requires a valid
--- outcome_class; identity/request/worker_run immutable); direct delete forbidden (cascade-only).
+-- attempts: born unrecorded; the ONLY update is the recorded_at NULL→non-NULL transition (valid outcome_class;
+-- identity/request/worker_run immutable) OR the worker_run_id→NULL SET NULL of a PURGED run; direct delete
+-- forbidden — an attempt leaves only when its group is already gone (cascade).
 CREATE OR REPLACE FUNCTION public.notification_digest_attempts_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
@@ -265,11 +272,21 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  IF pg_trigger_depth() > 1 THEN                         -- FK cascade delete / worker_run SET NULL
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
-  END IF;
   IF TG_OP = 'DELETE' THEN
-    RAISE EXCEPTION 'notification_digest_attempts: direct delete forbidden (leaves only via group cascade)';
+    IF EXISTS (SELECT 1 FROM public.notification_digest_groups WHERE id = OLD.digest_group_id) THEN
+      RAISE EXCEPTION 'notification_digest_attempts: direct delete forbidden (leaves only via group cascade)';
+    END IF;
+    RETURN OLD;   -- parent group already gone → genuine cascade
+  END IF;
+  -- the FK SET NULL of a purged run's back-reference (worker_run_id → NULL, run gone, nothing else changed)
+  IF OLD.worker_run_id IS NOT NULL AND NEW.worker_run_id IS NULL
+     AND NOT EXISTS (SELECT 1 FROM public.notification_worker_runs WHERE run_id = OLD.worker_run_id)
+     AND ROW(NEW.attempt_id, NEW.digest_group_id, NEW.provider_idempotency_key, NEW.started_at,
+             NEW.outcome_class, NEW.recorded_at, NEW.http_status, NEW.resend_error_name, NEW.provider_message_id)
+       IS NOT DISTINCT FROM
+         ROW(OLD.attempt_id, OLD.digest_group_id, OLD.provider_idempotency_key, OLD.started_at,
+             OLD.outcome_class, OLD.recorded_at, OLD.http_status, OLD.resend_error_name, OLD.provider_message_id) THEN
+    RETURN NEW;
   END IF;
   IF OLD.recorded_at IS NOT NULL THEN
     RAISE EXCEPTION 'attempt % already recorded; outcomes are immutable', OLD.attempt_id;
@@ -291,8 +308,9 @@ DROP TRIGGER IF EXISTS trg_digest_attempts_guard ON public.notification_digest_a
 CREATE TRIGGER trg_digest_attempts_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_digest_attempts
   FOR EACH ROW EXECUTE FUNCTION public.notification_digest_attempts_guard();
 
--- worker_runs: born unfinished; the ONLY update is finish (valid status AND ended_at>=started_at together,
--- once); identity immutable; deletable only once finished AND >= 90 days old (owner-effective retention age).
+-- worker_runs: born unfinished with a SCHEMA-OWNED started_at (forced now()); finish stamps a schema-owned
+-- ended_at (forced now(), never a caller value → the retention clock can't be backdated); identity immutable;
+-- deletable only once finished AND >= 90 days old. Nothing cascades into worker_runs, so no depth bypass.
 CREATE OR REPLACE FUNCTION public.notification_worker_runs_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
@@ -300,28 +318,25 @@ BEGIN
     IF NEW.ended_at IS NOT NULL OR NEW.status IS NOT NULL THEN
       RAISE EXCEPTION 'worker run must be inserted unfinished (status + ended_at NULL)';
     END IF;
+    NEW.started_at := now();   -- schema-owned run-start clock
     RETURN NEW;
   END IF;
   IF TG_OP = 'DELETE' THEN
-    IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;   -- defensive: nothing cascades into worker_runs
     IF OLD.ended_at IS NULL THEN RAISE EXCEPTION 'cannot delete an unfinished worker run %', OLD.run_id; END IF;
     IF OLD.ended_at > now() - interval '90 days' THEN
       RAISE EXCEPTION 'worker run % has not reached the 90-day retention age', OLD.run_id;
     END IF;
     RETURN OLD;
   END IF;
-  IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;
   IF OLD.ended_at IS NOT NULL THEN RAISE EXCEPTION 'worker run % already finished', OLD.run_id; END IF;
-  IF NEW.ended_at IS NULL OR NEW.status IS NULL OR NEW.status NOT IN ('succeeded','failed','abandoned') THEN
-    RAISE EXCEPTION 'worker run finish must set a valid status AND ended_at together';
-  END IF;
-  IF NEW.ended_at < NEW.started_at THEN
-    RAISE EXCEPTION 'worker run % cannot end (%) before it starts (%)', OLD.run_id, NEW.ended_at, NEW.started_at;
+  IF NEW.status IS NULL OR NEW.status NOT IN ('succeeded','failed','abandoned') THEN
+    RAISE EXCEPTION 'worker run finish must set a valid status';
   END IF;
   IF NEW.run_id <> OLD.run_id OR NEW.worker <> OLD.worker OR NEW.channel <> OLD.channel
      OR NEW.phase <> OLD.phase OR NEW.started_at <> OLD.started_at THEN
     RAISE EXCEPTION 'worker run identity is immutable';
   END IF;
+  NEW.ended_at := now();   -- schema-owned run-end clock (always >= the schema-owned started_at)
   RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS trg_worker_runs_guard ON public.notification_worker_runs;
@@ -329,9 +344,11 @@ CREATE TRIGGER trg_worker_runs_guard BEFORE INSERT OR UPDATE OR DELETE ON public
   FOR EACH ROW EXECUTE FUNCTION public.notification_worker_runs_guard();
 
 -- groups: identity + boundary immutable, provider_message_id write-once; terminal_at is the SCHEMA-OWNED
--- retention clock (stamped on entry into a terminal state, frozen after, cleared if it leaves — callers can
--- never set/backdate it). Deletable only when terminal AND that clock is >= 90 days old (owner-effective, so
--- even a future SECURITY DEFINER caller cannot erase a fresh group). Referential side effects bypass at depth>1.
+-- retention clock (stamped on entry into a terminal state, frozen after — callers can never set/backdate it).
+-- Terminal groups CANNOT be reopened (terminal→nonterminal rejected); a late terminal→terminal transition
+-- keeps the original clock. Deletable only when terminal AND >= 90 days old. NO depth bypass: nothing cascades
+-- into a group row, and the only FK-driven updates (parent/superseded/worker_run SET NULL) pass every check
+-- below unchanged, so a nested attacker cannot slip past them.
 CREATE OR REPLACE FUNCTION public.notification_digest_groups_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE terminal_states text[] :=
@@ -342,21 +359,17 @@ BEGIN
     RETURN NEW;
   END IF;
   IF TG_OP = 'DELETE' THEN
-    IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;
     IF NOT (OLD.state = ANY(terminal_states)) THEN
       RAISE EXCEPTION 'digest group % is not terminal; only retention-eligible groups may be deleted', OLD.id;
     END IF;
     IF OLD.terminal_at IS NULL OR OLD.terminal_at > now() - interval '90 days' THEN
       RAISE EXCEPTION 'digest group % has not reached the 90-day retention age', OLD.id;
     END IF;
-    -- clear any breaker probe pinned to this group BEFORE it (and its attempt) disappear, so both probe
-    -- fields drop together — an FK SET NULL cannot (nulling probe_group_id detaches the composite probe FK).
     UPDATE public.notification_provider_circuit
        SET probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL
      WHERE probe_group_id = OLD.id;
     RETURN OLD;
   END IF;
-  IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;
   IF NEW.canonical_group_key IS DISTINCT FROM OLD.canonical_group_key
      OR NEW.group_key_hash IS DISTINCT FROM OLD.group_key_hash
      OR NEW.chunk_ordinal IS DISTINCT FROM OLD.chunk_ordinal
@@ -372,11 +385,14 @@ BEGIN
   IF OLD.provider_message_id IS NOT NULL AND NEW.provider_message_id IS DISTINCT FROM OLD.provider_message_id THEN
     RAISE EXCEPTION 'digest group provider_message_id is write-once';
   END IF;
+  IF (OLD.state = ANY(terminal_states)) AND NOT (NEW.state = ANY(terminal_states)) THEN
+    RAISE EXCEPTION 'digest group % is terminal (%); cannot reopen to %', OLD.id, OLD.state, NEW.state;
+  END IF;
   -- schema-owned retention clock: stamp on entry into terminal, freeze while terminal, clear if it leaves.
   IF (NEW.state = ANY(terminal_states)) AND NOT (OLD.state = ANY(terminal_states)) THEN
     NEW.terminal_at := now();
   ELSIF (NEW.state = ANY(terminal_states)) THEN
-    NEW.terminal_at := OLD.terminal_at;   -- immutable once terminal
+    NEW.terminal_at := OLD.terminal_at;   -- late terminal→terminal evidence keeps the original clock
   ELSE
     NEW.terminal_at := NULL;
   END IF;
@@ -386,19 +402,21 @@ DROP TRIGGER IF EXISTS trg_digest_groups_guard ON public.notification_digest_gro
 CREATE TRIGGER trg_digest_groups_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_digest_groups
   FOR EACH ROW EXECUTE FUNCTION public.notification_digest_groups_guard();
 
--- reservations: identity immutable, originating attempt_id write-once; a 'reserved' (uncertain) row may
--- never be deleted directly (cascade from a terminal group is allowed at depth>1).
+-- reservations: identity/bucket immutable, originating attempt_id write-once. Delete: a genuine group cascade
+-- (group gone) OR a settled (non-'reserved') row via retention; a live 'reserved' row can never be deleted.
+-- No FK sets a reservation column, so every UPDATE is a direct app update — no depth bypass.
 CREATE OR REPLACE FUNCTION public.notification_send_reservations_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
-    IF pg_trigger_depth() > 1 THEN RETURN OLD; END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.notification_digest_groups WHERE id = OLD.digest_group_id) THEN
+      RETURN OLD;   -- group already gone → genuine cascade
+    END IF;
     IF OLD.state = 'reserved' THEN
       RAISE EXCEPTION 'cannot directly delete a live (reserved) reservation for group %', OLD.digest_group_id;
     END IF;
-    RETURN OLD;
+    RETURN OLD;   -- settled retention delete (group still terminal)
   END IF;
-  IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;
   IF NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id OR NEW.counter_key IS DISTINCT FROM OLD.counter_key
      OR NEW.bucket_start IS DISTINCT FROM OLD.bucket_start THEN
     RAISE EXCEPTION 'reservation identity/bucket is immutable';
@@ -412,35 +430,51 @@ DROP TRIGGER IF EXISTS trg_reservations_guard ON public.notification_send_reserv
 CREATE TRIGGER trg_reservations_guard BEFORE UPDATE OR DELETE ON public.notification_send_reservations
   FOR EACH ROW EXECUTE FUNCTION public.notification_send_reservations_guard();
 
--- ledger: strictly append-only (no direct update/delete); cascade delete / SET NULL (depth>1) allowed.
-CREATE OR REPLACE FUNCTION public.notification_append_only_guard() RETURNS trigger
+-- ledger: append-only. The only permitted UPDATE is the worker_run_id→NULL SET NULL of a PURGED run; the only
+-- permitted DELETE is a genuine group cascade (group gone). Both proven by FK precondition, not depth.
+CREATE OR REPLACE FUNCTION public.notification_ledger_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  IF pg_trigger_depth() > 1 THEN
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  IF TG_OP = 'DELETE' THEN
+    IF EXISTS (SELECT 1 FROM public.notification_digest_groups WHERE id = OLD.digest_group_id) THEN
+      RAISE EXCEPTION 'notification_digest_group_attempts: append-only, direct delete forbidden';
+    END IF;
+    RETURN OLD;   -- parent group gone → cascade
   END IF;
-  IF TG_OP = 'UPDATE' THEN RAISE EXCEPTION '%: append-only, no direct updates', TG_TABLE_NAME; END IF;
-  RAISE EXCEPTION '%: direct delete forbidden (leaves only via group cascade)', TG_TABLE_NAME;
+  IF OLD.worker_run_id IS NOT NULL AND NEW.worker_run_id IS NULL
+     AND NOT EXISTS (SELECT 1 FROM public.notification_worker_runs WHERE run_id = OLD.worker_run_id)
+     AND ROW(NEW.event_id, NEW.seq, NEW.digest_group_id, NEW.attempt_id, NEW.action, NEW.item_count, NEW.occurred_at)
+       IS NOT DISTINCT FROM
+         ROW(OLD.event_id, OLD.seq, OLD.digest_group_id, OLD.attempt_id, OLD.action, OLD.item_count, OLD.occurred_at) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'notification_digest_group_attempts: append-only, no direct updates';
 END $$;
 DROP TRIGGER IF EXISTS trg_ledger_append_only ON public.notification_digest_group_attempts;
-CREATE TRIGGER trg_ledger_append_only BEFORE UPDATE OR DELETE ON public.notification_digest_group_attempts
-  FOR EACH ROW EXECUTE FUNCTION public.notification_append_only_guard();
+DROP TRIGGER IF EXISTS trg_ledger_guard ON public.notification_digest_group_attempts;
+CREATE TRIGGER trg_ledger_guard BEFORE UPDATE OR DELETE ON public.notification_digest_group_attempts
+  FOR EACH ROW EXECUTE FUNCTION public.notification_ledger_guard();
 
--- provider events: append-only EXCEPT one controlled orphan→group link. The only permitted update is a
--- NULL→group transition on digest_group_id (all callback fields immutable; the composite FK enforces the
--- (group,message) match); a second re-link or any field edit is rejected. Direct delete: only a STALE ORPHAN
--- (unlinked, >= 35 days old) may be pruned by retention — a linked event leaves only via group cascade. This
--- transition is reachable only through link_notification_provider_event() (service_role has no UPDATE grant).
+-- provider events: received_at is a SCHEMA-OWNED receipt clock (forced now() at INSERT; occurred_at stays the
+-- provider's own timestamp). Append-only EXCEPT one controlled orphan→group link (NULL→group; callback fields
+-- immutable; composite FK enforces the (group,message) match) reachable only via the SECURITY DEFINER RPC.
+-- Delete: a genuine group cascade (group gone) OR a STALE unlinked orphan (>= 90-day AUDIT window, ADR §PV).
 CREATE OR REPLACE FUNCTION public.notification_provider_events_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  IF pg_trigger_depth() > 1 THEN RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END; END IF;  -- group cascade
+  IF TG_OP = 'INSERT' THEN
+    NEW.received_at := now();   -- schema-owned receipt clock (no backdating)
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     IF OLD.digest_group_id IS NOT NULL THEN
-      RAISE EXCEPTION 'linked provider event % leaves only via group cascade', OLD.resend_event_id;
+      IF EXISTS (SELECT 1 FROM public.notification_digest_groups WHERE id = OLD.digest_group_id) THEN
+        RAISE EXCEPTION 'linked provider event % leaves only via group cascade', OLD.resend_event_id;
+      END IF;
+      RETURN OLD;   -- group gone → cascade
     END IF;
-    IF OLD.received_at > now() - interval '35 days' THEN
-      RAISE EXCEPTION 'orphan provider event % is not yet stale (35-day retention)', OLD.resend_event_id;
+    IF OLD.received_at > now() - interval '90 days' THEN
+      RAISE EXCEPTION 'orphan provider event % is not yet stale (90-day audit retention)', OLD.resend_event_id;
     END IF;
     RETURN OLD;
   END IF;
@@ -458,31 +492,36 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS trg_provider_events_append_only ON public.notification_provider_events;
 DROP TRIGGER IF EXISTS trg_provider_events_guard ON public.notification_provider_events;
-CREATE TRIGGER trg_provider_events_guard BEFORE UPDATE OR DELETE ON public.notification_provider_events
+CREATE TRIGGER trg_provider_events_guard BEFORE INSERT OR UPDATE OR DELETE ON public.notification_provider_events
   FOR EACH ROW EXECUTE FUNCTION public.notification_provider_events_guard();
 
--- the one sanctioned orphan→group link (service-role SECURITY DEFINER; the composite FK rejects a wrong
--- group/message pair, and the guard rejects re-linking an already-linked event).
+-- the one sanctioned orphan→group link (service-role SECURITY DEFINER). RETRY-IDEMPOTENT: re-linking the same
+-- event to the SAME group is a successful no-op (at-least-once webhooks); a DIFFERENT group is rejected. The
+-- composite FK additionally rejects a group whose provider_message_id ≠ the event's.
 CREATE OR REPLACE FUNCTION public.link_notification_provider_event(p_resend_event_id text, p_digest_group_id uuid)
   RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_count int;
+DECLARE v_current uuid;
 BEGIN
-  UPDATE public.notification_provider_events
-     SET digest_group_id = p_digest_group_id
-   WHERE resend_event_id = p_resend_event_id AND digest_group_id IS NULL;
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-  IF v_count = 0 THEN
-    RAISE EXCEPTION 'provider event % not found or already linked', p_resend_event_id;
+  SELECT digest_group_id INTO v_current
+    FROM public.notification_provider_events WHERE resend_event_id = p_resend_event_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'provider event % not found', p_resend_event_id;
   END IF;
+  IF v_current IS NOT NULL THEN
+    IF v_current = p_digest_group_id THEN RETURN true; END IF;   -- idempotent retry
+    RAISE EXCEPTION 'provider event % already linked to a different group', p_resend_event_id;
+  END IF;
+  UPDATE public.notification_provider_events
+     SET digest_group_id = p_digest_group_id WHERE resend_event_id = p_resend_event_id;
   RETURN true;
 END $$;
 
--- outbox snapshot columns are write-once; digest_group_id may attach (NULL→id) and retention-null (id→NULL)
--- but never re-point. digest_item/payload stay mutable (terminal scrubbing). Referential SET NULL bypasses.
+-- outbox snapshot columns are write-once (enforced for EVERY caller, nested or not); digest_group_id may
+-- attach (NULL→id) at top level and detach (id→NULL) ONLY as the retention FK SET NULL, proven by the group
+-- already being gone. No re-point. No blanket depth bypass — a nested trigger cannot mutate a member row.
 CREATE OR REPLACE FUNCTION public.notification_outbox_snapshot_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;     -- digest_group_id retention SET NULL
   IF (OLD.delivery_mode           IS NOT NULL AND NEW.delivery_mode           IS DISTINCT FROM OLD.delivery_mode)
    OR (OLD.recipient_key          IS NOT NULL AND NEW.recipient_key          IS DISTINCT FROM OLD.recipient_key)
    OR (OLD.digest_frequency       IS NOT NULL AND NEW.digest_frequency       IS DISTINCT FROM OLD.digest_frequency)
@@ -493,10 +532,13 @@ BEGIN
    OR (OLD.destination_fingerprint IS NOT NULL AND NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint) THEN
     RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
   END IF;
-  -- once attached, digest_group_id is frozen at top level: no detach (→NULL) and no re-point (→other).
-  -- Only the nested FK retention cascade (depth>1, bypassed above) may set it back to NULL.
   IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id THEN
-    RAISE EXCEPTION 'notification_outbox.digest_group_id may only detach via retention cascade, never directly';
+    IF NEW.digest_group_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM public.notification_digest_groups WHERE id = OLD.digest_group_id) THEN
+      NULL;   -- the group is gone → this is the retention FK SET NULL detach
+    ELSE
+      RAISE EXCEPTION 'notification_outbox.digest_group_id may only detach via retention cascade, never directly';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -563,9 +605,9 @@ BEGIN
   DELETE FROM public.notification_worker_runs w USING victims v WHERE w.run_id = v.run_id;
   GET DIAGNOSTICS v_run = ROW_COUNT;
 
-  WITH victims AS (
+  WITH victims AS (   -- provider events are AUDIT data: stale unlinked orphans use the 90-day group window
     SELECT e.resend_event_id FROM public.notification_provider_events e
-     WHERE e.digest_group_id IS NULL AND e.received_at < now() - make_interval(days => p_counter_days)
+     WHERE e.digest_group_id IS NULL AND e.received_at < now() - make_interval(days => p_group_days)
      ORDER BY e.received_at, e.resend_event_id
      LIMIT p_limit FOR UPDATE SKIP LOCKED)
   DELETE FROM public.notification_provider_events e USING victims v WHERE e.resend_event_id = v.resend_event_id;
