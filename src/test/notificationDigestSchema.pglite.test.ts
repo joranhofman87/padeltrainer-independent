@@ -1,9 +1,12 @@
 // @vitest-environment node
-// PR 10c-a1 — digest SCHEMA FOUNDATION (ADR 0008). Loads the real migration 20261002100000 over minimal
-// stubs of the two base tables it ALTERs, then proves tables/FKs/constraints/triggers/ACLs BEHAVE. CI's
-// `supabase db reset` additionally validates the whole chain on real Postgres; this suite pins the
-// authorization/immutability/lifecycle/referential behaviour (incl. the pg_trigger_depth() discrimination
-// and grant-based DELETE denial under a BYPASSRLS service_role, matching Supabase).
+// PR 10c-a1 — digest SCHEMA FOUNDATION (ADR 0008) + ACL lockdown. Loads the real migrations
+// 20261002100000 (foundation) AND 20261003100000 (ACL repair) over minimal stubs of the two base tables,
+// FIRST replicating Supabase's ALTER DEFAULT PRIVILEGES (GRANT ALL ON TABLES/SEQUENCES to anon/authenticated
+// /service_role) so the ACL matrix exercises real prod semantics — the exact leak the bare-role harness had
+// missed. This suite pins the authorization/immutability/lifecycle/referential behaviour: cascade/SET-NULL
+// legitimacy is proven by the FK PRECONDITION (referenced parent/run already gone), not pg_trigger_depth();
+// and the full service_role table + sequence privilege matrix is asserted. `supabase db reset` additionally
+// validates the whole chain on real Postgres.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -84,6 +87,11 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
+    -- replicate Supabase's ALTER DEFAULT PRIVILEGES: every new public table/sequence auto-grants ALL to
+    -- these roles (incl DELETE/TRUNCATE on tables, USAGE on sequences). Without this the harness misses the
+    -- default-privilege leak that the ACL lockdown migration exists to close.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
     CREATE TABLE public.notification_event_types (key text PRIMARY KEY, supports_digest boolean NOT NULL DEFAULT false);
     CREATE TABLE public.notification_outbox (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -94,6 +102,8 @@ beforeAll(async () => {
   `);
   await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations',
     '20261002100000_notification_digest_schema_foundation.sql'), 'utf8'));
+  await db.exec(readFileSync(join(process.cwd(), 'supabase', 'migrations',
+    '20261003100000_notification_digest_acl_lockdown.sql'), 'utf8'));
 });
 
 describe('10c-a1 digest schema — tables + kill switch', () => {
@@ -127,38 +137,58 @@ describe('10c-a1 digest schema — tables + kill switch', () => {
   });
 });
 
-describe('10c-a1 digest schema — ACL, RLS, and NO delete grant anywhere', () => {
-  it('anon + authenticated are denied ALL of SELECT/INSERT/UPDATE/DELETE on every digest table', async () => {
+const TABLE_PRIVS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] as const;
+const LEDGER_SEQ = 'notification_digest_group_attempts_seq_seq';
+
+describe('10c-a1 digest schema — exact ACL matrix (post-lockdown, prod-default-privilege semantics)', () => {
+  it('the FULL service_role table privilege matrix is exactly the intended minimum (no DELETE/TRUNCATE/REFERENCES/TRIGGER)', async () => {
     for (const t of NEW_TABLES) {
-      for (const priv of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
-        for (const role of ['anon', 'authenticated']) {
-          const r = (await db.query<{ ok: boolean }>(
-            `SELECT has_table_privilege('${role}','public.${t}','${priv}') AS ok`)).rows[0];
-          expect(r.ok, `${role} ${priv} ${t}`).toBe(false);
-        }
+      const row = (await db.query<Record<string, boolean>>(`SELECT ${TABLE_PRIVS.map((p) =>
+        `has_table_privilege('service_role','public.${t}','${p}') AS "${p}"`).join(', ')}`)).rows[0];
+      const appendOnly = AUDIT_APPEND_ONLY.includes(t);
+      expect(row.SELECT, `${t} SELECT`).toBe(true);
+      expect(row.INSERT, `${t} INSERT`).toBe(true);
+      expect(row.UPDATE, `${t} UPDATE`).toBe(appendOnly ? false : true); // append-only ledger/events get no UPDATE
+      expect(row.DELETE, `${t} DELETE`).toBe(false);
+      expect(row.TRUNCATE, `${t} TRUNCATE`).toBe(false);   // TRUNCATE would bypass the lifecycle triggers
+      expect(row.REFERENCES, `${t} REFERENCES`).toBe(false);
+      expect(row.TRIGGER, `${t} TRIGGER`).toBe(false);
+    }
+  });
+
+  it('anon + authenticated hold NONE of the seven table privileges on any digest table', async () => {
+    for (const t of NEW_TABLES) {
+      for (const role of ['anon', 'authenticated']) {
+        const row = (await db.query<Record<string, boolean>>(`SELECT ${TABLE_PRIVS.map((p) =>
+          `has_table_privilege('${role}','public.${t}','${p}') AS "${p}"`).join(', ')}`)).rows[0];
+        for (const p of TABLE_PRIVS) expect(row[p], `${role} ${p} ${t}`).toBe(false);
       }
     }
   });
 
-  it('service_role has SELECT everywhere but DELETE NOWHERE (deletion is retention-only)', async () => {
-    for (const t of NEW_TABLES) {
-      const r = (await db.query<{ sel: boolean; del: boolean }>(`
-        SELECT has_table_privilege('service_role','public.${t}','SELECT') AS sel,
-               has_table_privilege('service_role','public.${t}','DELETE') AS del`)).rows[0];
-      expect(r.sel, `${t} select`).toBe(true);
-      expect(r.del, `${t} delete`).toBe(false);
-    }
+  it('the ledger identity sequence grants ONLY service_role USAGE (no SELECT/UPDATE, nothing to anon/auth/PUBLIC)', async () => {
+    const s = (await db.query<{ su: boolean; ss: boolean; sup: boolean; au: boolean; a2u: boolean; pu: boolean }>(`SELECT
+      has_sequence_privilege('service_role','public.${LEDGER_SEQ}','USAGE')  AS su,
+      has_sequence_privilege('service_role','public.${LEDGER_SEQ}','SELECT') AS ss,
+      has_sequence_privilege('service_role','public.${LEDGER_SEQ}','UPDATE') AS sup,
+      has_sequence_privilege('anon','public.${LEDGER_SEQ}','USAGE')          AS au,
+      has_sequence_privilege('authenticated','public.${LEDGER_SEQ}','USAGE') AS a2u,
+      has_sequence_privilege('public','public.${LEDGER_SEQ}','USAGE')        AS pu`)).rows[0];
+    expect(s.su).toBe(true);
+    expect(s.ss).toBe(false); expect(s.sup).toBe(false);
+    expect(s.au).toBe(false); expect(s.a2u).toBe(false); expect(s.pu).toBe(false);
   });
 
-  it('append-only audit tables deny even UPDATE to service_role; attempts allow UPDATE (record) not DELETE', async () => {
-    for (const t of AUDIT_APPEND_ONLY) {
-      const r = (await db.query<{ upd: boolean }>(`SELECT has_table_privilege('service_role','public.${t}','UPDATE') AS upd`)).rows[0];
-      expect(r.upd, `${t} update`).toBe(false);
+  it('the RPC grants are preserved: purge/link remain executable ONLY by service_role', async () => {
+    for (const fn of ['purge_notification_digest(int,int,int)', 'link_notification_provider_event(text,uuid)']) {
+      const r = (await db.query<{ anon: boolean; auth: boolean; svc: boolean }>(`SELECT
+        has_function_privilege('anon','public.${fn}','EXECUTE') AS anon,
+        has_function_privilege('authenticated','public.${fn}','EXECUTE') AS auth,
+        has_function_privilege('service_role','public.${fn}','EXECUTE') AS svc`)).rows[0];
+      expect(r.anon, `${fn} anon`).toBe(false);
+      expect(r.auth, `${fn} auth`).toBe(false);
+      expect(r.svc, `${fn} svc`).toBe(true);
     }
-    const a = (await db.query<{ upd: boolean; del: boolean }>(`
-      SELECT has_table_privilege('service_role','public.notification_digest_attempts','UPDATE') AS upd,
-             has_table_privilege('service_role','public.notification_digest_attempts','DELETE') AS del`)).rows[0];
-    expect(a.upd).toBe(true); expect(a.del).toBe(false);
   });
 
   it('every digest table has RLS enabled + FORCED and ZERO policies', async () => {
