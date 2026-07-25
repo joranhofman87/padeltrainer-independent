@@ -10562,6 +10562,10 @@ export type Database = {
         Args: { p_label: string; p_max: number; p_min: number; p_val: number }
         Returns: undefined
       }
+      notif_digest_retry_after_interval: {
+        Args: { p_secs: number }
+        Returns: string
+      }
       notif_digest_terminal_states: { Args: never; Returns: string[] }
       notif_digest_trip_breaker: {
         Args: {
