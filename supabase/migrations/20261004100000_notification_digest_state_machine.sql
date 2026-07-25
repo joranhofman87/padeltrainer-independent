@@ -172,99 +172,156 @@ BEGIN
 END $$;
 
 -- ===========================================================================
--- §RECON — reconcile_notification_digest_run: two families over one run's ledger + the groups it touched.
+-- §RECON — reconcile_notification_digest_run: CAUSAL — the 'group' family reports the state THIS run drove
+-- each group to (its LAST ledger action within this run), not the group's later current state, so a group
+-- another run completed is never attributed to an earlier run. 'superseded' is its own lineage metric
+-- (excluded from groups_touched by summing the non-superseded rows); non-final actions roll up to 'in_flight'.
 CREATE OR REPLACE FUNCTION public.reconcile_notification_digest_run(p_run_id uuid)
-  RETURNS TABLE (family text, metric text, count int) LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  RETURNS TABLE (family text, metric text, count int) LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.notification_worker_runs w WHERE w.run_id = p_run_id) THEN
+    RAISE EXCEPTION 'reconcile: worker run % not found', p_run_id;
+  END IF;
+  RETURN QUERY
   -- family 'event': raw ledger action counts (repeated deferrals are distinct events; attempt==provider sends)
-  SELECT 'event'::text AS family, l.action AS metric, count(*)::int AS count
+  SELECT 'event'::text, l.action, count(*)::int
     FROM public.notification_digest_group_attempts l WHERE l.worker_run_id = p_run_id GROUP BY l.action
   UNION ALL
-  -- family 'group': DISTINCT groups this run drove to each terminal state (superseded reported separately).
-  SELECT 'group'::text, g.state, count(DISTINCT g.id)::int
-    FROM public.notification_digest_groups g
-   WHERE g.id IN (SELECT DISTINCT digest_group_id FROM public.notification_digest_group_attempts WHERE worker_run_id = p_run_id)
-   GROUP BY g.state;
-$$;
+  -- family 'group': causal — the LAST action this run logged per group, mapped to its outcome metric.
+  SELECT 'group'::text, outcome, count(*)::int FROM (
+    SELECT DISTINCT ON (l.digest_group_id)
+           CASE WHEN l.action IN ('sent','no_work','superseded','delivery_unknown','retry_stopped',
+                                  'oversize_failed','awaiting_evidence') THEN l.action
+                WHEN l.action = 'terminal' THEN 'failed_terminal'
+                ELSE 'in_flight' END AS outcome
+      FROM public.notification_digest_group_attempts l
+     WHERE l.worker_run_id = p_run_id
+     ORDER BY l.digest_group_id, l.seq DESC) last_actions
+  GROUP BY outcome;
+END $$;
 
 -- ===========================================================================
--- §MAT — Phase A materialize: create groups + assign members atomically, deterministic 50-item cap + byte
--- budget, chunk_ordinal continuation, available_at = digest_boundary_at, raw single-item oversize terminal.
+-- §MAT — Phase A materialize (concurrency-safe + bounded). One canonical key per outer iteration:
+--   (1) pick the EARLIEST unassigned candidate via the forming partial index (Index Scan + LIMIT 1,
+--       FOR UPDATE SKIP LOCKED — concurrent materializers skip each other's rows, never re-point);
+--   (2) advisory-xact-lock the key hash (serializes chunk numbering per key across materializers);
+--   (3) lock + chunk that key's members (bounded LIMIT, FOR UPDATE SKIP LOCKED), assigning each with a
+--       CONDITIONAL count-checked update (digest_group_id IS NULL) — a member joins exactly one group.
+-- Work per call is bounded by p_max_groups + p_max_members_per_call + a hard outer-iteration cap; there is
+-- no global ORDER BY over a computed key (the old full-scan+sort), no OFFSET, no unbounded loop.
 CREATE OR REPLACE FUNCTION public.materialize_notification_digest_groups(
     p_run_id uuid, p_channel text, p_now timestamptz, p_max_groups int, p_max_members_per_call int)
   RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_budget int := 92160;                 -- ~90 KB cumulative byte budget per group
-  v_created int := 0;
-  m record;
-  v_ckey jsonb; v_hash text; v_group uuid;
-  v_cur_ckey jsonb := NULL; v_cur_group uuid := NULL; v_cur_count int := 0; v_cur_bytes int := 0;
+  v_groups int := 0; v_members int := 0; v_iter int := 0;
+  cand record; m record;
+  v_ckey jsonb; v_hash text; v_group uuid; v_count int; v_bytes int; v_next_chunk int; v_n int;
 BEGIN
-  FOR m IN
-    SELECT o.id, coalesce(o.digest_item_bytes, 0) AS bytes, o.digest_boundary_at, o.recipient_key,
-           o.destination_fingerprint, o.event_type, o.tenant_academy_profile_id, o.tenant_trainer_id,
-           coalesce(o.recipient_timezone,'Europe/Amsterdam') AS tz,
-           jsonb_build_array('v1', o.channel, o.recipient_key, o.destination_fingerprint,
-             o.tenant_academy_profile_id, o.tenant_trainer_id, o.event_type, o.template_key,
-             o.template_version, o.group_locale, o.digest_frequency, o.digest_boundary_at) AS ckey
-      FROM public.notification_outbox o
-     WHERE o.channel = p_channel AND coalesce(o.delivery_mode,'') = 'digest'
-       AND o.digest_group_id IS NULL AND o.status = 'pending'
-     ORDER BY (jsonb_build_array('v1', o.channel, o.recipient_key, o.destination_fingerprint,
-             o.tenant_academy_profile_id, o.tenant_trainer_id, o.event_type, o.template_key,
-             o.template_version, o.group_locale, o.digest_frequency, o.digest_boundary_at))::text,
-             o.created_at, o.id
-     LIMIT greatest(p_max_members_per_call, 0)
   LOOP
-    v_ckey := m.ckey; v_hash := encode(sha256(v_ckey::text::bytea), 'hex');
+    v_iter := v_iter + 1;
+    EXIT WHEN v_groups >= p_max_groups OR v_members >= p_max_members_per_call
+           OR v_iter > (2 * greatest(p_max_groups, 1) + 8);   -- hard bound: never unbounded
+    -- (1) earliest unassigned candidate — Index Scan on idx_outbox_digest_forming, one row.
+    -- ORDER BY the index prefix ONLY (channel, digest_boundary_at): with LIMIT 1 this is a pure index scan —
+    -- no sort over same-boundary ties. Any due candidate is fine (the per-key member query below imposes the
+    -- deterministic created_at,id order WITHIN the key); earliest-boundary keys still drain first.
+    SELECT o.id, o.recipient_key, o.destination_fingerprint, o.event_type, o.template_key, o.template_version,
+           o.group_locale, o.digest_frequency, o.digest_boundary_at, o.tenant_academy_profile_id,
+           o.tenant_trainer_id, coalesce(o.recipient_timezone,'Europe/Amsterdam') AS tz
+      INTO cand
+      FROM public.notification_outbox o
+     WHERE o.channel = p_channel AND o.delivery_mode = 'digest'
+       AND o.digest_group_id IS NULL AND o.status = 'pending'
+     ORDER BY o.digest_boundary_at
+     LIMIT 1 FOR UPDATE SKIP LOCKED;
+    EXIT WHEN NOT FOUND;
 
-    -- raw single-item oversize: cannot ever fit → its own oversize_failed group (member finalized).
-    IF m.bytes > v_budget THEN
-      IF v_created >= p_max_groups THEN CONTINUE; END IF;
-      PERFORM pg_advisory_xact_lock(hashtext(v_hash));
-      INSERT INTO public.notification_digest_groups
-        (canonical_group_key, group_key_hash, chunk_ordinal, channel, event_type, recipient_key,
-         destination_fingerprint, tenant_academy_profile_id, tenant_trainer_id, recipient_timezone,
-         digest_boundary_at, available_at, state, item_count, total_item_bytes, terminal_reason)
-      VALUES (v_ckey, v_hash, coalesce((SELECT max(chunk_ordinal) FROM public.notification_digest_groups
-                WHERE canonical_group_key = v_ckey), -1) + 1,
-              p_channel, m.event_type, m.recipient_key, m.destination_fingerprint,
-              m.tenant_academy_profile_id, m.tenant_trainer_id, m.tz, m.digest_boundary_at, m.digest_boundary_at,
-              'oversize_failed', 1, m.bytes, 'single_item_oversize')
-      RETURNING id INTO v_group;
-      UPDATE public.notification_outbox SET digest_group_id = v_group, status = 'failed',
-             skip_reason = 'single_item_oversize', payload = NULL, digest_item = NULL, updated_at = p_now
-       WHERE id = m.id;
-      PERFORM notif_digest_ledger(p_run_id, v_group, NULL, 'oversize_failed', 1);
-      v_created := v_created + 1; v_cur_ckey := NULL;   -- reset the running group
-      CONTINUE;
+    v_ckey := jsonb_build_array('v1', p_channel, cand.recipient_key, cand.destination_fingerprint,
+      cand.tenant_academy_profile_id, cand.tenant_trainer_id, cand.event_type, cand.template_key,
+      cand.template_version, cand.group_locale, cand.digest_frequency, cand.digest_boundary_at);
+    v_hash := encode(sha256(v_ckey::text::bytea), 'hex');
+    PERFORM pg_advisory_xact_lock(hashtext(v_hash));    -- (2) serialize this key across materializers
+    v_next_chunk := coalesce((SELECT max(chunk_ordinal) FROM public.notification_digest_groups
+                              WHERE canonical_group_key = v_ckey), -1);
+    v_group := NULL; v_count := 0; v_bytes := 0;
+
+    -- (3) this key's members, bounded + locked; chunk into ≤50-item / ≤budget groups.
+    FOR m IN
+      SELECT o.id, coalesce(o.digest_item_bytes, 0) AS bytes
+        FROM public.notification_outbox o
+       WHERE o.channel = p_channel AND o.delivery_mode = 'digest'
+         AND o.digest_group_id IS NULL AND o.status = 'pending'
+         AND o.recipient_key = cand.recipient_key AND o.destination_fingerprint = cand.destination_fingerprint
+         AND o.digest_boundary_at = cand.digest_boundary_at
+         AND o.event_type IS NOT DISTINCT FROM cand.event_type
+         AND o.template_key IS NOT DISTINCT FROM cand.template_key
+         AND o.template_version IS NOT DISTINCT FROM cand.template_version
+         AND o.group_locale IS NOT DISTINCT FROM cand.group_locale
+         AND o.digest_frequency IS NOT DISTINCT FROM cand.digest_frequency
+         AND o.tenant_academy_profile_id IS NOT DISTINCT FROM cand.tenant_academy_profile_id
+         AND o.tenant_trainer_id IS NOT DISTINCT FROM cand.tenant_trainer_id
+       ORDER BY o.created_at, o.id
+       LIMIT greatest(p_max_members_per_call - v_members, 1)
+       FOR UPDATE SKIP LOCKED
+    LOOP
+      -- raw single-item oversize: its own oversize_failed group (member finalized).
+      IF m.bytes > v_budget THEN
+        EXIT WHEN v_groups >= p_max_groups;
+        v_next_chunk := v_next_chunk + 1;
+        INSERT INTO public.notification_digest_groups
+          (canonical_group_key, group_key_hash, chunk_ordinal, channel, event_type, recipient_key,
+           destination_fingerprint, tenant_academy_profile_id, tenant_trainer_id, recipient_timezone,
+           digest_boundary_at, available_at, state, item_count, total_item_bytes, terminal_reason)
+        VALUES (v_ckey, v_hash, v_next_chunk, p_channel, cand.event_type, cand.recipient_key,
+                cand.destination_fingerprint, cand.tenant_academy_profile_id, cand.tenant_trainer_id, cand.tz,
+                cand.digest_boundary_at, cand.digest_boundary_at, 'oversize_failed', 1, m.bytes, 'single_item_oversize')
+        RETURNING id INTO v_group;
+        UPDATE public.notification_outbox SET digest_group_id = v_group, status = 'failed',
+               skip_reason = 'single_item_oversize', payload = NULL, digest_item = NULL, updated_at = p_now
+         WHERE id = m.id AND digest_group_id IS NULL;
+        GET DIAGNOSTICS v_n = ROW_COUNT;
+        IF v_n <> 1 THEN RAISE EXCEPTION 'materialize: oversize member % re-point race', m.id; END IF;
+        PERFORM notif_digest_ledger(p_run_id, v_group, NULL, 'oversize_failed', 1);
+        v_groups := v_groups + 1; v_members := v_members + 1; v_group := NULL; v_count := 0; v_bytes := 0;
+        CONTINUE;
+      END IF;
+
+      -- open a new chunk when none is open, the 50-item cap is hit, or the byte budget would overflow.
+      IF v_group IS NULL OR v_count >= 50 OR (v_bytes + m.bytes) > v_budget THEN
+        EXIT WHEN v_groups >= p_max_groups;
+        v_next_chunk := v_next_chunk + 1;
+        INSERT INTO public.notification_digest_groups
+          (canonical_group_key, group_key_hash, chunk_ordinal, channel, event_type, recipient_key,
+           destination_fingerprint, tenant_academy_profile_id, tenant_trainer_id, recipient_timezone,
+           digest_boundary_at, available_at, state)
+        VALUES (v_ckey, v_hash, v_next_chunk, p_channel, cand.event_type, cand.recipient_key,
+                cand.destination_fingerprint, cand.tenant_academy_profile_id, cand.tenant_trainer_id, cand.tz,
+                cand.digest_boundary_at, cand.digest_boundary_at, 'pending')
+        RETURNING id INTO v_group;
+        v_groups := v_groups + 1; v_count := 0; v_bytes := 0;
+        PERFORM notif_digest_ledger(p_run_id, v_group, NULL, 'materialized', 0);
+      END IF;
+
+      -- conditional, count-checked assignment: a member joins exactly one group (locked + still unassigned).
+      UPDATE public.notification_outbox SET digest_group_id = v_group, updated_at = p_now
+       WHERE id = m.id AND digest_group_id IS NULL;
+      GET DIAGNOSTICS v_n = ROW_COUNT;
+      IF v_n = 1 THEN
+        v_count := v_count + 1; v_bytes := v_bytes + m.bytes; v_members := v_members + 1;
+        UPDATE public.notification_digest_groups SET item_count = v_count, total_item_bytes = v_bytes,
+               updated_at = p_now WHERE id = v_group;
+      END IF;
+    END LOOP;
+
+    -- defensive: an opened chunk that ended up with zero members (all conditional assigns lost) → no_work.
+    IF v_group IS NOT NULL AND v_count = 0 THEN
+      UPDATE public.notification_digest_groups SET state = 'no_work', terminal_reason = 'no_members', updated_at = p_now
+       WHERE id = v_group;
+      PERFORM notif_digest_ledger(p_run_id, v_group, NULL, 'no_work', 0);
     END IF;
-
-    -- start a new group/chunk when the key changes, the 50-item cap is hit, or the byte budget would overflow.
-    IF v_cur_ckey IS NULL OR v_cur_ckey <> v_ckey OR v_cur_count >= 50 OR (v_cur_bytes + m.bytes) > v_budget THEN
-      IF v_created >= p_max_groups THEN EXIT; END IF;   -- respect the per-call group bound
-      PERFORM pg_advisory_xact_lock(hashtext(v_hash));
-      INSERT INTO public.notification_digest_groups
-        (canonical_group_key, group_key_hash, chunk_ordinal, channel, event_type, recipient_key,
-         destination_fingerprint, tenant_academy_profile_id, tenant_trainer_id, recipient_timezone,
-         digest_boundary_at, available_at, state)
-      VALUES (v_ckey, v_hash, coalesce((SELECT max(chunk_ordinal) FROM public.notification_digest_groups
-                WHERE canonical_group_key = v_ckey), -1) + 1,
-              p_channel, m.event_type, m.recipient_key, m.destination_fingerprint,
-              m.tenant_academy_profile_id, m.tenant_trainer_id, m.tz, m.digest_boundary_at, m.digest_boundary_at,
-              'pending')
-      RETURNING id INTO v_group;
-      v_created := v_created + 1;
-      v_cur_ckey := v_ckey; v_cur_group := v_group; v_cur_count := 0; v_cur_bytes := 0;
-      PERFORM notif_digest_ledger(p_run_id, v_group, NULL, 'materialized', 0);
-    END IF;
-
-    -- assign the member to the running group.
-    UPDATE public.notification_outbox SET digest_group_id = v_cur_group, updated_at = p_now WHERE id = m.id;
-    v_cur_count := v_cur_count + 1; v_cur_bytes := v_cur_bytes + m.bytes;
-    UPDATE public.notification_digest_groups SET item_count = v_cur_count, total_item_bytes = v_cur_bytes,
-           updated_at = p_now WHERE id = v_cur_group;
   END LOOP;
-  RETURN v_created;
+  RETURN v_groups;
 END $$;
 
 -- ===========================================================================
@@ -380,23 +437,56 @@ BEGIN
 END $$;
 
 -- ===========================================================================
--- §P2 — prepare (ownership-gated, from leased): §PS stop-check drops non-pending (rejected) members and
--- finalizes them (§MEM); survivors → prepared, else the whole group → no_work. (The resolver already applied
--- preference/consent/suppression at enqueue; this is the state-machine re-gate — the event policy hook is 10c-b.)
+-- §PS — live stop-check for one member (generic revalidation; the event-specific policy hook is 10c-b).
+-- Re-checks at send-time what the resolver checked at enqueue: a recipient can opt out, lose their contact,
+-- or become suppressed AFTER enqueue and must not be sent. Required-delivery events are exempt.
+-- Returns the stop reason, or NULL if the member may still be sent.
+CREATE OR REPLACE FUNCTION public.notif_digest_member_stop_reason(p_member_id uuid) RETURNS text
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE o record; v_required boolean;
+BEGIN
+  SELECT o2.destination_normalized, o2.recipient_user_id, o2.event_type INTO o
+    FROM public.notification_outbox o2 WHERE o2.id = p_member_id;
+  IF NOT FOUND THEN RETURN 'missing_member'; END IF;
+  SELECT coalesce(et.required_delivery, false) INTO v_required
+    FROM public.notification_event_types et WHERE et.key = o.event_type;
+  IF coalesce(v_required, false) THEN RETURN NULL; END IF;              -- required-delivery exempt
+  IF o.destination_normalized IS NULL OR length(btrim(o.destination_normalized)) = 0 THEN
+    RETURN 'no_destination';                                            -- current contact/destination gone
+  END IF;
+  IF public.is_email_suppressed(o.destination_normalized) THEN RETURN 'suppressed'; END IF;
+  IF o.recipient_user_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM public.notification_preferences_v2 p
+        WHERE p.user_id = o.recipient_user_id AND p.event_type = o.event_type AND p.email_frequency = 'off') THEN
+    RETURN 'preference_off';                                            -- opted out after enqueue
+  END IF;
+  RETURN NULL;
+END $$;
+
+-- §P2 — prepare (ownership-gated, from leased): §PS live revalidation DROPS stopped members (finalized
+-- 'skipped' with the stop reason, scrubbed); survivors → prepared, else the whole group → no_work.
 CREATE OR REPLACE FUNCTION public.prepare_notification_digest_group(
     p_run_id uuid, p_group_id uuid, p_worker text, p_now timestamptz)
   RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_n int; v_survivors int;
+DECLARE v_n int; v_survivors int; m record; v_reason text;
 BEGIN
   UPDATE public.notification_digest_groups SET updated_at = p_now
    WHERE id = p_group_id AND state = 'leased' AND locked_by = p_worker;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   IF v_n <> 1 THEN RAISE EXCEPTION 'prepare: group % not owned/leased by %', p_group_id, p_worker; END IF;
 
-  -- survivors = members still pending; anything already non-pending was rejected upstream and stays finalized.
+  -- §PS: drop members that fail the LIVE checks (opt-out / lost contact / suppression since enqueue).
+  FOR m IN SELECT id FROM public.notification_outbox WHERE digest_group_id = p_group_id AND status = 'pending' LOOP
+    v_reason := notif_digest_member_stop_reason(m.id);
+    IF v_reason IS NOT NULL THEN
+      UPDATE public.notification_outbox
+         SET status = 'skipped', skip_reason = v_reason, payload = NULL, digest_item = NULL, updated_at = p_now
+       WHERE id = m.id;
+    END IF;
+  END LOOP;
+
   SELECT count(*) INTO v_survivors FROM public.notification_outbox
    WHERE digest_group_id = p_group_id AND status = 'pending';
-
   IF v_survivors = 0 THEN
     PERFORM notif_digest_finalize_group(p_group_id, 'no_work', 'no_survivors', p_now);
     PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'no_work', 0);
@@ -450,20 +540,51 @@ BEGIN
 END $$;
 
 -- ===========================================================================
--- §P4 — store (ownership-gated, from prepared): freeze the request + hash, set the reused idempotency key,
--- → request_ready, available_at = now (immediately due).
+-- the CANONICAL destination fingerprint: sha256 of the lower-trimmed destination. The resolver (10c-b) MUST
+-- snapshot outbox.destination_fingerprint with this same function, and store proves the frozen request's
+-- 'to' matches the group's fingerprint — a wrong-recipient request can never be frozen.
+CREATE OR REPLACE FUNCTION public.notif_digest_destination_fingerprint(p_destination text) RETURNS text
+  LANGUAGE sql IMMUTABLE AS $$ SELECT encode(sha256(lower(btrim(p_destination))::bytea), 'hex') $$;
+
+-- §P4 — store (ownership-gated, from prepared): SERVER-SIDE validation — exact request schema, byte ceiling,
+-- destination↔fingerprint proof — and a server-side recomputed hash (never caller-supplied). Then freeze,
+-- set the reused idempotency key, → request_ready, available_at = now (immediately due).
 CREATE OR REPLACE FUNCTION public.store_notification_digest_request(
-    p_run_id uuid, p_group_id uuid, p_worker text, p_frozen_request jsonb, p_request_hash text, p_now timestamptz)
+    p_run_id uuid, p_group_id uuid, p_worker text, p_frozen_request jsonb, p_now timestamptz)
   RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_n int;
+DECLARE g record; v_n int; v_to text;
 BEGIN
+  SELECT * INTO g FROM public.notification_digest_groups
+   WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'store: group % not owned/prepared by %', p_group_id, p_worker; END IF;
+
+  -- exact request schema: an object with non-empty string to/subject/html — nothing else is a valid freeze.
+  IF p_frozen_request IS NULL OR jsonb_typeof(p_frozen_request) <> 'object'
+     OR jsonb_typeof(p_frozen_request->'to') <> 'string' OR length(p_frozen_request->>'to') = 0
+     OR jsonb_typeof(p_frozen_request->'subject') <> 'string' OR length(p_frozen_request->>'subject') = 0
+     OR jsonb_typeof(p_frozen_request->'html') <> 'string' OR length(p_frozen_request->>'html') = 0 THEN
+    RAISE EXCEPTION 'store: malformed frozen request for group % (need object with to/subject/html)', p_group_id;
+  END IF;
+  -- byte ceiling (~90 KB): the render-time oversize check belongs to the worker (§CH), but a frozen request
+  -- over budget must never be stored.
+  IF octet_length(p_frozen_request::text) > 92160 THEN
+    RAISE EXCEPTION 'store: frozen request for group % exceeds the 90 KB budget (% bytes)',
+      p_group_id, octet_length(p_frozen_request::text);
+  END IF;
+  -- destination proof: the request's 'to' must fingerprint to the group's immutable destination_fingerprint.
+  v_to := p_frozen_request->>'to';
+  IF notif_digest_destination_fingerprint(v_to) <> g.destination_fingerprint THEN
+    RAISE EXCEPTION 'store: frozen request destination does not match group % fingerprint', p_group_id;
+  END IF;
+
   UPDATE public.notification_digest_groups
-     SET frozen_request = p_frozen_request, request_hash = p_request_hash,
+     SET frozen_request = p_frozen_request,
+         request_hash = encode(sha256(p_frozen_request::text::bytea), 'hex'),   -- server-side, never trusted
          provider_idempotency_key = 'dg:v1:' || p_group_id::text,
          state = 'request_ready', available_at = p_now, updated_at = p_now
    WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker;
   GET DIAGNOSTICS v_n = ROW_COUNT;
-  IF v_n <> 1 THEN RAISE EXCEPTION 'store: group % not owned/prepared by %', p_group_id, p_worker; END IF;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'store: group % concurrent change', p_group_id; END IF;
   PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'request_ready', 0);
 END $$;
 
@@ -476,7 +597,7 @@ CREATE OR REPLACE FUNCTION public.begin_notification_digest_attempt(
     p_hour_cap int DEFAULT 1000, p_day_cap int DEFAULT 5000, p_uncertainty_hours int DEFAULT 23)
   RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  g record; v_attempt uuid; v_survivors int; v_bump timestamptz;
+  g record; v_attempt uuid; v_survivors int; v_bump timestamptz; v_stop text;
   v_hb timestamptz; v_db timestamptz; v_hkey text; v_dkey text; v_hgate text; v_dgate text;
   v_breaker record;
 BEGIN
@@ -492,31 +613,50 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  -- whole-group stop (§PS): no pending survivors left → retry_stopped.
+  -- whole-group stop (§PS): live revalidation before EVERY attempt (no member rewrite here — the group
+  -- shares one recipient/destination, so a live stop condition stops the whole group). While uncertain →
+  -- awaiting_evidence (capacity committed); else retry_stopped + release.
   SELECT count(*) INTO v_survivors FROM public.notification_outbox
    WHERE digest_group_id = p_group_id AND status = 'pending';
-  IF v_survivors = 0 THEN
-    PERFORM notif_digest_finalize_group(p_group_id, 'retry_stopped', 'no_survivors', p_now);
-    PERFORM notif_digest_release_reservations(p_group_id, p_now);
-    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'retry_stopped', 0);
+  IF v_survivors > 0 THEN
+    SELECT notif_digest_member_stop_reason(o.id) INTO v_stop
+      FROM public.notification_outbox o
+     WHERE o.digest_group_id = p_group_id AND o.status = 'pending'
+     ORDER BY o.created_at, o.id LIMIT 1;
+  END IF;
+  IF v_survivors = 0 OR v_stop IS NOT NULL THEN
+    IF g.uncertain_since IS NOT NULL THEN
+      PERFORM notif_digest_commit_reservations(p_group_id, p_now);
+      UPDATE public.notification_digest_groups
+         SET state = 'awaiting_evidence', available_at = coalesce(uncertain_deadline_at, p_now),
+             locked_by = NULL, locked_at = NULL, updated_at = p_now
+       WHERE id = p_group_id;
+      PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
+    ELSE
+      PERFORM notif_digest_finalize_group(p_group_id, 'retry_stopped', coalesce(v_stop, 'no_survivors'), p_now);
+      PERFORM notif_digest_release_reservations(p_group_id, p_now);
+      PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'retry_stopped', 0);
+    END IF;
     RETURN NULL;
   END IF;
 
-  -- breaker gate: open (pre-retry) or half_open blocks non-probe groups; the probe group proceeds.
+  -- breaker gate: open (pre-retry) or half_open blocks non-probe groups; the probe group proceeds. Every
+  -- no-send deferral CLEARS ownership so the group is re-claimable without stale-reclaim churn.
   SELECT * INTO v_breaker FROM public.notification_provider_circuit WHERE channel = g.channel;
   IF FOUND AND v_breaker.state IN ('open','half_open') AND v_breaker.probe_group_id IS DISTINCT FROM p_group_id THEN
-    IF v_breaker.state = 'open' AND v_breaker.retry_at IS NOT NULL AND p_now >= v_breaker.retry_at THEN
-      NULL;  -- breaker is due to probe, but this is not the probe group → still defer
-    END IF;
-    UPDATE public.notification_digest_groups SET available_at = p_now + interval '5 minutes', updated_at = p_now WHERE id = p_group_id;
+    UPDATE public.notification_digest_groups
+       SET available_at = p_now + interval '5 minutes', locked_by = NULL, locked_at = NULL, updated_at = p_now
+     WHERE id = p_group_id;
     PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred', 0);
     RETURN NULL;
   END IF;
 
-  -- quiet hours: bump + defer.
+  -- quiet hours: bump + defer (ownership cleared — no stale-reclaim churn).
   v_bump := notif_digest_quiet_hours_bump(p_now, g.recipient_timezone);
   IF v_bump > p_now THEN
-    UPDATE public.notification_digest_groups SET available_at = v_bump, updated_at = p_now WHERE id = p_group_id;
+    UPDATE public.notification_digest_groups
+       SET available_at = v_bump, locked_by = NULL, locked_at = NULL, updated_at = p_now
+     WHERE id = p_group_id;
     PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred', 0);
     RETURN NULL;
   END IF;
@@ -551,7 +691,9 @@ BEGIN
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
     ELSE
-      UPDATE public.notification_digest_groups SET available_at = p_now + interval '10 minutes', updated_at = p_now WHERE id = p_group_id;
+      UPDATE public.notification_digest_groups
+         SET available_at = p_now + interval '10 minutes', locked_by = NULL, locked_at = NULL, updated_at = p_now
+       WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred_cap', 0);
     END IF;
     RETURN NULL;
@@ -590,6 +732,27 @@ BEGIN
     retry_at = p_retry_at, probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL;
 END $$;
 
+-- reason-aware breaker trip (ADR §CB): auth/config +15m; daily quota +coalesce(Retry-After, 24h);
+-- monthly quota + invalid_idempotent_request (invariant breach) → retry_at NULL = MANUAL HOLD;
+-- any other definite global_config (unknown 4xx) +15m.
+CREATE OR REPLACE FUNCTION public.notif_digest_trip_breaker_for(
+    p_channel text, p_http_status int, p_error_name text, p_retry_after_seconds int, p_now timestamptz)
+  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF p_error_name = 'monthly_quota_exceeded' THEN
+    PERFORM notif_digest_trip_breaker(p_channel, 'monthly_quota', NULL, p_now);            -- manual hold
+  ELSIF p_error_name = 'invalid_idempotent_request' THEN
+    PERFORM notif_digest_trip_breaker(p_channel, 'invariant_breach', NULL, p_now);         -- manual hold + alert
+  ELSIF p_error_name = 'daily_quota_exceeded' THEN
+    PERFORM notif_digest_trip_breaker(p_channel, 'daily_quota',
+      p_now + coalesce(make_interval(secs => p_retry_after_seconds), interval '24 hours'), p_now);
+  ELSIF p_http_status IN (401, 403) THEN
+    PERFORM notif_digest_trip_breaker(p_channel, 'auth_config', p_now + interval '15 minutes', p_now);
+  ELSE
+    PERFORM notif_digest_trip_breaker(p_channel, 'global_config', p_now + interval '15 minutes', p_now);
+  END IF;
+END $$;
+
 -- advance the group's provider_status ONLY if the incoming rank is strictly higher (monotonic; the guard
 -- also rejects a regress). Returns nothing; leaves lower/equal ranks untouched.
 CREATE OR REPLACE FUNCTION public.notif_digest_advance_provider_status(p_group_id uuid, p_status text, p_now timestamptz)
@@ -615,30 +778,37 @@ DECLARE
   v_backoff timestamptz; v_deadline timestamptz; v_n int;
 BEGIN
   v_class := notif_digest_classify_error(p_transport, p_http_status, p_error_name);
-  SELECT * INTO a FROM public.notification_digest_attempts WHERE attempt_id = p_attempt_id;
+  -- serialize concurrent recorders on the ATTEMPT row: exactly one caller records; every other returns the
+  -- stored outcome (one authoritative outcome, one outcome ledger transition per attempt).
+  SELECT * INTO a FROM public.notification_digest_attempts WHERE attempt_id = p_attempt_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'record: attempt % not found', p_attempt_id; END IF;
   IF a.recorded_at IS NOT NULL THEN RETURN a.outcome_class; END IF;   -- idempotent replay
 
   SELECT * INTO g FROM public.notification_digest_groups WHERE id = a.digest_group_id FOR UPDATE;
 
-  -- write the attempt outcome (the only permitted attempt mutation: NULL→recorded).
+  -- write the attempt outcome (the only permitted attempt mutation: NULL→recorded), count-checked.
   UPDATE public.notification_digest_attempts
      SET recorded_at = p_now, outcome_class = v_class, resend_error_name = p_error_name,
          http_status = p_http_status, provider_message_id = p_provider_message_id
    WHERE attempt_id = p_attempt_id AND recorded_at IS NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN   -- a concurrent recorder won between our checks (belt-and-braces under the row lock)
+    SELECT outcome_class INTO v_class FROM public.notification_digest_attempts WHERE attempt_id = p_attempt_id;
+    RETURN v_class;
+  END IF;
 
   v_is_current := (g.current_attempt_id = p_attempt_id);
   v_is_probe := EXISTS (SELECT 1 FROM public.notification_provider_circuit WHERE channel = g.channel AND probe_attempt_id = p_attempt_id);
   v_backoff := p_now + make_interval(mins => least(power(2, greatest(g.provider_attempts_started,1))::int, 60));
   v_deadline := coalesce(g.uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours));
 
-  -- breaker transition FIRST (only the bound probe attempt may move the breaker).
+  -- breaker transition FIRST (only the bound probe attempt may move the breaker); reason-aware timing.
   IF v_is_probe THEN
     IF v_class = 'accepted' OR v_class = 'retryable_definite' OR v_class = 'terminal' THEN
       UPDATE public.notification_provider_circuit SET state = 'closed', reason = NULL, retry_at = NULL,
         probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL WHERE channel = g.channel;
     ELSIF v_class = 'global_config' THEN
-      PERFORM notif_digest_trip_breaker(g.channel, 'probe_global_config', p_now + interval '15 minutes', p_now);
+      PERFORM notif_digest_trip_breaker_for(g.channel, p_http_status, p_error_name, p_retry_after_seconds, p_now);
     ELSIF v_class = 'ambiguous' THEN
       PERFORM notif_digest_trip_breaker(g.channel, 'probe_ambiguous', p_now + interval '2 minutes', p_now);
     END IF;
@@ -654,10 +824,8 @@ BEGIN
     IF g.provider_status_rank < 3 AND g.state NOT IN ('sent','failed_terminal','oversize_failed') THEN
       PERFORM notif_digest_commit_reservations(g.id, p_now);
       PERFORM notif_digest_finalize_group(g.id, 'sent', 'accepted', p_now);
-    ELSE
-      UPDATE public.notification_digest_groups SET uncertain_since = NULL, uncertain_deadline_at = NULL, updated_at = p_now WHERE id = g.id;
     END IF;
-    UPDATE public.notification_digest_groups SET uncertain_since = NULL, uncertain_deadline_at = NULL WHERE id = g.id;
+    UPDATE public.notification_digest_groups SET uncertain_since = NULL, uncertain_deadline_at = NULL, updated_at = p_now WHERE id = g.id;
     PERFORM notif_digest_ledger(p_run_id, g.id, p_attempt_id, 'sent', 0);
     RETURN v_class;
   END IF;
@@ -692,7 +860,9 @@ BEGIN
   ELSIF v_class = 'global_config' THEN
     IF g.uncertain_since IS NULL THEN PERFORM notif_digest_release_reservations(g.id, p_now);
     ELSE PERFORM notif_digest_commit_reservations(g.id, p_now); END IF;
-    IF NOT v_is_probe THEN PERFORM notif_digest_trip_breaker(g.channel, 'global_config', p_now + interval '15 minutes', p_now); END IF;
+    IF NOT v_is_probe THEN
+      PERFORM notif_digest_trip_breaker_for(g.channel, p_http_status, p_error_name, p_retry_after_seconds, p_now);
+    END IF;
     UPDATE public.notification_digest_groups
        SET state = 'request_ready', delivery_budget_used = greatest(delivery_budget_used - 1, 0),
            locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, available_at = p_now + interval '15 minutes', updated_at = p_now
@@ -717,14 +887,70 @@ BEGIN
 END $$;
 
 -- ===========================================================================
--- §PV — apply a provider callback (orphan-then-link, at-least-once/unordered safe, monotonic rank). Does the
--- SQL state transition (group dispatch + member + reservation + rank); the record_email_event/suppression
--- side effects belong to the webhook adapter (10c-a3). Idempotent by resend_event_id.
+-- §PV — the ONE atomic provider transition: group state + provider rank + EVERY member + reservations +
+-- BOTH uncertainty fields + terminal_reason move together (no contradictory group/member split). The caller
+-- holds the group lock. Positive evidence (sent/delivery_delayed/delivered/complained) resolves the group to
+-- 'sent' and OVERRIDES previously bounce-failed / delivery_unknown / cancelled members back to 'sent'
+-- (rank ordering: complained(5) > bounced/failed/suppressed(4) > delivered(3) — a higher-rank outcome always
+-- wins, per ADR §PV). Negative evidence resolves to 'failed_terminal' with members failed (or cancelled for
+-- suppressed). Members dropped PRE-SEND at prepare (status 'skipped') were never in the email — untouched.
+CREATE OR REPLACE FUNCTION public.notif_digest_apply_provider_transition(
+    p_run_id uuid, p_group_id uuid, p_status text, p_now timestamptz)
+  RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE g record; v_rank int; v_member_status text;
+BEGIN
+  SELECT * INTO g FROM public.notification_digest_groups WHERE id = p_group_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN 'missing_group'; END IF;
+  v_rank := notif_digest_provider_rank(p_status);
+
+  -- monotonic: a lower/equal-rank callback never regresses the resolution — only the event is recorded.
+  IF v_rank IS NULL OR v_rank <= g.provider_status_rank THEN
+    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'sent', 0);
+    RETURN 'noop_rank';
+  END IF;
+
+  PERFORM notif_digest_advance_provider_status(p_group_id, p_status, p_now);
+  PERFORM notif_digest_commit_reservations(p_group_id, p_now);   -- capacity was consumed by a real dispatch
+
+  IF p_status IN ('sent','delivery_delayed','delivered','complained') THEN
+    -- positive: members override — anything that was part of the send flips to 'sent' (incl. a previous
+    -- bounce-fail or suppression-cancel now outranked); pre-send 'skipped' drops stay.
+    UPDATE public.notification_outbox
+       SET status = 'sent', skip_reason = NULL, payload = NULL, digest_item = NULL, updated_at = p_now
+     WHERE digest_group_id = p_group_id AND status IN ('pending','failed','delivery_unknown','cancelled','sent');
+    UPDATE public.notification_digest_groups
+       SET state = 'sent', terminal_reason = p_status, frozen_request = NULL,
+           locked_by = NULL, locked_at = NULL, current_attempt_id = NULL,
+           uncertain_since = NULL, uncertain_deadline_at = NULL, updated_at = p_now
+     WHERE id = p_group_id;
+    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'sent', 0);
+    RETURN 'sent';
+  ELSE
+    -- negative: proven non-delivery → failed_terminal; send members fail (cancelled for suppressed).
+    v_member_status := CASE WHEN p_status = 'suppressed' THEN 'cancelled' ELSE 'failed' END;
+    UPDATE public.notification_outbox
+       SET status = v_member_status, skip_reason = p_status, payload = NULL, digest_item = NULL, updated_at = p_now
+     WHERE digest_group_id = p_group_id AND status IN ('pending','sent','delivered','delivery_unknown','failed','cancelled');
+    UPDATE public.notification_digest_groups
+       SET state = 'failed_terminal', terminal_reason = p_status, frozen_request = NULL,
+           locked_by = NULL, locked_at = NULL, current_attempt_id = NULL,
+           uncertain_since = NULL, uncertain_deadline_at = NULL, updated_at = p_now
+     WHERE id = p_group_id;
+    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'terminal', 0);
+    RETURN 'failed_terminal';
+  END IF;
+END $$;
+
+-- apply a provider callback (orphan-then-link, at-least-once/unordered safe). A TAGGED early callback —
+-- arriving BEFORE the HTTP result is recorded — durably lands by setting the group's write-once
+-- provider_message_id from the tag correlation (the composite FK then accepts the event); a tag whose
+-- message id CONFLICTS with the group's is stored as an orphan ('mismatch'). The record_email_event/
+-- suppression side effects belong to the webhook adapter (10c-a3). Idempotent by resend_event_id.
 CREATE OR REPLACE FUNCTION public.apply_notification_provider_event(
     p_run_id uuid, p_resend_event_id text, p_provider_message_id text, p_digest_group_id uuid,
     p_status text, p_occurred_at timestamptz, p_now timestamptz)
   RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE g record; v_rank int; v_group_id uuid; v_inserted boolean := false; v_member_status text;
+DECLARE v_group_id uuid; v_pm text; v_inserted boolean := false; v_mismatch boolean := false;
 BEGIN
   -- correlate: explicit tag, else the group holding this provider_message_id.
   v_group_id := p_digest_group_id;
@@ -732,48 +958,63 @@ BEGIN
     SELECT id INTO v_group_id FROM public.notification_digest_groups WHERE provider_message_id = p_provider_message_id;
   END IF;
 
-  -- append the event (globally idempotent by resend_event_id; orphan if still uncorrelated).
+  IF v_group_id IS NOT NULL THEN
+    SELECT provider_message_id INTO v_pm FROM public.notification_digest_groups WHERE id = v_group_id FOR UPDATE;
+    IF NOT FOUND THEN
+      v_group_id := NULL;                                   -- tagged group purged → orphan
+    ELSIF v_pm IS NULL THEN
+      -- callback-before-record: bind the group's write-once provider_message_id from the tag correlation.
+      UPDATE public.notification_digest_groups SET provider_message_id = p_provider_message_id, updated_at = p_now
+       WHERE id = v_group_id;
+    ELSIF v_pm <> p_provider_message_id THEN
+      v_group_id := NULL; v_mismatch := true;               -- tag/message conflict → durable orphan + flag
+    END IF;
+  END IF;
+
+  -- append the event (globally idempotent by resend_event_id; orphan if uncorrelated/mismatched).
   INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, digest_group_id, status, occurred_at, received_at)
   VALUES (p_resend_event_id, p_provider_message_id, v_group_id, p_status, p_occurred_at, p_now)
   ON CONFLICT (resend_event_id) DO NOTHING;
   GET DIAGNOSTICS v_inserted = ROW_COUNT;
   IF NOT v_inserted THEN RETURN 'duplicate'; END IF;   -- webhook double-delivery → no double-apply
-  IF v_group_id IS NULL THEN RETURN 'orphan'; END IF;  -- no group yet; link later via link_notification_provider_event
+  IF v_mismatch THEN RETURN 'mismatch'; END IF;
+  IF v_group_id IS NULL THEN RETURN 'orphan'; END IF;  -- link later via link_notification_provider_event
 
-  SELECT * INTO g FROM public.notification_digest_groups WHERE id = v_group_id FOR UPDATE;
-  v_rank := notif_digest_provider_rank(p_status);
+  RETURN notif_digest_apply_provider_transition(p_run_id, v_group_id, p_status, p_now);
+END $$;
 
-  -- monotonic: a lower/equal-rank callback never regresses the resolution — only the event is recorded.
-  IF v_rank IS NULL OR v_rank <= g.provider_status_rank THEN
-    PERFORM notif_digest_ledger(p_run_id, v_group_id, NULL, 'sent', 0);
-    RETURN 'noop_rank';
+-- orphan → link → APPLY (forward replacement of the 10c-a1 link RPC): linking a stored orphan to its group
+-- now also applies the event's stored outcome exactly once (evidence is never stranded). Retry-idempotent:
+-- same event + same group = success no-op; different group rejected. Sets the group's write-once
+-- provider_message_id when still NULL so the composite FK accepts the link.
+CREATE OR REPLACE FUNCTION public.link_notification_provider_event(p_resend_event_id text, p_digest_group_id uuid)
+  RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_current uuid; v_pm text; v_status text; v_gpm text; v_n int;
+BEGIN
+  SELECT digest_group_id, provider_message_id, status INTO v_current, v_pm, v_status
+    FROM public.notification_provider_events WHERE resend_event_id = p_resend_event_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'provider event % not found', p_resend_event_id; END IF;
+  IF v_current IS NOT NULL THEN
+    IF v_current = p_digest_group_id THEN RETURN true; END IF;   -- idempotent retry
+    RAISE EXCEPTION 'provider event % already linked to a different group', p_resend_event_id;
   END IF;
-
-  PERFORM notif_digest_advance_provider_status(v_group_id, p_status, p_now);
-  PERFORM notif_digest_commit_reservations(v_group_id, p_now);   -- capacity was consumed by a real dispatch
-
-  IF p_status IN ('sent','delivery_delayed','delivered','complained') THEN
-    -- positive acceptance / proven delivery → dispatch resolves to sent (overrides delivery_unknown/awaiting_evidence).
-    IF g.state NOT IN ('sent') THEN
-      PERFORM notif_digest_finalize_group(v_group_id, 'sent', p_status, p_now);
-    END IF;
-    PERFORM notif_digest_ledger(p_run_id, v_group_id, NULL, 'sent', 0);
-    RETURN 'sent';
-  ELSE
-    -- bounced / failed / suppressed → proven non-delivery → failed_terminal (member failed, or cancelled for
-    -- suppressed). Non-delivery is stronger than a prior accept, so a 'sent' member is flipped too; only a
-    -- confirmed 'delivered' or an already-final failure/skip/cancel is left as-is.
-    v_member_status := CASE WHEN p_status = 'suppressed' THEN 'cancelled' ELSE 'failed' END;
-    UPDATE public.notification_outbox
-       SET status = v_member_status, skip_reason = coalesce(skip_reason, p_status), payload = NULL, digest_item = NULL, updated_at = p_now
-     WHERE digest_group_id = v_group_id AND status NOT IN ('delivered','failed','skipped','cancelled');
-    UPDATE public.notification_digest_groups
-       SET state = 'failed_terminal', terminal_reason = coalesce(terminal_reason, p_status),
-           frozen_request = NULL, locked_by = NULL, locked_at = NULL, uncertain_since = NULL, updated_at = p_now
-     WHERE id = v_group_id;
-    PERFORM notif_digest_ledger(p_run_id, v_group_id, NULL, 'terminal', 0);
-    RETURN 'failed_terminal';
+  SELECT provider_message_id INTO v_gpm FROM public.notification_digest_groups WHERE id = p_digest_group_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'link: group % not found', p_digest_group_id; END IF;
+  IF v_gpm IS NULL THEN
+    UPDATE public.notification_digest_groups SET provider_message_id = v_pm WHERE id = p_digest_group_id;
+  ELSIF v_gpm <> v_pm THEN
+    RAISE EXCEPTION 'link: event % message id does not match group %', p_resend_event_id, p_digest_group_id;
   END IF;
+  UPDATE public.notification_provider_events
+     SET digest_group_id = p_digest_group_id
+   WHERE resend_event_id = p_resend_event_id AND digest_group_id IS NULL;   -- conditional atomic link
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'provider event % link affected % rows (concurrent change)', p_resend_event_id, v_n;
+  END IF;
+  -- apply the stored outcome exactly once (the transition is rank-guarded, so a duplicate apply is a no-op).
+  PERFORM notif_digest_apply_provider_transition(NULL, p_digest_group_id, v_status, now());
+  RETURN true;
 END $$;
 
 -- ===========================================================================
@@ -801,6 +1042,40 @@ BEGIN
    WHERE channel = p_channel AND state = 'half_open'
      AND probe_locked_at IS NOT NULL AND probe_locked_at < p_now - make_interval(mins => p_probe_lease_minutes);
   RETURN v_n;
+END $$;
+
+-- ===========================================================================
+-- §12b. Forward replacement of the 10c-a1 outbox snapshot guard: split_notification_digest_group must move a
+-- member from a superseded parent to its child, but the deployed guard forbids EVERY re-point. Add ONE
+-- narrowly authorized transition — a re-point is allowed only when the NEW group is a CHILD of the member's
+-- current group (parent_group_id = OLD.digest_group_id), i.e. the §P3 split. Everything else (detach except
+-- retention, arbitrary re-point, nested hijack) stays rejected exactly as before.
+CREATE OR REPLACE FUNCTION public.notification_outbox_snapshot_guard() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF (OLD.delivery_mode           IS NOT NULL AND NEW.delivery_mode           IS DISTINCT FROM OLD.delivery_mode)
+   OR (OLD.recipient_key          IS NOT NULL AND NEW.recipient_key          IS DISTINCT FROM OLD.recipient_key)
+   OR (OLD.digest_frequency       IS NOT NULL AND NEW.digest_frequency       IS DISTINCT FROM OLD.digest_frequency)
+   OR (OLD.group_locale           IS NOT NULL AND NEW.group_locale           IS DISTINCT FROM OLD.group_locale)
+   OR (OLD.recipient_timezone     IS NOT NULL AND NEW.recipient_timezone     IS DISTINCT FROM OLD.recipient_timezone)
+   OR (OLD.digest_boundary_at     IS NOT NULL AND NEW.digest_boundary_at     IS DISTINCT FROM OLD.digest_boundary_at)
+   OR (OLD.template_version       IS NOT NULL AND NEW.template_version       IS DISTINCT FROM OLD.template_version)
+   OR (OLD.destination_fingerprint IS NOT NULL AND NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint) THEN
+    RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
+  END IF;
+  IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id THEN
+    IF NEW.digest_group_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM public.notification_digest_groups WHERE id = OLD.digest_group_id) THEN
+      NULL;   -- the group is gone → this is the retention FK SET NULL detach
+    ELSIF NEW.digest_group_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM public.notification_digest_groups c
+                    WHERE c.id = NEW.digest_group_id AND c.parent_group_id = OLD.digest_group_id) THEN
+      NULL;   -- §P3 split: the ONLY authorized re-point — parent → its own child
+    ELSE
+      RAISE EXCEPTION 'notification_outbox.digest_group_id may only detach via retention cascade or re-point to a split child';
+    END IF;
+  END IF;
+  RETURN NEW;
 END $$;
 
 -- ===========================================================================
