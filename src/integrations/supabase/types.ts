@@ -10453,6 +10453,14 @@ export type Database = {
         Args: { p_channel: string; p_phase: string; p_run_id: string }
         Returns: undefined
       }
+      notif_digest_bind_provider_message: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_provider_message_id: string
+        }
+        Returns: string
+      }
       notif_digest_bucket_apply: {
         Args: {
           p_attempt_id: string
@@ -10482,6 +10490,7 @@ export type Database = {
           p_event_type: string
           p_group_locale: string
           p_recipient_key: string
+          p_recipient_timezone: string
           p_template_key: string
           p_template_version: number
           p_tenant_academy: string
