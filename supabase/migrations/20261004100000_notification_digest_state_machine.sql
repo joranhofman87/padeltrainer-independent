@@ -117,6 +117,12 @@ BEGIN
       NEW.group_locale, NEW.digest_frequency, coalesce(NEW.recipient_timezone, 'Europe/Amsterdam'),
       NEW.digest_boundary_at)::text::bytea), 'hex');
   END IF;
+  -- server-derive the byte count from the STORED item on every digest write (never trust a caller count);
+  -- this fires before the snapshot guard, so a forged count on an unchanged item is silently corrected and a
+  -- scrubbed (NULL) item leaves the last derived count for audit + the 50-item/90 KB budget.
+  IF NEW.delivery_mode = 'digest' AND NEW.digest_item IS NOT NULL THEN
+    NEW.digest_item_bytes := octet_length(NEW.digest_item::text);
+  END IF;
   RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS trg_outbox_digest_hash_stamp ON public.notification_outbox;
@@ -725,6 +731,13 @@ BEGIN
   RETURN least(p_existing, p_first_send_at + interval '23 hours');
 END $$;
 
+-- Retry-After → a CLAMPED interval, or NULL when absent/invalid (caller applies the documented fallback).
+-- A negative value would set retry_at in the past (immediate retry); an unbounded one would pause for years.
+CREATE OR REPLACE FUNCTION public.notif_digest_retry_after_interval(p_secs int)
+  RETURNS interval LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE WHEN p_secs IS NULL OR p_secs < 0 OR p_secs > 604800 THEN NULL   -- 7-day ceiling
+              ELSE make_interval(secs => p_secs) END $$;
+
 -- every operational bound is a SERVER-ENFORCED maximum, validated NULL-safely (NULL/0/over-max all raise).
 CREATE OR REPLACE FUNCTION public.notif_digest_require_range(p_val int, p_min int, p_max int, p_label text)
   RETURNS void LANGUAGE plpgsql IMMUTABLE AS $$
@@ -964,7 +977,7 @@ BEGIN
     PERFORM notif_digest_trip_breaker(p_channel, 'invariant_breach', NULL, p_now);         -- manual hold + alert
   ELSIF p_error_name = 'daily_quota_exceeded' THEN
     PERFORM notif_digest_trip_breaker(p_channel, 'daily_quota',
-      p_now + coalesce(make_interval(secs => p_retry_after_seconds), interval '24 hours'), p_now);
+      p_now + coalesce(notif_digest_retry_after_interval(p_retry_after_seconds), interval '24 hours'), p_now);
   ELSIF p_http_status IN (401, 403) THEN
     PERFORM notif_digest_trip_breaker(p_channel, 'auth_config', p_now + interval '15 minutes', p_now);
   ELSE
@@ -1097,7 +1110,7 @@ BEGIN
     ELSE PERFORM notif_digest_commit_reservations(g.id, p_now); END IF;
     UPDATE public.notification_digest_groups
        SET state = 'request_ready', locked_by = NULL, locked_at = NULL, current_attempt_id = NULL,
-           available_at = greatest(coalesce(p_now + make_interval(secs => p_retry_after_seconds), v_backoff), v_backoff), updated_at = p_now
+           available_at = greatest(coalesce(p_now + notif_digest_retry_after_interval(p_retry_after_seconds), v_backoff), v_backoff), updated_at = p_now
      WHERE id = g.id;
     PERFORM notif_digest_ledger(p_run_id, g.id, p_attempt_id, 'retryable', 0);
 
@@ -1359,6 +1372,14 @@ BEGIN
     OR NEW.destination_normalized  IS DISTINCT FROM OLD.destination_normalized THEN
       RAISE EXCEPTION 'notification_outbox digest canonical identity fields are frozen';
     END IF;
+    -- digest content: the item is write-once (scrub to NULL only, at terminal member finalize); the byte
+    -- count is server-derived (above) and immutable.
+    IF OLD.digest_item IS NOT NULL AND NEW.digest_item IS NOT NULL AND NEW.digest_item IS DISTINCT FROM OLD.digest_item THEN
+      RAISE EXCEPTION 'notification_outbox.digest_item is write-once (scrub to NULL only)';
+    END IF;
+    IF OLD.digest_item_bytes IS NOT NULL AND NEW.digest_item_bytes IS DISTINCT FROM OLD.digest_item_bytes THEN
+      RAISE EXCEPTION 'notification_outbox.digest_item_bytes is server-derived and immutable';
+    END IF;
   ELSE
     -- non-digest rows: the digest snapshot fields stay write-once. EXCEPTION: on the null→digest PROMOTION
     -- itself, the hash-stamp trigger (fires first) REWRITES digest_group_hash server-side — that
@@ -1409,21 +1430,57 @@ END $$;
 CREATE OR REPLACE FUNCTION public.notification_digest_send_identity_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  -- first_send_at: schema-set once on the first sending transition, then immutable (the idempotency-key
-  -- dedup window is anchored here — moving it forward could replay outside the provider window).
-  IF OLD.first_send_at IS NOT NULL AND NEW.first_send_at IS DISTINCT FROM OLD.first_send_at THEN
-    RAISE EXCEPTION 'notification_digest_groups.first_send_at is immutable once set';
+  -- provider_idempotency_key / request_hash: settable ONLY during the documented prepared→request_ready
+  -- store transition; immutable thereafter. Constraining INITIALIZATION (not just mutation) blocks a forged
+  -- one-statement populate on a pending/leased group.
+  IF NEW.provider_idempotency_key IS DISTINCT FROM OLD.provider_idempotency_key THEN
+    IF OLD.provider_idempotency_key IS NOT NULL THEN
+      RAISE EXCEPTION 'notification_digest_groups.provider_idempotency_key is immutable once set';
+    END IF;
+    IF NOT (OLD.state = 'prepared' AND NEW.state = 'request_ready') THEN
+      RAISE EXCEPTION 'provider_idempotency_key may only be set during prepared→request_ready';
+    END IF;
+    -- the key is schema-owned: it is always dg:v1:<group id>, never a caller value.
+    IF NEW.provider_idempotency_key <> 'dg:v1:' || NEW.id::text THEN
+      RAISE EXCEPTION 'provider_idempotency_key must equal dg:v1:<group id>';
+    END IF;
   END IF;
-  -- provider_idempotency_key / request_hash: immutable once set — they pin the exact retry request.
-  IF OLD.provider_idempotency_key IS NOT NULL AND NEW.provider_idempotency_key IS DISTINCT FROM OLD.provider_idempotency_key THEN
-    RAISE EXCEPTION 'notification_digest_groups.provider_idempotency_key is immutable once set';
+  IF NEW.request_hash IS DISTINCT FROM OLD.request_hash THEN
+    IF OLD.request_hash IS NOT NULL THEN
+      RAISE EXCEPTION 'notification_digest_groups.request_hash is immutable once set';
+    END IF;
+    IF NOT (OLD.state = 'prepared' AND NEW.state = 'request_ready') THEN
+      RAISE EXCEPTION 'request_hash may only be set during prepared→request_ready';
+    END IF;
+    -- the hash is server-derived from the frozen request; a mismatch means a caller forged it.
+    IF NEW.frozen_request IS NULL OR NEW.request_hash <> encode(sha256(NEW.frozen_request::text::bytea), 'hex') THEN
+      RAISE EXCEPTION 'request_hash must equal sha256(frozen_request)';
+    END IF;
   END IF;
-  IF OLD.request_hash IS NOT NULL AND NEW.request_hash IS DISTINCT FROM OLD.request_hash THEN
-    RAISE EXCEPTION 'notification_digest_groups.request_hash is immutable once set';
+  -- frozen_request: NULL→value ONLY at store (prepared→request_ready); value→NULL ONLY at a terminal scrub;
+  -- never rewritten to a different body.
+  IF NEW.frozen_request IS DISTINCT FROM OLD.frozen_request THEN
+    IF OLD.frozen_request IS NULL THEN
+      IF NOT (OLD.state = 'prepared' AND NEW.state = 'request_ready') THEN
+        RAISE EXCEPTION 'frozen_request may only be set during prepared→request_ready';
+      END IF;
+    ELSIF NEW.frozen_request IS NULL THEN
+      IF NOT (NEW.state = ANY(notif_digest_terminal_states())) THEN
+        RAISE EXCEPTION 'frozen_request may only be scrubbed during a terminal transition';
+      END IF;
+    ELSE
+      RAISE EXCEPTION 'notification_digest_groups.frozen_request may not be rewritten';
+    END IF;
   END IF;
-  -- frozen_request: NULL→value at store, or value→NULL scrub at terminal; never rewritten to a DIFFERENT body.
-  IF OLD.frozen_request IS NOT NULL AND NEW.frozen_request IS NOT NULL AND NEW.frozen_request IS DISTINCT FROM OLD.frozen_request THEN
-    RAISE EXCEPTION 'notification_digest_groups.frozen_request may only be set once or scrubbed to NULL';
+  -- first_send_at: settable ONLY during request_ready→sending with a bound current attempt; then immutable
+  -- (the idempotency-key dedup window is anchored here — moving it could replay outside the provider window).
+  IF NEW.first_send_at IS DISTINCT FROM OLD.first_send_at THEN
+    IF OLD.first_send_at IS NOT NULL THEN
+      RAISE EXCEPTION 'notification_digest_groups.first_send_at is immutable once set';
+    END IF;
+    IF NOT (OLD.state = 'request_ready' AND NEW.state = 'sending' AND NEW.current_attempt_id IS NOT NULL) THEN
+      RAISE EXCEPTION 'first_send_at may only be set during request_ready→sending with a bound attempt';
+    END IF;
   END IF;
   -- uncertain_deadline_at: never beyond first_send_at + 23h, and never moves later once set.
   IF NEW.uncertain_deadline_at IS NOT NULL THEN
@@ -1450,20 +1507,35 @@ CREATE TRIGGER trg_digest_groups_send_identity BEFORE UPDATE ON public.notificat
 DO $acl$
 DECLARE r record;
 BEGIN
+  -- (a) OPERATIONAL ENTRYPOINTS ONLY — the exact public allowlist the worker + webhook call. Revoke from
+  -- PUBLIC/anon/authenticated, grant EXECUTE to service_role.
   FOR r IN
     SELECT p.oid::regprocedure::text AS sig
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'public'
-       AND (p.proname LIKE 'notif_digest_%' OR p.proname IN (
+     WHERE n.nspname = 'public' AND p.proname IN (
          'start_notification_worker_run','finish_notification_worker_run',
          'materialize_notification_digest_groups','claim_notification_digest_group',
          'prepare_notification_digest_group','split_notification_digest_group',
          'store_notification_digest_request','begin_notification_digest_attempt',
          'record_notification_digest_result','reconcile_notification_digest_run',
-         'reconcile_notification_digest_stale','apply_notification_provider_event'))
+         'reconcile_notification_digest_stale','apply_notification_provider_event',
+         'link_notification_provider_event')
   LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', r.sig);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', r.sig);
+  END LOOP;
+  -- (b) INTERNAL HELPERS + TRIGGER FUNCTIONS — revoke EXECUTE from EVERY API role incl. service_role. The
+  -- top-level SECURITY DEFINER RPCs invoke these as the OWNER (which retains its own privilege), so the
+  -- machine still works — but a forged direct call (e.g. `SET ROLE service_role; SELECT
+  -- notif_digest_trip_breaker(...)`) that would bypass run/ownership/attempt/ledger invariants is DENIED.
+  FOR r IN
+    SELECT p.oid::regprocedure::text AS sig
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND (p.proname LIKE 'notif_digest_%' OR p.proname IN (
+         'notification_outbox_snapshot_guard','notification_outbox_digest_hash_stamp',
+         'notification_digest_send_identity_guard'))
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated, service_role', r.sig);
   END LOOP;
 END $acl$;
 

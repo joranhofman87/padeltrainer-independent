@@ -99,7 +99,7 @@ async function fpOf(c: pg.Client, dest: string): Promise<string> {
   return (await c.query(`SELECT public.notif_digest_destination_fingerprint($1) f`, [dest])).rows[0].f;
 }
 async function seedMember(c: pg.Client, key: string, dest: string,
-  opts: { bytes?: number; boundary?: string; userId?: string | null; guestId?: string | null;
+  opts: { itemBytes?: number; boundary?: string; userId?: string | null; guestId?: string | null;
           personId?: string | null; contactId?: string | null; eventType?: string; tz?: string;
           tenantAcademy?: string | null; noIdentity?: boolean } = {}) {
   const fp = await fpOf(c, dest);
@@ -110,14 +110,19 @@ async function seedMember(c: pg.Client, key: string, dest: string,
     userId = (await c.query(`SELECT gen_random_uuid() u`)).rows[0].u;
     await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1,$2)`, [userId, dest]);
   }
+  // digest_item_bytes is SERVER-DERIVED (octet_length of the stored item) — never a caller count. To make a
+  // genuinely oversize member, pad the item's content; small items serialize to a handful of bytes.
+  const item = opts.itemBytes
+    ? `jsonb_build_object('pad', repeat('x', ${Math.max(1, opts.itemBytes - 14)}))`
+    : `'{}'::jsonb`;
   await c.query(`INSERT INTO public.notification_outbox
     (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized,
      recipient_user_id, recipient_person_id, recipient_guest_player_id, contact_id, tenant_academy_profile_id,
      event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
-     digest_boundary_at, digest_item, digest_item_bytes, status)
-    VALUES ('email','digest',$1,$2,$3,$4,$5,$6,$7,$8,$9,'tpl',1,'nl','daily',$10, ${opts.boundary ?? BD}, '{}'::jsonb, $11, 'pending')`,
+     digest_boundary_at, digest_item, status)
+    VALUES ('email','digest',$1,$2,$3,$4,$5,$6,$7,$8,$9,'tpl',1,'nl','daily',$10, ${opts.boundary ?? BD}, ${item}, 'pending')`,
     [key, fp, dest, userId, opts.personId ?? null, opts.guestId ?? null, opts.contactId ?? null,
-     opts.tenantAcademy ?? null, opts.eventType ?? 'ev', opts.tz ?? 'Europe/Amsterdam', opts.bytes ?? 100]);
+     opts.tenantAcademy ?? null, opts.eventType ?? 'ev', opts.tz ?? 'Europe/Amsterdam']);
   return fp;
 }
 async function frozenFor(c: pg.Client, run: string, g: string, worker: string, dest: string) {
@@ -172,7 +177,7 @@ describe('10c-a2 worker loop — materialize → claim → prepare → store →
   it('raw single-item oversize → oversize_failed group + failed member', async () => {
     const c = conn(); await c.connect();
     try {
-      await seedMember(c, 'p:big', 'big@example.com', { bytes: 200000 });
+      await seedMember(c, 'p:big', 'big@example.com', { itemBytes: 200000 });
       const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
       await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [run]);
       const g = (await c.query(`SELECT state, terminal_reason FROM public.notification_digest_groups WHERE recipient_key='p:big'`)).rows[0];
@@ -899,8 +904,8 @@ describe('10c-a2 round-4 — first-row breaker race, canonical identity, correla
       const r = (await c.query(`INSERT INTO public.notification_outbox
         (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized,
          event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
-         digest_boundary_at, digest_item, digest_item_bytes, status, digest_group_hash)
-        VALUES ('email','digest',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 100, 'pending', 'caller-controlled')
+         digest_boundary_at, digest_item, status, digest_group_hash)
+        VALUES ('email','digest',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 'pending', 'caller-controlled')
         RETURNING digest_group_hash`, [key, fp, dest])).rows[0].digest_group_hash;
       expect(r).not.toBe('caller-controlled');   // derived, never trusted
       expect(r).toMatch(/^[0-9a-f]{64}$/);
@@ -1112,8 +1117,8 @@ describe('10c-a2 round-5 — session-TZ caps, probe CAS, precise correlation, un
       const nullTz = (await c.query(`INSERT INTO public.notification_outbox
         (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, recipient_user_id,
          event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
-         digest_boundary_at, digest_item, digest_item_bytes, status)
-        VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'nl','daily',NULL, ${BD}, '{}'::jsonb, 100, 'pending')
+         digest_boundary_at, digest_item, status)
+        VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'nl','daily',NULL, ${BD}, '{}'::jsonb, 'pending')
         RETURNING digest_group_hash`, [keyB, fpB, destB, uid])).rows[0].digest_group_hash;
       expect(nullTz).toBe(explicit);
       // incomplete digest snapshot rejected
@@ -1139,8 +1144,8 @@ describe('10c-a2 round-6 — structural freeze, anchored idempotency window, spl
       const id = (await c.query(`INSERT INTO public.notification_outbox
         (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, recipient_user_id,
          event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
-         digest_boundary_at, digest_item, digest_item_bytes, status)
-        VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'nl','daily',NULL, ${BD}, '{}'::jsonb, 100, 'pending')
+         digest_boundary_at, digest_item, status)
+        VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'nl','daily',NULL, ${BD}, '{}'::jsonb, 'pending')
         RETURNING id`, [key, fp, dest, uid])).rows[0].id;
       // NULL→value on identity fields is now rejected (the hash was derived under the normalized NULL)
       await expect(c.query(`UPDATE public.notification_outbox SET recipient_timezone='Asia/Tokyo' WHERE id=$1`, [id])).rejects.toThrow(/frozen/i);
@@ -1303,7 +1308,7 @@ describe('10c-a2 round-7 — fixed-23h invariant, SELECT-only tables, negative-c
       const { g } = await toSending(c);
       await expect(c.query(`UPDATE public.notification_digest_groups SET provider_idempotency_key='dg:v1:hijack' WHERE id=$1`, [g])).rejects.toThrow(/provider_idempotency_key is immutable/i);
       await expect(c.query(`UPDATE public.notification_digest_groups SET request_hash='deadbeef' WHERE id=$1`, [g])).rejects.toThrow(/request_hash is immutable/i);
-      await expect(c.query(`UPDATE public.notification_digest_groups SET frozen_request=jsonb_build_object('to','evil@example.com','subject','x','html','x') WHERE id=$1`, [g])).rejects.toThrow(/frozen_request may only be set once/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET frozen_request=jsonb_build_object('to','evil@example.com','subject','x','html','x') WHERE id=$1`, [g])).rejects.toThrow(/frozen_request may not be rewritten/i);
     } finally { await c.end(); }
   });
 
@@ -1383,6 +1388,88 @@ describe('10c-a2 round-7 — fixed-23h invariant, SELECT-only tables, negative-c
   });
 });
 
+describe('10c-a2 round-8 — helper-ACL allowlist, server-derived+frozen digest content, init-constrained identity, Retry-After clamp', () => {
+  it('digest_item_bytes is server-derived (forged counts corrected); item + bytes are frozen (scrub-only)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // a 2-byte item ('{}') gets a derived count of 2 regardless of any caller intent
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const m = (await c.query(`SELECT id, digest_item_bytes FROM public.notification_outbox WHERE recipient_key=$1`, [key])).rows[0];
+      expect(m.digest_item_bytes).toBe('{}'.length);   // octet_length('{}') = 2
+      // forging the count on an unchanged item is silently corrected back by the derive trigger
+      await c.query(`UPDATE public.notification_outbox SET digest_item_bytes=1 WHERE id=$1`, [m.id]);
+      expect((await c.query(`SELECT digest_item_bytes FROM public.notification_outbox WHERE id=$1`, [m.id])).rows[0].digest_item_bytes).toBe(2);
+      // rewriting the item content is rejected (write-once)
+      await expect(c.query(`UPDATE public.notification_outbox SET digest_item=jsonb_build_object('forged',true) WHERE id=$1`, [m.id])).rejects.toThrow(/digest_item is write-once/i);
+      // a genuinely oversize item → materialize routes it to oversize_failed using the DERIVED count
+      seq += 1; const bigKey = `p:${seq}`;
+      await seedMember(c, bigKey, `u${seq}@example.com`, { itemBytes: 200000 });
+      const derived = (await c.query(`SELECT digest_item_bytes FROM public.notification_outbox WHERE recipient_key=$1`, [bigKey])).rows[0].digest_item_bytes;
+      expect(derived).toBeGreaterThan(92160);
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [run]);
+      expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE recipient_key=$1`, [bigKey])).rows[0].state).toBe('oversize_failed');
+    } finally { await c.end(); }
+  });
+
+  it('send-identity fields cannot be INITIALIZED during an illegal transition (forged populate on a pending group rejected)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // a pending group (materialized, not yet stored/sent) — a one-statement forge must be rejected
+      seq += 1; const key = `p:${seq}`; await seedMember(c, key, `u${seq}@example.com`);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      // forged first_send_at on a pending group (not request_ready→sending)
+      await expect(c.query(`UPDATE public.notification_digest_groups SET first_send_at=now() WHERE id=$1`, [g])).rejects.toThrow(/first_send_at may only be set during request_ready→sending/i);
+      // forged key / hash / frozen on a pending group (not prepared→request_ready)
+      await expect(c.query(`UPDATE public.notification_digest_groups SET provider_idempotency_key='dg:v1:'||id::text WHERE id=$1`, [g])).rejects.toThrow(/prepared→request_ready/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET request_hash='deadbeef' WHERE id=$1`, [g])).rejects.toThrow(/prepared→request_ready/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET frozen_request=jsonb_build_object('to','x','subject','x','html','x') WHERE id=$1`, [g])).rejects.toThrow(/prepared→request_ready/i);
+      // the legitimate store + begin transitions still succeed (positive path intact)
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, run]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [run, g]);
+      await c.query(`SELECT public.store_notification_digest_request($1,$2,'W', jsonb_build_object('to',$3::text,'subject','s','html','<p>x</p>'), ${NOW})`, [run, g, `u${seq}@example.com`]);
+      const s1 = await gstate(c, g);
+      expect(s1.provider_idempotency_key).toBe('dg:v1:' + g); expect(s1.request_hash).toMatch(/^[0-9a-f]{64}$/);
+      const att = (await c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${NOW}) AS a`, [run, g])).rows[0].a;
+      expect((await gstate(c, g)).first_send_at).not.toBeNull(); expect(att).toBeTruthy();
+    } finally { await c.end(); }
+  });
+
+  it('Retry-After is clamped: negative / huge / NULL fall back safely; a valid value is honored', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // negative daily-quota Retry-After must NOT set retry_at in the past
+      const a = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'daily_quota_exceeded',NULL, ${NOW}, -3600)`, [a.run, a.att]);
+      let cb = (await c.query(`SELECT reason, retry_at FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(cb.reason).toBe('daily_quota');
+      expect(new Date(cb.retry_at).getTime()).toBe(new Date('2026-07-02T10:00:00Z').getTime());  // NOW + 24h fallback
+      await c.query(`UPDATE public.notification_provider_circuit SET state='closed', reason=NULL, retry_at=NULL, probe_group_id=NULL, probe_attempt_id=NULL WHERE channel='email'`);
+      // huge Retry-After → fallback (never a multi-year hold)
+      const b = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'daily_quota_exceeded',NULL, ${NOW}, 999999999)`, [b.run, b.att]);
+      cb = (await c.query(`SELECT retry_at FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(new Date(cb.retry_at).getTime()).toBe(new Date('2026-07-02T10:00:00Z').getTime());   // clamped to 24h fallback
+      await c.query(`UPDATE public.notification_provider_circuit SET state='closed', reason=NULL, retry_at=NULL, probe_group_id=NULL, probe_attempt_id=NULL WHERE channel='email'`);
+      // a valid Retry-After (2h) is honored
+      const d = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'daily_quota_exceeded',NULL, ${NOW}, 7200)`, [d.run, d.att]);
+      cb = (await c.query(`SELECT retry_at FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(new Date(cb.retry_at).getTime()).toBe(new Date('2026-07-01T12:00:00Z').getTime());   // NOW + 2h
+      // a negative Retry-After on a plain retryable → available_at floored at the backoff (never in the past)
+      await c.query(`UPDATE public.notification_provider_circuit SET state='closed', reason=NULL, retry_at=NULL, probe_group_id=NULL, probe_attempt_id=NULL WHERE channel='email'`);
+      const e = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'rate_limit_exceeded',NULL, ${NOW}, -3600)`, [e.run, e.att]);
+      const es = await gstate(c, e.g);
+      expect(new Date(es.available_at).getTime()).toBeGreaterThan(new Date(NOW.slice(1, 26)).getTime());  // future, not past
+    } finally { await c.end(); }
+  });
+});
+
 describe('10c-a2 scale — 100k SAME-BOUNDARY rows, the member query itself, full bounded drain', () => {
   it('100k same-boundary rows: the member scan is an index scan (no Sort) and bounded calls drain everything', async () => {
     const c = conn(); await c.connect();
@@ -1392,9 +1479,9 @@ describe('10c-a2 scale — 100k SAME-BOUNDARY rows, the member query itself, ful
       await c.query(`INSERT INTO public.notification_outbox
         (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized,
          event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
-         digest_boundary_at, digest_item, digest_item_bytes, status)
+         digest_boundary_at, digest_item, status)
         SELECT 'email','digest','p:'||(gs/100), 'fp:'||(gs/100), 'scale'||(gs/100)||'@example.com',
-               'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 100, 'pending'
+               'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 'pending'
         FROM generate_series(0, 99999) gs`);
       // (a) the CANDIDATE query: LIMIT-1 Index Scan, no Sort, actual rows ≤ 1.
       const candPlan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
@@ -1443,21 +1530,51 @@ describe('10c-a2 scale — 100k SAME-BOUNDARY rows, the member query itself, ful
   });
 });
 
-describe('10c-a2 ACL — every RPC is service-role-only (Supabase default-privilege accounted)', () => {
-  it('anon + authenticated cannot EXECUTE any state-machine RPC; service_role can', async () => {
+describe('10c-a2 ACL — operational allowlist only; internal helpers are executable by NOBODY', () => {
+  const OPERATIONAL = ['start_notification_worker_run', 'finish_notification_worker_run',
+    'materialize_notification_digest_groups', 'claim_notification_digest_group', 'prepare_notification_digest_group',
+    'split_notification_digest_group', 'store_notification_digest_request', 'begin_notification_digest_attempt',
+    'record_notification_digest_result', 'reconcile_notification_digest_run', 'reconcile_notification_digest_stale',
+    'apply_notification_provider_event', 'link_notification_provider_event'];
+
+  it('the operational entrypoints are service_role-only; every notif_digest_% helper is EXECUTE-denied to all API roles', async () => {
     const c = conn(); await c.connect();
     try {
-      const fns = (await c.query(`SELECT p.oid::regprocedure::text AS sig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-        WHERE n.nspname='public' AND (p.proname LIKE 'notif_digest_%' OR p.proname IN
-          ('start_notification_worker_run','finish_notification_worker_run','materialize_notification_digest_groups',
-           'claim_notification_digest_group','prepare_notification_digest_group','split_notification_digest_group',
-           'store_notification_digest_request','begin_notification_digest_attempt','record_notification_digest_result',
-           'reconcile_notification_digest_run','reconcile_notification_digest_stale','apply_notification_provider_event'))`)).rows.map((r: { sig: string }) => r.sig);
-      expect(fns.length).toBeGreaterThanOrEqual(20);
-      for (const sig of fns) {
+      // operational RPCs: service_role EXECUTE, anon/authenticated denied.
+      const ops = (await c.query(`SELECT p.oid::regprocedure::text sig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='public' AND p.proname = ANY($1)`, [OPERATIONAL])).rows.map((r: { sig: string }) => r.sig);
+      expect(ops.length).toBe(OPERATIONAL.length);
+      for (const sig of ops) {
         const r = (await c.query(`SELECT has_function_privilege('anon',$1,'EXECUTE') a, has_function_privilege('authenticated',$1,'EXECUTE') b, has_function_privilege('service_role',$1,'EXECUTE') s`, [sig])).rows[0];
         expect(r.a, `anon ${sig}`).toBe(false); expect(r.b, `auth ${sig}`).toBe(false); expect(r.s, `svc ${sig}`).toBe(true);
       }
+      // internal notif_digest_% helpers: EXECUTE denied to EVERY API role incl. service_role.
+      const helpers = (await c.query(`SELECT p.oid::regprocedure::text sig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='public' AND p.proname LIKE 'notif_digest_%'`)).rows.map((r: { sig: string }) => r.sig);
+      expect(helpers.length).toBeGreaterThanOrEqual(15);
+      for (const sig of helpers) {
+        const r = (await c.query(`SELECT has_function_privilege('anon',$1,'EXECUTE') a, has_function_privilege('authenticated',$1,'EXECUTE') b, has_function_privilege('service_role',$1,'EXECUTE') s`, [sig])).rows[0];
+        expect(r.a, `anon ${sig}`).toBe(false); expect(r.b, `auth ${sig}`).toBe(false); expect(r.s, `svc ${sig}`).toBe(false);
+      }
     } finally { await c.end(); }
+  });
+
+  it('a forged direct helper call under SET ROLE service_role is DENIED (no state/ledger change); a top-level RPC still works', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g } = await toSending(c);
+      await c.query(`SET ROLE service_role`);
+      // internal mutators are not callable — no forged breaker trip / finalize / ledger row
+      await expect(c.query(`SELECT public.notif_digest_trip_breaker('email','forged', now(), now())`)).rejects.toThrow(/permission denied/i);
+      await expect(c.query(`SELECT public.notif_digest_finalize_group($1,'sent','forged', now())`, [g])).rejects.toThrow(/permission denied/i);
+      await expect(c.query(`SELECT public.notif_digest_ledger(gen_random_uuid(),$1,NULL,'sent',0)`, [g])).rejects.toThrow(/permission denied/i);
+      // a legitimate top-level RPC still succeeds as service_role (SECURITY DEFINER runs as owner)
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      expect(run).toBeTruthy();
+      await c.query(`RESET ROLE`);
+      // nothing forged: no breaker row, no extra ledger action from the denied calls
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_provider_circuit WHERE reason='forged'`)).rows[0].n).toBe(0);
+      expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0].state).toBe('sending');
+    } finally { await c.query(`RESET ROLE`).catch(() => {}); await c.end(); }
   });
 });

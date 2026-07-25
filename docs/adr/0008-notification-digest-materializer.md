@@ -521,3 +521,26 @@ These clarify — never change — the accepted design:
   `notif_digest_require_range` (NULL / below-min / above-max all raise): split items 1..50, materialize
   groups 1..1000 + members 1..10000, claim stale-minutes 1..1440, begin hour-cap 1..1e6 + day-cap 1..1e7,
   sweep probe-lease 1..1440 + limit 1..10000. "Bounded" means a hard server ceiling, not a caller LIMIT.
+
+### Round-8 refinements (same clarifying scope)
+
+- **RPC allowlist:** EXECUTE is granted to `service_role` ONLY on the operational entrypoints
+  (start/finish_worker_run, materialize, claim, prepare, split, store, begin, record,
+  reconcile_run/reconcile_stale, apply_provider_event, link_provider_event). Every `notif_digest_%` helper
+  and the trigger functions are EXECUTE-revoked from PUBLIC/anon/authenticated/**service_role** — the
+  top-level SECURITY DEFINER RPCs invoke them as the owner, so a forged direct call (e.g. `SET ROLE
+  service_role; SELECT notif_digest_trip_breaker(...)`) that would bypass run/ownership/attempt/ledger
+  invariants is denied.
+- **Digest content is server-owned:** `digest_item_bytes` is derived in the DB (`octet_length(digest_item::
+  text)`) on every digest insert/promotion — a caller count is silently corrected. `digest_item` is
+  write-once (scrub to NULL only, at terminal member finalize) and the count is immutable once derived, so
+  the 50-item/90 KB budget can't be gamed and content can't change after grouping.
+- **Send-identity INITIALIZATION is transition-scoped, not just mutation:** `provider_idempotency_key`
+  (= `dg:v1:<id>`) / `request_hash` (= sha256(frozen_request)) / `frozen_request` may go NULL→value ONLY
+  during `prepared→request_ready`; `first_send_at` NULL→value ONLY during `request_ready→sending` with a
+  bound `current_attempt_id`; `frozen_request` value→NULL ONLY during a terminal transition. A one-statement
+  forged populate on a pending/leased group is rejected.
+- **Retry-After is clamped:** `notif_digest_retry_after_interval(secs)` returns the interval only for
+  0..604800 (7 days), else NULL → the caller's documented fallback (24 h for daily quota; the exponential
+  backoff floor for a plain retryable). A negative value can never set `retry_at` in the past, and an
+  extreme value can never pause delivery for years.
