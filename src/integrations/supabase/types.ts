@@ -9291,7 +9291,6 @@ export type Database = {
           p_hour_cap?: number
           p_now: string
           p_run_id: string
-          p_uncertainty_hours?: number
           p_worker: string
         }
         Returns: string
@@ -10559,6 +10558,10 @@ export type Database = {
         Args: { p_group_id: string; p_now: string }
         Returns: undefined
       }
+      notif_digest_require_range: {
+        Args: { p_label: string; p_max: number; p_min: number; p_val: number }
+        Returns: undefined
+      }
       notif_digest_terminal_states: { Args: never; Returns: string[] }
       notif_digest_trip_breaker: {
         Args: {
@@ -10578,6 +10581,10 @@ export type Database = {
           p_retry_after_seconds: number
         }
         Returns: undefined
+      }
+      notif_digest_uncertainty_deadline: {
+        Args: { p_existing: string; p_first_send_at: string }
+        Returns: string
       }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
@@ -10728,7 +10735,6 @@ export type Database = {
           p_retry_after_seconds?: number
           p_run_id: string
           p_transport: string
-          p_uncertainty_hours?: number
         }
         Returns: string
       }
