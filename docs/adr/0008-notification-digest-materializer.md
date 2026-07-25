@@ -422,3 +422,31 @@ These clarify — never change — the accepted design:
   ledger row (the provider_events row is the audit). Every state-changing RPC asserts its worker run
   (exists, unfinished, right phase + channel); `reconcile` is causal — the LAST ledger action per group per
   run, `superseded` reported as a separate lineage metric.
+
+### Round-4 refinements (same clarifying scope)
+
+- **Breaker linearization point:** send authorization linearizes on the ACQUIRED ROW LOCK of the (always
+  ensured) `notification_provider_circuit` row — `begin` first `INSERT … ON CONFLICT DO NOTHING` a `closed`
+  row, THEN `SELECT … FOR UPDATE` (a `FOR UPDATE` on a missing row locks nothing, so the first-ever trip
+  could otherwise race the attempt insert). Every trip/re-arm serializes through that row.
+- **Canonical key = v2, session-independent:** `['v2', channel, recipient_key, destination_fingerprint,
+  tenant_academy, tenant_trainer, event_type, template_key, template_version, group_locale,
+  digest_frequency, recipient_timezone, epoch_seconds(digest_boundary_at)]`. `recipient_timezone` IS
+  identity; the boundary (and counter-key buckets) are epoch-normalized — `timestamptz::text`/jsonb
+  serialization depends on the session `TimeZone` and would mint divergent keys. `digest_group_hash` is
+  ALWAYS server-derived (caller values overwritten); every canonical input is frozen on digest rows.
+- **§PS is resolver-faithful:** the live check RE-RUNS the resolver's email lookup verbatim (ownership by
+  person/user/guest + revocation + opt-out + tenant consent scope + global-only-for-account-holders), then
+  requires the live destination to fingerprint to the frozen `destination_fingerprint`. `outbox.contact_id`
+  is never trusted (its FK is `ON DELETE SET NULL`); frozen data is never a live-deliverability substitute —
+  a guest with no live in-scope owned contact stops.
+- **One correlation predicate:** `notif_digest_bind_provider_message` gates BOTH the direct callback path
+  and orphan linking — a provider message correlates only to a group already bound to that exact id, or an
+  unbound group with a LIVE send (`provider_attempts_started > 0`). Never-sent groups reject through every
+  path.
+- **Run linkage is exact:** group-scoped RPCs require `group.worker_run_id = p_run_id` (+ `locked_by`), and
+  `record` requires `attempt.worker_run_id = p_run_id` — the worker that made the HTTP call is the only one
+  holding its outcome; crash recovery begins a NEW attempt, never records an old one. `assert_run` holds the
+  run row `FOR UPDATE`, so a transition in flight blocks a concurrent `finish` (and vice versa).
+- **Frozen request allow-list:** exactly `to/subject/html` — any other key (bcc/cc/headers/attachments/
+  unknown) is rejected at `store`, since the worker dispatches the stored request verbatim.

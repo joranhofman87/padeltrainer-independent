@@ -85,11 +85,15 @@ CREATE OR REPLACE FUNCTION public.notif_digest_action_for_class(p_class text) RE
 CREATE OR REPLACE FUNCTION public.notif_digest_canonical_key(
     p_channel text, p_recipient_key text, p_destination_fingerprint text, p_tenant_academy uuid,
     p_tenant_trainer uuid, p_event_type text, p_template_key text, p_template_version int,
-    p_group_locale text, p_digest_frequency text, p_digest_boundary_at timestamptz)
-  RETURNS jsonb LANGUAGE sql STABLE AS $$
-  SELECT jsonb_build_array('v1', p_channel, p_recipient_key, p_destination_fingerprint,
+    p_group_locale text, p_digest_frequency text, p_recipient_timezone text, p_digest_boundary_at timestamptz)
+  RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  -- v2: recipient_timezone IS identity (Amsterdam and Tokyo recipients must never collapse into one
+  -- group), and the boundary is EPOCH SECONDS — a raw timestamptz in jsonb serializes via the SESSION
+  -- timezone, so two sessions under different SET TIME ZONE would mint different keys for one instant.
+  SELECT jsonb_build_array('v2', p_channel, p_recipient_key, p_destination_fingerprint,
     p_tenant_academy, p_tenant_trainer, p_event_type, p_template_key, p_template_version,
-    p_group_locale, p_digest_frequency, p_digest_boundary_at) $$;
+    p_group_locale, p_digest_frequency, p_recipient_timezone,
+    extract(epoch from p_digest_boundary_at)::bigint) $$;
 
 ALTER TABLE public.notification_outbox ADD COLUMN IF NOT EXISTS digest_group_hash text;
 
@@ -98,11 +102,12 @@ ALTER TABLE public.notification_outbox ADD COLUMN IF NOT EXISTS digest_group_has
 CREATE OR REPLACE FUNCTION public.notification_outbox_digest_hash_stamp() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  IF NEW.delivery_mode = 'digest' AND NEW.digest_group_hash IS NULL THEN
+  IF NEW.delivery_mode = 'digest' AND (TG_OP = 'INSERT' OR NEW.digest_group_hash IS NULL) THEN
+    -- ALWAYS server-derived on INSERT: a caller-supplied hash is overwritten, never trusted.
     NEW.digest_group_hash := encode(sha256(notif_digest_canonical_key(
       NEW.channel, NEW.recipient_key, NEW.destination_fingerprint, NEW.tenant_academy_profile_id,
       NEW.tenant_trainer_id, NEW.event_type, NEW.template_key, NEW.template_version,
-      NEW.group_locale, NEW.digest_frequency, NEW.digest_boundary_at)::text::bytea), 'hex');
+      NEW.group_locale, NEW.digest_frequency, NEW.recipient_timezone, NEW.digest_boundary_at)::text::bytea), 'hex');
   END IF;
   RETURN NEW;
 END $$;
@@ -115,7 +120,7 @@ UPDATE public.notification_outbox o
    SET digest_group_hash = encode(sha256(notif_digest_canonical_key(
      o.channel, o.recipient_key, o.destination_fingerprint, o.tenant_academy_profile_id,
      o.tenant_trainer_id, o.event_type, o.template_key, o.template_version,
-     o.group_locale, o.digest_frequency, o.digest_boundary_at)::text::bytea), 'hex')
+     o.group_locale, o.digest_frequency, o.recipient_timezone, o.digest_boundary_at)::text::bytea), 'hex')
  WHERE o.delivery_mode = 'digest' AND o.digest_group_hash IS NULL;
 
 -- the member-scan index: equality on the hash + the deterministic member order → pure index scan, no sort.
@@ -155,7 +160,9 @@ CREATE OR REPLACE FUNCTION public.notif_digest_assert_run(p_run_id uuid, p_phase
 DECLARE r record;
 BEGIN
   IF p_run_id IS NULL THEN RAISE EXCEPTION 'worker run id is required'; END IF;
-  SELECT * INTO r FROM public.notification_worker_runs WHERE run_id = p_run_id;
+  -- FOR UPDATE: the run row is held for the transition's whole transaction, so a concurrent
+  -- finish_notification_worker_run serializes AFTER it (and a finished run can never own an in-flight one).
+  SELECT * INTO r FROM public.notification_worker_runs WHERE run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'worker run % not found', p_run_id; END IF;
   IF r.ended_at IS NOT NULL THEN RAISE EXCEPTION 'worker run % is already finished', p_run_id; END IF;
   IF p_phase IS NOT NULL AND r.phase <> p_phase THEN
@@ -170,7 +177,10 @@ END $$;
 CREATE OR REPLACE FUNCTION public.notif_digest_counter_key(
     p_channel text, p_event_type text, p_fingerprint text, p_bucket_kind text, p_bucket_start timestamptz)
   RETURNS text LANGUAGE sql IMMUTABLE AS $$
-  SELECT p_channel||':'||p_event_type||':'||p_fingerprint||':'||p_bucket_kind||':'||p_bucket_start::text $$;
+  -- epoch seconds: timestamptz::text depends on the SESSION timezone — two workers under different
+  -- SET TIME ZONE would mint different keys for the same bucket and split the cap.
+  SELECT p_channel||':'||p_event_type||':'||p_fingerprint||':'||p_bucket_kind||':'
+         ||extract(epoch from p_bucket_start)::bigint::text $$;
 
 -- Reservations carry the ORIGINATING attempt (composite FK → attempts), so the attempt must exist before the
 -- reservation row. And cap-exhaustion must DEFER the group without a dangling attempt. So begin_digest_attempt
@@ -302,7 +312,7 @@ BEGIN
 
     v_ckey := notif_digest_canonical_key(p_channel, cand.recipient_key, cand.destination_fingerprint,
       cand.tenant_academy_profile_id, cand.tenant_trainer_id, cand.event_type, cand.template_key,
-      cand.template_version, cand.group_locale, cand.digest_frequency, cand.digest_boundary_at);
+      cand.template_version, cand.group_locale, cand.digest_frequency, cand.tz, cand.digest_boundary_at);
     v_hash := coalesce(cand.digest_group_hash, encode(sha256(v_ckey::text::bytea), 'hex'));
     -- (2) NONBLOCKING per-key serialization: a busy key means another materializer owns it right now —
     -- skip it (its members complete there or on the next call). Blocking acquisition of MULTIPLE keys per
@@ -333,6 +343,7 @@ BEGIN
          AND o.digest_frequency IS NOT DISTINCT FROM cand.digest_frequency
          AND o.tenant_academy_profile_id IS NOT DISTINCT FROM cand.tenant_academy_profile_id
          AND o.tenant_trainer_id IS NOT DISTINCT FROM cand.tenant_trainer_id
+         AND coalesce(o.recipient_timezone,'Europe/Amsterdam') = cand.tz
        ORDER BY o.created_at, o.id
        LIMIT greatest(p_max_members_per_call - v_members, 1)
        FOR UPDATE SKIP LOCKED
@@ -537,31 +548,43 @@ END $$;
 -- Returns the stop reason, or NULL if the member may still be sent.
 CREATE OR REPLACE FUNCTION public.notif_digest_member_stop_reason(p_member_id uuid) RETURNS text
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE o record; v_required boolean; v_dest text; v_found boolean := false;
+DECLARE o record; v_required boolean; v_dest text;
 BEGIN
-  SELECT o2.destination_normalized, o2.destination_fingerprint, o2.contact_id, o2.recipient_user_id, o2.event_type
+  SELECT o2.destination_fingerprint, o2.recipient_person_id, o2.recipient_user_id, o2.recipient_guest_player_id,
+         o2.tenant_academy_profile_id, o2.tenant_trainer_id, o2.event_type
     INTO o FROM public.notification_outbox o2 WHERE o2.id = p_member_id;
   IF NOT FOUND THEN RETURN 'missing_member'; END IF;
   SELECT coalesce(et.required_delivery, false) INTO v_required
     FROM public.notification_event_types et WHERE et.key = o.event_type;
   v_required := coalesce(v_required, false);
 
-  -- resolve the CURRENT destination (resolver semantics: contact first, else account email, else snapshot).
-  IF o.contact_id IS NOT NULL THEN
-    SELECT c.destination_normalized INTO v_dest
-      FROM public.notification_contacts c
-     WHERE c.id = o.contact_id AND c.channel = 'email'
-       AND c.revoked_at IS NULL AND c.consent_status <> 'opted_out';
-    v_found := FOUND;
-    IF NOT v_found THEN RETURN 'contact_revoked'; END IF;   -- contact deleted/revoked/opted out since enqueue
-  ELSIF o.recipient_user_id IS NOT NULL THEN
-    SELECT p.email INTO v_dest FROM public.persons p WHERE p.user_id = o.recipient_user_id;
-  ELSE
-    v_dest := o.destination_normalized;                      -- no live source → the frozen snapshot
+  -- RE-RUN the resolver's LIVE email lookup verbatim (never trust outbox.contact_id — its FK is ON DELETE
+  -- SET NULL, so a deleted contact leaves NULL and any frozen fallback would fail OPEN): ownership
+  -- (person/user/guest), revocation, opt-out, tenant consent scope, and global-only-for-account-holders.
+  SELECT c.destination_normalized INTO v_dest
+    FROM public.notification_contacts c
+   WHERE c.channel = 'email' AND c.revoked_at IS NULL AND c.consent_status <> 'opted_out'
+     AND (c.consent_scope <> 'global' OR o.recipient_user_id IS NOT NULL)
+     AND public.is_notification_consent_in_scope(
+           c.consent_scope, c.consent_academy_profile_id, c.consent_trainer_id,
+           o.tenant_academy_profile_id, o.tenant_trainer_id)
+     AND ( (o.recipient_person_id IS NOT NULL AND c.person_id = o.recipient_person_id)
+        OR (o.recipient_user_id   IS NOT NULL AND c.user_id   = o.recipient_user_id)
+        OR (o.recipient_guest_player_id IS NOT NULL AND c.guest_player_id = o.recipient_guest_player_id) )
+   ORDER BY c.is_primary DESC, c.verified_at DESC NULLS LAST
+   LIMIT 1;
+  IF NOT FOUND THEN
+    IF o.recipient_user_id IS NOT NULL THEN
+      -- global fallback ONLY for account holders (their own login email) — resolver semantics.
+      SELECT p.email INTO v_dest FROM public.persons p WHERE p.user_id = o.recipient_user_id;
+      IF v_dest IS NULL OR length(btrim(v_dest)) = 0 THEN RETURN 'no_destination'; END IF;
+    ELSE
+      RETURN 'contact_revoked';   -- guest/person-only: no live in-scope owned contact → STOP. Frozen data
+    END IF;                       -- is NEVER a live-deliverability substitute.
   END IF;
-
   IF v_dest IS NULL OR length(btrim(v_dest)) = 0 THEN RETURN 'no_destination'; END IF;
-  -- the CURRENT destination must still fingerprint to the member's frozen destination_fingerprint —
+
+  -- the LIVE destination must still fingerprint to the member's frozen destination_fingerprint —
   -- a changed contact/account email means this frozen digest would go to the WRONG (old) address.
   IF o.destination_fingerprint IS NOT NULL
      AND notif_digest_destination_fingerprint(v_dest) <> o.destination_fingerprint THEN
@@ -587,9 +610,9 @@ BEGIN
   SELECT channel INTO v_channel FROM public.notification_digest_groups WHERE id = p_group_id;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', v_channel);
   UPDATE public.notification_digest_groups SET updated_at = p_now
-   WHERE id = p_group_id AND state = 'leased' AND locked_by = p_worker;
+   WHERE id = p_group_id AND state = 'leased' AND locked_by = p_worker AND worker_run_id = p_run_id;
   GET DIAGNOSTICS v_n = ROW_COUNT;
-  IF v_n <> 1 THEN RAISE EXCEPTION 'prepare: group % not owned/leased by %', p_group_id, p_worker; END IF;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'prepare: group % not owned/leased by % (run %)', p_group_id, p_worker, p_run_id; END IF;
 
   -- §PS: drop members that fail the LIVE checks (opt-out / lost contact / suppression since enqueue).
   FOR m IN SELECT id FROM public.notification_outbox WHERE digest_group_id = p_group_id AND status = 'pending' LOOP
@@ -623,7 +646,7 @@ CREATE OR REPLACE FUNCTION public.split_notification_digest_group(
 DECLARE g record; m record; v_child uuid; v_in_child int := 0; v_children int := 0; v_next_chunk int; v_n int;
 BEGIN
   SELECT * INTO g FROM public.notification_digest_groups
-   WHERE id = p_group_id AND state IN ('pending','prepared') AND locked_by = p_worker FOR UPDATE;
+   WHERE id = p_group_id AND state IN ('pending','prepared') AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'split: group % not owned/splittable', p_group_id; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
   v_next_chunk := coalesce((SELECT max(chunk_ordinal) FROM public.notification_digest_groups
@@ -672,7 +695,7 @@ CREATE OR REPLACE FUNCTION public.store_notification_digest_request(
 DECLARE g record; v_n int; v_to text;
 BEGIN
   SELECT * INTO g FROM public.notification_digest_groups
-   WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker FOR UPDATE;
+   WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'store: group % not owned/prepared by %', p_group_id, p_worker; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
 
@@ -682,6 +705,12 @@ BEGIN
      OR jsonb_typeof(p_frozen_request->'subject') <> 'string' OR length(p_frozen_request->>'subject') = 0
      OR jsonb_typeof(p_frozen_request->'html') <> 'string' OR length(p_frozen_request->>'html') = 0 THEN
     RAISE EXCEPTION 'store: malformed frozen request for group % (need object with to/subject/html)', p_group_id;
+  END IF;
+  -- STRICT allow-list: the worker dispatches this stored request verbatim, so any extra provider field
+  -- (bcc/cc/headers/attachments/unknown) frozen here would be SENT. Nothing outside to/subject/html.
+  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_frozen_request) AS k(key)
+              WHERE k.key NOT IN ('to','subject','html')) THEN
+    RAISE EXCEPTION 'store: frozen request for group % carries a key outside the to/subject/html allow-list', p_group_id;
   END IF;
   -- byte ceiling (~90 KB): the render-time oversize check belongs to the worker (§CH), but a frozen request
   -- over budget must never be stored.
@@ -700,7 +729,7 @@ BEGIN
          request_hash = encode(sha256(p_frozen_request::text::bytea), 'hex'),   -- server-side, never trusted
          provider_idempotency_key = 'dg:v1:' || p_group_id::text,
          state = 'request_ready', available_at = p_now, updated_at = p_now
-   WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker;
+   WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker AND worker_run_id = p_run_id;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   IF v_n <> 1 THEN RAISE EXCEPTION 'store: group % concurrent change', p_group_id; END IF;
   PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'request_ready', 0);
@@ -720,7 +749,7 @@ DECLARE
   v_breaker record;
 BEGIN
   SELECT * INTO g FROM public.notification_digest_groups
-   WHERE id = p_group_id AND state = 'request_ready' AND locked_by = p_worker FOR UPDATE;
+   WHERE id = p_group_id AND state = 'request_ready' AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'begin: group % not owned/request_ready by %', p_group_id, p_worker; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
 
@@ -759,9 +788,12 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  -- breaker gate: LOCK the circuit row (FOR UPDATE) so a concurrent re-arm/trip cannot slip between this
-  -- check and the attempt insert — the state read here is authoritative for the whole transaction. Open
-  -- (any) or half_open blocks every group except the bound probe. Every no-send deferral CLEARS ownership.
+  -- breaker gate: ENSURE the circuit row exists, then LOCK it — SELECT FOR UPDATE on a MISSING row locks
+  -- nothing, so a first-ever trip could otherwise slip in between the read and the attempt insert. With the
+  -- row always present, this acquired row lock is the LINEARIZATION POINT of send authorization: every
+  -- trip/re-arm serializes through it, and the state read here is authoritative for the whole transaction.
+  INSERT INTO public.notification_provider_circuit (channel, state) VALUES (g.channel, 'closed')
+  ON CONFLICT (channel) DO NOTHING;
   SELECT * INTO v_breaker FROM public.notification_provider_circuit WHERE channel = g.channel FOR UPDATE;
   IF FOUND AND v_breaker.state IN ('open','half_open') AND v_breaker.probe_group_id IS DISTINCT FROM p_group_id THEN
     UPDATE public.notification_digest_groups
@@ -909,6 +941,12 @@ BEGIN
   SELECT * INTO a FROM public.notification_digest_attempts WHERE attempt_id = p_attempt_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'record: attempt % not found', p_attempt_id; END IF;
   IF a.recorded_at IS NOT NULL THEN RETURN a.outcome_class; END IF;   -- idempotent replay
+  -- exact run linkage: only the attempt's CREATING run may record it — the worker that made the HTTP call
+  -- is the only process holding its outcome. (Crash recovery never records an old attempt; it begins a new
+  -- one. A cross-run record would let reconciliation attribute the outcome to the wrong run.)
+  IF a.worker_run_id IS DISTINCT FROM p_run_id THEN
+    RAISE EXCEPTION 'record: run % does not own attempt % (created by run %)', p_run_id, p_attempt_id, a.worker_run_id;
+  END IF;
 
   SELECT * INTO g FROM public.notification_digest_groups WHERE id = a.digest_group_id FOR UPDATE;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
@@ -1081,6 +1119,27 @@ BEGIN
   END IF;
 END $$;
 
+-- the ONE correlation predicate + binder (used by BOTH the direct callback path AND orphan linking):
+-- a provider message may correlate to a group ONLY when the group already carries that exact message id,
+-- or is unbound but has a LIVE send (provider_attempts_started > 0). A never-sent (blank) group can never
+-- accept an arbitrary provider message — through either path. Locks the group row.
+CREATE OR REPLACE FUNCTION public.notif_digest_bind_provider_message(p_group_id uuid, p_provider_message_id text, p_now timestamptz)
+  RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_pm text; v_attempts int;
+BEGIN
+  SELECT provider_message_id, provider_attempts_started INTO v_pm, v_attempts
+    FROM public.notification_digest_groups WHERE id = p_group_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN 'missing'; END IF;
+  IF v_pm IS NOT NULL THEN
+    IF v_pm = p_provider_message_id THEN RETURN 'ok'; END IF;
+    RETURN 'mismatch';
+  END IF;
+  IF coalesce(v_attempts, 0) = 0 THEN RETURN 'no_live_send'; END IF;
+  UPDATE public.notification_digest_groups SET provider_message_id = p_provider_message_id, updated_at = p_now
+   WHERE id = p_group_id;
+  RETURN 'ok';
+END $$;
+
 -- apply a provider callback (orphan-then-link, at-least-once/unordered safe). A TAGGED early callback —
 -- arriving BEFORE the HTTP result is recorded — durably lands by setting the group's write-once
 -- provider_message_id from the tag correlation (the composite FK then accepts the event); a tag whose
@@ -1100,23 +1159,11 @@ BEGIN
   END IF;
 
   IF v_group_id IS NOT NULL THEN
-    SELECT provider_message_id, provider_attempts_started INTO v_pm, v_attempts
-      FROM public.notification_digest_groups WHERE id = v_group_id FOR UPDATE;
-    IF NOT FOUND THEN
-      v_group_id := NULL;                                   -- tagged group purged → orphan
-    ELSIF v_pm IS NULL THEN
-      -- callback-before-record may bind the write-once provider_message_id ONLY when the group has a LIVE
-      -- send (an attempt was actually started) — a tag on a never-sent group can never correlate a message
-      -- and would permanently mis-bind it. Such an event is kept as an orphan for operator review.
-      IF coalesce(v_attempts, 0) > 0 THEN
-        UPDATE public.notification_digest_groups SET provider_message_id = p_provider_message_id, updated_at = p_now
-         WHERE id = v_group_id;
-      ELSE
-        v_group_id := NULL;                                 -- no live attempt → orphan (no binding)
-      END IF;
-    ELSIF v_pm <> p_provider_message_id THEN
-      v_group_id := NULL; v_mismatch := true;               -- tag/message conflict → durable orphan + flag
-    END IF;
+    CASE notif_digest_bind_provider_message(v_group_id, p_provider_message_id, p_now)
+      WHEN 'ok' THEN NULL;
+      WHEN 'mismatch' THEN v_group_id := NULL; v_mismatch := true;   -- conflict → durable orphan + flag
+      ELSE v_group_id := NULL;              -- purged group / never-sent group → orphan (no binding)
+    END CASE;
   END IF;
 
   -- append the event (globally idempotent by resend_event_id; orphan if uncorrelated/mismatched).
@@ -1146,13 +1193,12 @@ BEGIN
     IF v_current = p_digest_group_id THEN RETURN true; END IF;   -- idempotent retry
     RAISE EXCEPTION 'provider event % already linked to a different group', p_resend_event_id;
   END IF;
-  SELECT provider_message_id INTO v_gpm FROM public.notification_digest_groups WHERE id = p_digest_group_id FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'link: group % not found', p_digest_group_id; END IF;
-  IF v_gpm IS NULL THEN
-    UPDATE public.notification_digest_groups SET provider_message_id = v_pm WHERE id = p_digest_group_id;
-  ELSIF v_gpm <> v_pm THEN
-    RAISE EXCEPTION 'link: event % message id does not match group %', p_resend_event_id, p_digest_group_id;
-  END IF;
+  CASE notif_digest_bind_provider_message(p_digest_group_id, v_pm, now())
+    WHEN 'ok' THEN NULL;
+    WHEN 'missing' THEN RAISE EXCEPTION 'link: group % not found', p_digest_group_id;
+    WHEN 'mismatch' THEN RAISE EXCEPTION 'link: event % message id does not match group %', p_resend_event_id, p_digest_group_id;
+    WHEN 'no_live_send' THEN RAISE EXCEPTION 'link: group % has no live send to correlate (never-sent groups cannot accept provider messages)', p_digest_group_id;
+  END CASE;
   UPDATE public.notification_provider_events
      SET digest_group_id = p_digest_group_id
    WHERE resend_event_id = p_resend_event_id AND digest_group_id IS NULL;   -- conditional atomic link
@@ -1212,6 +1258,15 @@ BEGIN
    OR (OLD.destination_fingerprint IS NOT NULL AND NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint)
    OR (OLD.digest_group_hash       IS NOT NULL AND NEW.digest_group_hash       IS DISTINCT FROM OLD.digest_group_hash) THEN
     RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
+  END IF;
+  -- EVERY canonical grouping input is frozen on digest rows (they define the group hash/identity).
+  IF OLD.delivery_mode = 'digest' AND (
+       NEW.channel IS DISTINCT FROM OLD.channel
+    OR (OLD.event_type IS NOT NULL AND NEW.event_type IS DISTINCT FROM OLD.event_type)
+    OR (OLD.template_key IS NOT NULL AND NEW.template_key IS DISTINCT FROM OLD.template_key)
+    OR (OLD.tenant_academy_profile_id IS NOT NULL AND NEW.tenant_academy_profile_id IS DISTINCT FROM OLD.tenant_academy_profile_id)
+    OR (OLD.tenant_trainer_id IS NOT NULL AND NEW.tenant_trainer_id IS DISTINCT FROM OLD.tenant_trainer_id)) THEN
+    RAISE EXCEPTION 'notification_outbox digest canonical identity fields are frozen';
   END IF;
   IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id THEN
     IF NEW.digest_group_id IS NULL
