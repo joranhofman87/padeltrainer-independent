@@ -43,7 +43,7 @@ beforeAll(async () => {
     CREATE TABLE public.notification_outbox (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), channel text NOT NULL DEFAULT 'email',
       event_type text, template_key text, status text NOT NULL DEFAULT 'pending',
-      payload jsonb, public_summary jsonb, skip_reason text, destination_normalized text,
+      payload jsonb, public_summary jsonb, skip_reason text, destination_normalized text, contact_id uuid,
       recipient_user_id uuid, tenant_academy_profile_id uuid, tenant_trainer_id uuid,
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT notification_outbox_status_check CHECK (status IN
@@ -53,7 +53,11 @@ beforeAll(async () => {
       $$ SELECT EXISTS (SELECT 1 FROM public.email_suppression_stub WHERE email = lower(p_email)) $$;
     CREATE TABLE public.notification_preferences_v2 (
       user_id uuid NOT NULL, event_type text NOT NULL, email_frequency text NOT NULL DEFAULT 'instant',
-      UNIQUE (user_id, event_type));`);
+      UNIQUE (user_id, event_type));
+    CREATE TABLE public.notification_contacts (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), channel text NOT NULL DEFAULT 'email',
+      destination_normalized text NOT NULL, consent_status text NOT NULL DEFAULT 'unknown', revoked_at timestamptz);
+    CREATE TABLE public.persons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, email text);`);
   for (const f of ['20261002100000_notification_digest_schema_foundation.sql',
     '20261003100000_notification_digest_acl_lockdown.sql', '20261004100000_notification_digest_state_machine.sql']) {
     await c.query(readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'));
@@ -70,7 +74,8 @@ beforeEach(async () => {
     await c.query(`TRUNCATE public.notification_digest_groups, public.notification_digest_attempts,
       public.notification_digest_group_attempts, public.notification_provider_events, public.notification_provider_circuit,
       public.notification_send_counters, public.notification_send_reservations, public.notification_worker_runs,
-      public.notification_outbox, public.email_suppression_stub, public.notification_preferences_v2 RESTART IDENTITY CASCADE`);
+      public.notification_outbox, public.email_suppression_stub, public.notification_preferences_v2,
+      public.notification_contacts, public.persons RESTART IDENTITY CASCADE`);
   } finally { await c.end(); }
 });
 
@@ -78,14 +83,14 @@ async function fpOf(c: pg.Client, dest: string): Promise<string> {
   return (await c.query(`SELECT public.notif_digest_destination_fingerprint($1) f`, [dest])).rows[0].f;
 }
 async function seedMember(c: pg.Client, key: string, dest: string,
-  opts: { bytes?: number; boundary?: string; userId?: string | null; eventType?: string } = {}) {
+  opts: { bytes?: number; boundary?: string; userId?: string | null; contactId?: string | null; eventType?: string } = {}) {
   const fp = await fpOf(c, dest);
   await c.query(`INSERT INTO public.notification_outbox
-    (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, recipient_user_id,
+    (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, recipient_user_id, contact_id,
      event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
      digest_boundary_at, digest_item, digest_item_bytes, status)
-    VALUES ('email','digest',$1,$2,$3,$4,$5,'tpl',1,'nl','daily','Europe/Amsterdam', ${opts.boundary ?? BD}, '{}'::jsonb, $6, 'pending')`,
-    [key, fp, dest, opts.userId ?? null, opts.eventType ?? 'ev', opts.bytes ?? 100]);
+    VALUES ('email','digest',$1,$2,$3,$4,$5,$6,'tpl',1,'nl','daily','Europe/Amsterdam', ${opts.boundary ?? BD}, '{}'::jsonb, $7, 'pending')`,
+    [key, fp, dest, opts.userId ?? null, opts.contactId ?? null, opts.eventType ?? 'ev', opts.bytes ?? 100]);
   return fp;
 }
 async function frozenFor(c: pg.Client, run: string, g: string, worker: string, dest: string) {
@@ -220,6 +225,7 @@ describe('10c-a2 §PS — live revalidation at prepare and before every attempt'
     try {
       seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
       const uid = (await c.query(`SELECT gen_random_uuid() u`)).rows[0].u;
+      await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1,$2)`, [uid, dest]);
       await seedMember(c, key, dest, { userId: uid });
       const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
       await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
@@ -235,6 +241,7 @@ describe('10c-a2 §PS — live revalidation at prepare and before every attempt'
       // required-delivery event: same opt-out, but prepare keeps the member (exempt)
       await c.query(`INSERT INTO public.notification_event_types (key, supports_digest, required_delivery) VALUES ('ev-req', true, true)`);
       seq += 1; const key2 = `p:${seq}`; const dest2 = `u${seq}@example.com`;
+      await c.query(`UPDATE public.persons SET email=$2 WHERE user_id=$1`, [uid, dest2]);
       await seedMember(c, key2, dest2, { userId: uid, eventType: 'ev-req' });
       await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ($1,'ev-req','off')`, [uid]);
       const mr2 = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
@@ -601,36 +608,246 @@ describe('10c-a2 two-connection concurrency (real Postgres)', () => {
   });
 });
 
-describe('10c-a2 scale — 100k rows, the CANDIDATE query itself, bounded work', () => {
-  it('at 100k pending rows the materializer candidate query is a LIMIT-1 index scan (no Sort), and one call is bounded by its budgets', async () => {
+describe('10c-a2 round-3 — breaker race, live revalidation, correlation, run identity, preflight', () => {
+  it('breaker race: a concurrent re-arm during begin → begin defers, creates NO attempt (two connections)', async () => {
+    const c = conn(); await c.connect();
+    let g!: string, run!: string;
+    try {
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, run]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [run, g]);
+      await frozenFor(c, run, g, 'W', dest);
+      await c.query(`INSERT INTO public.notification_provider_circuit (channel, state, probe_group_id, probe_locked_at) VALUES ('email','half_open',$1,${NOW})`, [g]);
+    } finally { /* keep c open */ }
+    const a = conn(); await a.connect();
+    try {
+      await a.query('BEGIN');
+      await a.query(`UPDATE public.notification_provider_circuit SET state='open', probe_group_id=NULL, probe_attempt_id=NULL, retry_at=${NOW}+interval '1 hour' WHERE channel='email'`);
+      const beginP = c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${NOW}) AS a`, [run, g]).then(r => r.rows[0].a);
+      await new Promise(r => setTimeout(r, 400));
+      await a.query('COMMIT');
+      const att = await beginP;
+      const s = await gstate(c, g);
+      const attempts = (await c.query(`SELECT count(*)::int n FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g])).rows[0].n;
+      expect(att).toBeNull(); expect(s.state).toBe('request_ready'); expect(attempts).toBe(0); expect(s.locked_by).toBeNull();
+    } finally { await a.end(); await c.end(); }
+  });
+
+  it('live revalidation: contact revoked / contact changed / account email changed each stop the member', async () => {
     const c = conn(); await c.connect();
     try {
-      const fp = await fpOf(c, 'scale@example.com');
+      const scenarios: Array<['contact_revoked' | 'destination_changed', (dest: string, ct: string) => Promise<void>]> = [
+        ['contact_revoked', async (_d, ct) => { await c.query(`UPDATE public.notification_contacts SET revoked_at=now() WHERE id=$1`, [ct]); }],
+        ['destination_changed', async (_d, ct) => { await c.query(`UPDATE public.notification_contacts SET destination_normalized='new@example.com' WHERE id=$1`, [ct]); }],
+      ];
+      for (const [want, mutate] of scenarios) {
+        seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+        const ct = (await c.query(`INSERT INTO public.notification_contacts (channel, destination_normalized) VALUES ('email',$1) RETURNING id`, [dest])).rows[0].id;
+        await seedMember(c, key, dest, { contactId: ct });
+        const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+        await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+        const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+        const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+        await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, run]);
+        await mutate(dest, ct);
+        const prep = (await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW}) AS r`, [run, g])).rows[0].r;
+        const m = (await c.query(`SELECT skip_reason FROM public.notification_outbox WHERE digest_group_id=$1`, [g])).rows[0];
+        expect(prep, want).toBe('no_work'); expect(m.skip_reason, want).toBe(want);
+      }
+      // account email changed
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      const uid = (await c.query(`SELECT gen_random_uuid() u`)).rows[0].u;
+      await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1,$2)`, [uid, dest]);
+      await seedMember(c, key, dest, { userId: uid });
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, run]);
+      await c.query(`UPDATE public.persons SET email='moved@example.com' WHERE user_id=$1`, [uid]);
+      const prep = (await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW}) AS r`, [run, g])).rows[0].r;
+      expect(prep).toBe('no_work');
+      expect((await c.query(`SELECT skip_reason FROM public.notification_outbox WHERE digest_group_id=$1`, [g])).rows[0].skip_reason).toBe('destination_changed');
+    } finally { await c.end(); }
+  });
+
+  it('required_delivery bypasses ONLY preference_off — never suppression or a missing/changed contact', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await c.query(`INSERT INTO public.notification_event_types (key, supports_digest, required_delivery) VALUES ('ev-req2', true, true)`);
+      // required + suppressed → dropped
+      seq += 1; const k1 = `p:${seq}`; const d1 = `u${seq}@example.com`;
+      await seedMember(c, k1, d1, { eventType: 'ev-req2' });
+      await c.query(`INSERT INTO public.email_suppression_stub VALUES (lower($1))`, [d1]);
+      const m1 = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [m1]);
+      const g1 = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [k1])).rows[0].id;
+      const r1 = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g1, r1]);
+      expect((await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW}) AS r`, [r1, g1])).rows[0].r).toBe('no_work');
+      // required + preference_off → prepared
+      seq += 1; const k2 = `p:${seq}`; const d2 = `u${seq}@example.com`;
+      const uid = (await c.query(`SELECT gen_random_uuid() u`)).rows[0].u;
+      await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1,$2)`, [uid, d2]);
+      await seedMember(c, k2, d2, { eventType: 'ev-req2', userId: uid });
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ($1,'ev-req2','off')`, [uid]);
+      const m2 = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [m2]);
+      const g2 = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [k2])).rows[0].id;
+      const r2 = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g2, r2]);
+      expect((await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW}) AS r`, [r2, g2])).rows[0].r).toBe('prepared');
+    } finally { await c.end(); }
+  });
+
+  it('correlation: tag on a never-sent group → orphan; accepted with NULL pm raises; mismatched pm → manual hold', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // never-sent group: tag must NOT bind
+      seq += 1; const key = `p:${seq}`; await seedMember(c, key, `u${seq}@example.com`);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g0 = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const res = (await c.query(`SELECT public.apply_notification_provider_event(NULL,'ev-nb','pm-nb',$1,'delivered', ${NOW}, ${NOW}) AS r`, [g0])).rows[0].r;
+      expect(res).toBe('orphan');
+      expect((await gstate(c, g0)).provider_message_id).toBeNull();
+      // park g0 so the toSending() claims below pick their own groups, not this one
+      await c.query(`UPDATE public.notification_digest_groups SET available_at=${NOW}+interval '10 days' WHERE id=$1`, [g0]);
+      // accepted with NULL pm raises
+      const s1 = await toSending(c);
+      await expect(c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,202,NULL,NULL, ${NOW})`, [s1.run, s1.att])).rejects.toThrow(/requires a provider_message_id/i);
+      // mismatched pm → correlation_mismatch + manual hold
+      const s2 = await toSending(c);
+      await c.query(`SELECT public.apply_notification_provider_event($1,'ev-cm','pm-early',$2,'sent', ${NOW}, ${NOW})`, [s2.run, s2.g]);
+      const rr = (await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,202,NULL,'pm-DIFFERENT', ${NOW}) AS r`, [s2.run, s2.att])).rows[0].r;
+      const cb = (await c.query(`SELECT state, reason, retry_at FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(rr).toBe('correlation_mismatch'); expect(cb.state).toBe('open'); expect(cb.reason).toBe('correlation_mismatch'); expect(cb.retry_at).toBeNull();
+    } finally { await c.end(); }
+  });
+
+  it('run identity: null / unknown / wrong-phase / wrong-channel / finished runs are all rejected', async () => {
+    const c = conn(); await c.connect();
+    try {
+      seq += 1; const key = `p:${seq}`; await seedMember(c, key, `u${seq}@example.com`);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, run]);
+      await expect(c.query(`SELECT public.prepare_notification_digest_group(NULL,$1,'W', ${NOW})`, [g])).rejects.toThrow(/required/i);
+      await expect(c.query(`SELECT public.prepare_notification_digest_group(gen_random_uuid(),$1,'W', ${NOW})`, [g])).rejects.toThrow(/not found/i);
+      const wrongPhase = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await expect(c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [wrongPhase, g])).rejects.toThrow(/phase/i);
+      const wrongChan = (await c.query(`SELECT public.start_notification_worker_run('w','whatsapp','dispatch') AS r`)).rows[0].r;
+      await expect(c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [wrongChan, g])).rejects.toThrow(/channel/i);
+      const finished = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`SELECT public.finish_notification_worker_run($1,'succeeded')`, [finished]);
+      await expect(c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [finished, g])).rejects.toThrow(/finished/i);
+    } finally { await c.end(); }
+  });
+
+  it('a parent-linked child with a DIFFERENT identity cannot receive a re-pointed member (hijack rejected)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      seq += 1; const key = `p:${seq}`; await seedMember(c, key, `u${seq}@example.com`);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const evil = (await c.query(`INSERT INTO public.notification_digest_groups
+        (parent_group_id, canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint, recipient_timezone, digest_boundary_at, available_at)
+        VALUES ($1, '["evil"]'::jsonb, 'evilhash', 'email','ev','p:EVIL','df-EVIL','Europe/Amsterdam', now(), now()) RETURNING id`, [g])).rows[0].id;
+      const member = (await c.query(`SELECT id FROM public.notification_outbox WHERE digest_group_id=$1 LIMIT 1`, [g])).rows[0].id;
+      await expect(c.query(`UPDATE public.notification_outbox SET digest_group_id=$1 WHERE id=$2`, [evil, member])).rejects.toThrow(/split child/i);
+    } finally { await c.end(); }
+  });
+
+  it('manual-hold breaker preflight: claim returns NULL immediately — no available_at rewrites, zero ledger churn', async () => {
+    const c = conn(); await c.connect();
+    try {
+      seq += 1; const key = `p:${seq}`; await seedMember(c, key, `u${seq}@example.com`);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      await c.query(`UPDATE public.notification_digest_groups SET available_at=${BD} WHERE id=$1`, [g]);   // due
+      await c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, retry_at) VALUES ('email','open','monthly_quota',NULL)`);
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      const before = (await c.query(`SELECT available_at FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0].available_at;
+      const claimed = (await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${NOW}, 'W') AS g`, [run])).rows[0].g;
+      const after = (await c.query(`SELECT available_at FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0].available_at;
+      const ledger = (await c.query(`SELECT count(*)::int n FROM public.notification_digest_group_attempts WHERE worker_run_id=$1`, [run])).rows[0].n;
+      expect(claimed).toBeNull(); expect(String(after)).toBe(String(before)); expect(ledger).toBe(0);
+    } finally { await c.end(); }
+  });
+
+  it('a lower/equal-rank provider callback writes NO transition ledger row (reconciliation stays truthful)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { att, run } = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,202,NULL,'pm-nr', ${NOW})`, [run, att]);
+      await c.query(`SELECT public.apply_notification_provider_event($1,'ev-nr1','pm-nr',NULL,'delivered', ${NOW}, ${NOW})`, [run]);
+      const run2 = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      const noop = (await c.query(`SELECT public.apply_notification_provider_event($1,'ev-nr2','pm-nr',NULL,'sent', ${NOW}, ${NOW}) AS r`, [run2])).rows[0].r;
+      expect(noop).toBe('noop_rank');
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_group_attempts WHERE worker_run_id=$1`, [run2])).rows[0].n).toBe(0);
+      await expect(c.query(`SELECT * FROM public.reconcile_notification_digest_run($1)`, [run2])).resolves.toBeTruthy(); // exists, just empty
+    } finally { await c.end(); }
+  });
+});
+
+describe('10c-a2 scale — 100k SAME-BOUNDARY rows, the member query itself, full bounded drain', () => {
+  it('100k same-boundary rows: the member scan is an index scan (no Sort) and bounded calls drain everything', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // REALISTIC fixture: every row on the SAME daily 09:00 boundary — 1000 keys × 100 members.
+      // The stamping trigger computes each row's digest_group_hash.
       await c.query(`INSERT INTO public.notification_outbox
         (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized,
          event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
          digest_boundary_at, digest_item, digest_item_bytes, status)
-        SELECT 'email','digest','p:'||(gs/100), $1, 'scale@example.com','ev','tpl',1,'nl','daily','Europe/Amsterdam',
-               ${BD} + make_interval(secs => (gs % 1000)), '{}'::jsonb, 100, 'pending'
-        FROM generate_series(0, 99999) gs`, [fp]);
-      // EXPLAIN (ANALYZE, BUFFERS) the EXACT candidate query the materializer runs:
-      const plan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT 'email','digest','p:'||(gs/100), 'fp:'||(gs/100), 'scale'||(gs/100)||'@example.com',
+               'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 100, 'pending'
+        FROM generate_series(0, 99999) gs`);
+      // (a) the CANDIDATE query: LIMIT-1 Index Scan, no Sort, actual rows ≤ 1.
+      const candPlan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
         SELECT o.id FROM public.notification_outbox o
         WHERE o.channel='email' AND o.delivery_mode='digest' AND o.digest_group_id IS NULL AND o.status='pending'
         ORDER BY o.digest_boundary_at LIMIT 1 FOR UPDATE SKIP LOCKED`)).rows[0]['QUERY PLAN'];
-      const planText = JSON.stringify(plan);
-      expect(planText).toMatch(/Index Scan/);                    // idx_outbox_digest_forming
-      expect(planText).not.toMatch(/"Node Type":\s*"Sort"/);     // NO full sort over 100k ties
-      const actualRows = plan[0].Plan['Actual Rows'];
-      expect(Number(actualRows)).toBeLessThanOrEqual(1);         // work bounded by claimed rows, not table size
-      // one bounded materialize call: touches ≤ its member budget, creates ≤ its group budget.
+      expect(JSON.stringify(candPlan)).toMatch(/Index Scan/);
+      expect(JSON.stringify(candPlan)).not.toMatch(/"Node Type":\s*"Sort"/);
+      expect(Number(candPlan[0].Plan['Actual Rows'])).toBeLessThanOrEqual(1);
+      // (b) the MEMBER query (the real expensive one at same-boundary scale): hash-index scan, no Sort.
+      await c.query(`ANALYZE public.notification_outbox`);   // fresh stats after the 100k bulk insert
+      const oneHash = (await c.query(`SELECT digest_group_hash h FROM public.notification_outbox WHERE digest_group_hash IS NOT NULL LIMIT 1`)).rows[0].h;
+      const memPlan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT o.id FROM public.notification_outbox o
+        WHERE o.digest_group_hash=$1 AND o.channel='email' AND o.delivery_mode='digest'
+          AND o.digest_group_id IS NULL AND o.status='pending'
+        ORDER BY o.created_at, o.id LIMIT 60 FOR UPDATE SKIP LOCKED`, [oneHash])).rows[0]['QUERY PLAN'];
+      const memText = JSON.stringify(memPlan);
+      expect(memText).toMatch(/idx_outbox_digest_member_scan/);
+      expect(memText).not.toMatch(/"Node Type":\s*"Sort"/);
+      // (c) full drain with bounded calls: every member ends in exactly one ≤50-item group.
+      const t0 = Date.now();
       const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
-      const n = (await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 10, 500) AS n`, [run])).rows[0].n;
-      const assigned = (await c.query(`SELECT count(*)::int n FROM public.notification_outbox WHERE digest_group_id IS NOT NULL`)).rows[0].n;
-      expect(Number(n)).toBeLessThanOrEqual(10);
-      expect(assigned).toBeLessThanOrEqual(510);                 // ≤ member budget (+ one key's tail)
+      let calls = 0;
+      for (;;) {
+        calls += 1;
+        const n = (await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 200, 10000) AS n`, [run])).rows[0].n;
+        if (Number(n) === 0 || calls > 40) break;
+      }
+      const secs = (Date.now() - t0) / 1000;
+      const un = (await c.query(`SELECT count(*)::int n FROM public.notification_outbox WHERE delivery_mode='digest' AND digest_group_id IS NULL AND status='pending'`)).rows[0].n;
+      const over = (await c.query(`SELECT count(*)::int n FROM public.notification_digest_groups WHERE item_count > 50`)).rows[0].n;
+      const dup = (await c.query(`SELECT count(*)::int n FROM (SELECT canonical_group_key, chunk_ordinal, count(*) FROM public.notification_digest_groups GROUP BY 1,2 HAVING count(*)>1) x`)).rows[0].n;
+      expect(un).toBe(0); expect(over).toBe(0); expect(dup).toBe(0);
+      expect(secs).toBeLessThan(60);   // the old computed-key design took ~16s per 1k groups; this drains 2k in seconds
     } finally { await c.end(); }
-  }, 120_000);
+  }, 180_000);
 
   it('no RPC uses OFFSET pagination or an unbounded loop (LIMIT + FOR UPDATE SKIP LOCKED + iteration caps)', () => {
     const raw = readFileSync(join(process.cwd(), 'supabase', 'migrations', '20261004100000_notification_digest_state_machine.sql'), 'utf8');

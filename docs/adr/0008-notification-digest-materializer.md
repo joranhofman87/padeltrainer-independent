@@ -390,3 +390,35 @@ timeline survive; `superseded` excluded from `groups_touched`.
 - Confirmations before implementation (all set): 50 / ~90 KB / 09:00–20:00 / academy→trainer→Amsterdam /
   35-day counter + 90-day audit retention / 23 h uncertainty / breaker timings / weekly = Monday.
 - Legacy `notification_queue`/`send-digest-emails` untouched until 10c-d.
+
+## 10c-a2 implementation clarifications (accepted contract, discovered while building the SQL state machine)
+
+These clarify — never change — the accepted design:
+
+- **Canonical destination fingerprint** = `notif_digest_destination_fingerprint(dest) = sha256(lower(btrim(dest)))`
+  (hex). `store` PROVES the frozen request's `to` fingerprints to the group's immutable
+  `destination_fingerprint`, and the §PS live re-check proves the CURRENT contact/account destination still
+  does. The 10c-b resolver MUST snapshot `outbox.destination_fingerprint` with this same function.
+- **`outbox.digest_group_hash`** (immutable, trigger-stamped at enqueue) = sha256 of the canonical key; the
+  member scan is `(digest_group_hash, created_at, id)`-indexed (partial on forming rows) — the same-key
+  lookup is O(index), never a computed-key scan/sort. Exact-field equality checks are retained beside the
+  hash (collision safety). Materialization serializes per key with a NONBLOCKING advisory lock (a busy key
+  is skipped, resumed next call) — blocking multi-key acquisition could deadlock two materializers.
+- **§PS precision:** `required_delivery` bypasses ONLY `preference_off`. A missing/revoked contact
+  (`revoked_at`/`opted_out`/deleted), a CHANGED destination (live fingerprint ≠ frozen), and
+  `is_email_suppressed` always stop the member/group, required or not.
+- **Correlation gates (§PV/§P6):** a tagged early callback may bind the group's write-once
+  `provider_message_id` ONLY when `provider_attempts_started > 0` (a live send exists) — otherwise it stays
+  an orphan. `accepted` REQUIRES a non-blank provider id; an accepted id that conflicts with the bound one
+  is an invariant breach → attempt annotated + channel manual-hold (`correlation_mismatch`). Orphan→link
+  APPLIES the stored outcome exactly once (rank-guarded).
+- **Breaker (§CB):** `begin` re-validates the circuit under `FOR UPDATE` (a concurrent re-arm/trip cannot
+  race the attempt insert) and count-checks the probe bind. `claim` PREFLIGHTS the circuit before scanning:
+  a held/not-due open circuit returns immediately with zero group writes (`available_at` is only ever
+  changed by genuine scheduling: quiet-hours/backoff/cap). Reason-aware trips: auth/config +15 m; daily
+  quota +coalesce(Retry-After, 24 h); monthly quota / `invalid_idempotent_request` → `retry_at NULL`
+  manual hold.
+- **Observability:** a lower/equal-rank provider callback is a rank-guarded no-op and writes NO transition
+  ledger row (the provider_events row is the audit). Every state-changing RPC asserts its worker run
+  (exists, unfinished, right phase + channel); `reconcile` is causal — the LAST ledger action per group per
+  run, `superseded` reported as a separate lineage metric.
