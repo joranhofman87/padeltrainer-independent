@@ -1590,6 +1590,97 @@ describe('10c-a2 round-9 — digest_item lifecycle, breaker-independent age-out,
   });
 });
 
+describe('10c-a2 round-10 — shared request validator (trigger too), bounded age-out index, claim quiet-hours cap', () => {
+  it('a direct-owner prepared→request_ready with a COMPLETE-but-unsafe request is rejected by the trigger', async () => {
+    const c = conn(); await c.connect();
+    try {
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id, destination_fingerprint FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0];
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g.id, run]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [run, g.id]);
+      // (a) matching fingerprint 'to' but an extra bcc, with a correct hash + key → rejected on the allow-list
+      await expect(c.query(`UPDATE public.notification_digest_groups
+        SET state='request_ready',
+            frozen_request=jsonb_build_object('to',$2::text,'subject','s','html','h','bcc','spy@evil.com'),
+            provider_idempotency_key='dg:v1:'||id::text,
+            request_hash=encode(sha256(jsonb_build_object('to',$2::text,'subject','s','html','h','bcc','spy@evil.com')::text::bytea),'hex')
+        WHERE id=$1`, [g.id, dest]))
+        .rejects.toThrow(/allow-list/i);
+      // (b) a wrong recipient (only to/subject/html) with a correct hash + key → rejected on the fingerprint
+      await expect(c.query(`UPDATE public.notification_digest_groups
+        SET state='request_ready',
+            frozen_request=jsonb_build_object('to','attacker@example.com','subject','s','html','h'),
+            provider_idempotency_key='dg:v1:'||id::text,
+            request_hash=encode(sha256(jsonb_build_object('to','attacker@example.com','subject','s','html','h')::text::bytea),'hex')
+        WHERE id=$1`, [g.id]))
+        .rejects.toThrow(/does not match the group fingerprint/i);
+      // the legitimate store still succeeds
+      await c.query(`SELECT public.store_notification_digest_request($1,$2,'W', jsonb_build_object('to',$3::text,'subject','s','html','<p>x</p>'), ${NOW})`, [run, g.id, dest]);
+      expect((await gstate(c, g.id)).state).toBe('request_ready');
+    } finally { await c.end(); }
+  });
+
+  it('the age-out scan is work-bounded at 100k: the index handles due-ness, a future-only set filters ~0 rows', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // 100k uncertain groups, all with a FUTURE deadline (NOT due). Seeded directly (INSERT bypasses the
+      // BEFORE-UPDATE guards); every row carries the uncertainty-clock pair.
+      await c.query(`INSERT INTO public.notification_digest_groups
+        (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+         recipient_timezone, digest_boundary_at, available_at, state, first_send_at, uncertain_since, uncertain_deadline_at)
+        SELECT jsonb_build_array('v2','email','p:'||gs), 'h'||gs, 'email','ev','p:'||gs,'df'||gs,'Europe/Amsterdam',
+               ${BD}, ${NOW}, 'request_ready', ${NOW}, ${NOW}, ${NOW} + interval '23 hours'
+        FROM generate_series(1,100000) gs`);
+      await c.query(`ANALYZE public.notification_digest_groups`);
+      // EXPLAIN (ANALYZE, BUFFERS) the exact sweep scan at a p_now BEFORE every deadline → 0 due, ~0 filtered.
+      const plan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT id FROM public.notification_digest_groups
+         WHERE channel='email' AND uncertain_since IS NOT NULL
+           AND state IN ('request_ready','sending','awaiting_evidence')
+           AND uncertain_deadline_at <= ${NOW}
+         ORDER BY uncertain_deadline_at LIMIT 500 FOR UPDATE SKIP LOCKED`)).rows[0]['QUERY PLAN'];
+      const txt = JSON.stringify(plan);
+      expect(txt).toMatch(/idx_digest_groups_uncertain_ageout/);
+      const removed = Number(plan[0].Plan['Rows Removed by Filter'] ?? 0);
+      const actual = Number(plan[0].Plan['Actual Rows'] ?? 0);
+      expect(actual).toBe(0);            // nothing due
+      expect(removed).toBeLessThan(100); // the index RANGE bound excludes the 100k future rows (not a full filter)
+    } finally { await c.end(); }
+  }, 120_000);
+
+  it('claim quiet-hours defer is capped at the uncertainty deadline (bump past the deadline → available_at = deadline)', async () => {
+    const c = conn(); await c.connect();
+    const FSA = "'2026-07-01 07:00:00+00'::timestamptz";       // 09:00 Amsterdam (inside the window)
+    const CLAIM = "'2026-07-01 18:30:00+00'::timestamptz";     // 20:30 Amsterdam (after the window)
+    try {
+      // drive a group to uncertain request_ready with first_send_at = 09:00 local
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${FSA}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${FSA}, 'W')`, [run]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${FSA})`, [run, g]);
+      await c.query(`SELECT public.store_notification_digest_request($1,$2,'W', jsonb_build_object('to',$3::text,'subject','s','html','h'), ${FSA})`, [run, g, dest]);
+      const att = (await c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${FSA}) AS a`, [run, g])).rows[0].a;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${FSA})`, [run, att]);  // ambiguous → uncertain, deadline = FSA+23h
+      const deadline = (await gstate(c, g)).uncertain_deadline_at;
+      // make it due and claim it after 20:00 local → quiet-hours bump to next 09:00 local > deadline → capped
+      await c.query(`UPDATE public.notification_digest_groups SET available_at=${CLAIM} WHERE id=$1`, [g]);
+      const claimRun = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      const claimed = (await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${CLAIM}, 'W2') AS g`, [claimRun])).rows[0].g;
+      const s = await gstate(c, g);
+      expect(claimed).toBeNull();   // quiet-hours deferred, not claimed
+      expect(new Date(s.available_at).getTime()).toBe(new Date(deadline).getTime());  // capped exactly at the deadline
+    } finally { await c.end(); }
+  });
+});
+
 describe('10c-a2 scale — 100k SAME-BOUNDARY rows, the member query itself, full bounded drain', () => {
   it('100k same-boundary rows: the member scan is an index scan (no Sort) and bounded calls drain everything', async () => {
     const c = conn(); await c.connect();

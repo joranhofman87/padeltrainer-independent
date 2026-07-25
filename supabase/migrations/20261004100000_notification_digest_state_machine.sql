@@ -518,10 +518,13 @@ BEGIN
       RETURN g.id;
     END IF;
 
-    -- quiet hours: bump available_at (a genuine SCHEDULING change), do not claim.
+    -- quiet hours: bump available_at (a genuine SCHEDULING change), do not claim — capped at the uncertainty
+    -- deadline (an uncertain group must never be scheduled past first_send_at + 23h).
     v_bump := notif_digest_quiet_hours_bump(p_now, g.recipient_timezone);
     IF v_bump > p_now THEN
-      UPDATE public.notification_digest_groups SET available_at = v_bump, updated_at = p_now WHERE id = g.id;
+      UPDATE public.notification_digest_groups
+         SET available_at = least(v_bump, coalesce(g.uncertain_deadline_at, 'infinity'::timestamptz)), updated_at = p_now
+       WHERE id = g.id;
       PERFORM notif_digest_ledger(p_run_id, g.id, NULL, 'deferred', 0);
       CONTINUE;
     END IF;
@@ -719,6 +722,29 @@ END $$;
 CREATE OR REPLACE FUNCTION public.notif_digest_destination_fingerprint(p_destination text) RETURNS text
   LANGUAGE sql IMMUTABLE AS $$ SELECT encode(sha256(lower(btrim(p_destination))::bytea), 'hex') $$;
 
+-- the ONE frozen-request validator, invoked by BOTH store_notification_digest_request AND the send-identity
+-- guard (so a direct owner-context prepared→request_ready cannot smuggle a wrong recipient / extra provider
+-- field past the trigger): exact to/subject/html allow-list, non-empty strings, ≤90 KB, to↔fingerprint.
+CREATE OR REPLACE FUNCTION public.notif_digest_validate_frozen_request(p_frozen jsonb, p_destination_fingerprint text)
+  RETURNS void LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+  IF p_frozen IS NULL OR jsonb_typeof(p_frozen) <> 'object'
+     OR jsonb_typeof(p_frozen->'to') <> 'string' OR length(p_frozen->>'to') = 0
+     OR jsonb_typeof(p_frozen->'subject') <> 'string' OR length(p_frozen->>'subject') = 0
+     OR jsonb_typeof(p_frozen->'html') <> 'string' OR length(p_frozen->>'html') = 0 THEN
+    RAISE EXCEPTION 'frozen request malformed (need an object with non-empty to/subject/html)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_frozen) AS k(key) WHERE k.key NOT IN ('to','subject','html')) THEN
+    RAISE EXCEPTION 'frozen request carries a key outside the to/subject/html allow-list';
+  END IF;
+  IF octet_length(p_frozen::text) > 92160 THEN
+    RAISE EXCEPTION 'frozen request exceeds the 90 KB budget (% bytes)', octet_length(p_frozen::text);
+  END IF;
+  IF notif_digest_destination_fingerprint(p_frozen->>'to') <> p_destination_fingerprint THEN
+    RAISE EXCEPTION 'frozen request destination does not match the group fingerprint';
+  END IF;
+END $$;
+
 -- the uncertainty deadline is a FIXED-23h INVARIANT, not a caller default: least(existing, first_send_at+23h)
 -- clamps a too-large existing DOWN and yields the ceiling when unset; it can never widen. Fail CLOSED when a
 -- post-dispatch group lacks first_send_at rather than starting a fresh window at recovery time.
@@ -753,37 +779,15 @@ END $$;
 CREATE OR REPLACE FUNCTION public.store_notification_digest_request(
     p_run_id uuid, p_group_id uuid, p_worker text, p_frozen_request jsonb, p_now timestamptz)
   RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE g record; v_n int; v_to text;
+DECLARE g record; v_n int;
 BEGIN
   SELECT * INTO g FROM public.notification_digest_groups
    WHERE id = p_group_id AND state = 'prepared' AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'store: group % not owned/prepared by %', p_group_id, p_worker; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
 
-  -- exact request schema: an object with non-empty string to/subject/html — nothing else is a valid freeze.
-  IF p_frozen_request IS NULL OR jsonb_typeof(p_frozen_request) <> 'object'
-     OR jsonb_typeof(p_frozen_request->'to') <> 'string' OR length(p_frozen_request->>'to') = 0
-     OR jsonb_typeof(p_frozen_request->'subject') <> 'string' OR length(p_frozen_request->>'subject') = 0
-     OR jsonb_typeof(p_frozen_request->'html') <> 'string' OR length(p_frozen_request->>'html') = 0 THEN
-    RAISE EXCEPTION 'store: malformed frozen request for group % (need object with to/subject/html)', p_group_id;
-  END IF;
-  -- STRICT allow-list: the worker dispatches this stored request verbatim, so any extra provider field
-  -- (bcc/cc/headers/attachments/unknown) frozen here would be SENT. Nothing outside to/subject/html.
-  IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_frozen_request) AS k(key)
-              WHERE k.key NOT IN ('to','subject','html')) THEN
-    RAISE EXCEPTION 'store: frozen request for group % carries a key outside the to/subject/html allow-list', p_group_id;
-  END IF;
-  -- byte ceiling (~90 KB): the render-time oversize check belongs to the worker (§CH), but a frozen request
-  -- over budget must never be stored.
-  IF octet_length(p_frozen_request::text) > 92160 THEN
-    RAISE EXCEPTION 'store: frozen request for group % exceeds the 90 KB budget (% bytes)',
-      p_group_id, octet_length(p_frozen_request::text);
-  END IF;
-  -- destination proof: the request's 'to' must fingerprint to the group's immutable destination_fingerprint.
-  v_to := p_frozen_request->>'to';
-  IF notif_digest_destination_fingerprint(v_to) <> g.destination_fingerprint THEN
-    RAISE EXCEPTION 'store: frozen request destination does not match group % fingerprint', p_group_id;
-  END IF;
+  -- ONE shared validator (also enforced on the trigger's prepared→request_ready transition).
+  PERFORM notif_digest_validate_frozen_request(p_frozen_request, g.destination_fingerprint);
 
   UPDATE public.notification_digest_groups
      SET frozen_request = p_frozen_request,
@@ -1317,7 +1321,7 @@ END $$;
 -- manual breaker hold / quiet hours / caps / retry-eligibility can never keep an uncertain group (and its
 -- committed reservations) alive past the deadline.
 CREATE INDEX IF NOT EXISTS idx_digest_groups_uncertain_ageout
-  ON public.notification_digest_groups (channel, first_send_at)
+  ON public.notification_digest_groups (channel, uncertain_deadline_at)
   WHERE uncertain_since IS NOT NULL AND state IN ('request_ready','sending','awaiting_evidence');
 
 -- ===========================================================================
@@ -1339,9 +1343,8 @@ BEGIN
   FOR g IN SELECT id FROM public.notification_digest_groups
             WHERE channel = p_channel AND uncertain_since IS NOT NULL
               AND state IN ('request_ready','sending','awaiting_evidence')
-              AND first_send_at IS NOT NULL
-              AND p_now >= least(uncertain_deadline_at, first_send_at + interval '23 hours')
-            ORDER BY first_send_at LIMIT greatest(p_limit, 0) FOR UPDATE SKIP LOCKED LOOP
+              AND uncertain_deadline_at <= p_now                 -- the index range bound: future rows are NOT scanned
+            ORDER BY uncertain_deadline_at LIMIT greatest(p_limit, 0) FOR UPDATE SKIP LOCKED LOOP
     PERFORM notif_digest_finalize_group(g.id, 'delivery_unknown', 'age_out', p_now);
     PERFORM notif_digest_commit_reservations(g.id, p_now);
     PERFORM notif_digest_ledger(p_run_id, g.id, NULL, 'delivery_unknown', 0);
@@ -1532,6 +1535,14 @@ BEGIN
        OR NEW.request_hash IS DISTINCT FROM encode(sha256(NEW.frozen_request::text::bytea), 'hex') THEN
       RAISE EXCEPTION 'prepared→request_ready must atomically establish the complete frozen request tuple (frozen_request + dg:v1 key + sha256 hash)';
     END IF;
+    -- and the request CONTENT must pass the same validator the store RPC uses (allow-list + fingerprint) —
+    -- a complete-but-unsafe tuple (right hash/key, wrong recipient / extra bcc) is rejected here too.
+    PERFORM notif_digest_validate_frozen_request(NEW.frozen_request, NEW.destination_fingerprint);
+  END IF;
+  -- uncertainty clocks are a structural PAIR (set/cleared together) — so the age-out index/query can key on
+  -- uncertain_deadline_at alone and never scan a half-set row.
+  IF (NEW.uncertain_since IS NULL) <> (NEW.uncertain_deadline_at IS NULL) THEN
+    RAISE EXCEPTION 'uncertainty clocks (uncertain_since, uncertain_deadline_at) must be set or cleared together';
   END IF;
   RETURN NEW;
 END $$;

@@ -568,3 +568,23 @@ These clarify — never change — the accepted design:
   `frozen_request`, `provider_idempotency_key = dg:v1:<id>`, and `request_hash = sha256(frozen_request)` are
   checked on the transition itself (not field-by-field), so a state-only move that would strand a malformed
   group is rejected.
+
+### Round-10 refinements (same clarifying scope)
+
+- **One shared request validator.** `notif_digest_validate_frozen_request(frozen, destination_fingerprint)`
+  enforces the exact `to/subject/html` allow-list, non-empty strings, the ≤92160-byte ceiling, and
+  `to`↔fingerprint equality. It is invoked by BOTH `store_notification_digest_request` AND the send-identity
+  guard's `prepared → request_ready` transition — so a direct owner-context update carrying a complete
+  tuple (matching key + hash) but a wrong recipient or an extra `bcc` is rejected at the trigger, not just
+  in the store RPC.
+- **The age-out scan is work-bounded.** The uncertainty clocks are a structural PAIR (the send-identity
+  guard rejects a half-set `uncertain_since`/`uncertain_deadline_at`), so `uncertain_deadline_at` alone is
+  the canonical due field. The partial index is `idx_digest_groups_uncertain_ageout (channel,
+  uncertain_deadline_at) WHERE uncertain_since IS NOT NULL AND state IN ('request_ready','sending',
+  'awaiting_evidence')`, and the sweep scans `uncertain_deadline_at <= p_now ORDER BY uncertain_deadline_at
+  LIMIT p_limit`. At 100k future-only uncertain groups the index range bound scans/filters ~0 rows (not a
+  full O(N) filter).
+- **`claim_notification_digest_group`'s quiet-hours defer is capped too.** Its `available_at` is
+  `least(v_bump, coalesce(uncertain_deadline_at, 'infinity'))`, so an uncertain group whose next allowed
+  send window is after its 23-hour deadline is scheduled to the deadline (then aged out by the independent
+  sweep), matching the "every scheduling branch is capped" contract.
