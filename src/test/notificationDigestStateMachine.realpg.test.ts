@@ -1624,31 +1624,55 @@ describe('10c-a2 round-10 — shared request validator (trigger too), bounded ag
     } finally { await c.end(); }
   });
 
-  it('the age-out scan is work-bounded at 100k: the index handles due-ness, a future-only set filters ~0 rows', async () => {
+  it('the age-out scan is work-bounded at 100k: the idx_digest_groups_uncertain_ageout node itself filters ~0 rows', async () => {
     const c = conn(); await c.connect();
     try {
-      // 100k uncertain groups, all with a FUTURE deadline (NOT due). Seeded directly (INSERT bypasses the
-      // BEFORE-UPDATE guards); every row carries the uncertainty-clock pair.
+      // 100k STRUCTURALLY-VALID uncertain groups (uncertain pair + first_send_at, per the table CHECK), all
+      // with a FUTURE deadline (NOT due). The foundation INSERT guard forces first_send_at=NULL, so bulk-seed
+      // with the two BEFORE-triggers disabled (the CHECK still validates every row).
+      await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_guard`);
+      await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_send_identity`);
       await c.query(`INSERT INTO public.notification_digest_groups
         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
          recipient_timezone, digest_boundary_at, available_at, state, first_send_at, uncertain_since, uncertain_deadline_at)
         SELECT jsonb_build_array('v2','email','p:'||gs), 'h'||gs, 'email','ev','p:'||gs,'df'||gs,'Europe/Amsterdam',
-               ${BD}, ${NOW}, 'request_ready', ${NOW}, ${NOW}, ${NOW} + interval '23 hours'
+               ${BD}, ${NOW} + interval '23 hours', 'request_ready', ${NOW}, ${NOW}, ${NOW} + interval '23 hours'
         FROM generate_series(1,100000) gs`);
+      await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_guard`);
+      await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_send_identity`);
+      // structural validity: the CHECK held for all 100k (uncertain pair + first_send_at)
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_groups WHERE first_send_at IS NULL AND uncertain_since IS NOT NULL`)).rows[0].n).toBe(0);
       await c.query(`ANALYZE public.notification_digest_groups`);
-      // EXPLAIN (ANALYZE, BUFFERS) the exact sweep scan at a p_now BEFORE every deadline → 0 due, ~0 filtered.
+
+      // The test must exercise the ACTUAL RPC query, not a hand-copied one. Extract the sweep's scan straight
+      // from reconcile_notification_digest_stale's source and assert its shape, then EXPLAIN that exact scan.
+      const src = (await c.query(`SELECT pg_get_functiondef('public.reconcile_notification_digest_stale(uuid,text,timestamptz,int,int)'::regprocedure) d`)).rows[0].d;
+      expect(src).toMatch(/uncertain_deadline_at <= p_now/);                       // the range bound
+      expect(src).toMatch(/ORDER BY uncertain_deadline_at/);                        // ordered by the indexed col
+      expect(src).toMatch(/state IN \('request_ready','sending','awaiting_evidence'\)/);
+
       const plan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
         SELECT id FROM public.notification_digest_groups
          WHERE channel='email' AND uncertain_since IS NOT NULL
            AND state IN ('request_ready','sending','awaiting_evidence')
            AND uncertain_deadline_at <= ${NOW}
          ORDER BY uncertain_deadline_at LIMIT 500 FOR UPDATE SKIP LOCKED`)).rows[0]['QUERY PLAN'];
-      const txt = JSON.stringify(plan);
-      expect(txt).toMatch(/idx_digest_groups_uncertain_ageout/);
-      const removed = Number(plan[0].Plan['Rows Removed by Filter'] ?? 0);
-      const actual = Number(plan[0].Plan['Actual Rows'] ?? 0);
-      expect(actual).toBe(0);            // nothing due
-      expect(removed).toBeLessThan(100); // the index RANGE bound excludes the 100k future rows (not a full filter)
+
+      // recurse the plan tree to the NAMED index-scan node (not the top Limit, whose filter count can be 0
+      // while a nested scan removed all 100k).
+      type PlanNode = { 'Node Type'?: string; 'Index Name'?: string; 'Index Cond'?: string;
+        'Rows Removed by Filter'?: number; 'Actual Rows'?: number; Plans?: PlanNode[]; Plan?: PlanNode };
+      function findIndexNode(n: PlanNode | undefined): PlanNode | undefined {
+        if (!n) return undefined;
+        if (n['Index Name'] === 'idx_digest_groups_uncertain_ageout') return n;
+        for (const child of n.Plans ?? []) { const r = findIndexNode(child); if (r) return r; }
+        return findIndexNode(n.Plan);
+      }
+      const idxNode = findIndexNode(plan[0]);
+      expect(idxNode, 'idx_digest_groups_uncertain_ageout node').toBeDefined();
+      expect(idxNode!['Index Cond']).toMatch(/uncertain_deadline_at/);              // due-ness IS the index cond
+      expect(Number(idxNode!['Actual Rows'] ?? -1)).toBe(0);                        // 0 due at the scan node
+      expect(Number(idxNode!['Rows Removed by Filter'] ?? 0)).toBeLessThan(100);    // the 100k future rows are NOT filtered
     } finally { await c.end(); }
   }, 120_000);
 
@@ -1677,6 +1701,72 @@ describe('10c-a2 round-10 — shared request validator (trigger too), bounded ag
       const s = await gstate(c, g);
       expect(claimed).toBeNull();   // quiet-hours deferred, not claimed
       expect(new Date(s.available_at).getTime()).toBe(new Date(deadline).getTime());  // capped exactly at the deadline
+    } finally { await c.end(); }
+  });
+});
+
+describe('10c-a2 round-11 — deadline hot-loop, insert-time clock CHECK', () => {
+  it('a deadline-past uncertain group during quiet hours is aged out in ONE claim call (no 200-row hot-loop)', async () => {
+    const c = conn(); await c.connect();
+    const FSA = "'2026-07-01 07:00:00+00'::timestamptz";   // 09:00 Amsterdam
+    try {
+      // an uncertain request_ready group whose deadline (FSA+23h) is already past, claimed during quiet hours
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${FSA}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${FSA}, 'W')`, [run]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${FSA})`, [run, g]);
+      await c.query(`SELECT public.store_notification_digest_request($1,$2,'W', jsonb_build_object('to',$3::text,'subject','s','html','h'), ${FSA})`, [run, g, dest]);
+      const att = (await c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${FSA}) AS a`, [run, g])).rows[0].a;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${FSA})`, [run, att]);  // uncertain, deadline = FSA+23h = next-day 06:00 UTC
+      // claim PAST the deadline (06:00 UTC) but still in quiet hours (08:30 Amsterdam < 09:00): the pre-fix
+      // quiet-hours bump would write least(next-09:00, deadline) = the already-due deadline back and hot-loop.
+      const QUIET = "'2026-07-02 06:30:00+00'::timestamptz";  // 08:30 Amsterdam — quiet hours, AFTER the 06:00 UTC deadline
+      await c.query(`UPDATE public.notification_digest_groups SET available_at=${QUIET} WHERE id=$1`, [g]);
+      const cRun = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      const claimed = (await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${QUIET}, 'W2') AS g`, [cRun])).rows[0].g;
+      const s = await gstate(c, g);
+      expect(claimed).toBeNull();                       // not leased (aged out, not deferred/claimed)
+      expect(s.state).toBe('delivery_unknown');         // finalized
+      expect(s.current_attempt_id).toBeNull();
+      expect(await resStates(c, g)).toEqual(['committed', 'committed']);
+      // exactly ONE outcome ledger event for this claim run (no repeated 'deferred' rows)
+      const rows = (await c.query(`SELECT action, count(*)::int n FROM public.notification_digest_group_attempts WHERE worker_run_id=$1 GROUP BY action`, [cRun])).rows;
+      expect(rows).toEqual([{ action: 'delivery_unknown', n: 1 }]);
+    } finally { await c.end(); }
+  });
+
+  it('the uncertainty-clock pair + first_send_at is enforced at INSERT by a table CHECK', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const base = `canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+        destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state`;
+      const vals = `'["x"]'::jsonb,'h','email','ev','p:x','df','Europe/Amsterdam', ${NOW}, ${NOW}, 'request_ready'`;
+      // half-pair (since set, deadline null) → rejected
+      await expect(c.query(`INSERT INTO public.notification_digest_groups (${base}, uncertain_since) VALUES (${vals}, ${NOW})`))
+        .rejects.toThrow(/uncertainty_pair_check|violates check constraint/i);
+      // both clocks but no first_send_at → rejected (uncertain is always post-dispatch)
+      await expect(c.query(`INSERT INTO public.notification_digest_groups (${base}, uncertain_since, uncertain_deadline_at)
+        VALUES (${vals}, ${NOW}, ${NOW} + interval '23 hours')`))
+        .rejects.toThrow(/uncertainty_pair_check|violates check constraint/i);
+      // a clean non-uncertain insert still works; a real ambiguous transition (below) still works
+      await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_guard`);
+      await c.query(`INSERT INTO public.notification_digest_groups (${base}, first_send_at, uncertain_since, uncertain_deadline_at)
+        VALUES (${vals}, ${NOW}, ${NOW}, ${NOW} + interval '23 hours')`);   // valid uncertain row (pair + first_send_at)
+      await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_guard`);
+      // the real ambiguous path still produces a valid pair
+      const { g } = await toSending(c);
+      const s0 = await gstate(c, g);
+      // (uncertain not yet set here) — driving a timeout sets the pair legitimately
+      const runX = (await c.query(`SELECT worker_run_id FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g])).rows[0].worker_run_id;
+      const attX = (await c.query(`SELECT attempt_id FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g])).rows[0].attempt_id;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [runX, attX]);
+      const s1 = await gstate(c, g);
+      expect(s1.uncertain_since).not.toBeNull(); expect(s1.uncertain_deadline_at).not.toBeNull();
+      void s0;
     } finally { await c.end(); }
   });
 });

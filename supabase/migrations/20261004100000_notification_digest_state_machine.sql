@@ -481,8 +481,12 @@ BEGIN
      FOR UPDATE SKIP LOCKED LIMIT 1;
     IF NOT FOUND THEN RETURN NULL; END IF;
 
-    -- awaiting_evidence age-out → no-send delivery_unknown (finalize members + reservations), continue.
-    IF g.state = 'awaiting_evidence' THEN
+    -- uncertainty age-out — ANY due uncertain group (request_ready | sending | awaiting_evidence), handled
+    -- BEFORE the quiet-hours/breaker deferral branches. Otherwise a group whose deadline is already past
+    -- would be deferred to least(bump, deadline) = the already-due deadline, re-selected, and hot-loop until
+    -- the v_iter cap (one call emitting 200 'deferred' ledger rows). Finalize delivery_unknown, commit
+    -- reservations, write exactly ONE outcome ledger event, and continue.
+    IF g.uncertain_since IS NOT NULL AND g.uncertain_deadline_at IS NOT NULL AND p_now >= g.uncertain_deadline_at THEN
       PERFORM notif_digest_finalize_group(g.id, 'delivery_unknown', 'age_out', p_now);
       PERFORM notif_digest_commit_reservations(g.id, p_now);
       PERFORM notif_digest_ledger(p_run_id, g.id, NULL, 'delivery_unknown', 0);
@@ -1539,13 +1543,17 @@ BEGIN
     -- a complete-but-unsafe tuple (right hash/key, wrong recipient / extra bcc) is rejected here too.
     PERFORM notif_digest_validate_frozen_request(NEW.frozen_request, NEW.destination_fingerprint);
   END IF;
-  -- uncertainty clocks are a structural PAIR (set/cleared together) — so the age-out index/query can key on
-  -- uncertain_deadline_at alone and never scan a half-set row.
-  IF (NEW.uncertain_since IS NULL) <> (NEW.uncertain_deadline_at IS NULL) THEN
-    RAISE EXCEPTION 'uncertainty clocks (uncertain_since, uncertain_deadline_at) must be set or cleared together';
-  END IF;
   RETURN NEW;
 END $$;
+
+-- uncertainty clocks are a structural PAIR, enforced by an owner-effective table CHECK (covers INSERT too,
+-- which the BEFORE UPDATE guard cannot): either BOTH clocks NULL, or BOTH set AND first_send_at present (an
+-- uncertain group is always post-dispatch). So a direct insert of a half-pair — or an uncertain row with no
+-- first_send_at — can never enter the age-out index and leak.
+ALTER TABLE public.notification_digest_groups DROP CONSTRAINT IF EXISTS notification_digest_groups_uncertainty_pair_check;
+ALTER TABLE public.notification_digest_groups ADD CONSTRAINT notification_digest_groups_uncertainty_pair_check CHECK (
+  (uncertain_since IS NULL AND uncertain_deadline_at IS NULL)
+  OR (uncertain_since IS NOT NULL AND uncertain_deadline_at IS NOT NULL AND first_send_at IS NOT NULL));
 DROP TRIGGER IF EXISTS trg_digest_groups_send_identity ON public.notification_digest_groups;
 CREATE TRIGGER trg_digest_groups_send_identity BEFORE UPDATE ON public.notification_digest_groups
   FOR EACH ROW EXECUTE FUNCTION public.notification_digest_send_identity_guard();

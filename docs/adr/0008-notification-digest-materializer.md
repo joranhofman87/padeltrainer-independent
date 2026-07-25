@@ -577,8 +577,9 @@ These clarify — never change — the accepted design:
   guard's `prepared → request_ready` transition — so a direct owner-context update carrying a complete
   tuple (matching key + hash) but a wrong recipient or an extra `bcc` is rejected at the trigger, not just
   in the store RPC.
-- **The age-out scan is work-bounded.** The uncertainty clocks are a structural PAIR (the send-identity
-  guard rejects a half-set `uncertain_since`/`uncertain_deadline_at`), so `uncertain_deadline_at` alone is
+- **The age-out scan is work-bounded.** The uncertainty clocks are a structural PAIR — enforced at both
+  INSERT and UPDATE by a table CHECK (round-11): either both NULL, or both set with `first_send_at` present —
+  so `uncertain_deadline_at` alone is
   the canonical due field. The partial index is `idx_digest_groups_uncertain_ageout (channel,
   uncertain_deadline_at) WHERE uncertain_since IS NOT NULL AND state IN ('request_ready','sending',
   'awaiting_evidence')`, and the sweep scans `uncertain_deadline_at <= p_now ORDER BY uncertain_deadline_at
@@ -588,3 +589,17 @@ These clarify — never change — the accepted design:
   `least(v_bump, coalesce(uncertain_deadline_at, 'infinity'))`, so an uncertain group whose next allowed
   send window is after its 23-hour deadline is scheduled to the deadline (then aged out by the independent
   sweep), matching the "every scheduling branch is capped" contract.
+
+### Round-11 refinements (same clarifying scope)
+
+- **No deadline hot-loop.** `claim_notification_digest_group` ages out ANY selected uncertain group whose
+  deadline is already past (`uncertain_since IS NOT NULL AND p_now >= uncertain_deadline_at`) → finalize
+  `delivery_unknown`, commit reservations, one outcome ledger event, continue — BEFORE the quiet-hours /
+  breaker deferral branches. Otherwise a deadline-past uncertain group in quiet hours would be deferred to
+  `least(bump, deadline)` = the already-due deadline, re-selected, and loop until the `v_iter` cap (one call
+  emitting 200 `deferred` rows). This age-out is the same one the independent sweep performs, now reachable
+  from the send path too.
+- **The uncertainty-clock pair is an owner-effective table CHECK** (not just the UPDATE trigger):
+  `notification_digest_groups_uncertainty_pair_check` = `(both clocks NULL) OR (both set AND first_send_at
+  IS NOT NULL)`. It covers direct INSERTs (which a `BEFORE UPDATE` trigger cannot), so a half-pair or a
+  clocks-without-first-send row can never enter the age-out index and leak.
