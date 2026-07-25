@@ -138,6 +138,7 @@ describe('10c-a1 digest schema — tables + kill switch', () => {
 });
 
 const TABLE_PRIVS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] as const;
+const SEQ_PRIVS = ['USAGE', 'SELECT', 'UPDATE'] as const;
 const LEDGER_SEQ = 'notification_digest_group_attempts_seq_seq';
 
 describe('10c-a1 digest schema — exact ACL matrix (post-lockdown, prod-default-privilege semantics)', () => {
@@ -156,9 +157,9 @@ describe('10c-a1 digest schema — exact ACL matrix (post-lockdown, prod-default
     }
   });
 
-  it('anon + authenticated hold NONE of the seven table privileges on any digest table', async () => {
+  it('PUBLIC + anon + authenticated hold NONE of the seven table privileges on any digest table', async () => {
     for (const t of NEW_TABLES) {
-      for (const role of ['anon', 'authenticated']) {
+      for (const role of ['public', 'anon', 'authenticated']) {
         const row = (await db.query<Record<string, boolean>>(`SELECT ${TABLE_PRIVS.map((p) =>
           `has_table_privilege('${role}','public.${t}','${p}') AS "${p}"`).join(', ')}`)).rows[0];
         for (const p of TABLE_PRIVS) expect(row[p], `${role} ${p} ${t}`).toBe(false);
@@ -166,17 +167,17 @@ describe('10c-a1 digest schema — exact ACL matrix (post-lockdown, prod-default
     }
   });
 
-  it('the ledger identity sequence grants ONLY service_role USAGE (no SELECT/UPDATE, nothing to anon/auth/PUBLIC)', async () => {
-    const s = (await db.query<{ su: boolean; ss: boolean; sup: boolean; au: boolean; a2u: boolean; pu: boolean }>(`SELECT
-      has_sequence_privilege('service_role','public.${LEDGER_SEQ}','USAGE')  AS su,
-      has_sequence_privilege('service_role','public.${LEDGER_SEQ}','SELECT') AS ss,
-      has_sequence_privilege('service_role','public.${LEDGER_SEQ}','UPDATE') AS sup,
-      has_sequence_privilege('anon','public.${LEDGER_SEQ}','USAGE')          AS au,
-      has_sequence_privilege('authenticated','public.${LEDGER_SEQ}','USAGE') AS a2u,
-      has_sequence_privilege('public','public.${LEDGER_SEQ}','USAGE')        AS pu`)).rows[0];
-    expect(s.su).toBe(true);
-    expect(s.ss).toBe(false); expect(s.sup).toBe(false);
-    expect(s.au).toBe(false); expect(s.a2u).toBe(false); expect(s.pu).toBe(false);
+  it('the ledger identity sequence grants ONLY service_role USAGE (SELECT/UPDATE false; nothing to PUBLIC/anon/auth)', async () => {
+    const svc = (await db.query<Record<string, boolean>>(`SELECT ${SEQ_PRIVS.map((p) =>
+      `has_sequence_privilege('service_role','public.${LEDGER_SEQ}','${p}') AS "${p}"`).join(', ')}`)).rows[0];
+    expect(svc.USAGE, 'service_role USAGE').toBe(true);
+    expect(svc.SELECT, 'service_role SELECT').toBe(false);
+    expect(svc.UPDATE, 'service_role UPDATE').toBe(false);
+    for (const role of ['public', 'anon', 'authenticated']) {
+      const row = (await db.query<Record<string, boolean>>(`SELECT ${SEQ_PRIVS.map((p) =>
+        `has_sequence_privilege('${role}','public.${LEDGER_SEQ}','${p}') AS "${p}"`).join(', ')}`)).rows[0];
+      for (const p of SEQ_PRIVS) expect(row[p], `${role} seq ${p}`).toBe(false);
+    }
   });
 
   it('the RPC grants are preserved: purge/link remain executable ONLY by service_role', async () => {
