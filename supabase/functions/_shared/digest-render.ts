@@ -17,6 +17,10 @@ export type DigestItem = {
 };
 
 export type DigestRenderInput = {
+  /** the sender identity (e.g. "PadelTrainer.ai <noreply@app.padeltrainer.ai>") — FROZEN into the request so a
+   *  later deploy that changes the platform default cannot alter an already-stored request within its 23h
+   *  idempotency window. Becomes `from`. */
+  from: string;
   /** the shared recipient address (already resolved + validated live) — becomes `to`. */
   to: string;
   /** BCP-47-ish locale for the (currently minimal) copy; unknown → English. */
@@ -25,7 +29,8 @@ export type DigestRenderInput = {
   items: DigestItem[];
 };
 
-export type DigestRenderOutput = { to: string; subject: string; html: string };
+/** The complete frozen provider request — `from` included so the stored request fully determines what is sent. */
+export type DigestRenderOutput = { from: string; to: string; subject: string; html: string };
 
 /** ~90 KB store ceiling — the worker treats a render at/over this as §CH oversize. */
 export const DIGEST_BYTE_BUDGET = 92160;
@@ -134,7 +139,8 @@ export function renderDigestEmail(input: DigestRenderInput): DigestRenderOutput 
     `<ul style="list-style:none;padding:0;margin:0">${rows}</ul>` +
     `</div>`;
 
-  return { to: input.to, subject, html };
+  // `from` is a header value (not HTML) — jsonb-safe (NUL/lone-surrogate stripped) but not HTML-escaped.
+  return { from: asText(input.from), to: input.to, subject, html };
 }
 
 /**
@@ -144,5 +150,6 @@ export function renderDigestEmail(input: DigestRenderInput): DigestRenderOutput 
  * (stranding it instead of splitting).
  */
 export function isDigestRequestOversize(out: DigestRenderOutput): boolean {
-  return pgJsonbTextByteLength({ to: out.to, subject: out.subject, html: out.html }) > DIGEST_BYTE_BUDGET;
+  // measure the WHOLE frozen request (incl. `from`) — the exact object the SQL store/oversize-check byte-counts.
+  return pgJsonbTextByteLength({ from: out.from, to: out.to, subject: out.subject, html: out.html }) > DIGEST_BYTE_BUDGET;
 }

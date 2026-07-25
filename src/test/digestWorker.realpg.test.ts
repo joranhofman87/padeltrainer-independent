@@ -1,10 +1,11 @@
 // @vitest-environment node
 // PR 10c-a3 — the digest WORKER loop, driven end-to-end against a REAL multi-connection Postgres
-// (embedded-postgres) with the full deployed migration chain (10c-a1 foundation + ACL + 10c-a2 state machine +
-// 10c-a3 render-oversize) and a SCRIPTED fake Resend. Covers the required fault-injection matrix: disabled /
-// config-invalid zero-mutation, two-worker concurrency, crash boundaries, multi-item split, single-item
-// oversize terminalization, exact frozen-request dispatch, one HTTP per attempt, timeout/network ambiguity,
-// record-failure recovery, stale-lease recovery, bounded invocation, and truthful run reconciliation.
+// (embedded-postgres) with the full migration chain (10c-a1 foundation + ACL + 10c-a2 state machine + 10c-a3
+// oversize/frozen-request-v2 + hash-fix) and a SCRIPTED fake Resend. Covers the required fault-injection matrix:
+// disabled/misconfigured zero-mutation, two-worker concurrency, crash boundaries, multi-item split, single-item
+// oversize terminalization, exact frozen-request dispatch (incl. frozen `from` + digest_group_id tag), one HTTP
+// per attempt, STATE-AWARE 429 retry (begin, no re-render, same key), timeout/network ambiguity, record-failure
+// → FAILED run recovery, stale-lease recovery, bounded invocation, no session cron lock, truthful reconcile.
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
@@ -75,17 +76,23 @@ function mkRpc(c: pg.Client) {
   };
 }
 
+type Frozen = { from: string; to: string; subject: string; html: string };       // the PERSISTED request (to = string)
+type SendPayload = { from: string; to: string[]; subject: string; html: string }; // the Resend request (to = array)
+type SendOpts = { idempotencyKey: string; groupId: string };
 type DepOverrides = Partial<Pick<WorkerDeps, 'enabled' | 'apiKeyPresent' | 'limits' | 'now'>> & {
-  send?: (payload: { to: string[]; subject: string; html: string }, opts: { idempotencyKey: string }) => ResendSendOnceResult;
+  send?: (payload: SendPayload, opts: SendOpts) => ResendSendOnceResult;
   wrapRpc?: (rpc: WorkerDeps['rpc']) => WorkerDeps['rpc'];
   logs?: Record<string, unknown>[];
-  sendCalls?: Array<{ payload: { to: string[]; subject: string; html: string }; opts: { idempotencyKey: string } }>;
-  frozenSeen?: Array<{ request: { to: string; subject: string; html: string }; idempotencyKey: string } | null>;
+  rpcNames?: string[];   // every rpc name invoked (for the no-session-lock assertion)
+  sendCalls?: Array<{ payload: SendPayload; opts: SendOpts }>;
+  frozenSeen?: Array<{ request: Frozen; idempotencyKey: string } | null>;
   tokenSuffix?: string;
 };
 
 function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
-  const rawRpc = mkRpc(c);
+  const base = mkRpc(c);
+  const named: WorkerDeps['rpc'] = (n, a) => { o.rpcNames?.push(n); return base(n, a); };
+  const rawRpc = o.wrapRpc ? o.wrapRpc(named) : named;
   const sendCalls = o.sendCalls ?? [];
   const defaultSend = (): ResendSendOnceResult => ({ kind: 'response', httpStatus: 202, providerMessageId: 're_' + (++seq), errorName: null, retryAfterSeconds: null });
   return {
@@ -94,7 +101,11 @@ function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
     channel: 'email',
     from: 'PadelTrainer.ai <noreply@app.padeltrainer.ai>',
     limits: o.limits ?? FIXED_LIMITS,
-    rpc: o.wrapRpc ? o.wrapRpc(rawRpc) : rawRpc,
+    rpc: rawRpc,
+    readGroupState: async (g) => {
+      const r = await c.query(`SELECT state FROM public.notification_digest_groups WHERE id=$1`, [g]);
+      return r.rows[0]?.state ?? null;
+    },
     loadMembers: async (g) => {
       const r = await c.query(`SELECT destination_normalized, digest_item, group_locale FROM public.notification_outbox WHERE digest_group_id=$1 AND status='pending' ORDER BY created_at, id`, [g]);
       return r.rows.map((row) => ({ destination: row.destination_normalized, digestItem: row.digest_item, locale: row.group_locale }));
@@ -103,9 +114,13 @@ function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
       const r = await c.query(`SELECT frozen_request, provider_idempotency_key FROM public.notification_digest_groups WHERE id=$1`, [g]);
       const row = r.rows[0];
       const out = (!row || !row.frozen_request || !row.provider_idempotency_key)
-        ? null : { request: row.frozen_request, idempotencyKey: row.provider_idempotency_key };
+        ? null : { request: row.frozen_request as Frozen, idempotencyKey: row.provider_idempotency_key as string };
       o.frozenSeen?.push(out);   // capture the PERSISTED request the worker read (it is scrubbed once terminal)
       return out;
+    },
+    reconcile: async (runId) => {
+      const r = await c.query(`SELECT family, metric, count FROM public.reconcile_notification_digest_run($1)`, [runId]);
+      return r.rows.map((row) => ({ family: row.family, metric: row.metric, count: Number(row.count) }));
     },
     sendOnce: (payload, opts) => {
       sendCalls.push({ payload, opts });
@@ -134,17 +149,16 @@ async function seedDigestGroup(c: pg.Client, key: string, dest: string, items: o
 const gstate = async (c: pg.Client, g: string) => (await c.query(`SELECT * FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0];
 
 describe('10c-a3 digest worker — inertness + happy path + dispatch contract', () => {
-  it('DISABLED / no-API-key: ZERO database mutations (no worker run, no groups touched)', async () => {
+  it('DISABLED and MISCONFIGURED both make ZERO database mutations (distinct statuses)', async () => {
     const c = conn(); await c.connect();
     try {
       await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 'x' }]);
-      let rpcCalls = 0;
-      const deps = mkDeps(c, { enabled: false, wrapRpc: (r) => (n, a) => { rpcCalls++; return r(n, a); } });
-      const s1 = await runDigestWorker(deps);
-      expect(s1.status).toBe('disabled');
-      const s2 = await runDigestWorker(mkDeps(c, { apiKeyPresent: false, wrapRpc: (r) => (n, a) => { rpcCalls++; return r(n, a); } }));
-      expect(s2.status).toBe('disabled');
-      expect(rpcCalls).toBe(0);                                        // NO rpc calls at all
+      const names: string[] = [];
+      const s1 = await runDigestWorker(mkDeps(c, { enabled: false, rpcNames: names }));
+      expect(s1.status).toBe('disabled');                              // switch off → healthy no-op
+      const s2 = await runDigestWorker(mkDeps(c, { apiKeyPresent: false, rpcNames: names }));
+      expect(s2.status).toBe('misconfigured');                         // enabled-but-unconfigured → distinct
+      expect(names.length).toBe(0);                                    // NO rpc calls at all in either case
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_worker_runs`)).rows[0].n).toBe(0);
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_groups`)).rows[0].n).toBe(0);
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_outbox WHERE status<>'pending'`)).rows[0].n).toBe(0);
@@ -166,11 +180,12 @@ describe('10c-a3 digest worker — inertness + happy path + dispatch contract', 
       // re-render would diverge — with the PERSISTED idempotency key dg:v1:<group>.
       const persisted = frozenSeen[0]!;
       expect(persisted.idempotencyKey).toBe('dg:v1:' + g.id);
+      expect(persisted.request.from).toBe('PadelTrainer.ai <noreply@app.padeltrainer.ai>'); // sender FROZEN in the request
       expect(sendCalls.length).toBe(1);
-      expect(sendCalls[0].payload.to).toEqual([persisted.request.to]);
-      expect(sendCalls[0].payload.subject).toBe(persisted.request.subject);
-      expect(sendCalls[0].payload.html).toBe(persisted.request.html);
+      // the send carries the WHOLE frozen request (single-string `to` → Resend array), byte-for-byte.
+      expect(sendCalls[0].payload).toEqual({ from: persisted.request.from, to: [persisted.request.to], subject: persisted.request.subject, html: persisted.request.html });
       expect(sendCalls[0].opts.idempotencyKey).toBe(persisted.idempotencyKey);
+      expect(sendCalls[0].opts.groupId).toBe(g.id);                    // the digest_group_id correlation tag
       // exactly one attempt, one HTTP call
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g.id])).rows[0].n).toBe(1);
     } finally { await c.end(); }
@@ -237,6 +252,41 @@ describe('10c-a3 digest worker — fault injection', () => {
     } finally { await c.end(); }
   });
 
+  it('oversize finalizer is a PROVER: rejects small / wrong-destination / multi-item / non-prepared calls', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      const nowIso = NOW.toISOString();
+      const fpOf = async (d: string) => (await c.query(`SELECT public.notif_digest_destination_fingerprint($1) f`, [d])).rows[0].f;
+      // drive a SINGLE-member group to 'prepared', owned by W/drun.
+      await seedDigestGroup(c, 'g1:1', 'a@example.com', [{ title: 'x' }]);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='g1:1'`)).rows[0].id;
+      const drun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
+      await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: nowIso, p_worker: 'W' });
+      await rpc('prepare_notification_digest_group', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_now: nowIso });
+      const bigHtml = '<p>' + 'x'.repeat(93000) + '</p>';   // > 90 KB
+      const fin = (req: object) => rpc('finalize_notification_digest_render_oversize', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_frozen_request: req, p_now: nowIso });
+      const fpA = await fpOf('a@example.com');
+      // (a) a request WITHIN budget cannot terminalize — it must PROVE oversize server-side.
+      await expect(fin({ from: 'S <s@x.com>', to: 'a@example.com', subject: 's', html: '<p>tiny</p>' })).rejects.toThrow(/not oversize/i);
+      // (b) an oversize request whose destination doesn't match the group fingerprint is rejected.
+      await expect(fin({ from: 'S <s@x.com>', to: 'attacker@evil.com', subject: 's', html: bigHtml })).rejects.toThrow(/destination|fingerprint/i);
+      expect(fpA).toBeTruthy();
+      // (c) a multi-item group is reducible → must split, never terminalize (even with a genuinely oversize render).
+      await seedDigestGroup(c, 'g2:1', 'b@example.com', [{ title: 'x' }, { title: 'y' }]);
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const g2 = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='g2:1'`)).rows[0].id;
+      await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: nowIso, p_worker: 'W' });
+      await rpc('prepare_notification_digest_group', { p_run_id: drun, p_group_id: g2, p_worker: 'W', p_now: nowIso });
+      await expect(rpc('finalize_notification_digest_render_oversize', { p_run_id: drun, p_group_id: g2, p_worker: 'W', p_frozen_request: { from: 'S <s@x.com>', to: 'b@example.com', subject: 's', html: bigHtml }, p_now: nowIso })).rejects.toThrow(/split/i);
+      // (d) a non-'prepared' (here request_ready) group is rejected — only prepared, no live reservations to strand.
+      await rpc('store_notification_digest_request', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_frozen_request: { from: 'S <s@x.com>', to: 'a@example.com', subject: 's', html: '<p>x</p>' }, p_now: nowIso });
+      await expect(fin({ from: 'S <s@x.com>', to: 'a@example.com', subject: 's', html: bigHtml })).rejects.toThrow(/not owned\/prepared/i);
+    } finally { await c.end(); }
+  });
+
   it('multi-item RENDER oversize → split into children that then send (never terminalized whole)', async () => {
     const c = conn(); await c.connect();
     try {
@@ -255,21 +305,75 @@ describe('10c-a3 digest worker — fault injection', () => {
     } finally { await c.end(); }
   });
 
-  it('record-failure recovery: a record() error leaves the attempt live; the run still succeeds; a later run recovers it', async () => {
+  it('record-failure: run is reported FAILED (never a healthy 200), the attempt stays live, a later run recovers it', async () => {
     const c = conn(); await c.connect();
     try {
       await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
-      // first run: record throws → group left 'sending' with an unrecorded attempt; run status ok (group error counted)
+      // first run: record throws AFTER the send → group left 'sending' with an unrecorded attempt. The failure is
+      // caught (independent groups keep going) but the RUN is unhealthy: status 'error' → the run row is 'failed'.
       const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'record_notification_digest_result' ? Promise.reject(new Error('db blip')) : r(n, a));
       const s1 = await runDigestWorker(mkDeps(c, { wrapRpc }));
-      expect(s1.status).toBe('ok'); expect(s1.groupErrors).toBe(1);
+      expect(s1.status).toBe('error'); expect(s1.groupErrors).toBe(1); // a failed group is NEVER a healthy run
+      const run = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE run_id=$1`, [s1.dispatchRunId])).rows[0];
+      expect(run.status).toBe('failed');
       const g1 = (await c.query(`SELECT * FROM public.notification_digest_groups WHERE recipient_key='p:1'`)).rows[0];
       expect(g1.state).toBe('sending');
-      // second run, ≥15 min later: claim's stale-lease reclaim recovers the group (sending → uncertainty).
+      // second run, ≥15 min later: claim's stale-lease reclaim recovers the group (sending → request_ready +
+      // uncertainty), then re-attempts it under the SAME dg:v1 key (Resend dedupes → no double delivery) →
+      // converges to 'sent'. Two attempts, one idempotency key.
       const later = new Date(NOW.getTime() + 20 * 60 * 1000);
       await runDigestWorker(mkDeps(c, { now: () => later }));
       const g2 = await gstate(c, g1.id);
-      expect(g2.uncertain_since).not.toBeNull();                        // recovered, not stuck
+      expect(g2.state).toBe('sent');                                    // recovered + delivered, not stuck
+      const atts = (await c.query(`SELECT count(*)::int n, count(DISTINCT provider_idempotency_key)::int k FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g1.id])).rows[0];
+      expect(atts.n).toBe(2); expect(atts.k).toBe(1);
+    } finally { await c.end(); }
+  });
+
+  it('state-aware RETRY: a 429 returns the group to request_ready; the next run re-attempts via begin — NO re-render — reusing the identical frozen request + dg:v1 key', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 'retry me', url: 'https://x/1' }]);
+      // run 1 — 429 → request_ready (a live retry), frozen request persisted.
+      const send1: DepOverrides['sendCalls'] = [];
+      await runDigestWorker(mkDeps(c, { sendCalls: send1, send: () => ({ kind: 'response', httpStatus: 429, providerMessageId: null, errorName: 'rate_limit_exceeded', retryAfterSeconds: 1 }) }));
+      const g1 = (await c.query(`SELECT * FROM public.notification_digest_groups WHERE recipient_key='p:1'`)).rows[0];
+      expect(g1.state).toBe('request_ready'); expect(g1.frozen_request).not.toBeNull();
+      const frozenAfter1 = g1.frozen_request; const hashAfter1 = g1.request_hash;
+      // run 2 — later so available_at has passed; the group is claimed IN request_ready. The worker must NOT
+      // call prepare/store/split — only begin → send the SAME persisted request. Assert no re-render happened.
+      const later = new Date(NOW.getTime() + 5 * 60 * 1000);
+      const send2: DepOverrides['sendCalls'] = []; const names2: string[] = [];
+      const s2 = await runDigestWorker(mkDeps(c, { now: () => later, sendCalls: send2, rpcNames: names2 }));
+      expect(s2.sent).toBe(1);
+      expect(names2).not.toContain('prepare_notification_digest_group');   // no re-prepare
+      expect(names2).not.toContain('store_notification_digest_request');   // no re-store / re-render
+      const g2 = await gstate(c, g1.id);
+      expect(g2.state).toBe('sent');
+      // the request the second attempt sent is byte-identical to the one frozen before the first attempt.
+      expect(send2.length).toBe(1);
+      expect(send1[0].payload).toEqual(send2[0].payload);
+      expect(send1[0].opts.idempotencyKey).toBe(send2[0].opts.idempotencyKey); // one dg:v1 key across retries
+      // send == the persisted request (single-string `to` → array); the frozen row never changed between attempts.
+      expect(send2[0].payload).toEqual({ from: frozenAfter1.from, to: [frozenAfter1.to], subject: frozenAfter1.subject, html: frozenAfter1.html });
+      // two attempts total, both under the same idempotency key.
+      const atts = (await c.query(`SELECT count(*)::int n, count(DISTINCT provider_idempotency_key)::int k FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g1.id])).rows[0];
+      expect(atts.n).toBe(2); expect(atts.k).toBe(1);
+      expect(hashAfter1).toBeTruthy();
+    } finally { await c.end(); }
+  });
+
+  it('no session-scoped cron lock: the worker NEVER calls try_lock_cron_job / unlock_cron_job (state-machine claims are the boundary)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      const names: string[] = [];
+      const s = await runDigestWorker(mkDeps(c, { rpcNames: names }));
+      expect(names).not.toContain('try_lock_cron_job');
+      expect(names).not.toContain('unlock_cron_job');
+      expect(names).toContain('claim_notification_digest_group');   // it DID drive the real claim path
+      expect(Array.isArray(s.reconcile)).toBe(true);                // and always reconciles the run
+      expect(s.dispatchRunId).toBeTruthy();                         // …exposing the safe run id
     } finally { await c.end(); }
   });
 
@@ -295,14 +399,20 @@ describe('10c-a3 digest worker — fault injection', () => {
     const c = conn(); await c.connect();
     try {
       await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
-      // simulate a crash after begin: leave the group 'sending', stale-locked, uncertainty unset
-      await runDigestWorker(mkDeps(c, { send: () => { throw new Error('process died mid-send'); } })).catch(() => {});
+      // simulate a crash after begin: the send throws → the group is left 'sending', stale-locked, with a live
+      // (unrecorded) attempt. The run is unhealthy (caught group error) but not thrown.
+      const s1 = await runDigestWorker(mkDeps(c, { send: () => { throw new Error('process died mid-send'); } }));
+      expect(s1.status).toBe('error');
       const g1 = (await c.query(`SELECT * FROM public.notification_digest_groups WHERE recipient_key='p:1'`)).rows[0];
       expect(g1.state).toBe('sending');
+      // next run (past the stale lease): the crashed group is reclaimed → re-attempted under the SAME dg:v1 key
+      // → delivered. Two attempts, one key (idempotent — no double delivery).
       const later = new Date(NOW.getTime() + 30 * 60 * 1000);
       await runDigestWorker(mkDeps(c, { now: () => later }));
       const g2 = await gstate(c, g1.id);
-      expect(g2.uncertain_since).not.toBeNull();
+      expect(g2.state).toBe('sent');
+      const atts = (await c.query(`SELECT count(*)::int n, count(DISTINCT provider_idempotency_key)::int k FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g1.id])).rows[0];
+      expect(atts.n).toBe(2); expect(atts.k).toBe(1);
     } finally { await c.end(); }
   });
 });

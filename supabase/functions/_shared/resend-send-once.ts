@@ -35,6 +35,20 @@ export type ResendSendOnceResult =
 export const RESEND_ENDPOINT = "https://api.resend.com/emails";
 export const DEFAULT_TIMEOUT_MS = 20_000;
 
+/**
+ * The ONLY provider error names we echo into error_name (→ logs + the persisted attempt). These are the exact
+ * machine codes the SQL §ERR classifier (notif_digest_classify_error) branches on; ANY other value — including
+ * Resend's free-text `message`, which can contain a recipient email address — is collapsed to `http_<status>`.
+ * Never surface arbitrary provider text: it is a PII-leak channel.
+ */
+export const ALLOWED_ERROR_NAMES = new Set<string>([
+  // classifier-significant (§ERR branches on these)
+  "daily_quota_exceeded", "monthly_quota_exceeded", "invalid_idempotent_request",
+  "validation_error", "invalid_from_address", "invalid_attachment", "missing_required_field",
+  // well-known safe Resend machine slugs, kept for ops observability (never PII)
+  "rate_limit_exceeded",
+]);
+
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 /** Parse a Retry-After header (delta-seconds, or an HTTP-date) into whole seconds, or null. */
@@ -56,12 +70,15 @@ export function parseRetryAfterSeconds(headerValue: string | null, nowMs: number
  *
  * @param opts.idempotencyKey  MUST be the group's provider_idempotency_key (`dg:v1:<group_id>`), so any
  *   re-POST of the same attempt is a no-op at Resend within its dedupe window (no double delivery).
+ * @param opts.groupId  the digest group id — attached as the `digest_group_id` Resend TAG on EVERY request so a
+ *   delivery/bounce callback arriving BEFORE record can still correlate to the group (ADR §PV/§P5).
  */
 export async function sendResendEmailOnce(
   apiKey: string,
   payload: ResendSendOncePayload,
   opts: {
     idempotencyKey: string;
+    groupId: string;
     timeoutMs?: number;
     fetchImpl?: FetchLike;
     now?: () => number;
@@ -81,7 +98,8 @@ export async function sendResendEmailOnce(
         "Content-Type": "application/json",
         "Idempotency-Key": opts.idempotencyKey,
       },
-      body: JSON.stringify(payload),
+      // the frozen request verbatim + the stable correlation tag (group id is UUID → tag-safe charset).
+      body: JSON.stringify({ ...payload, tags: [{ name: "digest_group_id", value: opts.groupId }] }),
       signal: controller.signal,
     });
 
@@ -100,11 +118,11 @@ export async function sendResendEmailOnce(
       return { kind: "transport", transport: "no_response", message: `2xx (${res.status}) without a provider email id` };
     }
 
-    // Resend error bodies carry a machine name in `name` (e.g. "validation_error", "rate_limit_exceeded",
-    // "daily_quota_exceeded"); fall back to the message. The record RPC's §ERR taxonomy keys on this name.
-    const name = typeof (body as { name?: unknown }).name === "string"
-      ? (body as { name: string }).name
-      : (typeof (body as { message?: unknown }).message === "string" ? (body as { message: string }).message : `http_${res.status}`);
+    // Resend error bodies carry a machine name in `name` (e.g. "validation_error", "daily_quota_exceeded").
+    // Echo it ONLY if it is a known machine code the §ERR classifier uses; otherwise `http_<status>`. NEVER
+    // fall back to `message` — it is free provider text that can contain the recipient's email address.
+    const rawName = (body as { name?: unknown }).name;
+    const name = typeof rawName === "string" && ALLOWED_ERROR_NAMES.has(rawName) ? rawName : `http_${res.status}`;
     const retryAfter = parseRetryAfterSeconds(res.headers.get("Retry-After"), now());
     return { kind: "response", httpStatus: res.status, providerMessageId: null, errorName: name, retryAfterSeconds: retryAfter };
   } catch (err) {

@@ -9653,6 +9653,7 @@ export type Database = {
       finalize_cycle_proposals: { Args: { p_cycle_id: string }; Returns: Json }
       finalize_notification_digest_render_oversize: {
         Args: {
+          p_frozen_request: Json
           p_group_id: string
           p_now: string
           p_run_id: string
@@ -10600,6 +10601,10 @@ export type Database = {
         Returns: string
       }
       notif_digest_validate_frozen_request: {
+        Args: { p_destination_fingerprint: string; p_frozen: Json }
+        Returns: undefined
+      }
+      notif_digest_validate_frozen_request_shape: {
         Args: { p_destination_fingerprint: string; p_frozen: Json }
         Returns: undefined
       }

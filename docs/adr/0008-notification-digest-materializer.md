@@ -651,3 +651,37 @@ scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, sep
   materialize fallback, store, send-identity guard, destination fingerprint); `convert_to(…,'UTF8')` takes the
   text's raw UTF-8 bytes with no escape interpretation, byte-identical to the old cast for all backslash-free
   text, so every existing hash VALUE is preserved. Forward-only CREATE OR REPLACE; privileges/triggers persist.
+
+### 10c-a3 worker-slice review corrections (Codex)
+
+- **State-aware dispatch (the load-bearing fix).** `claim` does NOT normalise groups to `leased`; it returns
+  the group in its due state, and each RPC accepts exactly one input state (`prepare`←`leased`, `store`←
+  `prepared`, `begin`←`request_ready`). The worker now reads the owned group's state after claim and drives the
+  right step: `leased`→prepare→render→…→store→begin; `prepared`→render→…→store→begin (crash recovery); and
+  `request_ready`→begin→send the PERSISTED request (NO re-render/re-store). A RETRY (429 / ambiguous / stale-
+  sending recovery / half-open probe) is claimed directly in `request_ready`; `begin` mints a fresh `attempt_id`
+  but reuses the immutable `frozen_request` + `dg:v1` key, so every retry re-POSTs the identical request under
+  one idempotency key (provider-side dedup). The prior worker called `prepare` after every claim, which errored
+  on every retry — the whole retry/uncertainty/probe machinery was unreachable.
+- **`digest_group_id` send tag (§PV/§P5).** Every provider request carries `tags:[{name:digest_group_id,
+  value:<group_id>}]`, so a delivery/bounce callback arriving BEFORE `record` can correlate an in-flight send.
+- **Complete request frozen — `from` added to the allow-list.** The frozen request is now `{from,to,subject,
+  html}` (validator split into `notif_digest_validate_frozen_request_shape` = allow-list+destination, and the
+  byte-bounded wrapper). Sender identity is frozen at store, so a deploy that changes the platform default
+  cannot alter an already-frozen request within its 23-hour idempotency window.
+- **Hardened oversize finalizer** (signature now takes the rendered request). It PROVES oversize server-side:
+  exactly `prepared` (not `request_ready` — a retried group can hold reservations that terminalizing would
+  strand), exactly one surviving member, valid shape+destination, and `octet_length(jsonb::text) > 92160`.
+  Small / wrong-destination / multi-item / non-prepared calls all RAISE.
+- **Truthful runs.** Any per-group failure (incl. a `record` failure after the send) or impossible
+  missing-frozen / zero-member / unexpected-state marks the dispatch run `failed` → status `error` → HTTP 500;
+  independent groups keep processing and failed ones are left to crash/stale recovery, never re-sent inline.
+  `reconcile_notification_digest_run` is always called; run IDs + dimensional metrics are logged (PII-free).
+- **No session-scoped cron lock.** The `try_lock_cron_job`/`unlock_cron_job` pair spanned two pooled PostgREST
+  requests with no session affinity (unlock could wedge on a different backend). Removed — the atomic `claim`
+  (FOR UPDATE SKIP LOCKED) is the concurrency boundary. (Filed a separate audit for the v1 workers that inherit
+  the same pattern.)
+- **Config vs disabled + PII-safe errors.** Switch off → 200 `disabled` (zero DB); switch on but Resend/Supabase
+  config missing → 500 `misconfigured` (zero DB, alert). The adapter's `error_name` is a machine-name allow-list
+  → `http_<status>` otherwise; the free-text provider `message` (which can contain a recipient address) is
+  never logged or persisted.
