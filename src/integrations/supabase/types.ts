@@ -9651,6 +9651,15 @@ export type Database = {
         }[]
       }
       finalize_cycle_proposals: { Args: { p_cycle_id: string }; Returns: Json }
+      finalize_notification_digest_render_oversize: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_run_id: string
+          p_worker: string
+        }
+        Returns: undefined
+      }
       find_guest_players_by_email_for_academy: {
         Args: {
           _academy_profile_id: string

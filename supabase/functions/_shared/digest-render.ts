@@ -37,7 +37,8 @@ export const DIGEST_BYTE_BUDGET = 92160;
  */
 function stripNul(s: string): string {
   // U+0000 (NUL) and lone/unpaired surrogates are the sequences PostgreSQL jsonb rejects on text→jsonb.
-  return s.replaceAll("\u0000", "").replace(/[\uD800-\uDFFF]/g, (ch, i, str) => {
+  // (split/join instead of String.replaceAll so this compiles under the app pre-es2021 tsc lib target.)
+  return s.split("\u0000").join("").replace(/[\uD800-\uDFFF]/g, (ch, i, str) => {
     const code = ch.charCodeAt(0);
     const isHigh = code >= 0xD800 && code <= 0xDBFF;
     const paired = isHigh

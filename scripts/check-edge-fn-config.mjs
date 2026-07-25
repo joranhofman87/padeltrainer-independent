@@ -28,7 +28,7 @@ const MUST_BE_PUBLIC = [
   // cron-driven outbox drainers — pg_cron presents the service-role key, which on this project
   // is an `sb_secret_…` key and NOT a JWT, so verify_jwt=true 401s them at the gateway before
   // requireServiceRole ever runs. Silent: the cron job "succeeds" and nothing is ever sent.
-  'notification-email-worker', 'notification-whatsapp-worker',
+  'notification-email-worker', 'notification-whatsapp-worker', 'notification-digest-worker',
   // ops tool, service-role guarded + restricted CORS; called with the service-role key, so the
   // same non-JWT reasoning applies
   'twilio-content-admin',

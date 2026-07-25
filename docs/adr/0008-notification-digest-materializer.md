@@ -614,3 +614,40 @@ These clarify — never change — the accepted design:
   deployed RPC drops the due-row count and fails the test. The trigger disable/enable around the bulk seed is
   wrapped in try/finally so a failed seed can never leave the guards disabled for later tests. No production
   SQL behavior changed.
+
+## 10c-a3 — the WORKER (edge function + adapter), still INERT
+
+The state machine (10c-a2) is a set of SQL RPCs; 10c-a3 adds the thin, bounded driver that calls them, plus the
+single-shot Resend adapter and the render. Nothing here enables a send: the `notification-digest-worker` edge
+function returns immediately unless `DIGEST_SEND_ENABLED === "true"` AND `RESEND_API_KEY` is set, no cron is
+scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, separately-reviewed, owner-gated
+10c-b step.
+
+- **Driver sequence (`_shared/digest-worker-core.ts`), RPC-only.** One dispatch run: sweep
+  (`reconcile_notification_digest_stale`) → `materialize` (own run/phase, finished truthfully) → a bounded
+  claim loop: `claim` → `prepare` → render surviving members → if the rendered `{to,subject,html}` exceeds the
+  90 KB store budget, **split** when >1 member (reducible) else **terminalize** the single item → `store` →
+  `begin` → **exactly one** `sendResendEmailOnce` of the PERSISTED frozen request with the PERSISTED
+  `dg:v1:<group>` key (never a second render) → `record` every observed outcome (transport or HTTP) → finish
+  the run. The worker issues NO direct writes to any digest table; every transition is an RPC. It is bounded by
+  explicit limits (materialize groups/members, max claim iterations, sweep limit) and a wall-clock budget.
+- **Truthful runs + recovery.** A per-group failure — including a `record` failure that lands AFTER the HTTP
+  send — is caught, counted, and left to the state machine's crash/stale recovery (the live-but-unrecorded
+  attempt is reclaimed next tick → uncertainty); it is never re-sent inside the worker. A run-level failure
+  finishes the dispatch run `failed`; true process death leaves it unfinished for crash recovery. No partial run
+  is ever finished `succeeded`. Logs carry only IDs / states / counts / redacted error labels — never a
+  destination, frozen HTML, token, or `digest_item`.
+- **New forward-only RPC — `finalize_notification_digest_render_oversize`** (migration `20261005100000`).
+  Terminalizes a RENDERED single-item group that exceeds the store budget as `oversize_failed` /
+  `render_oversize`. Ownership + run + `prepared`/`request_ready` state gated exactly like `store`; RAISEs if
+  `item_count > 1` (a multi-item group is reducible and MUST split, not terminalize), so the worker can neither
+  loop on it forever nor drop a splittable group. service_role EXECUTE only.
+- **Correctness fix (migration `20261005110000`) — `expr::text::bytea` → `convert_to(expr::text,'UTF8')`.**
+  Every request/canonical-key hash in the deployed (inert) `20261004100000` cast text to `bytea`, which runs
+  the bytea INPUT function and INTERPRETS backslash escapes. A jsonb `::text` of any real frozen request
+  contains `\"` (HTML has quoted attributes), so `sha256(frozen_request::text::bytea)` raised `invalid input
+  syntax for type bytea` — store/guard would have rejected EVERY genuine email. The 10c-a2 suite only stored
+  `<p>x</p>` (no quotes), so it never surfaced. Fixed as a CLASS across all hash sites (hash-stamp trigger,
+  materialize fallback, store, send-identity guard, destination fingerprint); `convert_to(…,'UTF8')` takes the
+  text's raw UTF-8 bytes with no escape interpretation, byte-identical to the old cast for all backslash-free
+  text, so every existing hash VALUE is preserved. Forward-only CREATE OR REPLACE; privileges/triggers persist.
