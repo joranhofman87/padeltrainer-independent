@@ -10437,6 +10437,15 @@ export type Database = {
         Args: { p_group_id: string; p_now: string; p_status: string }
         Returns: undefined
       }
+      notif_digest_apply_provider_transition: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_run_id: string
+          p_status: string
+        }
+        Returns: string
+      }
       notif_digest_bucket_apply: {
         Args: {
           p_attempt_id: string
@@ -10479,6 +10488,10 @@ export type Database = {
         }
         Returns: string
       }
+      notif_digest_destination_fingerprint: {
+        Args: { p_destination: string }
+        Returns: string
+      }
       notif_digest_finalize_group: {
         Args: {
           p_group_id: string
@@ -10497,6 +10510,10 @@ export type Database = {
           p_run_id: string
         }
         Returns: undefined
+      }
+      notif_digest_member_stop_reason: {
+        Args: { p_member_id: string }
+        Returns: string
       }
       notif_digest_provider_rank: {
         Args: { p_status: string }
@@ -10517,6 +10534,16 @@ export type Database = {
           p_now: string
           p_reason: string
           p_retry_at: string
+        }
+        Returns: undefined
+      }
+      notif_digest_trip_breaker_for: {
+        Args: {
+          p_channel: string
+          p_error_name: string
+          p_http_status: number
+          p_now: string
+          p_retry_after_seconds: number
         }
         Returns: undefined
       }
@@ -10817,7 +10844,6 @@ export type Database = {
           p_frozen_request: Json
           p_group_id: string
           p_now: string
-          p_request_hash: string
           p_run_id: string
           p_worker: string
         }
