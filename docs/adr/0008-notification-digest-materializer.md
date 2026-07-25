@@ -544,3 +544,27 @@ These clarify — never change — the accepted design:
   0..604800 (7 days), else NULL → the caller's documented fallback (24 h for daily quota; the exponential
   backoff floor for a plain retryable). A negative value can never set `retry_at` in the past, and an
   extreme value can never pause delivery for years.
+
+### Round-9 refinements (same clarifying scope)
+
+- **digest_item is an immutable enqueue-time snapshot.** A digest row (insert or promotion) MUST carry a
+  non-null `digest_item` (the hash-stamp trigger enforces it alongside the other snapshot fields);
+  `digest_item` can NEVER be attached (NULL→value) or rewritten (value→different value) afterward; it may be
+  scrubbed (value→NULL) ONLY when the member is atomically entering a documented terminal outbox status
+  (`sent`/`delivered`/`failed`/`skipped`/`cancelled`/`delivery_unknown`). `digest_item_bytes` stays derived
+  and immutable (retained after scrub).
+- **Uncertainty age-out is an INDEPENDENT no-send reconciliation transition.** `reconcile_notification_
+  digest_stale` ages out ANY uncertain group (`request_ready | sending | awaiting_evidence`) at/after
+  `least(uncertain_deadline_at, first_send_at + 23 h)` → `delivery_unknown`, committing its reservations and
+  creating no attempt, and NEVER reading or writing the breaker. So a manual channel hold / quiet hours /
+  caps / retry-ineligibility can no longer keep an uncertain group (and its committed capacity) alive past
+  the deadline. Backed by a partial index `idx_digest_groups_uncertain_ageout (channel, first_send_at)
+  WHERE uncertain_since IS NOT NULL AND state IN (request_ready, sending, awaiting_evidence)`.
+- **All uncertain scheduling is capped at the deadline.** Every uncertain `available_at` computation
+  (retryable, ambiguous, global_config, quiet-hours, breaker defer) is `least(computed,
+  coalesce(uncertain_deadline_at, 'infinity'))` — a valid seven-day `Retry-After` can never push a retry
+  past `first_send_at + 23 h`; reaching the deadline ages out (via the independent sweep) instead of sending.
+- **The `prepared → request_ready` transition enforces request-tuple completeness atomically** — non-null
+  `frozen_request`, `provider_idempotency_key = dg:v1:<id>`, and `request_hash = sha256(frozen_request)` are
+  checked on the transition itself (not field-by-field), so a state-only move that would strand a malformed
+  group is rejected.

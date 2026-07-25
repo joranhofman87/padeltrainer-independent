@@ -106,8 +106,8 @@ BEGIN
      AND (TG_OP = 'INSERT' OR OLD.delivery_mode IS DISTINCT FROM 'digest' OR NEW.digest_group_hash IS NULL) THEN
     -- a digest row must carry a COMPLETE snapshot — grouping on partial identity would collapse rows wrongly.
     IF NEW.recipient_key IS NULL OR NEW.destination_fingerprint IS NULL
-       OR NEW.digest_frequency IS NULL OR NEW.digest_boundary_at IS NULL THEN
-      RAISE EXCEPTION 'digest outbox row % is missing snapshot fields (recipient_key/destination_fingerprint/digest_frequency/digest_boundary_at)', NEW.id;
+       OR NEW.digest_frequency IS NULL OR NEW.digest_boundary_at IS NULL OR NEW.digest_item IS NULL THEN
+      RAISE EXCEPTION 'digest outbox row % is missing snapshot fields (recipient_key/destination_fingerprint/digest_frequency/digest_boundary_at/digest_item)', NEW.id;
     END IF;
     -- ALWAYS server-derived (on INSERT and on promotion to digest): a caller-supplied hash is overwritten,
     -- never trusted; the timezone is NORMALIZED so NULL and an explicit default mint the same identity.
@@ -862,7 +862,8 @@ BEGIN
   SELECT * INTO v_breaker FROM public.notification_provider_circuit WHERE channel = g.channel FOR UPDATE;
   IF FOUND AND v_breaker.state IN ('open','half_open') AND v_breaker.probe_group_id IS DISTINCT FROM p_group_id THEN
     UPDATE public.notification_digest_groups
-       SET available_at = p_now + interval '5 minutes', locked_by = NULL, locked_at = NULL, updated_at = p_now
+       SET available_at = least(p_now + interval '5 minutes', coalesce(g.uncertain_deadline_at, 'infinity'::timestamptz)),
+           locked_by = NULL, locked_at = NULL, updated_at = p_now
      WHERE id = p_group_id;
     PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred', 0);
     RETURN NULL;
@@ -872,7 +873,8 @@ BEGIN
   v_bump := notif_digest_quiet_hours_bump(p_now, g.recipient_timezone);
   IF v_bump > p_now THEN
     UPDATE public.notification_digest_groups
-       SET available_at = v_bump, locked_by = NULL, locked_at = NULL, updated_at = p_now
+       SET available_at = least(v_bump, coalesce(g.uncertain_deadline_at, 'infinity'::timestamptz)),
+           locked_by = NULL, locked_at = NULL, updated_at = p_now
      WHERE id = p_group_id;
     PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred', 0);
     RETURN NULL;
@@ -1110,7 +1112,8 @@ BEGIN
     ELSE PERFORM notif_digest_commit_reservations(g.id, p_now); END IF;
     UPDATE public.notification_digest_groups
        SET state = 'request_ready', locked_by = NULL, locked_at = NULL, current_attempt_id = NULL,
-           available_at = greatest(coalesce(p_now + notif_digest_retry_after_interval(p_retry_after_seconds), v_backoff), v_backoff), updated_at = p_now
+           available_at = least(greatest(coalesce(p_now + notif_digest_retry_after_interval(p_retry_after_seconds), v_backoff), v_backoff),
+                                coalesce(g.uncertain_deadline_at, 'infinity'::timestamptz)), updated_at = p_now
      WHERE id = g.id;
     PERFORM notif_digest_ledger(p_run_id, g.id, p_attempt_id, 'retryable', 0);
 
@@ -1119,7 +1122,7 @@ BEGIN
     UPDATE public.notification_digest_groups
        SET state = 'request_ready', uncertain_since = coalesce(uncertain_since, p_now),
            uncertain_deadline_at = coalesce(uncertain_deadline_at, v_deadline),
-           locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, available_at = v_backoff, updated_at = p_now
+           locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, available_at = least(v_backoff, v_deadline), updated_at = p_now
      WHERE id = g.id;
     PERFORM notif_digest_ledger(p_run_id, g.id, p_attempt_id, 'ambiguous', 0);
 
@@ -1131,7 +1134,8 @@ BEGIN
     END IF;
     UPDATE public.notification_digest_groups
        SET state = 'request_ready', delivery_budget_used = greatest(delivery_budget_used - 1, 0),
-           locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, available_at = p_now + interval '15 minutes', updated_at = p_now
+           locked_by = NULL, locked_at = NULL, current_attempt_id = NULL,
+           available_at = least(p_now + interval '15 minutes', coalesce(g.uncertain_deadline_at, 'infinity'::timestamptz)), updated_at = p_now
      WHERE id = g.id;
     PERFORM notif_digest_ledger(p_run_id, g.id, p_attempt_id, 'global_config', 0);
 
@@ -1308,9 +1312,18 @@ BEGIN
   RETURN true;
 END $$;
 
+-- the independent no-send age-out scan predicate (partial index below): ANY uncertain group whose 23-hour
+-- window has closed, regardless of state. This runs in the RECONCILIATION path, NOT the send path, so a
+-- manual breaker hold / quiet hours / caps / retry-eligibility can never keep an uncertain group (and its
+-- committed reservations) alive past the deadline.
+CREATE INDEX IF NOT EXISTS idx_digest_groups_uncertain_ageout
+  ON public.notification_digest_groups (channel, first_send_at)
+  WHERE uncertain_since IS NOT NULL AND state IN ('request_ready','sending','awaiting_evidence');
+
 -- ===========================================================================
--- §SWEEP — operator-facing standalone sweep: age-out due awaiting_evidence groups (→ delivery_unknown) and
--- re-arm half-open breakers whose bound probe lease has expired (crash-before/after-HTTP recovery). Bounded.
+-- §SWEEP — operator-facing standalone reconciliation sweep: INDEPENDENT age-out of every due uncertain group
+-- (→ delivery_unknown, reservations committed, NO attempt, breaker untouched) and re-arm of half-open
+-- breakers whose bound probe lease has expired (crash-before/after-HTTP recovery). Bounded.
 CREATE OR REPLACE FUNCTION public.reconcile_notification_digest_stale(
     p_run_id uuid, p_channel text, p_now timestamptz, p_probe_lease_minutes int DEFAULT 10, p_limit int DEFAULT 500)
   RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -1319,10 +1332,16 @@ BEGIN
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', p_channel);
   PERFORM notif_digest_require_range(p_probe_lease_minutes, 1, 1440, 'sweep: p_probe_lease_minutes');
   PERFORM notif_digest_require_range(p_limit, 1, 10000, 'sweep: p_limit');
-  -- awaiting_evidence age-out (§AE / §P1): capacity stays committed; members finalized delivery_unknown.
+  -- uncertainty age-out (§AE / §P1) — INDEPENDENT of breaker/quiet-hours/caps/send-eligibility. Any uncertain
+  -- group (request_ready | sending | awaiting_evidence) at/after least(uncertain_deadline_at, first_send_at
+  -- +23h) is finalized delivery_unknown; capacity stays committed (a real dispatch consumed it); members
+  -- finalized; no attempt created; the breaker is never read or written.
   FOR g IN SELECT id FROM public.notification_digest_groups
-            WHERE channel = p_channel AND state = 'awaiting_evidence' AND available_at <= p_now
-            ORDER BY available_at LIMIT greatest(p_limit, 0) FOR UPDATE SKIP LOCKED LOOP
+            WHERE channel = p_channel AND uncertain_since IS NOT NULL
+              AND state IN ('request_ready','sending','awaiting_evidence')
+              AND first_send_at IS NOT NULL
+              AND p_now >= least(uncertain_deadline_at, first_send_at + interval '23 hours')
+            ORDER BY first_send_at LIMIT greatest(p_limit, 0) FOR UPDATE SKIP LOCKED LOOP
     PERFORM notif_digest_finalize_group(g.id, 'delivery_unknown', 'age_out', p_now);
     PERFORM notif_digest_commit_reservations(g.id, p_now);
     PERFORM notif_digest_ledger(p_run_id, g.id, NULL, 'delivery_unknown', 0);
@@ -1372,10 +1391,20 @@ BEGIN
     OR NEW.destination_normalized  IS DISTINCT FROM OLD.destination_normalized THEN
       RAISE EXCEPTION 'notification_outbox digest canonical identity fields are frozen';
     END IF;
-    -- digest content: the item is write-once (scrub to NULL only, at terminal member finalize); the byte
-    -- count is server-derived (above) and immutable.
-    IF OLD.digest_item IS NOT NULL AND NEW.digest_item IS NOT NULL AND NEW.digest_item IS DISTINCT FROM OLD.digest_item THEN
-      RAISE EXCEPTION 'notification_outbox.digest_item is write-once (scrub to NULL only)';
+    -- digest content lifecycle: the item is an immutable enqueue-time snapshot. It is set once at insert/
+    -- promotion (non-null, enforced by the hash-stamp trigger); it may NEVER be attached (NULL→value) or
+    -- rewritten (value→different value) afterward; it may be scrubbed (value→NULL) ONLY when the member is
+    -- ATOMICALLY entering a documented terminal outbox status. The byte count stays derived + immutable.
+    IF NEW.digest_item IS DISTINCT FROM OLD.digest_item THEN
+      IF OLD.digest_item IS NULL THEN
+        RAISE EXCEPTION 'notification_outbox.digest_item may not be attached after enqueue';
+      ELSIF NEW.digest_item IS NULL THEN
+        IF NEW.status NOT IN ('sent','delivered','failed','skipped','cancelled','delivery_unknown') THEN
+          RAISE EXCEPTION 'notification_outbox.digest_item may only be scrubbed when the member enters a terminal status';
+        END IF;
+      ELSE
+        RAISE EXCEPTION 'notification_outbox.digest_item is write-once';
+      END IF;
     END IF;
     IF OLD.digest_item_bytes IS NOT NULL AND NEW.digest_item_bytes IS DISTINCT FROM OLD.digest_item_bytes THEN
       RAISE EXCEPTION 'notification_outbox.digest_item_bytes is server-derived and immutable';
@@ -1492,6 +1521,16 @@ BEGIN
     END IF;
     IF OLD.uncertain_deadline_at IS NOT NULL AND NEW.uncertain_deadline_at > OLD.uncertain_deadline_at THEN
       RAISE EXCEPTION 'notification_digest_groups.uncertain_deadline_at may not move later';
+    END IF;
+  END IF;
+  -- request-tuple COMPLETENESS: the prepared→request_ready transition must ATOMICALLY carry the whole frozen
+  -- request tuple (checked on the transition itself, not field-by-field) — a state-only move that leaves the
+  -- request null would strand a malformed group that can never call store.
+  IF OLD.state = 'prepared' AND NEW.state = 'request_ready' THEN
+    IF NEW.frozen_request IS NULL
+       OR NEW.provider_idempotency_key IS DISTINCT FROM 'dg:v1:' || NEW.id::text
+       OR NEW.request_hash IS DISTINCT FROM encode(sha256(NEW.frozen_request::text::bytea), 'hex') THEN
+      RAISE EXCEPTION 'prepared→request_ready must atomically establish the complete frozen request tuple (frozen_request + dg:v1 key + sha256 hash)';
     END IF;
   END IF;
   RETURN NEW;

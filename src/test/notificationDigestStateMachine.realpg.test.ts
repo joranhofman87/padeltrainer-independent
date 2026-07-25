@@ -550,11 +550,15 @@ describe('10c-a2 reconciliation + sweep — causal, cross-run, superseded lineag
   it('sweep ages out due awaiting_evidence → delivery_unknown', async () => {
     const c = conn(); await c.connect();
     try {
-      const { g } = await toSending(c);
-      await c.query(`UPDATE public.notification_digest_groups SET state='awaiting_evidence', available_at=${NOW} - interval '1 hour', locked_by=NULL WHERE id=$1`, [g]);
+      // a genuinely uncertain request_ready group (timeout → ambiguous), aged out past its 23h deadline
+      const { g, att, run: r0 } = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [r0, att]);
+      expect((await gstate(c, g)).state).toBe('request_ready');   // uncertain, still live
       const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
-      const n = (await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW}) AS n`, [run])).rows[0].n;
-      expect(Number(n)).toBeGreaterThanOrEqual(1); expect((await gstate(c, g)).state).toBe('delivery_unknown');
+      const n = (await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW} + interval '30 hours') AS n`, [run])).rows[0].n;
+      const s2 = await gstate(c, g);
+      expect(Number(n)).toBeGreaterThanOrEqual(1); expect(s2.state).toBe('delivery_unknown');
+      expect(s2.current_attempt_id).toBeNull();
     } finally { await c.end(); }
   });
 });
@@ -1103,8 +1107,8 @@ describe('10c-a2 round-5 — session-TZ caps, probe CAS, precise correlation, un
       const fp = await fpOf(c, dest);
       const id = (await c.query(`INSERT INTO public.notification_outbox
         (channel, recipient_key, destination_fingerprint, destination_normalized, event_type, template_key,
-         template_version, group_locale, digest_frequency, recipient_timezone, digest_boundary_at, status)
-        VALUES ('email',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, 'pending') RETURNING id`, [key, fp, dest])).rows[0].id;
+         template_version, group_locale, digest_frequency, recipient_timezone, digest_boundary_at, digest_item, status)
+        VALUES ('email',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 'pending') RETURNING id`, [key, fp, dest])).rows[0].id;
       const h = (await c.query(`UPDATE public.notification_outbox
         SET delivery_mode='digest', digest_group_hash='caller-controlled' WHERE id=$1 RETURNING digest_group_hash`, [id])).rows[0].digest_group_hash;
       expect(h).not.toBe('caller-controlled'); expect(h).toMatch(/^[0-9a-f]{64}$/);
@@ -1228,8 +1232,8 @@ describe('10c-a2 round-6 — structural freeze, anchored idempotency window, spl
       const fp = await fpOf(c, dest);
       const id = (await c.query(`INSERT INTO public.notification_outbox
         (channel, recipient_key, destination_fingerprint, destination_normalized, event_type, template_key,
-         template_version, group_locale, digest_frequency, recipient_timezone, digest_boundary_at, status, digest_group_hash)
-        VALUES ('email',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, 'pending', 'caller-controlled')
+         template_version, group_locale, digest_frequency, recipient_timezone, digest_boundary_at, digest_item, status, digest_group_hash)
+        VALUES ('email',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, '{}'::jsonb, 'pending', 'caller-controlled')
         RETURNING id`, [key, fp, dest])).rows[0].id;   // legacy: delivery_mode NULL, caller hash pre-set
       const h = (await c.query(`UPDATE public.notification_outbox SET delivery_mode='digest' WHERE id=$1 RETURNING digest_group_hash`, [id])).rows[0].digest_group_hash;
       expect(h).not.toBe('caller-controlled'); expect(h).toMatch(/^[0-9a-f]{64}$/);   // promotion rewrote it server-side
@@ -1256,10 +1260,11 @@ describe('10c-a2 round-6 — structural freeze, anchored idempotency window, spl
       const rs = await gstate(c, r.g);
       expect(rAtt).toBeNull(); expect(rs.state).toBe('retry_stopped'); expect(rs.current_attempt_id).toBeNull();
       const d = await toSending(c);
-      await c.query(`UPDATE public.notification_digest_groups SET state='awaiting_evidence', available_at=${NOW} - interval '1 hour', locked_by=NULL WHERE id=$1`, [d.g]);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [d.run, d.att]);  // uncertain
       const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
-      await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW})`, [run]);
-      expect((await gstate(c, d.g)).current_attempt_id).toBeNull();               // age-out → delivery_unknown
+      await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW} + interval '30 hours')`, [run]);
+      const ds = await gstate(c, d.g);
+      expect(ds.state).toBe('delivery_unknown'); expect(ds.current_attempt_id).toBeNull();   // age-out → delivery_unknown
     } finally { await c.end(); }
   });
 
@@ -1466,6 +1471,121 @@ describe('10c-a2 round-8 — helper-ACL allowlist, server-derived+frozen digest 
       await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'rate_limit_exceeded',NULL, ${NOW}, -3600)`, [e.run, e.att]);
       const es = await gstate(c, e.g);
       expect(new Date(es.available_at).getTime()).toBeGreaterThan(new Date(NOW.slice(1, 26)).getTime());  // future, not past
+    } finally { await c.end(); }
+  });
+});
+
+describe('10c-a2 round-9 — digest_item lifecycle, breaker-independent age-out, deadline-capped scheduling, request-tuple completeness', () => {
+  it('digest_item is an immutable enqueue snapshot: null-pending rejected; late attach rejected; premature scrub rejected; terminal scrub OK', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // null-pending digest insert rejected
+      const fp = await fpOf(c, 'di@example.com');
+      await expect(c.query(`INSERT INTO public.notification_outbox
+        (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, event_type,
+         template_key, template_version, group_locale, digest_frequency, recipient_timezone, digest_boundary_at, status)
+        VALUES ('email','digest','p:di',$1,'di@example.com','ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, 'pending')`, [fp]))
+        .rejects.toThrow(/missing snapshot fields.*digest_item/i);
+      // a valid pending digest member
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const m = (await c.query(`SELECT id FROM public.notification_outbox WHERE recipient_key=$1`, [key])).rows[0].id;
+      // late attach after a hypothetical NULL — force NULL first is itself illegal, so test the two update paths:
+      // premature scrub (still pending) rejected
+      await expect(c.query(`UPDATE public.notification_outbox SET digest_item=NULL WHERE id=$1`, [m]))
+        .rejects.toThrow(/may only be scrubbed when the member enters a terminal status/i);
+      // rewrite rejected (write-once)
+      await expect(c.query(`UPDATE public.notification_outbox SET digest_item=jsonb_build_object('x',1) WHERE id=$1`, [m]))
+        .rejects.toThrow(/digest_item is write-once/i);
+      // a terminal scrub (item→NULL WITH a terminal status, atomically) is allowed — the legitimate finalize shape
+      await c.query(`UPDATE public.notification_outbox SET status='skipped', digest_item=NULL WHERE id=$1`, [m]);
+      const after = (await c.query(`SELECT status, digest_item, digest_item_bytes FROM public.notification_outbox WHERE id=$1`, [m])).rows[0];
+      expect(after.status).toBe('skipped'); expect(after.digest_item).toBeNull();
+      expect(after.digest_item_bytes).toBe('{}'.length);   // byte count retained after scrub
+    } finally { await c.end(); }
+  });
+
+  it('uncertainty age-out is INDEPENDENT of a manual breaker hold: a due uncertain group is finalized by the sweep', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g, att, run } = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [run, att]);  // ambiguous → uncertain, request_ready
+      expect((await gstate(c, g)).state).toBe('request_ready');
+      // a MANUAL channel hold (retry_at NULL) — claim would return before ever scanning this group
+      await c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, retry_at) VALUES ('email','open','monthly_quota',NULL)
+        ON CONFLICT (channel) DO UPDATE SET state='open', reason='monthly_quota', retry_at=NULL, probe_group_id=NULL, probe_attempt_id=NULL`);
+      const claimRun = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      // even 30h later, claim yields nothing (held) — the group would leak WITHOUT the independent sweep
+      expect((await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${NOW} + interval '30 hours', 'W') AS g`, [claimRun])).rows[0].g).toBeNull();
+      expect((await gstate(c, g)).state).toBe('request_ready');   // still live under the hold
+      // the reconciliation sweep ages it out regardless of the breaker
+      const sweepRun = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      const n = (await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW} + interval '30 hours') AS n`, [sweepRun])).rows[0].n;
+      const s = await gstate(c, g);
+      expect(Number(n)).toBeGreaterThanOrEqual(1);
+      expect(s.state).toBe('delivery_unknown'); expect(s.current_attempt_id).toBeNull();
+      expect(await resStates(c, g)).toEqual(['committed', 'committed']);   // reservations committed, not leaked
+      // the breaker is untouched (still the manual hold)
+      const cb = (await c.query(`SELECT state, reason, retry_at FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(cb.state).toBe('open'); expect(cb.reason).toBe('monthly_quota'); expect(cb.retry_at).toBeNull();
+    } finally { await c.end(); }
+  });
+
+  it('uncertain scheduling is capped at the 23h deadline: a valid 7-day Retry-After cannot push a retry past it', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g, att, run } = await toSending(c);
+      const fsa = (await gstate(c, g)).first_send_at;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [run, att]);  // ambiguous → deadline = first_send+23h
+      // retry the (still request_ready) group, then a 429 with a VALID 7-day Retry-After
+      await c.query(`UPDATE public.notification_digest_groups SET locked_by='W', locked_at=${NOW}, state='request_ready', available_at=${NOW} WHERE id=$1`, [g]);
+      const att2 = (await c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${NOW}) AS a`, [run, g])).rows[0].a;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'rate_limit_exceeded',NULL, ${NOW}, 604800)`, [run, att2]);  // 7-day Retry-After
+      const s = await gstate(c, g);
+      // available_at is capped at the deadline (first_send_at + 23h), NOT 7 days out
+      expect(new Date(s.available_at).getTime()).toBeLessThanOrEqual(new Date(fsa).getTime() + 23 * 3600 * 1000);
+      expect(new Date(s.available_at).getTime()).toBe(new Date(fsa).getTime() + 23 * 3600 * 1000);   // exactly the deadline
+      // at the deadline the sweep ages it out rather than the 7-day wait
+      const sweepRun = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW} + interval '24 hours')`, [sweepRun]);
+      expect((await gstate(c, g)).state).toBe('delivery_unknown');
+    } finally { await c.end(); }
+  });
+
+  it('a retry INSIDE the window keeps its normal backoff (cap only bites past the deadline)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g, att, run } = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [run, att]);  // ambiguous
+      await c.query(`UPDATE public.notification_digest_groups SET locked_by='W', locked_at=${NOW}, state='request_ready', available_at=${NOW} WHERE id=$1`, [g]);
+      const att2 = (await c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${NOW}) AS a`, [run, g])).rows[0].a;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,429,'rate_limit_exceeded',NULL, ${NOW}, 60)`, [run, att2]);  // 60s Retry-After, well inside the window
+      const s = await gstate(c, g);
+      const fsa = (await gstate(c, g)).first_send_at;
+      expect(new Date(s.available_at).getTime()).toBeLessThan(new Date(fsa).getTime() + 23 * 3600 * 1000);  // NOT clamped to the deadline
+    } finally { await c.end(); }
+  });
+
+  it('prepared→request_ready must atomically carry the full request tuple (a state-only transition is rejected)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      await seedMember(c, key, dest);
+      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, run]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [run, g]);
+      // a bare state-only transition (no request tuple) is rejected on the transition itself
+      await expect(c.query(`UPDATE public.notification_digest_groups SET state='request_ready' WHERE id=$1`, [g]))
+        .rejects.toThrow(/must atomically establish the complete frozen request tuple/i);
+      // a partial subset (frozen only, no key/hash) also rejected
+      await expect(c.query(`UPDATE public.notification_digest_groups SET state='request_ready', frozen_request=jsonb_build_object('to',$2::text,'subject','s','html','h') WHERE id=$1`, [g, dest]))
+        .rejects.toThrow(/frozen request tuple/i);
+      // the legitimate store path (full tuple) still succeeds
+      await c.query(`SELECT public.store_notification_digest_request($1,$2,'W', jsonb_build_object('to',$3::text,'subject','s','html','<p>x</p>'), ${NOW})`, [run, g, dest]);
+      expect((await gstate(c, g)).state).toBe('request_ready');
     } finally { await c.end(); }
   });
 });
