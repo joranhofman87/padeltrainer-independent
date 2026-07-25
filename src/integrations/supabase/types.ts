@@ -10590,6 +10590,10 @@ export type Database = {
         Args: { p_existing: string; p_first_send_at: string }
         Returns: string
       }
+      notif_digest_validate_frozen_request: {
+        Args: { p_destination_fingerprint: string; p_frozen: Json }
+        Returns: undefined
+      }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
