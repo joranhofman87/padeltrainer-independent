@@ -1624,42 +1624,51 @@ describe('10c-a2 round-10 — shared request validator (trigger too), bounded ag
     } finally { await c.end(); }
   });
 
-  it('the age-out scan is work-bounded at 100k: the idx_digest_groups_uncertain_ageout node itself filters ~0 rows', async () => {
+  it('the age-out scan is work-bounded at 100k, EXPLAINing the RPC\'s OWN extracted query', async () => {
     const c = conn(); await c.connect();
+    const N_FUTURE = 100000, N_DUE = 50;
     try {
-      // 100k STRUCTURALLY-VALID uncertain groups (uncertain pair + first_send_at, per the table CHECK), all
-      // with a FUTURE deadline (NOT due). The foundation INSERT guard forces first_send_at=NULL, so bulk-seed
-      // with the two BEFORE-triggers disabled (the CHECK still validates every row).
-      await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_guard`);
-      await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_send_identity`);
-      await c.query(`INSERT INTO public.notification_digest_groups
-        (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
-         recipient_timezone, digest_boundary_at, available_at, state, first_send_at, uncertain_since, uncertain_deadline_at)
-        SELECT jsonb_build_array('v2','email','p:'||gs), 'h'||gs, 'email','ev','p:'||gs,'df'||gs,'Europe/Amsterdam',
-               ${BD}, ${NOW} + interval '23 hours', 'request_ready', ${NOW}, ${NOW}, ${NOW} + interval '23 hours'
-        FROM generate_series(1,100000) gs`);
-      await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_guard`);
-      await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_send_identity`);
-      // structural validity: the CHECK held for all 100k (uncertain pair + first_send_at)
+      // 100k FUTURE + 50 DUE structurally-valid uncertain groups (uncertain pair + first_send_at, per the
+      // table CHECK). The foundation INSERT guard forces first_send_at=NULL, so bulk-seed with the two
+      // BEFORE-triggers disabled — FAILURE-SAFE: the ENABLE runs in finally so a failed seed can never leave
+      // the guards disabled for later tests (they share this embedded-postgres instance).
+      try {
+        await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_guard`);
+        await c.query(`ALTER TABLE public.notification_digest_groups DISABLE TRIGGER trg_digest_groups_send_identity`);
+        await c.query(`INSERT INTO public.notification_digest_groups
+          (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+           recipient_timezone, digest_boundary_at, available_at, state, terminal_reason, first_send_at, uncertain_since, uncertain_deadline_at)
+          SELECT jsonb_build_array('v2','email','f:'||gs), 'hf'||gs, 'email','ev','f:'||gs,'df'||gs,'Europe/Amsterdam',
+                 ${BD}, ${NOW} + interval '23 hours', 'request_ready', NULL, ${NOW}, ${NOW}, ${NOW} + interval '23 hours'
+          FROM generate_series(1,${N_FUTURE}) gs`);   // future (deadline > NOW)
+        await c.query(`INSERT INTO public.notification_digest_groups
+          (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+           recipient_timezone, digest_boundary_at, available_at, state, terminal_reason, first_send_at, uncertain_since, uncertain_deadline_at)
+          SELECT jsonb_build_array('v2','email','d:'||gs), 'hd'||gs, 'email','ev','d:'||gs,'df'||gs,'Europe/Amsterdam',
+                 ${BD}, ${NOW} - interval '1 hour', 'request_ready', NULL, ${NOW} - interval '25 hours', ${NOW} - interval '25 hours', ${NOW} - interval '2 hours'
+          FROM generate_series(1,${N_DUE}) gs`);   // due (deadline < NOW); terminal_reason NULL (a live uncertain group)
+      } finally {
+        await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_guard`);
+        await c.query(`ALTER TABLE public.notification_digest_groups ENABLE TRIGGER trg_digest_groups_send_identity`);
+      }
+      // structural validity: the CHECK held for all rows (uncertain pair + first_send_at)
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_groups WHERE first_send_at IS NULL AND uncertain_since IS NOT NULL`)).rows[0].n).toBe(0);
       await c.query(`ANALYZE public.notification_digest_groups`);
 
-      // The test must exercise the ACTUAL RPC query, not a hand-copied one. Extract the sweep's scan straight
-      // from reconcile_notification_digest_stale's source and assert its shape, then EXPLAIN that exact scan.
+      // Extract the RPC's OWN candidate query (the FOR g IN SELECT … FOR UPDATE SKIP LOCKED block) from its
+      // live source and parameter-substitute it — so EXPLAIN runs the DEPLOYED SQL, not a hand-copy. Any
+      // change to the RPC's predicate/order/index shape flows straight into what we EXPLAIN.
       const src = (await c.query(`SELECT pg_get_functiondef('public.reconcile_notification_digest_stale(uuid,text,timestamptz,int,int)'::regprocedure) d`)).rows[0].d;
-      expect(src).toMatch(/uncertain_deadline_at <= p_now/);                       // the range bound
-      expect(src).toMatch(/ORDER BY uncertain_deadline_at/);                        // ordered by the indexed col
-      expect(src).toMatch(/state IN \('request_ready','sending','awaiting_evidence'\)/);
+      const m = src.match(/FOR\s+g\s+IN\s+(SELECT[\s\S]*?FOR UPDATE SKIP LOCKED)\s+LOOP/i);
+      expect(m, 'candidate FOR-loop query extracted from the RPC').not.toBeNull();
+      const candidate = m![1]
+        .replace(/\bp_channel\b/g, `'email'`)
+        .replace(/\bp_now\b/g, NOW)
+        .replace(/\bp_limit\b/g, '500');
+      const plan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${candidate}`)).rows[0]['QUERY PLAN'];
 
-      const plan = (await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-        SELECT id FROM public.notification_digest_groups
-         WHERE channel='email' AND uncertain_since IS NOT NULL
-           AND state IN ('request_ready','sending','awaiting_evidence')
-           AND uncertain_deadline_at <= ${NOW}
-         ORDER BY uncertain_deadline_at LIMIT 500 FOR UPDATE SKIP LOCKED`)).rows[0]['QUERY PLAN'];
-
-      // recurse the plan tree to the NAMED index-scan node (not the top Limit, whose filter count can be 0
-      // while a nested scan removed all 100k).
+      // recurse to the NAMED index-scan node (not the top Limit, whose filter count can read 0 while a nested
+      // scan removed all 100k).
       type PlanNode = { 'Node Type'?: string; 'Index Name'?: string; 'Index Cond'?: string;
         'Rows Removed by Filter'?: number; 'Actual Rows'?: number; Plans?: PlanNode[]; Plan?: PlanNode };
       function findIndexNode(n: PlanNode | undefined): PlanNode | undefined {
@@ -1671,8 +1680,10 @@ describe('10c-a2 round-10 — shared request validator (trigger too), bounded ag
       const idxNode = findIndexNode(plan[0]);
       expect(idxNode, 'idx_digest_groups_uncertain_ageout node').toBeDefined();
       expect(idxNode!['Index Cond']).toMatch(/uncertain_deadline_at/);              // due-ness IS the index cond
-      expect(Number(idxNode!['Actual Rows'] ?? -1)).toBe(0);                        // 0 due at the scan node
-      expect(Number(idxNode!['Rows Removed by Filter'] ?? 0)).toBeLessThan(100);    // the 100k future rows are NOT filtered
+      // the 50 DUE groups are returned; the 100k FUTURE rows are NOT filtered (index range excludes them). If
+      // the deployed RPC gained a filtering predicate, the due rows would drop and this row-count would fail.
+      expect(Number(idxNode!['Actual Rows'] ?? -1)).toBe(N_DUE);
+      expect(Number(idxNode!['Rows Removed by Filter'] ?? 0)).toBeLessThan(100);
     } finally { await c.end(); }
   }, 120_000);
 

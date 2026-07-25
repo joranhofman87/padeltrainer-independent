@@ -603,3 +603,14 @@ These clarify — never change — the accepted design:
   `notification_digest_groups_uncertainty_pair_check` = `(both clocks NULL) OR (both set AND first_send_at
   IS NOT NULL)`. It covers direct INSERTs (which a `BEFORE UPDATE` trigger cannot), so a half-pair or a
   clocks-without-first-send row can never enter the age-out index and leak.
+
+### Round-12 (test-only)
+
+- The 100k age-out scale test EXPLAINs the RPC's OWN candidate query: it extracts the `FOR g IN SELECT …
+  FOR UPDATE SKIP LOCKED` block from `pg_get_functiondef(reconcile_notification_digest_stale)`, parameter-
+  substitutes it, and EXPLAINs that exact SQL (not a hand-copy). The fixture seeds 50 DUE + 100k FUTURE
+  uncertain groups, so the assertion pins the named index node's deadline `Index Cond`, `Actual Rows` = the
+  due count (50), and nested `Rows Removed by Filter` < 100 — a filtering-predicate/order/index change to the
+  deployed RPC drops the due-row count and fails the test. The trigger disable/enable around the bulk seed is
+  wrapped in try/finally so a failed seed can never leave the guards disabled for later tests. No production
+  SQL behavior changed.
