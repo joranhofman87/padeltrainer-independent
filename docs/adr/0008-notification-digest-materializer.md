@@ -450,3 +450,27 @@ These clarify — never change — the accepted design:
   run row `FOR UPDATE`, so a transition in flight blocks a concurrent `finish` (and vice versa).
 - **Frozen request allow-list:** exactly `to/subject/html` — any other key (bcc/cc/headers/attachments/
   unknown) is rejected at `store`, since the worker dispatches the stored request verbatim.
+
+### Round-5 refinements (same clarifying scope)
+
+- **Cap buckets are fixed-zone:** hour/day buckets are `date_trunc(..., p_now AT TIME ZONE 'UTC') AT TIME
+  ZONE 'UTC'` — `date_trunc` on a `timestamptz` truncates in the SESSION `TimeZone`, so differently-zoned
+  workers would otherwise mint different day buckets and split the cap. One instant → one counter key,
+  session-independent.
+- **Breaker result transitions are CAS:** `record` decides probe-ness UNDER the circuit row lock and every
+  probe transition is a compare-and-swap on the exact `state='half_open' AND probe_attempt_id=<attempt>`.
+  A superseded probe result (a replacement bound, or the breaker re-armed) only annotates its attempt —
+  it can never close/trip/re-arm the replacement breaker.
+- **Correlation = capable-of-acceptance:** an unbound group may correlate a provider message ONLY while an
+  attempt exists that is unrecorded (in flight / crashed pre-record) or recorded `ambiguous`. Definitive
+  non-accepted outcomes (`terminal`/429/`global_config`) never produced a message id — cumulative
+  `provider_attempts_started` is NOT evidence. Applied identically to direct callbacks and orphan links.
+- **Uncertainty clocks are atomic:** every path that sets `uncertain_since` sets `uncertain_deadline_at`
+  (= now + 23 h) in the same statement — including the stale-`sending` reclaim; `awaiting_evidence` can
+  never be minted with a NULL deadline (which a `coalesce(NULL, now)` would age out instantly).
+- **Identity is fully schema-owned:** `digest_group_hash` is re-derived whenever a row IS or BECOMES
+  digest (caller values overwritten on promotion too); the timezone is normalized
+  (`coalesce(recipient_timezone,'Europe/Amsterdam')`) before hashing so NULL and the explicit default mint
+  one identity; a digest row missing `recipient_key`/`destination_fingerprint`/`digest_frequency`/
+  `digest_boundary_at` is rejected; and the live-recipient identity (`recipient_person_id`/`recipient_user_id`/
+  `recipient_guest_player_id`/`destination_normalized`) is frozen alongside the canonical inputs.

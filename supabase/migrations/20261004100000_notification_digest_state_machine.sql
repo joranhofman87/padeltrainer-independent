@@ -102,12 +102,20 @@ ALTER TABLE public.notification_outbox ADD COLUMN IF NOT EXISTS digest_group_has
 CREATE OR REPLACE FUNCTION public.notification_outbox_digest_hash_stamp() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  IF NEW.delivery_mode = 'digest' AND (TG_OP = 'INSERT' OR NEW.digest_group_hash IS NULL) THEN
-    -- ALWAYS server-derived on INSERT: a caller-supplied hash is overwritten, never trusted.
+  IF NEW.delivery_mode = 'digest'
+     AND (TG_OP = 'INSERT' OR OLD.delivery_mode IS DISTINCT FROM 'digest' OR NEW.digest_group_hash IS NULL) THEN
+    -- a digest row must carry a COMPLETE snapshot — grouping on partial identity would collapse rows wrongly.
+    IF NEW.recipient_key IS NULL OR NEW.destination_fingerprint IS NULL
+       OR NEW.digest_frequency IS NULL OR NEW.digest_boundary_at IS NULL THEN
+      RAISE EXCEPTION 'digest outbox row % is missing snapshot fields (recipient_key/destination_fingerprint/digest_frequency/digest_boundary_at)', NEW.id;
+    END IF;
+    -- ALWAYS server-derived (on INSERT and on promotion to digest): a caller-supplied hash is overwritten,
+    -- never trusted; the timezone is NORMALIZED so NULL and an explicit default mint the same identity.
     NEW.digest_group_hash := encode(sha256(notif_digest_canonical_key(
       NEW.channel, NEW.recipient_key, NEW.destination_fingerprint, NEW.tenant_academy_profile_id,
       NEW.tenant_trainer_id, NEW.event_type, NEW.template_key, NEW.template_version,
-      NEW.group_locale, NEW.digest_frequency, NEW.recipient_timezone, NEW.digest_boundary_at)::text::bytea), 'hex');
+      NEW.group_locale, NEW.digest_frequency, coalesce(NEW.recipient_timezone, 'Europe/Amsterdam'),
+      NEW.digest_boundary_at)::text::bytea), 'hex');
   END IF;
   RETURN NEW;
 END $$;
@@ -120,7 +128,7 @@ UPDATE public.notification_outbox o
    SET digest_group_hash = encode(sha256(notif_digest_canonical_key(
      o.channel, o.recipient_key, o.destination_fingerprint, o.tenant_academy_profile_id,
      o.tenant_trainer_id, o.event_type, o.template_key, o.template_version,
-     o.group_locale, o.digest_frequency, o.recipient_timezone, o.digest_boundary_at)::text::bytea), 'hex')
+     o.group_locale, o.digest_frequency, coalesce(o.recipient_timezone, 'Europe/Amsterdam'), o.digest_boundary_at)::text::bytea), 'hex')
  WHERE o.delivery_mode = 'digest' AND o.digest_group_hash IS NULL;
 
 -- the member-scan index: equality on the hash + the deterministic member order → pure index scan, no sort.
@@ -477,7 +485,9 @@ BEGIN
        AND g.state IN ('leased','prepared','request_ready','sending') THEN
       IF g.state = 'sending' THEN
         UPDATE public.notification_digest_groups
-           SET uncertain_since = coalesce(uncertain_since, p_now), state = 'request_ready',
+           SET uncertain_since = coalesce(uncertain_since, p_now),
+               uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + interval '23 hours'),
+               state = 'request_ready',
                locked_by = p_worker, locked_at = p_now, worker_run_id = p_run_id, available_at = p_now, updated_at = p_now
          WHERE id = g.id;
       ELSE
@@ -776,7 +786,9 @@ BEGIN
     IF g.uncertain_since IS NOT NULL THEN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
-         SET state = 'awaiting_evidence', available_at = coalesce(uncertain_deadline_at, p_now),
+         SET state = 'awaiting_evidence',
+             available_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
+             uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
              locked_by = NULL, locked_at = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
@@ -818,7 +830,10 @@ BEGIN
     IF g.uncertain_since IS NOT NULL THEN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
-         SET state = 'awaiting_evidence', available_at = coalesce(uncertain_deadline_at, p_now), locked_by = NULL, locked_at = NULL, updated_at = p_now
+         SET state = 'awaiting_evidence',
+             available_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
+             uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
+             locked_by = NULL, locked_at = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
     ELSE
@@ -830,7 +845,10 @@ BEGIN
   END IF;
 
   -- capacity gate (hour + day buckets) BEFORE inserting the attempt (no dangling attempt on cap-full).
-  v_hb := date_trunc('hour', p_now); v_db := date_trunc('day', p_now);
+  -- buckets are truncated in a FIXED zone (UTC): date_trunc on a timestamptz truncates in the SESSION
+  -- TimeZone, so Tokyo and New York sessions would otherwise mint different day buckets → split caps.
+  v_hb := date_trunc('hour', p_now AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+  v_db := date_trunc('day',  p_now AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_hkey := notif_digest_counter_key(g.channel, g.event_type, g.destination_fingerprint, 'hour', v_hb);
   v_dkey := notif_digest_counter_key(g.channel, g.event_type, g.destination_fingerprint, 'day', v_db);
   v_hgate := notif_digest_bucket_gate(p_group_id, v_hkey, 'hour', v_hb, p_hour_cap);
@@ -839,7 +857,10 @@ BEGIN
     IF g.uncertain_since IS NOT NULL THEN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
-         SET state = 'awaiting_evidence', available_at = coalesce(uncertain_deadline_at, p_now), locked_by = NULL, locked_at = NULL, updated_at = p_now
+         SET state = 'awaiting_evidence',
+             available_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
+             uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
+             locked_by = NULL, locked_at = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
     ELSE
@@ -932,7 +953,7 @@ CREATE OR REPLACE FUNCTION public.record_notification_digest_result(
     p_uncertainty_hours int DEFAULT 23)
   RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  a record; g record; v_class text; v_is_current boolean; v_is_probe boolean;
+  a record; g record; v_cb record; v_class text; v_is_current boolean; v_is_probe boolean;
   v_backoff timestamptz; v_deadline timestamptz; v_n int;
 BEGIN
   v_class := notif_digest_classify_error(p_transport, p_http_status, p_error_name);
@@ -963,15 +984,22 @@ BEGIN
   END IF;
 
   v_is_current := (g.current_attempt_id = p_attempt_id);
-  v_is_probe := EXISTS (SELECT 1 FROM public.notification_provider_circuit WHERE channel = g.channel AND probe_attempt_id = p_attempt_id);
+  -- breaker probe-ness is decided UNDER THE CIRCUIT ROW LOCK, and every transition is a CAS on the exact
+  -- (state='half_open' AND probe_attempt_id=<this attempt>) — a SUPERSEDED probe result arriving after a
+  -- replacement was bound (or the breaker re-armed) must only annotate its attempt, never move the breaker.
+  SELECT * INTO v_cb FROM public.notification_provider_circuit WHERE channel = g.channel FOR UPDATE;
+  v_is_probe := (FOUND AND v_cb.state = 'half_open' AND v_cb.probe_attempt_id = p_attempt_id);
   v_backoff := p_now + make_interval(mins => least(power(2, greatest(g.provider_attempts_started,1))::int, 60));
   v_deadline := coalesce(g.uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours));
 
-  -- breaker transition FIRST (only the bound probe attempt may move the breaker); reason-aware timing.
+  -- breaker transition FIRST (only the LIVE bound probe attempt may move the breaker); reason-aware timing.
   IF v_is_probe THEN
     IF v_class = 'accepted' OR v_class = 'retryable_definite' OR v_class = 'terminal' THEN
       UPDATE public.notification_provider_circuit SET state = 'closed', reason = NULL, retry_at = NULL,
-        probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL WHERE channel = g.channel;
+        probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL
+       WHERE channel = g.channel AND state = 'half_open' AND probe_attempt_id = p_attempt_id;
+      GET DIAGNOSTICS v_n = ROW_COUNT;
+      IF v_n <> 1 THEN RAISE EXCEPTION 'record: probe CAS for attempt % lost the breaker', p_attempt_id; END IF;
     ELSIF v_class = 'global_config' THEN
       PERFORM notif_digest_trip_breaker_for(g.channel, p_http_status, p_error_name, p_retry_after_seconds, p_now);
     ELSIF v_class = 'ambiguous' THEN
@@ -1134,7 +1162,15 @@ BEGIN
     IF v_pm = p_provider_message_id THEN RETURN 'ok'; END IF;
     RETURN 'mismatch';
   END IF;
-  IF coalesce(v_attempts, 0) = 0 THEN RETURN 'no_live_send'; END IF;
+  -- an unbound group may correlate ONLY while an attempt is still CAPABLE OF ACCEPTANCE: unrecorded
+  -- (in flight / crashed before record) or recorded ambiguous (outcome unknown). Definitive non-accepted
+  -- outcomes (terminal / 429 / global_config) can never have produced a provider message — cumulative
+  -- provider_attempts_started would authorize forever and let an orphan finalize a terminal group.
+  IF NOT EXISTS (SELECT 1 FROM public.notification_digest_attempts a
+                  WHERE a.digest_group_id = p_group_id
+                    AND (a.recorded_at IS NULL OR a.outcome_class = 'ambiguous')) THEN
+    RETURN 'no_live_send';
+  END IF;
   UPDATE public.notification_digest_groups SET provider_message_id = p_provider_message_id, updated_at = p_now
    WHERE id = p_group_id;
   RETURN 'ok';
@@ -1259,13 +1295,18 @@ BEGIN
    OR (OLD.digest_group_hash       IS NOT NULL AND NEW.digest_group_hash       IS DISTINCT FROM OLD.digest_group_hash) THEN
     RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
   END IF;
-  -- EVERY canonical grouping input is frozen on digest rows (they define the group hash/identity).
+  -- EVERY canonical grouping input AND the live-recipient identity used by §PS revalidation is frozen on
+  -- digest rows (they define the group hash/identity and who may be re-resolved).
   IF OLD.delivery_mode = 'digest' AND (
        NEW.channel IS DISTINCT FROM OLD.channel
     OR (OLD.event_type IS NOT NULL AND NEW.event_type IS DISTINCT FROM OLD.event_type)
     OR (OLD.template_key IS NOT NULL AND NEW.template_key IS DISTINCT FROM OLD.template_key)
     OR (OLD.tenant_academy_profile_id IS NOT NULL AND NEW.tenant_academy_profile_id IS DISTINCT FROM OLD.tenant_academy_profile_id)
-    OR (OLD.tenant_trainer_id IS NOT NULL AND NEW.tenant_trainer_id IS DISTINCT FROM OLD.tenant_trainer_id)) THEN
+    OR (OLD.tenant_trainer_id IS NOT NULL AND NEW.tenant_trainer_id IS DISTINCT FROM OLD.tenant_trainer_id)
+    OR (OLD.recipient_person_id IS NOT NULL AND NEW.recipient_person_id IS DISTINCT FROM OLD.recipient_person_id)
+    OR (OLD.recipient_user_id IS NOT NULL AND NEW.recipient_user_id IS DISTINCT FROM OLD.recipient_user_id)
+    OR (OLD.recipient_guest_player_id IS NOT NULL AND NEW.recipient_guest_player_id IS DISTINCT FROM OLD.recipient_guest_player_id)
+    OR (OLD.destination_normalized IS NOT NULL AND NEW.destination_normalized IS DISTINCT FROM OLD.destination_normalized)) THEN
     RAISE EXCEPTION 'notification_outbox digest canonical identity fields are frozen';
   END IF;
   IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id THEN
