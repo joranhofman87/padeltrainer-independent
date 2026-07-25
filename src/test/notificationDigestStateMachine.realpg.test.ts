@@ -634,15 +634,15 @@ describe('10c-a2 two-connection concurrency (real Postgres)', () => {
   it('stale lease: a crashed worker\'s group is reclaimed (sending → uncertainty set)', async () => {
     const c = conn(); await c.connect();
     try {
-      seq += 1; await seedMember(c, `p:stale`, 'stale@example.com');
-      const mrun = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
-      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
-      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='p:stale'`)).rows[0].id;
-      await c.query(`UPDATE public.notification_digest_groups SET state='sending', locked_by='DEAD', locked_at=${NOW} - interval '1 hour', available_at=${NOW} WHERE id=$1`, [g]);
+      // drive through begin (which sets first_send_at) so the reclaimed 'sending' group is realistic —
+      // a sending group ALWAYS has first_send_at; the deadline invariant depends on it.
+      const { g } = await toSending(c);
+      await c.query(`UPDATE public.notification_digest_groups SET locked_by='DEAD', locked_at=${NOW} - interval '1 hour', available_at=${NOW} WHERE id=$1`, [g]);
       const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
       const claimed = (await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${NOW}, 'ALIVE', 15) AS g`, [run])).rows[0].g;
       const s = await gstate(c, g);
       expect(claimed).toBe(g); expect(s.locked_by).toBe('ALIVE'); expect(s.uncertain_since).not.toBeNull();
+      expect(s.uncertain_deadline_at).not.toBeNull();   // anchored to first_send_at + 23h
     } finally { await c.end(); }
   });
 });
@@ -1242,6 +1242,14 @@ describe('10c-a2 round-6 — structural freeze, anchored idempotency window, spl
       const b = await toSending(c);
       await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,422,'validation_error',NULL, ${NOW})`, [b.run, b.att]);
       expect((await gstate(c, b.g)).current_attempt_id).toBeNull();               // 422 → failed_terminal
+      // retry_stopped: a group with current_attempt_id still set exhausts its budget while NOT uncertain →
+      // begin finalizes retry_stopped and the finalizer must clear attempt ownership.
+      const r = await toSending(c);
+      await c.query(`UPDATE public.notification_digest_groups
+        SET state='request_ready', delivery_budget_used=max_delivery_budget WHERE id=$1`, [r.g]);   // keep current_attempt_id + lease
+      const rAtt = (await c.query(`SELECT public.begin_notification_digest_attempt($1,$2,'W', ${NOW}) AS a`, [r.run, r.g])).rows[0].a;
+      const rs = await gstate(c, r.g);
+      expect(rAtt).toBeNull(); expect(rs.state).toBe('retry_stopped'); expect(rs.current_attempt_id).toBeNull();
       const d = await toSending(c);
       await c.query(`UPDATE public.notification_digest_groups SET state='awaiting_evidence', available_at=${NOW} - interval '1 hour', locked_by=NULL WHERE id=$1`, [d.g]);
       const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
@@ -1266,6 +1274,111 @@ describe('10c-a2 round-6 — structural freeze, anchored idempotency window, spl
       const cb = (await c.query(`SELECT state, probe_attempt_id FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
       expect(cb.state).toBe('closed'); expect(cb.probe_attempt_id).toBeNull();
       expect((await gstate(c, g)).state).toBe('sent');   // the group stays resolved
+    } finally { await c.end(); }
+  });
+});
+
+describe('10c-a2 round-7 — fixed-23h invariant, SELECT-only tables, negative-callback breaker, NULL-safe bounds', () => {
+  it('the 23-hour window is an INVARIANT: deadline = first_send_at+23h, and neither it nor first_send_at can be widened', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g, att, run } = await toSending(c);
+      const fsa = (await gstate(c, g)).first_send_at;
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [run, att]); // ambiguous
+      const s = await gstate(c, g);
+      expect(new Date(s.uncertain_deadline_at).getTime()).toBe(new Date(fsa).getTime() + 23 * 3600 * 1000);
+      // owner-effective guard: cannot widen the deadline beyond first_send_at+23h, nor move first_send_at
+      await expect(c.query(`UPDATE public.notification_digest_groups SET uncertain_deadline_at=first_send_at + interval '48 hours' WHERE id=$1`, [g])).rejects.toThrow(/exceeds first_send_at/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET uncertain_deadline_at=uncertain_deadline_at + interval '1 hour' WHERE id=$1`, [g])).rejects.toThrow(/exceeds first_send_at|may not move later/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET first_send_at=first_send_at + interval '7 days' WHERE id=$1`, [g])).rejects.toThrow(/first_send_at is immutable/i);
+      // and the tunable is gone — the RPC no longer accepts a widening argument (7-arg record max: no uncertainty param)
+      const protoCount = (await c.query(`SELECT pronargs FROM pg_proc WHERE proname='record_notification_digest_result'`)).rows[0].pronargs;
+      expect(protoCount).toBe(8);   // run, attempt, transport, http, error, pmid, now, retry_after — NO uncertainty
+    } finally { await c.end(); }
+  });
+
+  it('send-identity fields are frozen: idempotency key / request hash / frozen-request-rewrite all rejected', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g } = await toSending(c);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET provider_idempotency_key='dg:v1:hijack' WHERE id=$1`, [g])).rejects.toThrow(/provider_idempotency_key is immutable/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET request_hash='deadbeef' WHERE id=$1`, [g])).rejects.toThrow(/request_hash is immutable/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET frozen_request=jsonb_build_object('to','evil@example.com','subject','x','html','x') WHERE id=$1`, [g])).rejects.toThrow(/frozen_request may only be set once/i);
+    } finally { await c.end(); }
+  });
+
+  it('state-machine tables are service_role SELECT-only; direct writes denied under SET ROLE; RPCs still drive the machine', async () => {
+    const c = conn(); await c.connect();
+    const TABLES = ['notification_worker_runs', 'notification_digest_groups', 'notification_digest_attempts',
+      'notification_digest_group_attempts', 'notification_provider_events', 'notification_provider_circuit',
+      'notification_send_counters', 'notification_send_reservations'];
+    try {
+      // privilege matrix: service_role SELECT only; anon/authenticated nothing.
+      for (const t of TABLES) {
+        const r = (await c.query(`SELECT
+          has_table_privilege('service_role','public.${t}','SELECT') sel,
+          has_table_privilege('service_role','public.${t}','INSERT') ins,
+          has_table_privilege('service_role','public.${t}','UPDATE') upd,
+          has_table_privilege('service_role','public.${t}','DELETE') del,
+          has_table_privilege('anon','public.${t}','SELECT') anon_sel,
+          has_table_privilege('authenticated','public.${t}','SELECT') auth_sel`)).rows[0];
+        expect(r.sel, `${t} svc SELECT`).toBe(true);
+        expect(r.ins, `${t} svc INSERT`).toBe(false);
+        expect(r.upd, `${t} svc UPDATE`).toBe(false);
+        expect(r.del, `${t} svc DELETE`).toBe(false);
+        expect(r.anon_sel, `${t} anon`).toBe(false);
+        expect(r.auth_sel, `${t} auth`).toBe(false);
+      }
+      // a direct write under SET ROLE service_role is denied (BYPASSRLS does not bypass table grants)
+      await c.query(`SET ROLE service_role`);
+      await expect(c.query(`INSERT INTO public.notification_provider_circuit (channel, state) VALUES ('email','open')`)).rejects.toThrow(/permission denied/i);
+      await expect(c.query(`UPDATE public.notification_digest_groups SET first_send_at=now()`)).rejects.toThrow(/permission denied/i);
+      // but SELECT works, and the SECURITY DEFINER RPC drives the machine even as service_role
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      expect(run).toBeTruthy();
+      await c.query(`SELECT count(*) FROM public.notification_digest_groups`);   // SELECT allowed
+      await c.query(`RESET ROLE`);
+    } finally { await c.query(`RESET ROLE`).catch(() => {}); await c.end(); }
+  });
+
+  it('a NEGATIVE correlated callback (bounced) also dominates a late probe timeout — breaker closes, not reopens', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g, att, run } = await toSending(c);
+      await c.query(`INSERT INTO public.notification_provider_circuit (channel, state, probe_group_id, probe_attempt_id, probe_locked_at)
+        VALUES ('email','half_open',$1,$2,${NOW})
+        ON CONFLICT (channel) DO UPDATE SET state='half_open', probe_group_id=$1, probe_attempt_id=$2, probe_locked_at=${NOW}`, [g, att]);
+      // a bounced callback → group failed_terminal (Resend accepted + processed the request → provider healthy)
+      await c.query(`SELECT public.apply_notification_provider_event($1,'ev-bnc','pm-bnc',$2,'bounced', ${NOW}, ${NOW})`, [run, g]);
+      expect((await gstate(c, g)).state).toBe('failed_terminal');
+      // the same attempt's late HTTP result is a timeout → the breaker must CLOSE (send reached the provider)
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [run, att]);
+      const cb = (await c.query(`SELECT state FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(cb.state).toBe('closed');
+      expect((await gstate(c, g)).state).toBe('failed_terminal');   // callback-derived outcome preserved
+    } finally { await c.end(); }
+  });
+
+  it('every operational bound is server-enforced NULL-safely (NULL, 0, over-max rejected; 1 and max accepted)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      // split bounds: NULL, 0, 51 rejected; 1 and 50 accepted (via a real splittable group)
+      for (let i = 0; i < 3; i++) await seedMember(c, 'p:bnd', 'bnd@example.com');
+      await c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [run]);
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='p:bnd'`)).rows[0].id;
+      const drun = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='W', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [g, drun]);
+      await c.query(`SELECT public.prepare_notification_digest_group($1,$2,'W', ${NOW})`, [drun, g]);
+      for (const bad of ['NULL', '0', '51']) {
+        await expect(c.query(`SELECT public.split_notification_digest_group($1,$2,'W',${bad}, ${NOW})`, [drun, g]), `split ${bad}`).rejects.toThrow(/1\.\.50/);
+      }
+      // materialize / claim / sweep bounds NULL-safe too
+      await expect(c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, NULL, 100)`, [run])).rejects.toThrow(/p_max_groups/i);
+      await expect(c.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 0)`, [run])).rejects.toThrow(/p_max_members_per_call/i);
+      await expect(c.query(`SELECT public.claim_notification_digest_group($1,'email', ${NOW}, 'W', NULL)`, [drun])).rejects.toThrow(/p_stale_minutes/i);
+      await expect(c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW}, NULL, 100)`, [drun])).rejects.toThrow(/p_probe_lease_minutes/i);
+      await expect(c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW}, 10, 99999)`, [drun])).rejects.toThrow(/p_limit/i);
     } finally { await c.end(); }
   });
 });

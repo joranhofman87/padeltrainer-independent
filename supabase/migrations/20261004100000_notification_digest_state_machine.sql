@@ -299,6 +299,8 @@ DECLARE
   v_ckey jsonb; v_hash text; v_group uuid; v_count int; v_bytes int; v_next_chunk int; v_n int;
 BEGIN
   PERFORM notif_digest_assert_run(p_run_id, 'materialize', p_channel);
+  PERFORM notif_digest_require_range(p_max_groups, 1, 1000, 'materialize: p_max_groups');
+  PERFORM notif_digest_require_range(p_max_members_per_call, 1, 10000, 'materialize: p_max_members_per_call');
   LOOP
     v_iter := v_iter + 1;
     EXIT WHEN v_groups >= p_max_groups OR v_members >= p_max_members_per_call
@@ -427,6 +429,7 @@ CREATE OR REPLACE FUNCTION public.claim_notification_digest_group(
 DECLARE g record; v_iter int := 0; v_bump timestamptz; v_cb record; v_promote boolean := false; v_n int;
 BEGIN
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', p_channel);
+  PERFORM notif_digest_require_range(p_stale_minutes, 1, 1440, 'claim: p_stale_minutes');
 
   -- breaker preflight (one read; lock only when the state machine must move).
   SELECT * INTO v_cb FROM public.notification_provider_circuit WHERE channel = p_channel;
@@ -488,7 +491,7 @@ BEGIN
         -- provider-side dedup window starts there, not at crash discovery). Late discovery — at/after
         -- first_send_at + 23h — must finalize delivery_unknown, never become sendable again: a re-POST
         -- outside the provider window would DUPLICATE delivery.
-        IF p_now >= coalesce(g.uncertain_deadline_at, coalesce(g.first_send_at, p_now) + interval '23 hours') THEN
+        IF p_now >= notif_digest_uncertainty_deadline(g.first_send_at, g.uncertain_deadline_at) THEN
           PERFORM notif_digest_finalize_group(g.id, 'delivery_unknown', 'uncertain_age_out', p_now);
           PERFORM notif_digest_commit_reservations(g.id, p_now);
           PERFORM notif_digest_ledger(p_run_id, g.id, NULL, 'delivery_unknown', 0);
@@ -496,8 +499,7 @@ BEGIN
         END IF;
         UPDATE public.notification_digest_groups
            SET uncertain_since = coalesce(uncertain_since, p_now),
-               uncertain_deadline_at = coalesce(uncertain_deadline_at,
-                                                coalesce(first_send_at, p_now) + interval '23 hours'),
+               uncertain_deadline_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
                state = 'request_ready',
                locked_by = p_worker, locked_at = p_now, worker_run_id = p_run_id, available_at = p_now, updated_at = p_now
          WHERE id = g.id;
@@ -666,9 +668,7 @@ CREATE OR REPLACE FUNCTION public.split_notification_digest_group(
   RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE g record; m record; v_child uuid; v_in_child int := 0; v_children int := 0; v_next_chunk int; v_n int;
 BEGIN
-  IF p_max_items_per_child < 1 OR p_max_items_per_child > 50 THEN
-    RAISE EXCEPTION 'split: p_max_items_per_child must be within 1..50 (got %)', p_max_items_per_child;
-  END IF;
+  PERFORM notif_digest_require_range(p_max_items_per_child, 1, 50, 'split: p_max_items_per_child');
   SELECT * INTO g FROM public.notification_digest_groups
    WHERE id = p_group_id AND state IN ('pending','prepared') AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'split: group % not owned/splittable', p_group_id; END IF;
@@ -712,6 +712,27 @@ END $$;
 -- 'to' matches the group's fingerprint — a wrong-recipient request can never be frozen.
 CREATE OR REPLACE FUNCTION public.notif_digest_destination_fingerprint(p_destination text) RETURNS text
   LANGUAGE sql IMMUTABLE AS $$ SELECT encode(sha256(lower(btrim(p_destination))::bytea), 'hex') $$;
+
+-- the uncertainty deadline is a FIXED-23h INVARIANT, not a caller default: least(existing, first_send_at+23h)
+-- clamps a too-large existing DOWN and yields the ceiling when unset; it can never widen. Fail CLOSED when a
+-- post-dispatch group lacks first_send_at rather than starting a fresh window at recovery time.
+CREATE OR REPLACE FUNCTION public.notif_digest_uncertainty_deadline(p_first_send_at timestamptz, p_existing timestamptz)
+  RETURNS timestamptz LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+  IF p_first_send_at IS NULL THEN
+    RAISE EXCEPTION 'uncertainty deadline requires first_send_at (post-dispatch invariant)';
+  END IF;
+  RETURN least(p_existing, p_first_send_at + interval '23 hours');
+END $$;
+
+-- every operational bound is a SERVER-ENFORCED maximum, validated NULL-safely (NULL/0/over-max all raise).
+CREATE OR REPLACE FUNCTION public.notif_digest_require_range(p_val int, p_min int, p_max int, p_label text)
+  RETURNS void LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+  IF p_val IS NULL OR p_val < p_min OR p_val > p_max THEN
+    RAISE EXCEPTION '% must be within %..% (got %)', p_label, p_min, p_max, coalesce(p_val::text, 'NULL');
+  END IF;
+END $$;
 
 -- §P4 — store (ownership-gated, from prepared): SERVER-SIDE validation — exact request schema, byte ceiling,
 -- destination↔fingerprint proof — and a server-side recomputed hash (never caller-supplied). Then freeze,
@@ -768,7 +789,7 @@ END $$;
 -- and → sending. Returns the new attempt_id, or NULL if the group was deferred/finalized (no send).
 CREATE OR REPLACE FUNCTION public.begin_notification_digest_attempt(
     p_run_id uuid, p_group_id uuid, p_worker text, p_now timestamptz,
-    p_hour_cap int DEFAULT 1000, p_day_cap int DEFAULT 5000, p_uncertainty_hours int DEFAULT 23)
+    p_hour_cap int DEFAULT 1000, p_day_cap int DEFAULT 5000)
   RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   g record; v_attempt uuid; v_survivors int; v_bump timestamptz; v_stop text; v_n int;
@@ -779,6 +800,8 @@ BEGIN
    WHERE id = p_group_id AND state = 'request_ready' AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'begin: group % not owned/request_ready by %', p_group_id, p_worker; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
+  PERFORM notif_digest_require_range(p_hour_cap, 1, 1000000, 'begin: p_hour_cap');
+  PERFORM notif_digest_require_range(p_day_cap, 1, 10000000, 'begin: p_day_cap');
 
   -- uncertainty age-out → delivery_unknown (never re-sent past the 23 h window).
   IF g.uncertain_since IS NOT NULL AND g.uncertain_deadline_at IS NOT NULL AND p_now >= g.uncertain_deadline_at THEN
@@ -804,8 +827,8 @@ BEGIN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
          SET state = 'awaiting_evidence',
-             available_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
-             uncertain_deadline_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             available_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
+             uncertain_deadline_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
              locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
@@ -848,8 +871,8 @@ BEGIN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
          SET state = 'awaiting_evidence',
-             available_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
-             uncertain_deadline_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             available_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
+             uncertain_deadline_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
              locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
@@ -875,8 +898,8 @@ BEGIN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
          SET state = 'awaiting_evidence',
-             available_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
-             uncertain_deadline_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             available_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
+             uncertain_deadline_at = notif_digest_uncertainty_deadline(first_send_at, uncertain_deadline_at),
              locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
@@ -966,8 +989,7 @@ END $$;
 -- group per the outcome class + sticky uncertainty + reservations + scrub + (probe-only) breaker.
 CREATE OR REPLACE FUNCTION public.record_notification_digest_result(
     p_run_id uuid, p_attempt_id uuid, p_transport text, p_http_status int, p_error_name text,
-    p_provider_message_id text, p_now timestamptz, p_retry_after_seconds int DEFAULT NULL,
-    p_uncertainty_hours int DEFAULT 23)
+    p_provider_message_id text, p_now timestamptz, p_retry_after_seconds int DEFAULT NULL)
   RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   a record; g record; v_cb record; v_class text; v_is_current boolean; v_is_probe boolean;
@@ -1007,14 +1029,15 @@ BEGIN
   SELECT * INTO v_cb FROM public.notification_provider_circuit WHERE channel = g.channel FOR UPDATE;
   v_is_probe := (FOUND AND v_cb.state = 'half_open' AND v_cb.probe_attempt_id = p_attempt_id);
   v_backoff := p_now + make_interval(mins => least(power(2, greatest(g.provider_attempts_started,1))::int, 60));
-  v_deadline := coalesce(g.uncertain_deadline_at,
-                         coalesce(g.first_send_at, p_now) + make_interval(hours => p_uncertainty_hours));
+  v_deadline := notif_digest_uncertainty_deadline(g.first_send_at, g.uncertain_deadline_at);
 
   -- breaker transition FIRST (only the LIVE bound probe attempt may move the breaker); reason-aware timing.
-  -- PRECEDENCE: positive CORRELATED provider evidence dominates a late probe transport failure — if a
-  -- callback already completed this group's dispatch (state 'sent' with a provider rollup), the probe's
-  -- send demonstrably REACHED the provider, so a late timeout closes the breaker instead of re-opening it.
-  IF v_is_probe AND v_class = 'ambiguous' AND g.state = 'sent' AND g.provider_status_rank >= 1 THEN
+  -- PRECEDENCE: ANY correlated provider evidence dominates a late probe transport failure. A callback of
+  -- ANY status — sent/delivered/complained OR bounced/failed/suppressed — proves Resend ACCEPTED and
+  -- PROCESSED the request, as does an HTTP-accepted rollup (provider_status_rank >= 1). So a late ambiguous
+  -- transport result for the probe CAS-closes the breaker (the send reached the provider) instead of
+  -- re-opening it, whether the group resolved to sent or failed_terminal.
+  IF v_is_probe AND v_class = 'ambiguous' AND g.provider_status_rank >= 1 THEN
     UPDATE public.notification_provider_circuit SET state = 'closed', reason = NULL, retry_at = NULL,
       probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL
      WHERE channel = g.channel AND state = 'half_open' AND probe_attempt_id = p_attempt_id;
@@ -1281,6 +1304,8 @@ CREATE OR REPLACE FUNCTION public.reconcile_notification_digest_stale(
 DECLARE g record; v_n int := 0;
 BEGIN
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', p_channel);
+  PERFORM notif_digest_require_range(p_probe_lease_minutes, 1, 1440, 'sweep: p_probe_lease_minutes');
+  PERFORM notif_digest_require_range(p_limit, 1, 10000, 'sweep: p_limit');
   -- awaiting_evidence age-out (§AE / §P1): capacity stays committed; members finalized delivery_unknown.
   FOR g IN SELECT id FROM public.notification_digest_groups
             WHERE channel = p_channel AND state = 'awaiting_evidence' AND available_at <= p_now
@@ -1377,6 +1402,48 @@ BEGIN
 END $$;
 
 -- ===========================================================================
+-- §12c. Owner-effective send-identity guard on notification_digest_groups. Even a buggy internal RPC (which
+-- runs as the table owner and bypasses the SELECT-only grant below) must never widen the dedup window or
+-- change the exact retry request. These fields determine duplicate-send safety and are therefore frozen at
+-- the mutation boundary, independent of the caller.
+CREATE OR REPLACE FUNCTION public.notification_digest_send_identity_guard() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  -- first_send_at: schema-set once on the first sending transition, then immutable (the idempotency-key
+  -- dedup window is anchored here — moving it forward could replay outside the provider window).
+  IF OLD.first_send_at IS NOT NULL AND NEW.first_send_at IS DISTINCT FROM OLD.first_send_at THEN
+    RAISE EXCEPTION 'notification_digest_groups.first_send_at is immutable once set';
+  END IF;
+  -- provider_idempotency_key / request_hash: immutable once set — they pin the exact retry request.
+  IF OLD.provider_idempotency_key IS NOT NULL AND NEW.provider_idempotency_key IS DISTINCT FROM OLD.provider_idempotency_key THEN
+    RAISE EXCEPTION 'notification_digest_groups.provider_idempotency_key is immutable once set';
+  END IF;
+  IF OLD.request_hash IS NOT NULL AND NEW.request_hash IS DISTINCT FROM OLD.request_hash THEN
+    RAISE EXCEPTION 'notification_digest_groups.request_hash is immutable once set';
+  END IF;
+  -- frozen_request: NULL→value at store, or value→NULL scrub at terminal; never rewritten to a DIFFERENT body.
+  IF OLD.frozen_request IS NOT NULL AND NEW.frozen_request IS NOT NULL AND NEW.frozen_request IS DISTINCT FROM OLD.frozen_request THEN
+    RAISE EXCEPTION 'notification_digest_groups.frozen_request may only be set once or scrubbed to NULL';
+  END IF;
+  -- uncertain_deadline_at: never beyond first_send_at + 23h, and never moves later once set.
+  IF NEW.uncertain_deadline_at IS NOT NULL THEN
+    IF NEW.first_send_at IS NULL THEN
+      RAISE EXCEPTION 'notification_digest_groups.uncertain_deadline_at requires first_send_at';
+    END IF;
+    IF NEW.uncertain_deadline_at > NEW.first_send_at + interval '23 hours' THEN
+      RAISE EXCEPTION 'notification_digest_groups.uncertain_deadline_at exceeds first_send_at + 23h';
+    END IF;
+    IF OLD.uncertain_deadline_at IS NOT NULL AND NEW.uncertain_deadline_at > OLD.uncertain_deadline_at THEN
+      RAISE EXCEPTION 'notification_digest_groups.uncertain_deadline_at may not move later';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_digest_groups_send_identity ON public.notification_digest_groups;
+CREATE TRIGGER trg_digest_groups_send_identity BEFORE UPDATE ON public.notification_digest_groups
+  FOR EACH ROW EXECUTE FUNCTION public.notification_digest_send_identity_guard();
+
+-- ===========================================================================
 -- §13. ACL. Supabase's ALTER DEFAULT PRIVILEGES grants EXECUTE ON FUNCTIONS to anon/authenticated/service_role,
 -- so a bare GRANT is not restrictive. REVOKE every state-machine function from PUBLIC/anon/authenticated and
 -- GRANT EXECUTE to service_role only (by exact signature, all overloads).
@@ -1399,3 +1466,24 @@ BEGIN
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', r.sig);
   END LOOP;
 END $acl$;
+
+-- ===========================================================================
+-- §14. Table write model. The state-machine tables are service_role SELECT-ONLY; EVERY write goes through
+-- the SECURITY DEFINER RPCs above (which run as the owner). This forecloses the direct-UPDATE surface that
+-- could otherwise move first_send_at / provider_idempotency_key / request_hash / frozen_request / the
+-- uncertainty clocks under SET ROLE service_role. 10c-a3's worker + webhook drive the machine through the
+-- RPCs — no direct table writes. (The append-only ledger + provider_events were already INSERT/SELECT under
+-- 10c-a1; this revokes their INSERT too — inserts happen only inside the definer RPCs.) DELETE/TRUNCATE were
+-- never granted (10c-a1 ACL lockdown); this drops the remaining INSERT/UPDATE.
+DO $tacl$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'notification_worker_runs','notification_digest_groups','notification_digest_attempts',
+    'notification_digest_group_attempts','notification_provider_events','notification_provider_circuit',
+    'notification_send_counters','notification_send_reservations']
+  LOOP
+    EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON public.%I FROM service_role', t);
+    EXECUTE format('GRANT SELECT ON public.%I TO service_role', t);
+  END LOOP;
+END $tacl$;

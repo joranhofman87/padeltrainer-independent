@@ -497,3 +497,27 @@ These clarify — never change — the accepted design:
 - **Breaker precedence:** positive CORRELATED provider evidence that already completed the group's dispatch
   dominates a late probe transport failure — the probe's send demonstrably reached the provider, so a late
   timeout CAS-closes the breaker instead of re-opening it. Stale non-positive results still annotate only.
+
+### Round-7 refinements (same clarifying scope)
+
+- **The 23-hour uncertainty window is an INVARIANT, not a tunable.** `p_uncertainty_hours` is removed from
+  every RPC; the deadline is always `notif_digest_uncertainty_deadline(first_send_at, existing) =
+  least(existing, first_send_at + interval '23 hours')` — it can never widen, and it FAILS CLOSED (raises)
+  if a post-dispatch group lacks `first_send_at` rather than starting a fresh window at recovery time.
+- **Table write model: the eight state-machine tables are `service_role` SELECT-only.** Every write goes
+  through the SECURITY DEFINER RPCs (which run as the table owner); `INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER/
+  REFERENCES` are revoked from `service_role`. 10c-a3's worker + webhook must drive the machine through the
+  RPCs — no direct table writes. Belt-and-braces, an owner-effective `notification_digest_send_identity_guard`
+  freezes the duplicate-send-safety fields even against a buggy internal caller: `first_send_at` set once
+  then immutable; `provider_idempotency_key`/`request_hash` immutable once set; `frozen_request` only
+  NULL→value (store) or value→NULL (scrub); `uncertain_deadline_at` never beyond `first_send_at + 23h` and
+  never moves later.
+- **Any correlated provider callback dominates a late probe transport timeout.** A callback of ANY status —
+  sent/delivery_delayed/delivered/complained OR bounced/failed/suppressed — proves Resend accepted and
+  processed the request (`provider_status_rank >= 1`), as does an HTTP-accepted rollup. A late ambiguous
+  probe result therefore CAS-closes the exact probe (state='half_open' AND probe_attempt_id) instead of
+  re-opening the breaker, preserving the callback-derived group/member outcome (sent OR failed_terminal).
+- **Every operational bound is a server-enforced maximum, validated NULL-safely** via
+  `notif_digest_require_range` (NULL / below-min / above-max all raise): split items 1..50, materialize
+  groups 1..1000 + members 1..10000, claim stale-minutes 1..1440, begin hour-cap 1..1e6 + day-cap 1..1e7,
+  sweep probe-lease 1..1440 + limit 1..10000. "Bounded" means a hard server ceiling, not a caller LIMIT.
