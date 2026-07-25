@@ -17,6 +17,32 @@ Deno.test("2xx accepted → response with provider message id, no error", async 
   assertEquals(r, { kind: "response", httpStatus: 202, providerMessageId: "re_abc", errorName: null, retryAfterSeconds: null });
 });
 
+Deno.test("2xx WITHOUT a usable email id → 'no_response' transport (never a false accepted)", async () => {
+  // empty body {}, blank id, non-string id, and unparseable JSON must all map to no_response — a bare
+  // "accepted" without a provider id would make record_notification_digest_result raise.
+  for (const body of [{}, { id: "" }, { id: "   " }, { id: 12345 }, { id: null }] as unknown[]) {
+    const r = await sendResendEmailOnce("k", PAYLOAD, { idempotencyKey: KEY, fetchImpl: fakeFetch({ status: 202, body }) });
+    assertEquals(r.kind, "transport");
+    if (r.kind === "transport") assertEquals(r.transport, "no_response");
+  }
+  // unparseable 2xx body (invalid JSON) → also no_response
+  const badJson = (_url: string, _init: RequestInit) =>
+    Promise.resolve(new Response("<<not json>>", { status: 200 }));
+  const r = await sendResendEmailOnce("k", PAYLOAD, { idempotencyKey: KEY, fetchImpl: badJson });
+  assertEquals(r.kind, "transport");
+  if (r.kind === "transport") assertEquals(r.transport, "no_response");
+});
+
+Deno.test("exactly ONE HTTP call is made (no internal retries)", async () => {
+  let calls = 0;
+  const counting = (_url: string, _init: RequestInit) => {
+    calls++;
+    return Promise.resolve(new Response(JSON.stringify({ id: "re_x" }), { status: 202 }));
+  };
+  await sendResendEmailOnce("k", PAYLOAD, { idempotencyKey: KEY, fetchImpl: counting });
+  assertEquals(calls, 1);
+});
+
 Deno.test("422 validation → error_name from body.name, no provider id", async () => {
   const r = await sendResendEmailOnce("k", PAYLOAD, { idempotencyKey: KEY, fetchImpl: fakeFetch({ status: 422, body: { name: "validation_error", message: "bad" } }) });
   assertEquals(r, { kind: "response", httpStatus: 422, providerMessageId: null, errorName: "validation_error", retryAfterSeconds: null });

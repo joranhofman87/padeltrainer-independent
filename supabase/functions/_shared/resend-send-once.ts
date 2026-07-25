@@ -28,8 +28,9 @@ export type ResendSendOnceResult =
     errorName: string | null;
     retryAfterSeconds: number | null;
   }
-  // No usable HTTP response — a timeout or a network/transport error. The record RPC reads `transport`.
-  | { kind: "transport"; transport: "timeout" | "network"; message: string };
+  // No usable outcome — a timeout, a network/transport error, or a 2xx that lacked a provider email id.
+  // The record RPC reads `transport`; classify_error maps all of these to `ambiguous` (sticky uncertainty).
+  | { kind: "transport"; transport: "timeout" | "network" | "no_response"; message: string };
 
 export const RESEND_ENDPOINT = "https://api.resend.com/emails";
 export const DEFAULT_TIMEOUT_MS = 20_000;
@@ -87,8 +88,16 @@ export async function sendResendEmailOnce(
     const body = await res.json().catch(() => ({} as Record<string, unknown>));
 
     if (res.ok) {
-      const id = typeof (body as { id?: unknown }).id === "string" ? (body as { id: string }).id : null;
-      return { kind: "response", httpStatus: res.status, providerMessageId: id, errorName: null, retryAfterSeconds: null };
+      // A real Resend success ALWAYS carries a non-blank string email id. A 2xx with a missing / blank /
+      // non-string id (or an unparseable body) is NOT a usable acceptance — the record RPC would raise on an
+      // accepted outcome without a provider id. Report it as a `no_response` transport outcome (→ ambiguous
+      // → sticky uncertainty, capacity held), never a false "accepted".
+      const rawId = (body as { id?: unknown }).id;
+      const id = typeof rawId === "string" && rawId.trim().length > 0 ? rawId : null;
+      if (id) {
+        return { kind: "response", httpStatus: res.status, providerMessageId: id, errorName: null, retryAfterSeconds: null };
+      }
+      return { kind: "transport", transport: "no_response", message: `2xx (${res.status}) without a provider email id` };
     }
 
     // Resend error bodies carry a machine name in `name` (e.g. "validation_error", "rate_limit_exceeded",
