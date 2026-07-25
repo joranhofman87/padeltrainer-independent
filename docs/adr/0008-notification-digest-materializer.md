@@ -474,3 +474,26 @@ These clarify — never change — the accepted design:
   one identity; a digest row missing `recipient_key`/`destination_fingerprint`/`digest_frequency`/
   `digest_boundary_at` is rejected; and the live-recipient identity (`recipient_person_id`/`recipient_user_id`/
   `recipient_guest_player_id`/`destination_normalized`) is frozen alongside the canonical inputs.
+
+### Round-6 refinements (same clarifying scope)
+
+- **Structural freeze:** once a row IS digest, every canonical + live-recipient field is frozen under plain
+  `IS DISTINCT FROM` — NULL→value and value→NULL included (an `OLD IS NOT NULL` qualifier let a NULL
+  timezone or recipient id be added after the hash was derived).
+- **The uncertainty window anchors to the FIRST HTTP dispatch:** `uncertain_deadline_at =
+  coalesce(existing, first_send_at + 23 h)` everywhere (the frozen provider idempotency key's dedup window
+  starts at first use, not at crash discovery). Recovery at/after that deadline finalizes
+  `delivery_unknown` — the group is never handed back sendable, so a re-POST can never fall outside the
+  provider's dedup window and duplicate delivery.
+- **Split ordinal allocation linearizes on the SAME canonical-key advisory lock as materialization**
+  (`pg_advisory_xact_lock(hashtext(group_key_hash))`) before `max(chunk_ordinal)+1`; `p_max_items_per_child`
+  is validated 1..50.
+- **Promotion exception:** on the null→digest promotion the hash-stamp trigger rewrites
+  `digest_group_hash` server-side; the write-once guard permits exactly that schema-owned rewrite (the
+  stamp runs first, so what lands is always derived) — every caller mutation, before or after promotion,
+  stays forbidden.
+- **Every terminal transition clears `current_attempt_id`** (the shared finalizer + the awaiting_evidence
+  paths) — a completed group holds no attempt ownership.
+- **Breaker precedence:** positive CORRELATED provider evidence that already completed the group's dispatch
+  dominates a late probe transport failure — the probe's send demonstrably reached the provider, so a late
+  timeout CAS-closes the breaker instead of re-opening it. Stale non-positive results still annotate only.

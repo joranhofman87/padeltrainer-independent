@@ -1127,6 +1127,149 @@ describe('10c-a2 round-5 — session-TZ caps, probe CAS, precise correlation, un
   });
 });
 
+describe('10c-a2 round-6 — structural freeze, anchored idempotency window, split ordinals, promotion, terminal ownership, evidence precedence', () => {
+  it('nullable identity fields are STRUCTURALLY frozen on digest rows (NULL→value rejected)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      // a digest row with NULL recipient_timezone (identity normalized to Amsterdam at hashing)
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      const fp = await fpOf(c, dest);
+      const uid = (await c.query(`SELECT gen_random_uuid() u`)).rows[0].u;
+      await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1,$2)`, [uid, dest]);
+      const id = (await c.query(`INSERT INTO public.notification_outbox
+        (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, recipient_user_id,
+         event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
+         digest_boundary_at, digest_item, digest_item_bytes, status)
+        VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'nl','daily',NULL, ${BD}, '{}'::jsonb, 100, 'pending')
+        RETURNING id`, [key, fp, dest, uid])).rows[0].id;
+      // NULL→value on identity fields is now rejected (the hash was derived under the normalized NULL)
+      await expect(c.query(`UPDATE public.notification_outbox SET recipient_timezone='Asia/Tokyo' WHERE id=$1`, [id])).rejects.toThrow(/frozen/i);
+      await expect(c.query(`UPDATE public.notification_outbox SET recipient_guest_player_id=gen_random_uuid() WHERE id=$1`, [id])).rejects.toThrow(/frozen/i);
+      await expect(c.query(`UPDATE public.notification_outbox SET tenant_academy_profile_id=gen_random_uuid() WHERE id=$1`, [id])).rejects.toThrow(/frozen/i);
+      // value→NULL equally rejected
+      await expect(c.query(`UPDATE public.notification_outbox SET recipient_user_id=NULL WHERE id=$1`, [id])).rejects.toThrow(/frozen/i);
+    } finally { await c.end(); }
+  });
+
+  it('the uncertainty window anchors to first_send_at: late crash discovery finalizes delivery_unknown, never resends', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g } = await toSending(c);   // first_send_at = NOW
+      // crash discovered 30h AFTER the dispatch — outside the provider idempotency-key window
+      await c.query(`UPDATE public.notification_digest_groups SET locked_by='DEAD', locked_at=${NOW} - interval '1 hour' WHERE id=$1`, [g]);
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      const late = `(${NOW} + interval '30 hours')`;
+      const claimed = (await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${late}, 'ALIVE', 15) AS g`, [run])).rows[0].g;
+      const s = await gstate(c, g);
+      expect(claimed).not.toBe(g);                       // never handed back as sendable
+      expect(s.state).toBe('delivery_unknown');          // finalized, no replay outside the key window
+      expect(s.current_attempt_id).toBeNull();
+      // and a TIMELY reclaim gets a deadline anchored to first_send_at (+23h), not reclaim-time (+23h)
+      const t2 = await toSending(c);
+      await c.query(`UPDATE public.notification_digest_groups SET locked_by='DEAD', locked_at=${NOW} - interval '1 hour' WHERE id=$1`, [t2.g]);
+      const soon = `(${NOW} + interval '2 hours')`;
+      const run2 = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`SELECT public.claim_notification_digest_group($1,'email', ${soon}, 'ALIVE', 15)`, [run2]);
+      const s2 = await gstate(c, t2.g);
+      // deadline = first_send_at (NOW) + 23h — NOT reclaim (NOW+2h) + 23h
+      expect(new Date(s2.uncertain_deadline_at).getTime()).toBe(new Date('2026-07-02T09:00:00Z').getTime());
+    } finally { await c.end(); }
+  });
+
+  it('two concurrent same-key splits allocate unique ordinals (advisory-lock linearized), every member moved once', async () => {
+    const c0 = conn(); await c0.connect();
+    let gA!: string, gB!: string, rA!: string, rB!: string, key!: string;
+    try {
+      seq += 1; key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      for (let i = 0; i < 4; i++) await seedMember(c0, key, dest);
+      const mrun = (await c0.query(`SELECT public.start_notification_worker_run('w','email','materialize') AS r`)).rows[0].r;
+      await c0.query(`SELECT public.materialize_notification_digest_groups($1,'email', ${NOW}, 100, 100)`, [mrun]);
+      gA = (await c0.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key=$1`, [key])).rows[0].id;
+      // manufacture a same-key SIBLING by splitting once (2+2), giving two same-key groups to split concurrently
+      rA = (await c0.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c0.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by='SA', locked_at=${NOW}, worker_run_id=$2 WHERE id=$1`, [gA, rA]);
+      await c0.query(`SELECT public.prepare_notification_digest_group($1,$2,'SA', ${NOW})`, [rA, gA]);
+      await c0.query(`SELECT public.split_notification_digest_group($1,$2,'SA',2, ${NOW})`, [rA, gA]);
+      const kids = (await c0.query(`SELECT id FROM public.notification_digest_groups WHERE parent_group_id=$1 ORDER BY chunk_ordinal`, [gA])).rows;
+      gA = kids[0].id; gB = kids[1].id;
+      for (const [g, w, setRun] of [[gA, 'CA', 'a'], [gB, 'CB', 'b']] as const) {
+        const run = (await c0.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+        await c0.query(`UPDATE public.notification_digest_groups SET state='leased', locked_by=$2, locked_at=${NOW}, worker_run_id=$3 WHERE id=$1`, [g, w, run]);
+        await c0.query(`SELECT public.prepare_notification_digest_group($1,$2,$3, ${NOW})`, [run, g, w]);
+        if (setRun === 'a') rA = run; else rB = run;
+      }
+    } finally { await c0.end(); }
+    const a = conn(); const b = conn(); await a.connect(); await b.connect();
+    try {
+      const [x, y] = await Promise.all([
+        a.query(`SELECT public.split_notification_digest_group($1,$2,'CA',1, ${NOW}) AS n`, [rA, gA]).then(r => r.rows[0].n),
+        b.query(`SELECT public.split_notification_digest_group($1,$2,'CB',1, ${NOW}) AS n`, [rB, gB]).then(r => r.rows[0].n),
+      ]);
+      expect(Number(x)).toBeGreaterThanOrEqual(1); expect(Number(y)).toBeGreaterThanOrEqual(1);   // BOTH succeed — no 23505
+      const cc = conn(); await cc.connect();
+      const dup = (await cc.query(`SELECT count(*)::int n FROM (SELECT canonical_group_key, chunk_ordinal, count(*) FROM public.notification_digest_groups GROUP BY 1,2 HAVING count(*)>1) x`)).rows[0].n;
+      const un = (await cc.query(`SELECT count(*)::int n FROM public.notification_outbox WHERE recipient_key=$1 AND digest_group_id IS NULL`, [key])).rows[0].n;
+      expect(dup).toBe(0); expect(un).toBe(0);
+      await cc.end();
+      // bounds validation
+      await expect(a.query(`SELECT public.split_notification_digest_group($1,$2,'CA',0, ${NOW})`, [rA, gA])).rejects.toThrow(/1\.\.50/);
+    } finally { await a.end(); await b.end(); }
+  });
+
+  it('a legacy row with a caller hash promotes NULL→digest cleanly (schema rewrite allowed, caller mutation still forbidden)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      seq += 1; const key = `p:${seq}`; const dest = `u${seq}@example.com`;
+      const fp = await fpOf(c, dest);
+      const id = (await c.query(`INSERT INTO public.notification_outbox
+        (channel, recipient_key, destination_fingerprint, destination_normalized, event_type, template_key,
+         template_version, group_locale, digest_frequency, recipient_timezone, digest_boundary_at, status, digest_group_hash)
+        VALUES ('email',$1,$2,$3,'ev','tpl',1,'nl','daily','Europe/Amsterdam', ${BD}, 'pending', 'caller-controlled')
+        RETURNING id`, [key, fp, dest])).rows[0].id;   // legacy: delivery_mode NULL, caller hash pre-set
+      const h = (await c.query(`UPDATE public.notification_outbox SET delivery_mode='digest' WHERE id=$1 RETURNING digest_group_hash`, [id])).rows[0].digest_group_hash;
+      expect(h).not.toBe('caller-controlled'); expect(h).toMatch(/^[0-9a-f]{64}$/);   // promotion rewrote it server-side
+      // post-promotion, caller mutation of the hash stays forbidden
+      await expect(c.query(`UPDATE public.notification_outbox SET digest_group_hash='x' WHERE id=$1`, [id])).rejects.toThrow(/frozen/i);
+    } finally { await c.end(); }
+  });
+
+  it('every terminal transition clears current_attempt_id (sent, failed_terminal, retry_stopped, delivery_unknown)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const a = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,202,NULL,'pm-t1', ${NOW})`, [a.run, a.att]);
+      expect((await gstate(c, a.g)).current_attempt_id).toBeNull();               // accepted → sent
+      const b = await toSending(c);
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,NULL,422,'validation_error',NULL, ${NOW})`, [b.run, b.att]);
+      expect((await gstate(c, b.g)).current_attempt_id).toBeNull();               // 422 → failed_terminal
+      const d = await toSending(c);
+      await c.query(`UPDATE public.notification_digest_groups SET state='awaiting_evidence', available_at=${NOW} - interval '1 hour', locked_by=NULL WHERE id=$1`, [d.g]);
+      const run = (await c.query(`SELECT public.start_notification_worker_run('w','email','dispatch') AS r`)).rows[0].r;
+      await c.query(`SELECT public.reconcile_notification_digest_stale($1,'email', ${NOW})`, [run]);
+      expect((await gstate(c, d.g)).current_attempt_id).toBeNull();               // age-out → delivery_unknown
+    } finally { await c.end(); }
+  });
+
+  it('positive correlated evidence dominates a late probe timeout: the breaker closes instead of re-opening', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const { g, att, run } = await toSending(c);
+      // this attempt is the bound half-open probe (begin already ensured a closed row → upsert)
+      await c.query(`INSERT INTO public.notification_provider_circuit (channel, state, probe_group_id, probe_attempt_id, probe_locked_at)
+        VALUES ('email','half_open',$1,$2,${NOW})
+        ON CONFLICT (channel) DO UPDATE SET state='half_open', probe_group_id=$1, probe_attempt_id=$2, probe_locked_at=${NOW}`, [g, att]);
+      // a tagged 'sent' callback completes the group (positive correlated evidence)
+      await c.query(`SELECT public.apply_notification_provider_event($1,'ev-pe','pm-pe',$2,'sent', ${NOW}, ${NOW})`, [run, g]);
+      expect((await gstate(c, g)).state).toBe('sent');
+      // the same attempt's HTTP result arrives late as a TIMEOUT → the breaker must CLOSE, not re-open
+      await c.query(`SELECT public.record_notification_digest_result($1,$2,'timeout',NULL,NULL,NULL, ${NOW})`, [run, att]);
+      const cb = (await c.query(`SELECT state, probe_attempt_id FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+      expect(cb.state).toBe('closed'); expect(cb.probe_attempt_id).toBeNull();
+      expect((await gstate(c, g)).state).toBe('sent');   // the group stays resolved
+    } finally { await c.end(); }
+  });
+});
+
 describe('10c-a2 scale — 100k SAME-BOUNDARY rows, the member query itself, full bounded drain', () => {
   it('100k same-boundary rows: the member scan is an index scan (no Sort) and bounded calls drain everything', async () => {
     const c = conn(); await c.connect();

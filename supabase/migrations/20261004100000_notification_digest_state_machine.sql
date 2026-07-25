@@ -484,9 +484,20 @@ BEGIN
     IF g.locked_at IS NOT NULL AND g.locked_at < p_now - make_interval(mins => p_stale_minutes)
        AND g.state IN ('leased','prepared','request_ready','sending') THEN
       IF g.state = 'sending' THEN
+        -- the uncertainty window is anchored to the FIRST HTTP dispatch (the frozen idempotency key's
+        -- provider-side dedup window starts there, not at crash discovery). Late discovery — at/after
+        -- first_send_at + 23h — must finalize delivery_unknown, never become sendable again: a re-POST
+        -- outside the provider window would DUPLICATE delivery.
+        IF p_now >= coalesce(g.uncertain_deadline_at, coalesce(g.first_send_at, p_now) + interval '23 hours') THEN
+          PERFORM notif_digest_finalize_group(g.id, 'delivery_unknown', 'uncertain_age_out', p_now);
+          PERFORM notif_digest_commit_reservations(g.id, p_now);
+          PERFORM notif_digest_ledger(p_run_id, g.id, NULL, 'delivery_unknown', 0);
+          CONTINUE;
+        END IF;
         UPDATE public.notification_digest_groups
            SET uncertain_since = coalesce(uncertain_since, p_now),
-               uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + interval '23 hours'),
+               uncertain_deadline_at = coalesce(uncertain_deadline_at,
+                                                coalesce(first_send_at, p_now) + interval '23 hours'),
                state = 'request_ready',
                locked_by = p_worker, locked_at = p_now, worker_run_id = p_run_id, available_at = p_now, updated_at = p_now
          WHERE id = g.id;
@@ -545,7 +556,7 @@ BEGIN
   -- group: terminal state + scrub frozen_request + reason (the guard stamps terminal_at; monotonic rank/state hold).
   UPDATE public.notification_digest_groups
      SET state = p_terminal_state, terminal_reason = coalesce(terminal_reason, p_reason),
-         frozen_request = NULL, locked_by = NULL, locked_at = NULL, updated_at = p_now
+         frozen_request = NULL, locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
    WHERE id = p_group_id;
 END $$;
 
@@ -655,10 +666,16 @@ CREATE OR REPLACE FUNCTION public.split_notification_digest_group(
   RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE g record; m record; v_child uuid; v_in_child int := 0; v_children int := 0; v_next_chunk int; v_n int;
 BEGIN
+  IF p_max_items_per_child < 1 OR p_max_items_per_child > 50 THEN
+    RAISE EXCEPTION 'split: p_max_items_per_child must be within 1..50 (got %)', p_max_items_per_child;
+  END IF;
   SELECT * INTO g FROM public.notification_digest_groups
    WHERE id = p_group_id AND state IN ('pending','prepared') AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'split: group % not owned/splittable', p_group_id; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
+  -- ordinal allocation linearizes on the SAME canonical-key advisory lock materialization uses: two
+  -- concurrent same-key splits would both read max(chunk_ordinal) and collide on the UNIQUE (23505).
+  PERFORM pg_advisory_xact_lock(hashtext(g.group_key_hash));
   v_next_chunk := coalesce((SELECT max(chunk_ordinal) FROM public.notification_digest_groups
                             WHERE canonical_group_key = g.canonical_group_key), g.chunk_ordinal);
 
@@ -787,9 +804,9 @@ BEGIN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
          SET state = 'awaiting_evidence',
-             available_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
-             uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
-             locked_by = NULL, locked_at = NULL, updated_at = p_now
+             available_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             uncertain_deadline_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
     ELSE
@@ -831,9 +848,9 @@ BEGIN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
          SET state = 'awaiting_evidence',
-             available_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
-             uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
-             locked_by = NULL, locked_at = NULL, updated_at = p_now
+             available_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             uncertain_deadline_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
     ELSE
@@ -858,9 +875,9 @@ BEGIN
       PERFORM notif_digest_commit_reservations(p_group_id, p_now);
       UPDATE public.notification_digest_groups
          SET state = 'awaiting_evidence',
-             available_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
-             uncertain_deadline_at = coalesce(uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours)),
-             locked_by = NULL, locked_at = NULL, updated_at = p_now
+             available_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             uncertain_deadline_at = coalesce(uncertain_deadline_at, coalesce(first_send_at, p_now) + make_interval(hours => p_uncertainty_hours)),
+             locked_by = NULL, locked_at = NULL, current_attempt_id = NULL, updated_at = p_now
        WHERE id = p_group_id;
       PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'awaiting_evidence', 0);
     ELSE
@@ -990,10 +1007,18 @@ BEGIN
   SELECT * INTO v_cb FROM public.notification_provider_circuit WHERE channel = g.channel FOR UPDATE;
   v_is_probe := (FOUND AND v_cb.state = 'half_open' AND v_cb.probe_attempt_id = p_attempt_id);
   v_backoff := p_now + make_interval(mins => least(power(2, greatest(g.provider_attempts_started,1))::int, 60));
-  v_deadline := coalesce(g.uncertain_deadline_at, p_now + make_interval(hours => p_uncertainty_hours));
+  v_deadline := coalesce(g.uncertain_deadline_at,
+                         coalesce(g.first_send_at, p_now) + make_interval(hours => p_uncertainty_hours));
 
   -- breaker transition FIRST (only the LIVE bound probe attempt may move the breaker); reason-aware timing.
-  IF v_is_probe THEN
+  -- PRECEDENCE: positive CORRELATED provider evidence dominates a late probe transport failure — if a
+  -- callback already completed this group's dispatch (state 'sent' with a provider rollup), the probe's
+  -- send demonstrably REACHED the provider, so a late timeout closes the breaker instead of re-opening it.
+  IF v_is_probe AND v_class = 'ambiguous' AND g.state = 'sent' AND g.provider_status_rank >= 1 THEN
+    UPDATE public.notification_provider_circuit SET state = 'closed', reason = NULL, retry_at = NULL,
+      probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL
+     WHERE channel = g.channel AND state = 'half_open' AND probe_attempt_id = p_attempt_id;
+  ELSIF v_is_probe THEN
     IF v_class = 'accepted' OR v_class = 'retryable_definite' OR v_class = 'terminal' THEN
       UPDATE public.notification_provider_circuit SET state = 'closed', reason = NULL, retry_at = NULL,
         probe_group_id = NULL, probe_attempt_id = NULL, probe_locked_at = NULL
@@ -1284,30 +1309,48 @@ END $$;
 CREATE OR REPLACE FUNCTION public.notification_outbox_snapshot_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  IF (OLD.delivery_mode           IS NOT NULL AND NEW.delivery_mode           IS DISTINCT FROM OLD.delivery_mode)
-   OR (OLD.recipient_key          IS NOT NULL AND NEW.recipient_key          IS DISTINCT FROM OLD.recipient_key)
-   OR (OLD.digest_frequency       IS NOT NULL AND NEW.digest_frequency       IS DISTINCT FROM OLD.digest_frequency)
-   OR (OLD.group_locale           IS NOT NULL AND NEW.group_locale           IS DISTINCT FROM OLD.group_locale)
-   OR (OLD.recipient_timezone     IS NOT NULL AND NEW.recipient_timezone     IS DISTINCT FROM OLD.recipient_timezone)
-   OR (OLD.digest_boundary_at     IS NOT NULL AND NEW.digest_boundary_at     IS DISTINCT FROM OLD.digest_boundary_at)
-   OR (OLD.template_version       IS NOT NULL AND NEW.template_version       IS DISTINCT FROM OLD.template_version)
-   OR (OLD.destination_fingerprint IS NOT NULL AND NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint)
-   OR (OLD.digest_group_hash       IS NOT NULL AND NEW.digest_group_hash       IS DISTINCT FROM OLD.digest_group_hash) THEN
-    RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
-  END IF;
-  -- EVERY canonical grouping input AND the live-recipient identity used by §PS revalidation is frozen on
-  -- digest rows (they define the group hash/identity and who may be re-resolved).
-  IF OLD.delivery_mode = 'digest' AND (
-       NEW.channel IS DISTINCT FROM OLD.channel
-    OR (OLD.event_type IS NOT NULL AND NEW.event_type IS DISTINCT FROM OLD.event_type)
-    OR (OLD.template_key IS NOT NULL AND NEW.template_key IS DISTINCT FROM OLD.template_key)
-    OR (OLD.tenant_academy_profile_id IS NOT NULL AND NEW.tenant_academy_profile_id IS DISTINCT FROM OLD.tenant_academy_profile_id)
-    OR (OLD.tenant_trainer_id IS NOT NULL AND NEW.tenant_trainer_id IS DISTINCT FROM OLD.tenant_trainer_id)
-    OR (OLD.recipient_person_id IS NOT NULL AND NEW.recipient_person_id IS DISTINCT FROM OLD.recipient_person_id)
-    OR (OLD.recipient_user_id IS NOT NULL AND NEW.recipient_user_id IS DISTINCT FROM OLD.recipient_user_id)
-    OR (OLD.recipient_guest_player_id IS NOT NULL AND NEW.recipient_guest_player_id IS DISTINCT FROM OLD.recipient_guest_player_id)
-    OR (OLD.destination_normalized IS NOT NULL AND NEW.destination_normalized IS DISTINCT FROM OLD.destination_normalized)) THEN
-    RAISE EXCEPTION 'notification_outbox digest canonical identity fields are frozen';
+  IF OLD.delivery_mode = 'digest' THEN
+    -- once a row IS digest, EVERY canonical + live-recipient field is STRUCTURALLY frozen — plain
+    -- IS DISTINCT FROM, so NULL→value and value→NULL are rejected too (an OLD-not-null qualifier let
+    -- recipient_timezone NULL→'Asia/Tokyo' slip past while the hash stayed Amsterdam-derived, and let a
+    -- NULL recipient_user_id be added, changing live recipient resolution after enqueue).
+    IF NEW.delivery_mode           IS DISTINCT FROM OLD.delivery_mode
+    OR NEW.recipient_key           IS DISTINCT FROM OLD.recipient_key
+    OR NEW.digest_frequency        IS DISTINCT FROM OLD.digest_frequency
+    OR NEW.group_locale            IS DISTINCT FROM OLD.group_locale
+    OR NEW.recipient_timezone      IS DISTINCT FROM OLD.recipient_timezone
+    OR NEW.digest_boundary_at      IS DISTINCT FROM OLD.digest_boundary_at
+    OR NEW.template_version        IS DISTINCT FROM OLD.template_version
+    OR NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint
+    OR NEW.digest_group_hash       IS DISTINCT FROM OLD.digest_group_hash
+    OR NEW.channel                 IS DISTINCT FROM OLD.channel
+    OR NEW.event_type              IS DISTINCT FROM OLD.event_type
+    OR NEW.template_key            IS DISTINCT FROM OLD.template_key
+    OR NEW.tenant_academy_profile_id IS DISTINCT FROM OLD.tenant_academy_profile_id
+    OR NEW.tenant_trainer_id       IS DISTINCT FROM OLD.tenant_trainer_id
+    OR NEW.recipient_person_id     IS DISTINCT FROM OLD.recipient_person_id
+    OR NEW.recipient_user_id       IS DISTINCT FROM OLD.recipient_user_id
+    OR NEW.recipient_guest_player_id IS DISTINCT FROM OLD.recipient_guest_player_id
+    OR NEW.destination_normalized  IS DISTINCT FROM OLD.destination_normalized THEN
+      RAISE EXCEPTION 'notification_outbox digest canonical identity fields are frozen';
+    END IF;
+  ELSE
+    -- non-digest rows: the digest snapshot fields stay write-once. EXCEPTION: on the null→digest PROMOTION
+    -- itself, the hash-stamp trigger (fires first) REWRITES digest_group_hash server-side — that
+    -- schema-owned rewrite is the one legitimate change to an existing hash (a caller-smuggled value has
+    -- already been overwritten by the stamp before this guard runs, so what lands is always derived).
+    IF (OLD.delivery_mode           IS NOT NULL AND NEW.delivery_mode           IS DISTINCT FROM OLD.delivery_mode)
+     OR (OLD.recipient_key          IS NOT NULL AND NEW.recipient_key          IS DISTINCT FROM OLD.recipient_key)
+     OR (OLD.digest_frequency       IS NOT NULL AND NEW.digest_frequency       IS DISTINCT FROM OLD.digest_frequency)
+     OR (OLD.group_locale           IS NOT NULL AND NEW.group_locale           IS DISTINCT FROM OLD.group_locale)
+     OR (OLD.recipient_timezone     IS NOT NULL AND NEW.recipient_timezone     IS DISTINCT FROM OLD.recipient_timezone)
+     OR (OLD.digest_boundary_at     IS NOT NULL AND NEW.digest_boundary_at     IS DISTINCT FROM OLD.digest_boundary_at)
+     OR (OLD.template_version       IS NOT NULL AND NEW.template_version       IS DISTINCT FROM OLD.template_version)
+     OR (OLD.destination_fingerprint IS NOT NULL AND NEW.destination_fingerprint IS DISTINCT FROM OLD.destination_fingerprint)
+     OR (OLD.digest_group_hash IS NOT NULL AND NEW.digest_group_hash IS DISTINCT FROM OLD.digest_group_hash
+         AND NOT (NEW.delivery_mode = 'digest' AND OLD.delivery_mode IS DISTINCT FROM 'digest')) THEN
+      RAISE EXCEPTION 'notification_outbox digest snapshot fields are write-once';
+    END IF;
   END IF;
   IF OLD.digest_group_id IS NOT NULL AND NEW.digest_group_id IS DISTINCT FROM OLD.digest_group_id THEN
     IF NEW.digest_group_id IS NULL
