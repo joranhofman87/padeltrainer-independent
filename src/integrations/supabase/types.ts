@@ -4675,6 +4675,7 @@ export type Database = {
           destination_redacted: string | null
           digest_boundary_at: string | null
           digest_frequency: string | null
+          digest_group_hash: string | null
           digest_group_id: string | null
           digest_item: Json | null
           digest_item_bytes: number | null
@@ -4727,6 +4728,7 @@ export type Database = {
           destination_redacted?: string | null
           digest_boundary_at?: string | null
           digest_frequency?: string | null
+          digest_group_hash?: string | null
           digest_group_id?: string | null
           digest_item?: Json | null
           digest_item_bytes?: number | null
@@ -4779,6 +4781,7 @@ export type Database = {
           destination_redacted?: string | null
           digest_boundary_at?: string | null
           digest_frequency?: string | null
+          digest_group_hash?: string | null
           digest_group_id?: string | null
           digest_item?: Json | null
           digest_item_bytes?: number | null
@@ -9253,6 +9256,18 @@ export type Database = {
         Args: { _cycle_id: string; _keys: string[] }
         Returns: undefined
       }
+      apply_notification_provider_event: {
+        Args: {
+          p_digest_group_id: string
+          p_now: string
+          p_occurred_at: string
+          p_provider_message_id: string
+          p_resend_event_id: string
+          p_run_id: string
+          p_status: string
+        }
+        Returns: string
+      }
       apply_slot_delete_to_cycle: {
         Args: { _cycle_id: string; _slot_ids: string[] }
         Returns: {
@@ -9268,6 +9283,17 @@ export type Database = {
           blocked_slot_ids: string[]
           updated_count: number
         }[]
+      }
+      begin_notification_digest_attempt: {
+        Args: {
+          p_day_cap?: number
+          p_group_id: string
+          p_hour_cap?: number
+          p_now: string
+          p_run_id: string
+          p_worker: string
+        }
+        Returns: string
       }
       book_guest_cart_for_payment: {
         Args: {
@@ -9347,6 +9373,16 @@ export type Database = {
           _academy_profile_id: string
           _guest_player_id: string
           _profile_id: string
+        }
+        Returns: string
+      }
+      claim_notification_digest_group: {
+        Args: {
+          p_channel: string
+          p_now: string
+          p_run_id: string
+          p_stale_minutes?: number
+          p_worker: string
         }
         Returns: string
       }
@@ -9629,6 +9665,10 @@ export type Database = {
       find_guest_twin_for_academy: {
         Args: { _academy_profile_id: string; _profile_id: string }
         Returns: string
+      }
+      finish_notification_worker_run: {
+        Args: { p_run_id: string; p_status: string }
+        Returns: undefined
       }
       fold_search_text: { Args: { _value: string }; Returns: string }
       gen_random_bytes: { Args: { len: number }; Returns: string }
@@ -10363,6 +10403,16 @@ export type Database = {
         Returns: boolean
       }
       mark_skipped_alerts_sent: { Args: { p_ids: string[] }; Returns: number }
+      materialize_notification_digest_groups: {
+        Args: {
+          p_channel: string
+          p_max_groups: number
+          p_max_members_per_call: number
+          p_now: string
+          p_run_id: string
+        }
+        Returns: number
+      }
       merge_guest_players: {
         Args: {
           p_fields?: Json
@@ -10380,6 +10430,169 @@ export type Database = {
       normalize_phone_e164: {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
+      }
+      notif_digest_action_for_class: {
+        Args: { p_class: string }
+        Returns: string
+      }
+      notif_digest_advance_provider_status: {
+        Args: { p_group_id: string; p_now: string; p_status: string }
+        Returns: undefined
+      }
+      notif_digest_apply_provider_transition: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_run_id: string
+          p_status: string
+        }
+        Returns: string
+      }
+      notif_digest_assert_run: {
+        Args: { p_channel: string; p_phase: string; p_run_id: string }
+        Returns: undefined
+      }
+      notif_digest_bind_provider_message: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_provider_message_id: string
+        }
+        Returns: string
+      }
+      notif_digest_bucket_apply: {
+        Args: {
+          p_attempt_id: string
+          p_bucket_start: string
+          p_group_id: string
+          p_key: string
+          p_now: string
+        }
+        Returns: undefined
+      }
+      notif_digest_bucket_gate: {
+        Args: {
+          p_bucket_kind: string
+          p_bucket_start: string
+          p_cap: number
+          p_group_id: string
+          p_key: string
+        }
+        Returns: string
+      }
+      notif_digest_canonical_key: {
+        Args: {
+          p_channel: string
+          p_destination_fingerprint: string
+          p_digest_boundary_at: string
+          p_digest_frequency: string
+          p_event_type: string
+          p_group_locale: string
+          p_recipient_key: string
+          p_recipient_timezone: string
+          p_template_key: string
+          p_template_version: number
+          p_tenant_academy: string
+          p_tenant_trainer: string
+        }
+        Returns: Json
+      }
+      notif_digest_classify_error: {
+        Args: {
+          p_error_name: string
+          p_http_status: number
+          p_transport: string
+        }
+        Returns: string
+      }
+      notif_digest_commit_reservations: {
+        Args: { p_group_id: string; p_now: string }
+        Returns: undefined
+      }
+      notif_digest_counter_key: {
+        Args: {
+          p_bucket_kind: string
+          p_bucket_start: string
+          p_channel: string
+          p_event_type: string
+          p_fingerprint: string
+        }
+        Returns: string
+      }
+      notif_digest_destination_fingerprint: {
+        Args: { p_destination: string }
+        Returns: string
+      }
+      notif_digest_finalize_group: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_reason: string
+          p_terminal_state: string
+        }
+        Returns: undefined
+      }
+      notif_digest_ledger: {
+        Args: {
+          p_action: string
+          p_attempt_id: string
+          p_group_id: string
+          p_item_count?: number
+          p_run_id: string
+        }
+        Returns: undefined
+      }
+      notif_digest_member_stop_reason: {
+        Args: { p_member_id: string }
+        Returns: string
+      }
+      notif_digest_provider_rank: {
+        Args: { p_status: string }
+        Returns: number
+      }
+      notif_digest_quiet_hours_bump: {
+        Args: { p_now: string; p_tz: string }
+        Returns: string
+      }
+      notif_digest_release_reservations: {
+        Args: { p_group_id: string; p_now: string }
+        Returns: undefined
+      }
+      notif_digest_require_range: {
+        Args: { p_label: string; p_max: number; p_min: number; p_val: number }
+        Returns: undefined
+      }
+      notif_digest_retry_after_interval: {
+        Args: { p_secs: number }
+        Returns: string
+      }
+      notif_digest_terminal_states: { Args: never; Returns: string[] }
+      notif_digest_trip_breaker: {
+        Args: {
+          p_channel: string
+          p_now: string
+          p_reason: string
+          p_retry_at: string
+        }
+        Returns: undefined
+      }
+      notif_digest_trip_breaker_for: {
+        Args: {
+          p_channel: string
+          p_error_name: string
+          p_http_status: number
+          p_now: string
+          p_retry_after_seconds: number
+        }
+        Returns: undefined
+      }
+      notif_digest_uncertainty_deadline: {
+        Args: { p_existing: string; p_first_send_at: string }
+        Returns: string
+      }
+      notif_digest_validate_frozen_request: {
+        Args: { p_destination_fingerprint: string; p_frozen: Json }
+        Returns: undefined
       }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_redact_destination: {
@@ -10407,6 +10620,15 @@ export type Database = {
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean
+      }
+      prepare_notification_digest_group: {
+        Args: {
+          p_group_id: string
+          p_now: string
+          p_run_id: string
+          p_worker: string
+        }
+        Returns: string
       }
       purge_notification_digest: {
         Args: {
@@ -10468,6 +10690,24 @@ export type Database = {
         Args: { _cyclus_id: string }
         Returns: number
       }
+      reconcile_notification_digest_run: {
+        Args: { p_run_id: string }
+        Returns: {
+          count: number
+          family: string
+          metric: string
+        }[]
+      }
+      reconcile_notification_digest_stale: {
+        Args: {
+          p_channel: string
+          p_limit?: number
+          p_now: string
+          p_probe_lease_minutes?: number
+          p_run_id: string
+        }
+        Returns: number
+      }
       reconcile_payments: {
         Args: { _since?: string }
         Returns: {
@@ -10492,6 +10732,19 @@ export type Database = {
           p_trainer_id?: string
         }
         Returns: undefined
+      }
+      record_notification_digest_result: {
+        Args: {
+          p_attempt_id: string
+          p_error_name: string
+          p_http_status: number
+          p_now: string
+          p_provider_message_id: string
+          p_retry_after_seconds?: number
+          p_run_id: string
+          p_transport: string
+        }
+        Returns: string
       }
       record_notification_send_result: {
         Args: {
@@ -10618,6 +10871,30 @@ export type Database = {
         Returns: undefined
       }
       slot_held_by_paid_group: { Args: { _slot_id: string }; Returns: boolean }
+      split_notification_digest_group: {
+        Args: {
+          p_group_id: string
+          p_max_items_per_child: number
+          p_now: string
+          p_run_id: string
+          p_worker: string
+        }
+        Returns: number
+      }
+      start_notification_worker_run: {
+        Args: { p_channel: string; p_phase: string; p_worker: string }
+        Returns: string
+      }
+      store_notification_digest_request: {
+        Args: {
+          p_frozen_request: Json
+          p_group_id: string
+          p_now: string
+          p_run_id: string
+          p_worker: string
+        }
+        Returns: undefined
+      }
       stripe_subscription_has_newer_activation: {
         Args: { _event_created: number; _subscription_id: string }
         Returns: boolean

@@ -390,3 +390,227 @@ timeline survive; `superseded` excluded from `groups_touched`.
 - Confirmations before implementation (all set): 50 / ~90 KB / 09:00–20:00 / academy→trainer→Amsterdam /
   35-day counter + 90-day audit retention / 23 h uncertainty / breaker timings / weekly = Monday.
 - Legacy `notification_queue`/`send-digest-emails` untouched until 10c-d.
+
+## 10c-a2 implementation clarifications (accepted contract, discovered while building the SQL state machine)
+
+These clarify — never change — the accepted design:
+
+- **Canonical destination fingerprint** = `notif_digest_destination_fingerprint(dest) = sha256(lower(btrim(dest)))`
+  (hex). `store` PROVES the frozen request's `to` fingerprints to the group's immutable
+  `destination_fingerprint`, and the §PS live re-check proves the CURRENT contact/account destination still
+  does. The 10c-b resolver MUST snapshot `outbox.destination_fingerprint` with this same function.
+- **`outbox.digest_group_hash`** (immutable, trigger-stamped at enqueue) = sha256 of the canonical key; the
+  member scan is `(digest_group_hash, created_at, id)`-indexed (partial on forming rows) — the same-key
+  lookup is O(index), never a computed-key scan/sort. Exact-field equality checks are retained beside the
+  hash (collision safety). Materialization serializes per key with a NONBLOCKING advisory lock (a busy key
+  is skipped, resumed next call) — blocking multi-key acquisition could deadlock two materializers.
+- **§PS precision:** `required_delivery` bypasses ONLY `preference_off`. A missing/revoked contact
+  (`revoked_at`/`opted_out`/deleted), a CHANGED destination (live fingerprint ≠ frozen), and
+  `is_email_suppressed` always stop the member/group, required or not.
+- **Correlation gates (§PV/§P6):** a tagged early callback may bind the group's write-once
+  `provider_message_id` ONLY when `provider_attempts_started > 0` (a live send exists) — otherwise it stays
+  an orphan. `accepted` REQUIRES a non-blank provider id; an accepted id that conflicts with the bound one
+  is an invariant breach → attempt annotated + channel manual-hold (`correlation_mismatch`). Orphan→link
+  APPLIES the stored outcome exactly once (rank-guarded).
+- **Breaker (§CB):** `begin` re-validates the circuit under `FOR UPDATE` (a concurrent re-arm/trip cannot
+  race the attempt insert) and count-checks the probe bind. `claim` PREFLIGHTS the circuit before scanning:
+  a held/not-due open circuit returns immediately with zero group writes (`available_at` is only ever
+  changed by genuine scheduling: quiet-hours/backoff/cap). Reason-aware trips: auth/config +15 m; daily
+  quota +coalesce(Retry-After, 24 h); monthly quota / `invalid_idempotent_request` → `retry_at NULL`
+  manual hold.
+- **Observability:** a lower/equal-rank provider callback is a rank-guarded no-op and writes NO transition
+  ledger row (the provider_events row is the audit). Every state-changing RPC asserts its worker run
+  (exists, unfinished, right phase + channel); `reconcile` is causal — the LAST ledger action per group per
+  run, `superseded` reported as a separate lineage metric.
+
+### Round-4 refinements (same clarifying scope)
+
+- **Breaker linearization point:** send authorization linearizes on the ACQUIRED ROW LOCK of the (always
+  ensured) `notification_provider_circuit` row — `begin` first `INSERT … ON CONFLICT DO NOTHING` a `closed`
+  row, THEN `SELECT … FOR UPDATE` (a `FOR UPDATE` on a missing row locks nothing, so the first-ever trip
+  could otherwise race the attempt insert). Every trip/re-arm serializes through that row.
+- **Canonical key = v2, session-independent:** `['v2', channel, recipient_key, destination_fingerprint,
+  tenant_academy, tenant_trainer, event_type, template_key, template_version, group_locale,
+  digest_frequency, recipient_timezone, epoch_seconds(digest_boundary_at)]`. `recipient_timezone` IS
+  identity; the boundary (and counter-key buckets) are epoch-normalized — `timestamptz::text`/jsonb
+  serialization depends on the session `TimeZone` and would mint divergent keys. `digest_group_hash` is
+  ALWAYS server-derived (caller values overwritten); every canonical input is frozen on digest rows.
+- **§PS is resolver-faithful:** the live check RE-RUNS the resolver's email lookup verbatim (ownership by
+  person/user/guest + revocation + opt-out + tenant consent scope + global-only-for-account-holders), then
+  requires the live destination to fingerprint to the frozen `destination_fingerprint`. `outbox.contact_id`
+  is never trusted (its FK is `ON DELETE SET NULL`); frozen data is never a live-deliverability substitute —
+  a guest with no live in-scope owned contact stops.
+- **One correlation predicate:** `notif_digest_bind_provider_message` gates BOTH the direct callback path
+  and orphan linking — a provider message correlates only to a group already bound to that exact id, or an
+  unbound group with a LIVE send (`provider_attempts_started > 0`). Never-sent groups reject through every
+  path.
+- **Run linkage is exact:** group-scoped RPCs require `group.worker_run_id = p_run_id` (+ `locked_by`), and
+  `record` requires `attempt.worker_run_id = p_run_id` — the worker that made the HTTP call is the only one
+  holding its outcome; crash recovery begins a NEW attempt, never records an old one. `assert_run` holds the
+  run row `FOR UPDATE`, so a transition in flight blocks a concurrent `finish` (and vice versa).
+- **Frozen request allow-list:** exactly `to/subject/html` — any other key (bcc/cc/headers/attachments/
+  unknown) is rejected at `store`, since the worker dispatches the stored request verbatim.
+
+### Round-5 refinements (same clarifying scope)
+
+- **Cap buckets are fixed-zone:** hour/day buckets are `date_trunc(..., p_now AT TIME ZONE 'UTC') AT TIME
+  ZONE 'UTC'` — `date_trunc` on a `timestamptz` truncates in the SESSION `TimeZone`, so differently-zoned
+  workers would otherwise mint different day buckets and split the cap. One instant → one counter key,
+  session-independent.
+- **Breaker result transitions are CAS:** `record` decides probe-ness UNDER the circuit row lock and every
+  probe transition is a compare-and-swap on the exact `state='half_open' AND probe_attempt_id=<attempt>`.
+  A superseded probe result (a replacement bound, or the breaker re-armed) only annotates its attempt —
+  it can never close/trip/re-arm the replacement breaker.
+- **Correlation = capable-of-acceptance:** an unbound group may correlate a provider message ONLY while an
+  attempt exists that is unrecorded (in flight / crashed pre-record) or recorded `ambiguous`. Definitive
+  non-accepted outcomes (`terminal`/429/`global_config`) never produced a message id — cumulative
+  `provider_attempts_started` is NOT evidence. Applied identically to direct callbacks and orphan links.
+- **Uncertainty clocks are atomic:** every path that sets `uncertain_since` sets `uncertain_deadline_at`
+  (= now + 23 h) in the same statement — including the stale-`sending` reclaim; `awaiting_evidence` can
+  never be minted with a NULL deadline (which a `coalesce(NULL, now)` would age out instantly).
+- **Identity is fully schema-owned:** `digest_group_hash` is re-derived whenever a row IS or BECOMES
+  digest (caller values overwritten on promotion too); the timezone is normalized
+  (`coalesce(recipient_timezone,'Europe/Amsterdam')`) before hashing so NULL and the explicit default mint
+  one identity; a digest row missing `recipient_key`/`destination_fingerprint`/`digest_frequency`/
+  `digest_boundary_at` is rejected; and the live-recipient identity (`recipient_person_id`/`recipient_user_id`/
+  `recipient_guest_player_id`/`destination_normalized`) is frozen alongside the canonical inputs.
+
+### Round-6 refinements (same clarifying scope)
+
+- **Structural freeze:** once a row IS digest, every canonical + live-recipient field is frozen under plain
+  `IS DISTINCT FROM` — NULL→value and value→NULL included (an `OLD IS NOT NULL` qualifier let a NULL
+  timezone or recipient id be added after the hash was derived).
+- **The uncertainty window anchors to the FIRST HTTP dispatch:** `uncertain_deadline_at =
+  coalesce(existing, first_send_at + 23 h)` everywhere (the frozen provider idempotency key's dedup window
+  starts at first use, not at crash discovery). Recovery at/after that deadline finalizes
+  `delivery_unknown` — the group is never handed back sendable, so a re-POST can never fall outside the
+  provider's dedup window and duplicate delivery.
+- **Split ordinal allocation linearizes on the SAME canonical-key advisory lock as materialization**
+  (`pg_advisory_xact_lock(hashtext(group_key_hash))`) before `max(chunk_ordinal)+1`; `p_max_items_per_child`
+  is validated 1..50.
+- **Promotion exception:** on the null→digest promotion the hash-stamp trigger rewrites
+  `digest_group_hash` server-side; the write-once guard permits exactly that schema-owned rewrite (the
+  stamp runs first, so what lands is always derived) — every caller mutation, before or after promotion,
+  stays forbidden.
+- **Every terminal transition clears `current_attempt_id`** (the shared finalizer + the awaiting_evidence
+  paths) — a completed group holds no attempt ownership.
+- **Breaker precedence:** positive CORRELATED provider evidence that already completed the group's dispatch
+  dominates a late probe transport failure — the probe's send demonstrably reached the provider, so a late
+  timeout CAS-closes the breaker instead of re-opening it. Stale non-positive results still annotate only.
+
+### Round-7 refinements (same clarifying scope)
+
+- **The 23-hour uncertainty window is an INVARIANT, not a tunable.** `p_uncertainty_hours` is removed from
+  every RPC; the deadline is always `notif_digest_uncertainty_deadline(first_send_at, existing) =
+  least(existing, first_send_at + interval '23 hours')` — it can never widen, and it FAILS CLOSED (raises)
+  if a post-dispatch group lacks `first_send_at` rather than starting a fresh window at recovery time.
+- **Table write model: the eight state-machine tables are `service_role` SELECT-only.** Every write goes
+  through the SECURITY DEFINER RPCs (which run as the table owner); `INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER/
+  REFERENCES` are revoked from `service_role`. 10c-a3's worker + webhook must drive the machine through the
+  RPCs — no direct table writes. Belt-and-braces, an owner-effective `notification_digest_send_identity_guard`
+  freezes the duplicate-send-safety fields even against a buggy internal caller: `first_send_at` set once
+  then immutable; `provider_idempotency_key`/`request_hash` immutable once set; `frozen_request` only
+  NULL→value (store) or value→NULL (scrub); `uncertain_deadline_at` never beyond `first_send_at + 23h` and
+  never moves later.
+- **Any correlated provider callback dominates a late probe transport timeout.** A callback of ANY status —
+  sent/delivery_delayed/delivered/complained OR bounced/failed/suppressed — proves Resend accepted and
+  processed the request (`provider_status_rank >= 1`), as does an HTTP-accepted rollup. A late ambiguous
+  probe result therefore CAS-closes the exact probe (state='half_open' AND probe_attempt_id) instead of
+  re-opening the breaker, preserving the callback-derived group/member outcome (sent OR failed_terminal).
+- **Every operational bound is a server-enforced maximum, validated NULL-safely** via
+  `notif_digest_require_range` (NULL / below-min / above-max all raise): split items 1..50, materialize
+  groups 1..1000 + members 1..10000, claim stale-minutes 1..1440, begin hour-cap 1..1e6 + day-cap 1..1e7,
+  sweep probe-lease 1..1440 + limit 1..10000. "Bounded" means a hard server ceiling, not a caller LIMIT.
+
+### Round-8 refinements (same clarifying scope)
+
+- **RPC allowlist:** EXECUTE is granted to `service_role` ONLY on the operational entrypoints
+  (start/finish_worker_run, materialize, claim, prepare, split, store, begin, record,
+  reconcile_run/reconcile_stale, apply_provider_event, link_provider_event). Every `notif_digest_%` helper
+  and the trigger functions are EXECUTE-revoked from PUBLIC/anon/authenticated/**service_role** — the
+  top-level SECURITY DEFINER RPCs invoke them as the owner, so a forged direct call (e.g. `SET ROLE
+  service_role; SELECT notif_digest_trip_breaker(...)`) that would bypass run/ownership/attempt/ledger
+  invariants is denied.
+- **Digest content is server-owned:** `digest_item_bytes` is derived in the DB (`octet_length(digest_item::
+  text)`) on every digest insert/promotion — a caller count is silently corrected. `digest_item` is
+  write-once (scrub to NULL only, at terminal member finalize) and the count is immutable once derived, so
+  the 50-item/90 KB budget can't be gamed and content can't change after grouping.
+- **Send-identity INITIALIZATION is transition-scoped, not just mutation:** `provider_idempotency_key`
+  (= `dg:v1:<id>`) / `request_hash` (= sha256(frozen_request)) / `frozen_request` may go NULL→value ONLY
+  during `prepared→request_ready`; `first_send_at` NULL→value ONLY during `request_ready→sending` with a
+  bound `current_attempt_id`; `frozen_request` value→NULL ONLY during a terminal transition. A one-statement
+  forged populate on a pending/leased group is rejected.
+- **Retry-After is clamped:** `notif_digest_retry_after_interval(secs)` returns the interval only for
+  0..604800 (7 days), else NULL → the caller's documented fallback (24 h for daily quota; the exponential
+  backoff floor for a plain retryable). A negative value can never set `retry_at` in the past, and an
+  extreme value can never pause delivery for years.
+
+### Round-9 refinements (same clarifying scope)
+
+- **digest_item is an immutable enqueue-time snapshot.** A digest row (insert or promotion) MUST carry a
+  non-null `digest_item` (the hash-stamp trigger enforces it alongside the other snapshot fields);
+  `digest_item` can NEVER be attached (NULL→value) or rewritten (value→different value) afterward; it may be
+  scrubbed (value→NULL) ONLY when the member is atomically entering a documented terminal outbox status
+  (`sent`/`delivered`/`failed`/`skipped`/`cancelled`/`delivery_unknown`). `digest_item_bytes` stays derived
+  and immutable (retained after scrub).
+- **Uncertainty age-out is an INDEPENDENT no-send reconciliation transition.** `reconcile_notification_
+  digest_stale` ages out ANY uncertain group (`request_ready | sending | awaiting_evidence`) at/after
+  `least(uncertain_deadline_at, first_send_at + 23 h)` → `delivery_unknown`, committing its reservations and
+  creating no attempt, and NEVER reading or writing the breaker. So a manual channel hold / quiet hours /
+  caps / retry-ineligibility can no longer keep an uncertain group (and its committed capacity) alive past
+  the deadline. Backed by a partial index `idx_digest_groups_uncertain_ageout (channel, first_send_at)
+  WHERE uncertain_since IS NOT NULL AND state IN (request_ready, sending, awaiting_evidence)`.
+- **All uncertain scheduling is capped at the deadline.** Every uncertain `available_at` computation
+  (retryable, ambiguous, global_config, quiet-hours, breaker defer) is `least(computed,
+  coalesce(uncertain_deadline_at, 'infinity'))` — a valid seven-day `Retry-After` can never push a retry
+  past `first_send_at + 23 h`; reaching the deadline ages out (via the independent sweep) instead of sending.
+- **The `prepared → request_ready` transition enforces request-tuple completeness atomically** — non-null
+  `frozen_request`, `provider_idempotency_key = dg:v1:<id>`, and `request_hash = sha256(frozen_request)` are
+  checked on the transition itself (not field-by-field), so a state-only move that would strand a malformed
+  group is rejected.
+
+### Round-10 refinements (same clarifying scope)
+
+- **One shared request validator.** `notif_digest_validate_frozen_request(frozen, destination_fingerprint)`
+  enforces the exact `to/subject/html` allow-list, non-empty strings, the ≤92160-byte ceiling, and
+  `to`↔fingerprint equality. It is invoked by BOTH `store_notification_digest_request` AND the send-identity
+  guard's `prepared → request_ready` transition — so a direct owner-context update carrying a complete
+  tuple (matching key + hash) but a wrong recipient or an extra `bcc` is rejected at the trigger, not just
+  in the store RPC.
+- **The age-out scan is work-bounded.** The uncertainty clocks are a structural PAIR — enforced at both
+  INSERT and UPDATE by a table CHECK (round-11): either both NULL, or both set with `first_send_at` present —
+  so `uncertain_deadline_at` alone is
+  the canonical due field. The partial index is `idx_digest_groups_uncertain_ageout (channel,
+  uncertain_deadline_at) WHERE uncertain_since IS NOT NULL AND state IN ('request_ready','sending',
+  'awaiting_evidence')`, and the sweep scans `uncertain_deadline_at <= p_now ORDER BY uncertain_deadline_at
+  LIMIT p_limit`. At 100k future-only uncertain groups the index range bound scans/filters ~0 rows (not a
+  full O(N) filter).
+- **`claim_notification_digest_group`'s quiet-hours defer is capped too.** Its `available_at` is
+  `least(v_bump, coalesce(uncertain_deadline_at, 'infinity'))`, so an uncertain group whose next allowed
+  send window is after its 23-hour deadline is scheduled to the deadline (then aged out by the independent
+  sweep), matching the "every scheduling branch is capped" contract.
+
+### Round-11 refinements (same clarifying scope)
+
+- **No deadline hot-loop.** `claim_notification_digest_group` ages out ANY selected uncertain group whose
+  deadline is already past (`uncertain_since IS NOT NULL AND p_now >= uncertain_deadline_at`) → finalize
+  `delivery_unknown`, commit reservations, one outcome ledger event, continue — BEFORE the quiet-hours /
+  breaker deferral branches. Otherwise a deadline-past uncertain group in quiet hours would be deferred to
+  `least(bump, deadline)` = the already-due deadline, re-selected, and loop until the `v_iter` cap (one call
+  emitting 200 `deferred` rows). This age-out is the same one the independent sweep performs, now reachable
+  from the send path too.
+- **The uncertainty-clock pair is an owner-effective table CHECK** (not just the UPDATE trigger):
+  `notification_digest_groups_uncertainty_pair_check` = `(both clocks NULL) OR (both set AND first_send_at
+  IS NOT NULL)`. It covers direct INSERTs (which a `BEFORE UPDATE` trigger cannot), so a half-pair or a
+  clocks-without-first-send row can never enter the age-out index and leak.
+
+### Round-12 (test-only)
+
+- The 100k age-out scale test EXPLAINs the RPC's OWN candidate query: it extracts the `FOR g IN SELECT …
+  FOR UPDATE SKIP LOCKED` block from `pg_get_functiondef(reconcile_notification_digest_stale)`, parameter-
+  substitutes it, and EXPLAINs that exact SQL (not a hand-copy). The fixture seeds 50 DUE + 100k FUTURE
+  uncertain groups, so the assertion pins the named index node's deadline `Index Cond`, `Actual Rows` = the
+  due count (50), and nested `Rows Removed by Filter` < 100 — a filtering-predicate/order/index change to the
+  deployed RPC drops the due-row count and fails the test. The trigger disable/enable around the bulk seed is
+  wrapped in try/finally so a failed seed can never leave the guards disabled for later tests. No production
+  SQL behavior changed.
