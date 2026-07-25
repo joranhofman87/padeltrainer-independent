@@ -4675,6 +4675,7 @@ export type Database = {
           destination_redacted: string | null
           digest_boundary_at: string | null
           digest_frequency: string | null
+          digest_group_hash: string | null
           digest_group_id: string | null
           digest_item: Json | null
           digest_item_bytes: number | null
@@ -4727,6 +4728,7 @@ export type Database = {
           destination_redacted?: string | null
           digest_boundary_at?: string | null
           digest_frequency?: string | null
+          digest_group_hash?: string | null
           digest_group_id?: string | null
           digest_item?: Json | null
           digest_item_bytes?: number | null
@@ -4779,6 +4781,7 @@ export type Database = {
           destination_redacted?: string | null
           digest_boundary_at?: string | null
           digest_frequency?: string | null
+          digest_group_hash?: string | null
           digest_group_id?: string | null
           digest_item?: Json | null
           digest_item_bytes?: number | null
@@ -10446,6 +10449,10 @@ export type Database = {
         }
         Returns: string
       }
+      notif_digest_assert_run: {
+        Args: { p_channel: string; p_phase: string; p_run_id: string }
+        Returns: undefined
+      }
       notif_digest_bucket_apply: {
         Args: {
           p_attempt_id: string
@@ -10465,6 +10472,22 @@ export type Database = {
           p_key: string
         }
         Returns: string
+      }
+      notif_digest_canonical_key: {
+        Args: {
+          p_channel: string
+          p_destination_fingerprint: string
+          p_digest_boundary_at: string
+          p_digest_frequency: string
+          p_event_type: string
+          p_group_locale: string
+          p_recipient_key: string
+          p_template_key: string
+          p_template_version: number
+          p_tenant_academy: string
+          p_tenant_trainer: string
+        }
+        Returns: Json
       }
       notif_digest_classify_error: {
         Args: {
