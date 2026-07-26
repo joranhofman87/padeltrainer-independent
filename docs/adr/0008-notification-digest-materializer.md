@@ -698,3 +698,42 @@ scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, sep
   materialize fallback, store, send-identity guard, destination fingerprint); `convert_to(…,'UTF8')` takes the
   text's raw UTF-8 bytes with no escape interpretation, byte-identical to the old cast for all backslash-free
   text, so every existing hash VALUE is preserved. Forward-only CREATE OR REPLACE; privileges/triggers persist.
+
+## 10c-a3 deployment runbook + credential contract
+
+**Credential contract (as verified in production).** The worker self-authenticates in `requireServiceRole` with
+a byte-for-byte compare of the request's `Authorization: Bearer <token>` (or `apikey`) against the function's
+injected `SUPABASE_SERVICE_ROLE_KEY` — which is the **LEGACY service-role JWT** (`eyJ…`), NOT a new `sb_secret_`
+key. The cron sends exactly that legacy JWT, read from Vault (`vault.decrypted_secrets.service_role_key`) at
+tick time as the Bearer, identical to `20260722100000_rebook_crons_use_vault.sql`. The NEW `sb_secret_` keys
+live in `SUPABASE_SECRET_KEYS` and are transmitted via the `apikey` header (per the Supabase new-API-keys docs);
+they do **not** replace `SUPABASE_SERVICE_ROLE_KEY` and are not what this function checks. `verify_jwt=false` so
+the request always reaches the function's own guard (and stays correct if auth is ever moved to a non-JWT
+`apikey` path). **Recommendation:** retain this verified legacy-JWT Vault path for the initial cron enablement;
+any move to a named secret-key / custom worker-secret path should be a separate, reviewed migration, not folded
+into enablement.
+
+**Authenticated "disabled" smoke test (run after every deploy, BEFORE scheduling the cron or flipping the
+switch).** Invoke through the exact Vault/pg_net path — no cron, secret never leaves the server:
+
+```sql
+-- fire it (returns a pg_net request_id)
+SELECT net.http_post(
+  url := 'https://<project>.supabase.co/functions/v1/notification-digest-worker',
+  headers := jsonb_build_object(
+    'Content-Type','application/json',
+    'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name='service_role_key')
+  ),
+  body := '{}'::jsonb
+) AS request_id;
+
+-- read the response (status + body only — never select request headers)
+SELECT status_code, content FROM net._http_response WHERE id = <request_id>;
+```
+
+Acceptance = **HTTP 200** with body exactly `{"status":"disabled","reason":"disabled"}`, followed by **zero**
+new rows in `notification_worker_runs`, `notification_digest_groups`, and `notification_outbox WHERE
+delivery_mode='digest'`. If it returns **401**, STOP: the function's `SUPABASE_SERVICE_ROLE_KEY` and the Vault
+`service_role_key` have diverged (e.g. a key rotation) — check whether the existing Vault-backed rebook crons
+are also 401ing, and fix the credential source; do not rotate or modify any credential without owner approval.
+Never print the secret, its hash, prefix, or length.

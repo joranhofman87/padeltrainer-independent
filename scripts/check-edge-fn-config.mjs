@@ -25,9 +25,11 @@ const MUST_BE_PUBLIC = [
   'submit-guest-intake', 'get-booking-invoice', 'update-public-invoice-details',
   // self-authenticating: user JWT for owner sends, service-role key for the sweep cron + resume chain
   'send-campaign-emails',
-  // cron-driven outbox drainers — pg_cron presents the service-role key, which on this project
-  // is an `sb_secret_…` key and NOT a JWT, so verify_jwt=true 401s them at the gateway before
-  // requireServiceRole ever runs. Silent: the cron job "succeeds" and nothing is ever sent.
+  // cron-driven outbox drainers — self-authenticating: each verifies the request itself in
+  // requireServiceRole against SUPABASE_SERVICE_ROLE_KEY (the LEGACY service-role JWT). pg_cron sends that
+  // legacy JWT from Vault as `Authorization: Bearer` (20260722100000_rebook_crons_use_vault.sql). verify_jwt
+  // stays false so the request reaches the function's own guard rather than the gateway's JWT check. (The new
+  // `sb_secret_` keys live in SUPABASE_SECRET_KEYS and go via `apikey`; they do NOT replace the service-role key.)
   'notification-email-worker', 'notification-whatsapp-worker', 'notification-digest-worker',
   // ops tool, service-role guarded + restricted CORS; called with the service-role key, so the
   // same non-JWT reasoning applies
