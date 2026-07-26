@@ -273,10 +273,11 @@ verify_jwt = false
 [functions.twilio-whatsapp-webhook]
 verify_jwt = false
 
-# Cron-driven outbox drainer, same shape as notification-email-worker: the caller is pg_cron
-# presenting the service-role key, which on this project is an `sb_secret_…` key and NOT a
-# JWT — so verify_jwt = true would 401 it at the gateway. It self-authenticates via
-# requireServiceRole.
+# Cron-driven outbox drainer, same shape as notification-email-worker: the caller is pg_cron presenting the
+# LEGACY service-role JWT (read from Vault as `Authorization: Bearer`, per 20260722100000_rebook_crons_use_vault
+# .sql). verify_jwt=false so the request reaches the function's own requireServiceRole guard (a byte-for-byte
+# compare against SUPABASE_SERVICE_ROLE_KEY = that legacy JWT). New `sb_secret_` keys live in SUPABASE_SECRET_KEYS
+# and go via the `apikey` header; they do NOT replace the service-role key.
 [functions.notification-whatsapp-worker]
 verify_jwt = false
 
