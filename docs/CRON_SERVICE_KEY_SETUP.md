@@ -89,19 +89,22 @@ change must update Vercel + redeploy AND pause/gate these, not only the pg_cron 
 
 Each is gated by `CRON_SECRET` (proves the caller is Vercel) — that is NOT a Supabase-auth kill switch, so an
 invocation still runs with whatever `SUPABASE_SERVICE_ROLE_KEY` Vercel holds. The pg_cron
-`invoice-health-check-daily` is a **redundant legacy trigger that also carries the service-role key** (it posts to
-the `invoice-health-check` function with a `Bearer` built from the pre-Vault `sr_key` path) — so it must be paused
-in an emergency too, or (preferably) unscheduled as the duplicate it is.
+`invoice-health-check-daily` is a **redundant legacy trigger wired to send the key via the dead pre-Vault
+`app.settings` path** (it posts to the `invoice-health-check` function with a `Bearer` from `sr_key`, which reads
+**empty** on Supabase → an inert/dead token, not a live key). Pausing it in an emergency is therefore *defensive*;
+(preferably) unschedule it as the duplicate it is.
 
 ## The legacy service-role-key dependency class (full inventory)
 
 The cron tables above are only the **inbound-auth** slice. Deactivating the legacy `service_role` JWT (Path B, or
 an emergency) breaks a **much larger class**: of the **116 registered consumers**, **98 are runtime** (the other
 18 are `scripts-ci` + test fixtures), and of those **81 use the key *internally* to build a privileged
-(RLS-bypassing) supabase-js admin client** — every one **500s** the moment the legacy key is turned off; the
-other 17 runtime consumers (inbound-auth / downstream-caller / via-shared-helper / vercel) **401 / lose the
-invoked call**. A migration that only fixed the cron→function auth would leave all 81 broken. So the inventory
-below — not just the drainers — is what Path B must migrate or explicitly prove.
+(RLS-bypassing) supabase-js admin client** — every one **500s** the moment the legacy key is turned off. The
+other 17 runtime consumers split by *how* they fail: the inbound-auth / downstream-caller / vercel ones **401 /
+lose the invoked call**, while several `via-shared-helper` members (e.g. `notification-digest-worker`,
+`backup-database`, `invoice-storage-gc`) *also* build an admin client and **500** like their literal peers (the
+"admin-client wins" rule below). Either way, a migration that only fixed the cron→function auth would leave the
+admin-client class broken. So the inventory below — not just the drainers — is what Path B must migrate or prove.
 
 This inventory is **machine-checked and self-enforcing**, not a hand-list that rots. `npm run check:legacy-key`
 (`scripts/check-legacy-service-role-consumers.mjs`, a CI gate) runs **three checks**:
@@ -297,9 +300,10 @@ caller so nothing keeps using the compromised key.
   ([Vercel cron management](https://vercel.com/docs/cron-jobs/manage-cron-jobs)) (or remove them from
   `vercel.json` and redeploy). **Verify both configured jobs (`daily-emails`, `daily-maintenance`) are still
   listed but disabled.**
-- **Legacy `invoice-health-check-daily`** — if still scheduled, it also sends the key; `cron.alter_job(... , active := false)`
-  it by that jobname too (it is intentionally *outside* the 4-job assert above because it is a redundant trigger
-  that may already be unscheduled — check `cron.job` and pause it if present).
+- **Legacy `invoice-health-check-daily`** — if still scheduled, it is *wired* to send the key (via the dead
+  `app.settings` path → an inert token, so defensive rather than a live leak); `cron.alter_job(... , active := false)`
+  it by that jobname too. It is intentionally *outside* the 4-job assert above (a redundant trigger that may
+  already be unscheduled — check `cron.job` and pause it if present).
 
 Then follow **only** the matching track. They differ in *how* the credential is killed: Track A1 **disables the
 legacy keys in Settings → API Keys** (the signing secret is untouched, so session JWTs stay validly signed — but

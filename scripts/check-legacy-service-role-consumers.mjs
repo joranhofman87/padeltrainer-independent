@@ -52,12 +52,18 @@ const KEY_FAMILY = /[A-Z0-9_]*SERVICE_ROLE_KEY/;          // SUPABASE_ / SOURCE_
 // Helper exports that read the key, PLUS an import of the key-holding shared module (in `from '…'` context only,
 // so a mere path MENTION — e.g. a generated baseline key `".../service-role-auth.ts|TS2304|…"` — does not match).
 const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey|isServiceRoleRequest|resolveServiceRoleToken|from\s+['"][^'"]*service-role-auth/;
-// A migration is an SQL/Vault consumer if it SENDS the key (net.http_post + a service_role key) or STORES it.
-const SQL_SENDER = (s) => (/net\.http_post/.test(s) && /service_role_key/i.test(s)) || /vault\.(create|update)_secret/.test(s);
+// A migration is an SQL/Vault consumer if it SENDS the key (an http_post — `net.http_post` OR the bare `http_post`
+// of the `http` extension — co-occurring with a service_role key) or STORES it in Vault. CONVENTION this couples
+// to (enforce it in review): key-bearing migrations name the Vault secret `service_role_key` and post via
+// net.http_post. A migration that Bearers a DIFFERENTLY-named Vault secret would slip this heuristic.
+const SQL_SENDER = (s) => (/\bhttp_post\s*\(/.test(s) && /service_role_key/i.test(s)) || /vault\.(create|update)_secret/.test(s);
 
 const SOURCE_ROOTS = ['supabase/functions', 'api', 'scripts'];
 const SQL_ROOT = 'supabase/migrations';
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.vercel']);
+// Prune only truly-non-source dirs: .git/node_modules + the GITIGNORED build outputs (dist/.vercel). Do NOT prune
+// build/coverage/.next — they are NOT gitignored here, so a committed consumer under those names must stay visible
+// to the repo-wide escape scan (which shares this walk).
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.vercel']);
 // Content scan (deny-list), not an extension allow-list. Skip binary/asset/lockfile blobs + env files (secret
 // material / templates, not code). Everything else — incl. extensionless + unknown extensions — IS scanned.
 const SKIP_EXT = /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|eot|otf|pdf|zip|gz|tgz|mp[34]|mov|lock|map)$/i;
@@ -289,6 +295,8 @@ function selfTest() {
   ok(!KEY_FAMILY.test('const totallyUnrelated = 1'), 'benign string must not match the family');
   ok(HELPER_SIGNAL.test('import { requireServiceRole } from "../_shared/auth.ts"'), 'requireServiceRole import must match');
   ok(HELPER_SIGNAL.test('requireServiceRoleOrAdmin(req)') && HELPER_SIGNAL.test('isServiceRoleRequest(req)'), 'OrAdmin + isServiceRoleRequest must match');
+  ok(HELPER_SIGNAL.test('const k = getEnvServiceRoleKey();'), 'getEnvServiceRoleKey must match (regression: keep it in HELPER_SIGNAL)');
+  ok(HELPER_SIGNAL.test('resolveServiceRoleToken(req)'), 'resolveServiceRoleToken must match (regression: keep it in HELPER_SIGNAL)');
   ok(HELPER_SIGNAL.test('from "../_shared/service-role-auth.ts"'), 'service-role-auth module import must match');
   ok(!HELPER_SIGNAL.test('"supabase/functions/_shared/service-role-auth.ts|TS2304|x": 1'), 'a bare path mention (baseline key) must NOT match');
   ok(SQL_SENDER('perform net.http_post(url, headers with service_role_key)'), 'sql sender (http_post + key) must match');
@@ -323,10 +331,15 @@ function selfTest() {
     w('scripts/db/rogue-cron.sql', "select net.http_post(url:='https://x', headers:=jsonb_build_object('Authorization','Bearer '||current_setting('app.settings.service_role_key')));"); // under a source root
     w('db/crons/store.sql', "select vault.create_secret('eyJ','service_role_key');"); // under a brand-new root
     w('scripts/db/report.sql', 'select count(*) from invoices;'); // benign SQL, must NOT escape
+    // helper-only fixtures whose SOLE signal is one otherwise-uncovered helper token (end-to-end regression guard):
+    w('scripts/gesonly.ts', 'export const k = getEnvServiceRoleKey();'); // only getEnvServiceRoleKey
+    w('scripts/rstonly.ts', 'export const t = resolveServiceRoleToken(req);'); // only resolveServiceRoleToken
     const { foundSource, foundSql, escapes } = classify(tmp);
     ok(foundSource.has('supabase/functions/x/index.ts'), 'fixture: literal consumer detected');
     ok(foundSource.has('scripts/migration/alias.py'), 'fixture: TARGET_ alias consumer detected');
     ok(foundSource.has('scripts/helperonly.ts'), 'fixture: helper-only consumer detected');
+    ok(foundSource.has('scripts/gesonly.ts'), 'fixture: getEnvServiceRoleKey-only consumer detected');
+    ok(foundSource.has('scripts/rstonly.ts'), 'fixture: resolveServiceRoleToken-only consumer detected');
     ok(foundSource.has('scripts/deploy'), 'fixture: extensionless consumer detected');
     ok(!foundSource.has('scripts/logo.png'), 'fixture: png with literal is skipped');
     ok(!foundSource.has('scripts/nothing.ts'), 'fixture: benign file not detected');
