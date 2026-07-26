@@ -20,8 +20,9 @@ empty and silently skips — the cron job is never created.
 ## The working pattern: Supabase Vault
 
 Store the key once in Vault and read it **at tick time** inside each cron command. No
-`ALTER DATABASE`, no session reconnect, and rotation is a one-liner (the key is not baked into
-the stored command).
+`ALTER DATABASE`, no session reconnect, and **updating the Vault copy** is a one-liner (the key is not baked
+into the stored command). Note this is only the Vault *copy* — a genuine credential change is not a Vault-only
+operation (the function env, Vercel, and code may need to move too); see **Credential procedures** below.
 
 ### 1. Store the secret (once per project)
 
@@ -120,63 +121,95 @@ isn't the key the function's `requireServiceRole` expects. **The senders above h
 auth-only / dry-run mode must be added to each before it can be smoke-tested; until then, verify the shared Vault
 key via a switched-off worker and trust that the senders use the same key + auth path.
 
-## Key rotation / credential cutover
+## Credential procedures — two DISTINCT paths, never conflated
 
-**You cannot "rotate" the legacy `service_role` JWT in isolation.** Supabase does not issue a fresh legacy
-`service_role`/`anon` JWT on demand
-([current guidance](https://supabase.com/docs/guides/troubleshooting/rotating-anon-service-and-jwt-secrets-1Jq6yd)).
-The only lever is rotating the project's **shared JWT secret**, which **invalidates BOTH legacy keys AND every
-active user session at once** — a break-everything action, for genuine key compromise only, under owner
-direction. Do NOT do it as routine maintenance, and do NOT tell an operator to "create a new legacy JWT."
+There is **no routine "rotate the service-role key" operation**. Legacy `service_role`/`anon` JWTs cannot be
+issued/rotated individually
+([guidance](https://supabase.com/docs/guides/troubleshooting/rotating-anon-service-and-jwt-secrets-1Jq6yd)).
+Only two real scenarios exist, and they are **implemented differently** — do not run one as the other:
 
-- **Planned change (the supported path):** migrate to new **`sb_secret_`** keys / a supported worker-auth
-  mechanism — the `## ⏳ Deprecation` follow-up below — and disable the legacy keys only **after** every consumer
-  (function envs, Vault, Vercel) has moved and been verified. Not a one-liner; a reviewed migration.
-- **Emergency compromise:** if the shared JWT secret must be rotated, expect all legacy keys + sessions to
-  invalidate, then run the full cutover (below) immediately, treating downtime as expected.
+- **A — Emergency (the legacy JWT secret is compromised):** rotate the shared JWT secret; you stay on the SAME
+  legacy-JWT mechanism (a new `eyJ…` value), and you re-sync it everywhere. See below.
+- **B — Planned migration off the legacy JWT (before end-2026):** move to a supported new-key mechanism. This is
+  **not a key swap** — it requires CODE changes (different env source + `apikey` transport) and a blocking
+  per-worker probe prerequisite. See `## ⏳ Deprecation` below.
 
-### Credential cutover sequence (planned migration OR emergency)
+### A. Emergency: the legacy JWT secret is compromised
 
-Any change to the service-role credential must move **every holder together** — the function's injected
-`SUPABASE_SERVICE_ROLE_KEY` env, Vault, and the Vercel env — or the workers 401.
+Rotating the project's **shared JWT secret** re-signs a **new legacy `service_role` JWT** and **invalidates the
+old anon/service keys AND every active user session at once** — a break-everything action, owner-directed only,
+downtime expected. It keeps the existing mechanism (legacy JWT via `Authorization: Bearer`, byte-exact-checked
+in `requireServiceRole`); you re-sync the NEW legacy JWT to every holder. Do NOT print the value at any step.
 
-1. **Pause ALL Vault-dependent crons FIRST** with `cron.alter_job(jobid, active := false)` (see the inventory
-   table). Prove the exact set is paused and none is mid-run:
+1. **Pause exactly the Vault-dependent crons FIRST**, then assert the expected set is all-inactive and none is
+   mid-run — for those job IDs only (adjust the expected set when the digest cron or any new drainer is added):
 
    ```sql
-   select jobid, jobname, active from cron.job order by jobname;                          -- expect active=false for each dependent job
-   select jobid, status, start_time from cron.job_run_details where status = 'running';   -- expect ZERO rows
+   -- pause each expected job
+   SELECT cron.alter_job(jobid, active := false)
+     FROM cron.job
+    WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+
+   -- assert: exactly the 4 expected jobs exist AND all are inactive (both numbers must equal the expected count)
+   SELECT count(*) AS expected_present,
+          count(*) FILTER (WHERE NOT active) AS inactive
+     FROM cron.job
+    WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+   -- expect expected_present = 4 AND inactive = 4
+
+   -- assert: no RUNNING execution for THOSE jobs only (global 'running' would include unrelated jobs)
+   SELECT d.jobid, j.jobname, d.status, d.start_time
+     FROM cron.job_run_details d JOIN cron.job j USING (jobid)
+    WHERE d.status = 'running'
+      AND j.jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+   -- expect ZERO rows
    ```
-2. **Cut over the credential everywhere it is held**, without printing it:
-   - **Supabase / function env:** the edge runtime injects `SUPABASE_SERVICE_ROLE_KEY` automatically; if the
-     injected value changed (e.g. a new `sb_secret_` path), **redeploy the affected functions** so they pick it up.
-   - **Vault:** `select vault.update_secret((select id from vault.secrets where name='service_role_key'), 'NEW_CREDENTIAL');`
-     (cron commands read Vault live at tick time, so no reschedule is needed).
+2. **Re-sync the new legacy JWT everywhere it is held** (still `SUPABASE_SERVICE_ROLE_KEY` / the Vault
+   `service_role_key`):
+   - **Vault:** `select vault.update_secret((select id from vault.secrets where name='service_role_key'), 'NEW_LEGACY_JWT');`
    - **Vercel:** update the `SUPABASE_SERVICE_ROLE_KEY` env var **and then redeploy / promote production** — a
-     Vercel env-var change applies **only to new deployments**, so the running production deployment keeps the
-     old value until it is redeployed
+     Vercel env change applies **only to new deployments**, so production keeps the old value until redeployed
      ([Vercel env docs](https://vercel.com/docs/environment-variables/managing-environment-variables)).
-3. **Verify SAFELY** with the switched-off-worker auth probe from `## Verify` (never a live sender) — require
+   - **Function env:** the edge runtime re-injects `SUPABASE_SERVICE_ROLE_KEY` automatically; redeploy the
+     functions only if a redeploy is needed to pick up the new value.
+3. **Verify SAFELY** with a switched-off-worker auth probe from `## Verify` (never a live sender) — require
    `HTTP 200`.
 4. **Resume the crons** with `cron.alter_job(jobid, active := true)` **only after** the safe probe passes.
-5. **If the probe returns 401**, keep the crons **inactive** and fix forward — do not declare the cutover
-   complete, and do not claim that updating Vault alone rotated the key.
+5. **If the probe returns 401**, keep the crons **inactive** and fix forward — do not declare recovery complete,
+   and do not claim that updating Vault alone re-synced the key.
 
-## ⏳ Deprecation deadline — migrate off the legacy service-role JWT (before end of 2026)
+## ⏳ B. Planned migration off the legacy JWT (before end of 2026)
 
 Supabase is **deprecating legacy `service_role` / `anon` JWT keys by the end of 2026**
 ([migration guide](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys)). Every
-Vault-backed cron→function path in this doc currently relies on the legacy `eyJ…` service-role JWT (the
-function's `requireServiceRole` byte-exact-compares against `SUPABASE_SERVICE_ROLE_KEY` = that JWT). That must
-move to a supported credential before the deadline or these crons will 401 and silently stop.
+Vault-backed cron→function path here relies on the legacy `eyJ…` service-role JWT (checked byte-exact against
+`SUPABASE_SERVICE_ROLE_KEY`). **This is NOT a key swap** — the new keys are a different mechanism, so it needs
+CODE changes, not just a Vault/Vercel value update. `SUPABASE_SERVICE_ROLE_KEY` stays the legacy JWT; the new
+`sb_secret_` key is exposed as `SUPABASE_SECRET_KEYS` and must be sent via the **`apikey`** header, not
+`Authorization: Bearer`
+([pg_net requirement](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys#database-webhooks-and-pg_net)).
 
-- **Owner:** platform owner (info@racketsportsoftware.com) — schedule a reviewed migration in 2026.
-- **Scope:** all self-authenticating cron drainers — `notification-email-worker`, `notification-whatsapp-worker`,
-  `notification-digest-worker`, `notify-rebook-member-open`, `auto-rebook-reminder` — plus any future one.
-- **Exit condition:** neither the function's auth check nor the Vault cron secret depends on a legacy
-  `service_role` JWT; auth uses a supported mechanism (a new `sb_secret_` key via `apikey`, or a dedicated
-  named worker secret compared server-side), and `check-edge-fn-config.mjs` + this doc reflect the new model.
-- **Verification:** for each worker, the authenticated Vault/pg_net smoke test still returns HTTP 200 (disabled
-  → `{"status":"disabled"}`, or the expected send behaviour) with the NEW credential, and the legacy JWT is
-  removed from Vault. Do not perform this migration piecemeal without owner approval — a wrong cutover 401s
-  every cron drainer at once.
+- **Owner:** platform owner (info@racketsportsoftware.com) — a reviewed migration in 2026 (not piecemeal; a
+  wrong cutover 401s every drainer at once).
+- **Required implementation changes (all before disabling the legacy key):**
+  1. **Function auth:** change each worker's check to accept the new key — read `SUPABASE_SECRET_KEYS` (or a
+     dedicated named worker secret), not `SUPABASE_SERVICE_ROLE_KEY`. Note the auth is **not shared today**:
+     `notification-email/whatsapp/digest-worker` use `requireServiceRole`
+     (`supabase/functions/_shared/service-role-auth.ts`), but `notify-rebook-member-open` / `auto-rebook-reminder`
+     have their **own inline `Bearer` comparisons** — every path must be updated.
+  2. **pg_net cron commands:** send the new key via the **`apikey`** header (not `Authorization: Bearer`); update
+     `20260722100000_rebook_crons_use_vault.sql` and any digest cron.
+  3. **Vercel caller + env contract:** the Vercel cron helper (`api/_lib/cron.ts`) currently sends the legacy
+     service-role key; move it (and the `SUPABASE_SERVICE_ROLE_KEY` env it reads) to the new mechanism and
+     redeploy production.
+  4. **Deploy all of the above**, then verify (below), then **disable/remove the legacy JWT LAST**.
+- **BLOCKING PREREQUISITE (do not start the cutover until this exists):** because the auth paths are not shared,
+  **every live sender must gain a reviewed side-effect-free auth-only probe** (a mode that authenticates and
+  returns 200 **without** sending), OR all workers must be routed through **one genuinely shared, tested auth
+  boundary**. One disabled `notification-digest-worker` invocation proves only its own path — it cannot authorize
+  resuming `notification-email-worker` or the rebook workers after their auth changes.
+- **Verification (never sends):** each worker's **side-effect-free auth-only probe** returns `HTTP 200` with the
+  NEW credential; the legacy JWT is then removed from Vault + Vercel. Verification MUST NOT invoke a live sender
+  or accept "expected send behaviour" — no customer message is sent to prove auth.
+- **Exit condition:** no function auth check and no cron/Vercel credential depends on a legacy `service_role`
+  JWT; `check-edge-fn-config.mjs` + this doc reflect the new model.
