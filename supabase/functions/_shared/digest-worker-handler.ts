@@ -74,8 +74,9 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
     await safeAlert({
       event: "digest_worker_run_failed",
       reason: summary.groupErrors > 0 ? "group_errors" : "reconcile_errors",
-      dispatch_run: summary.dispatchRunId ?? null, group_errors: summary.groupErrors,
-      reconcile_errors: summary.reconcileErrors, claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
+      dispatch_run: summary.dispatchRunId ?? null, materialize_run: summary.materializeRunId ?? null,
+      group_errors: summary.groupErrors, reconcile_errors: summary.reconcileErrors,
+      claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
     });
   }
   return { status: summary.status, http: summary.status === "error" ? 500 : 200, body: summary as unknown as Record<string, unknown> };

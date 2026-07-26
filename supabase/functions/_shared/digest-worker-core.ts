@@ -88,7 +88,9 @@ export type WorkerSummary = {
 };
 
 /** Thrown by a run-level failure, carrying a PII-free partial summary so the handler's alert keeps the run IDs
- *  + counts. The original exception is preserved as `cause` (and this error's message == the original's). */
+ *  + counts. The original exception is preserved as `originalError` (and this error's message == the original's;
+ *  we use an own `originalError` field rather than the ES2022 `Error.cause`, which is absent from the app's
+ *  tsc lib target). */
 export class DigestWorkerError extends Error {
   readonly summary: Partial<WorkerSummary>;
   readonly originalError: unknown;   // own field (Error.cause is ES2022, not in the app's tsc lib target)

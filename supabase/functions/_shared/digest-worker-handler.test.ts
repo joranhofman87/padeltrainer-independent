@@ -82,6 +82,17 @@ Deno.test("configured + run reports 'error' (per-group failures): 500, ONE alert
   assertEquals(JSON.stringify(h.alerts[0]).includes("@"), false);
 });
 
+Deno.test("configured + reconciliation-only error: 500, one alert carrying BOTH dispatch and materialize run IDs", async () => {
+  const h = harness(CONFIGURED, () => Promise.resolve({ ...OK_SUMMARY, status: "error", groupErrors: 0, reconcileErrors: 1, dispatchRunId: "disp-9", materializeRunId: "mat-9", claimed: 1, sent: 1 }));
+  const r = await runDigestWorkerHandler(h.deps);
+  assertEquals(r.http, 500);
+  assertEquals(h.alerts.length, 1);
+  assertEquals(h.alerts[0].reason, "reconcile_errors");    // the reconcile failure is the cause
+  assertEquals(h.alerts[0].dispatch_run, "disp-9");
+  assertEquals(h.alerts[0].materialize_run, "mat-9");       // finding: materialize run id must be present too
+  assertEquals(h.alerts[0].reconcile_errors, 1);
+});
+
 Deno.test("configured + run throws a plain Error: 500, one alert (no run context available)", async () => {
   const h = harness(CONFIGURED, () => Promise.reject(new Error("boom")));
   const r = await runDigestWorkerHandler(h.deps);
