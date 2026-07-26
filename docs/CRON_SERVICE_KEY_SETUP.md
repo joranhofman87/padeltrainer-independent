@@ -74,11 +74,21 @@ exists) reschedules them cleanly. On a DB with no `pg_cron` or no Vault secret i
 | `release-expired-guest-slot-holds` | `*/5 * * * *` | No | Pure SQL, self-schedules. |
 | `expire-lapsed-priority-claims` | `*/15 * * * *` | No | Pure SQL, self-schedules. |
 
-**Payments observability** (lost-webhook detector, `reconcile_payments`, the 💓 heartbeat) does
-**not** use `pg_cron` in production — it runs from the **Vercel cron** `/api/cron/daily-maintenance`
-authenticated with `CRON_SECRET` + the Vercel `SUPABASE_SERVICE_ROLE_KEY` env var, independent of
-Vault. Keep those two Vercel env vars set; the pg_cron `invoice-health-check-daily` is a redundant
-legacy trigger.
+### Also key-dependent: the two Vercel crons (NOT pg_cron, NOT Vault)
+
+`vercel.json` schedules **two** Vercel crons, and **both** call edge functions via `invokeEdgeFunction`
+(`api/_lib/cron.ts`), which sends the Vercel **`SUPABASE_SERVICE_ROLE_KEY`** env var (the same legacy JWT) as
+BOTH `apikey` and `Authorization: Bearer`. They read the **Vercel env**, not Vault — so an emergency credential
+change must update Vercel + redeploy AND pause/gate these, not only the pg_cron jobs.
+
+| Vercel cron | Schedule | Sends? | Invokes |
+|---|---|---|---|
+| `/api/cron/daily-emails` | `0 12 * * *` | **Yes** | `process-onboarding-emails`, `send-digest-emails` |
+| `/api/cron/daily-maintenance` | `0 6 * * *` | **Yes** (+ maintenance) | payments observability (lost-webhook detector, `reconcile_payments`, 💓 heartbeat) + other jobs |
+
+Each is gated by `CRON_SECRET` (proves the caller is Vercel) — that is NOT a Supabase-auth kill switch, so an
+invocation still runs with whatever `SUPABASE_SERVICE_ROLE_KEY` Vercel holds. The pg_cron `invoice-health-check-
+daily` is a redundant legacy trigger.
 
 ## Verify — which endpoints are SAFE to probe
 
@@ -136,34 +146,46 @@ Only two real scenarios exist, and they are **implemented differently** — do n
 
 ### A. Emergency: the legacy JWT secret is compromised
 
+**0. PREFLIGHT — is a legacy-secret rotation even available for this project? (do this FIRST).** Supabase's
+current guidance is that a project **not migrated to the new JWT signing-key system can no longer rotate its
+legacy `anon`/`service_role` secret**
+([guidance](https://supabase.com/docs/guides/troubleshooting/rotating-anon-service-and-jwt-secrets-1Jq6yd)).
+Check the project's signing-key state (Dashboard → **Authentication → JWT Keys / Signing Keys**). **If legacy
+rotation is unavailable, STOP — the steps below do not exist for you.** Treat the compromise as forcing the
+**Path B migration** to new `sb_secret_` keys on an emergency timeline, and follow Supabase's official
+incident / new-API-key process. Only if legacy rotation IS available do the remaining steps apply.
+
 Rotating the project's **shared JWT secret** re-signs a **new legacy `service_role` JWT** and **invalidates the
 old anon/service keys AND every active user session at once** — a break-everything action, owner-directed only,
 downtime expected. It keeps the existing mechanism (legacy JWT via `Authorization: Bearer`, byte-exact-checked
 in `requireServiceRole`); you re-sync the NEW legacy JWT to every holder. Do NOT print the value at any step.
 
-1. **Pause exactly the Vault-dependent crons FIRST**, then assert the expected set is all-inactive and none is
-   mid-run — for those job IDs only (adjust the expected set when the digest cron or any new drainer is added):
+1. **Pause EVERY dependent caller FIRST — pg_cron AND both Vercel crons** (a caller left running with the old
+   key while the secret is invalidated will 401 and, for a sender, silently drop customer messages):
+   - **pg_cron** — pause the expected set, then assert all-inactive + none mid-run, for those job IDs only
+     (adjust the expected set when the digest cron or any new drainer is added):
 
-   ```sql
-   -- pause each expected job
-   SELECT cron.alter_job(jobid, active := false)
-     FROM cron.job
-    WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+     ```sql
+     SELECT cron.alter_job(jobid, active := false)
+       FROM cron.job
+      WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
 
-   -- assert: exactly the 4 expected jobs exist AND all are inactive (both numbers must equal the expected count)
-   SELECT count(*) AS expected_present,
-          count(*) FILTER (WHERE NOT active) AS inactive
-     FROM cron.job
-    WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
-   -- expect expected_present = 4 AND inactive = 4
+     -- assert: exactly the 4 expected jobs exist AND all are inactive (both must equal the expected count)
+     SELECT count(*) AS expected_present, count(*) FILTER (WHERE NOT active) AS inactive
+       FROM cron.job
+      WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+     -- expect expected_present = 4 AND inactive = 4
 
-   -- assert: no RUNNING execution for THOSE jobs only (global 'running' would include unrelated jobs)
-   SELECT d.jobid, j.jobname, d.status, d.start_time
-     FROM cron.job_run_details d JOIN cron.job j USING (jobid)
-    WHERE d.status = 'running'
-      AND j.jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
-   -- expect ZERO rows
-   ```
+     -- assert: no RUNNING execution for THOSE jobs only (global 'running' would include unrelated jobs)
+     SELECT d.jobid, j.jobname, d.status, d.start_time
+       FROM cron.job_run_details d JOIN cron.job j USING (jobid)
+      WHERE d.status = 'running'
+        AND j.jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+     -- expect ZERO rows
+     ```
+   - **Vercel crons** — `/api/cron/daily-emails` and `/api/cron/daily-maintenance` (see the Vercel-cron
+     inventory) cannot be `cron.alter_job`'d. Disable both in the **Vercel dashboard → Project → Settings →
+     Crons** (or remove them from `vercel.json` and redeploy) **before** invalidating the old credential.
 2. **Re-sync the new legacy JWT everywhere it is held** (still `SUPABASE_SERVICE_ROLE_KEY` / the Vault
    `service_role_key`):
    - **Vault:** `select vault.update_secret((select id from vault.secrets where name='service_role_key'), 'NEW_LEGACY_JWT');`
@@ -172,11 +194,19 @@ in `requireServiceRole`); you re-sync the NEW legacy JWT to every holder. Do NOT
      ([Vercel env docs](https://vercel.com/docs/environment-variables/managing-environment-variables)).
    - **Function env:** the edge runtime re-injects `SUPABASE_SERVICE_ROLE_KEY` automatically; redeploy the
      functions only if a redeploy is needed to pick up the new value.
-3. **Verify SAFELY** with a switched-off-worker auth probe from `## Verify` (never a live sender) — require
-   `HTTP 200`.
-4. **Resume the crons** with `cron.alter_job(jobid, active := true)` **only after** the safe probe passes.
-5. **If the probe returns 401**, keep the crons **inactive** and fix forward — do not declare recovery complete,
-   and do not claim that updating Vault alone re-synced the key.
+3. **Verify SAFELY — TWO separate paths, neither may send:**
+   - **Vault → function:** the switched-off-worker probe from `## Verify` → `HTTP 200`. This proves ONLY the
+     `Vault → digest worker` path.
+   - **Vercel → function:** the Vault probe does **not** prove the redeployed Vercel deployment can
+     authenticate, and **both Vercel crons SEND on invocation** — so there is **no side-effect-free way to
+     smoke-test the Vercel path today.** ⚠️ **BLOCKING RUNTIME PREREQUISITE:** a reviewed **Vercel-side no-send
+     auth probe** must be added before Vercel recovery can be verified. Until it exists, **never invoke
+     `/api/cron/daily-emails` or `/api/cron/daily-maintenance` to "test the key"** (you will send real customer
+     email); instead confirm out-of-band that the redeploy picked up the new env, and watch the first scheduled
+     run for auth errors.
+4. **Resume** pg_cron with `cron.alter_job(jobid, active := true)` after its safe probe passes; re-enable the
+   Vercel crons only after the Vercel env change is confirmed. **Any 401 → keep everything paused, fix forward.**
+   Do not declare recovery complete, and do not claim that updating Vault alone re-synced the key.
 
 ## ⏳ B. Planned migration off the legacy JWT (before end of 2026)
 
