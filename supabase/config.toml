@@ -52,6 +52,13 @@ verify_jwt = false
 [functions.notification-email-worker]
 verify_jwt = false
 
+# Digest worker (PR 10c-a3). Same cron-driven drainer contract as the email/WhatsApp workers: pg_cron presents
+# the service-role key (an sb_secret_… key, NOT a JWT), so verify_jwt=true would 401 it at the gateway before
+# requireServiceRole runs. INERT until 10c-b (no cron scheduled + DIGEST_SEND_ENABLED off + no digest event
+# enabled), but registered now so the eventual owner-gated deploy is correct, not silently JWT-gated.
+[functions.notification-digest-worker]
+verify_jwt = false
+
 # Ops tool for Twilio Content Templates (PR 9). Service-role only, never scheduled —
 # it exists so templates are created from version-controlled definitions rather than by
 # hand in the Twilio console.
