@@ -110,14 +110,28 @@ Expect `status_code = 200`. A `401` means the Vault secret isn't the correct ser
 
 ## Key rotation
 
-Rotating the service-role key = update the Vault secret only:
+**Vault does NOT rotate the credential** — it only *stores* whatever JWT you paste in. The service-role key is
+issued by Supabase, so rotation must happen there first, and every place that holds a copy must move together
+or the workers 401. Steps:
 
-```sql
-select vault.update_secret((select id from vault.secrets where name = 'service_role_key'), 'NEW_JWT');
-```
+1. **Rotate (or create) the credential in Supabase** — Dashboard → Project Settings → API (the actual
+   service-role key). Obtain the resulting exact legacy service-role JWT **without printing it** (paste it
+   straight into the SQL below / the Vercel env; never echo it to a log or terminal).
+2. **Update Vault** to the new JWT (cron commands read Vault live at tick time, so **no reschedule is needed** —
+   but credential synchronization + smoke verification below are mandatory):
 
-No reschedule needed — cron commands read Vault live at tick time. (Also update the Vercel
-`SUPABASE_SERVICE_ROLE_KEY` env var, which the payments cron uses independently.)
+   ```sql
+   select vault.update_secret((select id from vault.secrets where name = 'service_role_key'), 'NEW_SERVICE_ROLE_JWT');
+   ```
+3. **Update the independently-configured Vercel `SUPABASE_SERVICE_ROLE_KEY` env var** (the payments cron uses it,
+   not Vault) to the same new JWT.
+4. **Smoke-verify every dependent worker** (see the inventory table + the `## Verify` recipe) with the
+   authenticated Vault/pg_net call — each must return **HTTP 200** with the new key before rotation is declared
+   complete.
+5. **If any worker returns 401**, keep the affected crons **inactive** (`cron.alter_job(jobid, active := false)`)
+   and fix forward — do not declare rotation complete, and do not claim that "updating Vault alone" rotated the
+   key. The function's injected `SUPABASE_SERVICE_ROLE_KEY` env, Vault, Vercel, and the smoke test must all be
+   consistent.
 
 ## ⏳ Deprecation deadline — migrate off the legacy service-role JWT (before end of 2026)
 

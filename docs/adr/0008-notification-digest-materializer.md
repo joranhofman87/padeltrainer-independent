@@ -741,11 +741,22 @@ WhatsApp crons are also 401ing, and fix the credential source; do not rotate or 
 owner approval. Never print the secret, its hash, prefix, or length.
 
 **Future LIVE redeploys (once the cron is scheduled / an event is enabled) — do NOT use the absolute-zero test
-above.** By then the tables hold real digest history, so a healthy redeploy legitimately produces new runs and
-groups. The 10c-b enablement runbook (to be written when the cron lands) must instead: (1) pause the digest cron
-(`cron.unschedule` / `active=false`) and, if sending is on, set `DIGEST_SEND_ENABLED` off; (2) wait for any
-in-flight attempt to record or age out (bounded by the 23h uncertainty deadline, or by a short drain window if
-you only need the deploy verified, not a full quiesce); (3) deploy; (4) run the authenticated invocation and
-require HTTP 200 with the send behaviour expected for the current switch state; (5) compare **before/after
-count deltas** (a `reconcile_notification_digest_run` snapshot per run) rather than expecting absolute zero;
-(6) re-enable the cron / switch. Never assert absolute-zero tables against a live system.
+above.** By then the tables hold real digest history, so absolute-zero is meaningless. The 10c-b enablement
+runbook (to be written when the cron lands) must instead:
+1. **Pause the cron reversibly** with `cron.alter_job(jobid, active := false)` — **never** `cron.unschedule`,
+   which DELETES the stored Vault-backed command + schedule (this repo's established reversible mechanism is
+   `alter_job`). If sending is on, also set `DIGEST_SEND_ENABLED=false`.
+2. **Confirm quiescence of the ACTIVE invocation only:** the digest job exists exactly once with `active=false`,
+   and no `cron.job_run_details` row is currently `running`. Wait only for the active worker invocation to
+   finish, bounded by the worker/network runtime — do **NOT** wait for uncertain groups to "age out": an
+   uncertain persisted group is durable state-machine state, not a running process, and must survive the deploy
+   unchanged (it does not block deployment).
+3. **Capture baseline counts**, then deploy.
+4. **Invoke through the Vault/pg_net path** and — because `DIGEST_SEND_ENABLED` is off — require **exactly**
+   `HTTP 200 {"status":"disabled","reason":"disabled"}` with **zero count deltas** vs baseline. Do **not** call
+   `reconcile_notification_digest_run` for this disabled smoke test: a disabled invocation creates no worker
+   run, so there is no run id to reconcile. (Only after a SEPARATELY-approved re-enable / canary does reconcile
+   apply — and then against the ACTUAL run ids the enabled worker returns, never as a before/after snapshot.)
+5. **Resume** with `cron.alter_job(jobid, active := true)` and re-enable the switch **only after explicit owner
+   approval + post-enable verification.**
+Never assert absolute-zero tables against a live system, and never delete the Vault-backed job to "pause" it.
