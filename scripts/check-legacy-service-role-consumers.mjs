@@ -11,9 +11,10 @@
  *
  * The pre-migration audit found the earlier doc only tracked ~3 consumers (worker auth, pg_net, the Vercel
  * caller) while ~100 files actually reference the key. This guard makes the inventory DURABLE and
- * self-enforcing: it walks the runtime source roots and fails CI if a file references the key but is not in
- * the categorized registry below (a NEW unmanaged consumer), or if a registered file no longer references it
- * (a STALE entry). Either way the registry — and Path B's migration checklist — cannot silently drift.
+ * self-enforcing: it walks the runtime source roots and fails CI if a file references the key (directly OR via a
+ * shared service-role helper — see the TWO detection signals below) but is not in the categorized registry
+ * (a NEW unmanaged consumer), or if a registered file no longer references it (a STALE entry). Either way the
+ * registry — and Path B's migration checklist — cannot silently drift.
  *
  * Categories (Path B must migrate or explicitly PROVE each one before the legacy key is deactivated):
  *   inbound-auth       — verifies the incoming request's Bearer/apikey against the key (the drainers).
@@ -23,21 +24,34 @@
  *   scripts-ci         — one-off migration scripts, local seed, and CI guards (this file included).
  *   tests              — fixtures that exercise the auth (no production credential).
  *
+ * TWO detection signals — a file is a consumer if EITHER holds, because the biggest live consumers carry no
+ * literal at all: functions like notification-digest-worker, backup-database, invoice-storage-gc, and
+ * twilio-content-admin gate on `requireServiceRole` / build their admin client from `getEnvServiceRoleKey`
+ * and never name the env var. A literal-only scan would print "all registered" while silently dropping them
+ * from the migration/smoke-test checklist. So we ALSO flag importers of the shared service-role helpers.
+ *
+ *   `via-shared-helper` — no literal; consumes the key transitively through a registered shared module
+ *                         (`requireServiceRole`/`requireServiceRoleOrAdmin` in _shared/auth.ts, or
+ *                         `getEnvServiceRoleKey` in _shared/service-role-auth.ts). Legacy-off breaks these too;
+ *                         each must be individually re-verified after a rotation.
+ *
  * NOT covered here (a SEPARATE, migration-gated class): the pg_net/Vault cron SQL that sends the key as a
  * Bearer from `vault.decrypted_secrets.service_role_key`. Those live in supabase/migrations and are
  * enumerated in docs/CRON_SERVICE_KEY_SETUP.md → "Which crons depend on this key". Third parties: NONE — the
  * service-role key never leaves for an external provider (provider functions authenticate to Resend/Twilio/
  * Mollie/Stripe with those providers' OWN keys).
  *
- * When you add a file that references SUPABASE_SERVICE_ROLE_KEY, add it to the correct category below.
+ * When you add a file that references SUPABASE_SERVICE_ROLE_KEY (or a service-role helper), add it below.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const KEY = 'SUPABASE_SERVICE_ROLE_KEY';
+const KEY = 'SUPABASE_SERVICE_ROLE_KEY';       // the ONLY name the legacy key is read under (verified — no aliases)
+const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey/; // catches requireServiceRole(OrAdmin) + the getter
 const ROOTS = ['supabase/functions', 'api', 'scripts'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.git']);
-const TEXT_EXT = /\.(ts|tsx|js|mjs|cjs|py|sql)$/;
+// Runtime source only. Config (.toml) + env templates (.env*) are not consumers; shell/other code IS scanned.
+const TEXT_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|py|sql|sh)$/;
 
 // ── The categorized, durable inventory ────────────────────────────────────────────────────────────────────
 const MANAGED = {
@@ -159,6 +173,15 @@ const MANAGED = {
     'supabase/functions/_shared/digest-worker-handler.test.ts',
     'supabase/functions/_shared/service-role-auth.test.ts',
   ],
+  // No literal — caught by the HELPER_SIGNAL pass. Each consumes the legacy key transitively and must be
+  // individually re-verified after any rotation (they are otherwise invisible to a literal-only inventory).
+  'via-shared-helper': [
+    'supabase/functions/_shared/forward-invoice-auth.ts', // getEnvServiceRoleKey + builds the admin client
+    'supabase/functions/backup-database/index.ts',        // requireServiceRoleOrAdmin
+    'supabase/functions/invoice-storage-gc/index.ts',     // requireServiceRoleOrAdmin
+    'supabase/functions/notification-digest-worker/index.ts', // requireServiceRole + createClient(serviceKey)
+    'supabase/functions/twilio-content-admin/index.ts',   // requireServiceRole
+  ],
 };
 
 // ── Enforcement: filesystem walk vs registry ──────────────────────────────────────────────────────────────
@@ -181,7 +204,8 @@ const found = new Set();
 const files = [];
 for (const root of ROOTS) walk(root, files);
 for (const f of files) {
-  if (readFileSync(f, 'utf8').includes(KEY)) found.add(f);
+  const src = readFileSync(f, 'utf8');
+  if (src.includes(KEY) || HELPER_SIGNAL.test(src)) found.add(f);
 }
 
 const unregistered = [...found].filter((f) => !registered.has(f)).sort();

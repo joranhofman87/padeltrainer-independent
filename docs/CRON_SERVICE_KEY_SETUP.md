@@ -70,6 +70,7 @@ exists) reschedules them cleanly. On a DB with no `pg_cron` or no Vault secret i
 | `notification-digest-worker` | *(not scheduled)* | **Yes** (when scheduled) | 10c-a3 digest worker — deployed but INERT; its cron is a gated 10c-b step. Same Vault-key path when enabled. |
 | `notify-rebook-member-open` | `*/15 * * * *` | **Yes** | Rebook "sessions opened" email. No fallback. |
 | `auto-rebook-reminder` | `0 6-19 * * *` | **Yes** | Rebook deadline reminder (daytime-only). No fallback. |
+| `invoice-health-check-daily` | `0 6 * * *` | **Yes** (legacy) | Redundant duplicate of the Vercel maintenance job; posts to `invoice-health-check` with a `Bearer` from the old `sr_key` path. Pause/unschedule in an emergency. |
 | `release-expired-rebook-holds` | `*/5 * * * *` | No | Pure SQL, self-schedules. |
 | `release-expired-guest-slot-holds` | `*/5 * * * *` | No | Pure SQL, self-schedules. |
 | `expire-lapsed-priority-claims` | `*/15 * * * *` | No | Pure SQL, self-schedules. |
@@ -87,28 +88,35 @@ change must update Vercel + redeploy AND pause/gate these, not only the pg_cron 
 | `/api/cron/daily-maintenance` | `0 6 * * *` | **Yes** (+ maintenance) | payments observability (lost-webhook detector, `reconcile_payments`, 💓 heartbeat) + other jobs |
 
 Each is gated by `CRON_SECRET` (proves the caller is Vercel) — that is NOT a Supabase-auth kill switch, so an
-invocation still runs with whatever `SUPABASE_SERVICE_ROLE_KEY` Vercel holds. The pg_cron `invoice-health-check-
-daily` is a redundant legacy trigger.
+invocation still runs with whatever `SUPABASE_SERVICE_ROLE_KEY` Vercel holds. The pg_cron
+`invoice-health-check-daily` is a **redundant legacy trigger that also carries the service-role key** (it posts to
+the `invoice-health-check` function with a `Bearer` built from the pre-Vault `sr_key` path) — so it must be paused
+in an emergency too, or (preferably) unscheduled as the duplicate it is.
 
 ## The legacy service-role-key dependency class (full inventory)
 
-The cron tables above are only the **inbound-auth** slice. Deactivating the legacy `service_role` JWT (Path B,
-or an emergency) breaks a **much larger class**: the ~100 runtime files that use the key *internally* to build a
-privileged (RLS-bypassing) supabase-js admin client. A migration that only fixes the cron→function auth would
-still 500 every one of those functions the moment the legacy key is turned off. So the inventory below — not just
-the drainers — is what Path B must migrate or explicitly prove.
+The cron tables above are only the **inbound-auth** slice. Deactivating the legacy `service_role` JWT (Path B, or
+an emergency) breaks a **much larger class**: of the ~110 runtime files that reference the key, **81 use it
+*internally* to build a privileged (RLS-bypassing) supabase-js admin client** — every one of those **500s** the
+moment the legacy key is turned off (the rest 401 / lose the invoked call). A migration that only fixed the
+cron→function auth would leave all 81 broken. So the inventory below — not just the drainers — is what Path B must
+migrate or explicitly prove.
 
 This inventory is **machine-checked and self-enforcing**, not a hand-list that rots: `npm run check:legacy-key`
 (`scripts/check-legacy-service-role-consumers.mjs`, a CI gate) walks `supabase/functions`, `api`, and `scripts`
-and fails if any file references `SUPABASE_SERVICE_ROLE_KEY` without being in its categorized registry, or if a
-registry entry no longer does. A NEW admin-client / caller / worker therefore cannot silently slip past the
+and fails if any file references the key — **directly, OR transitively via a shared service-role helper**
+(`requireServiceRole` / `getEnvServiceRoleKey`) — without being in its categorized registry, or if a registry
+entry no longer does. The helper signal is essential: the biggest live consumers
+(e.g. `notification-digest-worker`, `backup-database`, `twilio-content-admin`) carry **no literal** and a
+literal-only scan would silently drop them. A NEW admin-client / caller / worker therefore cannot slip past the
 deactivation plan — CI forces it into a category first.
 
 | Category | Count* | What it is | Legacy-off impact |
 |---|---|---|---|
 | `inbound-auth` | 6 | Verifies the incoming request's `Bearer`/`apikey` against the key (the drainers + shared `service-role-auth.ts`). | 401s the cron caller. |
-| `admin-client` | ~81 | Builds a privileged supabase-js client with the key (`createClient(url, SERVICE_ROLE_KEY)`). **The class the old doc missed.** | Every one 500s / loses its RLS-bypass. |
+| `admin-client` | 81 | Builds a privileged supabase-js client with the key (`createClient(url, SERVICE_ROLE_KEY)`). **The class the old doc missed.** | Every one 500s / loses its RLS-bypass. |
 | `downstream-caller` | 5 | Forwards the key to invoke another function / shared email helper that does. | The invoked call 401s. |
+| `via-shared-helper` | 5 | **No literal** — consumes the key transitively through a registered shared module (`requireServiceRole`/`getEnvServiceRoleKey`): `notification-digest-worker`, `backup-database`, `invoice-storage-gc`, `twilio-content-admin`, `_shared/forward-invoice-auth.ts`. Caught only by the helper-signal pass. | 500 / 401 like their literal peers; each must be re-verified individually after a rotation. |
 | `vercel-caller` | 1 | `api/_lib/cron.ts` — reads the key from the **Vercel env** (not Vault), sends it as `apikey` + `Bearer`. | Both Vercel crons 401. |
 | `scripts-ci` | 9 | One-off migration scripts, local seed, and the CI guards themselves. | Dev/CI tooling only (no prod runtime). |
 | `tests` | 4 | Fixtures exercising the auth — no production credential. | None. |
@@ -118,6 +126,12 @@ deactivation plan — CI forces it into a category first.
 \* Live counts come from the guard's success line (`npm run check:legacy-key`); the registry is the source of
 truth. The categories are a *primary* classification — many functions both self-authenticate **and** build an
 admin client; `admin-client` wins because that is the failure mode a legacy-off migration must not miss.
+
+The guard scans the **runtime roots** (`supabase/functions`, `api`, `scripts`). Deliberately out of scan scope,
+because none is a runtime consumer that a legacy-off migration can break: `supabase/config.toml` (function env
+injection), `.env.example` (template), and **test-only** references under `src/test/` and `tests/`
+(vitest/Playwright harnesses that set placeholder keys like `'test-service-role-key'` — never a real credential).
+The client bundle (`src/`, excluding tests) must **never** reference a service-role key.
 
 ## Verify — which endpoints are SAFE to probe
 
@@ -142,9 +156,17 @@ authentication check — its disabled branch returns `200` before claiming/sendi
 | `notification-email-worker` | **No** | no kill switch — invoking it SENDS |
 | `auto-rebook-reminder`, `notify-rebook-member-open` | **No** | invoking them SENDS (force bypasses quiet hours) |
 
-Probe the Vault key with a switched-off worker (async — `net.http_post` returns a pg_net **request id**):
+> 🚦 **Hard precondition — confirm the switch is OFF *before* you post.** This probe is side-effect-free ONLY
+> while `notification-digest-worker` has `DIGEST_SEND_ENABLED` unset / ≠ `"true"`. There is no SQL to read a
+> function's env, so confirm it out-of-band from the function's deployed configuration (Dashboard → Edge Functions
+> → the worker → secrets, or your deploy manifest). **If you cannot positively confirm the flag is off, do NOT run
+> `net.http_post`** — an enabled worker would claim + send real digest emails. Do not infer "off" from the
+> response: by the time you read a non-`disabled` body, the send has already happened.
+
+Then probe the Vault key with the switched-off worker (async — `net.http_post` returns a pg_net **request id**):
 
 ```sql
+-- PRECONDITION (verified out-of-band): notification-digest-worker DIGEST_SEND_ENABLED is unset / != 'true'.
 select net.http_post(
   url := 'https://<project-ref>.supabase.co/functions/v1/notification-digest-worker',  -- DIGEST_SEND_ENABLED off
   headers := jsonb_build_object('Content-Type','application/json',
@@ -155,13 +177,13 @@ select net.http_post(
 select id, status_code, content, error_msg, created from net._http_response where id = <the returned id>;
 ```
 
-Expect `status_code = 200` with `{"status":"disabled","reason":"disabled"}`. A `401` means the Vault secret
-isn't the key *this* function's `requireServiceRole` expects.
+Expect `status_code = 200` with `{"status":"disabled","reason":"disabled"}` — a `disabled` body confirms the flag
+was off (zero writes). A `401` means the Vault secret isn't the key *this* function's `requireServiceRole` expects.
 
 > ⚠️ **A disabled-worker probe proves only that ONE worker's path — never generalise it to the senders.** It
 > does NOT prove `notification-email-worker`, `notify-rebook-member-open`, or `auto-rebook-reminder` will
 > authenticate: those verify the key with **their own separate checks** (the rebook crons use inline `Bearer`
-> comparisons, not the shared `requireServiceRole`; see *Path B → Function auth*). Each sender needs its **own**
+> comparisons, not the shared `requireServiceRole`; see Path B, step 2 — `inbound-auth`). Each sender needs its **own**
 > reviewed side-effect-free auth-only probe before its auth can be considered verified. **The senders have NO
 > safe probe today** — one must be added to each before it can be smoke-tested.
 
@@ -179,7 +201,7 @@ Only two real scenarios exist, and they are **implemented differently** — do n
   secret** → **urgent signing-key revocation on its own timeline**. Two independent incidents; see below.
 - **B — Planned migration off the legacy JWT (before end-2026):** move to a supported new-key mechanism. This is
   **not a key swap** — it requires CODE changes (different env source + `apikey` transport) and a blocking
-  per-worker probe prerequisite. See `## ⏳ Deprecation` below.
+  per-worker probe prerequisite. See `## ⏳ B. Planned migration off the legacy JWT` below.
 
 ### A. Emergency: a credential is compromised
 
@@ -193,9 +215,10 @@ urgency, and procedure. Run **Step 1 (containment)** for either, then follow the
 run both** — and note that **Track A2 (signing secret) is urgent and independent: it does NOT wait for Track A1's
 API-key migration**.
 
-- **Track A1 — leaked legacy `service_role` API key** (the *signing secret is safe*): the attacker holds one
-  static token but **cannot mint new ones**. An **API-authorization** problem → migrate every caller to a new
-  `sb_secret_` key (**Path B on an emergency timeline**), then revoke the leaked legacy key LAST.
+- **Track A1 — leaked legacy `service_role` API key** (the *signing secret is safe*): the attacker cannot mint new
+  tokens, but that single token is already a **full-database RLS-bypass compromise**. An **API-authorization**
+  problem → migrate every caller to a new `sb_secret_` key (**Path B on an emergency timeline**); revoke-last only
+  if the exposure window is tolerable, else kill the key now (see Track A1 below).
 - **Track A2 — compromised JWT *signing* secret** (the secret that signs/validates **every** Supabase JWT): the
   attacker can **mint arbitrary tokens for any role** — categorically more severe. An **Auth-trust** problem →
   Supabase's **signing-key rotation / revocation**, done **immediately and on its own timeline**.
@@ -228,19 +251,34 @@ caller so nothing keeps using the compromised key.
   ([Vercel cron management](https://vercel.com/docs/cron-jobs/manage-cron-jobs)) (or remove them from
   `vercel.json` and redeploy). **Verify both configured jobs (`daily-emails`, `daily-maintenance`) are still
   listed but disabled.**
+- **Legacy `invoice-health-check-daily`** — if still scheduled, it also sends the key; `cron.alter_job(... , active := false)`
+  it by that jobname too (it is intentionally *outside* the 4-job assert above because it is a redundant trigger
+  that may already be unscheduled — check `cron.job` and pause it if present).
 
-Then follow **only** the matching track. They differ in *when* the credential is killed: Track A1 revokes the
-legacy key **last** (after a verified cutover); Track A2 revokes the signing key **first** (immediately).
+Then follow **only** the matching track. They differ in *when* the credential is killed: Track A2 always kills the
+signing key **first** (immediately); Track A1 kills the leaked key **last** (after a verified cutover) *only* when
+the exposure window is tolerable — otherwise it, too, kills first (A2's nuclear rotation).
 
-**Track A1 — leaked legacy `service_role` API key: migrate, then revoke LAST.** Remediate via **Path B on an
-emergency timeline** — stand up the new `sb_secret_` / supported-auth path and cut **every category in *The legacy
-service-role-key dependency class*** over, not just the drainers (the ~81 `admin-client` functions 500 the moment
-the legacy key dies). Verify with side-effect-free probes, then **revoke the leaked legacy key at the END of the
-cutover** (there is no "new legacy JWT" to fetch or re-sync). Until every caller is verified on the new key,
-**FAIL CLOSED** — all drainer crons, pg_cron AND both Vercel crons, **stay disabled**. Do **NOT** re-enable on
-"out-of-band confirmation" or by "watching the first scheduled run": the first run of a live sender sends real
-customer email, exactly the unsafe check forbidden in `## Verify`. Resume ONLY after BOTH side-effect-free auth
-probes pass with **zero writes**:
+**Track A1 — leaked legacy `service_role` API key.** ⚠️ **This is a live, full-database compromise, not a
+low-severity availability issue.** The leaked key **bypasses RLS for read/write** against the REST / Storage /
+Auth API **from anywhere**, and it stays valid until it is actually killed. **Fail-closing your own crons does NOT
+contain the attacker** — it only stops *your* outbound sends, not their direct use of the key. So the first
+decision is **exposure vs availability**:
+
+- **If data exposure is unacceptable (the default for a confirmed leak):** kill the key **NOW** — rotate the JWT
+  signing secret (the same nuclear action as **Track A2**, which invalidates the leaked key's signature everywhere
+  — and all sessions + the anon key), and/or apply project API-gateway / network restrictions + anomaly
+  monitoring, then rebuild on the new `sb_secret_` path. Treat A1 with **A2-level urgency**.
+- **Only if the exposure window is genuinely tolerable:** the availability-first path — migrate to `sb_secret_`
+  **first** (so your infra already runs on the new key and survives the kill), then **revoke the leaked legacy key
+  LAST**. Keep the window **as short as possible**; the key is live for its entire duration.
+
+Whichever posture, the migration itself must cut **every category in *The legacy service-role-key dependency
+class*** over, not just the drainers (the 81 `admin-client` functions 500 the moment the legacy key dies), and
+**your own senders must not resume until verified**. All drainer crons — pg_cron AND both Vercel crons —
+**stay FAIL CLOSED**. Do **NOT** re-enable on "out-of-band confirmation" or by "watching the first scheduled run":
+the first run of a live sender sends real customer email, exactly the unsafe check forbidden in `## Verify`.
+Resume ONLY after BOTH side-effect-free auth probes pass with **zero writes**:
 - **Vault → function:** the switched-off-worker probe from `## Verify` → `HTTP 200`, zero writes (proves only the
   `Vault → worker` path — not the senders, which self-authenticate separately).
 - **Vercel → function:** a **reviewed Vercel-origin auth-only probe is deployed and returns 200 with zero
@@ -258,11 +296,16 @@ potentially-lengthy API migration**. Sequence it on its own:
    containment for a forged-token attack, and it cannot wait for any code change.
 2. **Accept the session impact up front:** revoking the signing key **invalidates all active user sessions** —
    every user must re-authenticate. That is the cost of containment; do not delay revocation to avoid it.
-3. **It also invalidates the legacy API JWTs.** The legacy `service_role`/`anon` keys are signed by this same
-   secret, so rotating it makes the byte-exact `SUPABASE_SERVICE_ROLE_KEY` check fail **everywhere** at once.
-   Track A1 / Path B therefore **still follows** to restore cron + function auth on a supported key — but as
-   *recovery after* the urgent revocation, **never as a precondition for it**. While that new-key cutover runs,
-   the drainer crons stay **FAIL CLOSED** exactly as in Track A1.
+3. **It also invalidates the legacy API JWTs — via signature validation, not the inbound compare.** The legacy
+   `service_role`/`anon` keys are signed by this same secret, so after rotation every **outbound** call fails:
+   the admin-client's `createClient(url, SERVICE_ROLE_KEY)` requests to PostgREST/GoTrue (and any `verify_jwt=true`
+   path) reject the now-invalidly-signed JWT. Note the **inbound** byte-exact cron→worker check is
+   rotation-*insensitive* — it string-compares the presented Bearer against the stored env copy, and rotation
+   changes neither stored copy, so that compare keeps passing; the drainer is contained by the Step-1 manual pause
+   plus its admin-client calls failing, not by inbound auth self-closing. Track A1 / Path B therefore **still
+   follows** to restore cron + function auth on a supported key — but as *recovery after* the urgent revocation,
+   **never as a precondition for it**. While that new-key cutover runs, the drainer crons stay **FAIL CLOSED**
+   exactly as in Track A1.
 
 Do **not** conflate the two: signing-key rotation (Auth-token trust) and API-key replacement (Path B) are
 different operations, and neither substitutes for the other.
@@ -284,7 +327,7 @@ and must be sent via the **`apikey`** header, not `Authorization: Bearer`
   wrong cutover 401s every drainer at once).
 - **Required implementation changes — migrate or explicitly PROVE every category (all before disabling the legacy
   key).** Work the categories from *The legacy service-role-key dependency class*; the guard is the checklist:
-  1. **`admin-client` (~81 functions) — the largest class, and the one an auth-only migration silently misses.**
+  1. **`admin-client` (81 functions) — the largest class, and the one an auth-only migration silently misses.**
      Each constructs `createClient(url, SUPABASE_SERVICE_ROLE_KEY)` for its RLS-bypass — disabling the legacy key
      500s **all** of them. Repoint each to the new key (`SUPABASE_SECRET_KEYS` / the supported admin-client
      construction), function by function; there is no shared shim to flip once.
@@ -300,11 +343,16 @@ and must be sent via the **`apikey`** header, not `Authorization: Bearer`
   5. **`vercel-caller` (1) + env contract.** The Vercel cron helper (`api/_lib/cron.ts`) sends the legacy
      service-role key; move it (and the `SUPABASE_SERVICE_ROLE_KEY` env it reads) to the new mechanism and
      redeploy production.
-  6. **`scripts-ci` (9).** Migration/seed scripts + the CI guards that read the key — repoint or retire, and
+  6. **`via-shared-helper` (5) — NO literal, easy to drop from a manual list.** `notification-digest-worker`,
+     `backup-database`, `invoice-storage-gc`, `twilio-content-admin`, and `_shared/forward-invoice-auth.ts`
+     consume the key through `requireServiceRole` / `getEnvServiceRoleKey`. Migrating the shared modules covers
+     them mechanically, but **each must still be individually smoke-tested** after the cutover (they are exactly
+     the consumers a literal-only inventory forgets).
+  7. **`scripts-ci` (9).** Migration/seed scripts + the CI guards that read the key — repoint or retire, and
      update this guard's registry + doc so they describe the new model.
-  7. **Guard green on the new model.** `npm run check:legacy-key` shows **no category still referencing the legacy
+  8. **Guard green on the new model.** `npm run check:legacy-key` shows **no category still referencing the legacy
      key** (registry migrated/emptied) — the machine-checked proof that no consumer was forgotten.
-  8. **Deploy all of the above**, then verify (below), then **disable/remove the legacy JWT LAST**.
+  9. **Deploy all of the above**, then verify (below), then **disable/remove the legacy JWT LAST**.
 - **BLOCKING PREREQUISITE (do not start the cutover until this exists):** because the auth paths are not shared,
   **every live sender must gain a reviewed side-effect-free auth-only probe** (a mode that authenticates and
   returns 200 **without** sending), OR all workers must be routed through **one genuinely shared, tested auth
