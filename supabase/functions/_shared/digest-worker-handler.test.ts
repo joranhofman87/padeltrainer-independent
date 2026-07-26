@@ -92,6 +92,20 @@ Deno.test("configured + run throws (run-level failure): 500, invocation-error lo
   assertEquals(h.alerts[0].event, "digest_worker_run_failed");
 });
 
+Deno.test("a THROWING alert cannot break the response (alert is best-effort)", async () => {
+  // inject a misconfiguration AND an alert that throws — the handler must still return the 500, not throw.
+  const logs: Record<string, unknown>[] = [];
+  const deps: HandlerDeps = {
+    env: (k) => ({ DIGEST_SEND_ENABLED: "true" } as Record<string, string | undefined>)[k],
+    log: (e) => logs.push(e),
+    alert: () => { throw new Error("slack down"); },
+    run: () => Promise.resolve(OK_SUMMARY),
+  };
+  const r = await runDigestWorkerHandler(deps);
+  assertEquals(r.http, 500);
+  assertEquals(r.status, "misconfigured");
+});
+
 Deno.test("logs are PII-free: no email/html/token markers in any logged value", async () => {
   // drive every branch and scan the accumulated logs — the handler must only ever log events/reasons/missing.
   const cases: Record<string, string | undefined>[] = [

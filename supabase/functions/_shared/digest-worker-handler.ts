@@ -27,6 +27,11 @@ export type HandlerDeps = {
 };
 
 export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<HandlerResult> {
+  // alert is best-effort by contract; wrap it so even a throwing impl can never break or mask the response.
+  const safeAlert = async (payload: Record<string, unknown>): Promise<void> => {
+    try { await deps.alert(payload); } catch { /* an alert failure must not break the primary flow */ }
+  };
+
   const enabled = deps.env("DIGEST_SEND_ENABLED") === "true";
   if (!enabled) {
     deps.log({ event: "digest_worker_skipped", reason: "disabled" });
@@ -43,7 +48,7 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
     // backstop for a totally-unconfigured function is EXTERNAL cron/uptime monitoring, documented in the ADR.
     const missing = [!resendApiKey ? "RESEND_API_KEY" : null, !supabaseUrl ? "SUPABASE_URL" : null, !serviceKey ? "SUPABASE_SERVICE_ROLE_KEY" : null].filter(Boolean);
     deps.log({ event: "digest_worker_misconfigured", reason: "missing_config", missing });
-    await deps.alert({ event: "digest_worker_misconfigured", missing });
+    await safeAlert({ event: "digest_worker_misconfigured", missing });
     return { status: "misconfigured", http: 500, body: { status: "misconfigured", reason: "missing_config" } };
   }
 
@@ -53,13 +58,13 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
   } catch {
     // runDigestWorker already finished the dispatch run 'failed' and logged a redacted error before rethrowing.
     deps.log({ event: "digest_worker_invocation_error" });
-    await deps.alert({ event: "digest_worker_run_failed", reason: "invocation_error" });
+    await safeAlert({ event: "digest_worker_run_failed", reason: "invocation_error" });
     return { status: "error", http: 500, body: { status: "error" } };
   }
   // one alert per invocation for a run that ended unhealthy (run-level failure OR any per-group error) — safe
   // IDs/counts only, never per-group.
   if (summary.status === "error") {
-    await deps.alert({
+    await safeAlert({
       event: "digest_worker_run_failed", reason: "group_errors",
       dispatch_run: summary.dispatchRunId ?? null, group_errors: summary.groupErrors,
       claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
