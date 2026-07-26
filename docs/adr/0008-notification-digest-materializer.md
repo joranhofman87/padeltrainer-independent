@@ -757,6 +757,10 @@ runbook (to be written when the cron lands) must instead:
    `reconcile_notification_digest_run` for this disabled smoke test: a disabled invocation creates no worker
    run, so there is no run id to reconcile. (Only after a SEPARATELY-approved re-enable / canary does reconcile
    apply — and then against the ACTUAL run ids the enabled worker returns, never as a before/after snapshot.)
-5. **Resume** with `cron.alter_job(jobid, active := true)` and re-enable the switch **only after explicit owner
-   approval + post-enable verification.**
+5. **Re-enable (a separate, ordered step — not "after post-enable verification", which is circular).** With the
+   cron still **inactive**: (a) obtain explicit **owner approval**; (b) enable the switch (`DIGEST_SEND_ENABLED
+   =true`); (c) run **one controlled canary** manually (a single Vault/pg_net invocation, cron still off);
+   (d) **reconcile that canary's ACTUAL returned run id(s)** and verify the outcome; (e) resume the cron with
+   `cron.alter_job(jobid, active := true)` **only after the canary succeeds**. On any failure: set the switch
+   **off** and leave the cron **inactive**.
 Never assert absolute-zero tables against a live system, and never delete the Vault-backed job to "pause" it.

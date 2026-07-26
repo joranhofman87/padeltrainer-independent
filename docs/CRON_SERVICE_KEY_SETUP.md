@@ -79,59 +79,88 @@ authenticated with `CRON_SECRET` + the Vercel `SUPABASE_SERVICE_ROLE_KEY` env va
 Vault. Keep those two Vercel env vars set; the pg_cron `invoice-health-check-daily` is a redundant
 legacy trigger.
 
-## Verify
+## Verify — which endpoints are SAFE to probe
+
+List the jobs first:
 
 ```sql
 select jobname, schedule, active from cron.job order by jobname;
 ```
 
-Smoke-test a job without waiting for its tick (the reminder's `?force=1` also bypasses the
-daytime window):
+> ⚠️ **Most drainers SEND on invocation — never use a live worker as an auth health check.** An authenticated
+> call to `notification-email-worker` claims + sends pending rows (no kill switch); `auto-rebook-reminder`
+> (esp. `?force=1`, which bypasses the daytime window) and `notify-rebook-member-open` send real emails. Do NOT
+> invoke these to "test the key" — you will send real customer email.
+
+**Side-effect-free auth probe (today):** only a worker whose SEND is switched OFF is safe to invoke as an
+authentication check — its disabled branch returns `200` before claiming/sending, with zero DB writes:
+
+| Endpoint | Safe auth-only probe? | Why |
+|---|---|---|
+| `notification-digest-worker` | **Yes, when `DIGEST_SEND_ENABLED` ≠ `"true"`** | disabled → `200 {"status":"disabled"}`, zero DB |
+| `notification-whatsapp-worker` | **Yes, when `WHATSAPP_SEND_ENABLED` ≠ `"true"`** | returns before claiming |
+| `notification-email-worker` | **No** | no kill switch — invoking it SENDS |
+| `auto-rebook-reminder`, `notify-rebook-member-open` | **No** | invoking them SENDS (force bypasses quiet hours) |
+
+Probe the Vault key with a switched-off worker (async — `net.http_post` returns a pg_net **request id**):
 
 ```sql
 select net.http_post(
-  url := 'https://<project-ref>.supabase.co/functions/v1/auto-rebook-reminder?force=1',
+  url := 'https://<project-ref>.supabase.co/functions/v1/notification-digest-worker',  -- DIGEST_SEND_ENABLED off
   headers := jsonb_build_object('Content-Type','application/json',
     'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')),
   body := '{}'::jsonb
 );
+-- then inspect the response (status + body only):
+select id, status_code, content, error_msg, created from net._http_response where id = <the returned id>;
 ```
 
-`net.http_post` is asynchronous — it returns a pg_net **request id**, not a result. Inspect the
-actual response:
+Expect `status_code = 200` with `{"status":"disabled","reason":"disabled"}`. A `401` means the Vault secret
+isn't the key the function's `requireServiceRole` expects. **The senders above have NO safe probe** — a reviewed
+auth-only / dry-run mode must be added to each before it can be smoke-tested; until then, verify the shared Vault
+key via a switched-off worker and trust that the senders use the same key + auth path.
 
-```sql
-select id, status_code, content, error_msg, created
-from net._http_response
-where id = <the returned id>;
-```
+## Key rotation / credential cutover
 
-Expect `status_code = 200`. A `401` means the Vault secret isn't the correct service-role JWT.
+**You cannot "rotate" the legacy `service_role` JWT in isolation.** Supabase does not issue a fresh legacy
+`service_role`/`anon` JWT on demand
+([current guidance](https://supabase.com/docs/guides/troubleshooting/rotating-anon-service-and-jwt-secrets-1Jq6yd)).
+The only lever is rotating the project's **shared JWT secret**, which **invalidates BOTH legacy keys AND every
+active user session at once** — a break-everything action, for genuine key compromise only, under owner
+direction. Do NOT do it as routine maintenance, and do NOT tell an operator to "create a new legacy JWT."
 
-## Key rotation
+- **Planned change (the supported path):** migrate to new **`sb_secret_`** keys / a supported worker-auth
+  mechanism — the `## ⏳ Deprecation` follow-up below — and disable the legacy keys only **after** every consumer
+  (function envs, Vault, Vercel) has moved and been verified. Not a one-liner; a reviewed migration.
+- **Emergency compromise:** if the shared JWT secret must be rotated, expect all legacy keys + sessions to
+  invalidate, then run the full cutover (below) immediately, treating downtime as expected.
 
-**Vault does NOT rotate the credential** — it only *stores* whatever JWT you paste in. The service-role key is
-issued by Supabase, so rotation must happen there first, and every place that holds a copy must move together
-or the workers 401. Steps:
+### Credential cutover sequence (planned migration OR emergency)
 
-1. **Rotate (or create) the credential in Supabase** — Dashboard → Project Settings → API (the actual
-   service-role key). Obtain the resulting exact legacy service-role JWT **without printing it** (paste it
-   straight into the SQL below / the Vercel env; never echo it to a log or terminal).
-2. **Update Vault** to the new JWT (cron commands read Vault live at tick time, so **no reschedule is needed** —
-   but credential synchronization + smoke verification below are mandatory):
+Any change to the service-role credential must move **every holder together** — the function's injected
+`SUPABASE_SERVICE_ROLE_KEY` env, Vault, and the Vercel env — or the workers 401.
+
+1. **Pause ALL Vault-dependent crons FIRST** with `cron.alter_job(jobid, active := false)` (see the inventory
+   table). Prove the exact set is paused and none is mid-run:
 
    ```sql
-   select vault.update_secret((select id from vault.secrets where name = 'service_role_key'), 'NEW_SERVICE_ROLE_JWT');
+   select jobid, jobname, active from cron.job order by jobname;                          -- expect active=false for each dependent job
+   select jobid, status, start_time from cron.job_run_details where status = 'running';   -- expect ZERO rows
    ```
-3. **Update the independently-configured Vercel `SUPABASE_SERVICE_ROLE_KEY` env var** (the payments cron uses it,
-   not Vault) to the same new JWT.
-4. **Smoke-verify every dependent worker** (see the inventory table + the `## Verify` recipe) with the
-   authenticated Vault/pg_net call — each must return **HTTP 200** with the new key before rotation is declared
-   complete.
-5. **If any worker returns 401**, keep the affected crons **inactive** (`cron.alter_job(jobid, active := false)`)
-   and fix forward — do not declare rotation complete, and do not claim that "updating Vault alone" rotated the
-   key. The function's injected `SUPABASE_SERVICE_ROLE_KEY` env, Vault, Vercel, and the smoke test must all be
-   consistent.
+2. **Cut over the credential everywhere it is held**, without printing it:
+   - **Supabase / function env:** the edge runtime injects `SUPABASE_SERVICE_ROLE_KEY` automatically; if the
+     injected value changed (e.g. a new `sb_secret_` path), **redeploy the affected functions** so they pick it up.
+   - **Vault:** `select vault.update_secret((select id from vault.secrets where name='service_role_key'), 'NEW_CREDENTIAL');`
+     (cron commands read Vault live at tick time, so no reschedule is needed).
+   - **Vercel:** update the `SUPABASE_SERVICE_ROLE_KEY` env var **and then redeploy / promote production** — a
+     Vercel env-var change applies **only to new deployments**, so the running production deployment keeps the
+     old value until it is redeployed
+     ([Vercel env docs](https://vercel.com/docs/environment-variables/managing-environment-variables)).
+3. **Verify SAFELY** with the switched-off-worker auth probe from `## Verify` (never a live sender) — require
+   `HTTP 200`.
+4. **Resume the crons** with `cron.alter_job(jobid, active := true)` **only after** the safe probe passes.
+5. **If the probe returns 401**, keep the crons **inactive** and fix forward — do not declare the cutover
+   complete, and do not claim that updating Vault alone rotated the key.
 
 ## ⏳ Deprecation deadline — migrate off the legacy service-role JWT (before end of 2026)
 
