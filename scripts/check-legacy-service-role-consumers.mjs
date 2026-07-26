@@ -211,7 +211,7 @@ const MANAGED = {
 // re-scheduled/removed the same job. `replacement` names the forward migration (or the Path-B cutover to come).
 const MANAGED_SQL = {
   'supabase/migrations/20260722100000_rebook_crons_use_vault.sql':
-    { status: 'active', note: 'Vault-based rebook crons (notify-rebook-member-open, auto-rebook-reminder) + stores the Vault secret', replacement: '(Path B) future sb_secret_ cutover migration' },
+    { status: 'active', note: 'Vault-based rebook crons (notify-rebook-member-open, auto-rebook-reminder); READS the Vault service_role_key secret at tick time (secret created out-of-band by the owner, not by this migration)', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260912110000_notification_email_worker_cron.sql':
     { status: 'active', note: 'Vault-based notification-email-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260919110000_notification_whatsapp_worker_cron.sql':
@@ -254,11 +254,16 @@ function classify(rootDir) {
     const p = rel(rootDir, abs);
     const s = readFileSync(abs, 'utf8'); // no size cap — an authoritative inventory never silently skips source
     const consumer = KEY_FAMILY.test(s) || HELPER_SIGNAL.test(s);
-    if (SOURCE_ROOTS.some((r) => underRoot(p, r))) {
-      if (consumer) foundSource.add(p);
-    } else if (underRoot(p, SQL_ROOT)) {
+    // A .sql statement that SENDS/STORES the key belongs in supabase/migrations (tracked by MANAGED_SQL). One
+    // anywhere else is a misplaced legacy-key touchpoint the SOURCE signals miss — cron SQL names the key
+    // LOWERCASE (service_role_key / app.settings / vault), which the uppercase env family never matches.
+    const misplacedSqlSender = p.endsWith('.sql') && !underRoot(p, SQL_ROOT) && SQL_SENDER(s);
+    if (underRoot(p, SQL_ROOT)) {
       if (p.endsWith('.sql') && SQL_SENDER(s)) foundSql.add(p);
-    } else if (consumer && !isAllowedOutside(p)) {
+    } else if (SOURCE_ROOTS.some((r) => underRoot(p, r))) {
+      if (consumer) foundSource.add(p);
+      if (misplacedSqlSender) escapes.push(p);
+    } else if ((consumer || misplacedSqlSender) && !isAllowedOutside(p)) {
       escapes.push(p);
     }
   }
@@ -314,6 +319,10 @@ function selfTest() {
     w('supabase/migrations/note.sql', '-- SUPABASE_SERVICE_ROLE_KEY=xxx (comment only, not a sender)');
     w('workers/rogue.ts', 'const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");'); // NEW root → escape
     w('docs/x.md', 'the runbook mentions SUPABASE_SERVICE_ROLE_KEY'); // allowed outside
+    // key-sending SQL OUTSIDE supabase/migrations — LOWERCASE key (no uppercase family match), must still escape:
+    w('scripts/db/rogue-cron.sql', "select net.http_post(url:='https://x', headers:=jsonb_build_object('Authorization','Bearer '||current_setting('app.settings.service_role_key')));"); // under a source root
+    w('db/crons/store.sql', "select vault.create_secret('eyJ','service_role_key');"); // under a brand-new root
+    w('scripts/db/report.sql', 'select count(*) from invoices;'); // benign SQL, must NOT escape
     const { foundSource, foundSql, escapes } = classify(tmp);
     ok(foundSource.has('supabase/functions/x/index.ts'), 'fixture: literal consumer detected');
     ok(foundSource.has('scripts/migration/alias.py'), 'fixture: TARGET_ alias consumer detected');
@@ -325,6 +334,9 @@ function selfTest() {
     ok(!foundSql.has('supabase/migrations/note.sql'), 'fixture: SQL comment-only not a sender');
     ok(escapes.includes('workers/rogue.ts'), 'fixture: NEW-root escape detected');
     ok(!escapes.includes('docs/x.md'), 'fixture: docs .md not an escape');
+    ok(escapes.includes('scripts/db/rogue-cron.sql'), 'fixture: lowercase key-sending .sql under a source root escapes');
+    ok(escapes.includes('db/crons/store.sql'), 'fixture: vault.create_secret .sql under a new root escapes');
+    ok(!escapes.includes('scripts/db/report.sql'), 'fixture: benign .sql does not escape');
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -376,9 +388,12 @@ if (sql.stale.length) {
 }
 if (escapes.length) {
   problems.push(
-    'ESCAPED references — the key/helper appears OUTSIDE the guarded roots and outside the out-of-scope allow-list\n' +
-    '(docs .md / src/test / tests / supabase/config.toml). A runtime consumer under a new root must join the guarded\n' +
-    'roots (add it to SOURCE_ROOTS + register it); anything else must move or be added to the allow-list deliberately:\n' +
+    'ESCAPED references — a legacy-key touchpoint sits where the source + SQL registries do not enforce it:\n' +
+    '  • the key/helper OUTSIDE the guarded roots + out-of-scope allow-list (docs .md / src/test / tests /\n' +
+    '    supabase/config.toml) — a runtime consumer under a new root must join SOURCE_ROOTS + be registered; or\n' +
+    '  • a .sql statement that SENDS/STORES the key (net.http_post + service_role_key, or vault.create/update_secret)\n' +
+    '    outside supabase/migrations — move it into a tracked migration (MANAGED_SQL), it must not live loose.\n' +
+    'Anything genuinely benign must be added to the allow-list deliberately:\n' +
     escapes.sort().map((f) => '  ! ' + f).join('\n'));
 }
 
