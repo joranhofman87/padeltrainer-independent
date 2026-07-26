@@ -1,69 +1,73 @@
 #!/usr/bin/env node
 /**
- * SOURCE GUARD — every runtime consumer of the LEGACY service-role key must be REGISTERED here.
+ * SOURCE GUARD — every consumer of the LEGACY service-role key must be REGISTERED here.
  *
  * `SUPABASE_SERVICE_ROLE_KEY` is the legacy `eyJ…` service-role JWT. Supabase is deprecating legacy
- * `service_role`/`anon` JWTs by end-2026, and any emergency rotation is a forced migration to a new
- * `sb_secret_` key (see docs/CRON_SERVICE_KEY_SETUP.md → "Path B"). That migration is only safe if we can
- * see EVERY place the legacy key is consumed — not just the inbound cron→function auth, but the far larger
- * class of functions that use the key INTERNALLY to build a privileged (RLS-bypassing) supabase-js admin
- * client. Deactivating the legacy key breaks all of those at once.
+ * `service_role`/`anon` JWTs by end-2026, and remediation is migration to a new `sb_secret_` key (see
+ * docs/CRON_SERVICE_KEY_SETUP.md → "Path B"). That migration is only safe if we can see EVERY place the legacy
+ * key is consumed — not just the inbound cron→function auth, but the far larger class of functions that use the
+ * key INTERNALLY to build a privileged (RLS-bypassing) supabase-js admin client. Deactivating the legacy key
+ * breaks all of those at once.
  *
- * The pre-migration audit found the earlier doc only tracked ~3 consumers (worker auth, pg_net, the Vercel
- * caller) while ~110 files actually reference the key. This guard makes the inventory DURABLE and
- * self-enforcing: it CONTENT-scans the runtime source roots (not an extension allow-list — that would silently
- * drop an unknown-extension consumer) and fails CI if a file references the key (directly OR via a shared
- * service-role helper — see the TWO detection signals below) but is not in the categorized registry (a NEW
- * unmanaged consumer), or if a registered file no longer references it (a STALE entry). Either way the registry —
- * and Path B's migration checklist — cannot silently drift.
+ * This guard runs THREE checks (run `node scripts/check-legacy-service-role-consumers.mjs`; `--self-test`
+ * exercises the detection logic against fixtures):
  *
- * Detection is the whole `*_SERVICE_ROLE_KEY` env-name FAMILY, not one literal: the cross-project storage
- * migration scripts read the key under `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`, and an alias is not a safe reason to
- * escape the inventory (`TARGET_SERVICE_ROLE_KEY` points at the live project — it IS the legacy key).
+ *   (1) SOURCE consumers — content-scans the runtime source roots (supabase/functions, api, scripts) and fails
+ *       if a file references the key but is not in the categorized MANAGED registry (NEW consumer), or a
+ *       registered file no longer does (STALE). Content scan, NOT an extension allow-list — an allow-list would
+ *       silently drop an unknown-extension/extensionless consumer.
+ *   (2) SQL/Vault consumers — scans supabase/migrations for cron commands that SEND the key (`net.http_post`
+ *       with a service_role key) or STORE it in Vault, against MANAGED_SQL. Migrations are immutable + cumulative
+ *       (a migration that once sent the key stays on disk forever), so this registry tracks LIFECYCLE
+ *       (active / active-legacy / superseded) + the forward replacement, not just membership.
+ *   (3) REPO-WIDE escape — scans the WHOLE repo and fails if the key/helper is referenced OUTSIDE the guarded
+ *       roots and outside the documented out-of-scope allow-list (docs `.md`, `src/test/**`, `tests/**`,
+ *       `supabase/config.toml`). This catches a consumer added under a NEW runtime root the source scan misses.
  *
- * Categories (Path B must migrate or explicitly PROVE each one before the legacy key is deactivated):
- *   inbound-auth       — verifies the incoming request's Bearer/apikey against the key (the drainers).
- *   admin-client       — builds a privileged supabase-js client with the key; BREAKS if the legacy key is off.
- *   downstream-caller  — forwards the key to invoke another function / shared helper that does.
- *   vercel-caller      — Vercel cron helper; reads the key from the Vercel env, not Vault.
- *   scripts-ci         — one-off migration scripts, local seed, and CI guards (this file included).
- *   tests              — fixtures that exercise the auth (no production credential).
+ * TWO source-detection signals — a file is a consumer if EITHER holds:
+ *   - the `*_SERVICE_ROLE_KEY` env-name FAMILY (not one literal): the cross-project storage scripts read the key
+ *     under `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`; an alias is not a safe reason to escape the inventory.
+ *   - a shared service-role HELPER (`requireServiceRole(OrAdmin)`, `getEnvServiceRoleKey`, `isServiceRoleRequest`,
+ *     `resolveServiceRoleToken`, or an import of `_shared/service-role-auth`). The biggest live consumers
+ *     (notification-digest-worker, backup-database, invoice-storage-gc, twilio-content-admin) carry NO literal
+ *     and reach the key only through these helpers; a literal-only scan silently drops them. NOTE: helper
+ *     detection is name/specifier matching, not a full import graph — when you add a NEW shared wrapper that
+ *     reads the key, extend HELPER_SIGNAL in the same change (the wrapper itself is caught by the family, but its
+ *     importers are only caught once its name is a signal).
  *
- * TWO detection signals — a file is a consumer if EITHER holds, because the biggest live consumers carry no
- * literal at all: functions like notification-digest-worker, backup-database, invoice-storage-gc, and
- * twilio-content-admin gate on `requireServiceRole` / build their admin client from `getEnvServiceRoleKey`
- * and never name the env var. A literal-only scan would print "all registered" while silently dropping them
- * from the migration/smoke-test checklist. So we ALSO flag importers of the shared service-role helpers.
+ * Categories (Path B must migrate or explicitly PROVE each before the legacy key is deactivated):
+ *   inbound-auth / admin-client / downstream-caller / vercel-caller / scripts-ci / tests / via-shared-helper.
+ * Third parties: NONE — the service-role key never leaves for an external provider (provider functions
+ * authenticate to Resend/Twilio/Mollie/Stripe with those providers' OWN keys).
  *
- *   `via-shared-helper` — no literal; consumes the key transitively through a registered shared module
- *                         (`requireServiceRole`/`requireServiceRoleOrAdmin` in _shared/auth.ts, or
- *                         `getEnvServiceRoleKey` in _shared/service-role-auth.ts). Legacy-off breaks these too;
- *                         each must be individually re-verified after a rotation.
- *
- * NOT covered here (a SEPARATE, migration-gated class): the pg_net/Vault cron SQL that sends the key as a
- * Bearer from `vault.decrypted_secrets.service_role_key`. Those live in supabase/migrations and are
- * enumerated in docs/CRON_SERVICE_KEY_SETUP.md → "Which crons depend on this key". Third parties: NONE — the
- * service-role key never leaves for an external provider (provider functions authenticate to Resend/Twilio/
- * Mollie/Stripe with those providers' OWN keys).
- *
- * When you add a file that references any `*_SERVICE_ROLE_KEY` name (or a service-role helper), add it below.
+ * When you add a file that references any `*_SERVICE_ROLE_KEY` name / a service-role helper (source), or a
+ * migration that sends/stores the key (SQL), register it below.
  */
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join, dirname, relative, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
-// Match the WHOLE `*_SERVICE_ROLE_KEY` env-name family, not one literal: the storage migration scripts read the
-// key under SOURCE_/TARGET_SERVICE_ROLE_KEY (cross-project), and a bare SERVICE_ROLE_KEY is equally a consumer.
-// A single-literal scan silently dropped all of them — an alias is NOT a safe reason to escape the inventory.
-const KEY_FAMILY = /[A-Z0-9_]*SERVICE_ROLE_KEY/;
-const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey/; // catches requireServiceRole(OrAdmin) + the getter
-const ROOTS = ['supabase/functions', 'api', 'scripts'];
-const SKIP_DIRS = new Set(['node_modules', '.git']); // anchored to genuinely-non-source dirs only
-// Scan by CONTENT, not an extension allow-list (an allow-list silently drops an unknown-extension consumer). Skip
-// only binary/asset/lockfile blobs + env files (secret material / templates, not code consumers) + oversized files.
-const SKIP_EXT = /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|eot|otf|pdf|zip|gz|tgz|mp[34]|mov|lock|map|min\.js)$/i;
-const MAX_BYTES = 512 * 1024;
+// ── Detection signals ───────────────────────────────────────────────────────────────────────────────────────
+const KEY_FAMILY = /[A-Z0-9_]*SERVICE_ROLE_KEY/;          // SUPABASE_ / SOURCE_ / TARGET_ / bare
+// Helper exports that read the key, PLUS an import of the key-holding shared module (in `from '…'` context only,
+// so a mere path MENTION — e.g. a generated baseline key `".../service-role-auth.ts|TS2304|…"` — does not match).
+const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey|isServiceRoleRequest|resolveServiceRoleToken|from\s+['"][^'"]*service-role-auth/;
+// A migration is an SQL/Vault consumer if it SENDS the key (net.http_post + a service_role key) or STORES it.
+const SQL_SENDER = (s) => (/net\.http_post/.test(s) && /service_role_key/i.test(s)) || /vault\.(create|update)_secret/.test(s);
 
-// ── The categorized, durable inventory ────────────────────────────────────────────────────────────────────
+const SOURCE_ROOTS = ['supabase/functions', 'api', 'scripts'];
+const SQL_ROOT = 'supabase/migrations';
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.vercel']);
+// Content scan (deny-list), not an extension allow-list. Skip binary/asset/lockfile blobs + env files (secret
+// material / templates, not code). Everything else — incl. extensionless + unknown extensions — IS scanned.
+const SKIP_EXT = /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|eot|otf|pdf|zip|gz|tgz|mp[34]|mov|lock|map)$/i;
+// Generated tooling snapshots that echo source paths/identifiers (error/suppression baselines) — NOT consumers.
+const SKIP_FILES = new Set(['tsc-app.baseline.json', 'eslint-suppressions.json']);
+const scannable = (name) => !SKIP_EXT.test(name) && !name.startsWith('.env') && !SKIP_FILES.has(name);
+// References allowed OUTSIDE the guarded roots (not runtime consumers): docs, test harnesses, project config.
+const isAllowedOutside = (p) => p.endsWith('.md') || p.startsWith('src/test/') || p.startsWith('tests/') || p === 'supabase/config.toml';
+
+// ── (1) The categorized, durable SOURCE inventory ───────────────────────────────────────────────────────────
 const MANAGED = {
   'inbound-auth': [
     'supabase/functions/_shared/digest-worker-entry.ts',
@@ -201,11 +205,30 @@ const MANAGED = {
   ],
 };
 
-// ── Enforcement: filesystem walk vs registry ──────────────────────────────────────────────────────────────
-const registered = new Set(Object.values(MANAGED).flat());
+// ── (2) The SQL/Vault registry (immutable, cumulative migrations — track lifecycle, not just membership) ─────
+// status: active = the current live definition of its cron; active-legacy = still the last definition but on the
+// old app.settings path (effectively inert on Supabase, kept for honesty); superseded = a later migration
+// re-scheduled/removed the same job. `replacement` names the forward migration (or the Path-B cutover to come).
+const MANAGED_SQL = {
+  'supabase/migrations/20260722100000_rebook_crons_use_vault.sql':
+    { status: 'active', note: 'Vault-based rebook crons (notify-rebook-member-open, auto-rebook-reminder) + stores the Vault secret', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20260912110000_notification_email_worker_cron.sql':
+    { status: 'active', note: 'Vault-based notification-email-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20260919110000_notification_whatsapp_worker_cron.sql':
+    { status: 'active', note: 'Vault-based notification-whatsapp-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20260606120000_phase5_email_idempotency_and_cron_ficwb.sql':
+    { status: 'active-legacy', note: 'invoice-health-check-daily via app.settings (redundant with the Vercel maintenance job; app.settings reads empty on Supabase → effectively inert)', replacement: 'unschedule the redundant cron, or (Path B) sb_secret_ cutover' },
+  'supabase/migrations/20260714110000_notify_rebook_member_open_cron.sql':
+    { status: 'superseded', note: 'notify-rebook-member-open via app.settings', replacement: '20260722100000_rebook_crons_use_vault.sql' },
+  'supabase/migrations/20260721100000_auto_rebook_reminder.sql':
+    { status: 'superseded', note: 'auto-rebook-reminder via app.settings', replacement: '20260722100000_rebook_crons_use_vault.sql' },
+  'supabase/migrations/20260531110000_schedule_invoice_health_check_job.sql':
+    { status: 'superseded', note: 'invoice-health-check-daily via app.settings', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql' },
+  'supabase/migrations/20260511165940_c28866fe-8f82-4f41-8ab2-a74b38aed1b8.sql':
+    { status: 'superseded', note: 'enrich-locations / fetch-location-logos crons via app.settings', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql (jobs later unscheduled)' },
+};
 
-const scannable = (name) => !SKIP_EXT.test(name) && !name.startsWith('.env');
-
+// ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
   if (!existsSync(dir)) return;
   const st = statSync(dir);
@@ -219,35 +242,155 @@ function walk(dir, out) {
   }
 }
 
-const found = new Set();
-const files = [];
-for (const root of ROOTS) walk(root, files);
-for (const f of files) {
-  if (statSync(f).size > MAX_BYTES) continue; // skip oversized blobs — real consumers are small source files
-  const src = readFileSync(f, 'utf8');
-  if (KEY_FAMILY.test(src) || HELPER_SIGNAL.test(src)) found.add(f);
+const rel = (rootDir, abs) => relative(rootDir, abs).split(sep).join('/');
+const underRoot = (p, root) => p === root || p.startsWith(root + '/');
+
+// One walk, three buckets — paths are relative to rootDir (rootDir='.' for the real run; a temp dir for tests).
+function classify(rootDir) {
+  const foundSource = new Set(), foundSql = new Set(), escapes = [];
+  const files = [];
+  walk(rootDir, files);
+  for (const abs of files) {
+    const p = rel(rootDir, abs);
+    const s = readFileSync(abs, 'utf8'); // no size cap — an authoritative inventory never silently skips source
+    const consumer = KEY_FAMILY.test(s) || HELPER_SIGNAL.test(s);
+    if (SOURCE_ROOTS.some((r) => underRoot(p, r))) {
+      if (consumer) foundSource.add(p);
+    } else if (underRoot(p, SQL_ROOT)) {
+      if (p.endsWith('.sql') && SQL_SENDER(s)) foundSql.add(p);
+    } else if (consumer && !isAllowedOutside(p)) {
+      escapes.push(p);
+    }
+  }
+  return { foundSource, foundSql, escapes };
 }
 
-const unregistered = [...found].filter((f) => !registered.has(f)).sort();
-const stale = [...registered].filter((f) => !found.has(f)).sort();
+function diff(found, registered) {
+  return {
+    unregistered: [...found].filter((f) => !registered.has(f)).sort(),
+    stale: [...registered].filter((f) => !found.has(f)).sort(),
+  };
+}
 
-if (unregistered.length || stale.length) {
-  console.error(`Legacy service-role key registry drift — *_SERVICE_ROLE_KEY consumers are out of sync with the registry.\n`);
-  if (unregistered.length) {
-    console.error('UNREGISTERED — these files reference the key but are not in the categorized registry.');
-    console.error('A new legacy-key consumer must be migrated (or explicitly proven) in Path B before the key can');
-    console.error('be deactivated. Add each to the correct category in scripts/check-legacy-service-role-consumers.mjs:\n');
-    unregistered.forEach((f) => console.error('  + ' + f));
-    console.error('');
+// ── Self-test: prove the detection + diff logic against fixtures (run with --self-test) ─────────────────────
+function selfTest() {
+  const fails = [];
+  let n = 0;
+  const ok = (cond, msg) => { n++; if (!cond) fails.push(msg); };
+
+  // predicates
+  ok(KEY_FAMILY.test('SUPABASE_SERVICE_ROLE_KEY'), 'literal must match');
+  ok(KEY_FAMILY.test('TARGET_SERVICE_ROLE_KEY') && KEY_FAMILY.test('SOURCE_SERVICE_ROLE_KEY'), 'SOURCE_/TARGET_ aliases must match');
+  ok(!KEY_FAMILY.test('const totallyUnrelated = 1'), 'benign string must not match the family');
+  ok(HELPER_SIGNAL.test('import { requireServiceRole } from "../_shared/auth.ts"'), 'requireServiceRole import must match');
+  ok(HELPER_SIGNAL.test('requireServiceRoleOrAdmin(req)') && HELPER_SIGNAL.test('isServiceRoleRequest(req)'), 'OrAdmin + isServiceRoleRequest must match');
+  ok(HELPER_SIGNAL.test('from "../_shared/service-role-auth.ts"'), 'service-role-auth module import must match');
+  ok(!HELPER_SIGNAL.test('"supabase/functions/_shared/service-role-auth.ts|TS2304|x": 1'), 'a bare path mention (baseline key) must NOT match');
+  ok(SQL_SENDER('perform net.http_post(url, headers with service_role_key)'), 'sql sender (http_post + key) must match');
+  ok(SQL_SENDER("select vault.create_secret('x','service_role_key')"), 'vault store must match as sql sender');
+  ok(!SQL_SENDER('-- SUPABASE_SERVICE_ROLE_KEY=... (comment, no http_post)'), 'sql comment-only must NOT be a sender');
+  ok(scannable('deploy') && scannable('tool.rb'), 'extensionless + unknown-extension files must be scannable');
+  ok(!scannable('logo.png') && !scannable('.env.e2e'), 'binary + env files must be skipped');
+  ok(isAllowedOutside('docs/x.md') && isAllowedOutside('src/test/a.test.ts') && isAllowedOutside('supabase/config.toml'), 'docs/test/config allowed outside roots');
+  ok(!isAllowedOutside('workers/rogue.ts'), 'a NEW runtime root must NOT be allowed outside');
+
+  // diff logic (unregistered + stale)
+  const du = diff(new Set(['a', 'c']), new Set(['a']));
+  ok(du.unregistered.length === 1 && du.unregistered[0] === 'c', 'diff flags an unregistered consumer');
+  const ds = diff(new Set(['a']), new Set(['a', 'b']));
+  ok(ds.stale.length === 1 && ds.stale[0] === 'b', 'diff flags a stale registration');
+
+  // end-to-end walk + classify against a temp fixture tree
+  const tmp = mkdtempSync(join(tmpdir(), 'legacy-key-guard-'));
+  try {
+    const w = (r, body) => { const p = join(tmp, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
+    w('supabase/functions/x/index.ts', 'const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");');
+    w('scripts/migration/alias.py', 'k = os.environ["TARGET_SERVICE_ROLE_KEY"]');
+    w('scripts/helperonly.ts', 'import { requireServiceRole } from "../_shared/auth.ts"; export default requireServiceRole;');
+    w('scripts/deploy', '#!/bin/sh\ncurl -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$URL"');
+    w('scripts/logo.png', 'SUPABASE_SERVICE_ROLE_KEY'); // must be SKIPPED by extension despite the literal
+    w('scripts/nothing.ts', 'export const two = 1 + 1;'); // benign, must NOT be found
+    w('supabase/migrations/m.sql', 'perform net.http_post(url, jsonb_build_object() , service_role_key);');
+    w('supabase/migrations/note.sql', '-- SUPABASE_SERVICE_ROLE_KEY=xxx (comment only, not a sender)');
+    w('workers/rogue.ts', 'const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");'); // NEW root → escape
+    w('docs/x.md', 'the runbook mentions SUPABASE_SERVICE_ROLE_KEY'); // allowed outside
+    const { foundSource, foundSql, escapes } = classify(tmp);
+    ok(foundSource.has('supabase/functions/x/index.ts'), 'fixture: literal consumer detected');
+    ok(foundSource.has('scripts/migration/alias.py'), 'fixture: TARGET_ alias consumer detected');
+    ok(foundSource.has('scripts/helperonly.ts'), 'fixture: helper-only consumer detected');
+    ok(foundSource.has('scripts/deploy'), 'fixture: extensionless consumer detected');
+    ok(!foundSource.has('scripts/logo.png'), 'fixture: png with literal is skipped');
+    ok(!foundSource.has('scripts/nothing.ts'), 'fixture: benign file not detected');
+    ok(foundSql.has('supabase/migrations/m.sql'), 'fixture: SQL sender detected');
+    ok(!foundSql.has('supabase/migrations/note.sql'), 'fixture: SQL comment-only not a sender');
+    ok(escapes.includes('workers/rogue.ts'), 'fixture: NEW-root escape detected');
+    ok(!escapes.includes('docs/x.md'), 'fixture: docs .md not an escape');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
   }
-  if (stale.length) {
-    console.error('STALE — these registry entries no longer reference the key; remove them to keep the inventory honest:\n');
-    stale.forEach((f) => console.error('  - ' + f));
-    console.error('');
+
+  // the real, checked-in baseline must pass all three checks
+  const real = classify('.');
+  const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat()));
+  const rq = diff(real.foundSql, new Set(Object.keys(MANAGED_SQL)));
+  ok(rs.unregistered.length === 0 && rs.stale.length === 0, `real SOURCE baseline clean (unreg=${rs.unregistered.length}, stale=${rs.stale.length})`);
+  ok(rq.unregistered.length === 0 && rq.stale.length === 0, `real SQL baseline clean (unreg=${rq.unregistered.length}, stale=${rq.stale.length})`);
+  ok(real.escapes.length === 0, `real escape scan clean (escapes=${real.escapes.length})`);
+
+  if (fails.length) {
+    console.error(`SELF-TEST FAILED — ${fails.length}/${n} assertions:`);
+    fails.forEach((f) => console.error('  ✗ ' + f));
+    process.exit(1);
   }
-  console.error('See docs/CRON_SERVICE_KEY_SETUP.md → "The legacy service-role-key dependency class".');
+  console.log(`OK — self-test passed (${n} assertions incl. the real baseline).`);
+  process.exit(0);
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────────────────────────────────────
+if (process.argv.includes('--self-test')) selfTest();
+
+const { foundSource, foundSql, escapes } = classify('.');
+const src = diff(foundSource, new Set(Object.values(MANAGED).flat()));
+const sql = diff(foundSql, new Set(Object.keys(MANAGED_SQL)));
+const problems = [];
+
+if (src.unregistered.length) {
+  problems.push(
+    'UNREGISTERED SOURCE consumers — reference the key but are not in MANAGED. Each must be migrated (or proven)\n' +
+    'in Path B before the legacy key can be deactivated. Add each to the correct category:\n' +
+    src.unregistered.map((f) => '  + ' + f).join('\n'));
+}
+if (src.stale.length) {
+  problems.push('STALE SOURCE registrations — no longer reference the key; remove to keep the inventory honest:\n' +
+    src.stale.map((f) => '  - ' + f).join('\n'));
+}
+if (sql.unregistered.length) {
+  problems.push(
+    'UNREGISTERED SQL/Vault consumers — migrations that send/store the key but are not in MANAGED_SQL. Classify\n' +
+    'each (active / active-legacy / superseded) + its forward replacement in check-legacy-service-role-consumers.mjs:\n' +
+    sql.unregistered.map((f) => '  + ' + f).join('\n'));
+}
+if (sql.stale.length) {
+  problems.push('STALE SQL/Vault registrations — no longer send/store the key (were they edited? migrations are immutable):\n' +
+    sql.stale.map((f) => '  - ' + f).join('\n'));
+}
+if (escapes.length) {
+  problems.push(
+    'ESCAPED references — the key/helper appears OUTSIDE the guarded roots and outside the out-of-scope allow-list\n' +
+    '(docs .md / src/test / tests / supabase/config.toml). A runtime consumer under a new root must join the guarded\n' +
+    'roots (add it to SOURCE_ROOTS + register it); anything else must move or be added to the allow-list deliberately:\n' +
+    escapes.sort().map((f) => '  ! ' + f).join('\n'));
+}
+
+if (problems.length) {
+  console.error('Legacy service-role key inventory drift:\n');
+  console.error(problems.join('\n\n'));
+  console.error('\nSee docs/CRON_SERVICE_KEY_SETUP.md → "The legacy service-role-key dependency class".');
   process.exit(1);
 }
 
 const counts = Object.entries(MANAGED).map(([k, v]) => `${k}=${v.length}`).join(', ');
-console.log(`OK — all ${registered.size} legacy service-role-key consumers are registered (${counts}).`);
+const sqlActive = Object.values(MANAGED_SQL).filter((v) => v.status.startsWith('active')).length;
+console.log(
+  `OK — ${new Set(Object.values(MANAGED).flat()).size} source consumers registered (${counts}); ` +
+  `${Object.keys(MANAGED_SQL).length} SQL/Vault migrations registered (${sqlActive} active); no references outside guarded roots.`);

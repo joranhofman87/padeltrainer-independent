@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "check:edge-config": "node scripts/check-edge-fn-config.mjs",
     "check:legacy-key": "node scripts/check-legacy-service-role-consumers.mjs",
+    "check:legacy-key:selftest": "node scripts/check-legacy-service-role-consumers.mjs --self-test",
     "check:edge-types": "node scripts/check-edge-deno.mjs",
     "check:edge-types:update": "node scripts/check-edge-deno.mjs --update",
     "lint:fix": "eslint . --fix",

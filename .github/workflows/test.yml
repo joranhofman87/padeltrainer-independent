@@ -33,10 +33,16 @@ jobs:
       - name: Edge-function config drift guard
         run: npm run check:edge-config
 
-      # Fails if any runtime file references the LEGACY service-role key without being in
-      # the categorized registry (scripts/check-legacy-service-role-consumers.mjs). Keeps the
-      # Path-B migration inventory (docs/CRON_SERVICE_KEY_SETUP.md) from silently drifting — a
-      # new admin-client / caller / worker cannot slip past the legacy-key deactivation plan.
+      # Proves the guard's own detection + diff logic against fixtures (literal/alias/helper-only/
+      # extensionless consumers, SQL senders, stale registrations, escapes, and the real baseline)
+      # so a weakened regex/root-list/stale-check can't pass silently.
+      - name: Legacy service-role-key guard self-test
+        run: npm run check:legacy-key:selftest
+
+      # Fails if any runtime file references the LEGACY service-role key (source, SQL/Vault, or a
+      # reference outside the guarded roots) without being in the registry
+      # (scripts/check-legacy-service-role-consumers.mjs). Keeps the Path-B migration inventory
+      # (docs/CRON_SERVICE_KEY_SETUP.md) from silently drifting.
       - name: Legacy service-role-key consumer guard
         run: npm run check:legacy-key
 
