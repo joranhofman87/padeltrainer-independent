@@ -713,8 +713,9 @@ the request always reaches the function's own guard (and stays correct if auth i
 any move to a named secret-key / custom worker-secret path should be a separate, reviewed migration, not folded
 into enablement.
 
-**Authenticated "disabled" smoke test (run after every deploy, BEFORE scheduling the cron or flipping the
-switch).** Invoke through the exact Vault/pg_net path — no cron, secret never leaves the server:
+**Authenticated "disabled" smoke test — for the INITIAL INERT rollout only** (switch off, no cron, no digest
+rows). It proves the freshly-deployed worker is callable and writes nothing, BEFORE anything is enabled. Invoke
+through the exact Vault/pg_net path — no cron, secret never leaves the server:
 
 ```sql
 -- fire it (returns a pg_net request_id)
@@ -731,9 +732,20 @@ SELECT net.http_post(
 SELECT status_code, content FROM net._http_response WHERE id = <request_id>;
 ```
 
-Acceptance = **HTTP 200** with body exactly `{"status":"disabled","reason":"disabled"}`, followed by **zero**
-new rows in `notification_worker_runs`, `notification_digest_groups`, and `notification_outbox WHERE
-delivery_mode='digest'`. If it returns **401**, STOP: the function's `SUPABASE_SERVICE_ROLE_KEY` and the Vault
-`service_role_key` have diverged (e.g. a key rotation) — check whether the existing Vault-backed rebook crons
-are also 401ing, and fix the credential source; do not rotate or modify any credential without owner approval.
-Never print the secret, its hash, prefix, or length.
+Acceptance (initial inert rollout) = **HTTP 200** with body exactly `{"status":"disabled","reason":"disabled"}`,
+followed by **zero** new rows in `notification_worker_runs`, `notification_digest_groups`, and
+`notification_outbox WHERE delivery_mode='digest'` — absolute-zero is valid ONLY because production has no
+digest history yet. If it returns **401**, STOP: the function's `SUPABASE_SERVICE_ROLE_KEY` and the Vault
+`service_role_key` have diverged (e.g. a key rotation) — check whether the existing Vault-backed rebook / email /
+WhatsApp crons are also 401ing, and fix the credential source; do not rotate or modify any credential without
+owner approval. Never print the secret, its hash, prefix, or length.
+
+**Future LIVE redeploys (once the cron is scheduled / an event is enabled) — do NOT use the absolute-zero test
+above.** By then the tables hold real digest history, so a healthy redeploy legitimately produces new runs and
+groups. The 10c-b enablement runbook (to be written when the cron lands) must instead: (1) pause the digest cron
+(`cron.unschedule` / `active=false`) and, if sending is on, set `DIGEST_SEND_ENABLED` off; (2) wait for any
+in-flight attempt to record or age out (bounded by the 23h uncertainty deadline, or by a short drain window if
+you only need the deploy verified, not a full quiesce); (3) deploy; (4) run the authenticated invocation and
+require HTTP 200 with the send behaviour expected for the current switch state; (5) compare **before/after
+count deltas** (a `reconcile_notification_digest_run` snapshot per run) rather than expecting absolute zero;
+(6) re-enable the cron / switch. Never assert absolute-zero tables against a live system.

@@ -575,11 +575,17 @@ Prerequisites:
      (email⇒resend, whatsapp⇒twilio) instead of defaulting to `resend`. The old default was
      right while email was the only worker and silently mislabeled the first non-email
      worker's sends; deriving it means the push worker cannot repeat that by omission.
-   - Both cron drainers (`notification-email-worker`, `notification-whatsapp-worker`) are
-     `verify_jwt = false` **and now covered by `scripts/check-edge-fn-config.mjs`**: pg_cron
-     presents the service-role key, which on this project is an `sb_secret_…` key and not a
-     JWT, so `verify_jwt = true` 401s them at the gateway before `requireServiceRole` runs —
-     and the cron job still reports success while nothing is ever sent.
+   - The cron drainers (`notification-email-worker`, `notification-whatsapp-worker`, and now
+     `notification-digest-worker`) are `verify_jwt = false` **and covered by
+     `scripts/check-edge-fn-config.mjs`**: each self-authenticates in `requireServiceRole` with a
+     byte-exact compare against `SUPABASE_SERVICE_ROLE_KEY` = the **LEGACY service-role JWT**
+     (`eyJ…`). pg_cron sends exactly that legacy JWT, read from Vault
+     (`vault.decrypted_secrets.service_role_key`) as `Authorization: Bearer`
+     (`20260722100000_rebook_crons_use_vault.sql`). `verify_jwt = false` so the request reaches
+     the function's own guard rather than the gateway's JWT check (were it `true`, the drainer
+     would still "succeed" as a cron while nothing is sent). The new `sb_secret_` keys live in
+     `SUPABASE_SECRET_KEYS` and are sent via the `apikey` header — they do NOT replace the
+     service-role key and are not what these functions check.
    - `twilio-whatsapp-webhook` (`verify_jwt = false`) handles status callbacks AND inbound
      STOP on one endpoint. **A withdrawal can arrive in either shape, and the two disagree on
      which field holds the user**: inbound, `From` is the user; on an outbound status callback
