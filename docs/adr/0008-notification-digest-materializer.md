@@ -661,7 +661,13 @@ scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, sep
   healthy 200), while independent groups keep processing. EVERY started run — materialize AND dispatch, on both
   success and failure paths — is reconciled via `reconcile_notification_digest_run` **best-effort** (reconcile
   never throws, so it can't mask the original error, and never recurses); run IDs + dimensional
-  `(family,metric,count)` metrics are logged. A true process death leaves the run unfinished for crash recovery.
+  `(family,metric,count)` metrics are logged. But reconciliation is what makes a run **operationally provable**,
+  so a reconcile OUTAGE is not a silent no-op either: it is counted (`reconcileErrors`), fails the affected run
+  (a materialize whose reconcile fails is finished `failed`), and fails the invocation (`status error` → HTTP
+  500 + the one alert) — a reconcile failure never reads as a healthy 200. A run-level throw is wrapped in a
+  `DigestWorkerError` that preserves the original exception (message + `cause`) and carries a PII-free partial
+  summary, so the proactive alert keeps the run IDs + counts even on a thrown failure. A true process death
+  leaves the run unfinished for crash recovery.
 - **Endpoint contract (auth is fail-closed and runs FIRST).** `requireServiceRole` gates the request BEFORE any
   config read or DB access, so the status matrix is: **401** (no/invalid service-role auth — including a missing
   `SUPABASE_SERVICE_ROLE_KEY`, which cannot be validated) → **200 `disabled`** (switch off, zero DB) → **500

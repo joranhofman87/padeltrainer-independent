@@ -1,10 +1,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { runDigestWorkerHandler, type HandlerDeps } from "./digest-worker-handler.ts";
-import type { WorkerSummary } from "./digest-worker-core.ts";
+import { DigestWorkerError, type WorkerSummary } from "./digest-worker-core.ts";
 
 const OK_SUMMARY: WorkerSummary = {
   status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
-  oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0,
+  oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
 };
 
 function harness(env: Record<string, string | undefined>, run: HandlerDeps["run"]) {
@@ -82,7 +82,7 @@ Deno.test("configured + run reports 'error' (per-group failures): 500, ONE alert
   assertEquals(JSON.stringify(h.alerts[0]).includes("@"), false);
 });
 
-Deno.test("configured + run throws (run-level failure): 500, invocation-error log + ONE alert", async () => {
+Deno.test("configured + run throws a plain Error: 500, one alert (no run context available)", async () => {
   const h = harness(CONFIGURED, () => Promise.reject(new Error("boom")));
   const r = await runDigestWorkerHandler(h.deps);
   assertEquals(r.http, 500);
@@ -90,6 +90,21 @@ Deno.test("configured + run throws (run-level failure): 500, invocation-error lo
   assert(h.logs.some((l) => l.event === "digest_worker_invocation_error"));
   assertEquals(h.alerts.length, 1);
   assertEquals(h.alerts[0].event, "digest_worker_run_failed");
+  assertEquals(h.alerts[0].dispatch_run, null);
+});
+
+Deno.test("configured + run throws a DigestWorkerError: the alert carries the safe run IDs + counts", async () => {
+  const err = new DigestWorkerError(new Error("sweep exploded"), {
+    status: "error", dispatchRunId: "disp-1", materializeRunId: "mat-1", groupErrors: 0, reconcileErrors: 1, claimed: 2, sent: 1,
+  });
+  const h = harness(CONFIGURED, () => Promise.reject(err));
+  const r = await runDigestWorkerHandler(h.deps);
+  assertEquals(r.http, 500);
+  assertEquals(h.alerts.length, 1);
+  assertEquals(h.alerts[0].dispatch_run, "disp-1");        // run id preserved on a THROWN failure (finding #2)
+  assertEquals(h.alerts[0].materialize_run, "mat-1");
+  assertEquals(h.alerts[0].reconcile_errors, 1);
+  assertEquals(JSON.stringify(h.alerts[0]).includes("@"), false);
 });
 
 Deno.test("a THROWING alert cannot break the response (alert is best-effort)", async () => {

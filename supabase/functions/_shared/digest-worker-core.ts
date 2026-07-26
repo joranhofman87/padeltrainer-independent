@@ -84,7 +84,31 @@ export type WorkerSummary = {
   oversizeFailed: number;
   recorded: number;
   groupErrors: number;
+  reconcileErrors: number;   // reconciliation failures — a run whose reconcile fails is NOT operationally provable
 };
+
+/** Thrown by a run-level failure, carrying a PII-free partial summary so the handler's alert keeps the run IDs
+ *  + counts. The original exception is preserved as `cause` (and this error's message == the original's). */
+export class DigestWorkerError extends Error {
+  readonly summary: Partial<WorkerSummary>;
+  readonly originalError: unknown;   // own field (Error.cause is ES2022, not in the app's tsc lib target)
+  constructor(cause: unknown, summary: Partial<WorkerSummary>) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "DigestWorkerError";
+    this.originalError = cause;
+    this.summary = summary;
+  }
+}
+
+/** The subset of a summary that is always safe to alert/return (IDs + counts, never PII). */
+function safeSummary(s: WorkerSummary): Partial<WorkerSummary> {
+  return {
+    status: s.status, dispatchRunId: s.dispatchRunId, materializeRunId: s.materializeRunId,
+    sweptStale: s.sweptStale, materialized: s.materialized, claimed: s.claimed, sent: s.sent,
+    deferred: s.deferred, oversizeSplit: s.oversizeSplit, oversizeFailed: s.oversizeFailed,
+    recorded: s.recorded, groupErrors: s.groupErrors, reconcileErrors: s.reconcileErrors,
+  };
+}
 
 /** Reduce any thrown value to a short, PII-free label for logs. redactDetail strips emails / tokens / JWTs /
  *  ids / URL queries and length-bounds — so even an error message that happens to echo a recipient address or
@@ -97,7 +121,7 @@ function safeErr(e: unknown): string {
 export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> {
   const s: WorkerSummary = {
     status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
-    oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0,
+    oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
   };
 
   // req — INERT unless enabled AND configured: return with ZERO database calls. Disabled (switch off) is a
@@ -111,11 +135,13 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
   const overBudget = () => deps.monotonicNowMs() - startMs > deps.limits.wallClockMs;
 
   // Reconcile a started run, BEST-EFFORT: it never throws (so it can't mask the original failure) and never
-  // recurses (a reconcile error is logged, not re-reconciled). Called for EVERY run that was started —
-  // materialize and dispatch, on both the success and failure paths.
-  const reconcileSafe = async (runId: string): Promise<ReconcileMetric[]> => {
-    try { return await deps.reconcile(runId); }
-    catch (e) { deps.log({ event: "reconcile_failed", run: runId, error: safeErr(e) }); return []; }
+  // recurses (a reconcile error is logged + COUNTED, not re-reconciled). Called for EVERY run that was started —
+  // materialize and dispatch, on both success and failure paths. A reconcile failure is NOT a silent no-op: it
+  // increments s.reconcileErrors, which fails the affected run + the invocation (reconciliation is what makes a
+  // run operationally provable, so its outage must not read as a healthy 200).
+  const reconcileSafe = async (runId: string): Promise<{ metrics: ReconcileMetric[]; ok: boolean }> => {
+    try { return { metrics: await deps.reconcile(runId), ok: true }; }
+    catch (e) { s.reconcileErrors++; deps.log({ event: "reconcile_failed", run: runId, error: safeErr(e) }); return { metrics: [], ok: false }; }
   };
 
   let dispRun: string | null = null;
@@ -136,12 +162,16 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
         p_run_id: matRun, p_channel: deps.channel, p_now: nowIso(),
         p_max_groups: deps.limits.maxMaterializeGroups, p_max_members_per_call: deps.limits.maxMaterializeMembers,
       }) as number;
-      s.reconcileMaterialize = await reconcileSafe(matRun);
-      deps.log({ event: "materialize_reconcile", run: matRun, metrics: s.reconcileMaterialize });
-      await deps.rpc("finish_notification_worker_run", { p_run_id: matRun, p_status: "succeeded" });
+      const mr = await reconcileSafe(matRun);
+      s.reconcileMaterialize = mr.metrics;
+      deps.log({ event: "materialize_reconcile", run: matRun, metrics: mr.metrics });
+      // a materialize whose RECONCILE failed is finished 'failed' (it is no longer operationally provable);
+      // s.reconcileErrors already carries it into the invocation status below.
+      await deps.rpc("finish_notification_worker_run", { p_run_id: matRun, p_status: mr.ok ? "succeeded" : "failed" });
     } catch (e) {
-      s.reconcileMaterialize = await reconcileSafe(matRun);   // reconcile even on failure — best-effort, no mask
-      deps.log({ event: "materialize_reconcile", run: matRun, metrics: s.reconcileMaterialize });
+      const mr = await reconcileSafe(matRun);   // reconcile even on failure — best-effort, no mask
+      s.reconcileMaterialize = mr.metrics;
+      deps.log({ event: "materialize_reconcile", run: matRun, metrics: mr.metrics });
       await deps.rpc("finish_notification_worker_run", { p_run_id: matRun, p_status: "failed" }).catch(() => {});
       throw e;                                                 // original error preserved
     }
@@ -164,28 +194,32 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     }
 
     // (4) reconcile the dispatch run (best-effort) + log run IDs and dimensional metrics (all PII-free).
-    s.reconcile = await reconcileSafe(dispRun);
-    deps.log({ event: "digest_worker_reconcile", dispatch_run: dispRun, materialize_run: matRun, metrics: s.reconcile });
+    const dr = await reconcileSafe(dispRun);
+    s.reconcile = dr.metrics;
+    deps.log({ event: "digest_worker_reconcile", dispatch_run: dispRun, materialize_run: matRun, metrics: dr.metrics });
 
-    // req — finish truthfully: any per-group failure makes the run 'failed' (→ status 'error' → HTTP 500),
-    // even though the healthy groups' work committed and the failed ones are recoverable.
-    const failed = s.groupErrors > 0;
+    // req — finish truthfully: any per-group failure OR any RECONCILIATION failure (materialize or dispatch)
+    // makes the run 'failed' → status 'error' → HTTP 500 + one alert. A reconcile outage must NOT read as a
+    // healthy 200 (the run is not operationally provable), even though the send work itself committed.
+    const failed = s.groupErrors > 0 || s.reconcileErrors > 0;
     await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: failed ? "failed" : "succeeded" });
     s.status = failed ? "error" : "ok";
     deps.log({ event: "digest_worker_done", dispatch_run: dispRun, ...s });
     return s;
   } catch (runErr) {
     // A RUN-LEVEL failure (start / sweep / materialize / claim / finish) → reconcile the dispatch run
-    // best-effort (matRun is already reconciled in its own catch), finish 'failed', and RE-THROW the original
-    // error unmasked. A true process death leaves the run UNFINISHED → crash recovery, exactly as intended.
+    // best-effort (matRun is already reconciled in its own catch), finish 'failed', and re-throw. We wrap the
+    // ORIGINAL error in a DigestWorkerError that PRESERVES it (same message + `cause`) and carries a PII-free
+    // partial summary, so the handler's proactive alert keeps the run IDs + counts even on a thrown failure.
     s.status = "error";
     if (dispRun) {
-      s.reconcile = await reconcileSafe(dispRun);
-      deps.log({ event: "digest_worker_reconcile", dispatch_run: dispRun, metrics: s.reconcile });
+      const dr = await reconcileSafe(dispRun);
+      s.reconcile = dr.metrics;
+      deps.log({ event: "digest_worker_reconcile", dispatch_run: dispRun, metrics: dr.metrics });
       await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: "failed" }).catch(() => {});
     }
     deps.log({ event: "digest_worker_error", dispatch_run: dispRun, error: safeErr(runErr), ...s });
-    throw runErr;
+    throw new DigestWorkerError(runErr, safeSummary(s));
   }
 }
 

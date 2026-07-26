@@ -12,7 +12,7 @@
  * try_lock_cron_job/unlock_cron_job pair spanned two pooled PostgREST requests without session affinity — the
  * unlock could land on a different backend and wedge the lock. Removed by design.)
  */
-import type { WorkerSummary } from "./digest-worker-core.ts";
+import { DigestWorkerError, type WorkerSummary } from "./digest-worker-core.ts";
 
 export type HandlerResult = { status: string; http: number; body: Record<string, unknown> };
 
@@ -55,19 +55,27 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
   let summary: WorkerSummary;
   try {
     summary = await deps.run({ resendApiKey, supabaseUrl, serviceKey });
-  } catch {
+  } catch (e) {
     // runDigestWorker already finished the dispatch run 'failed' and logged a redacted error before rethrowing.
+    // A DigestWorkerError carries a PII-free partial summary, so the proactive alert keeps the run IDs + counts.
     deps.log({ event: "digest_worker_invocation_error" });
-    await safeAlert({ event: "digest_worker_run_failed", reason: "invocation_error" });
+    const partial = e instanceof DigestWorkerError ? e.summary : undefined;
+    await safeAlert({
+      event: "digest_worker_run_failed", reason: "invocation_error",
+      dispatch_run: partial?.dispatchRunId ?? null, materialize_run: partial?.materializeRunId ?? null,
+      group_errors: partial?.groupErrors ?? null, reconcile_errors: partial?.reconcileErrors ?? null,
+      claimed: partial?.claimed ?? null, sent: partial?.sent ?? null,
+    });
     return { status: "error", http: 500, body: { status: "error" } };
   }
   // one alert per invocation for a run that ended unhealthy (run-level failure OR any per-group error) — safe
   // IDs/counts only, never per-group.
   if (summary.status === "error") {
     await safeAlert({
-      event: "digest_worker_run_failed", reason: "group_errors",
+      event: "digest_worker_run_failed",
+      reason: summary.groupErrors > 0 ? "group_errors" : "reconcile_errors",
       dispatch_run: summary.dispatchRunId ?? null, group_errors: summary.groupErrors,
-      claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
+      reconcile_errors: summary.reconcileErrors, claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
     });
   }
   return { status: summary.status, http: summary.status === "error" ? 500 : 200, body: summary as unknown as Record<string, unknown> };

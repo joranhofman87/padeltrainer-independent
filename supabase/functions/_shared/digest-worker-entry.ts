@@ -28,7 +28,7 @@ export type EntryDeps = {
 
 export function makeDigestWorkerEntry(deps: EntryDeps): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS") return new Response(null, { headers: deps.corsHeaders });
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: deps.corsHeaders });
 
     // AUTH FIRST, fail-closed: reject before reading config or touching the DB.
     const guard = deps.requireServiceRole(req);

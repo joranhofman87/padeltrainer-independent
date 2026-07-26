@@ -1,10 +1,10 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { makeDigestWorkerEntry, type EntryDeps } from "./digest-worker-entry.ts";
 import type { WorkerSummary } from "./digest-worker-core.ts";
 
 const OK_SUMMARY: WorkerSummary = {
   status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
-  oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0,
+  oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
 };
 const CORS = { "Access-Control-Allow-Origin": "*" };
 const CONFIGURED = { DIGEST_SEND_ENABLED: "true", RESEND_API_KEY: "re_x", SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "k" };
@@ -66,10 +66,10 @@ Deno.test("authed + configured + healthy run → 200 ok", async () => {
   assertEquals(h.runCalls.length, 1);
 });
 
-Deno.test("OPTIONS preflight → 204 with CORS headers, no auth/run", async () => {
+Deno.test("OPTIONS preflight → exactly 204 with CORS headers, no auth/run", async () => {
   const h = harness(CONFIGURED, () => Promise.resolve(OK_SUMMARY));
   const res = await h.entry(new Request("https://x/fn", { method: "OPTIONS" }));
-  assert(res.status === 204 || res.status === 200);
+  assertEquals(res.status, 204);                         // exact — not the default 200
   assertEquals(res.headers.get("Access-Control-Allow-Origin"), "*");
   assertEquals(h.runCalls.length, 0);
 });

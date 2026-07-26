@@ -12,7 +12,7 @@ import pg from 'pg';
 import { readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runDigestWorker, type WorkerDeps, type WorkerLimits } from '../../supabase/functions/_shared/digest-worker-core.ts';
+import { runDigestWorker, DigestWorkerError, type WorkerDeps, type WorkerLimits } from '../../supabase/functions/_shared/digest-worker-core.ts';
 import type { ResendSendOnceResult } from '../../supabase/functions/_shared/resend-send-once.ts';
 
 const PORT = 54347;
@@ -85,7 +85,8 @@ type DepOverrides = Partial<Pick<WorkerDeps, 'enabled' | 'apiKeyPresent' | 'limi
   logs?: Record<string, unknown>[];
   rpcNames?: string[];   // every rpc name invoked (for the no-session-lock assertion)
   reconcileCalls?: string[];   // every run_id reconcile was attempted for (every started run)
-  reconcileThrows?: boolean;   // inject a reconcile failure (must not mask the original error / recurse)
+  reconcileThrows?: boolean;   // inject a reconcile failure on EVERY call
+  reconcileThrowOnCall?: number; // inject a reconcile failure on the Nth call only (1 = materialize, 2 = dispatch)
   sendCalls?: Array<{ payload: SendPayload; opts: SendOpts }>;
   frozenSeen?: Array<{ request: Frozen; idempotencyKey: string } | null>;
   tokenSuffix?: string;
@@ -93,6 +94,7 @@ type DepOverrides = Partial<Pick<WorkerDeps, 'enabled' | 'apiKeyPresent' | 'limi
 
 function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
   const base = mkRpc(c);
+  let reconcileN = 0;
   const named: WorkerDeps['rpc'] = (n, a) => { o.rpcNames?.push(n); return base(n, a); };
   const rawRpc = o.wrapRpc ? o.wrapRpc(named) : named;
   const sendCalls = o.sendCalls ?? [];
@@ -121,8 +123,9 @@ function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
       return out;
     },
     reconcile: async (runId) => {
+      reconcileN += 1;
       o.reconcileCalls?.push(runId);
-      if (o.reconcileThrows) throw new Error('reconcile blew up');
+      if (o.reconcileThrows || o.reconcileThrowOnCall === reconcileN) throw new Error('reconcile blew up');
       const r = await c.query(`SELECT family, metric, count FROM public.reconcile_notification_digest_run($1)`, [runId]);
       return r.rows.map((row) => ({ family: row.family, metric: row.metric, count: Number(row.count) }));
     },
@@ -247,6 +250,54 @@ describe('10c-a3 digest worker — inertness + happy path + dispatch contract', 
       expect(logs.some((l) => l.event === 'reconcile_failed')).toBe(true);     // failure logged, not thrown
       const run = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE phase='dispatch' ORDER BY started_at DESC LIMIT 1`)).rows[0];
       expect(run.status).toBe('failed');
+    } finally { await c.end(); }
+  });
+
+  it('FALSE-GREEN GUARD: a happy MATERIALIZE run whose reconcile fails → status error, run failed (not a healthy 200)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      // materialize + dispatch both succeed, but the 1st reconcile (the materialize run's) throws.
+      const s = await runDigestWorker(mkDeps(c, { reconcileThrowOnCall: 1 }));
+      expect(s.status).toBe('error');                 // MUTATION PIN: old reconcileSafe→[] made this 'ok'
+      expect(s.reconcileErrors).toBe(1);
+      expect(s.materialized).toBe(1);                 // materialize itself DID happen
+      const mat = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE run_id=$1`, [s.materializeRunId])).rows[0];
+      const disp = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE run_id=$1`, [s.dispatchRunId])).rows[0];
+      expect(mat.status).toBe('failed');              // the affected (materialize) run is failed
+      expect(disp.status).toBe('failed');             // and the invocation is not provable → dispatch failed too
+    } finally { await c.end(); }
+  });
+
+  it('FALSE-GREEN GUARD: a happy DISPATCH run whose reconcile fails → status error, dispatch run failed', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      // 1st reconcile (materialize) ok, 2nd (dispatch) throws.
+      const s = await runDigestWorker(mkDeps(c, { reconcileThrowOnCall: 2 }));
+      expect(s.status).toBe('error'); expect(s.reconcileErrors).toBe(1);
+      const mat = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE run_id=$1`, [s.materializeRunId])).rows[0];
+      const disp = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE run_id=$1`, [s.dispatchRunId])).rows[0];
+      expect(mat.status).toBe('succeeded');           // materialize reconcile was fine
+      expect(disp.status).toBe('failed');
+    } finally { await c.end(); }
+  });
+
+  it('a thrown run-level failure preserves the original error AND carries a safe partial summary (run IDs + counts)', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'reconcile_notification_digest_stale' ? Promise.reject(new Error('boom-sweep')) : r(n, a));
+      let caught: unknown;
+      try { await runDigestWorker(mkDeps(c, { wrapRpc })); } catch (e) { caught = e; }
+      expect(caught).toBeInstanceOf(DigestWorkerError);
+      const dwe = caught as DigestWorkerError;
+      expect(dwe.message).toContain('boom-sweep');                 // original error preserved (message + originalError)
+      expect((dwe.originalError as Error).message).toBe('boom-sweep');
+      expect(dwe.summary.status).toBe('error');
+      expect(dwe.summary.dispatchRunId).toBeTruthy();              // the failed dispatch run id is carried for the alert
+      // the safe summary must not carry PII (it is IDs + counts only)
+      expect(JSON.stringify(dwe.summary).includes('@')).toBe(false);
     } finally { await c.end(); }
   });
 
