@@ -9,13 +9,15 @@ const OK_SUMMARY: WorkerSummary = {
 
 function harness(env: Record<string, string | undefined>, run: HandlerDeps["run"]) {
   const logs: Record<string, unknown>[] = [];
+  const alerts: Record<string, unknown>[] = [];
   const runCalls: Array<{ resendApiKey: string; supabaseUrl: string; serviceKey: string }> = [];
   const deps: HandlerDeps = {
     env: (k) => env[k],
     log: (e) => logs.push(e),
+    alert: (p) => { alerts.push(p); },
     run: (cfg) => { runCalls.push(cfg); return run(cfg); },
   };
-  return { deps, logs, runCalls };
+  return { deps, logs, alerts, runCalls };
 }
 
 const CONFIGURED = { DIGEST_SEND_ENABLED: "true", RESEND_API_KEY: "re_x", SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_x" };
@@ -45,6 +47,8 @@ Deno.test("MISCONFIGURED (enabled, no RESEND_API_KEY): 500, run never invoked (Z
   assertEquals(h.runCalls.length, 0);                // zero DB mutations on a misconfiguration
   const m = h.logs.find((l) => l.event === "digest_worker_misconfigured");
   assert(m && Array.isArray(m.missing) && (m.missing as string[]).includes("RESEND_API_KEY"));
+  assertEquals(h.alerts.length, 1);                  // a real (best-effort) alert fired, once
+  assertEquals(h.alerts[0].event, "digest_worker_misconfigured");
 });
 
 Deno.test("MISCONFIGURED (enabled, no Supabase service key): 500, zero run", async () => {
@@ -55,28 +59,37 @@ Deno.test("MISCONFIGURED (enabled, no Supabase service key): 500, zero run", asy
   assertEquals(h.runCalls.length, 0);
 });
 
-Deno.test("configured + healthy run: 200, run invoked exactly once with the validated config", async () => {
+Deno.test("configured + healthy run: 200, run invoked exactly once, NO alert", async () => {
   const h = harness(CONFIGURED, () => Promise.resolve(OK_SUMMARY));
   const r = await runDigestWorkerHandler(h.deps);
   assertEquals(r.http, 200);
   assertEquals(r.status, "ok");
   assertEquals(h.runCalls.length, 1);
   assertEquals(h.runCalls[0], { resendApiKey: "re_x", supabaseUrl: "https://x.supabase.co", serviceKey: "sb_secret_x" });
+  assertEquals(h.alerts.length, 0);                  // a healthy run does NOT alert
 });
 
-Deno.test("configured + run reports 'error' (a failed/partial run): 500", async () => {
-  const h = harness(CONFIGURED, () => Promise.resolve({ ...OK_SUMMARY, status: "error", groupErrors: 1 }));
+Deno.test("configured + run reports 'error' (per-group failures): 500, ONE alert with safe counts", async () => {
+  const h = harness(CONFIGURED, () => Promise.resolve({ ...OK_SUMMARY, status: "error", groupErrors: 2, claimed: 5, sent: 3, dispatchRunId: "run-abc" }));
   const r = await runDigestWorkerHandler(h.deps);
   assertEquals(r.http, 500);
   assertEquals(r.status, "error");
+  assertEquals(h.alerts.length, 1);                  // exactly one alert per invocation (never per group)
+  assertEquals(h.alerts[0].event, "digest_worker_run_failed");
+  assertEquals(h.alerts[0].group_errors, 2);
+  assertEquals(h.alerts[0].dispatch_run, "run-abc");
+  // safe IDs/counts only — no PII markers
+  assertEquals(JSON.stringify(h.alerts[0]).includes("@"), false);
 });
 
-Deno.test("configured + run throws (run-level failure): 500, invocation-error log", async () => {
+Deno.test("configured + run throws (run-level failure): 500, invocation-error log + ONE alert", async () => {
   const h = harness(CONFIGURED, () => Promise.reject(new Error("boom")));
   const r = await runDigestWorkerHandler(h.deps);
   assertEquals(r.http, 500);
   assertEquals(r.status, "error");
   assert(h.logs.some((l) => l.event === "digest_worker_invocation_error"));
+  assertEquals(h.alerts.length, 1);
+  assertEquals(h.alerts[0].event, "digest_worker_run_failed");
 });
 
 Deno.test("logs are PII-free: no email/html/token markers in any logged value", async () => {

@@ -25,6 +25,7 @@
  */
 import { renderDigestEmail, isDigestRequestOversize, type DigestItem } from "./digest-render.ts";
 import type { ResendSendOnceResult } from "./resend-send-once.ts";
+import { redactDetail } from "./redact-detail.ts";
 
 export type FrozenRequest = { from: string; to: string; subject: string; html: string };
 
@@ -72,7 +73,8 @@ export type WorkerSummary = {
   reason?: string;
   dispatchRunId?: string;
   materializeRunId?: string;
-  reconcile?: ReconcileMetric[];
+  reconcile?: ReconcileMetric[];            // dispatch-run metrics
+  reconcileMaterialize?: ReconcileMetric[]; // materialize-run metrics (every started run is reconciled)
   sweptStale: number;
   materialized: number;
   claimed: number;
@@ -84,11 +86,12 @@ export type WorkerSummary = {
   groupErrors: number;
 };
 
-/** Reduce any thrown value to a short, PII-free label for logs (never the raw message, which may echo data). */
+/** Reduce any thrown value to a short, PII-free label for logs. redactDetail strips emails / tokens / JWTs /
+ *  ids / URL queries and length-bounds — so even an error message that happens to echo a recipient address or
+ *  a provider token cannot reach the logs. (A prefix-only heuristic would leak `alice@x.com failed` verbatim.) */
 function safeErr(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
-  // keep only the leading clause up to the first colon/paren (RPC error prefixes), capped — no interpolated data.
-  return msg.split(/[:(]/, 1)[0].trim().slice(0, 80) || "error";
+  return redactDetail(msg, 120) || "error";
 }
 
 export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> {
@@ -107,6 +110,14 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
   const startMs = deps.monotonicNowMs();
   const overBudget = () => deps.monotonicNowMs() - startMs > deps.limits.wallClockMs;
 
+  // Reconcile a started run, BEST-EFFORT: it never throws (so it can't mask the original failure) and never
+  // recurses (a reconcile error is logged, not re-reconciled). Called for EVERY run that was started —
+  // materialize and dispatch, on both the success and failure paths.
+  const reconcileSafe = async (runId: string): Promise<ReconcileMetric[]> => {
+    try { return await deps.reconcile(runId); }
+    catch (e) { deps.log({ event: "reconcile_failed", run: runId, error: safeErr(e) }); return []; }
+  };
+
   let dispRun: string | null = null;
   try {
     dispRun = await deps.rpc("start_notification_worker_run", { p_worker: worker, p_channel: deps.channel, p_phase: "dispatch" }) as string;
@@ -117,7 +128,7 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
       p_run_id: dispRun, p_channel: deps.channel, p_now: nowIso(), p_probe_lease_minutes: 10, p_limit: deps.limits.sweepLimit,
     }) as number;
 
-    // (2) MATERIALIZE — its own run/phase, finished truthfully.
+    // (2) MATERIALIZE — its own run/phase, reconciled + finished truthfully on BOTH paths.
     const matRun = await deps.rpc("start_notification_worker_run", { p_worker: worker, p_channel: deps.channel, p_phase: "materialize" }) as string;
     s.materializeRunId = matRun;
     try {
@@ -125,10 +136,14 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
         p_run_id: matRun, p_channel: deps.channel, p_now: nowIso(),
         p_max_groups: deps.limits.maxMaterializeGroups, p_max_members_per_call: deps.limits.maxMaterializeMembers,
       }) as number;
+      s.reconcileMaterialize = await reconcileSafe(matRun);
+      deps.log({ event: "materialize_reconcile", run: matRun, metrics: s.reconcileMaterialize });
       await deps.rpc("finish_notification_worker_run", { p_run_id: matRun, p_status: "succeeded" });
     } catch (e) {
+      s.reconcileMaterialize = await reconcileSafe(matRun);   // reconcile even on failure — best-effort, no mask
+      deps.log({ event: "materialize_reconcile", run: matRun, metrics: s.reconcileMaterialize });
       await deps.rpc("finish_notification_worker_run", { p_run_id: matRun, p_status: "failed" }).catch(() => {});
-      throw e;
+      throw e;                                                 // original error preserved
     }
 
     // (3) bounded claim loop — each claimed group is dispatched according to its CURRENT state.
@@ -148,8 +163,8 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
       }
     }
 
-    // (4) always reconcile + log the run IDs and dimensional metrics (all PII-free).
-    s.reconcile = await deps.reconcile(dispRun);
+    // (4) reconcile the dispatch run (best-effort) + log run IDs and dimensional metrics (all PII-free).
+    s.reconcile = await reconcileSafe(dispRun);
     deps.log({ event: "digest_worker_reconcile", dispatch_run: dispRun, materialize_run: matRun, metrics: s.reconcile });
 
     // req — finish truthfully: any per-group failure makes the run 'failed' (→ status 'error' → HTTP 500),
@@ -160,10 +175,15 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     deps.log({ event: "digest_worker_done", dispatch_run: dispRun, ...s });
     return s;
   } catch (runErr) {
-    // A RUN-LEVEL failure (start / sweep / materialize / reconcile / finish) → finish 'failed'. A true process
-    // death leaves the run UNFINISHED → crash recovery, exactly as intended.
+    // A RUN-LEVEL failure (start / sweep / materialize / claim / finish) → reconcile the dispatch run
+    // best-effort (matRun is already reconciled in its own catch), finish 'failed', and RE-THROW the original
+    // error unmasked. A true process death leaves the run UNFINISHED → crash recovery, exactly as intended.
     s.status = "error";
-    if (dispRun) await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: "failed" }).catch(() => {});
+    if (dispRun) {
+      s.reconcile = await reconcileSafe(dispRun);
+      deps.log({ event: "digest_worker_reconcile", dispatch_run: dispRun, metrics: s.reconcile });
+      await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: "failed" }).catch(() => {});
+    }
     deps.log({ event: "digest_worker_error", dispatch_run: dispRun, error: safeErr(runErr), ...s });
     throw runErr;
   }

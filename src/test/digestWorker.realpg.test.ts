@@ -84,6 +84,8 @@ type DepOverrides = Partial<Pick<WorkerDeps, 'enabled' | 'apiKeyPresent' | 'limi
   wrapRpc?: (rpc: WorkerDeps['rpc']) => WorkerDeps['rpc'];
   logs?: Record<string, unknown>[];
   rpcNames?: string[];   // every rpc name invoked (for the no-session-lock assertion)
+  reconcileCalls?: string[];   // every run_id reconcile was attempted for (every started run)
+  reconcileThrows?: boolean;   // inject a reconcile failure (must not mask the original error / recurse)
   sendCalls?: Array<{ payload: SendPayload; opts: SendOpts }>;
   frozenSeen?: Array<{ request: Frozen; idempotencyKey: string } | null>;
   tokenSuffix?: string;
@@ -119,6 +121,8 @@ function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
       return out;
     },
     reconcile: async (runId) => {
+      o.reconcileCalls?.push(runId);
+      if (o.reconcileThrows) throw new Error('reconcile blew up');
       const r = await c.query(`SELECT family, metric, count FROM public.reconcile_notification_digest_run($1)`, [runId]);
       return r.rows.map((row) => ({ family: row.family, metric: row.metric, count: Number(row.count) }));
     },
@@ -201,15 +205,62 @@ describe('10c-a3 digest worker — inertness + happy path + dispatch contract', 
     } finally { await c.end(); }
   });
 
-  it('truthful run finish: a run-level RPC failure finishes the run as failed (never a false succeeded)', async () => {
+  it('truthful run finish: a sweep (run-level) failure reconciles the dispatch run + finishes it failed + re-throws the ORIGINAL error', async () => {
     const c = conn(); await c.connect();
     try {
       await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
       // make the SWEEP (a run-level step) throw → the dispatch run must finish 'failed'
-      const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'reconcile_notification_digest_stale' ? Promise.reject(new Error('boom')) : r(n, a));
-      await expect(runDigestWorker(mkDeps(c, { wrapRpc }))).rejects.toThrow();
+      const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'reconcile_notification_digest_stale' ? Promise.reject(new Error('boom-sweep')) : r(n, a));
+      const reconcileCalls: string[] = [];
+      await expect(runDigestWorker(mkDeps(c, { wrapRpc, reconcileCalls }))).rejects.toThrow('boom-sweep'); // original error, not masked
       const run = (await c.query(`SELECT status, ended_at FROM public.notification_worker_runs WHERE phase='dispatch' ORDER BY started_at DESC LIMIT 1`)).rows[0];
       expect(run.status).toBe('failed'); expect(run.ended_at).not.toBeNull();
+      expect(reconcileCalls.length).toBe(1);   // the dispatch run was reconciled best-effort on the failure path
+    } finally { await c.end(); }
+  });
+
+  it('materialize-phase failure: the MATERIALIZE run is reconciled + finished failed, and the original error propagates', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'materialize_notification_digest_groups' ? Promise.reject(new Error('boom-mat')) : r(n, a));
+      const reconcileCalls: string[] = [];
+      await expect(runDigestWorker(mkDeps(c, { wrapRpc, reconcileCalls }))).rejects.toThrow('boom-mat');
+      const mat = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE phase='materialize' ORDER BY started_at DESC LIMIT 1`)).rows[0];
+      const disp = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE phase='dispatch' ORDER BY started_at DESC LIMIT 1`)).rows[0];
+      expect(mat.status).toBe('failed'); expect(disp.status).toBe('failed');
+      expect(reconcileCalls.length).toBe(2);   // BOTH started runs reconciled (materialize in its catch, dispatch in the outer catch)
+    } finally { await c.end(); }
+  });
+
+  it('reconcile failure is best-effort: it does not mask the original error and does not recurse', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      // sweep fails (run-level) AND reconcile itself throws — the ORIGINAL sweep error must still surface, and
+      // reconcile must be attempted exactly once (no recursion) then swallowed.
+      const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'reconcile_notification_digest_stale' ? Promise.reject(new Error('boom-sweep')) : r(n, a));
+      const reconcileCalls: string[] = [];
+      const logs: Record<string, unknown>[] = [];
+      await expect(runDigestWorker(mkDeps(c, { wrapRpc, reconcileThrows: true, reconcileCalls, logs }))).rejects.toThrow('boom-sweep');
+      expect(reconcileCalls.length).toBe(1);                                   // attempted once, no recursion
+      expect(logs.some((l) => l.event === 'reconcile_failed')).toBe(true);     // failure logged, not thrown
+      const run = (await c.query(`SELECT status FROM public.notification_worker_runs WHERE phase='dispatch' ORDER BY started_at DESC LIMIT 1`)).rows[0];
+      expect(run.status).toBe('failed');
+    } finally { await c.end(); }
+  });
+
+  it('happy run reconciles BOTH the materialize and dispatch runs', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      const reconcileCalls: string[] = [];
+      const s = await runDigestWorker(mkDeps(c, { reconcileCalls }));
+      expect(s.status).toBe('ok');
+      expect(reconcileCalls).toContain(s.materializeRunId);
+      expect(reconcileCalls).toContain(s.dispatchRunId);
+      expect(Array.isArray(s.reconcileMaterialize)).toBe(true);
+      expect(Array.isArray(s.reconcile)).toBe(true);
     } finally { await c.end(); }
   });
 });
@@ -360,6 +411,25 @@ describe('10c-a3 digest worker — fault injection', () => {
       const atts = (await c.query(`SELECT count(*)::int n, count(DISTINCT provider_idempotency_key)::int k FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g1.id])).rows[0];
       expect(atts.n).toBe(2); expect(atts.k).toBe(1);
       expect(hashAfter1).toBeTruthy();
+    } finally { await c.end(); }
+  });
+
+  it('PII-safe logs: a thrown error that echoes an email + token is REDACTED before it reaches the log', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:1', 'a@example.com', [{ title: 't' }]);
+      // inject a per-group failure whose message carries a recipient email + a secret-ish token.
+      const token = 'sk_live_' + 'a'.repeat(40);
+      const wrapRpc: DepOverrides['wrapRpc'] = (r) => (n, a) => (n === 'record_notification_digest_result'
+        ? Promise.reject(new Error(`delivery to victim@example.com with token ${token} failed`)) : r(n, a));
+      const logs: Record<string, unknown>[] = [];
+      await runDigestWorker(mkDeps(c, { wrapRpc, logs }));
+      const ge = logs.find((l) => l.event === 'group_error');
+      expect(ge).toBeTruthy();
+      const err = String(ge!.error);
+      expect(err).not.toContain('victim@example.com');   // no recipient PII
+      expect(err).not.toContain('sk_live_');              // no token
+      expect(err).toContain('[redacted-email]');          // proof the redactor ran
     } finally { await c.end(); }
   });
 

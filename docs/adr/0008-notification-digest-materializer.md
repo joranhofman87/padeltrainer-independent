@@ -618,30 +618,70 @@ These clarify — never change — the accepted design:
 ## 10c-a3 — the WORKER (edge function + adapter), still INERT
 
 The state machine (10c-a2) is a set of SQL RPCs; 10c-a3 adds the thin, bounded driver that calls them, plus the
-single-shot Resend adapter and the render. Nothing here enables a send: the `notification-digest-worker` edge
-function returns immediately unless `DIGEST_SEND_ENABLED === "true"` AND `RESEND_API_KEY` is set, no cron is
+single-shot Resend adapter and the render. **Nothing here enables a send:** the `notification-digest-worker`
+edge function returns immediately unless `DIGEST_SEND_ENABLED === "true"` AND it is configured, no cron is
 scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, separately-reviewed, owner-gated
-10c-b step.
+10c-b step. The following is the AUTHORITATIVE contract (it supersedes any earlier draft description).
 
-- **Driver sequence (`_shared/digest-worker-core.ts`), RPC-only.** One dispatch run: sweep
-  (`reconcile_notification_digest_stale`) → `materialize` (own run/phase, finished truthfully) → a bounded
-  claim loop: `claim` → `prepare` → render surviving members → if the rendered `{to,subject,html}` exceeds the
-  90 KB store budget, **split** when >1 member (reducible) else **terminalize** the single item → `store` →
-  `begin` → **exactly one** `sendResendEmailOnce` of the PERSISTED frozen request with the PERSISTED
-  `dg:v1:<group>` key (never a second render) → `record` every observed outcome (transport or HTTP) → finish
-  the run. The worker issues NO direct writes to any digest table; every transition is an RPC. It is bounded by
-  explicit limits (materialize groups/members, max claim iterations, sweep limit) and a wall-clock budget.
-- **Truthful runs + recovery.** A per-group failure — including a `record` failure that lands AFTER the HTTP
-  send — is caught, counted, and left to the state machine's crash/stale recovery (the live-but-unrecorded
-  attempt is reclaimed next tick → uncertainty); it is never re-sent inside the worker. A run-level failure
-  finishes the dispatch run `failed`; true process death leaves it unfinished for crash recovery. No partial run
-  is ever finished `succeeded`. Logs carry only IDs / states / counts / redacted error labels — never a
-  destination, frozen HTML, token, or `digest_item`.
-- **New forward-only RPC — `finalize_notification_digest_render_oversize`** (migration `20261005100000`).
-  Terminalizes a RENDERED single-item group that exceeds the store budget as `oversize_failed` /
-  `render_oversize`. Ownership + run + `prepared`/`request_ready` state gated exactly like `store`; RAISEs if
-  `item_count > 1` (a multi-item group is reducible and MUST split, not terminalize), so the worker can neither
-  loop on it forever nor drop a splittable group. service_role EXECUTE only.
+- **STATE-AWARE dispatch (`_shared/digest-worker-core.ts`), RPC-only.** `claim` does NOT normalise groups to
+  `leased` — it hands a group back in its DUE state, and each RPC accepts exactly one input state
+  (`prepare`←`leased`, `store`←`prepared`, `begin`←`request_ready`). So after claim the worker reads the owned
+  group's state and drives the right step:
+  - `leased` → `prepare` → render surviving members → (split | terminalize-oversize | `store`) → `begin` → send
+  - `prepared` → render → (…) → `store` → `begin` → send  (crash recovery: prepared but never stored)
+  - `request_ready` → `begin` → send the PERSISTED frozen request, **NO re-render / re-store**  (a RETRY: 429 /
+    ambiguous / stale-sending recovery / half-open probe all return here; `begin` mints a fresh `attempt_id` but
+    reuses the immutable `frozen_request` + `dg:v1:<group>` key, so every retry re-POSTs the identical request
+    under one idempotency key → provider-side dedup)
+  - any other claimed state is impossible for an owned group → treated as a group error.
+  Exactly ONE `sendResendEmailOnce` per attempt; the worker issues NO direct writes to any digest table (every
+  transition is an RPC) and is bounded by explicit limits (materialize groups/members, max claim iterations,
+  sweep limit) + a wall-clock budget. One dispatch run wraps it: sweep (`reconcile_notification_digest_stale`)
+  → `materialize` (its own run/phase) → the claim loop → reconcile → finish.
+- **The COMPLETE provider request is frozen: `{from,to,subject,html}`.** `from` (sender identity) is frozen
+  alongside the body so a deploy that changes the platform default cannot alter an already-stored request
+  within its 23-hour idempotency window; `request_hash` covers all four fields. The one validator is split:
+  `notif_digest_validate_frozen_request_shape` (object + `{from,to,subject,html}` allow-list + non-empty +
+  `to`↔fingerprint, no byte cap) and the byte-bounded `notif_digest_validate_frozen_request` (= shape + ≤90 KB),
+  both invoked by `store` and the send-identity guard.
+- **Every provider request carries the `digest_group_id` tag (§PV/§P5)** — `tags:[{name:digest_group_id,
+  value:<group_id>}]` — so a delivery/bounce callback arriving BEFORE `record` can still correlate an in-flight
+  send. The adapter makes the tag mandatory (a required arg), so no send path can omit it.
+- **`finalize_notification_digest_render_oversize`** (migration `20261005100000`) terminalizes a RENDERED
+  single-item group over budget as `oversize_failed` / `render_oversize`. It takes the authoritative rendered
+  request and PROVES oversize server-side: exactly `prepared` (NOT `request_ready` — a retried group can hold
+  reservations that terminalizing would strand), exactly one surviving member, valid shape+destination, and
+  `octet_length(jsonb::text) > 92160`. Small / wrong-destination / multi-item / non-`prepared` calls all RAISE.
+  service_role EXECUTE only.
+- **Truthful runs + reconciliation.** A per-group failure — including a `record` failure that lands AFTER the
+  send, or an impossible missing-frozen / zero-member / unexpected-state — is caught and counted, and the group
+  is left to the state machine's crash/stale recovery (the live-but-unrecorded attempt is reclaimed next tick →
+  uncertainty); it is never re-sent inside the worker. But it makes the run unhealthy: a run with ANY group
+  error finishes the dispatch run `failed` → status `error` → HTTP 500 (a failed group is never reported as a
+  healthy 200), while independent groups keep processing. EVERY started run — materialize AND dispatch, on both
+  success and failure paths — is reconciled via `reconcile_notification_digest_run` **best-effort** (reconcile
+  never throws, so it can't mask the original error, and never recurses); run IDs + dimensional
+  `(family,metric,count)` metrics are logged. A true process death leaves the run unfinished for crash recovery.
+- **Endpoint contract (auth is fail-closed and runs FIRST).** `requireServiceRole` gates the request BEFORE any
+  config read or DB access, so the status matrix is: **401** (no/invalid service-role auth — including a missing
+  `SUPABASE_SERVICE_ROLE_KEY`, which cannot be validated) → **200 `disabled`** (switch off, zero DB) → **500
+  `misconfigured`** (switch on but `RESEND_API_KEY`/`SUPABASE_URL` missing, zero DB) → **200 `ok` / 500 `error`**
+  (ran). A misconfiguration and every unhealthy run fire ONE best-effort Slack alert per invocation with safe
+  IDs/counts only (never per group). **Backstop:** the in-worker Slack alert itself needs the service-role key,
+  and a totally-unconfigured function 401s before it runs — so the durable safety net for "the function is
+  broken/misconfigured" is EXTERNAL cron/uptime monitoring on the scheduled invocation (a non-200, or no
+  invocation at all), NOT the in-worker alert. This must be wired when the cron is scheduled in 10c-b.
+- **PII-safe logs.** Logs carry only IDs / states / counts / redacted error labels. Thrown-error labels pass
+  through `redactDetail` (strips emails / tokens / JWTs / ids / URL queries, length-bounded), so even an error
+  message that echoes a recipient address cannot reach the logs. The adapter's `error_name` is a machine-name
+  allow-list → `http_<status>` otherwise; the free-text provider `message` (which can contain a recipient
+  address) is never surfaced.
+- **No session-scoped cron lock.** The old `try_lock_cron_job`/`unlock_cron_job` pair (session-level
+  `pg_try_advisory_lock`) spanned two pooled PostgREST requests with no session affinity, so the unlock could
+  land on a different backend and wedge the lock indefinitely. This worker does not use it — the atomic `claim`
+  (`FOR UPDATE SKIP LOCKED` + ownership stamp) is the concurrency boundary. The four v1 workers that still use
+  that lock are tracked as a separate hardening item (see below); it must move to an atomic-claim or durable
+  owner-token/expiry lease before 10c-b enables the digest cron.
 - **Correctness fix (migration `20261005110000`) — `expr::text::bytea` → `convert_to(expr::text,'UTF8')`.**
   Every request/canonical-key hash in the deployed (inert) `20261004100000` cast text to `bytea`, which runs
   the bytea INPUT function and INTERPRETS backslash escapes. A jsonb `::text` of any real frozen request
@@ -651,37 +691,3 @@ scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, sep
   materialize fallback, store, send-identity guard, destination fingerprint); `convert_to(…,'UTF8')` takes the
   text's raw UTF-8 bytes with no escape interpretation, byte-identical to the old cast for all backslash-free
   text, so every existing hash VALUE is preserved. Forward-only CREATE OR REPLACE; privileges/triggers persist.
-
-### 10c-a3 worker-slice review corrections (Codex)
-
-- **State-aware dispatch (the load-bearing fix).** `claim` does NOT normalise groups to `leased`; it returns
-  the group in its due state, and each RPC accepts exactly one input state (`prepare`←`leased`, `store`←
-  `prepared`, `begin`←`request_ready`). The worker now reads the owned group's state after claim and drives the
-  right step: `leased`→prepare→render→…→store→begin; `prepared`→render→…→store→begin (crash recovery); and
-  `request_ready`→begin→send the PERSISTED request (NO re-render/re-store). A RETRY (429 / ambiguous / stale-
-  sending recovery / half-open probe) is claimed directly in `request_ready`; `begin` mints a fresh `attempt_id`
-  but reuses the immutable `frozen_request` + `dg:v1` key, so every retry re-POSTs the identical request under
-  one idempotency key (provider-side dedup). The prior worker called `prepare` after every claim, which errored
-  on every retry — the whole retry/uncertainty/probe machinery was unreachable.
-- **`digest_group_id` send tag (§PV/§P5).** Every provider request carries `tags:[{name:digest_group_id,
-  value:<group_id>}]`, so a delivery/bounce callback arriving BEFORE `record` can correlate an in-flight send.
-- **Complete request frozen — `from` added to the allow-list.** The frozen request is now `{from,to,subject,
-  html}` (validator split into `notif_digest_validate_frozen_request_shape` = allow-list+destination, and the
-  byte-bounded wrapper). Sender identity is frozen at store, so a deploy that changes the platform default
-  cannot alter an already-frozen request within its 23-hour idempotency window.
-- **Hardened oversize finalizer** (signature now takes the rendered request). It PROVES oversize server-side:
-  exactly `prepared` (not `request_ready` — a retried group can hold reservations that terminalizing would
-  strand), exactly one surviving member, valid shape+destination, and `octet_length(jsonb::text) > 92160`.
-  Small / wrong-destination / multi-item / non-prepared calls all RAISE.
-- **Truthful runs.** Any per-group failure (incl. a `record` failure after the send) or impossible
-  missing-frozen / zero-member / unexpected-state marks the dispatch run `failed` → status `error` → HTTP 500;
-  independent groups keep processing and failed ones are left to crash/stale recovery, never re-sent inline.
-  `reconcile_notification_digest_run` is always called; run IDs + dimensional metrics are logged (PII-free).
-- **No session-scoped cron lock.** The `try_lock_cron_job`/`unlock_cron_job` pair spanned two pooled PostgREST
-  requests with no session affinity (unlock could wedge on a different backend). Removed — the atomic `claim`
-  (FOR UPDATE SKIP LOCKED) is the concurrency boundary. (Filed a separate audit for the v1 workers that inherit
-  the same pattern.)
-- **Config vs disabled + PII-safe errors.** Switch off → 200 `disabled` (zero DB); switch on but Resend/Supabase
-  config missing → 500 `misconfigured` (zero DB, alert). The adapter's `error_name` is a machine-name allow-list
-  → `http_<status>` otherwise; the free-text provider `message` (which can contain a recipient address) is
-  never logged or persisted.

@@ -220,9 +220,11 @@ Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
    one row per recipient per channel" and "webhook-vs-verify race → no
    duplicates" guarantees (a duplicate delivery re-derives the same per-recipient
    keys and no-ops on the unique index), while still fanning out to N recipients.
-8. **Worker = the cron single-flight lock pattern** already in
-   [`20260614190000_cron_single_flight_lock.sql`](../supabase/migrations/20260614190000_cron_single_flight_lock.sql),
-   plus stale-lock recovery + exponential backoff + max attempts.
+8. **Worker concurrency = atomic claims, NOT the session cron lock.** The v2 digest worker (10c-a3) uses the SQL
+   state machine's `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) as its single concurrency boundary and
+   does **not** take `try_lock_cron_job` — that session-scoped advisory lock has a cross-pooled-session wedge
+   hazard (see `docs/OBSERVABILITY_AND_RECOVERY.md` → CRON-SF-WEDGE) and must not be inherited by new workers.
+   Recovery is via the state machine's stale-lock reclaim + exponential backoff + max attempts.
 
 ---
 

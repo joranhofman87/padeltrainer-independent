@@ -19,6 +19,9 @@ export type HandlerResult = { status: string; http: number; body: Record<string,
 export type HandlerDeps = {
   env: (key: string) => string | undefined;
   log: (event: Record<string, unknown>) => void;
+  /** Best-effort operational alert (e.g. Slack). Fires AT MOST ONCE per invocation, with safe IDs/counts only.
+   *  MUST never throw — an alert failure cannot break or mask the primary flow. Injected so tests need no net. */
+  alert: (payload: Record<string, unknown>) => Promise<void> | void;
   /** Build the worker deps from validated config and run it. Injected so tests need no DB. */
   run: (config: { resendApiKey: string; supabaseUrl: string; serviceKey: string }) => Promise<WorkerSummary>;
 };
@@ -34,11 +37,13 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
   const supabaseUrl = deps.env("SUPABASE_URL");
   const serviceKey = deps.env("SUPABASE_SERVICE_ROLE_KEY");
   if (!resendApiKey || !supabaseUrl || !serviceKey) {
-    // enabled but unconfigured: a real misconfiguration → 500/alert. Nothing below runs, so ZERO DB mutations.
-    deps.log({
-      event: "digest_worker_misconfigured", reason: "missing_config",
-      missing: [!resendApiKey ? "RESEND_API_KEY" : null, !supabaseUrl ? "SUPABASE_URL" : null, !serviceKey ? "SUPABASE_SERVICE_ROLE_KEY" : null].filter(Boolean),
-    });
+    // enabled but unconfigured: a real misconfiguration → 500 + a real (best-effort) alert. Nothing below runs,
+    // so ZERO DB mutations. NOTE: a missing SUPABASE_SERVICE_ROLE_KEY is caught EARLIER by the entrypoint's
+    // requireServiceRole → 401 (fail-closed), and the Slack alert itself needs that key — so the ultimate
+    // backstop for a totally-unconfigured function is EXTERNAL cron/uptime monitoring, documented in the ADR.
+    const missing = [!resendApiKey ? "RESEND_API_KEY" : null, !supabaseUrl ? "SUPABASE_URL" : null, !serviceKey ? "SUPABASE_SERVICE_ROLE_KEY" : null].filter(Boolean);
+    deps.log({ event: "digest_worker_misconfigured", reason: "missing_config", missing });
+    await deps.alert({ event: "digest_worker_misconfigured", missing });
     return { status: "misconfigured", http: 500, body: { status: "misconfigured", reason: "missing_config" } };
   }
 
@@ -48,7 +53,17 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
   } catch {
     // runDigestWorker already finished the dispatch run 'failed' and logged a redacted error before rethrowing.
     deps.log({ event: "digest_worker_invocation_error" });
+    await deps.alert({ event: "digest_worker_run_failed", reason: "invocation_error" });
     return { status: "error", http: 500, body: { status: "error" } };
+  }
+  // one alert per invocation for a run that ended unhealthy (run-level failure OR any per-group error) — safe
+  // IDs/counts only, never per-group.
+  if (summary.status === "error") {
+    await deps.alert({
+      event: "digest_worker_run_failed", reason: "group_errors",
+      dispatch_run: summary.dispatchRunId ?? null, group_errors: summary.groupErrors,
+      claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
+    });
   }
   return { status: summary.status, http: summary.status === "error" ? 500 : 200, body: summary as unknown as Record<string, unknown> };
 }

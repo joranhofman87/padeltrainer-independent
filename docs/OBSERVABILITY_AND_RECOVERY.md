@@ -31,8 +31,14 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 ### Channel B — Cron alerting
 - `alertCronFailure` (`api/_lib/cron.ts:59`) fires only when a sub-job returns `ok:false`. Wired into `api/cron/daily-emails.ts` and `api/cron/daily-maintenance.ts` (schedules in `vercel.json`: `0 12 * * *` and `0 6 * * *`).
 - Many crons also self-alert internally (e.g. `invoice-health-check/index.ts:166`), closing the "HTTP 200 with partial failures inside" blind spot for wired jobs.
-- **Single-flight lock:** crons take an advisory lock via `try_lock_cron_job` / `unlock_cron_job` (migration `20260614190000_cron_single_flight_lock.sql`) to prevent concurrent double-runs.
+- **Single-flight lock (⚠ has a known wedge hazard — see below):** several crons take an advisory lock via `try_lock_cron_job` / `unlock_cron_job` (migration `20260614190000_cron_single_flight_lock.sql`) to reduce concurrent double-runs.
 - **Gap:** Vercel does not page on a cron that *never fires* (missed schedule) — no heartbeat. See backlog OBS-P1-2.
+
+### ⚠ Known reliability hazard — session-scoped cron single-flight lock (CRON-SF-WEDGE)
+`try_lock_cron_job` is a **session-level** `pg_try_advisory_lock`. The lock and its `unlock_cron_job` run as **separate pooled PostgREST requests with no session affinity**, so the unlock can execute on a *different* backend than the one that acquired the lock — leaving the lock **held on the acquiring session until that pooled connection is recycled**. A healthy run can therefore wedge the job (every subsequent tick sees `try_lock` return false and bails) for an unbounded time, not "one connection lifetime" as the migration comment claims. The auto-release-on-recycle only bounds a *crashed* run, not this cross-session case.
+- **Affected v1 workers (still use the lock):** `notification-email-worker`, `notification-whatsapp-worker`, `invoice-health-check`, `process-onboarding-emails`.
+- **NOT affected:** `notification-digest-worker` (10c-a3) deliberately does **not** use this lock — the SQL state machine's atomic `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) is its concurrency boundary.
+- **Acceptance criteria for the fix (must land before 10c-b enables the digest cron):** replace the session advisory lock with either (a) reliance on the underlying atomic/idempotent claim where the job is already safe (drop the lock), or (b) a **durable owner-token + `locked_until` expiry lease** (a table row updated by a `WHERE locked_until < now()` CAS) that is pooling-safe and self-heals via TTL. Add a test simulating unlock-on-a-different-session and asserting the next tick is not wedged. Tracked as a background task in this session; convert to a durable issue/PR before scheduling any new cron.
 
 ### Channel C — Client PostHog
 `src/lib/logger.ts`: `logger.error` always captures `$exception`; `logger.warn` captures only in prod; `logger.info` is a no-op in prod. **Browser only — never sees an edge-function or server failure.**

@@ -1,8 +1,10 @@
 /**
  * Digest email rendering for the ADR-0008 worker (10c-a3).
  *
- * Turns a group's surviving members (their frozen `digest_item` snapshots + the shared destination) into the
- * single-recipient `{ to, subject, html }` tuple that store_notification_digest_request validates and freezes.
+ * Turns a group's surviving members (their frozen `digest_item` snapshots + the shared destination + the
+ * platform sender) into the COMPLETE `{ from, to, subject, html }` frozen request that
+ * store_notification_digest_request validates and freezes. `from` is included so the whole provider request —
+ * not just its body — is frozen and hashed (a later deploy can't change sender identity mid-idempotency-window).
  * Pure + deterministic so it is unit-testable and produces byte-stable output for the request hash.
  *
  * The exact `digest_item` schema is finalized with the resolver (10c-b); this renders DEFENSIVELY against a

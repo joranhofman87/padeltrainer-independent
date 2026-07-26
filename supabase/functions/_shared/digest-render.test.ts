@@ -89,15 +89,17 @@ Deno.test("oversize detection is byte-accurate against the store budget", () => 
 });
 
 Deno.test("pgJsonbTextByteLength adds the jsonb separator bytes over compact JSON (matches octet_length)", () => {
-  // jsonb::text = {"key": value, ...} — vs compact {"key":value,...}. For a 3-key object that is exactly
-  // +5 bytes (3 colon-spaces + 2 comma-spaces), which is why a JS compact measure strands a boundary group.
-  const obj = { to: "p@x.com", subject: "hi", html: "<p>x</p>" };
-  const compact = utf8Bytes(JSON.stringify(obj));
-  assertEquals(pgJsonbTextByteLength(obj), compact + 5);
+  // jsonb::text = {"key": value, ...} — vs compact {"key":value,...}. For an N-key object that is exactly
+  // +(2N-1) bytes (N colon-spaces + (N-1) comma-spaces), which is why a JS compact measure strands a group.
+  // The PRODUCTION frozen request is FOUR keys {from,to,subject,html} → +7.
+  const req = { from: FROM, to: "p@x.com", subject: "hi", html: "<p>x</p>" };
+  assertEquals(pgJsonbTextByteLength(req), utf8Bytes(JSON.stringify(req)) + 7);   // 4 keys → +7
+  const three = { to: "p@x.com", subject: "hi", html: "<p>x</p>" };
+  assertEquals(pgJsonbTextByteLength(three), utf8Bytes(JSON.stringify(three)) + 5); // 3 keys → +5 (the formula holds)
   // unicode / quotes / backslashes are byte-identical between JS and jsonb escaping — only ordering +
   // separators differ (verified byte-exactly against PostgreSQL in the real-PG parity test).
-  const tricky = { to: "π@x.com", subject: `a"b\\c`, html: "ef/g" };
-  assertEquals(pgJsonbTextByteLength(tricky), utf8Bytes(JSON.stringify(tricky)) + 5);
+  const tricky = { from: FROM, to: "π@x.com", subject: `a"b\\c`, html: "ef/g" };
+  assertEquals(pgJsonbTextByteLength(tricky), utf8Bytes(JSON.stringify(tricky)) + 7);
 });
 
 Deno.test("deterministic: same input → byte-identical output (stable request hash)", () => {
