@@ -103,12 +103,13 @@ cron→function auth would leave all 81 broken. So the inventory below — not j
 migrate or explicitly prove.
 
 This inventory is **machine-checked and self-enforcing**, not a hand-list that rots: `npm run check:legacy-key`
-(`scripts/check-legacy-service-role-consumers.mjs`, a CI gate) walks `supabase/functions`, `api`, and `scripts`
-and fails if any file references the key — **directly, OR transitively via a shared service-role helper**
-(`requireServiceRole` / `getEnvServiceRoleKey`) — without being in its categorized registry, or if a registry
-entry no longer does. The helper signal is essential: the biggest live consumers
-(e.g. `notification-digest-worker`, `backup-database`, `twilio-content-admin`) carry **no literal** and a
-literal-only scan would silently drop them. A NEW admin-client / caller / worker therefore cannot slip past the
+(`scripts/check-legacy-service-role-consumers.mjs`, a CI gate) **content-scans** `supabase/functions`, `api`, and
+`scripts` and fails if any file references the key — under **any `*_SERVICE_ROLE_KEY` name** (not just the
+`SUPABASE_` literal — the storage scripts read `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`), **directly OR transitively via
+a shared service-role helper** (`requireServiceRole` / `getEnvServiceRoleKey`) — without being in its categorized
+registry, or if a registry entry no longer does. Both signals are essential: the biggest live consumers
+(e.g. `notification-digest-worker`, `backup-database`, `twilio-content-admin`) carry **no literal at all**, and an
+alias or an unknown file extension is not a safe reason to escape. A NEW consumer therefore cannot slip past the
 deactivation plan — CI forces it into a category first.
 
 | Category | Count* | What it is | Legacy-off impact |
@@ -118,7 +119,7 @@ deactivation plan — CI forces it into a category first.
 | `downstream-caller` | 5 | Forwards the key to invoke another function / shared email helper that does. | The invoked call 401s. |
 | `via-shared-helper` | 5 | **No literal** — consumes the key transitively through a registered shared module (`requireServiceRole`/`getEnvServiceRoleKey`): `notification-digest-worker`, `backup-database`, `invoice-storage-gc`, `twilio-content-admin`, `_shared/forward-invoice-auth.ts`. Caught only by the helper-signal pass. | 500 / 401 like their literal peers; each must be re-verified individually after a rotation. |
 | `vercel-caller` | 1 | `api/_lib/cron.ts` — reads the key from the **Vercel env** (not Vault), sends it as `apikey` + `Bearer`. | Both Vercel crons 401. |
-| `scripts-ci` | 9 | One-off migration scripts, local seed, and the CI guards themselves. | Dev/CI tooling only (no prod runtime). |
+| `scripts-ci` | 14 | One-off migration scripts (incl. cross-project storage scripts reading `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`), local seed, and the CI guards themselves. | Dev/CI tooling only (no prod runtime). |
 | `tests` | 4 | Fixtures exercising the auth — no production credential. | None. |
 | **pg_net / Vault (SQL)** | see cron table | Cron commands sending the Vault-stored key as `Bearer` — a **separate class in `supabase/migrations`**, NOT scanned by the code guard; enumerated in *Which crons depend on this key*. | The cron's `net.http_post` sends a dead token. |
 | **Third parties** | **0** | The service-role key **never leaves for an external provider** — provider functions authenticate to Resend/Twilio/Mollie/Stripe with those providers' *own* keys. | — |
@@ -173,9 +174,15 @@ select net.http_post(
     'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')),
   body := '{}'::jsonb
 );
--- then inspect the response (status + body only):
+-- then inspect the response (status + body only — see the secret caution below):
 select id, status_code, content, error_msg, created from net._http_response where id = <the returned id>;
 ```
+
+> 🔒 **Never `select *` from — or dump — pg_net's request/queue tables.** The probe above lists specific
+> `net._http_response` columns on purpose: the **request** side (`net.http_request_queue`, and the request
+> headers echoed in some pg_net versions) **retains the `Authorization: Bearer <service-role JWT>` in cleartext**.
+> Inspect only the named response columns; do not `select *` or query the request/queue tables while debugging, or
+> you will surface the live key in query output/logs — violating the "never print a credential value" rule below.
 
 Expect `status_code = 200` with `{"status":"disabled","reason":"disabled"}` — a `disabled` body confirms the flag
 was off (zero writes). A `401` means the Vault secret isn't the key *this* function's `requireServiceRole` expects.
@@ -287,12 +294,15 @@ Resume ONLY after BOTH side-effect-free auth probes pass with **zero writes**:
   two Vercel crons **remain disabled** and recovery is **not** complete. Never invoke `/api/cron/daily-emails`
   or `/api/cron/daily-maintenance` to "test the key". Never print any credential value.
 
-**Track A2 — compromised JWT *signing* secret: revoke NOW, do not wait for the migration.** This follows
-Supabase's **signing-key rotation / revocation** procedure
-([signing keys](https://supabase.com/docs/guides/auth/signing-keys)) and is **URGENT and INDEPENDENT of Track
-A1** — because the attacker can forge tokens for any role, it **must NOT be deferred to the end of a
-potentially-lengthy API migration**. Sequence it on its own:
-1. **Rotate/revoke the exposed signing key immediately** per Supabase's signing-key procedure — this *is* the
+**Track A2 — compromised JWT *signing* secret: revoke NOW, do not wait for the migration.** This is **URGENT and
+INDEPENDENT of Track A1** — because the attacker can forge tokens for any role, it **must NOT be deferred to the
+end of a potentially-lengthy API migration**. Use the procedure that matches this project's key model — **we are
+still on the legacy shared JWT secret**, so containment is **regenerate the legacy JWT secret** (Dashboard →
+Settings → API — the nuclear, all-sessions action described below), per the
+[legacy JWT-secret rotation guide](https://supabase.com/docs/guides/troubleshooting/rotating-anon-service-and-jwt-secrets-1Jq6yd).
+*(Only if this project has already migrated to asymmetric [signing keys](https://supabase.com/docs/guides/auth/signing-keys)
+do you instead revoke the compromised key via that graceful per-key flow.)* Sequence it on its own:
+1. **Regenerate/revoke the exposed signing secret immediately** per the matching guide above — this *is* the
    containment for a forged-token attack, and it cannot wait for any code change.
 2. **Accept the session impact up front:** revoking the signing key **invalidates all active user sessions** —
    every user must re-authenticate. That is the cost of containment; do not delay revocation to avoid it.
@@ -348,8 +358,9 @@ and must be sent via the **`apikey`** header, not `Authorization: Bearer`
      consume the key through `requireServiceRole` / `getEnvServiceRoleKey`. Migrating the shared modules covers
      them mechanically, but **each must still be individually smoke-tested** after the cutover (they are exactly
      the consumers a literal-only inventory forgets).
-  7. **`scripts-ci` (9).** Migration/seed scripts + the CI guards that read the key — repoint or retire, and
-     update this guard's registry + doc so they describe the new model.
+  7. **`scripts-ci` (14).** Migration/seed scripts (incl. the cross-project storage scripts on
+     `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`) + the CI guards that read the key — repoint or retire, and update this
+     guard's registry + doc so they describe the new model.
   8. **Guard green on the new model.** `npm run check:legacy-key` shows **no category still referencing the legacy
      key** (registry migrated/emptied) — the machine-checked proof that no consumer was forgotten.
   9. **Deploy all of the above**, then verify (below), then **disable/remove the legacy JWT LAST**.

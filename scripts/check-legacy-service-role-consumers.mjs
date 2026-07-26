@@ -10,11 +10,16 @@
  * client. Deactivating the legacy key breaks all of those at once.
  *
  * The pre-migration audit found the earlier doc only tracked ~3 consumers (worker auth, pg_net, the Vercel
- * caller) while ~100 files actually reference the key. This guard makes the inventory DURABLE and
- * self-enforcing: it walks the runtime source roots and fails CI if a file references the key (directly OR via a
- * shared service-role helper — see the TWO detection signals below) but is not in the categorized registry
- * (a NEW unmanaged consumer), or if a registered file no longer references it (a STALE entry). Either way the
- * registry — and Path B's migration checklist — cannot silently drift.
+ * caller) while ~110 files actually reference the key. This guard makes the inventory DURABLE and
+ * self-enforcing: it CONTENT-scans the runtime source roots (not an extension allow-list — that would silently
+ * drop an unknown-extension consumer) and fails CI if a file references the key (directly OR via a shared
+ * service-role helper — see the TWO detection signals below) but is not in the categorized registry (a NEW
+ * unmanaged consumer), or if a registered file no longer references it (a STALE entry). Either way the registry —
+ * and Path B's migration checklist — cannot silently drift.
+ *
+ * Detection is the whole `*_SERVICE_ROLE_KEY` env-name FAMILY, not one literal: the cross-project storage
+ * migration scripts read the key under `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`, and an alias is not a safe reason to
+ * escape the inventory (`TARGET_SERVICE_ROLE_KEY` points at the live project — it IS the legacy key).
  *
  * Categories (Path B must migrate or explicitly PROVE each one before the legacy key is deactivated):
  *   inbound-auth       — verifies the incoming request's Bearer/apikey against the key (the drainers).
@@ -41,17 +46,22 @@
  * service-role key never leaves for an external provider (provider functions authenticate to Resend/Twilio/
  * Mollie/Stripe with those providers' OWN keys).
  *
- * When you add a file that references SUPABASE_SERVICE_ROLE_KEY (or a service-role helper), add it below.
+ * When you add a file that references any `*_SERVICE_ROLE_KEY` name (or a service-role helper), add it below.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const KEY = 'SUPABASE_SERVICE_ROLE_KEY';       // the ONLY name the legacy key is read under (verified — no aliases)
+// Match the WHOLE `*_SERVICE_ROLE_KEY` env-name family, not one literal: the storage migration scripts read the
+// key under SOURCE_/TARGET_SERVICE_ROLE_KEY (cross-project), and a bare SERVICE_ROLE_KEY is equally a consumer.
+// A single-literal scan silently dropped all of them — an alias is NOT a safe reason to escape the inventory.
+const KEY_FAMILY = /[A-Z0-9_]*SERVICE_ROLE_KEY/;
 const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey/; // catches requireServiceRole(OrAdmin) + the getter
 const ROOTS = ['supabase/functions', 'api', 'scripts'];
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.git']);
-// Runtime source only. Config (.toml) + env templates (.env*) are not consumers; shell/other code IS scanned.
-const TEXT_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|py|sql|sh)$/;
+const SKIP_DIRS = new Set(['node_modules', '.git']); // anchored to genuinely-non-source dirs only
+// Scan by CONTENT, not an extension allow-list (an allow-list silently drops an unknown-extension consumer). Skip
+// only binary/asset/lockfile blobs + env files (secret material / templates, not code consumers) + oversized files.
+const SKIP_EXT = /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|eot|otf|pdf|zip|gz|tgz|mp[34]|mov|lock|map|min\.js)$/i;
+const MAX_BYTES = 512 * 1024;
 
 // ── The categorized, durable inventory ────────────────────────────────────────────────────────────────────
 const MANAGED = {
@@ -166,6 +176,13 @@ const MANAGED = {
     'scripts/migration/ficwb_secrets_audit.py',
     'scripts/migration/storage_common.py',
     'scripts/migration/storage_migration_dry_run.py',
+    // cross-project storage migration one-offs — read the key under SOURCE_/TARGET_SERVICE_ROLE_KEY (not the
+    // SUPABASE_ literal); TARGET points at the live project, so TARGET_SERVICE_ROLE_KEY IS the legacy key.
+    'scripts/migration/storage_copy_buckets.py',
+    'scripts/migration/storage_copy_invoices.py',
+    'scripts/migration/storage_fix_missing_from_db.py',
+    'scripts/migration/storage_regenerate_invoice_urls.py',
+    'scripts/migration/storage_regenerate_invoices_via_edge.py',
   ],
   'tests': [
     'supabase/functions/_shared/auth.test.ts',
@@ -187,16 +204,18 @@ const MANAGED = {
 // ── Enforcement: filesystem walk vs registry ──────────────────────────────────────────────────────────────
 const registered = new Set(Object.values(MANAGED).flat());
 
+const scannable = (name) => !SKIP_EXT.test(name) && !name.startsWith('.env');
+
 function walk(dir, out) {
   if (!existsSync(dir)) return;
   const st = statSync(dir);
-  if (st.isFile()) { if (TEXT_EXT.test(dir)) out.push(dir); return; }
+  if (st.isFile()) { if (scannable(dir)) out.push(dir); return; }
   for (const name of readdirSync(dir)) {
     if (SKIP_DIRS.has(name)) continue;
     const p = join(dir, name);
     const s = statSync(p);
     if (s.isDirectory()) walk(p, out);
-    else if (TEXT_EXT.test(name)) out.push(p);
+    else if (scannable(name)) out.push(p);
   }
 }
 
@@ -204,15 +223,16 @@ const found = new Set();
 const files = [];
 for (const root of ROOTS) walk(root, files);
 for (const f of files) {
+  if (statSync(f).size > MAX_BYTES) continue; // skip oversized blobs — real consumers are small source files
   const src = readFileSync(f, 'utf8');
-  if (src.includes(KEY) || HELPER_SIGNAL.test(src)) found.add(f);
+  if (KEY_FAMILY.test(src) || HELPER_SIGNAL.test(src)) found.add(f);
 }
 
 const unregistered = [...found].filter((f) => !registered.has(f)).sort();
 const stale = [...registered].filter((f) => !found.has(f)).sort();
 
 if (unregistered.length || stale.length) {
-  console.error(`Legacy service-role key registry drift — ${KEY} consumers are out of sync with the registry.\n`);
+  console.error(`Legacy service-role key registry drift — *_SERVICE_ROLE_KEY consumers are out of sync with the registry.\n`);
   if (unregistered.length) {
     console.error('UNREGISTERED — these files reference the key but are not in the categorized registry.');
     console.error('A new legacy-key consumer must be migrated (or explicitly proven) in Path B before the key can');
