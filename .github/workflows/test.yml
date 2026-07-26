@@ -33,6 +33,13 @@ jobs:
       - name: Edge-function config drift guard
         run: npm run check:edge-config
 
+      # Fails if any runtime file references the LEGACY service-role key without being in
+      # the categorized registry (scripts/check-legacy-service-role-consumers.mjs). Keeps the
+      # Path-B migration inventory (docs/CRON_SERVICE_KEY_SETUP.md) from silently drifting — a
+      # new admin-client / caller / worker cannot slip past the legacy-key deactivation plan.
+      - name: Legacy service-role-key consumer guard
+        run: npm run check:legacy-key
+
   # The REAL type-check. Root `tsc` has files:[] and checks nothing; this runs
   # `tsc -p tsconfig.app.json` and — since that project is perma-red with known
   # pre-existing errors — ratchets on NEW errors only vs scripts/tsc-app.baseline.json
