@@ -512,13 +512,21 @@ It **fails today** (124 pending: service-role 98, anon 22 [19 edge-function + 3 
 production consumer** (edge functions, the Vercel caller, the browser bundle + public edge, and every
 `active`/`active-legacy` SQL cron) has moved off the legacy service-role/anon keys. Migration is tracked by an
 **explicit per-path `STATE` registry** (not signal-disappearance, which would wrongly flag a migrated file "stale"
-and never let the gate pass): each path is `legacy` (default), `new-secret`, `publishable`, or a reviewed
-exemption (`local-demo` / `tooling` / `retired`). A path becomes `new-secret`/`publishable` only **after its
-deployed value is verified** — the env NAME (a slot) and a shared-helper NAME (`requireServiceRole`) are
-*dependency* signals, **not** proof the credential is still legacy, so a helper importer that moves to `sb_secret_`
-under an unchanged name passes without renaming. Non-production paths (tests, CI/guard tooling, one-off scripts)
-must carry an explicit exemption state — they are **not** blanket-excluded by category (some `scripts-ci` paths
-target production).
+and never let the gate pass). State is **per credential kind, not scalar**: 18 paths consume BOTH legacy keys (an
+admin client + an anon/public client in one file), so an entry is EITHER a reviewed exemption **string**
+(`local-demo` / `tooling` / `retired`, applying to every kind) OR an object `{ serviceRole?, anon?, sql? }` where
+each leg is `legacy` (default) or its ONE valid migrated target — `serviceRole`/`sql` → `new-secret`, `anon` →
+`publishable`. A strict whitelist rejects a typo (`new-secert`) or a wrong target (`anon: new-secret`) as a hard
+registry error, so a mislabeled state can never read as "migrated" and it fails **both** the normal guard and the
+cutover precheck (one authoritative `inventoryProblems()` feeds both). A leg becomes a migrated target only
+**after its deployed value is verified** — the env NAME (a slot) and a shared-helper NAME (`requireServiceRole`)
+are *dependency* signals, **not** proof the credential is still legacy, so a helper importer that moves to
+`sb_secret_` under an unchanged name passes without renaming, and a dual-role file must migrate **each leg
+independently** (`new-secret` certifies only the service-role/SQL leg, `publishable` only the anon leg). A browser
+surface additionally fails if it references ANY RLS-bypassing key — the legacy service_role name, `sb_secret_`, an
+inline service_role JWT, **or the new `SUPABASE_SECRET_KEYS` backend-secret family** (a browser leak regardless of
+migration state). Non-production paths (tests, CI/guard tooling, one-off scripts) must carry an explicit exemption
+state — they are **not** blanket-excluded by category (some `scripts-ci` paths target production).
 
 **Disable ONLY after ALL of these hold:**
 1. `npm run check:legacy-key:cutover` → **0 pending** (exit 0). This gate **first re-runs the full inventory**
@@ -529,21 +537,58 @@ target production).
    `SUPABASE_SERVICE_ROLE_KEY` → `sb_secret_`, `VITE_SUPABASE_PUBLISHABLE_KEY` → `sb_publishable_` (and **not**
    `sb_secret_`), Supabase function secrets, and the **Cloudflare worker's `SUPABASE_ANON_KEY`** value (set in the
    Cloudflare dashboard — `wrangler.toml` has `keep_vars = true`, so the value is **not** in git).
-3. **Live `cron.job` inventory** (the lifecycle check is static + best-effort — see below): confirm on the
-   production DB that no scheduled job still sends a **legacy** key. ⚠️ **Never `SELECT command`** — a command may
-   contain an inline JWT, and printing it violates the "never print the key" rule. Return only metadata + a
-   **boolean classification** + a redacted hint:
+3. **Live `cron.job` verification** (the lifecycle check is static + best-effort — see below). Command **text alone
+   is not sufficient proof**: a cron that reads a *renamed* Vault secret (e.g. `edge_secret`) whose **deployed
+   value** is still a legacy `eyJ…` JWT passes a text scan, and a text scan does not enforce that the transport is
+   `apikey` (the new keys' header) rather than `Authorization: Bearer`. So verify BOTH the deployed secret VALUE
+   and the transport — booleans only. ⚠️ **Never `SELECT command` and never `SELECT decrypted_secret`** (either can
+   contain a key); return only metadata + boolean classifications + a redacted fingerprint. **Cutover requirement:**
+   because these crons read the Vault secret *by name* (`… where name = 'service_role_key'`), a value-only rotation
+   leaves that name in the command, so `command_names_legacy_source` (below) stays TRUE. The Path-B migration for
+   each cron must therefore **rename the Vault secret** (to a new, e.g. `sb_secret_key`) **and switch the header from
+   `Authorization: Bearer` to `apikey`** — only then does the command drop `service_role_key`/`Authorization`/`Bearer`.
+
+   **(A) Every active job — transport + command-source classification** (never returns the command):
 
    ```sql
    SELECT jobid, jobname,
+          (command ~* 'net\.http|http_post|http_get')                   AS makes_http_call,             -- pure-SQL crons: FALSE
+          (command ~* 'api[-_]?key')                                    AS uses_apikey_transport,       -- HTTP jobs: want TRUE
+          (command ~* 'authorization|bearer')                           AS uses_bearer_transport,       -- want FALSE (contract = apikey)
           (command ILIKE '%service_role_key%' OR command ILIKE '%app.settings%'
-           OR command ~ 'eyJ[A-Za-z0-9_-]+\.eyJ') AS sends_legacy_credential,
-          left(md5(command), 8) AS command_fingerprint      -- redacted identifier, not the command text
-     FROM cron.job;
-   -- expect every row `sends_legacy_credential = false`. If a row is true, DO NOT print its command — inspect the
-   -- specific job (`\gset` / a targeted, redacted extract) out of band. A migrated cron reads its sb_secret from
-   -- Vault and sends it via `apikey`; matching `%decrypted_secret%` alone is NOT legacy, which is why this
-   -- classifier keys on the legacy service_role_key / app.settings sources + inline `eyJ…` JWTs only.
+           OR command ~ 'eyJ[A-Za-z0-9_-]+\.eyJ')                       AS command_names_legacy_source, -- want FALSE
+          left(md5(command), 8)                                         AS command_fingerprint          -- redacted id, not the text
+     FROM cron.job
+    WHERE active;   -- pg_cron: enabled jobs only
+   -- SAFE post-migration — for EVERY row: uses_bearer_transport = FALSE AND command_names_legacy_source = FALSE;
+   -- and ONLY where makes_http_call = TRUE, additionally uses_apikey_transport = TRUE (pure-SQL crons make no
+   -- outbound call, so apikey = FALSE is expected there — don't read it as unsafe). On any wrong value, DO NOT
+   -- print the command — inspect that job out of band (a targeted, redacted extract).
+   ```
+
+   **(B) Deployed Vault VALUEs by prefix** (never returns the value). Command text cannot prove the value, so
+   classify the secret itself. `starts_with()` is an EXACT prefix test — do **not** use `LIKE 'sb_secret_%'`, whose
+   `_` are single-char wildcards (a loose *positive* check is the dangerous direction). Run BOTH — B1 is the
+   completeness net (no list to maintain), B2 the positive check:
+
+   ```sql
+   -- B1 — the SAFETY NET (no manual array): flag EVERY Vault secret still holding a legacy eyJ… JWT, so a RENAMED
+   -- secret (e.g. `edge_secret`) with an un-rotated legacy value is caught regardless of which cron reads it — the
+   -- omission risk of a hand-maintained name list (and exactly the case (A)'s text scan passes) cannot hide here.
+   SELECT name, starts_with(decrypted_secret, 'eyJ') AS value_is_legacy_jwt
+     FROM vault.decrypted_secrets
+    ORDER BY value_is_legacy_jwt DESC NULLS FIRST;
+   -- A TRUE row is a legacy JWT sitting in Vault. DISPOSITION: cross-reference the name against the active-cron
+   -- Vault-read inventory (MANAGED_SQL notes the names) — a TRUE row IS a blocker iff an active cron reads that
+   -- name; an unrelated third-party JWT (which may legitimately start `eyJ`) that no cron reads is not. A NULL row
+   -- (empty/unset secret) is unclassifiable — inspect it. Expect FALSE for every secret an active cron reads.
+
+   -- B2 — POSITIVE check: confirm the specific secrets your active crons read ARE the new key. Fill the array from
+   -- the active-cron inventory (MANAGED_SQL notes the names — today `service_role_key`; post-migration, the new name):
+   SELECT name, starts_with(decrypted_secret, 'sb_secret_') AS value_is_new_secret
+     FROM vault.decrypted_secrets
+    WHERE name = ANY (ARRAY['service_role_key' /*, every Vault secret an active job reads */]);
+   -- expect value_is_new_secret = TRUE for every row.
    ```
 
 Then **disable the legacy keys in Settings → API Keys** — this disables the `anon` + `service_role` pair

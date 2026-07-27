@@ -115,9 +115,13 @@ const hasInlineAnonJwt = (s) => inlineJwtRoles(s).has('anon');
 // The legacy `anon`/`service_role` keys are DISABLED AS A PAIR, so Path B is TWO migrations: service_role →
 // sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public). This family inventories the anon side.
 const ANON_FAMILY = /[A-Z0-9_]*ANON_KEY|[A-Z0-9_]*PUBLISHABLE_KEY/;
-// Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle: the sb_secret_ key, a
-// `*_SERVICE_ROLE_KEY` env name, OR an INLINE service_role JWT (decoded role claim).
-const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY/;
+// Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle: the sb_secret_ value, a
+// `*_SERVICE_ROLE_KEY` env name, the NEW backend-secret env family (`SUPABASE_SECRET_KEYS` incl. VITE_/NEXT_PUBLIC_
+// prefixed forms — it holds sb_secret_, which bypasses RLS exactly like the legacy service_role key, so a browser
+// reference is a leak REGARDLESS of migration state), OR an INLINE service_role JWT (decoded role claim). The
+// SUPABASE_SECRET_KEYS family is deliberately NOT a legacy-source signal (it is the migrated key, not the legacy
+// key) — it only counts as browser ELEVATION.
+const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY|[A-Z0-9_]*SUPABASE_SECRET_KEYS?/;
 const isElevated = (s) => ELEVATED.test(s) || hasInlineServiceRoleJwt(s);
 // Public surfaces that must never hold an elevated key: the shipped browser bundle (src/, excluding tests) AND
 // the non-src browser-public members of MANAGED_ANON (e.g. the Cloudflare worker, which Bearers its key on every
@@ -378,15 +382,22 @@ const MANAGED_ANON = {
 // legacy signal (a signal-disappearance model would then wrongly flag it "stale" and the gate could never pass),
 // and because a DEPENDENCY signal (an env-NAME slot, or a shared-helper name like requireServiceRole) does NOT
 // prove the credential is still legacy — the value is deployed and the helper can move to sb_secret_ under an
-// unchanged name. Each path carries an explicit STATE (unlisted = 'legacy'):
-//   legacy       — a PRODUCTION consumer still on the legacy key. Must migrate before the pair is disabled.
-//   new-secret   — migrated to sb_secret_ (trusted backend). Set only AFTER the deployed value is verified.
-//   publishable  — migrated to sb_publishable_ (browser/public). Set only AFTER the deployed value is verified.
-//   local-demo   — uses public supabase-demo / local-dev keys; never a production credential (reviewed exemption).
-//   tooling      — CI/guard/config machinery that names the key but isn't a runtime credential consumer.
-//   retired      — a one-off historical script that will not run against the disabled key.
-// The cutover (`--require-migrated`) fails while any NON-exempt path is 'legacy', or a migrated path still carries
-// a HARD legacy-credential residue in source (an inline legacy JWT; for SQL also service_role_key / app.settings).
+// unchanged name.
+//
+// State is PER CREDENTIAL KIND, not scalar: 18 paths consume BOTH the legacy service-role key AND the legacy anon
+// key (an admin client + an anon/public client in one file). A single scalar state cannot certify them
+// independently — `new-secret` would wrongly clear the anon leg, `publishable` would wrongly clear the privileged
+// leg, and (because env NAMES are deliberately not hard residue) a file still reading both legacy env slots would
+// pass under either. So each entry is EITHER:
+//   • an exemption STRING (`local-demo` / `tooling` / `retired`) — applies to EVERY credential kind, OR
+//   • an object `{ serviceRole?, anon?, sql? }` — a per-kind migrated target (unlisted kind ⇒ 'legacy').
+// Per-kind values (strict whitelist — an unknown value like `new-secert` is a registry error, NOT "migrated"):
+//   serviceRole ∈ { legacy, new-secret, <exemption> }   (target = new-secret → sb_secret_, trusted backend)
+//   anon        ∈ { legacy, publishable, <exemption> }   (target = publishable → sb_publishable_, browser/public)
+//   sql         ∈ { legacy, new-secret, <exemption> }    (target = new-secret → the cron's Vault sb_secret_)
+// Set a migrated target ONLY after the deployed value is verified. The cutover (`--require-migrated`) fails while
+// any non-exempt leg is 'legacy' (or set to the WRONG target), or a migrated leg still carries a HARD
+// legacy-credential residue in source (an inline legacy JWT; for SQL also service_role_key / app.settings).
 const STATE = {
   // tooling
   'scripts/check-legacy-service-role-consumers.mjs': 'tooling', 'scripts/check-edge-fn-config.mjs': 'tooling',
@@ -415,8 +426,43 @@ const STATE = {
   'scripts/migration/storage_migration_dry_run.py': 'retired', 'scripts/migration/storage_regenerate_invoice_urls.py': 'retired',
   'scripts/migration/storage_regenerate_invoices_via_edge.py': 'retired',
 };
-const stateOf = (p, state = STATE) => state[p] || 'legacy';
-const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // not a production credential to migrate
+const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // not a production credential to migrate (any kind)
+// The single migrated target per credential kind, and the strict per-kind whitelist (target + legacy + exemptions).
+const MIGRATED_TARGET = { serviceRole: 'new-secret', anon: 'publishable', sql: 'new-secret' };
+const VALID_STATE = {
+  serviceRole: new Set(['legacy', 'new-secret', ...EXEMPT]),
+  anon: new Set(['legacy', 'publishable', ...EXEMPT]),
+  sql: new Set(['legacy', 'new-secret', ...EXEMPT]),
+};
+// Resolve a path's state for ONE credential kind. A bare exemption string applies to every kind; an object gives a
+// per-kind target (unlisted kind ⇒ 'legacy'); an unlisted path ⇒ 'legacy'.
+const stateOf = (p, kind, state = STATE) => {
+  const e = state[p];
+  if (typeof e === 'string') return e;                       // exemption shorthand — same for serviceRole / anon / sql
+  if (e === null || typeof e !== 'object') return 'legacy';  // undefined / null / malformed → legacy (never throw; the
+  return e[kind] || 'legacy';                                // malformed shape is separately surfaced by stateRegistryProblems)
+};
+// STRICT registry validation — the SINGLE guard against a mislabeled state silently reading as "migrated":
+// a bare string must be an exemption; an object's keys must be known kinds and each value must be whitelisted for
+// that kind (so a typo like `new-secert`, or a wrong target like anon:'new-secret' / serviceRole:'publishable',
+// is a hard registry error surfaced by inventoryProblems — failing BOTH the normal guard and the cutover precheck).
+function stateRegistryProblems(state = STATE) {
+  const out = [];
+  const kinds = Object.keys(VALID_STATE).join('/');
+  for (const [p, e] of Object.entries(state)) {
+    if (typeof e === 'string') {
+      if (!EXEMPT.has(e)) out.push(`INVALID STATE '${p}': bare string '${e}' must be an exemption (${[...EXEMPT].join(' / ')}); use a { ${kinds} } object to set a migrated target`);
+      continue;
+    }
+    if (e === null || typeof e !== 'object' || Array.isArray(e)) { out.push(`INVALID STATE '${p}': must be an exemption string or a { ${kinds} } object`); continue; }
+    if (Object.keys(e).length === 0) { out.push(`INVALID STATE '${p}': empty object — give at least one of { ${kinds} }`); continue; }
+    for (const [k, v] of Object.entries(e)) {
+      if (!VALID_STATE[k]) { out.push(`INVALID STATE '${p}': unknown credential kind '${k}' (valid: ${kinds})`); continue; }
+      if (!VALID_STATE[k].has(v)) out.push(`INVALID STATE '${p}.${k}': '${v}' is not a valid ${k} state (valid: ${[...VALID_STATE[k]].join(', ')})`);
+    }
+  }
+  return out;
+}
 // HARD legacy-credential residue in SOURCE (the only migration proof source can give — env names are slots, helper
 // names are dependencies): an inline legacy JWT; for SQL also the service_role_key / app.settings legacy sources.
 const hardLegacyResidue = (p, s) => p.endsWith('.sql')
@@ -519,18 +565,25 @@ function diff(found, registered) {
 // HARD legacy residue in source. Migration is read from the explicit STATE registry — NOT from signal
 // disappearance — so a migrated path (which drops its legacy env-name signal) is proven by its state, not flagged.
 // Parameterized (registries + STATE) so the self-test can exercise every branch on fixtures.
+const KIND_LABEL = { serviceRole: 'service-role', anon: 'anon', sql: 'sql' };
 function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }) {
   const { managed, anon, sql, state } = reg;
   const pending = []; // { path, kind, reason }
   const read = (p) => { try { return readFileSync(join(rootDir, p), 'utf8'); } catch { return ''; } };
+  // `kind` is the CREDENTIAL kind (serviceRole / anon / sql). State is resolved per-kind, so a dual-role file must
+  // migrate EACH leg to that leg's own target — new-secret certifies only the service-role/sql leg, publishable
+  // only the anon leg.
+  const push = (p, kind, reason) => pending.push({ path: p, kind: KIND_LABEL[kind], reason });
   const check = (p, kind) => {
-    const st = stateOf(p, state);
+    const st = stateOf(p, kind, state);
     if (EXEMPT.has(st)) return; // reviewed non-production exemption (local-demo / tooling / retired)
-    if (st === 'legacy') { pending.push({ path: p, kind, reason: 'state=legacy — a production consumer still on the legacy key' }); return; }
-    // migrated (new-secret / publishable): source must carry no hard legacy residue (inline JWT / service_role_key / app.settings)
-    if (hardLegacyResidue(p, read(p))) pending.push({ path: p, kind, reason: `state=${st} but source still carries a legacy credential (inline JWT / service_role_key / app.settings)` });
+    if (st === 'legacy') { push(p, kind, `state.${kind}=legacy — a production ${KIND_LABEL[kind]} consumer still on the legacy key`); return; }
+    const target = MIGRATED_TARGET[kind];
+    if (st !== target) { push(p, kind, `state.${kind}=${st} is not the required '${target}' for a ${KIND_LABEL[kind]} consumer`); return; }
+    // migrated to the correct target: source must carry no hard legacy residue (inline JWT / service_role_key / app.settings)
+    if (hardLegacyResidue(p, read(p))) push(p, kind, `state.${kind}=${st} but source still carries a legacy credential (inline JWT / service_role_key / app.settings)`);
   };
-  for (const cat in managed) for (const p of managed[cat]) check(p, 'service-role');
+  for (const cat in managed) for (const p of managed[cat]) check(p, 'serviceRole');
   for (const cat in anon) for (const p of anon[cat]) check(p, 'anon');
   for (const [p, meta] of Object.entries(sql)) if (VALID_SQL_STATUS.has(meta.status) && meta.status.startsWith('active')) check(p, 'sql');
   return pending;
@@ -545,12 +598,16 @@ function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAG
   const { managed, anon, sql, state } = regs;
   const c = classify(rootDir);
   const out = [];
-  const staleAware = (found, registered, label) => {
+  // A mislabeled STATE entry must fail loudly (else a typo reads as "migrated"). Foundational — check it first.
+  stateRegistryProblems(state).forEach((m) => out.push(m));
+  // STALE is STATE-AWARE PER KIND: a source stale is a problem only if its serviceRole leg is still 'legacy'; an
+  // anon stale only if its anon leg is still 'legacy'. A migrated/exempt leg is EXPECTED to have dropped its signal.
+  const staleAware = (found, registered, label, kind) => {
     for (const f of found) if (!registered.has(f)) out.push(`UNREGISTERED ${label}: ${f}`);
-    for (const p of registered) if (!found.has(p) && stateOf(p, state) === 'legacy') out.push(`STALE ${label} (state=legacy but no signal — relabel its STATE if migrated, or retire/remove): ${p}`);
+    for (const p of registered) if (!found.has(p) && stateOf(p, kind, state) === 'legacy') out.push(`STALE ${label} (state.${kind}=legacy but no signal — relabel its STATE if migrated, or retire/remove): ${p}`);
   };
-  staleAware(c.foundSource, new Set(Object.values(managed).flat()), 'source');
-  staleAware(c.foundAnon, new Set(Object.values(anon).flat()), 'anon');
+  staleAware(c.foundSource, new Set(Object.values(managed).flat()), 'source', 'serviceRole');
+  staleAware(c.foundAnon, new Set(Object.values(anon).flat()), 'anon', 'anon');
   const sqlReg = new Set(Object.keys(sql));
   for (const f of c.foundSql) if (!sqlReg.has(f)) out.push(`UNREGISTERED sql: ${f}`);
   for (const p of sqlReg) if (!c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
@@ -695,8 +752,8 @@ function selfTest() {
   }
 
   // cutover contract (STATE model): fails today, and the reasons distinguish state.
-  ok(stateOf('scripts/check-legacy-service-role-consumers.mjs') === 'tooling' && EXEMPT.has('tooling'), 'STATE: the guard file is an exempt tooling entry');
-  ok(stateOf('supabase/functions/health-check/index.ts') === 'legacy', 'STATE: an unlisted production consumer defaults to legacy');
+  ok(stateOf('scripts/check-legacy-service-role-consumers.mjs', 'serviceRole') === 'tooling' && stateOf('scripts/check-legacy-service-role-consumers.mjs', 'anon') === 'tooling' && EXEMPT.has('tooling'), 'STATE: a bare exemption string applies to every credential kind (guard = tooling for serviceRole + anon)');
+  ok(stateOf('supabase/functions/health-check/index.ts', 'serviceRole') === 'legacy' && stateOf('supabase/functions/health-check/index.ts', 'anon') === 'legacy', 'STATE: an unlisted dual-role consumer defaults to legacy on BOTH legs');
   ok(requireMigrated('.').length > 0, '--require-migrated FAILS today: production consumers are still on the legacy keys');
   // Full end-to-end cutover behaviour on a fixture tree — the four Codex blockers, proven:
   const cut = mkdtempSync(join(tmpdir(), 'legacy-key-cut-'));
@@ -715,11 +772,21 @@ function selfTest() {
     w2('supabase/migrations/residue_cron.sql', "select set_config('x', current_setting('app.settings.service_role_key'), true); net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))");
     // an EXEMPT (retired) path that carries a HARD inline-JWT residue — proves EXEMPT membership is load-bearing.
     w2('supabase/functions/exempt_residue/index.ts', 'const k = "' + mkJwt('service_role') + '"; // retired one-off, but a real inline legacy JWT');
+    // a DUAL-ROLE file: reads BOTH legacy env slots (service-role admin client + anon client). Env NAMES are NOT
+    // hard residue (a slot can hold a migrated value), so per-CREDENTIAL state is the ONLY way to certify each leg.
+    w2('supabase/functions/dual/index.ts', 'Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"); Deno.env.get("SUPABASE_ANON_KEY")');
+    const dualPath = 'supabase/functions/dual/index.ts';
     const reg = {
-      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts'], 'scripts-ci': ['scripts/prodtool.mjs'], 'exempt-check': ['supabase/functions/exempt_residue/index.ts'] },
-      anon: {},
+      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts', dualPath], 'scripts-ci': ['scripts/prodtool.mjs'], 'exempt-check': ['supabase/functions/exempt_residue/index.ts'] },
+      anon: { 'edge-anon': [dualPath] },
       sql: { 'supabase/migrations/legacy_cron.sql': { status: 'active' }, 'supabase/migrations/new_cron.sql': { status: 'active' }, 'supabase/migrations/liar_cron.sql': { status: 'active' }, 'supabase/migrations/residue_cron.sql': { status: 'active' } },
-      state: { 'supabase/functions/done/index.ts': 'new-secret', 'supabase/functions/helperdone/index.ts': 'new-secret', 'supabase/functions/liar/index.ts': 'new-secret', 'supabase/migrations/new_cron.sql': 'new-secret', 'supabase/migrations/liar_cron.sql': 'new-secret', 'supabase/migrations/residue_cron.sql': 'new-secret', 'supabase/functions/exempt_residue/index.ts': 'retired' },
+      state: {
+        'supabase/functions/done/index.ts': { serviceRole: 'new-secret' }, 'supabase/functions/helperdone/index.ts': { serviceRole: 'new-secret' },
+        'supabase/functions/liar/index.ts': { serviceRole: 'new-secret' }, 'supabase/migrations/new_cron.sql': { sql: 'new-secret' },
+        'supabase/migrations/liar_cron.sql': { sql: 'new-secret' }, 'supabase/migrations/residue_cron.sql': { sql: 'new-secret' },
+        'supabase/functions/exempt_residue/index.ts': 'retired',
+        [dualPath]: { serviceRole: 'new-secret' }, // anon leg deliberately left legacy — must still be pending
+      },
     };
     const paths = new Set(requireMigrated(cut, reg).map((x) => x.path));
     ok(!paths.has('supabase/functions/done/index.ts'), 'F1: a migrated consumer that DROPPED its signal (state=new-secret) passes — the gate is reachable');
@@ -736,10 +803,56 @@ function selfTest() {
     // MUTATION-PIN 2 — EXEMPT membership is load-bearing: a retired path with a HARD inline-JWT residue is suppressed
     // ONLY by EXEMPT; the SAME file de-exempted to new-secret IS flagged (so dropping 'retired' from EXEMPT would break this).
     ok(!paths.has('supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: a retired path with a HARD inline-JWT residue is suppressed by EXEMPT membership');
-    ok(requireMigrated(cut, { ...reg, state: { ...reg.state, 'supabase/functions/exempt_residue/index.ts': 'new-secret' } }).some((x) => x.path === 'supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: the SAME residue-bearing file de-exempted (new-secret) IS flagged — proves EXEMPT is what suppressed it');
-    // MUTATION-PIN 3 — an unknown MANAGED_SQL status (typo) is an inventory problem, not a silent skip.
-    ok(inventoryProblems(cut, { managed: {}, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'Active' } }, state: {} }).some((m) => /INVALID sql status/.test(m)), 'MUTATION-PIN: an off-whitelist SQL status (e.g. Active) is surfaced as an inventory problem');
+    ok(requireMigrated(cut, { ...reg, state: { ...reg.state, 'supabase/functions/exempt_residue/index.ts': { serviceRole: 'new-secret' } } }).some((x) => x.path === 'supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: the SAME residue-bearing file de-exempted (new-secret) IS flagged — proves EXEMPT is what suppressed it');
+    // MUTATION-PIN 3 — an unknown MANAGED_SQL status (typo) is an inventory problem, so the NORMAL guard (which now
+    // renders inventoryProblems) fails on it too — not just self-test.
+    ok(inventoryProblems(cut, { managed: {}, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'Active' } }, state: {} }).some((m) => /INVALID sql status/.test(m)), 'MUTATION-PIN: an off-whitelist SQL status (e.g. Active) is an inventory problem (fails the normal guard too)');
+
+    // ── FINDING 1 — per-credential state for DUAL-ROLE files (a scalar state could not express these) ──────────
+    const dualLegs = (st) => requireMigrated(cut, { ...reg, state: { ...reg.state, [dualPath]: st } }).filter((x) => x.path === dualPath);
+    const onlySr = dualLegs({ serviceRole: 'new-secret' });        // anon leg still legacy
+    ok(onlySr.length === 1 && onlySr[0].kind === 'anon' && /state\.anon=legacy/.test(onlySr[0].reason), 'DUAL-ROLE: migrating ONLY the service-role leg (new-secret) leaves the anon leg pending as LEGACY (per-kind — not certified by the service-role state)');
+    const onlyAnon = dualLegs({ anon: 'publishable' });            // service-role leg still legacy
+    ok(onlyAnon.length === 1 && onlyAnon[0].kind === 'service-role' && /state\.serviceRole=legacy/.test(onlyAnon[0].reason), 'DUAL-ROLE: migrating ONLY the anon leg (publishable) leaves the service-role leg pending as LEGACY');
+    ok(dualLegs({ serviceRole: 'new-secret', anon: 'publishable' }).length === 0, 'DUAL-ROLE: migrating BOTH legs to their OWN targets clears the file');
+    // WRONG-TARGET at the cutover check ITSELF (belt-and-braces with the registry whitelist) — driven through
+    // requireMigrated for ALL THREE kinds so a future weakening of any leg's guard is caught, not just the anon leg.
+    ok(dualLegs({ serviceRole: 'new-secret', anon: 'new-secret' }).some((x) => x.kind === 'anon' && /not the required 'publishable'/.test(x.reason)), "WRONG-TARGET (anon): a service-role target on the anon leg is rejected by requireMigrated (requires 'publishable')");
+    ok(dualLegs({ serviceRole: 'publishable', anon: 'publishable' }).some((x) => x.kind === 'service-role' && /not the required 'new-secret'/.test(x.reason)), "WRONG-TARGET (service-role): an anon target on the service-role leg is rejected by requireMigrated (requires 'new-secret')");
+    ok(requireMigrated(cut, { ...reg, state: { ...reg.state, 'supabase/migrations/new_cron.sql': { sql: 'publishable' } } }).some((x) => x.path === 'supabase/migrations/new_cron.sql' && x.kind === 'sql' && /not the required 'new-secret'/.test(x.reason)), "WRONG-TARGET (sql): an anon target on the sql leg is rejected by requireMigrated (requires 'new-secret')");
+    // NULL / malformed STATE must NOT crash — stateOf resolves it to legacy, and the whitelist surfaces it cleanly
+    // (regression pin: before hardening, stateOf(null) threw a TypeError that inventoryProblems propagated as a crash).
+    ok(stateOf('x/y.ts', 'serviceRole', { 'x/y.ts': null }) === 'legacy', 'NULL STATE: stateOf resolves a null value to legacy (no throw)');
+    ok(inventoryProblems(cut, { ...reg, state: { ...reg.state, 'supabase/functions/still/index.ts': null } }).some((m) => /INVALID STATE/.test(m)), 'NULL STATE: inventoryProblems surfaces a null STATE as INVALID STATE (clean message, not a crash)');
+
+    // ── FINDING 1 — strict STATE whitelist (stateRegistryProblems): typo / wrong-target / bad-shape are HARD errors
+    ok(stateRegistryProblems({ 'x/y.ts': { serviceRole: 'new-secert' } }).length > 0, 'INVALID STATE: a typo target (new-secert) is a registry error, NOT "migrated"');
+    ok(stateRegistryProblems({ 'x/y.ts': 'new-secret' }).length > 0, 'INVALID STATE: a bare non-exemption string must be a { kind: … } object');
+    ok(stateRegistryProblems({ 'x/y.ts': { anon: 'new-secret' } }).length > 0, 'WRONG-TARGET: anon:new-secret is not a valid anon state');
+    ok(stateRegistryProblems({ 'x/y.ts': { serviceRole: 'publishable' } }).length > 0, 'WRONG-TARGET: serviceRole:publishable is not a valid serviceRole state');
+    ok(stateRegistryProblems({ 'x/y.ts': { sql: 'publishable' } }).length > 0, 'WRONG-TARGET: sql:publishable is not a valid sql state');
+    ok(stateRegistryProblems({ 'x/y.ts': { unknownKind: 'legacy' } }).length > 0, 'INVALID STATE: an unknown credential kind is a registry error');
+    ok(stateRegistryProblems({ 'x/y.ts': [] }).length > 0 && stateRegistryProblems({ 'x/y.ts': {} }).length > 0, 'INVALID STATE: an array / empty object is a registry error');
+    ok(stateRegistryProblems({ 's.mjs': 'tooling', 'e.ts': 'local-demo', 'z/index.ts': { serviceRole: 'new-secret', anon: 'publishable' }, 'c.sql': { sql: 'new-secret' } }).length === 0, 'valid STATE shapes (exemption strings + per-kind objects) produce NO registry problems');
+    // the NORMAL guard + cutover precheck (both = inventoryProblems) FAIL on a mislabeled STATE — one authoritative path.
+    ok(inventoryProblems(cut, { ...reg, state: { ...reg.state, 'supabase/functions/still/index.ts': { serviceRole: 'nope' } } }).some((m) => /INVALID STATE/.test(m)), 'inventoryProblems (normal guard + cutover precheck) surfaces a mislabeled STATE');
+    ok(stateRegistryProblems().length === 0, 'the REAL STATE registry is well-formed under the strict whitelist');
   } finally { rmSync(cut, { recursive: true, force: true }); }
+
+  // ── FINDING 2 — the NEW backend-secret env family (SUPABASE_SECRET_KEYS) is browser ELEVATION, in src/ AND the
+  // non-src browser-public members (the Cloudflare worker). It must NOT be a legacy-source signal (it is the
+  // migrated key). Both mutation-pinned via classify() so the isBrowserSurface ∧ isElevated wiring is proven.
+  ok(isElevated('const k = import.meta.env.VITE_SUPABASE_SECRET_KEYS') && isElevated('Deno.env.get("SUPABASE_SECRET_KEYS")'), 'FINDING-2: the SUPABASE_SECRET_KEYS env family (incl. VITE_ prefix) is elevated');
+  ok(!KEY_FAMILY.test('VITE_SUPABASE_SECRET_KEYS') && !HELPER_SIGNAL.test('VITE_SUPABASE_SECRET_KEYS'), 'FINDING-2: SUPABASE_SECRET_KEYS is NOT a legacy-source signal (elevation-only — it is the migrated key)');
+  const elev = mkdtempSync(join(tmpdir(), 'legacy-key-elev-'));
+  try {
+    const w3 = (r, body) => { const p = join(elev, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
+    w3('src/leak.ts', 'export const k = import.meta.env.VITE_SUPABASE_SECRET_KEYS;');            // shipped browser bundle
+    w3('docs/cloudflare-worker.js', 'const k = env.VITE_SUPABASE_SECRET_KEYS;');                 // browser-public member (real MANAGED_ANON)
+    const el = new Set(classify(elev).elevated);
+    ok(el.has('src/leak.ts'), 'FINDING-2: VITE_SUPABASE_SECRET_KEYS in the src/ browser bundle is BROWSER-ELEVATION');
+    ok(el.has('docs/cloudflare-worker.js'), 'FINDING-2: VITE_SUPABASE_SECRET_KEYS in the Cloudflare worker (browser-public) is BROWSER-ELEVATION');
+  } finally { rmSync(elev, { recursive: true, force: true }); }
   // the PASS path (own tree, ONLY migrated files): cutover clean end-to-end — proves the gate is reachable.
   const cln = mkdtempSync(join(tmpdir(), 'legacy-key-cln-'));
   try {
@@ -747,7 +860,7 @@ function selfTest() {
     w2('supabase/functions/done/index.ts', 'Deno.env.get("SUPABASE_SECRET_KEYS") // migrated');
     w2('supabase/functions/helperdone/index.ts', 'import { requireServiceRole } from "../_shared/auth.ts";');
     w2('supabase/migrations/new_cron.sql', "net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))");
-    const clean = { managed: { 'admin-client': ['supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts'] }, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'active' } }, state: { 'supabase/functions/done/index.ts': 'new-secret', 'supabase/functions/helperdone/index.ts': 'new-secret', 'supabase/migrations/new_cron.sql': 'new-secret' } };
+    const clean = { managed: { 'admin-client': ['supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts'] }, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'active' } }, state: { 'supabase/functions/done/index.ts': { serviceRole: 'new-secret' }, 'supabase/functions/helperdone/index.ts': { serviceRole: 'new-secret' }, 'supabase/migrations/new_cron.sql': { sql: 'new-secret' } } };
     ok(inventoryProblems(cln, clean).length === 0 && requireMigrated(cln, clean).length === 0, 'F1: full cutover PASSES (inventory clean + 0 pending) when every consumer is migrated');
   } finally { rmSync(cln, { recursive: true, force: true }); }
 
@@ -755,9 +868,9 @@ function selfTest() {
   // Use the SAME state-aware inventory the guard uses, so it stays green through migration.
   ok(inventoryProblems('.').length === 0, `real inventory clean (state-aware): ${inventoryProblems('.').slice(0, 3).join(' | ')}`);
   const real = classify('.');
-  const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat())); rs.stale = rs.stale.filter((p) => stateOf(p) === 'legacy');
+  const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat())); rs.stale = rs.stale.filter((p) => stateOf(p, 'serviceRole') === 'legacy');
   const rq = diff(real.foundSql, new Set(Object.keys(MANAGED_SQL)));
-  const ra = diff(real.foundAnon, new Set(Object.values(MANAGED_ANON).flat())); ra.stale = ra.stale.filter((p) => stateOf(p) === 'legacy');
+  const ra = diff(real.foundAnon, new Set(Object.values(MANAGED_ANON).flat())); ra.stale = ra.stale.filter((p) => stateOf(p, 'anon') === 'legacy');
   ok(rs.unregistered.length === 0 && rs.stale.length === 0, `real SOURCE baseline clean (unreg=${rs.unregistered.length}, stale=${rs.stale.length})`);
   ok(rq.unregistered.length === 0 && rq.stale.length === 0, `real SQL baseline clean (unreg=${rq.unregistered.length}, stale=${rq.stale.length})`);
   ok(ra.unregistered.length === 0 && ra.stale.length === 0, `real ANON baseline clean (unreg=${ra.unregistered.length}, stale=${ra.stale.length})`);
@@ -803,74 +916,22 @@ if (process.argv.includes('--require-migrated')) {
   process.exit(0);
 }
 
-const { foundSource, foundSql, foundAnon, escapes, elevated } = classify('.');
-const src = diff(foundSource, new Set(Object.values(MANAGED).flat()));
-const sql = diff(foundSql, new Set(Object.keys(MANAGED_SQL)));
-const anon = diff(foundAnon, new Set(Object.values(MANAGED_ANON).flat()));
-// STATE-AWARE stale for source/anon: a registered path that dropped its signal is a problem ONLY if state=legacy
-// (migrated but not relabeled). A migrated/exempt path is EXPECTED to have no signal — so migration keeps CI green.
-src.stale = src.stale.filter((p) => stateOf(p) === 'legacy');
-anon.stale = anon.stale.filter((p) => stateOf(p) === 'legacy');
-const lifecycle = checkSqlLifecycle('.');
-const problems = [];
-
-if (src.unregistered.length) {
-  problems.push(
-    'UNREGISTERED SOURCE consumers — reference the key but are not in MANAGED. Each must be migrated (or proven)\n' +
-    'in Path B before the legacy key can be deactivated. Add each to the correct category:\n' +
-    src.unregistered.map((f) => '  + ' + f).join('\n'));
-}
-if (src.stale.length) {
-  problems.push('STALE SOURCE registrations — no longer reference the key; remove to keep the inventory honest:\n' +
-    src.stale.map((f) => '  - ' + f).join('\n'));
-}
-if (sql.unregistered.length) {
-  problems.push(
-    'UNREGISTERED SQL/Vault consumers — migrations that send/store the key but are not in MANAGED_SQL. Classify\n' +
-    'each (active / active-legacy / superseded) + its forward replacement in check-legacy-service-role-consumers.mjs:\n' +
-    sql.unregistered.map((f) => '  + ' + f).join('\n'));
-}
-if (sql.stale.length) {
-  problems.push('STALE SQL/Vault registrations — no longer send/store the key (were they edited? migrations are immutable):\n' +
-    sql.stale.map((f) => '  - ' + f).join('\n'));
-}
-if (escapes.length) {
-  problems.push(
-    'ESCAPED references — a legacy-key touchpoint sits where the source + SQL registries do not enforce it:\n' +
-    '  • the key/helper OUTSIDE the guarded roots + out-of-scope allow-list (docs .md / src/test / tests /\n' +
-    '    supabase/config.toml) — a runtime consumer under a new root must join SOURCE_ROOTS + be registered; or\n' +
-    '  • a .sql statement that SENDS/STORES the key (http_post with a credential source in an auth header, or\n' +
-    '    vault.create/update_secret) outside supabase/migrations — move it into a tracked migration (MANAGED_SQL).\n' +
-    'Anything genuinely benign must be added to the allow-list deliberately:\n' +
-    escapes.sort().map((f) => '  ! ' + f).join('\n'));
-}
-if (anon.unregistered.length) {
-  problems.push(
-    'UNREGISTERED ANON consumers — reference the legacy anon/publishable key but are not in MANAGED_ANON. The anon\n' +
-    'key migrates to sb_publishable_ (low-privilege, RLS-respecting) — NEVER sb_secret_. Register each:\n' +
-    anon.unregistered.map((f) => '  + ' + f).join('\n'));
-}
-if (anon.stale.length) {
-  problems.push('STALE ANON registrations — no longer reference the anon/publishable key; remove them:\n' +
-    anon.stale.map((f) => '  - ' + f).join('\n'));
-}
-if (elevated.length) {
-  problems.push(
-    'PUBLIC-SURFACE ELEVATION — an RLS-BYPASSING key (sb_secret_ / *_SERVICE_ROLE_KEY) appears in the shipped\n' +
-    'browser bundle (src/, excluding tests). This must NEVER reach a browser; the public client uses the anon /\n' +
-    'sb_publishable_ key only. Remove it:\n' +
-    elevated.sort().map((f) => '  ‼ ' + f).join('\n'));
-}
-if (lifecycle.length) {
-  problems.push(
-    'SQL LIFECYCLE drift — a MANAGED_SQL active/superseded status contradicts the migration files (a later\n' +
-    'migration reschedules/unschedules the job, or a superseded entry has no such later migration):\n' +
-    lifecycle.map((m) => '  ~ ' + m).join('\n'));
-}
-
+// NORMAL guard — inventory completeness. It renders the SAME authoritative inventoryProblems() that the cutover
+// precheck uses, so the two paths CANNOT diverge: any check there (unregistered / stale / escape / browser
+// elevation / lifecycle / invalid SQL status / mislabeled STATE) fails the normal command too. Green today (all
+// legacy) and through migration (STATE-aware stale, per credential kind). Migration completion is a DIFFERENT
+// contract — see --require-migrated above.
+const problems = inventoryProblems('.');
 if (problems.length) {
   console.error('Legacy API-key inventory drift (service_role + anon are disabled as a pair — both must stay clean):\n');
-  console.error(problems.join('\n\n'));
+  for (const m of problems) console.error('  • ' + m);
+  console.error('\nHow to fix, by class:');
+  console.error('  UNREGISTERED — a consumer references the key but is not registered; add it to the right MANAGED / MANAGED_ANON / MANAGED_SQL category.');
+  console.error('  STALE — a registered path dropped its signal; if migrated set its STATE (serviceRole/anon/sql target), else remove/retire it.');
+  console.error('  ESCAPE — a key/helper (or a key-sending .sql) outside the guarded roots; move it into a runtime root + register, or add to the allow-list deliberately.');
+  console.error('  BROWSER-ELEVATION — an RLS-bypassing key (sb_secret_ / *_SERVICE_ROLE_KEY / SUPABASE_SECRET_KEYS / inline service_role JWT) in a public surface; remove it (browser uses anon / sb_publishable_ only).');
+  console.error('  INVALID STATE / INVALID sql status — fix the registry metadata against the whitelists in check-legacy-service-role-consumers.mjs.');
+  console.error('  LIFECYCLE — a MANAGED_SQL active/superseded status contradicts the migration files; correct the status/replacement.');
   console.error('\nSee docs/CRON_SERVICE_KEY_SETUP.md → "The legacy service-role-key dependency class" / "Path B".');
   process.exit(1);
 }
