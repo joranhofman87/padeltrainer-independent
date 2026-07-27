@@ -117,15 +117,19 @@ pair) via **six checks**:
    `isServiceRoleRequest` / `resolveServiceRoleToken` / an import of `_shared/service-role-auth`) — not in
    `MANAGED` (or a registered file that no longer does). The biggest live consumers (`notification-digest-worker`,
    `backup-database`, `twilio-content-admin`) carry **no literal at all**, so the helper signal is essential.
-2. **SQL/Vault consumers** — scans `supabase/migrations` for cron commands that SEND the key or STORE it in Vault,
-   against `MANAGED_SQL`. Detection is **structural** — an `http_post` that Bearers a decrypted Vault secret /
-   `current_setting`, regardless of the secret's *name* (a differently-named worker credential cannot slip past).
-   Migrations are immutable + cumulative, so each entry is classified **active / active-legacy / superseded** with
-   its **forward replacement** (table below).
+2. **SQL/Vault consumers** — scans `supabase/migrations` for cron commands that SEND a legacy key or STORE it in
+   Vault, against `MANAGED_SQL`. Detection is **structural** — a POST (`http_post` or the generic `http('POST',…)`)
+   whose auth header carries a credential (a decrypted Vault secret, a `current_setting`, or an **inline
+   `Bearer eyJ…` JWT**), regardless of the secret's *name* (a differently-named worker credential, or an inline
+   token, cannot slip past). *(Limitation: single-file — a key pulled from a helper defined in another migration is
+   not traced.)* Migrations are immutable + cumulative, so each entry is classified **active / active-legacy /
+   superseded** with its **forward replacement** (table below).
 3. **Anon consumers** — the `anon → sb_publishable_` side: every `*_ANON_KEY`/`*_PUBLISHABLE_KEY` consumer must be
    in `MANAGED_ANON` (browser-public / edge-anon / config / scripts-ci / tests). See **Path B → B2**.
-4. **Browser-surface elevation** — an RLS-bypassing key (`sb_secret_` / a `*_SERVICE_ROLE_KEY`) in the shipped
-   browser bundle (`src/`, excluding tests) **fails**: that key must never reach a public client.
+4. **Browser-surface elevation** — an RLS-bypassing key (`sb_secret_`, a `*_SERVICE_ROLE_KEY` name, OR an **inline
+   `service_role` JWT** — decoded by its `role` claim) in a public surface **fails**: the shipped browser bundle
+   (`src/`, excluding tests) *and* the non-`src` `browser-public` members (e.g. the Cloudflare worker). That key
+   must never reach a public client.
 5. **SQL lifecycle** — proves each `MANAGED_SQL` active/superseded status against later migrations touching the
    same cron job name, so a **stale lifecycle status cannot stay green**.
 6. **Repo-wide escape** — fails if the key/helper (or a key-sending `.sql` outside `supabase/migrations`) is
@@ -147,7 +151,7 @@ SQL/Vault, anon, or an elevated key in the browser) cannot slip past the deactiv
 | `vercel-caller` | 1 | `api/_lib/cron.ts` — reads the key from the **Vercel env** (not Vault), sends it as `apikey` + `Bearer`. | Both Vercel crons 401. |
 | `scripts-ci` | 14 | One-off migration scripts (incl. cross-project storage scripts reading `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`), local seed, and the CI guards themselves. | Dev/CI tooling only (no prod runtime). |
 | `tests` | 4 | Fixtures exercising the auth — no production credential. | None. |
-| **pg_net / Vault (SQL)** | 8 (4 active) | Cron commands in `supabase/migrations` that send the key as `Bearer` (Vault or the old `app.settings` path) or store it in Vault. **Machine-checked** by the second registry (`MANAGED_SQL`), classified active / active-legacy / superseded with forward replacements — not just the "see cron table" note. | The cron's `net.http_post` sends a dead token. |
+| **pg_net / Vault (SQL)** | 10 (4 active) | Cron commands in `supabase/migrations` that send a legacy key (Vault, the old `app.settings` path, OR an inline `Bearer eyJ…` JWT) or store it in Vault. **Machine-checked** by the second registry (`MANAGED_SQL`), classified active / active-legacy / superseded with forward replacements — not just the "see cron table" note. | The cron's `http_post` sends a dead token. |
 | **Third parties** | **0** | The service-role key **never leaves for an external provider** — provider functions authenticate to Resend/Twilio/Mollie/Stripe with those providers' *own* keys. | — |
 
 \* Live counts come from the guard's success line (`npm run check:legacy-key`); the guard's registries (`MANAGED`
@@ -178,6 +182,8 @@ the guard) tracks **lifecycle**, not membership. Current state:
 | `20260721100000_auto_rebook_reminder.sql` | superseded | auto-rebook-reminder via `app.settings` | `20260722100000_rebook_crons_use_vault.sql` |
 | `20260531110000_schedule_invoice_health_check_job.sql` | superseded | invoice-health-check-daily via `app.settings` | `20260606120000_phase5_email_idempotency_and_cron_ficwb.sql` |
 | `20260511165940_…-….sql` | superseded | enrich-locations / fetch-location-logos crons via `app.settings` | `20260606120000_…` (jobs later unscheduled) |
+| `20260222155701_…-….sql` | superseded | enrich-clubs / enrich-locations-background via an **inline** anon JWT | `20260606120000_…` (job later unscheduled) |
+| `20260205091805_…-….sql` | superseded | fetch-location-logos-background via an **inline** anon JWT | `20260606120000_…` (job later unscheduled) |
 
 ## Verify — which endpoints are SAFE to probe
 
@@ -362,19 +368,22 @@ only route):
 1. **Contain the blast radius first:** Step 1 has paused every caller; now blunt the attacker's direct
    forged-token access with **project API-gateway / network restrictions** + heightened **anomaly monitoring**.
 2. **Migrate into the signing-key system, then rotate + revoke** — **Dashboard → JWT Signing Keys → Migrate JWT
-   secret** imports the current legacy HS256 secret as the active signing key; then **rotate** so new tokens sign
-   with a freshly generated **standby** key; then, on the incident timeline, **revoke** the compromised previous
-   (legacy) key. See the [signing-keys guide](https://supabase.com/docs/guides/auth/signing-keys). Engage Supabase
-   support in parallel as escalation — not because it is the only executable path.
+   secret** imports the current legacy HS256 secret as the in-use signing key; then **rotate** so the freshly
+   generated **standby** key becomes the new **current/in-use** key (new tokens sign with it) and the old key moves
+   to *previously-used* (verify-only); then, on the incident timeline, **revoke** that compromised previous key.
+   See the [signing-keys guide](https://supabase.com/docs/guides/auth/signing-keys). Engage Supabase support in
+   parallel as escalation — not because it is the only executable path.
 3. **Token/session impact — rotation ≠ revocation (do not conflate):**
    - **Rotation** is graceful and does **NOT** force users out: access tokens already signed by the previous key
-     stay valid **until they expire** (the previous key remains in a verify-only state), and clients refresh onto
-     the standby key normally. Crucially, the legacy `service_role`/`anon` API JWTs (signed by that same secret)
-     ALSO keep verifying after mere rotation — so rotation alone does **not** contain a leaked signer.
+     stay valid **until they expire** (that key is now verify-only), and clients refresh onto the new current key
+     normally. Crucially, the legacy `service_role`/`anon` API JWTs (signed by that same secret) ALSO keep
+     verifying after mere rotation — so rotation alone does **not** contain a leaked signer.
    - **Revocation** of the compromised previous key is the strong, emergency action and the actual containment: it
      rejects every **access token** signed by it at once — the attacker's forged tokens die. Legitimate users are
-     **not** forced to log in again: their sessions rest on opaque refresh tokens (independent of the signing key),
-     so active clients recover transparently via `refreshSession()`; only a *separate* global sign-out /
+     **not** forced to *log in* again: their sessions rest on opaque refresh tokens (independent of the signing
+     key), so active clients recover without re-authenticating once they refresh — though on an *immediate* revoke
+     a client's in-flight requests can **401 until its next scheduled refresh** (SDKs refresh on an expiry timer,
+     not on a mid-session signature rejection), so expect a brief blip. Only a *separate* global sign-out /
      refresh-token revocation forces a true re-login. It **also** kills the legacy `service_role`/`anon` API JWTs,
      whose **outbound** signature validation at PostgREST/GoTrue now fails. **Prerequisite (per the signing-keys
      guide): disable the legacy `anon`/`service_role` keys in Settings → API Keys BEFORE revoking the previous

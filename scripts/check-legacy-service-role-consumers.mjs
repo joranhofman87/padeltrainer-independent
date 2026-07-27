@@ -23,8 +23,9 @@
  *       that status against the files, so a stale status cannot stay green.
  *   (3) ANON consumers — the anon → sb_publishable_ side. Every `*_ANON_KEY`/`*_PUBLISHABLE_KEY` consumer must be
  *       in MANAGED_ANON (browser-public / edge-anon / config / scripts-ci / tests).
- *   (4) BROWSER-SURFACE elevation — an RLS-bypassing key (`sb_secret_` / `*_SERVICE_ROLE_KEY`) in the shipped
- *       browser bundle (`src/`, excluding tests) FAILS: that key must never reach a public client.
+ *   (4) BROWSER-SURFACE elevation — an RLS-bypassing key (`sb_secret_`, a `*_SERVICE_ROLE_KEY` name, or an INLINE
+ *       service_role JWT decoded by its role claim) in a public surface FAILS: the shipped browser bundle
+ *       (`src/`, excluding tests) AND the non-`src` `browser-public` members (e.g. the Cloudflare worker).
  *   (5) SQL lifecycle — proves each MANAGED_SQL active/superseded status against later migrations touching the
  *       same cron job name.
  *   (6) REPO-WIDE escape — fails if the key/helper (or a key-sending .sql outside supabase/migrations) is
@@ -62,20 +63,32 @@ const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey|isServiceRoleRequ
 // Strip SQL comments (line `--` + block `/* */`) so lifecycle/sender decisions trust only EXECUTABLE statements,
 // never a commented-out or illustrative `cron.unschedule(...)` / `http_post(...)`.
 const stripSqlComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ');
-// STRUCTURAL sender detection (NOT coupled to the secret's name): an http_post (`net.http_post` or the bare
-// `http_post` of the `http` extension) whose auth header (Authorization/Bearer/apikey) carries a CREDENTIAL —
-// a decrypted Vault secret, a `current_setting`, or an INLINE `Bearer eyJ…` JWT hardcoded in the command. Any of
-// those is a legacy-key send regardless of the secret's NAME (a differently-named worker credential, or an inline
-// token, cannot slip past). Plus any Vault create/update of a secret.
+// STRUCTURAL sender detection (NOT coupled to the secret's name): a POST (`net.http_post`/`http_post`, or the
+// generic `http(('POST', …)::http_request)`) whose auth header (Authorization/Bearer/api[-_]key) carries a
+// CREDENTIAL — a decrypted Vault secret, a `current_setting`, or an INLINE `Bearer eyJ…` JWT hardcoded in the
+// command. Any of those is a legacy-key send regardless of the secret's NAME. Plus any Vault create/update.
+// LIMITATION (documented, not silently trusted): detection is SINGLE-FILE + in-file sourcing — a sender that
+// pulls the key from a SECURITY DEFINER helper defined in ANOTHER migration (`Bearer '||get_key()`) is not
+// traced; scope the "cannot slip past" claim to in-file/inline sourcing.
 const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting|Bearer\s+eyJ[A-Za-z0-9._-]+/i;
-const AUTH_HEADER = /authorization|\bapikey\b|bearer/i;
-const SQL_SENDER = (raw) => { const s = stripSqlComments(raw); return (/\bhttp_post\s*\(/.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s); };
+const AUTH_HEADER = /authorization|api[-_]?key|bearer/i; // matches apikey, api-key, x-api-key, Authorization, Bearer
+const HTTP_POST = /\bhttp_post\s*\(|\bhttp\s*\(\s*\(\s*'POST'/i;
+const SQL_SENDER = (raw) => { const s = stripSqlComments(raw); return (HTTP_POST.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s); };
 
 // The legacy `anon`/`service_role` keys are DISABLED AS A PAIR, so Path B is TWO migrations: service_role →
 // sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public). This family inventories the anon side.
 const ANON_FAMILY = /[A-Z0-9_]*ANON_KEY|[A-Z0-9_]*PUBLISHABLE_KEY/;
-// Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle:
+// Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle: the sb_secret_ key, a
+// `*_SERVICE_ROLE_KEY` env name, OR an INLINE service_role JWT (decode the role claim — anon/publishable are also
+// `eyJ…` today, so a prefix match would false-positive; only `"role":"service_role"` in the payload elevates).
 const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY/;
+const hasInlineServiceRoleJwt = (s) => {
+  for (const m of s.matchAll(/eyJ[A-Za-z0-9_-]+\.(eyJ[A-Za-z0-9_-]+)\./g)) {
+    try { if (/"role"\s*:\s*"service_role"/.test(Buffer.from(m[1], 'base64url').toString('utf8'))) return true; } catch { /* not a JWT */ }
+  }
+  return false;
+};
+const isElevated = (s) => ELEVATED.test(s) || hasInlineServiceRoleJwt(s);
 // Public surfaces that must never hold an elevated key: the shipped browser bundle (src/, excluding tests) AND
 // the non-src browser-public members of MANAGED_ANON (e.g. the Cloudflare worker, which Bearers its key on every
 // forwarded public request). MANAGED_ANON is defined below; reference it lazily inside the check.
@@ -96,7 +109,7 @@ const SKIP_EXT = /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|eot|otf|pdf|zip|
 const SKIP_FILES = new Set(['tsc-app.baseline.json', 'eslint-suppressions.json']);
 const scannable = (name) => !SKIP_EXT.test(name) && !name.startsWith('.env') && !SKIP_FILES.has(name);
 // References allowed OUTSIDE the guarded roots (not runtime consumers): docs, test harnesses, project config.
-const isAllowedOutside = (p) => p.endsWith('.md') || p.startsWith('src/test/') || p.startsWith('tests/') || p === 'supabase/config.toml';
+const isAllowedOutside = (p) => p.endsWith('.md') || p.startsWith('src/test/') || p.startsWith('tests/') || p.startsWith('e2e/') || p === 'supabase/config.toml';
 
 // ── (1) The categorized, durable SOURCE inventory ───────────────────────────────────────────────────────────
 const MANAGED = {
@@ -358,7 +371,7 @@ function classify(rootDir) {
     // LOWERCASE (service_role_key / app.settings / vault), which the uppercase env family never matches.
     const misplacedSqlSender = p.endsWith('.sql') && !underRoot(p, SQL_ROOT) && SQL_SENDER(s);
     // CRITICAL: an elevated (RLS-bypassing) key in the shipped browser bundle is a public-surface leak.
-    if (isBrowserSurface(p) && ELEVATED.test(s)) elevated.push(p);
+    if (isBrowserSurface(p) && isElevated(s)) elevated.push(p);
     // Anon inventory — every anon/publishable consumer (docs .md are references, not consumers).
     if (!p.endsWith('.md') && ANON_FAMILY.test(s)) foundAnon.add(p);
     if (underRoot(p, SQL_ROOT)) {
@@ -377,8 +390,10 @@ function classify(rootDir) {
 // Extract cron job names a migration schedules/unschedules/alters, so we can prove: a `superseded` entry really
 // has a LATER migration touching one of its job names, and an `active`/`active-legacy` entry is NOT itself later
 // superseded. Migrations sort lexicographically by their timestamped filename. INVARIANT (all real migrations
-// hold it): job names are QUOTED STRING LITERALS. A dynamic scheduler — cron.(un)schedule(variable) or
-// format('… cron.%schedule …') — is NOT tracked here and must be a reviewed exception (fail-open otherwise).
+// hold it): job names are QUOTED STRING LITERALS. Known, reviewed exceptions (fail-open / fail-closed, none live
+// today): a DYNAMIC scheduler — cron.(un)schedule(variable) or format('… cron.%schedule …') — is untracked;
+// cron.alter_job is keyed by NUMERIC job_id in real pg_cron, so an alter_job(id, active:=false) disable is not
+// seen; and a job's OWNED schedule is not distinguished from a CLEANUP unschedule of another migration's job.
 const jobNames = (s) => [...s.matchAll(/cron\.(?:schedule|unschedule|alter_job)\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
 function checkSqlLifecycle(rootDir, registry = MANAGED_SQL) {
   const problems = [];
@@ -432,7 +447,13 @@ function selfTest() {
   ok(SQL_SENDER("select vault.update_secret(id, 'newval')"), 'vault.update_secret must match (regression: keep the update alternative)');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('apikey', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'sql sender via the apikey header must match (regression: Path B moves to apikey)');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig'))"), 'INLINE-JWT sql sender must match (no vault/current_setting)');
+  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('x-api-key', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'hyphenated x-api-key header sender must match (regression: keep api[-_]?key)');
+  ok(SQL_SENDER("select http(('POST', url, ARRAY[http_header('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='k'))], 'application/json', body)::http_request)"), 'generic http() POST sender must match');
+  ok(AUTH_HEADER.test('bearer') && !/authorization|api[-_]?key/i.test('bearer'), 'bearer auth-header alternative is independently pinned');
   ok(!SQL_SENDER("-- net.http_post(url, 'Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='k'))"), 'a commented-out sender is NOT a sender (comment stripping)');
+  // browser-elevation: inline service_role JWT is elevated; inline anon JWT is not (decode the role claim):
+  ok(hasInlineServiceRoleJwt('k="eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig"'), 'inline service_role JWT is detected (decoded role claim)');
+  ok(!hasInlineServiceRoleJwt('k="eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig"'), 'inline anon JWT is NOT service_role (no false positive)');
   ok(SQL_SENDER("select vault.create_secret('x','service_role_key')"), 'vault store must match as sql sender');
   ok(!SQL_SENDER('-- SUPABASE_SERVICE_ROLE_KEY=... (comment, no http_post)'), 'sql comment-only must NOT be a sender');
   ok(scannable('deploy') && scannable('tool.rb'), 'extensionless + unknown-extension files must be scannable');
@@ -474,6 +495,9 @@ function selfTest() {
     w('src/pages/Ok.tsx', 'const k = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;'); // publishable → anon, not elevated
     w('src/test/fixture.test.ts', 'const k = "sb_secret_testonly";'); // src/test is not the shipped bundle → not elevated
     w('src/pages/thing.spec.ts', 'const k = "sb_secret_specmock";'); // co-located .spec test → excluded, not elevated
+    w('src/pages/EnvLeak.tsx', 'const k = process.env.SUPABASE_SERVICE_ROLE_KEY;'); // pins the *_SERVICE_ROLE_KEY ELEVATED branch
+    w('src/pages/InlineSR.tsx', 'const k = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig";'); // inline service_role JWT → elevated
+    w('src/pages/InlineAnon.tsx', 'const k = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig";'); // inline anon JWT → NOT elevated
     w('docs/cloudflare-worker.js', 'const k = "sb_secret_workerleak";'); // browser-public (non-src) → MUST be caught
     // differently-NAMED Vault credential sender (finding 3): structural detection, no `service_role_key` literal:
     w('supabase/migrations/altcred.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='worker_credential')));");
@@ -501,6 +525,9 @@ function selfTest() {
     ok(!elevated.includes('src/pages/Ok.tsx'), 'fixture: a publishable key in the browser is NOT an elevation');
     ok(!elevated.includes('src/test/fixture.test.ts'), 'fixture: src/test is not the shipped bundle → sb_secret_ there is not an elevation');
     ok(!elevated.includes('src/pages/thing.spec.ts'), 'fixture: a co-located .spec test is excluded from elevation');
+    ok(elevated.includes('src/pages/EnvLeak.tsx'), 'fixture: a *_SERVICE_ROLE_KEY name in the browser is an elevation (pins the branch)');
+    ok(elevated.includes('src/pages/InlineSR.tsx'), 'fixture: an inline service_role JWT in the browser is an elevation');
+    ok(!elevated.includes('src/pages/InlineAnon.tsx'), 'fixture: an inline anon JWT in the browser is NOT an elevation');
     ok(elevated.includes('docs/cloudflare-worker.js'), 'fixture: sb_secret_ in a browser-public (non-src) member IS an elevation');
     ok(foundSql.has('supabase/migrations/altcred.sql'), 'fixture: differently-NAMED Vault credential sender detected (structural, no service_role_key literal)');
   } finally {
