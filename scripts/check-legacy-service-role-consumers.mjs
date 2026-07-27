@@ -14,10 +14,15 @@
  *
  * TWO distinct contracts (do not conflate):
  *   • INVENTORY completeness (the normal run + `--self-test`, both CI-gated): every legacy-key consumer is
- *     REGISTERED. This is GREEN TODAY, with everything still on the legacy keys — it does NOT prove migration.
+ *     REGISTERED. GREEN TODAY, everything still on the legacy keys — it does NOT prove migration. Migration makes
+ *     a consumer DROP its legacy signal, so STALE is STATE-AWARE (a dropped signal is a problem only if the path's
+ *     state is still 'legacy'), which keeps CI green through migration.
  *   • MIGRATION completion (`--require-migrated`, an on-demand CUTOVER gate, NOT run in normal CI): FAILS until
- *     every production-runtime consumer has moved off the legacy service_role/anon keys. This is the gate for the
- *     final legacy-pair disable. See requireMigrated() + MIGRATED.
+ *     every production consumer has moved off the legacy keys, read from the explicit per-path STATE registry
+ *     (legacy default; new-secret/publishable; local-demo/tooling/retired exemptions) — NOT from signal
+ *     disappearance, and NOT from env-name/helper NAMES (dependency signals, not credential state). It first
+ *     re-runs the inventory (an unregistered consumer would be invisible otherwise). See STATE + requireMigrated()
+ *     + inventoryProblems().
  *
  * A shared, decoded inline-JWT classifier routes an inline `eyJ….eyJ….` token by its ROLE claim into the right
  * inventory (service_role → source; anon → anon), and the SQL sender detects an inline JWT under Bearer OR an
@@ -110,10 +115,6 @@ const hasInlineAnonJwt = (s) => inlineJwtRoles(s).has('anon');
 // The legacy `anon`/`service_role` keys are DISABLED AS A PAIR, so Path B is TWO migrations: service_role →
 // sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public). This family inventories the anon side.
 const ANON_FAMILY = /[A-Z0-9_]*ANON_KEY|[A-Z0-9_]*PUBLISHABLE_KEY/;
-// LEGACY-only anon signal (for the cutover gate): the `*_ANON_KEY` env name or an inline anon JWT — NOT the
-// `*_PUBLISHABLE_KEY` name (that is the migrated slot; its VALUE is verified separately by prefix).
-const LEGACY_ANON = (s) => /[A-Z0-9_]*ANON_KEY/.test(s) || hasInlineAnonJwt(s);
-const LEGACY_SR = (s) => KEY_FAMILY.test(s) || HELPER_SIGNAL.test(s) || hasInlineServiceRoleJwt(s);
 // Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle: the sb_secret_ key, a
 // `*_SERVICE_ROLE_KEY` env name, OR an INLINE service_role JWT (decoded role claim).
 const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY/;
@@ -371,23 +372,51 @@ const MANAGED_ANON = {
   ],
 };
 
-// ── Cutover contract (`--require-migrated`): inventory-complete ≠ migration-complete ────────────────────────
-// The normal guard proves every legacy-key consumer is REGISTERED (green today, with everything still on the
-// legacy keys). It does NOT prove migration. `--require-migrated` is the gate for the final legacy-pair DISABLE:
-// it FAILS while any PRODUCTION-RUNTIME consumer still uses a legacy service-role or anon key, and passes only
-// once each has moved to sb_secret_ / sb_publishable_. A path enters MIGRATED only after it (a) drops the legacy
-// signal in source AND (b) is added here deliberately (deployed-VALUE prefix verification is a separate manual
-// gate — the env NAME does not prove the value; see docs Path B → B2). Tests/CI/one-off tooling/config are NOT
-// production runtime and are excluded. Deployed env values (Vercel/Supabase/wrangler secrets) are verified by
-// hand at cutover — they are not in git.
-const MIGRATED = new Set([
-  // (empty) — Path B has not started. Add a consumer's path here once it is proven off the legacy key.
-]);
-const RUNTIME_SR_CATS = ['inbound-auth', 'admin-client', 'downstream-caller', 'vercel-caller', 'via-shared-helper'];
-const RUNTIME_ANON_CATS = ['browser-public', 'edge-anon'];
-// A migration is "still legacy" for the cutover if its live cron still sends the lowercase `service_role_key`
-// Vault/app.settings secret (the new-key cutover adds a superseding migration that sends the sb_secret via apikey).
-const LEGACY_SQL = (s) => /service_role_key/i.test(stripSqlComments(s));
+// ── Cutover contract: a DURABLE per-path STATE registry (inventory-complete ≠ migration-complete) ────────────
+// Inventory completeness (the normal run) proves every consumer is REGISTERED — green today, everything on the
+// legacy keys. Migration completion is tracked EXPLICITLY per path, because migration makes a consumer DROP its
+// legacy signal (a signal-disappearance model would then wrongly flag it "stale" and the gate could never pass),
+// and because a DEPENDENCY signal (an env-NAME slot, or a shared-helper name like requireServiceRole) does NOT
+// prove the credential is still legacy — the value is deployed and the helper can move to sb_secret_ under an
+// unchanged name. Each path carries an explicit STATE (unlisted = 'legacy'):
+//   legacy       — a PRODUCTION consumer still on the legacy key. Must migrate before the pair is disabled.
+//   new-secret   — migrated to sb_secret_ (trusted backend). Set only AFTER the deployed value is verified.
+//   publishable  — migrated to sb_publishable_ (browser/public). Set only AFTER the deployed value is verified.
+//   local-demo   — uses public supabase-demo / local-dev keys; never a production credential (reviewed exemption).
+//   tooling      — CI/guard/config machinery that names the key but isn't a runtime credential consumer.
+//   retired      — a one-off historical script that will not run against the disabled key.
+// The cutover (`--require-migrated`) fails while any NON-exempt path is 'legacy', or a migrated path still carries
+// a HARD legacy-credential residue in source (an inline legacy JWT; for SQL also service_role_key / app.settings).
+const STATE = {
+  // tooling
+  'scripts/check-legacy-service-role-consumers.mjs': 'tooling', 'scripts/check-edge-fn-config.mjs': 'tooling',
+  'vitest.config.ts': 'tooling', '.github/workflows/e2e.yml': 'tooling',
+  // local-demo (public supabase-demo / local-dev keys)
+  'scripts/db/seed-local.ts': 'local-demo', 'scripts/db/e2e-local-paid.sh': 'local-demo',
+  'e2e/invoice-health.spec.ts': 'local-demo', 'e2e/rls-health.spec.ts': 'local-demo',
+  'e2e/local/public-booking-webhook.spec.ts': 'local-demo', 'e2e/local/rebook-send-side.spec.ts': 'local-demo',
+  'e2e/local/rebook-upfront-pay.spec.ts': 'local-demo', 'e2e/local/rebook-upfront-webhook.spec.ts': 'local-demo',
+  'tests/rebooking-enforcement.spec.ts': 'local-demo',
+  'supabase/functions/_shared/auth.test.ts': 'local-demo', 'supabase/functions/_shared/digest-worker-entry.test.ts': 'local-demo',
+  'supabase/functions/_shared/digest-worker-handler.test.ts': 'local-demo', 'supabase/functions/_shared/service-role-auth.test.ts': 'local-demo',
+  'supabase/functions/backup-database/index.test.ts': 'local-demo', 'supabase/functions/create-invoice-payment/index.test.ts': 'local-demo',
+  'supabase/functions/get-booking-invoice/index.test.ts': 'local-demo', 'supabase/functions/render-page/index.test.ts': 'local-demo',
+  'supabase/functions/send-priority-claim-invitation/index.test.ts': 'local-demo', 'supabase/functions/sitemap/index.test.ts': 'local-demo',
+  // retired (one-off historical migration scripts)
+  'scripts/migration/auth_import_dry_run.py': 'retired', 'scripts/migration/auth_import_users.py': 'retired',
+  'scripts/migration/auth_verify_pre_public_import.py': 'retired', 'scripts/migration/ficwb_secrets_audit.py': 'retired',
+  'scripts/migration/storage_common.py': 'retired', 'scripts/migration/storage_copy_buckets.py': 'retired',
+  'scripts/migration/storage_copy_invoices.py': 'retired', 'scripts/migration/storage_fix_missing_from_db.py': 'retired',
+  'scripts/migration/storage_migration_dry_run.py': 'retired', 'scripts/migration/storage_regenerate_invoice_urls.py': 'retired',
+  'scripts/migration/storage_regenerate_invoices_via_edge.py': 'retired',
+};
+const stateOf = (p, state = STATE) => state[p] || 'legacy';
+const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // not a production credential to migrate
+// HARD legacy-credential residue in SOURCE (the only migration proof source can give — env names are slots, helper
+// names are dependencies): an inline legacy JWT; for SQL also the service_role_key / app.settings legacy sources.
+const hardLegacyResidue = (p, s) => p.endsWith('.sql')
+  ? (inlineJwtRoles(stripSqlComments(s)).size > 0 || /service_role_key|app\.settings/i.test(stripSqlComments(s)))
+  : (hasInlineServiceRoleJwt(s) || hasInlineAnonJwt(s));
 
 // ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
@@ -478,34 +507,51 @@ function diff(found, registered) {
   };
 }
 
-// Cutover gate: list every production-runtime consumer NOT yet proven migrated off the legacy key. Parameterized
-// (registries + MIGRATED) so the self-test can exercise the cross-check + drop-out paths on fixtures.
-function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, migrated: MIGRATED }) {
-  const { managed, anon, sql, migrated } = reg;
+// Cutover gate: every registered NON-exempt path must be migrated (state new-secret/publishable) and carry no
+// HARD legacy residue in source. Migration is read from the explicit STATE registry — NOT from signal
+// disappearance — so a migrated path (which drops its legacy env-name signal) is proven by its state, not flagged.
+// Parameterized (registries + STATE) so the self-test can exercise every branch on fixtures.
+function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }) {
+  const { managed, anon, sql, state } = reg;
   const pending = []; // { path, kind, reason }
   const read = (p) => { try { return readFileSync(join(rootDir, p), 'utf8'); } catch { return ''; } };
-  const check = (p, kind, stillLegacy) => {
-    if (!migrated.has(p)) pending.push({ path: p, kind, reason: stillLegacy ? 'still references the legacy key' : 'not marked migrated (verify + add to MIGRATED)' });
-    else if (stillLegacy) pending.push({ path: p, kind, reason: 'MARKED migrated but STILL references the legacy key' });
-    // else: in MIGRATED AND no legacy signal → migrated, drops out.
+  const check = (p, kind) => {
+    const st = stateOf(p, state);
+    if (EXEMPT.has(st)) return; // reviewed non-production exemption (local-demo / tooling / retired)
+    if (st === 'legacy') { pending.push({ path: p, kind, reason: 'state=legacy — a production consumer still on the legacy key' }); return; }
+    // migrated (new-secret / publishable): source must carry no hard legacy residue (inline JWT / service_role_key / app.settings)
+    if (hardLegacyResidue(p, read(p))) pending.push({ path: p, kind, reason: `state=${st} but source still carries a legacy credential (inline JWT / service_role_key / app.settings)` });
   };
-  for (const cat of RUNTIME_SR_CATS) for (const p of (managed[cat] || [])) check(p, 'service-role', LEGACY_SR(read(p)));
-  for (const cat of RUNTIME_ANON_CATS) for (const p of (anon[cat] || [])) check(p, 'anon', LEGACY_ANON(read(p)));
-  for (const [p, meta] of Object.entries(sql)) if (meta.status.startsWith('active')) check(p, 'sql', LEGACY_SQL(read(p)));
+  for (const cat in managed) for (const p of managed[cat]) check(p, 'service-role');
+  for (const cat in anon) for (const p of anon[cat]) check(p, 'anon');
+  for (const [p, meta] of Object.entries(sql)) if (meta.status.startsWith('active')) check(p, 'sql');
   return pending;
 }
 
-// Count of INVENTORY problems (registry drift / escape / browser-elevation / lifecycle). The cutover gate must
-// refuse to report "0 pending" while the inventory is incomplete — an UNREGISTERED runtime consumer is invisible
-// to requireMigrated (it only walks the registries), so migration-completeness is meaningless without it.
-function inventoryProblemCount(rootDir = '.') {
+// INVENTORY problems used by the cutover precheck (an UNREGISTERED runtime consumer is invisible to requireMigrated,
+// which only walks the registries). STALE is STATE-AWARE for source/anon: a registered path that dropped its signal
+// is a problem ONLY if its state is still 'legacy' (it migrated but wasn't relabeled) — a migrated/exempt path is
+// EXPECTED to have no legacy signal (this is what makes migration reachable). SQL migrations are immutable, so SQL
+// stale stays literal.
+function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }) {
+  const { managed, anon, sql, state } = regs;
   const c = classify(rootDir);
-  const d = (found, reg) => { const r = diff(found, reg); return r.unregistered.length + r.stale.length; };
-  return d(c.foundSource, new Set(Object.values(MANAGED).flat()))
-    + d(c.foundSql, new Set(Object.keys(MANAGED_SQL)))
-    + d(c.foundAnon, new Set(Object.values(MANAGED_ANON).flat()))
-    + c.escapes.length + c.elevated.length + checkSqlLifecycle(rootDir).length;
+  const out = [];
+  const staleAware = (found, registered, label) => {
+    for (const f of found) if (!registered.has(f)) out.push(`UNREGISTERED ${label}: ${f}`);
+    for (const p of registered) if (!found.has(p) && stateOf(p, state) === 'legacy') out.push(`STALE ${label} (state=legacy but no signal — relabel its STATE if migrated, or retire/remove): ${p}`);
+  };
+  staleAware(c.foundSource, new Set(Object.values(managed).flat()), 'source');
+  staleAware(c.foundAnon, new Set(Object.values(anon).flat()), 'anon');
+  const sqlReg = new Set(Object.keys(sql));
+  for (const f of c.foundSql) if (!sqlReg.has(f)) out.push(`UNREGISTERED sql: ${f}`);
+  for (const p of sqlReg) if (!c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
+  c.escapes.forEach((f) => out.push(`ESCAPE: ${f}`));
+  c.elevated.forEach((f) => out.push(`BROWSER-ELEVATION: ${f}`));
+  checkSqlLifecycle(rootDir, sql).forEach((m) => out.push(`LIFECYCLE: ${m}`));
+  return out;
 }
+const inventoryProblemCount = (rootDir = '.') => inventoryProblems(rootDir).length;
 
 // ── Self-test: prove the detection + diff logic against fixtures (run with --self-test) ─────────────────────
 function selfTest() {
@@ -637,32 +683,56 @@ function selfTest() {
     rmSync(lc, { recursive: true, force: true });
   }
 
-  // cutover contract: the legacy classifiers + the fail-today gate.
-  ok(LEGACY_SR('Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")') && LEGACY_SR('k="' + mkJwt('service_role') + '"'), 'LEGACY_SR detects env name + inline service_role JWT');
-  ok(!LEGACY_SR('const k = "sb_secret_abc"'), 'a migrated backend (sb_secret_) is NOT legacy service-role');
-  ok(LEGACY_ANON('Deno.env.get("SUPABASE_ANON_KEY")') && LEGACY_ANON('k="' + mkJwt('anon') + '"'), 'LEGACY_ANON detects legacy anon name + inline anon JWT');
-  ok(!LEGACY_ANON('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY') && !LEGACY_ANON('const k = "sb_publishable_x"'), 'LEGACY_ANON does NOT flag the publishable slot (migrated) — distinguishes legacy anon from publishable');
+  // cutover contract (STATE model): fails today, and the reasons distinguish state.
+  ok(stateOf('scripts/check-legacy-service-role-consumers.mjs') === 'tooling' && EXEMPT.has('tooling'), 'STATE: the guard file is an exempt tooling entry');
+  ok(stateOf('supabase/functions/health-check/index.ts') === 'legacy', 'STATE: an unlisted production consumer defaults to legacy');
   ok(requireMigrated('.').length > 0, '--require-migrated FAILS today: production consumers are still on the legacy keys');
-  // cross-check + drop-out: a MIGRATED path that STILL carries the legacy signal is flagged; a clean one drops out.
-  const rm = mkdtempSync(join(tmpdir(), 'legacy-key-rm-'));
+  // Full end-to-end cutover behaviour on a fixture tree — the four Codex blockers, proven:
+  const cut = mkdtempSync(join(tmpdir(), 'legacy-key-cut-'));
   try {
-    const w2 = (r, body) => { const p = join(rm, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
-    w2('supabase/functions/still/index.ts', 'const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");'); // still legacy
-    w2('supabase/functions/done/index.ts', 'const k = Deno.env.get("SUPABASE_SECRET_KEYS"); // sb_secret_'); // migrated
-    const reg = { managed: { 'inbound-auth': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts'] }, anon: {}, sql: {} };
-    const bothMig = requireMigrated(rm, { ...reg, migrated: new Set(['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts']) });
-    ok(bothMig.length === 1 && bothMig[0].path === 'supabase/functions/still/index.ts' && /MARKED migrated/.test(bothMig[0].reason),
-      'cutover cross-check: a MIGRATED path still on the legacy key is flagged; the clean one drops out');
-    const noneMig = requireMigrated(rm, { ...reg, migrated: new Set() });
-    ok(noneMig.length === 2 && noneMig.some((x) => /still references/.test(x.reason)) && noneMig.some((x) => /not marked migrated/.test(x.reason)),
-      'cutover: unmarked consumers report still-references vs not-marked-migrated distinctly');
-  } finally { rmSync(rm, { recursive: true, force: true }); }
+    const w2 = (r, body) => { const p = join(cut, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
+    w2('supabase/functions/still/index.ts', 'Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")');                    // legacy
+    w2('supabase/functions/done/index.ts', 'Deno.env.get("SUPABASE_SECRET_KEYS") // migrated, no signal');   // new-secret (dropped signal)
+    w2('supabase/functions/helperdone/index.ts', 'import { requireServiceRole } from "../_shared/auth.ts"; // now checks sb_secret'); // new-secret, helper name remains
+    w2('supabase/functions/liar/index.ts', 'const k = "' + mkJwt('service_role') + '";');                    // new-secret but inline legacy JWT
+    w2('scripts/prodtool.mjs', 'Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")');                                 // scripts-ci, legacy (prod tooling)
+    w2('supabase/migrations/legacy_cron.sql', "net.http_post(u, jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key')))");
+    w2('supabase/migrations/new_cron.sql', "net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))"); // migrated (differently-named secret)
+    w2('supabase/migrations/liar_cron.sql', "net.http_post(u, jsonb_build_object('apikey','" + mkJwt('service_role') + "'))"); // marked migrated but inline legacy JWT
+    const reg = {
+      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts'], 'scripts-ci': ['scripts/prodtool.mjs'] },
+      anon: {},
+      sql: { 'supabase/migrations/legacy_cron.sql': { status: 'active' }, 'supabase/migrations/new_cron.sql': { status: 'active' }, 'supabase/migrations/liar_cron.sql': { status: 'active' } },
+      state: { 'supabase/functions/done/index.ts': 'new-secret', 'supabase/functions/helperdone/index.ts': 'new-secret', 'supabase/functions/liar/index.ts': 'new-secret', 'supabase/migrations/new_cron.sql': 'new-secret', 'supabase/migrations/liar_cron.sql': 'new-secret' },
+    };
+    const paths = new Set(requireMigrated(cut, reg).map((x) => x.path));
+    ok(!paths.has('supabase/functions/done/index.ts'), 'F1: a migrated consumer that DROPPED its signal (state=new-secret) passes — the gate is reachable');
+    ok(inventoryProblems(cut, reg).length === 0, 'F1: the inventory precheck stays clean for a migrated (signal-dropped) path — state-aware stale');
+    ok(!paths.has('supabase/functions/helperdone/index.ts'), 'F2: a requireServiceRole importer migrated to sb_secret passes WITHOUT renaming (helper = dependency, not credential)');
+    ok(!paths.has('supabase/migrations/new_cron.sql'), 'F2/F3: a migrated cron using a differently-NAMED Vault secret passes');
+    ok(paths.has('scripts/prodtool.mjs'), 'F3: a scripts-ci PRODUCTION tool (state=legacy) is NOT blanket-excluded');
+    ok(paths.has('supabase/functions/liar/index.ts') && paths.has('supabase/migrations/liar_cron.sql'), 'F3: state=new-secret but an inline legacy JWT residue in source/SQL is REJECTED');
+    ok(paths.has('supabase/functions/still/index.ts') && paths.has('supabase/migrations/legacy_cron.sql'), 'cutover: legacy source + legacy SQL cron are flagged');
+    ok(!requireMigrated(cut, { ...reg, state: { ...reg.state, 'scripts/prodtool.mjs': 'retired' } }).some((x) => x.path === 'scripts/prodtool.mjs'), 'F3: an explicitly-exempted tool (retired) passes');
+  } finally { rmSync(cut, { recursive: true, force: true }); }
+  // the PASS path (own tree, ONLY migrated files): cutover clean end-to-end — proves the gate is reachable.
+  const cln = mkdtempSync(join(tmpdir(), 'legacy-key-cln-'));
+  try {
+    const w2 = (r, body) => { const p = join(cln, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
+    w2('supabase/functions/done/index.ts', 'Deno.env.get("SUPABASE_SECRET_KEYS") // migrated');
+    w2('supabase/functions/helperdone/index.ts', 'import { requireServiceRole } from "../_shared/auth.ts";');
+    w2('supabase/migrations/new_cron.sql', "net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))");
+    const clean = { managed: { 'admin-client': ['supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts'] }, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'active' } }, state: { 'supabase/functions/done/index.ts': 'new-secret', 'supabase/functions/helperdone/index.ts': 'new-secret', 'supabase/migrations/new_cron.sql': 'new-secret' } };
+    ok(inventoryProblems(cln, clean).length === 0 && requireMigrated(cln, clean).length === 0, 'F1: full cutover PASSES (inventory clean + 0 pending) when every consumer is migrated');
+  } finally { rmSync(cln, { recursive: true, force: true }); }
 
-  // the real, checked-in baseline must pass every INVENTORY check (require-migrated is intentionally NOT clean yet)
+  // the real, checked-in baseline must pass every INVENTORY check (require-migrated is intentionally NOT clean yet).
+  // Use the SAME state-aware inventory the guard uses, so it stays green through migration.
+  ok(inventoryProblems('.').length === 0, `real inventory clean (state-aware): ${inventoryProblems('.').slice(0, 3).join(' | ')}`);
   const real = classify('.');
-  const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat()));
+  const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat())); rs.stale = rs.stale.filter((p) => stateOf(p) === 'legacy');
   const rq = diff(real.foundSql, new Set(Object.keys(MANAGED_SQL)));
-  const ra = diff(real.foundAnon, new Set(Object.values(MANAGED_ANON).flat()));
+  const ra = diff(real.foundAnon, new Set(Object.values(MANAGED_ANON).flat())); ra.stale = ra.stale.filter((p) => stateOf(p) === 'legacy');
   ok(rs.unregistered.length === 0 && rs.stale.length === 0, `real SOURCE baseline clean (unreg=${rs.unregistered.length}, stale=${rs.stale.length})`);
   ok(rq.unregistered.length === 0 && rq.stale.length === 0, `real SQL baseline clean (unreg=${rq.unregistered.length}, stale=${rq.stale.length})`);
   ok(ra.unregistered.length === 0 && ra.stale.length === 0, `real ANON baseline clean (unreg=${ra.unregistered.length}, stale=${ra.stale.length})`);
@@ -700,11 +770,11 @@ if (process.argv.includes('--require-migrated')) {
     console.error(`NOT READY to disable the legacy keys — ${pending.length} production-runtime consumers still on a legacy key ` +
       `(service-role=${by('service-role')}, anon=${by('anon')}, sql=${by('sql')}):\n`);
     for (const x of pending) console.error(`  • [${x.kind}] ${x.path} — ${x.reason}`);
-    console.error('\nMigrate each (service_role → sb_secret_, anon → sb_publishable_), add its path to MIGRATED, then re-run.');
-    console.error('Also verify DEPLOYED env VALUES by prefix (Vercel/Supabase/wrangler) — the env NAME does not prove the value.');
+    console.error('\nMigrate each (service_role → sb_secret_, anon → sb_publishable_), set its STATE to new-secret/publishable, then re-run.');
+    console.error('Also verify DEPLOYED env VALUES by prefix (Vercel/Supabase/Cloudflare) — the env NAME does not prove the value.');
     process.exit(1);
   }
-  console.log('OK — every production-runtime consumer is migrated off the legacy service-role/anon keys; safe to disable the legacy pair.');
+  console.log('OK — every production consumer is migrated off the legacy service-role/anon keys; safe to disable the legacy pair.');
   process.exit(0);
 }
 
@@ -712,6 +782,10 @@ const { foundSource, foundSql, foundAnon, escapes, elevated } = classify('.');
 const src = diff(foundSource, new Set(Object.values(MANAGED).flat()));
 const sql = diff(foundSql, new Set(Object.keys(MANAGED_SQL)));
 const anon = diff(foundAnon, new Set(Object.values(MANAGED_ANON).flat()));
+// STATE-AWARE stale for source/anon: a registered path that dropped its signal is a problem ONLY if state=legacy
+// (migrated but not relabeled). A migrated/exempt path is EXPECTED to have no signal — so migration keeps CI green.
+src.stale = src.stale.filter((p) => stateOf(p) === 'legacy');
+anon.stale = anon.stale.filter((p) => stateOf(p) === 'legacy');
 const lifecycle = checkSqlLifecycle('.');
 const problems = [];
 

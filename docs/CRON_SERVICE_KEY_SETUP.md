@@ -508,10 +508,16 @@ npm run check:legacy-key:cutover      # node … --require-migrated
 ```
 
 It **fails today** (≈124 pending: service-role ≈98, anon ≈22, SQL 4) and passes only once **every
-production-runtime consumer** (edge functions, the Vercel caller, the browser bundle + public edge, and every
-`active`/`active-legacy` SQL cron) has moved off the legacy service-role/anon keys — each added to the `MIGRATED`
-allow-list after its source drops the legacy signal. Tests/CI/one-off tooling/config are explicit non-runtime
-exceptions.
+production consumer** (edge functions, the Vercel caller, the browser bundle + public edge, and every
+`active`/`active-legacy` SQL cron) has moved off the legacy service-role/anon keys. Migration is tracked by an
+**explicit per-path `STATE` registry** (not signal-disappearance, which would wrongly flag a migrated file "stale"
+and never let the gate pass): each path is `legacy` (default), `new-secret`, `publishable`, or a reviewed
+exemption (`local-demo` / `tooling` / `retired`). A path becomes `new-secret`/`publishable` only **after its
+deployed value is verified** — the env NAME (a slot) and a shared-helper NAME (`requireServiceRole`) are
+*dependency* signals, **not** proof the credential is still legacy, so a helper importer that moves to `sb_secret_`
+under an unchanged name passes without renaming. Non-production paths (tests, CI/guard tooling, one-off scripts)
+must carry an explicit exemption state — they are **not** blanket-excluded by category (some `scripts-ci` paths
+target production).
 
 **Disable ONLY after ALL of these hold:**
 1. `npm run check:legacy-key:cutover` → **0 pending** (exit 0). This gate **first re-runs the full inventory**
@@ -523,15 +529,21 @@ exceptions.
    `sb_secret_`), Supabase function secrets, and the **Cloudflare worker's `SUPABASE_ANON_KEY`** value (set in the
    Cloudflare dashboard — `wrangler.toml` has `keep_vars = true`, so the value is **not** in git).
 3. **Live `cron.job` inventory** (the lifecycle check is static + best-effort — see below): confirm on the
-   production DB that no scheduled job's command still sends a **legacy** key:
+   production DB that no scheduled job still sends a **legacy** key. ⚠️ **Never `SELECT command`** — a command may
+   contain an inline JWT, and printing it violates the "never print the key" rule. Return only metadata + a
+   **boolean classification** + a redacted hint:
 
    ```sql
-   SELECT jobid, jobname, command FROM cron.job
-    WHERE command ILIKE '%service_role_key%' OR command ILIKE '%decrypted_secret%' OR command ~ 'eyJ[A-Za-z0-9_-]+\.eyJ';
+   SELECT jobid, jobname,
+          (command ILIKE '%service_role_key%' OR command ILIKE '%app.settings%'
+           OR command ~ 'eyJ[A-Za-z0-9_-]+\.eyJ') AS sends_legacy_credential,
+          left(md5(command), 8) AS command_fingerprint      -- redacted identifier, not the command text
+     FROM cron.job;
+   -- expect every row `sends_legacy_credential = false`. If a row is true, DO NOT print its command — inspect the
+   -- specific job (`\gset` / a targeted, redacted extract) out of band. A migrated cron reads its sb_secret from
+   -- Vault and sends it via `apikey`; matching `%decrypted_secret%` alone is NOT legacy, which is why this
+   -- classifier keys on the legacy service_role_key / app.settings sources + inline `eyJ…` JWTs only.
    ```
-   Do **not** read this as "expect zero rows": a correctly-migrated cron that reads its `sb_secret` from Vault
-   still matches `%decrypted_secret%`. **Inspect each returned row** and confirm none Bearer/apikey a **legacy**
-   `eyJ…` JWT or the `service_role_key` secret — a migrated cron sends the `sb_secret` via the `apikey` header.
 
 Then **disable the legacy keys in Settings → API Keys** — this disables the `anon` + `service_role` pair
 **together** (Supabase cannot disable one alone), safe *only because* both sides are migrated. Purge the stored
