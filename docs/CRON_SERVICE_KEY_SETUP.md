@@ -130,16 +130,21 @@ pair) via **six checks**:
    `service_role` JWT** — decoded by its `role` claim) in a public surface **fails**: the shipped browser bundle
    (`src/`, excluding tests) *and* the non-`src` `browser-public` members (e.g. the Cloudflare worker). That key
    must never reach a public client.
-5. **SQL lifecycle** — proves each `MANAGED_SQL` active/superseded status against later migrations touching the
-   same cron job name, so a **stale lifecycle status cannot stay green**.
+5. **SQL lifecycle (static, best-effort)** — checks each `MANAGED_SQL` active/superseded status against later
+   migrations touching the same **quoted** cron job name. It is a *static hint*, not a guarantee: it does **not**
+   follow `alter_job(jobid,…)` (numeric id), dynamic/variable job names, or distinguish an executable call from a
+   function definition. So a live **`cron.job` production query is a MANDATORY cutover gate** (see "Disabling the
+   legacy pair"); do not treat "lifecycle static-checked" as proof of the running scheduler.
 6. **Repo-wide escape** — fails if the key/helper (or a key-sending `.sql` outside `supabase/migrations`) is
    referenced **outside the guarded roots** + the allow-list (docs `.md`, `src/test/**`, `tests/**`,
    `supabase/config.toml`), so a consumer under a NEW runtime root cannot hide.
 
-`npm run check:legacy-key:selftest` proves the guard's own detection + diff logic against fixtures (literal,
-alias, helper-only, extensionless, structural SQL sender, differently-named vault credential, anon consumer,
-browser elevation, stale lifecycle, escape, and the real baseline); both run in CI.
-**No single registry is "the" authority — all six checks together are.** A NEW consumer of any class (service-role,
+`npm run check:legacy-key:selftest` proves the guard's own detection + diff logic against fixtures (literal, alias,
+helper-only, extensionless, structural + inline-JWT + hyphenated-header SQL sender, differently-named vault
+credential, anon consumer, inline service_role/anon JWT routing, browser elevation, static lifecycle, escape,
+the `--require-migrated` fail-today gate, and the real baseline); both run in CI. A separate on-demand
+**`npm run check:legacy-key:cutover`** (`--require-migrated`) is the migration-completion gate — see "Disabling
+the legacy pair". **No single registry is "the" authority — all six checks together are.** A NEW consumer of any class (service-role,
 SQL/Vault, anon, or an elevated key in the browser) cannot slip past the deactivation plan.
 
 | Category | Count* | What it is | Legacy-off impact |
@@ -455,9 +460,11 @@ inventories are clean AND both replacement paths are verified in production.**
   7. **`scripts-ci` (14).** Migration/seed scripts (incl. the cross-project storage scripts on
      `SOURCE_`/`TARGET_SERVICE_ROLE_KEY`) + the CI guards that read the key — repoint or retire, and update this
      guard's registry + doc so they describe the new model.
-  8. **Guard green on the service-role side.** All three service-role checks — source registry, SQL/Vault
-     registry, repo-wide escape — show **no consumer still on the legacy service_role key**: the machine-checked
-     proof that nothing was forgotten. (The pair is NOT disabled here — that waits for **B2** + the shared gate.)
+  8. **Migration proven on the service-role side.** ⚠️ The normal guard being green does **NOT** prove migration —
+     it is green *today* with every consumer still on the legacy key (it only proves the inventory is *complete*).
+     The migration proof is the **cutover gate `npm run check:legacy-key:cutover`** (`--require-migrated`), which
+     must report **0 pending** service-role runtime consumers. (The pair is NOT disabled here — that waits for
+     **B2** + the shared gate.)
 - **BLOCKING PREREQUISITE (do not start the cutover until this exists):** because the auth paths are not shared,
   **every live sender must gain a reviewed side-effect-free auth-only probe** (a mode that authenticates and
   returns 200 **without** sending), OR all workers must be routed through **one genuinely shared, tested auth
@@ -486,18 +493,42 @@ The `MANAGED_ANON` inventory (`npm run check:legacy-key`) tracks every anon/publ
   **and** `key.startsWith('sb_secret_') === false` — in a build/runtime assertion or a one-off. (Do **not** use a
   short slice like `key.slice(0, 3)`: `sb_` is identical for `sb_publishable_` and `sb_secret_`, so it cannot catch
   the dangerous case.) Never echo the full value.
-- **Guard green on the anon side.** `MANAGED_ANON` shows every consumer migrated to `sb_publishable_`, and the
-  browser-elevation check is clean.
+- **Migration proven on the anon side.** Again, the normal guard's green only proves the anon *inventory* is
+  complete. Migration is proven by the same **cutover gate** reporting **0 pending** anon runtime consumers, plus
+  the production-value prefix check above.
 
 ### Disabling the legacy pair (the shared final gate)
 
-**Only after BOTH B1 and B2 are green + verified in production:** **disable the legacy keys in Settings → API
-Keys** — this disables the `anon` + `service_role` pair **together** (Supabase cannot disable one alone), which is
-safe *only because* the service-role side is on `sb_secret_` **and** the anon/public side is on `sb_publishable_`.
-Purge the stored legacy copies from Vault + Vercel. It is a key **disable**, NOT a JWT-secret rotation (unavailable
-on legacy anyway).
+The normal guard (`npm run check:legacy-key`) is **inventory-complete, NOT migration-complete** — it is green
+today. **The disable gate is a DIFFERENT command:**
 
-- **Exit condition:** no consumer in **any** class depends on either legacy key — **all guard checks green** for
-  both the service-role inventory (source + SQL/Vault + escape) and the anon inventory (`MANAGED_ANON` +
-  browser-elevation), production values verified `sb_secret_` / `sb_publishable_` respectively, and
-  `check-edge-fn-config.mjs` + this doc reflect the new model.
+```bash
+npm run check:legacy-key:cutover      # node … --require-migrated
+```
+
+It **fails today** (≈124 pending: service-role ≈98, anon ≈22, SQL 4) and passes only once **every
+production-runtime consumer** (edge functions, the Vercel caller, the browser bundle + public edge, and every
+`active`/`active-legacy` SQL cron) has moved off the legacy service-role/anon keys — each added to the `MIGRATED`
+allow-list after its source drops the legacy signal. Tests/CI/one-off tooling/config are explicit non-runtime
+exceptions.
+
+**Disable ONLY after ALL of these hold:**
+1. `npm run check:legacy-key:cutover` → **0 pending** (exit 0).
+2. **Deployed VALUES verified** by prefix (the env NAME does not prove the value): Vercel `SUPABASE_SERVICE_ROLE_KEY`
+   → `sb_secret_`, `VITE_SUPABASE_PUBLISHABLE_KEY` → `sb_publishable_` (and **not** `sb_secret_`), Supabase function
+   secrets, and the `wrangler.toml` worker env.
+3. **Live `cron.job` inventory** (the lifecycle check is static + best-effort — see below): confirm on the
+   production DB that no scheduled job's command still sends a legacy key:
+
+   ```sql
+   SELECT jobid, jobname, command FROM cron.job
+    WHERE command ILIKE '%service_role_key%' OR command ILIKE '%decrypted_secret%' OR command ~ 'eyJ[A-Za-z0-9_-]+\.eyJ';
+   -- expect ZERO rows that Bearer/apikey a LEGACY credential (a migrated cron sends the sb_secret via apikey).
+   ```
+
+Then **disable the legacy keys in Settings → API Keys** — this disables the `anon` + `service_role` pair
+**together** (Supabase cannot disable one alone), safe *only because* both sides are migrated. Purge the stored
+legacy copies from Vault + Vercel. It is a key **disable**, NOT a JWT-secret rotation (unavailable on legacy).
+
+- **Exit condition:** `--require-migrated` passes (0 pending), deployed values + the live `cron.job` query are
+  verified, and `check-edge-fn-config.mjs` + this doc reflect the new model.

@@ -11,6 +11,7 @@
     "check:edge-config": "node scripts/check-edge-fn-config.mjs",
     "check:legacy-key": "node scripts/check-legacy-service-role-consumers.mjs",
     "check:legacy-key:selftest": "node scripts/check-legacy-service-role-consumers.mjs --self-test",
+    "check:legacy-key:cutover": "node scripts/check-legacy-service-role-consumers.mjs --require-migrated",
     "check:edge-types": "node scripts/check-edge-deno.mjs",
     "check:edge-types:update": "node scripts/check-edge-deno.mjs --update",
     "lint:fix": "eslint . --fix",

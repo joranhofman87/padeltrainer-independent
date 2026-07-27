@@ -10,24 +10,37 @@
  * breaks all of those at once.
  *
  * Supabase DISABLES the legacy `anon` + `service_role` keys AS A PAIR, so this guard inventories BOTH — Path B
- * migrates service_role → sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public), and the pair
- * can be disabled only when both inventories are clean. Checks (run `node …`; `--self-test` exercises them):
+ * migrates service_role → sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public).
  *
+ * TWO distinct contracts (do not conflate):
+ *   • INVENTORY completeness (the normal run + `--self-test`, both CI-gated): every legacy-key consumer is
+ *     REGISTERED. This is GREEN TODAY, with everything still on the legacy keys — it does NOT prove migration.
+ *   • MIGRATION completion (`--require-migrated`, an on-demand CUTOVER gate, NOT run in normal CI): FAILS until
+ *     every production-runtime consumer has moved off the legacy service_role/anon keys. This is the gate for the
+ *     final legacy-pair disable. See requireMigrated() + MIGRATED.
+ *
+ * A shared, decoded inline-JWT classifier routes an inline `eyJ….eyJ….` token by its ROLE claim into the right
+ * inventory (service_role → source; anon → anon), and the SQL sender detects an inline JWT under Bearer OR an
+ * apikey / x-api-key header — so an inline credential cannot bypass any inventory.
+ *
+ * Inventory checks (run `node …`; `--self-test` exercises them):
  *   (1) SOURCE (service_role) consumers — content-scans the runtime source roots (supabase/functions, api,
- *       scripts) and fails if a file references the key but is not in MANAGED (NEW), or a registered file no
- *       longer does (STALE). Content scan, NOT an extension allow-list (that would drop an unknown-ext consumer).
- *   (2) SQL/Vault consumers — scans supabase/migrations for cron commands that SEND the key (an http_post that
- *       Bearers a decrypted Vault secret / current_setting) or STORE it in Vault, against MANAGED_SQL. Detection
- *       is STRUCTURAL (not coupled to the secret's name). Migrations are immutable + cumulative, so MANAGED_SQL
- *       tracks LIFECYCLE (active / active-legacy / superseded) + forward replacement — and check (5) ENFORCES
- *       that status against the files, so a stale status cannot stay green.
+ *       scripts); a consumer = the env-name family, a shared helper, OR an inline service_role JWT. Fails on a
+ *       NEW/STALE mismatch vs MANAGED. Content scan, NOT an extension allow-list.
+ *   (2) SQL/Vault consumers — scans supabase/migrations for cron commands that SEND the key (an http_post whose
+ *       auth header carries a decrypted Vault secret / current_setting / inline JWT) or STORE it in Vault, against
+ *       MANAGED_SQL. Detection is STRUCTURAL (not coupled to the secret's name). Migrations are immutable, so
+ *       MANAGED_SQL tracks LIFECYCLE (active / active-legacy / superseded) + forward replacement; check (5)
+ *       static-checks that status (best-effort — see (5)).
  *   (3) ANON consumers — the anon → sb_publishable_ side. Every `*_ANON_KEY`/`*_PUBLISHABLE_KEY` consumer must be
  *       in MANAGED_ANON (browser-public / edge-anon / config / scripts-ci / tests).
  *   (4) BROWSER-SURFACE elevation — an RLS-bypassing key (`sb_secret_`, a `*_SERVICE_ROLE_KEY` name, or an INLINE
  *       service_role JWT decoded by its role claim) in a public surface FAILS: the shipped browser bundle
  *       (`src/`, excluding tests) AND the non-`src` `browser-public` members (e.g. the Cloudflare worker).
- *   (5) SQL lifecycle — proves each MANAGED_SQL active/superseded status against later migrations touching the
- *       same cron job name.
+ *   (5) SQL lifecycle (static, BEST-EFFORT) — checks each MANAGED_SQL active/superseded status against later
+ *       migrations touching the same QUOTED cron job name. It does NOT follow alter_job(jobid) (numeric id),
+ *       dynamic/variable job names, or definition-vs-execution — so a live `cron.job` query is a mandatory cutover
+ *       gate; do not treat this as proof of the running scheduler.
  *   (6) REPO-WIDE escape — fails if the key/helper (or a key-sending .sql outside supabase/migrations) is
  *       referenced OUTSIDE the guarded roots + the out-of-scope allow-list (docs `.md`, `src/test/**`, `tests/**`,
  *       `supabase/config.toml`). Catches a consumer added under a NEW runtime root.
@@ -70,24 +83,36 @@ const stripSqlComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[
 // LIMITATION (documented, not silently trusted): detection is SINGLE-FILE + in-file sourcing — a sender that
 // pulls the key from a SECURITY DEFINER helper defined in ANOTHER migration (`Bearer '||get_key()`) is not
 // traced; scope the "cannot slip past" claim to in-file/inline sourcing.
-const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting|Bearer\s+eyJ[A-Za-z0-9._-]+/i;
+// Inline JWT is matched as a full `eyJ….eyJ….` token (NOT only after `Bearer`), so a JWT under an apikey /
+// x-api-key header is caught too.
+const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting|eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\./;
 const AUTH_HEADER = /authorization|api[-_]?key|bearer/i; // matches apikey, api-key, x-api-key, Authorization, Bearer
 const HTTP_POST = /\bhttp_post\s*\(|\bhttp\s*\(\s*\(\s*'POST'/i;
 const SQL_SENDER = (raw) => { const s = stripSqlComments(raw); return (HTTP_POST.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s); };
 
+// ONE decoded inline-JWT classifier, used by ALL inventories: an inline `eyJ….eyJ….` token is a legacy-key
+// consumer of whatever ROLE its payload declares (anon/service_role are prefix-identical `eyJ…`, so we decode the
+// role claim rather than prefix-match). service_role → service-role inventory; anon → anon inventory.
+const inlineJwtRoles = (s) => {
+  const roles = new Set();
+  for (const m of s.matchAll(/eyJ[A-Za-z0-9_-]+\.(eyJ[A-Za-z0-9_-]+)\./g)) {
+    try { const r = (JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')) || {}).role; if (r) roles.add(r); } catch { /* not a JWT */ }
+  }
+  return roles;
+};
+const hasInlineServiceRoleJwt = (s) => inlineJwtRoles(s).has('service_role');
+const hasInlineAnonJwt = (s) => inlineJwtRoles(s).has('anon');
+
 // The legacy `anon`/`service_role` keys are DISABLED AS A PAIR, so Path B is TWO migrations: service_role →
 // sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public). This family inventories the anon side.
 const ANON_FAMILY = /[A-Z0-9_]*ANON_KEY|[A-Z0-9_]*PUBLISHABLE_KEY/;
+// LEGACY-only anon signal (for the cutover gate): the `*_ANON_KEY` env name or an inline anon JWT — NOT the
+// `*_PUBLISHABLE_KEY` name (that is the migrated slot; its VALUE is verified separately by prefix).
+const LEGACY_ANON = (s) => /[A-Z0-9_]*ANON_KEY/.test(s) || hasInlineAnonJwt(s);
+const LEGACY_SR = (s) => KEY_FAMILY.test(s) || HELPER_SIGNAL.test(s) || hasInlineServiceRoleJwt(s);
 // Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle: the sb_secret_ key, a
-// `*_SERVICE_ROLE_KEY` env name, OR an INLINE service_role JWT (decode the role claim — anon/publishable are also
-// `eyJ…` today, so a prefix match would false-positive; only `"role":"service_role"` in the payload elevates).
+// `*_SERVICE_ROLE_KEY` env name, OR an INLINE service_role JWT (decoded role claim).
 const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY/;
-const hasInlineServiceRoleJwt = (s) => {
-  for (const m of s.matchAll(/eyJ[A-Za-z0-9_-]+\.(eyJ[A-Za-z0-9_-]+)\./g)) {
-    try { if (/"role"\s*:\s*"service_role"/.test(Buffer.from(m[1], 'base64url').toString('utf8'))) return true; } catch { /* not a JWT */ }
-  }
-  return false;
-};
 const isElevated = (s) => ELEVATED.test(s) || hasInlineServiceRoleJwt(s);
 // Public surfaces that must never hold an elevated key: the shipped browser bundle (src/, excluding tests) AND
 // the non-src browser-public members of MANAGED_ANON (e.g. the Cloudflare worker, which Bearers its key on every
@@ -315,6 +340,7 @@ const MANAGED_ANON = {
     // this guard names the ANON_KEY/PUBLISHABLE_KEY family in its own regex + comments (not a consumer, but it
     // contains the token, so it must self-register — same as it does in MANAGED).
     'scripts/check-legacy-service-role-consumers.mjs',
+    'scripts/db/e2e-local-paid.sh', // inline anon (local supabase-demo demo key) for the e2e harness
     'scripts/migration/ficwb_secrets_audit.py',
     'scripts/migration/storage_common.py',
   ],
@@ -326,6 +352,11 @@ const MANAGED_ANON = {
   'tests': [
     'e2e/invoice-health.spec.ts',
     'e2e/rls-health.spec.ts',
+    // e2e/local specs embed the well-known local supabase-demo anon + service_role JWTs (public demo keys):
+    'e2e/local/public-booking-webhook.spec.ts',
+    'e2e/local/rebook-send-side.spec.ts',
+    'e2e/local/rebook-upfront-pay.spec.ts',
+    'e2e/local/rebook-upfront-webhook.spec.ts',
     'supabase/functions/backup-database/index.test.ts',
     'supabase/functions/create-invoice-payment/index.test.ts',
     'supabase/functions/get-booking-invoice/index.test.ts',
@@ -334,11 +365,25 @@ const MANAGED_ANON = {
     'supabase/functions/sitemap/index.test.ts',
     'tests/rebooking-enforcement.spec.ts',
   ],
-  'sql-reference': [
-    // token appears only in a run-instruction COMMENT — not a live anon consumer, registered for honesty
-    'supabase/migrations/20260610220000_enforce_booking_slot_tier.sql',
-  ],
 };
+
+// ── Cutover contract (`--require-migrated`): inventory-complete ≠ migration-complete ────────────────────────
+// The normal guard proves every legacy-key consumer is REGISTERED (green today, with everything still on the
+// legacy keys). It does NOT prove migration. `--require-migrated` is the gate for the final legacy-pair DISABLE:
+// it FAILS while any PRODUCTION-RUNTIME consumer still uses a legacy service-role or anon key, and passes only
+// once each has moved to sb_secret_ / sb_publishable_. A path enters MIGRATED only after it (a) drops the legacy
+// signal in source AND (b) is added here deliberately (deployed-VALUE prefix verification is a separate manual
+// gate — the env NAME does not prove the value; see docs Path B → B2). Tests/CI/one-off tooling/config are NOT
+// production runtime and are excluded. Deployed env values (Vercel/Supabase/wrangler secrets) are verified by
+// hand at cutover — they are not in git.
+const MIGRATED = new Set([
+  // (empty) — Path B has not started. Add a consumer's path here once it is proven off the legacy key.
+]);
+const RUNTIME_SR_CATS = ['inbound-auth', 'admin-client', 'downstream-caller', 'vercel-caller', 'via-shared-helper'];
+const RUNTIME_ANON_CATS = ['browser-public', 'edge-anon'];
+// A migration is "still legacy" for the cutover if its live cron still sends the lowercase `service_role_key`
+// Vault/app.settings secret (the new-key cutover adds a superseding migration that sends the sb_secret via apikey).
+const LEGACY_SQL = (s) => /service_role_key/i.test(stripSqlComments(s));
 
 // ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
@@ -365,15 +410,17 @@ function classify(rootDir) {
   for (const abs of files) {
     const p = rel(rootDir, abs);
     const s = readFileSync(abs, 'utf8'); // no size cap — an authoritative inventory never silently skips source
-    const consumer = KEY_FAMILY.test(s) || HELPER_SIGNAL.test(s);
+    // Source (service-role) consumer: the env-name family, a shared helper, OR an inline service_role JWT.
+    const consumer = KEY_FAMILY.test(s) || HELPER_SIGNAL.test(s) || hasInlineServiceRoleJwt(s);
     // A .sql statement that SENDS/STORES the key belongs in supabase/migrations (tracked by MANAGED_SQL). One
     // anywhere else is a misplaced legacy-key touchpoint the SOURCE signals miss — cron SQL names the key
     // LOWERCASE (service_role_key / app.settings / vault), which the uppercase env family never matches.
     const misplacedSqlSender = p.endsWith('.sql') && !underRoot(p, SQL_ROOT) && SQL_SENDER(s);
     // CRITICAL: an elevated (RLS-bypassing) key in the shipped browser bundle is a public-surface leak.
     if (isBrowserSurface(p) && isElevated(s)) elevated.push(p);
-    // Anon inventory — every anon/publishable consumer (docs .md are references, not consumers).
-    if (!p.endsWith('.md') && ANON_FAMILY.test(s)) foundAnon.add(p);
+    // Anon inventory — every anon/publishable consumer: the env-name family OR an inline anon JWT. (docs .md are
+    // references; .sql inline anon JWTs are the SQL inventory's domain — MANAGED_SQL — so exclude them here.)
+    if (!p.endsWith('.md') && !p.endsWith('.sql') && (ANON_FAMILY.test(s) || hasInlineAnonJwt(s))) foundAnon.add(p);
     if (underRoot(p, SQL_ROOT)) {
       if (p.endsWith('.sql') && SQL_SENDER(s)) foundSql.add(p);
     } else if (SOURCE_ROOTS.some((r) => underRoot(p, r))) {
@@ -427,11 +474,28 @@ function diff(found, registered) {
   };
 }
 
+// Cutover gate: list every production-runtime consumer NOT yet proven migrated off the legacy key.
+function requireMigrated(rootDir = '.') {
+  const pending = []; // { path, kind, reason }
+  const read = (p) => { try { return readFileSync(join(rootDir, p), 'utf8'); } catch { return ''; } };
+  const check = (p, kind, stillLegacy) => {
+    if (!MIGRATED.has(p)) pending.push({ path: p, kind, reason: stillLegacy ? 'still references the legacy key' : 'not marked migrated (verify + add to MIGRATED)' });
+    else if (stillLegacy) pending.push({ path: p, kind, reason: 'MARKED migrated but STILL references the legacy key' });
+  };
+  for (const cat of RUNTIME_SR_CATS) for (const p of (MANAGED[cat] || [])) check(p, 'service-role', LEGACY_SR(read(p)));
+  for (const cat of RUNTIME_ANON_CATS) for (const p of (MANAGED_ANON[cat] || [])) check(p, 'anon', LEGACY_ANON(read(p)));
+  for (const [p, meta] of Object.entries(MANAGED_SQL)) if (meta.status.startsWith('active')) check(p, 'sql', LEGACY_SQL(read(p)));
+  return pending;
+}
+
 // ── Self-test: prove the detection + diff logic against fixtures (run with --self-test) ─────────────────────
 function selfTest() {
   const fails = [];
   let n = 0;
   const ok = (cond, msg) => { n++; if (!cond) fails.push(msg); };
+  // Build fixture JWTs at RUNTIME so no literal `eyJ….eyJ….` token appears in this guard's own source (which would
+  // make the guard self-classify as a consumer). Header stays a bare `eyJ…` (one segment — never matches).
+  const mkJwt = (role) => 'eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ role })).toString('base64url') + '.sig';
 
   // predicates
   ok(KEY_FAMILY.test('SUPABASE_SERVICE_ROLE_KEY'), 'literal must match');
@@ -446,14 +510,15 @@ function selfTest() {
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key')))"), 'sql sender (http_post + auth header + vault cred) must match');
   ok(SQL_SENDER("select vault.update_secret(id, 'newval')"), 'vault.update_secret must match (regression: keep the update alternative)');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('apikey', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'sql sender via the apikey header must match (regression: Path B moves to apikey)');
-  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig'))"), 'INLINE-JWT sql sender must match (no vault/current_setting)');
+  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer " + mkJwt('service_role') + "'))"), 'INLINE-JWT sql sender must match (no vault/current_setting)');
+  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('x-api-key','" + mkJwt('service_role') + "'))"), 'INLINE-JWT under an x-api-key header (not Bearer) must match');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('x-api-key', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'hyphenated x-api-key header sender must match (regression: keep api[-_]?key)');
   ok(SQL_SENDER("select http(('POST', url, ARRAY[http_header('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='k'))], 'application/json', body)::http_request)"), 'generic http() POST sender must match');
   ok(AUTH_HEADER.test('bearer') && !/authorization|api[-_]?key/i.test('bearer'), 'bearer auth-header alternative is independently pinned');
   ok(!SQL_SENDER("-- net.http_post(url, 'Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='k'))"), 'a commented-out sender is NOT a sender (comment stripping)');
   // browser-elevation: inline service_role JWT is elevated; inline anon JWT is not (decode the role claim):
-  ok(hasInlineServiceRoleJwt('k="eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig"'), 'inline service_role JWT is detected (decoded role claim)');
-  ok(!hasInlineServiceRoleJwt('k="eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig"'), 'inline anon JWT is NOT service_role (no false positive)');
+  ok(hasInlineServiceRoleJwt('k="' + mkJwt('service_role') + '"'), 'inline service_role JWT is detected (decoded role claim)');
+  ok(!hasInlineServiceRoleJwt('k="' + mkJwt('anon') + '"') && hasInlineAnonJwt('k="' + mkJwt('anon') + '"'), 'inline anon JWT classifies as anon, not service_role');
   ok(SQL_SENDER("select vault.create_secret('x','service_role_key')"), 'vault store must match as sql sender');
   ok(!SQL_SENDER('-- SUPABASE_SERVICE_ROLE_KEY=... (comment, no http_post)'), 'sql comment-only must NOT be a sender');
   ok(scannable('deploy') && scannable('tool.rb'), 'extensionless + unknown-extension files must be scannable');
@@ -496,14 +561,18 @@ function selfTest() {
     w('src/test/fixture.test.ts', 'const k = "sb_secret_testonly";'); // src/test is not the shipped bundle → not elevated
     w('src/pages/thing.spec.ts', 'const k = "sb_secret_specmock";'); // co-located .spec test → excluded, not elevated
     w('src/pages/EnvLeak.tsx', 'const k = process.env.SUPABASE_SERVICE_ROLE_KEY;'); // pins the *_SERVICE_ROLE_KEY ELEVATED branch
-    w('src/pages/InlineSR.tsx', 'const k = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig";'); // inline service_role JWT → elevated
-    w('src/pages/InlineAnon.tsx', 'const k = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.sig";'); // inline anon JWT → NOT elevated
+    w('src/pages/InlineSR.tsx', 'const k = "' + mkJwt('service_role') + '";'); // inline service_role JWT → elevated
+    w('src/pages/InlineAnon.tsx', 'const k = "' + mkJwt('anon') + '";'); // inline anon JWT → NOT elevated (but IS an anon consumer)
     w('docs/cloudflare-worker.js', 'const k = "sb_secret_workerleak";'); // browser-public (non-src) → MUST be caught
     // differently-NAMED Vault credential sender (finding 3): structural detection, no `service_role_key` literal:
     w('supabase/migrations/altcred.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='worker_credential')));");
-    w('supabase/migrations/inline.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('Authorization','Bearer eyJhbGciOiJIUzI1NiJ9.p.s'));"); // inline JWT, no vault
+    w('supabase/migrations/inline.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('apikey','" + mkJwt('service_role') + "'));"); // inline JWT under apikey, no vault
+    // unified inline-JWT classifier: service_role in an edge fn → SOURCE; anon in browser/runtime → ANON:
+    w('supabase/functions/inlinesr/index.ts', 'const k = "' + mkJwt('service_role') + '";'); // inline service_role → source consumer
     const { foundSource, foundSql, foundAnon, escapes, elevated } = classify(tmp);
     ok(foundSource.has('supabase/functions/x/index.ts'), 'fixture: literal consumer detected');
+    ok(foundSource.has('supabase/functions/inlinesr/index.ts'), 'fixture: inline service_role JWT in an edge fn is a SOURCE consumer');
+    ok(foundAnon.has('src/pages/InlineAnon.tsx'), 'fixture: inline anon JWT in browser source is an ANON consumer');
     ok(foundSource.has('scripts/migration/alias.py'), 'fixture: TARGET_ alias consumer detected');
     ok(foundSource.has('scripts/helperonly.ts'), 'fixture: helper-only consumer detected');
     ok(foundSource.has('scripts/gesonly.ts'), 'fixture: getEnvServiceRoleKey-only consumer detected');
@@ -548,7 +617,14 @@ function selfTest() {
     rmSync(lc, { recursive: true, force: true });
   }
 
-  // the real, checked-in baseline must pass every check
+  // cutover contract: the legacy classifiers + the fail-today gate.
+  ok(LEGACY_SR('Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")') && LEGACY_SR('k="' + mkJwt('service_role') + '"'), 'LEGACY_SR detects env name + inline service_role JWT');
+  ok(!LEGACY_SR('const k = "sb_secret_abc"'), 'a migrated backend (sb_secret_) is NOT legacy service-role');
+  ok(LEGACY_ANON('Deno.env.get("SUPABASE_ANON_KEY")') && LEGACY_ANON('k="' + mkJwt('anon') + '"'), 'LEGACY_ANON detects legacy anon name + inline anon JWT');
+  ok(!LEGACY_ANON('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY') && !LEGACY_ANON('const k = "sb_publishable_x"'), 'LEGACY_ANON does NOT flag the publishable slot (migrated) — distinguishes legacy anon from publishable');
+  ok(requireMigrated('.').length > 0, '--require-migrated FAILS today: production consumers are still on the legacy keys');
+
+  // the real, checked-in baseline must pass every INVENTORY check (require-migrated is intentionally NOT clean yet)
   const real = classify('.');
   const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat()));
   const rq = diff(real.foundSql, new Set(Object.keys(MANAGED_SQL)));
@@ -571,6 +647,23 @@ function selfTest() {
 
 // ── Main ─────────────────────────────────────────────────────────────────────────────────────────────────────
 if (process.argv.includes('--self-test')) selfTest();
+
+// Cutover gate — the ONLY check that proves migration completion (the normal guard proves only inventory
+// completeness). Run this before the final legacy-pair disable; it FAILS until every runtime consumer is migrated.
+if (process.argv.includes('--require-migrated')) {
+  const pending = requireMigrated('.');
+  if (pending.length) {
+    const by = (k) => pending.filter((x) => x.kind === k).length;
+    console.error(`NOT READY to disable the legacy keys — ${pending.length} production-runtime consumers still on a legacy key ` +
+      `(service-role=${by('service-role')}, anon=${by('anon')}, sql=${by('sql')}):\n`);
+    for (const x of pending) console.error(`  • [${x.kind}] ${x.path} — ${x.reason}`);
+    console.error('\nMigrate each (service_role → sb_secret_, anon → sb_publishable_), add its path to MIGRATED, then re-run.');
+    console.error('Also verify DEPLOYED env VALUES by prefix (Vercel/Supabase/wrangler) — the env NAME does not prove the value.');
+    process.exit(1);
+  }
+  console.log('OK — every production-runtime consumer is migrated off the legacy service-role/anon keys; safe to disable the legacy pair.');
+  process.exit(0);
+}
 
 const { foundSource, foundSql, foundAnon, escapes, elevated } = classify('.');
 const src = diff(foundSource, new Set(Object.values(MANAGED).flat()));
@@ -645,5 +738,6 @@ const sqlActive = Object.values(MANAGED_SQL).filter((v) => v.status.startsWith('
 const anonCount = new Set(Object.values(MANAGED_ANON).flat()).size;
 console.log(
   `OK — ${new Set(Object.values(MANAGED).flat()).size} service-role source consumers (${counts}); ` +
-  `${Object.keys(MANAGED_SQL).length} SQL/Vault migrations (${sqlActive} active, lifecycle verified); ` +
-  `${anonCount} anon/publishable consumers; no elevated key in the browser bundle; no references outside guarded roots.`);
+  `${Object.keys(MANAGED_SQL).length} SQL/Vault migrations (${sqlActive} active, lifecycle static-checked [best-effort]); ` +
+  `${anonCount} anon/publishable consumers; no elevated key in the browser bundle; no references outside guarded roots. ` +
+  `(Inventory-complete, NOT migration-complete — run --require-migrated before disabling the legacy keys.)`);
