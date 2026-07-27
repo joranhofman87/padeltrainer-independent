@@ -476,7 +476,8 @@ inventories are clean AND both replacement paths are verified in production.**
 
 ### B2 — `anon` → `sb_publishable_` (browser/public, LOW-privilege)
 
-The `MANAGED_ANON` inventory (`npm run check:legacy-key`) tracks every anon/publishable consumer. Migrate each to
+The `MANAGED_ANON` inventory (`npm run check:legacy-key`) tracks all **42** anon/publishable consumers
+(browser-public 3, edge-anon 19, scripts-ci 4, config 3, tests 13 — matching the guard's success line). Migrate each to
 **`sb_publishable_`** — **never** `sb_secret_`:
   1. **`browser-public` — the shipped browser bundle + public edge.** `src/integrations/supabase/client.ts`,
      `src/pages/marketing/Partner.tsx`, and `docs/cloudflare-worker.js`. These build the *public* client; give them
@@ -513,22 +514,28 @@ allow-list after its source drops the legacy signal. Tests/CI/one-off tooling/co
 exceptions.
 
 **Disable ONLY after ALL of these hold:**
-1. `npm run check:legacy-key:cutover` → **0 pending** (exit 0).
-2. **Deployed VALUES verified** by prefix (the env NAME does not prove the value): Vercel `SUPABASE_SERVICE_ROLE_KEY`
-   → `sb_secret_`, `VITE_SUPABASE_PUBLISHABLE_KEY` → `sb_publishable_` (and **not** `sb_secret_`), Supabase function
-   secrets, and the `wrangler.toml` worker env.
+1. `npm run check:legacy-key:cutover` → **0 pending** (exit 0). This gate **first re-runs the full inventory**
+   (registry drift / escape / browser-elevation / lifecycle) and refuses to report 0 pending if the inventory
+   isn't clean — so an unregistered new consumer can't hide from it. (It's belt-and-braces to also confirm
+   `npm run check:legacy-key` + `:selftest` are green.)
+2. **Deployed VALUES verified** by prefix (the env NAME does not prove the value): Vercel
+   `SUPABASE_SERVICE_ROLE_KEY` → `sb_secret_`, `VITE_SUPABASE_PUBLISHABLE_KEY` → `sb_publishable_` (and **not**
+   `sb_secret_`), Supabase function secrets, and the **Cloudflare worker's `SUPABASE_ANON_KEY`** value (set in the
+   Cloudflare dashboard — `wrangler.toml` has `keep_vars = true`, so the value is **not** in git).
 3. **Live `cron.job` inventory** (the lifecycle check is static + best-effort — see below): confirm on the
-   production DB that no scheduled job's command still sends a legacy key:
+   production DB that no scheduled job's command still sends a **legacy** key:
 
    ```sql
    SELECT jobid, jobname, command FROM cron.job
     WHERE command ILIKE '%service_role_key%' OR command ILIKE '%decrypted_secret%' OR command ~ 'eyJ[A-Za-z0-9_-]+\.eyJ';
-   -- expect ZERO rows that Bearer/apikey a LEGACY credential (a migrated cron sends the sb_secret via apikey).
    ```
+   Do **not** read this as "expect zero rows": a correctly-migrated cron that reads its `sb_secret` from Vault
+   still matches `%decrypted_secret%`. **Inspect each returned row** and confirm none Bearer/apikey a **legacy**
+   `eyJ…` JWT or the `service_role_key` secret — a migrated cron sends the `sb_secret` via the `apikey` header.
 
 Then **disable the legacy keys in Settings → API Keys** — this disables the `anon` + `service_role` pair
 **together** (Supabase cannot disable one alone), safe *only because* both sides are migrated. Purge the stored
 legacy copies from Vault + Vercel. It is a key **disable**, NOT a JWT-secret rotation (unavailable on legacy).
 
-- **Exit condition:** `--require-migrated` passes (0 pending), deployed values + the live `cron.job` query are
-  verified, and `check-edge-fn-config.mjs` + this doc reflect the new model.
+- **Exit condition:** `--require-migrated` passes (0 pending, inventory clean), deployed values + the live
+  `cron.job` inspection are verified, and `check-edge-fn-config.mjs` + this doc reflect the new model.

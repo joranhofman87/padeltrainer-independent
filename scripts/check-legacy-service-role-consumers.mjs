@@ -84,10 +84,14 @@ const stripSqlComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[
 // pulls the key from a SECURITY DEFINER helper defined in ANOTHER migration (`Bearer '||get_key()`) is not
 // traced; scope the "cannot slip past" claim to in-file/inline sourcing.
 // Inline JWT is matched as a full `eyJ….eyJ….` token (NOT only after `Bearer`), so a JWT under an apikey /
-// x-api-key header is caught too.
+// x-api-key header is caught too. SCOPE: this (and every regex signal here) assumes a CONTIGUOUS, canonically
+// base64url-encoded token in one file — a legacy JWT is issued that way and can't be reformatted without breaking
+// its signature; string-concatenation/split obfuscation is out of scope (shared with KEY_FAMILY/ANON_FAMILY).
 const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting|eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\./;
 const AUTH_HEADER = /authorization|api[-_]?key|bearer/i; // matches apikey, api-key, x-api-key, Authorization, Bearer
-const HTTP_POST = /\bhttp_post\s*\(|\bhttp\s*\(\s*\(\s*'POST'/i;
+// A POST via pg_net (`net.http_post(`), the http extension's `http_post(`, OR the generic `http((…)` / `http(ROW(…)`
+// with a 'POST' method — so the double-paren cast and ROW-constructor request forms are both caught.
+const HTTP_POST = /\bhttp_post\s*\(|\bhttp\s*\(\s*(?:\(|ROW\s*\()\s*'POST'/i;
 const SQL_SENDER = (raw) => { const s = stripSqlComments(raw); return (HTTP_POST.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s); };
 
 // ONE decoded inline-JWT classifier, used by ALL inventories: an inline `eyJ….eyJ….` token is a legacy-key
@@ -474,18 +478,33 @@ function diff(found, registered) {
   };
 }
 
-// Cutover gate: list every production-runtime consumer NOT yet proven migrated off the legacy key.
-function requireMigrated(rootDir = '.') {
+// Cutover gate: list every production-runtime consumer NOT yet proven migrated off the legacy key. Parameterized
+// (registries + MIGRATED) so the self-test can exercise the cross-check + drop-out paths on fixtures.
+function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, migrated: MIGRATED }) {
+  const { managed, anon, sql, migrated } = reg;
   const pending = []; // { path, kind, reason }
   const read = (p) => { try { return readFileSync(join(rootDir, p), 'utf8'); } catch { return ''; } };
   const check = (p, kind, stillLegacy) => {
-    if (!MIGRATED.has(p)) pending.push({ path: p, kind, reason: stillLegacy ? 'still references the legacy key' : 'not marked migrated (verify + add to MIGRATED)' });
+    if (!migrated.has(p)) pending.push({ path: p, kind, reason: stillLegacy ? 'still references the legacy key' : 'not marked migrated (verify + add to MIGRATED)' });
     else if (stillLegacy) pending.push({ path: p, kind, reason: 'MARKED migrated but STILL references the legacy key' });
+    // else: in MIGRATED AND no legacy signal → migrated, drops out.
   };
-  for (const cat of RUNTIME_SR_CATS) for (const p of (MANAGED[cat] || [])) check(p, 'service-role', LEGACY_SR(read(p)));
-  for (const cat of RUNTIME_ANON_CATS) for (const p of (MANAGED_ANON[cat] || [])) check(p, 'anon', LEGACY_ANON(read(p)));
-  for (const [p, meta] of Object.entries(MANAGED_SQL)) if (meta.status.startsWith('active')) check(p, 'sql', LEGACY_SQL(read(p)));
+  for (const cat of RUNTIME_SR_CATS) for (const p of (managed[cat] || [])) check(p, 'service-role', LEGACY_SR(read(p)));
+  for (const cat of RUNTIME_ANON_CATS) for (const p of (anon[cat] || [])) check(p, 'anon', LEGACY_ANON(read(p)));
+  for (const [p, meta] of Object.entries(sql)) if (meta.status.startsWith('active')) check(p, 'sql', LEGACY_SQL(read(p)));
   return pending;
+}
+
+// Count of INVENTORY problems (registry drift / escape / browser-elevation / lifecycle). The cutover gate must
+// refuse to report "0 pending" while the inventory is incomplete — an UNREGISTERED runtime consumer is invisible
+// to requireMigrated (it only walks the registries), so migration-completeness is meaningless without it.
+function inventoryProblemCount(rootDir = '.') {
+  const c = classify(rootDir);
+  const d = (found, reg) => { const r = diff(found, reg); return r.unregistered.length + r.stale.length; };
+  return d(c.foundSource, new Set(Object.values(MANAGED).flat()))
+    + d(c.foundSql, new Set(Object.keys(MANAGED_SQL)))
+    + d(c.foundAnon, new Set(Object.values(MANAGED_ANON).flat()))
+    + c.escapes.length + c.elevated.length + checkSqlLifecycle(rootDir).length;
 }
 
 // ── Self-test: prove the detection + diff logic against fixtures (run with --self-test) ─────────────────────
@@ -512,6 +531,7 @@ function selfTest() {
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('apikey', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'sql sender via the apikey header must match (regression: Path B moves to apikey)');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer " + mkJwt('service_role') + "'))"), 'INLINE-JWT sql sender must match (no vault/current_setting)');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('x-api-key','" + mkJwt('service_role') + "'))"), 'INLINE-JWT under an x-api-key header (not Bearer) must match');
+  ok(SQL_SENDER("select http(ROW('POST', url, ARRAY[http_header('apikey','" + mkJwt('service_role') + "')], 'application/json', '{}')::http_request)"), 'http(ROW(POST,…)) request-constructor sender must match');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('x-api-key', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'hyphenated x-api-key header sender must match (regression: keep api[-_]?key)');
   ok(SQL_SENDER("select http(('POST', url, ARRAY[http_header('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='k'))], 'application/json', body)::http_request)"), 'generic http() POST sender must match');
   ok(AUTH_HEADER.test('bearer') && !/authorization|api[-_]?key/i.test('bearer'), 'bearer auth-header alternative is independently pinned');
@@ -623,6 +643,20 @@ function selfTest() {
   ok(LEGACY_ANON('Deno.env.get("SUPABASE_ANON_KEY")') && LEGACY_ANON('k="' + mkJwt('anon') + '"'), 'LEGACY_ANON detects legacy anon name + inline anon JWT');
   ok(!LEGACY_ANON('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY') && !LEGACY_ANON('const k = "sb_publishable_x"'), 'LEGACY_ANON does NOT flag the publishable slot (migrated) — distinguishes legacy anon from publishable');
   ok(requireMigrated('.').length > 0, '--require-migrated FAILS today: production consumers are still on the legacy keys');
+  // cross-check + drop-out: a MIGRATED path that STILL carries the legacy signal is flagged; a clean one drops out.
+  const rm = mkdtempSync(join(tmpdir(), 'legacy-key-rm-'));
+  try {
+    const w2 = (r, body) => { const p = join(rm, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
+    w2('supabase/functions/still/index.ts', 'const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");'); // still legacy
+    w2('supabase/functions/done/index.ts', 'const k = Deno.env.get("SUPABASE_SECRET_KEYS"); // sb_secret_'); // migrated
+    const reg = { managed: { 'inbound-auth': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts'] }, anon: {}, sql: {} };
+    const bothMig = requireMigrated(rm, { ...reg, migrated: new Set(['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts']) });
+    ok(bothMig.length === 1 && bothMig[0].path === 'supabase/functions/still/index.ts' && /MARKED migrated/.test(bothMig[0].reason),
+      'cutover cross-check: a MIGRATED path still on the legacy key is flagged; the clean one drops out');
+    const noneMig = requireMigrated(rm, { ...reg, migrated: new Set() });
+    ok(noneMig.length === 2 && noneMig.some((x) => /still references/.test(x.reason)) && noneMig.some((x) => /not marked migrated/.test(x.reason)),
+      'cutover: unmarked consumers report still-references vs not-marked-migrated distinctly');
+  } finally { rmSync(rm, { recursive: true, force: true }); }
 
   // the real, checked-in baseline must pass every INVENTORY check (require-migrated is intentionally NOT clean yet)
   const real = classify('.');
@@ -651,6 +685,15 @@ if (process.argv.includes('--self-test')) selfTest();
 // Cutover gate — the ONLY check that proves migration completion (the normal guard proves only inventory
 // completeness). Run this before the final legacy-pair disable; it FAILS until every runtime consumer is migrated.
 if (process.argv.includes('--require-migrated')) {
+  // The cutover gate walks only the registries, so it is meaningful ONLY if the inventory is complete. Refuse to
+  // report "safe to disable" while the normal 6-check guard would fail (unregistered consumer / escape / browser
+  // elevation / lifecycle drift) — otherwise a NEW unregistered runtime consumer would be invisible here.
+  const inv = inventoryProblemCount('.');
+  if (inv > 0) {
+    console.error(`NOT READY — ${inv} inventory problem(s): the registry is not complete/clean, so migration cannot be proven.`);
+    console.error('Run `npm run check:legacy-key` (+ `:selftest`) and fix all drift/escape/elevation/lifecycle first, then re-run this gate.');
+    process.exit(1);
+  }
   const pending = requireMigrated('.');
   if (pending.length) {
     const by = (k) => pending.filter((x) => x.kind === k).length;
