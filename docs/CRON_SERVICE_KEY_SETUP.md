@@ -142,7 +142,8 @@ pair) via **six checks**:
 `npm run check:legacy-key:selftest` proves the guard's own detection + diff logic against fixtures (literal, alias,
 helper-only, extensionless, structural + inline-JWT + hyphenated-header SQL sender, differently-named vault
 credential, anon consumer, inline service_role/anon JWT routing, browser elevation, static lifecycle, escape,
-the `--require-migrated` fail-today gate, and the real baseline); both run in CI. A separate on-demand
+the `--require-migrated` fail-today gate, and the real baseline); both the normal guard (`check:legacy-key`) and
+`:selftest` run in CI. A separate on-demand
 **`npm run check:legacy-key:cutover`** (`--require-migrated`) is the migration-completion gate — see "Disabling
 the legacy pair". **No single registry is "the" authority — all six checks together are.** A NEW consumer of any class (service-role,
 SQL/Vault, anon, or an elevated key in the browser) cannot slip past the deactivation plan.
@@ -507,7 +508,7 @@ today. **The disable gate is a DIFFERENT command:**
 npm run check:legacy-key:cutover      # node … --require-migrated
 ```
 
-It **fails today** (≈124 pending: service-role ≈98, anon ≈22, SQL 4) and passes only once **every
+It **fails today** (124 pending: service-role 98, anon 22 [19 edge-function + 3 browser/worker], SQL 4) and passes only once **every
 production consumer** (edge functions, the Vercel caller, the browser bundle + public edge, and every
 `active`/`active-legacy` SQL cron) has moved off the legacy service-role/anon keys. Migration is tracked by an
 **explicit per-path `STATE` registry** (not signal-disappearance, which would wrongly flag a migrated file "stale"

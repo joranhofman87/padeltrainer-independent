@@ -391,6 +391,11 @@ const STATE = {
   // tooling
   'scripts/check-legacy-service-role-consumers.mjs': 'tooling', 'scripts/check-edge-fn-config.mjs': 'tooling',
   'vitest.config.ts': 'tooling', '.github/workflows/e2e.yml': 'tooling',
+  // wrangler.toml only NAMES SUPABASE_ANON_KEY in a comment (keep_vars=true) — the worker's real anon-key VALUE is a
+  // Cloudflare dashboard var, not in this file. So the file holds no credential to migrate; the worker's actual key
+  // is covered by the runbook's deployed-VALUE verification (CF dashboard), not a source edit. Same class as its
+  // MANAGED_ANON['config'] siblings above (both already tooling).
+  'wrangler.toml': 'tooling',
   // local-demo (public supabase-demo / local-dev keys)
   'scripts/db/seed-local.ts': 'local-demo', 'scripts/db/e2e-local-paid.sh': 'local-demo',
   'e2e/invoice-health.spec.ts': 'local-demo', 'e2e/rls-health.spec.ts': 'local-demo',
@@ -417,6 +422,9 @@ const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // not a productio
 const hardLegacyResidue = (p, s) => p.endsWith('.sql')
   ? (inlineJwtRoles(stripSqlComments(s)).size > 0 || /service_role_key|app\.settings/i.test(stripSqlComments(s)))
   : (hasInlineServiceRoleJwt(s) || hasInlineAnonJwt(s));
+// Only these SQL statuses are meaningful; a typo (`'Active'`, `'live'`) would otherwise silently escape BOTH the
+// cutover gate (`startsWith('active')` is exact) and the lifecycle check — inventoryProblems() flags any unknown.
+const VALID_SQL_STATUS = new Set(['active', 'active-legacy', 'superseded']);
 
 // ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
@@ -524,7 +532,7 @@ function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_
   };
   for (const cat in managed) for (const p of managed[cat]) check(p, 'service-role');
   for (const cat in anon) for (const p of anon[cat]) check(p, 'anon');
-  for (const [p, meta] of Object.entries(sql)) if (meta.status.startsWith('active')) check(p, 'sql');
+  for (const [p, meta] of Object.entries(sql)) if (VALID_SQL_STATUS.has(meta.status) && meta.status.startsWith('active')) check(p, 'sql');
   return pending;
 }
 
@@ -546,6 +554,9 @@ function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAG
   const sqlReg = new Set(Object.keys(sql));
   for (const f of c.foundSql) if (!sqlReg.has(f)) out.push(`UNREGISTERED sql: ${f}`);
   for (const p of sqlReg) if (!c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
+  // An unknown status (typo like 'Active'/'live') would silently escape BOTH cutover (exact startsWith('active'))
+  // AND lifecycle — surface it as an inventory problem so the normal guard + cutover precheck both fail on it.
+  for (const [p, meta] of Object.entries(sql)) if (!VALID_SQL_STATUS.has(meta.status)) out.push(`INVALID sql status '${meta.status}' (must be active/active-legacy/superseded): ${p}`);
   c.escapes.forEach((f) => out.push(`ESCAPE: ${f}`));
   c.elevated.forEach((f) => out.push(`BROWSER-ELEVATION: ${f}`));
   checkSqlLifecycle(rootDir, sql).forEach((m) => out.push(`LIFECYCLE: ${m}`));
@@ -699,11 +710,16 @@ function selfTest() {
     w2('supabase/migrations/legacy_cron.sql', "net.http_post(u, jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key')))");
     w2('supabase/migrations/new_cron.sql', "net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))"); // migrated (differently-named secret)
     w2('supabase/migrations/liar_cron.sql', "net.http_post(u, jsonb_build_object('apikey','" + mkJwt('service_role') + "'))"); // marked migrated but inline legacy JWT
+    // migrated cron via a differently-NAMED Vault secret (no inline JWT) BUT still references app.settings.service_role_key
+    // in EXECUTABLE SQL — isolates the /service_role_key|app.settings/ half of hardLegacyResidue's .sql branch.
+    w2('supabase/migrations/residue_cron.sql', "select set_config('x', current_setting('app.settings.service_role_key'), true); net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))");
+    // an EXEMPT (retired) path that carries a HARD inline-JWT residue — proves EXEMPT membership is load-bearing.
+    w2('supabase/functions/exempt_residue/index.ts', 'const k = "' + mkJwt('service_role') + '"; // retired one-off, but a real inline legacy JWT');
     const reg = {
-      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts'], 'scripts-ci': ['scripts/prodtool.mjs'] },
+      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts'], 'scripts-ci': ['scripts/prodtool.mjs'], 'exempt-check': ['supabase/functions/exempt_residue/index.ts'] },
       anon: {},
-      sql: { 'supabase/migrations/legacy_cron.sql': { status: 'active' }, 'supabase/migrations/new_cron.sql': { status: 'active' }, 'supabase/migrations/liar_cron.sql': { status: 'active' } },
-      state: { 'supabase/functions/done/index.ts': 'new-secret', 'supabase/functions/helperdone/index.ts': 'new-secret', 'supabase/functions/liar/index.ts': 'new-secret', 'supabase/migrations/new_cron.sql': 'new-secret', 'supabase/migrations/liar_cron.sql': 'new-secret' },
+      sql: { 'supabase/migrations/legacy_cron.sql': { status: 'active' }, 'supabase/migrations/new_cron.sql': { status: 'active' }, 'supabase/migrations/liar_cron.sql': { status: 'active' }, 'supabase/migrations/residue_cron.sql': { status: 'active' } },
+      state: { 'supabase/functions/done/index.ts': 'new-secret', 'supabase/functions/helperdone/index.ts': 'new-secret', 'supabase/functions/liar/index.ts': 'new-secret', 'supabase/migrations/new_cron.sql': 'new-secret', 'supabase/migrations/liar_cron.sql': 'new-secret', 'supabase/migrations/residue_cron.sql': 'new-secret', 'supabase/functions/exempt_residue/index.ts': 'retired' },
     };
     const paths = new Set(requireMigrated(cut, reg).map((x) => x.path));
     ok(!paths.has('supabase/functions/done/index.ts'), 'F1: a migrated consumer that DROPPED its signal (state=new-secret) passes — the gate is reachable');
@@ -714,6 +730,15 @@ function selfTest() {
     ok(paths.has('supabase/functions/liar/index.ts') && paths.has('supabase/migrations/liar_cron.sql'), 'F3: state=new-secret but an inline legacy JWT residue in source/SQL is REJECTED');
     ok(paths.has('supabase/functions/still/index.ts') && paths.has('supabase/migrations/legacy_cron.sql'), 'cutover: legacy source + legacy SQL cron are flagged');
     ok(!requireMigrated(cut, { ...reg, state: { ...reg.state, 'scripts/prodtool.mjs': 'retired' } }).some((x) => x.path === 'scripts/prodtool.mjs'), 'F3: an explicitly-exempted tool (retired) passes');
+    // MUTATION-PIN 1 — hardLegacyResidue's .sql /service_role_key|app.settings/ branch, independent of the inline-JWT branch:
+    // an ACTIVE, state=new-secret cron that sends via a differently-named Vault secret but still references app.settings is REJECTED.
+    ok(paths.has('supabase/migrations/residue_cron.sql'), 'MUTATION-PIN: state=new-secret SQL cron with an executable app.settings.service_role_key ref (NO inline JWT) is REJECTED');
+    // MUTATION-PIN 2 — EXEMPT membership is load-bearing: a retired path with a HARD inline-JWT residue is suppressed
+    // ONLY by EXEMPT; the SAME file de-exempted to new-secret IS flagged (so dropping 'retired' from EXEMPT would break this).
+    ok(!paths.has('supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: a retired path with a HARD inline-JWT residue is suppressed by EXEMPT membership');
+    ok(requireMigrated(cut, { ...reg, state: { ...reg.state, 'supabase/functions/exempt_residue/index.ts': 'new-secret' } }).some((x) => x.path === 'supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: the SAME residue-bearing file de-exempted (new-secret) IS flagged — proves EXEMPT is what suppressed it');
+    // MUTATION-PIN 3 — an unknown MANAGED_SQL status (typo) is an inventory problem, not a silent skip.
+    ok(inventoryProblems(cut, { managed: {}, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'Active' } }, state: {} }).some((m) => /INVALID sql status/.test(m)), 'MUTATION-PIN: an off-whitelist SQL status (e.g. Active) is surfaced as an inventory problem');
   } finally { rmSync(cut, { recursive: true, force: true }); }
   // the PASS path (own tree, ONLY migrated files): cutover clean end-to-end — proves the gate is reachable.
   const cln = mkdtempSync(join(tmpdir(), 'legacy-key-cln-'));
