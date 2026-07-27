@@ -9,20 +9,27 @@
  * key INTERNALLY to build a privileged (RLS-bypassing) supabase-js admin client. Deactivating the legacy key
  * breaks all of those at once.
  *
- * This guard runs THREE checks (run `node scripts/check-legacy-service-role-consumers.mjs`; `--self-test`
- * exercises the detection logic against fixtures):
+ * Supabase DISABLES the legacy `anon` + `service_role` keys AS A PAIR, so this guard inventories BOTH — Path B
+ * migrates service_role → sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public), and the pair
+ * can be disabled only when both inventories are clean. Checks (run `node …`; `--self-test` exercises them):
  *
- *   (1) SOURCE consumers — content-scans the runtime source roots (supabase/functions, api, scripts) and fails
- *       if a file references the key but is not in the categorized MANAGED registry (NEW consumer), or a
- *       registered file no longer does (STALE). Content scan, NOT an extension allow-list — an allow-list would
- *       silently drop an unknown-extension/extensionless consumer.
- *   (2) SQL/Vault consumers — scans supabase/migrations for cron commands that SEND the key (`net.http_post`
- *       with a service_role key) or STORE it in Vault, against MANAGED_SQL. Migrations are immutable + cumulative
- *       (a migration that once sent the key stays on disk forever), so this registry tracks LIFECYCLE
- *       (active / active-legacy / superseded) + the forward replacement, not just membership.
- *   (3) REPO-WIDE escape — scans the WHOLE repo and fails if the key/helper is referenced OUTSIDE the guarded
- *       roots and outside the documented out-of-scope allow-list (docs `.md`, `src/test/**`, `tests/**`,
- *       `supabase/config.toml`). This catches a consumer added under a NEW runtime root the source scan misses.
+ *   (1) SOURCE (service_role) consumers — content-scans the runtime source roots (supabase/functions, api,
+ *       scripts) and fails if a file references the key but is not in MANAGED (NEW), or a registered file no
+ *       longer does (STALE). Content scan, NOT an extension allow-list (that would drop an unknown-ext consumer).
+ *   (2) SQL/Vault consumers — scans supabase/migrations for cron commands that SEND the key (an http_post that
+ *       Bearers a decrypted Vault secret / current_setting) or STORE it in Vault, against MANAGED_SQL. Detection
+ *       is STRUCTURAL (not coupled to the secret's name). Migrations are immutable + cumulative, so MANAGED_SQL
+ *       tracks LIFECYCLE (active / active-legacy / superseded) + forward replacement — and check (5) ENFORCES
+ *       that status against the files, so a stale status cannot stay green.
+ *   (3) ANON consumers — the anon → sb_publishable_ side. Every `*_ANON_KEY`/`*_PUBLISHABLE_KEY` consumer must be
+ *       in MANAGED_ANON (browser-public / edge-anon / config / scripts-ci / tests).
+ *   (4) BROWSER-SURFACE elevation — an RLS-bypassing key (`sb_secret_` / `*_SERVICE_ROLE_KEY`) in the shipped
+ *       browser bundle (`src/`, excluding tests) FAILS: that key must never reach a public client.
+ *   (5) SQL lifecycle — proves each MANAGED_SQL active/superseded status against later migrations touching the
+ *       same cron job name.
+ *   (6) REPO-WIDE escape — fails if the key/helper (or a key-sending .sql outside supabase/migrations) is
+ *       referenced OUTSIDE the guarded roots + the out-of-scope allow-list (docs `.md`, `src/test/**`, `tests/**`,
+ *       `supabase/config.toml`). Catches a consumer added under a NEW runtime root.
  *
  * TWO source-detection signals — a file is a consumer if EITHER holds:
  *   - the `*_SERVICE_ROLE_KEY` env-name FAMILY (not one literal): the cross-project storage scripts read the key
@@ -52,11 +59,22 @@ const KEY_FAMILY = /[A-Z0-9_]*SERVICE_ROLE_KEY/;          // SUPABASE_ / SOURCE_
 // Helper exports that read the key, PLUS an import of the key-holding shared module (in `from '…'` context only,
 // so a mere path MENTION — e.g. a generated baseline key `".../service-role-auth.ts|TS2304|…"` — does not match).
 const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey|isServiceRoleRequest|resolveServiceRoleToken|from\s+['"][^'"]*service-role-auth/;
-// A migration is an SQL/Vault consumer if it SENDS the key (an http_post — `net.http_post` OR the bare `http_post`
-// of the `http` extension — co-occurring with a service_role key) or STORES it in Vault. CONVENTION this couples
-// to (enforce it in review): key-bearing migrations name the Vault secret `service_role_key` and post via
-// net.http_post. A migration that Bearers a DIFFERENTLY-named Vault secret would slip this heuristic.
-const SQL_SENDER = (s) => (/\bhttp_post\s*\(/.test(s) && /service_role_key/i.test(s)) || /vault\.(create|update)_secret/.test(s);
+// STRUCTURAL sender detection (NOT coupled to the secret's name): an http_post (`net.http_post` or the bare
+// `http_post` of the `http` extension) that injects a decrypted Vault secret or a `current_setting` into an
+// auth header (Authorization/Bearer/apikey) sends a CREDENTIAL regardless of what the secret is named — so a
+// differently-named worker credential (e.g. vault…name='worker_credential') cannot slip past. Plus any Vault
+// create/update of a secret.
+const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting/i;
+const AUTH_HEADER = /authorization|\bapikey\b|bearer/i;
+const SQL_SENDER = (s) => (/\bhttp_post\s*\(/.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s);
+
+// The legacy `anon`/`service_role` keys are DISABLED AS A PAIR, so Path B is TWO migrations: service_role →
+// sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public). This family inventories the anon side.
+const ANON_FAMILY = /[A-Z0-9_]*ANON_KEY|[A-Z0-9_]*PUBLISHABLE_KEY/;
+// Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle:
+const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY/;
+// The shipped browser bundle (untrusted public client). A service-role / sb_secret_ key here is a critical leak.
+const isBrowserSurface = (p) => p.startsWith('src/') && !p.startsWith('src/test/') && !/\.test\.[tj]sx?$/.test(p);
 
 const SOURCE_ROOTS = ['supabase/functions', 'api', 'scripts'];
 const SQL_ROOT = 'supabase/migrations';
@@ -234,6 +252,65 @@ const MANAGED_SQL = {
     { status: 'superseded', note: 'enrich-locations / fetch-location-logos crons via app.settings', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql (jobs later unscheduled)' },
 };
 
+// ── (3) The legacy-ANON inventory (anon → sb_publishable_ side of the pair) ─────────────────────────────────
+// Every consumer of the legacy `anon`/publishable key. Path B migrates these to sb_publishable_ (a LOW-privilege,
+// RLS-respecting key), NEVER sb_secret_. `browser-public` members ship to / run as the untrusted public client.
+const MANAGED_ANON = {
+  'browser-public': [
+    'docs/cloudflare-worker.js',
+    'src/integrations/supabase/client.ts',
+    'src/pages/marketing/Partner.tsx',
+  ],
+  'edge-anon': [
+    'supabase/functions/academy-update-player-email/index.ts',
+    'supabase/functions/bulk-update-vat/index.ts',
+    'supabase/functions/create-academy-trainer/index.ts',
+    'supabase/functions/create-admin-trainer/index.ts',
+    'supabase/functions/create-club-trainer/index.ts',
+    'supabase/functions/create-manual-player/index.ts',
+    'supabase/functions/get-admin-stats/index.ts',
+    'supabase/functions/google-calendar-auth/index.ts',
+    'supabase/functions/health-check/index.ts',
+    'supabase/functions/impersonate-user/index.ts',
+    'supabase/functions/import-pipeline-data/index.ts',
+    'supabase/functions/reditus-referral-token/index.ts',
+    'supabase/functions/render-page/index.ts',
+    'supabase/functions/rls-smoke-test/index.ts',
+    'supabase/functions/scrape-academies/index.ts',
+    'supabase/functions/send-campaign-emails/index.ts',
+    'supabase/functions/send-priority-claim-invitation/index.ts',
+    'supabase/functions/send-push/index.ts',
+    'supabase/functions/toggle-player-role/index.ts',
+  ],
+  'scripts-ci': [
+    // this guard names the ANON_KEY/PUBLISHABLE_KEY family in its own regex + comments (not a consumer, but it
+    // contains the token, so it must self-register — same as it does in MANAGED).
+    'scripts/check-legacy-service-role-consumers.mjs',
+    'scripts/migration/ficwb_secrets_audit.py',
+    'scripts/migration/storage_common.py',
+  ],
+  'config': [
+    '.github/workflows/e2e.yml',
+    'vitest.config.ts',
+    'wrangler.toml',
+  ],
+  'tests': [
+    'e2e/invoice-health.spec.ts',
+    'e2e/rls-health.spec.ts',
+    'supabase/functions/backup-database/index.test.ts',
+    'supabase/functions/create-invoice-payment/index.test.ts',
+    'supabase/functions/get-booking-invoice/index.test.ts',
+    'supabase/functions/render-page/index.test.ts',
+    'supabase/functions/send-priority-claim-invitation/index.test.ts',
+    'supabase/functions/sitemap/index.test.ts',
+    'tests/rebooking-enforcement.spec.ts',
+  ],
+  'sql-reference': [
+    // token appears only in a run-instruction COMMENT — not a live anon consumer, registered for honesty
+    'supabase/migrations/20260610220000_enforce_booking_slot_tier.sql',
+  ],
+};
+
 // ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
   if (!existsSync(dir)) return;
@@ -251,9 +328,9 @@ function walk(dir, out) {
 const rel = (rootDir, abs) => relative(rootDir, abs).split(sep).join('/');
 const underRoot = (p, root) => p === root || p.startsWith(root + '/');
 
-// One walk, three buckets — paths are relative to rootDir (rootDir='.' for the real run; a temp dir for tests).
+// One walk, all buckets — paths are relative to rootDir (rootDir='.' for the real run; a temp dir for tests).
 function classify(rootDir) {
-  const foundSource = new Set(), foundSql = new Set(), escapes = [];
+  const foundSource = new Set(), foundSql = new Set(), foundAnon = new Set(), escapes = [], elevated = [];
   const files = [];
   walk(rootDir, files);
   for (const abs of files) {
@@ -264,6 +341,10 @@ function classify(rootDir) {
     // anywhere else is a misplaced legacy-key touchpoint the SOURCE signals miss — cron SQL names the key
     // LOWERCASE (service_role_key / app.settings / vault), which the uppercase env family never matches.
     const misplacedSqlSender = p.endsWith('.sql') && !underRoot(p, SQL_ROOT) && SQL_SENDER(s);
+    // CRITICAL: an elevated (RLS-bypassing) key in the shipped browser bundle is a public-surface leak.
+    if (isBrowserSurface(p) && ELEVATED.test(s)) elevated.push(p);
+    // Anon inventory — every anon/publishable consumer (docs .md are references, not consumers).
+    if (!p.endsWith('.md') && ANON_FAMILY.test(s)) foundAnon.add(p);
     if (underRoot(p, SQL_ROOT)) {
       if (p.endsWith('.sql') && SQL_SENDER(s)) foundSql.add(p);
     } else if (SOURCE_ROOTS.some((r) => underRoot(p, r))) {
@@ -273,7 +354,37 @@ function classify(rootDir) {
       escapes.push(p);
     }
   }
-  return { foundSource, foundSql, escapes };
+  return { foundSource, foundSql, foundAnon, escapes, elevated };
+}
+
+// ── SQL lifecycle: enforce active/superseded against the migration files (NOT just metadata) ────────────────
+// Extract cron job names a migration schedules/unschedules/alters, so we can prove: a `superseded` entry really
+// has a LATER migration touching one of its job names, and an `active`/`active-legacy` entry is NOT itself later
+// superseded. Migrations sort lexicographically by their timestamped filename.
+const jobNames = (s) => [...s.matchAll(/cron\.(?:schedule|unschedule|alter_job)\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+function checkSqlLifecycle(rootDir, registry = MANAGED_SQL) {
+  const problems = [];
+  const migDir = join(rootDir, SQL_ROOT);
+  if (!existsSync(migDir)) return problems;
+  const all = readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort(); // lexical = chronological
+  const jobsOf = {};
+  for (const f of all) jobsOf[f] = new Set(jobNames(readFileSync(join(migDir, f), 'utf8')));
+  const base = (p) => p.split('/').pop();
+  for (const [path, meta] of Object.entries(registry)) {
+    const file = base(path);
+    const jobs = jobsOf[file] || new Set();
+    const laterTouchers = all.filter((f) => f > file && [...(jobsOf[f] || [])].some((j) => jobs.has(j)));
+    const supersededByFiles = laterTouchers.length > 0;
+    if (meta.status === 'superseded') {
+      if (!supersededByFiles) problems.push(`${path}: registered 'superseded' but NO later migration touches its job names ${[...jobs].join(',') || '(none found)'} — status is stale.`);
+      else if (meta.replacement && !laterTouchers.some((f) => meta.replacement.includes(f))) {
+        problems.push(`${path}: 'superseded' replacement should be one of [${laterTouchers.join(', ')}] but is '${meta.replacement}'.`);
+      }
+    } else { // active / active-legacy
+      if (supersededByFiles) problems.push(`${path}: registered '${meta.status}' but LATER migration(s) [${laterTouchers.join(', ')}] reschedule/unschedule its job names — it is actually superseded.`);
+    }
+  }
+  return problems;
 }
 
 function diff(found, registered) {
@@ -299,7 +410,7 @@ function selfTest() {
   ok(HELPER_SIGNAL.test('resolveServiceRoleToken(req)'), 'resolveServiceRoleToken must match (regression: keep it in HELPER_SIGNAL)');
   ok(HELPER_SIGNAL.test('from "../_shared/service-role-auth.ts"'), 'service-role-auth module import must match');
   ok(!HELPER_SIGNAL.test('"supabase/functions/_shared/service-role-auth.ts|TS2304|x": 1'), 'a bare path mention (baseline key) must NOT match');
-  ok(SQL_SENDER('perform net.http_post(url, headers with service_role_key)'), 'sql sender (http_post + key) must match');
+  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key')))"), 'sql sender (http_post + auth header + vault cred) must match');
   ok(SQL_SENDER("select vault.create_secret('x','service_role_key')"), 'vault store must match as sql sender');
   ok(!SQL_SENDER('-- SUPABASE_SERVICE_ROLE_KEY=... (comment, no http_post)'), 'sql comment-only must NOT be a sender');
   ok(scannable('deploy') && scannable('tool.rb'), 'extensionless + unknown-extension files must be scannable');
@@ -323,7 +434,7 @@ function selfTest() {
     w('scripts/deploy', '#!/bin/sh\ncurl -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$URL"');
     w('scripts/logo.png', 'SUPABASE_SERVICE_ROLE_KEY'); // must be SKIPPED by extension despite the literal
     w('scripts/nothing.ts', 'export const two = 1 + 1;'); // benign, must NOT be found
-    w('supabase/migrations/m.sql', 'perform net.http_post(url, jsonb_build_object() , service_role_key);');
+    w('supabase/migrations/m.sql', "perform net.http_post(url, jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key')));");
     w('supabase/migrations/note.sql', '-- SUPABASE_SERVICE_ROLE_KEY=xxx (comment only, not a sender)');
     w('workers/rogue.ts', 'const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");'); // NEW root → escape
     w('docs/x.md', 'the runbook mentions SUPABASE_SERVICE_ROLE_KEY'); // allowed outside
@@ -334,7 +445,15 @@ function selfTest() {
     // helper-only fixtures whose SOLE signal is one otherwise-uncovered helper token (end-to-end regression guard):
     w('scripts/gesonly.ts', 'export const k = getEnvServiceRoleKey();'); // only getEnvServiceRoleKey
     w('scripts/rstonly.ts', 'export const t = resolveServiceRoleToken(req);'); // only resolveServiceRoleToken
-    const { foundSource, foundSql, escapes } = classify(tmp);
+    // anon inventory: a new SUPABASE_ANON_KEY consumer must be FOUND (so an unregistered one fails the diff):
+    w('supabase/functions/anonymous/index.ts', 'const k = Deno.env.get("SUPABASE_ANON_KEY");');
+    // public-surface ELEVATION: an sb_secret_ / service-role key in the shipped browser bundle must be flagged:
+    w('src/pages/Leak.tsx', 'const k = "sb_secret_deadbeef";'); // elevated leak → must be caught
+    w('src/pages/Ok.tsx', 'const k = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;'); // publishable → anon, not elevated
+    w('src/test/fixture.test.ts', 'const k = "sb_secret_testonly";'); // src/test is not the shipped bundle → not elevated
+    // differently-NAMED Vault credential sender (finding 3): structural detection, no `service_role_key` literal:
+    w('supabase/migrations/altcred.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='worker_credential')));");
+    const { foundSource, foundSql, foundAnon, escapes, elevated } = classify(tmp);
     ok(foundSource.has('supabase/functions/x/index.ts'), 'fixture: literal consumer detected');
     ok(foundSource.has('scripts/migration/alias.py'), 'fixture: TARGET_ alias consumer detected');
     ok(foundSource.has('scripts/helperonly.ts'), 'fixture: helper-only consumer detected');
@@ -350,17 +469,41 @@ function selfTest() {
     ok(escapes.includes('scripts/db/rogue-cron.sql'), 'fixture: lowercase key-sending .sql under a source root escapes');
     ok(escapes.includes('db/crons/store.sql'), 'fixture: vault.create_secret .sql under a new root escapes');
     ok(!escapes.includes('scripts/db/report.sql'), 'fixture: benign .sql does not escape');
+    ok(foundAnon.has('supabase/functions/anonymous/index.ts'), 'fixture: SUPABASE_ANON_KEY consumer detected (unregistered → fails diff)');
+    ok(foundAnon.has('src/pages/Ok.tsx'), 'fixture: VITE publishable consumer detected in the anon inventory');
+    ok(elevated.includes('src/pages/Leak.tsx'), 'fixture: sb_secret_ in the browser bundle is flagged as an elevation leak');
+    ok(!elevated.includes('src/pages/Ok.tsx'), 'fixture: a publishable key in the browser is NOT an elevation');
+    ok(!elevated.includes('src/test/fixture.test.ts'), 'fixture: src/test is not the shipped bundle → sb_secret_ there is not an elevation');
+    ok(foundSql.has('supabase/migrations/altcred.sql'), 'fixture: differently-NAMED Vault credential sender detected (structural, no service_role_key literal)');
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
 
-  // the real, checked-in baseline must pass all three checks
+  // SQL lifecycle enforcement: a registered 'active' entry that a LATER migration supersedes must be flagged.
+  const lc = mkdtempSync(join(tmpdir(), 'legacy-key-lc-'));
+  try {
+    const w = (r, body) => { const p = join(lc, r); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); };
+    w('supabase/migrations/20260101000000_a.sql', "select cron.schedule('job-x', '* * * * *', $$ ... $$);");
+    w('supabase/migrations/20260202000000_b.sql', "select cron.unschedule('job-x'); select cron.schedule('job-x', '* * * * *', $$ ... $$);");
+    const staleReg = { 'supabase/migrations/20260101000000_a.sql': { status: 'active', replacement: '-' } };
+    ok(checkSqlLifecycle(lc, staleReg).length > 0, 'lifecycle: an active entry superseded by a later migration is flagged');
+    const okReg = { 'supabase/migrations/20260101000000_a.sql': { status: 'superseded', replacement: '20260202000000_b.sql' } };
+    ok(checkSqlLifecycle(lc, okReg).length === 0, 'lifecycle: correctly-superseded entry passes');
+  } finally {
+    rmSync(lc, { recursive: true, force: true });
+  }
+
+  // the real, checked-in baseline must pass every check
   const real = classify('.');
   const rs = diff(real.foundSource, new Set(Object.values(MANAGED).flat()));
   const rq = diff(real.foundSql, new Set(Object.keys(MANAGED_SQL)));
+  const ra = diff(real.foundAnon, new Set(Object.values(MANAGED_ANON).flat()));
   ok(rs.unregistered.length === 0 && rs.stale.length === 0, `real SOURCE baseline clean (unreg=${rs.unregistered.length}, stale=${rs.stale.length})`);
   ok(rq.unregistered.length === 0 && rq.stale.length === 0, `real SQL baseline clean (unreg=${rq.unregistered.length}, stale=${rq.stale.length})`);
+  ok(ra.unregistered.length === 0 && ra.stale.length === 0, `real ANON baseline clean (unreg=${ra.unregistered.length}, stale=${ra.stale.length})`);
   ok(real.escapes.length === 0, `real escape scan clean (escapes=${real.escapes.length})`);
+  ok(real.elevated.length === 0, `real browser bundle has NO elevated key (elevated=${real.elevated.length})`);
+  ok(checkSqlLifecycle('.').length === 0, 'real SQL lifecycle statuses match the migration files');
 
   if (fails.length) {
     console.error(`SELF-TEST FAILED — ${fails.length}/${n} assertions:`);
@@ -374,9 +517,11 @@ function selfTest() {
 // ── Main ─────────────────────────────────────────────────────────────────────────────────────────────────────
 if (process.argv.includes('--self-test')) selfTest();
 
-const { foundSource, foundSql, escapes } = classify('.');
+const { foundSource, foundSql, foundAnon, escapes, elevated } = classify('.');
 const src = diff(foundSource, new Set(Object.values(MANAGED).flat()));
 const sql = diff(foundSql, new Set(Object.keys(MANAGED_SQL)));
+const anon = diff(foundAnon, new Set(Object.values(MANAGED_ANON).flat()));
+const lifecycle = checkSqlLifecycle('.');
 const problems = [];
 
 if (src.unregistered.length) {
@@ -404,21 +549,46 @@ if (escapes.length) {
     'ESCAPED references — a legacy-key touchpoint sits where the source + SQL registries do not enforce it:\n' +
     '  • the key/helper OUTSIDE the guarded roots + out-of-scope allow-list (docs .md / src/test / tests /\n' +
     '    supabase/config.toml) — a runtime consumer under a new root must join SOURCE_ROOTS + be registered; or\n' +
-    '  • a .sql statement that SENDS/STORES the key (net.http_post + service_role_key, or vault.create/update_secret)\n' +
-    '    outside supabase/migrations — move it into a tracked migration (MANAGED_SQL), it must not live loose.\n' +
+    '  • a .sql statement that SENDS/STORES the key (http_post with a credential source in an auth header, or\n' +
+    '    vault.create/update_secret) outside supabase/migrations — move it into a tracked migration (MANAGED_SQL).\n' +
     'Anything genuinely benign must be added to the allow-list deliberately:\n' +
     escapes.sort().map((f) => '  ! ' + f).join('\n'));
 }
+if (anon.unregistered.length) {
+  problems.push(
+    'UNREGISTERED ANON consumers — reference the legacy anon/publishable key but are not in MANAGED_ANON. The anon\n' +
+    'key migrates to sb_publishable_ (low-privilege, RLS-respecting) — NEVER sb_secret_. Register each:\n' +
+    anon.unregistered.map((f) => '  + ' + f).join('\n'));
+}
+if (anon.stale.length) {
+  problems.push('STALE ANON registrations — no longer reference the anon/publishable key; remove them:\n' +
+    anon.stale.map((f) => '  - ' + f).join('\n'));
+}
+if (elevated.length) {
+  problems.push(
+    'PUBLIC-SURFACE ELEVATION — an RLS-BYPASSING key (sb_secret_ / *_SERVICE_ROLE_KEY) appears in the shipped\n' +
+    'browser bundle (src/, excluding tests). This must NEVER reach a browser; the public client uses the anon /\n' +
+    'sb_publishable_ key only. Remove it:\n' +
+    elevated.sort().map((f) => '  ‼ ' + f).join('\n'));
+}
+if (lifecycle.length) {
+  problems.push(
+    'SQL LIFECYCLE drift — a MANAGED_SQL active/superseded status contradicts the migration files (a later\n' +
+    'migration reschedules/unschedules the job, or a superseded entry has no such later migration):\n' +
+    lifecycle.map((m) => '  ~ ' + m).join('\n'));
+}
 
 if (problems.length) {
-  console.error('Legacy service-role key inventory drift:\n');
+  console.error('Legacy API-key inventory drift (service_role + anon are disabled as a pair — both must stay clean):\n');
   console.error(problems.join('\n\n'));
-  console.error('\nSee docs/CRON_SERVICE_KEY_SETUP.md → "The legacy service-role-key dependency class".');
+  console.error('\nSee docs/CRON_SERVICE_KEY_SETUP.md → "The legacy service-role-key dependency class" / "Path B".');
   process.exit(1);
 }
 
 const counts = Object.entries(MANAGED).map(([k, v]) => `${k}=${v.length}`).join(', ');
 const sqlActive = Object.values(MANAGED_SQL).filter((v) => v.status.startsWith('active')).length;
+const anonCount = new Set(Object.values(MANAGED_ANON).flat()).size;
 console.log(
-  `OK — ${new Set(Object.values(MANAGED).flat()).size} source consumers registered (${counts}); ` +
-  `${Object.keys(MANAGED_SQL).length} SQL/Vault migrations registered (${sqlActive} active); no references outside guarded roots.`);
+  `OK — ${new Set(Object.values(MANAGED).flat()).size} service-role source consumers (${counts}); ` +
+  `${Object.keys(MANAGED_SQL).length} SQL/Vault migrations (${sqlActive} active, lifecycle verified); ` +
+  `${anonCount} anon/publishable consumers; no elevated key in the browser bundle; no references outside guarded roots.`);
