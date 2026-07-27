@@ -135,8 +135,8 @@ pair) via **six checks**:
 `npm run check:legacy-key:selftest` proves the guard's own detection + diff logic against fixtures (literal,
 alias, helper-only, extensionless, structural SQL sender, differently-named vault credential, anon consumer,
 browser elevation, stale lifecycle, escape, and the real baseline); both run in CI.
-**No single registry is "the" authority — the three checks together are.** A NEW consumer of any class cannot slip
-past the deactivation plan.
+**No single registry is "the" authority — all six checks together are.** A NEW consumer of any class (service-role,
+SQL/Vault, anon, or an elevated key in the browser) cannot slip past the deactivation plan.
 
 | Category | Count* | What it is | Legacy-off impact |
 |---|---|---|---|
@@ -151,8 +151,8 @@ past the deactivation plan.
 | **Third parties** | **0** | The service-role key **never leaves for an external provider** — provider functions authenticate to Resend/Twilio/Mollie/Stripe with those providers' *own* keys. | — |
 
 \* Live counts come from the guard's success line (`npm run check:legacy-key`); the guard's registries (`MANAGED`
-+ `MANAGED_SQL`) are the source of truth **for these counts** (distinct from completeness, which the three checks
-together enforce — see above). The categories are a *primary* classification — many functions both
++ `MANAGED_SQL` + `MANAGED_ANON`) are the source of truth **for these counts** (distinct from completeness, which
+all six checks together enforce — see above). The categories are a *primary* classification — many functions both
 self-authenticate **and** build an admin client; `admin-client` wins because that is the failure mode a legacy-off
 migration must not miss.
 
@@ -372,13 +372,19 @@ only route):
      the standby key normally. Crucially, the legacy `service_role`/`anon` API JWTs (signed by that same secret)
      ALSO keep verifying after mere rotation — so rotation alone does **not** contain a leaked signer.
    - **Revocation** of the compromised previous key is the strong, emergency action and the actual containment: it
-     invalidates everything signed by it at once — outstanding user access tokens (holders must re-authenticate)
-     **and** the legacy `service_role`/`anon` API JWTs, whose **outbound** signature validation at PostgREST/GoTrue
-     now fails. Do it as soon as the standby key is serving, accepting the re-auth disruption. (The **inbound**
+     rejects every **access token** signed by it at once — the attacker's forged tokens die. Legitimate users are
+     **not** forced to log in again: their sessions rest on opaque refresh tokens (independent of the signing key),
+     so active clients recover transparently via `refreshSession()`; only a *separate* global sign-out /
+     refresh-token revocation forces a true re-login. It **also** kills the legacy `service_role`/`anon` API JWTs,
+     whose **outbound** signature validation at PostgREST/GoTrue now fails. **Prerequisite (per the signing-keys
+     guide): disable the legacy `anon`/`service_role` keys in Settings → API Keys BEFORE revoking the previous
+     signing key** — this is the Track-A1 disable action, and its anon/public + backend outage is *expected and
+     accepted* in a signer-compromise incident. Do it as soon as the standby key is serving. (The **inbound**
      byte-exact cron→worker check is rotation/revocation-*insensitive* — drainers are contained by the Step-1
      pause + their admin-client calls failing, not by inbound auth self-closing.)
-4. **Rebuild on the new keys.** Track A1 / Path B still follows to move every consumer onto `sb_secret_` /
-   `sb_publishable_` — as *recovery*, never a precondition for containment. Drainer crons stay **FAIL CLOSED**.
+4. **Rebuild on the new keys.** After containment (the legacy pair is disabled + the previous signing key revoked),
+   Path B is the *recovery*: move every consumer onto `sb_secret_` / `sb_publishable_` to restore service. The
+   step-3 disable is a containment-time outage, not the migration; drainer crons stay **FAIL CLOSED** until rebuilt.
 
 If the project has **already migrated to signing keys**, skip the Migrate step and go straight to rotate + revoke
 via the same guide.
@@ -467,9 +473,10 @@ The `MANAGED_ANON` inventory (`npm run check:legacy-key`) tracks every anon/publ
      `.github/workflows/e2e.yml`, the migration scripts, and the e2e/edge test harnesses that inject the key.
 - **Production value verification (safe, prefix-only — never print the key):** the env NAME
   `VITE_SUPABASE_PUBLISHABLE_KEY` does **not** prove its VALUE is already `sb_publishable_` (it may still hold the
-  legacy `eyJ…` anon JWT). Verify the deployed value's **prefix only** — e.g. in a build/runtime assertion or a
-  one-off that logs `key.slice(0, 3)` / `key.startsWith('sb_publishable_')` as a boolean — and assert it is
-  `sb_publishable_` (and, critically, **not** `sb_secret_`). Never echo the full value.
+  legacy `eyJ…` anon JWT). Verify with **boolean prefix checks only** — `key.startsWith('sb_publishable_') === true`
+  **and** `key.startsWith('sb_secret_') === false` — in a build/runtime assertion or a one-off. (Do **not** use a
+  short slice like `key.slice(0, 3)`: `sb_` is identical for `sb_publishable_` and `sb_secret_`, so it cannot catch
+  the dangerous case.) Never echo the full value.
 - **Guard green on the anon side.** `MANAGED_ANON` shows every consumer migrated to `sb_publishable_`, and the
   browser-elevation check is clean.
 

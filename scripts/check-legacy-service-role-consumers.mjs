@@ -59,22 +59,29 @@ const KEY_FAMILY = /[A-Z0-9_]*SERVICE_ROLE_KEY/;          // SUPABASE_ / SOURCE_
 // Helper exports that read the key, PLUS an import of the key-holding shared module (in `from '…'` context only,
 // so a mere path MENTION — e.g. a generated baseline key `".../service-role-auth.ts|TS2304|…"` — does not match).
 const HELPER_SIGNAL = /requireServiceRole|getEnvServiceRoleKey|isServiceRoleRequest|resolveServiceRoleToken|from\s+['"][^'"]*service-role-auth/;
+// Strip SQL comments (line `--` + block `/* */`) so lifecycle/sender decisions trust only EXECUTABLE statements,
+// never a commented-out or illustrative `cron.unschedule(...)` / `http_post(...)`.
+const stripSqlComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ');
 // STRUCTURAL sender detection (NOT coupled to the secret's name): an http_post (`net.http_post` or the bare
-// `http_post` of the `http` extension) that injects a decrypted Vault secret or a `current_setting` into an
-// auth header (Authorization/Bearer/apikey) sends a CREDENTIAL regardless of what the secret is named — so a
-// differently-named worker credential (e.g. vault…name='worker_credential') cannot slip past. Plus any Vault
-// create/update of a secret.
-const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting/i;
+// `http_post` of the `http` extension) whose auth header (Authorization/Bearer/apikey) carries a CREDENTIAL —
+// a decrypted Vault secret, a `current_setting`, or an INLINE `Bearer eyJ…` JWT hardcoded in the command. Any of
+// those is a legacy-key send regardless of the secret's NAME (a differently-named worker credential, or an inline
+// token, cannot slip past). Plus any Vault create/update of a secret.
+const CRED_SOURCE = /vault\.decrypted_secrets|decrypted_secret|current_setting|Bearer\s+eyJ[A-Za-z0-9._-]+/i;
 const AUTH_HEADER = /authorization|\bapikey\b|bearer/i;
-const SQL_SENDER = (s) => (/\bhttp_post\s*\(/.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s);
+const SQL_SENDER = (raw) => { const s = stripSqlComments(raw); return (/\bhttp_post\s*\(/.test(s) && AUTH_HEADER.test(s) && CRED_SOURCE.test(s)) || /vault\.(create|update)_secret/.test(s); };
 
 // The legacy `anon`/`service_role` keys are DISABLED AS A PAIR, so Path B is TWO migrations: service_role →
 // sb_secret_ (trusted backend) and anon → sb_publishable_ (browser/public). This family inventories the anon side.
 const ANON_FAMILY = /[A-Z0-9_]*ANON_KEY|[A-Z0-9_]*PUBLISHABLE_KEY/;
 // Elevated, RLS-bypassing credentials that must NEVER reach the browser/public bundle:
 const ELEVATED = /sb_secret_|[A-Z0-9_]*SERVICE_ROLE_KEY/;
-// The shipped browser bundle (untrusted public client). A service-role / sb_secret_ key here is a critical leak.
-const isBrowserSurface = (p) => p.startsWith('src/') && !p.startsWith('src/test/') && !/\.test\.[tj]sx?$/.test(p);
+// Public surfaces that must never hold an elevated key: the shipped browser bundle (src/, excluding tests) AND
+// the non-src browser-public members of MANAGED_ANON (e.g. the Cloudflare worker, which Bearers its key on every
+// forwarded public request). MANAGED_ANON is defined below; reference it lazily inside the check.
+const isBrowserSurface = (p) =>
+  (p.startsWith('src/') && !p.startsWith('src/test/') && !p.includes('/__tests__/') && !/\.(test|spec)\.[a-z]+$/.test(p))
+  || MANAGED_ANON['browser-public'].includes(p);
 
 const SOURCE_ROOTS = ['supabase/functions', 'api', 'scripts'];
 const SQL_ROOT = 'supabase/migrations';
@@ -230,6 +237,8 @@ const MANAGED = {
 };
 
 // ── (2) The SQL/Vault registry (immutable, cumulative migrations — track lifecycle, not just membership) ─────
+// EVERY migration that sends a legacy key via cron/http_post (service_role OR anon; via Vault, app.settings, or
+// an INLINE JWT) or stores one in Vault — Path B must see them all (both keys are disabled as a pair).
 // status: active = the current live definition of its cron; active-legacy = still the last definition but on the
 // old app.settings path (effectively inert on Supabase, kept for honesty); superseded = a later migration
 // re-scheduled/removed the same job. `replacement` names the forward migration (or the Path-B cutover to come).
@@ -250,6 +259,13 @@ const MANAGED_SQL = {
     { status: 'superseded', note: 'invoice-health-check-daily via app.settings', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql' },
   'supabase/migrations/20260511165940_c28866fe-8f82-4f41-8ab2-a74b38aed1b8.sql':
     { status: 'superseded', note: 'enrich-locations / fetch-location-logos crons via app.settings', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql (jobs later unscheduled)' },
+  // INLINE-JWT senders — hardcode a legacy ANON `eyJ…` JWT directly in the http_post (no Vault/current_setting).
+  // Caught structurally by the inline-`Bearer eyJ…` signal. Both are superseded (their enrich/logo jobs are later
+  // unscheduled), so no live send today — but they are the concrete inline-token class Path B must still see.
+  'supabase/migrations/20260222155701_05809654-6a87-4ce8-a309-fe0a86f678b9.sql':
+    { status: 'superseded', note: 'enrich-clubs / enrich-locations-background via an INLINE anon JWT', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql (job later unscheduled)' },
+  'supabase/migrations/20260205091805_be8721ba-3deb-44bf-b609-56168438ad20.sql':
+    { status: 'superseded', note: 'fetch-location-logos-background via an INLINE anon JWT', replacement: '20260606120000_phase5_email_idempotency_and_cron_ficwb.sql (job later unscheduled)' },
 };
 
 // ── (3) The legacy-ANON inventory (anon → sb_publishable_ side of the pair) ─────────────────────────────────
@@ -360,7 +376,9 @@ function classify(rootDir) {
 // ── SQL lifecycle: enforce active/superseded against the migration files (NOT just metadata) ────────────────
 // Extract cron job names a migration schedules/unschedules/alters, so we can prove: a `superseded` entry really
 // has a LATER migration touching one of its job names, and an `active`/`active-legacy` entry is NOT itself later
-// superseded. Migrations sort lexicographically by their timestamped filename.
+// superseded. Migrations sort lexicographically by their timestamped filename. INVARIANT (all real migrations
+// hold it): job names are QUOTED STRING LITERALS. A dynamic scheduler — cron.(un)schedule(variable) or
+// format('… cron.%schedule …') — is NOT tracked here and must be a reviewed exception (fail-open otherwise).
 const jobNames = (s) => [...s.matchAll(/cron\.(?:schedule|unschedule|alter_job)\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
 function checkSqlLifecycle(rootDir, registry = MANAGED_SQL) {
   const problems = [];
@@ -368,7 +386,7 @@ function checkSqlLifecycle(rootDir, registry = MANAGED_SQL) {
   if (!existsSync(migDir)) return problems;
   const all = readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort(); // lexical = chronological
   const jobsOf = {};
-  for (const f of all) jobsOf[f] = new Set(jobNames(readFileSync(join(migDir, f), 'utf8')));
+  for (const f of all) jobsOf[f] = new Set(jobNames(stripSqlComments(readFileSync(join(migDir, f), 'utf8'))));
   const base = (p) => p.split('/').pop();
   for (const [path, meta] of Object.entries(registry)) {
     const file = base(path);
@@ -411,6 +429,10 @@ function selfTest() {
   ok(HELPER_SIGNAL.test('from "../_shared/service-role-auth.ts"'), 'service-role-auth module import must match');
   ok(!HELPER_SIGNAL.test('"supabase/functions/_shared/service-role-auth.ts|TS2304|x": 1'), 'a bare path mention (baseline key) must NOT match');
   ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key')))"), 'sql sender (http_post + auth header + vault cred) must match');
+  ok(SQL_SENDER("select vault.update_secret(id, 'newval')"), 'vault.update_secret must match (regression: keep the update alternative)');
+  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('apikey', (select decrypted_secret from vault.decrypted_secrets where name='k')))"), 'sql sender via the apikey header must match (regression: Path B moves to apikey)');
+  ok(SQL_SENDER("net.http_post(url, jsonb_build_object('Authorization','Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig'))"), 'INLINE-JWT sql sender must match (no vault/current_setting)');
+  ok(!SQL_SENDER("-- net.http_post(url, 'Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='k'))"), 'a commented-out sender is NOT a sender (comment stripping)');
   ok(SQL_SENDER("select vault.create_secret('x','service_role_key')"), 'vault store must match as sql sender');
   ok(!SQL_SENDER('-- SUPABASE_SERVICE_ROLE_KEY=... (comment, no http_post)'), 'sql comment-only must NOT be a sender');
   ok(scannable('deploy') && scannable('tool.rb'), 'extensionless + unknown-extension files must be scannable');
@@ -451,8 +473,11 @@ function selfTest() {
     w('src/pages/Leak.tsx', 'const k = "sb_secret_deadbeef";'); // elevated leak → must be caught
     w('src/pages/Ok.tsx', 'const k = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;'); // publishable → anon, not elevated
     w('src/test/fixture.test.ts', 'const k = "sb_secret_testonly";'); // src/test is not the shipped bundle → not elevated
+    w('src/pages/thing.spec.ts', 'const k = "sb_secret_specmock";'); // co-located .spec test → excluded, not elevated
+    w('docs/cloudflare-worker.js', 'const k = "sb_secret_workerleak";'); // browser-public (non-src) → MUST be caught
     // differently-NAMED Vault credential sender (finding 3): structural detection, no `service_role_key` literal:
     w('supabase/migrations/altcred.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='worker_credential')));");
+    w('supabase/migrations/inline.sql', "select net.http_post(url:='x', headers:=jsonb_build_object('Authorization','Bearer eyJhbGciOiJIUzI1NiJ9.p.s'));"); // inline JWT, no vault
     const { foundSource, foundSql, foundAnon, escapes, elevated } = classify(tmp);
     ok(foundSource.has('supabase/functions/x/index.ts'), 'fixture: literal consumer detected');
     ok(foundSource.has('scripts/migration/alias.py'), 'fixture: TARGET_ alias consumer detected');
@@ -463,6 +488,7 @@ function selfTest() {
     ok(!foundSource.has('scripts/logo.png'), 'fixture: png with literal is skipped');
     ok(!foundSource.has('scripts/nothing.ts'), 'fixture: benign file not detected');
     ok(foundSql.has('supabase/migrations/m.sql'), 'fixture: SQL sender detected');
+    ok(foundSql.has('supabase/migrations/inline.sql'), 'fixture: INLINE-JWT SQL sender detected (no vault/current_setting)');
     ok(!foundSql.has('supabase/migrations/note.sql'), 'fixture: SQL comment-only not a sender');
     ok(escapes.includes('workers/rogue.ts'), 'fixture: NEW-root escape detected');
     ok(!escapes.includes('docs/x.md'), 'fixture: docs .md not an escape');
@@ -474,6 +500,8 @@ function selfTest() {
     ok(elevated.includes('src/pages/Leak.tsx'), 'fixture: sb_secret_ in the browser bundle is flagged as an elevation leak');
     ok(!elevated.includes('src/pages/Ok.tsx'), 'fixture: a publishable key in the browser is NOT an elevation');
     ok(!elevated.includes('src/test/fixture.test.ts'), 'fixture: src/test is not the shipped bundle → sb_secret_ there is not an elevation');
+    ok(!elevated.includes('src/pages/thing.spec.ts'), 'fixture: a co-located .spec test is excluded from elevation');
+    ok(elevated.includes('docs/cloudflare-worker.js'), 'fixture: sb_secret_ in a browser-public (non-src) member IS an elevation');
     ok(foundSql.has('supabase/migrations/altcred.sql'), 'fixture: differently-NAMED Vault credential sender detected (structural, no service_role_key literal)');
   } finally {
     rmSync(tmp, { recursive: true, force: true });
