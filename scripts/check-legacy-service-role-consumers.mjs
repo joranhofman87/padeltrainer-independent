@@ -16,9 +16,10 @@
  *   • INVENTORY completeness (the normal run + `--self-test`, both CI-gated): every legacy-key consumer is
  *     REGISTERED. GREEN TODAY, everything still on the legacy keys — it does NOT prove migration. Migration makes
  *     a consumer DROP its legacy signal, so STALE is STATE-AWARE (a dropped signal is a problem only if the path's
- *     state is still 'legacy'), which keeps CI green through migration. Independently, every registered path must
- *     EXIST on disk — a MISSING registered file fails regardless of state (legacy/migrated/exempt), so a dangling
- *     registration cannot silently hand a reused path an inherited state/exemption.
+ *     state is still 'legacy'), which keeps CI green through migration. Independently and fail-closed: every
+ *     registered path must be an existing REGULAR FILE (a missing path, directory, or symlink fails, regardless of
+ *     state), and every STATE/allowlist entry must stay registered under its kind (an ORPHANED target/exemption
+ *     fails) — so a dangling registration cannot silently hand a reused path an inherited state/exemption.
  *   • MIGRATION completion (`--require-migrated`, an on-demand CUTOVER gate, NOT run in normal CI): FAILS until
  *     every production consumer has moved off the legacy keys, read from the explicit per-path STATE registry
  *     (legacy default; new-secret/publishable; local-demo/tooling/retired exemptions) — NOT from signal
@@ -71,7 +72,7 @@
  * When you add a file that references any `*_SERVICE_ROLE_KEY` name / a service-role helper (source), or a
  * migration that sends/stores the key (SQL), register it below.
  */
-import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, lstatSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -524,6 +525,24 @@ function exemptionAllowlistProblems(reg, allow = EXEMPT_ALLOWLIST) {
   return out;
 }
 
+// STATE must be REGISTRATION-AWARE (a shape-valid migrated target is not enough): every STATE (path, kind) must
+// still be registered as a consumer of that kind. An ORPHANED entry — a target for a path removed from the registry,
+// or set on the WRONG kind (e.g. anon on a service-role-only path) — is a hard error, so a file later reused at that
+// path cannot silently inherit a leftover migrated state. (Shape/whitelist/conflict is stateRegistryProblems; this
+// is membership — the STATE analogue of exemptionAllowlistProblems' stale check.)
+function stateRegistrationProblems(reg, state = STATE) {
+  const out = [];
+  const kindReg = { serviceRole: new Set(Object.values(reg.managed).flat()), anon: new Set(Object.values(reg.anon).flat()), sql: new Set(Object.keys(reg.sql)) };
+  for (const [p, e] of Object.entries(state)) {
+    if (e === null || typeof e !== 'object' || Array.isArray(e)) continue; // shape errors are stateRegistryProblems' job
+    for (const k of Object.keys(e)) {
+      if (!kindReg[k]) continue; // unknown kind is stateRegistryProblems' job
+      if (!kindReg[k].has(p)) out.push(`ORPHANED STATE '${p}.${k}': a migrated-target state for a path NOT registered as a ${k} consumer — remove it (a file later reused at this path would silently inherit '${e[k]}')`);
+    }
+  }
+  return out;
+}
+
 // ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
   if (!existsSync(dir)) return;
@@ -660,25 +679,30 @@ function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAG
   // (well-formed, no active-SQL exemption, no stale entry).
   stateRegistryProblems(state, allow).forEach((m) => out.push(m));
   exemptionAllowlistProblems({ managed, anon, sql }, allow).forEach((m) => out.push(m));
-  // EXISTENCE is STATE-INDEPENDENT: every registered path must exist on disk. A missing registered path is ALWAYS a
-  // problem — legacy, migrated, OR exempt alike — because the registration/STATE/allowlist entry is now dangling and
-  // a file later reused at that path would silently inherit its state/exemption without review. (Reported once over
-  // the union; the per-kind STALE check below is gated on existence, so a missing file is a MISSING, not a STALE.)
-  const exists = (p) => existsSync(join(rootDir, p));
+  // STATE / allowlist entries must stay REGISTRATION-AWARE: a migrated target (or an exemption) for a (path, kind)
+  // no longer registered under that kind is ORPHANED — a file later reused at that path would inherit it. (The
+  // existence check below only walks the registries, so an UNregistered orphan is invisible to it.)
+  stateRegistrationProblems({ managed, anon, sql }, state).forEach((m) => out.push(m));
+  // EXISTENCE is STATE-INDEPENDENT: every registered path must be a REGULAR FILE that exists. Missing, OR a
+  // directory / symlink / other non-regular path (lstat, so a symlink is NOT followed), ALWAYS fails — legacy,
+  // migrated, OR exempt alike — because the registration/STATE/allowlist entry is now dangling and a file later
+  // reused (or a dir/symlink swapped in) at that path would silently inherit its state/exemption. (Reported once
+  // over the union; STALE below is gated on the same regular-file test, so a non-file is a MISSING, not a STALE.)
+  const isRegularFile = (p) => { try { return lstatSync(join(rootDir, p)).isFile(); } catch { return false; } };
   const allRegistered = new Set([...Object.values(managed).flat(), ...Object.values(anon).flat(), ...Object.keys(sql)]);
-  for (const p of allRegistered) if (!exists(p)) out.push(`MISSING registered path (no longer exists — remove its registration + any STATE/allowlist entry; a reused path would silently inherit its state): ${p}`);
-  // STALE is STATE-AWARE PER KIND (only for a file that STILL EXISTS but dropped its signal): a source stale is a
-  // problem only if its serviceRole leg is still 'legacy'; anon only if its anon leg is. A migrated/exempt leg is
-  // EXPECTED to have dropped its signal (this is what makes migration reachable).
+  for (const p of allRegistered) if (!isRegularFile(p)) out.push(`MISSING/NON-REGULAR registered path (must be an existing REGULAR FILE — a missing path, directory, or symlink fails; remove the registration + any STATE/allowlist entry, else a reused path inherits its state): ${p}`);
+  // STALE is STATE-AWARE PER KIND (only for a regular file that STILL EXISTS but dropped its signal): a source stale
+  // is a problem only if its serviceRole leg is still 'legacy'; anon only if its anon leg is. A migrated/exempt leg
+  // is EXPECTED to have dropped its signal (this is what makes migration reachable).
   const staleAware = (found, registered, label, kind) => {
     for (const f of found) if (!registered.has(f)) out.push(`UNREGISTERED ${label}: ${f}`);
-    for (const p of registered) if (exists(p) && !found.has(p) && stateOf(p, kind, state, allow) === 'legacy') out.push(`STALE ${label} (file exists but the legacy signal disappeared while state.${kind}=legacy — relabel its STATE if migrated, or retire/remove): ${p}`);
+    for (const p of registered) if (isRegularFile(p) && !found.has(p) && stateOf(p, kind, state, allow) === 'legacy') out.push(`STALE ${label} (file exists but the legacy signal disappeared while state.${kind}=legacy — relabel its STATE if migrated, or retire/remove): ${p}`);
   };
   staleAware(c.foundSource, new Set(Object.values(managed).flat()), 'source', 'serviceRole');
   staleAware(c.foundAnon, new Set(Object.values(anon).flat()), 'anon', 'anon');
   const sqlReg = new Set(Object.keys(sql));
   for (const f of c.foundSql) if (!sqlReg.has(f)) out.push(`UNREGISTERED sql: ${f}`);
-  for (const p of sqlReg) if (exists(p) && !c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
+  for (const p of sqlReg) if (isRegularFile(p) && !c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
   // An unknown status (typo like 'Active'/'live') would silently escape BOTH cutover (exact startsWith('active'))
   // AND lifecycle — surface it as an inventory problem so the normal guard + cutover precheck both fail on it.
   for (const [p, meta] of Object.entries(sql)) if (!VALID_SQL_STATUS.has(meta.status)) out.push(`INVALID sql status '${meta.status}' (must be active/active-legacy/superseded): ${p}`);
@@ -940,9 +964,9 @@ function selfTest() {
     //    EXISTING file that merely dropped its legacy signal stays state-aware (valid after migration / for exempt).
     const ghost = 'supabase/functions/ghost/index.ts'; // registered but NOT written to `cut` → simulates a deleted file
     const ghostInv = (state, allow) => inventoryProblems(cut, { managed: { c: [ghost] }, anon: {}, sql: {}, state, allow });
-    ok(ghostInv({}, {}).some((m) => new RegExp(`MISSING registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing LEGACY registered file fails inventory');
-    ok(ghostInv({ [ghost]: { serviceRole: 'new-secret' } }, {}).some((m) => new RegExp(`MISSING registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing MIGRATED registered file fails inventory (not hidden by new-secret)');
-    ok(ghostInv({}, { [ghost]: { serviceRole: 'retired' } }).some((m) => new RegExp(`MISSING registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing EXEMPT (allowlisted) registered file fails inventory (not hidden by the exemption)');
+    ok(ghostInv({}, {}).some((m) => new RegExp(`MISSING/NON-REGULAR registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing LEGACY registered file fails inventory');
+    ok(ghostInv({ [ghost]: { serviceRole: 'new-secret' } }, {}).some((m) => new RegExp(`MISSING/NON-REGULAR registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing MIGRATED registered file fails inventory (not hidden by new-secret)');
+    ok(ghostInv({}, { [ghost]: { serviceRole: 'retired' } }).some((m) => new RegExp(`MISSING/NON-REGULAR registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing EXEMPT (allowlisted) registered file fails inventory (not hidden by the exemption)');
     ok(!inventoryProblems(cut, reg).some((m) => /MISSING|STALE/.test(m)), 'EXISTENCE: an EXISTING migrated file whose legacy signal disappeared (done→SUPABASE_SECRET_KEYS) stays valid — no MISSING/STALE');
     { // an EXISTING exempt file with no legacy signal at all is valid (isolated tree so there is no UNREGISTERED noise)
       const ex = mkdtempSync(join(tmpdir(), 'legacy-key-ex-'));
@@ -950,6 +974,24 @@ function selfTest() {
         mkdirSync(join(ex, 'scripts'), { recursive: true }); writeFileSync(join(ex, 'scripts/clean_exempt.mjs'), '// tooling: names no key at all');
         ok(inventoryProblems(ex, { managed: { 'scripts-ci': ['scripts/clean_exempt.mjs'] }, anon: {}, sql: {}, state: {}, allow: { 'scripts/clean_exempt.mjs': { serviceRole: 'tooling' } } }).length === 0, 'EXISTENCE: an EXISTING exempt file with no legacy signal remains valid');
       } finally { rmSync(ex, { recursive: true, force: true }); }
+    }
+    // FINDING 1 (lifecycle) — an ORPHANED STATE entry (migrated target for a path no longer registered under that
+    // kind, or the WRONG kind) fails inventory, so a reused path cannot inherit the leftover migrated state.
+    ok(inventoryProblems(cut, { managed: {}, anon: {}, sql: {}, state: { 'supabase/functions/gone/index.ts': { serviceRole: 'new-secret' } }, allow: {} }).some((m) => /ORPHANED STATE 'supabase\/functions\/gone\/index\.ts\.serviceRole'/.test(m)), 'ORPHANED STATE: a migrated target for an UNregistered path fails inventory (deleted+unregistered+STATE-left-behind)');
+    ok(inventoryProblems(cut, { managed: { c: ['supabase/functions/sr/index.ts'] }, anon: {}, sql: {}, state: { 'supabase/functions/sr/index.ts': { anon: 'publishable' } }, allow: {} }).some((m) => /ORPHANED STATE 'supabase\/functions\/sr\/index\.ts\.anon'/.test(m)), 'ORPHANED STATE: a WRONG-KIND target (anon on a service-role-only path) fails inventory');
+    ok(!inventoryProblems(cut, reg).some((m) => /ORPHANED STATE/.test(m)), 'ORPHANED STATE: a VALID registered migrated STATE entry (dual serviceRole:new-secret) is NOT flagged');
+    // FINDING 2 (lifecycle) — a registered path must be a REGULAR FILE: a directory or a symlink at that path fails
+    // inventory (existsSync would accept both), so a non-file cannot preserve an inherited state/exemption.
+    { const nf = mkdtempSync(join(tmpdir(), 'legacy-key-nf-'));
+      try {
+        mkdirSync(join(nf, 'supabase/functions/dirsub/index.ts'), { recursive: true }); // a DIRECTORY where a file is registered
+        mkdirSync(join(nf, 'supabase/functions/linksub'), { recursive: true });
+        writeFileSync(join(nf, 'realtarget.ts'), '// plain regular file, no key');
+        symlinkSync(join(nf, 'realtarget.ts'), join(nf, 'supabase/functions/linksub/index.ts')); // a SYMLINK where a file is registered
+        const nfReg = (p) => inventoryProblems(nf, { managed: { c: [p] }, anon: {}, sql: {}, state: {}, allow: {} });
+        ok(nfReg('supabase/functions/dirsub/index.ts').some((m) => /MISSING\/NON-REGULAR registered path.*dirsub/.test(m)), 'REGULAR-FILE: a DIRECTORY at a registered path fails inventory (existsSync would accept it)');
+        ok(nfReg('supabase/functions/linksub/index.ts').some((m) => /MISSING\/NON-REGULAR registered path.*linksub/.test(m)), 'REGULAR-FILE: a SYMLINK at a registered path fails inventory (lstat rejects a non-regular path)');
+      } finally { rmSync(nf, { recursive: true, force: true }); }
     }
     // (e) the REAL registry: no allowlist error (well-formed, no active-SQL, no stale) and no STATE error.
     ok(exemptionAllowlistProblems({ managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL }).length === 0, 'ALLOWLIST: the REAL EXEMPT_ALLOWLIST is well-formed (no active-SQL exemption, no stale entry)');
