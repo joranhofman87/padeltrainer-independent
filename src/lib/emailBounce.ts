@@ -8,7 +8,9 @@ import { supabase } from '@/lib/supabaseClient';
 
 export type EmailEditCapability = 'direct' | 'override';
 
-export type EmailBounceState = 'hard_bounced' | 'complained';
+// 'provider_suppressed' = on Resend's suppression list (state='ok', no bounce) — still undeliverable. Populated by
+// the PR-2 email.suppressed webhook; the reader returns it in place of a bare 'ok'.
+export type EmailBounceState = 'hard_bounced' | 'complained' | 'provider_suppressed';
 
 export interface UndeliverableRecipient {
   player_key: string;
