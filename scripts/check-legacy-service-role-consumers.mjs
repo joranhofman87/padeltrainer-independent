@@ -16,7 +16,9 @@
  *   • INVENTORY completeness (the normal run + `--self-test`, both CI-gated): every legacy-key consumer is
  *     REGISTERED. GREEN TODAY, everything still on the legacy keys — it does NOT prove migration. Migration makes
  *     a consumer DROP its legacy signal, so STALE is STATE-AWARE (a dropped signal is a problem only if the path's
- *     state is still 'legacy'), which keeps CI green through migration.
+ *     state is still 'legacy'), which keeps CI green through migration. Independently, every registered path must
+ *     EXIST on disk — a MISSING registered file fails regardless of state (legacy/migrated/exempt), so a dangling
+ *     registration cannot silently hand a reused path an inherited state/exemption.
  *   • MIGRATION completion (`--require-migrated`, an on-demand CUTOVER gate, NOT run in normal CI): FAILS until
  *     every production consumer has moved off the legacy keys, read from the explicit per-path STATE registry
  *     (legacy default; new-secret/publishable; local-demo/tooling/retired exemptions) — NOT from signal
@@ -407,15 +409,18 @@ const STATE = {
 const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // reviewed NON-production exemption classes
 // The EXACT reviewed non-production exemption allowlist — path → { kind: exemption }. Category NEVER grants an
 // exemption; only an entry here does, and adding one is an explicit reviewed act (never for a production consumer).
-// Reasons by class: tooling = names the key family but is not a runtime credential consumer (guard/config machinery);
-// local-demo = uses the public supabase-demo / local-dev keys (a dummy sb_publishable_ or the well-known demo JWT);
-// retired = a one-off historical migration script that will not run against the disabled key. `.github/workflows/
-// e2e.yml` is deliberately ABSENT — it runs weekly with the DEPLOYED GitHub Actions VITE_SUPABASE_PUBLISHABLE_KEY
-// secret, so it stays a PENDING anon consumer until that deployed value is proven sb_publishable_.
+// Reasons by class: tooling = names the key family (or authenticates with a DIFFERENT credential) but is not a
+// runtime consumer of the legacy key (guard/config machinery; a management-token audit script); local-demo = uses
+// the public supabase-demo / local-dev keys (a dummy sb_publishable_ or the well-known demo JWT); retired = a
+// one-off historical migration script that is UNSCHEDULED and non-mutating by default (its Admin checks are
+// read-only; its mutations are --execute/--confirm gated), so it will not run against the disabled key in prod.
+// `.github/workflows/e2e.yml` is deliberately ABSENT — it runs weekly with the DEPLOYED GitHub Actions
+// VITE_SUPABASE_PUBLISHABLE_KEY secret, so it stays a PENDING anon consumer until that value is proven sb_publishable_.
 const EXEMPT_ALLOWLIST = {
   // tooling
   'scripts/check-legacy-service-role-consumers.mjs': { serviceRole: 'tooling', anon: 'tooling' },
   'scripts/check-edge-fn-config.mjs': { serviceRole: 'tooling' },
+  'scripts/migration/ficwb_secrets_audit.py': { serviceRole: 'tooling', anon: 'tooling' }, // authenticates with SUPABASE_ACCESS_TOKEN (sbp_); only NAMES the key families in an audit filter set — not a legacy-key consumer
   'vitest.config.ts': { anon: 'tooling' },          // sets VITE_SUPABASE_PUBLISHABLE_KEY to a dummy sb_publishable_ literal
   'wrangler.toml': { anon: 'tooling' },             // only NAMES SUPABASE_ANON_KEY in a comment (keep_vars=true); real value is a CF dashboard var
   // local-demo (public supabase-demo / local-dev keys)
@@ -441,8 +446,7 @@ const EXEMPT_ALLOWLIST = {
   // retired (one-off historical migration scripts)
   'scripts/migration/auth_import_dry_run.py': { serviceRole: 'retired' },
   'scripts/migration/auth_import_users.py': { serviceRole: 'retired' },
-  'scripts/migration/auth_verify_pre_public_import.py': { serviceRole: 'retired' },
-  'scripts/migration/ficwb_secrets_audit.py': { serviceRole: 'retired', anon: 'retired' },
+  'scripts/migration/auth_verify_pre_public_import.py': { serviceRole: 'retired' }, // read-only Admin API check (not --execute-gated), unscheduled
   'scripts/migration/storage_common.py': { serviceRole: 'retired', anon: 'retired' },
   'scripts/migration/storage_copy_buckets.py': { serviceRole: 'retired' },
   'scripts/migration/storage_copy_invoices.py': { serviceRole: 'retired' },
@@ -656,17 +660,25 @@ function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAG
   // (well-formed, no active-SQL exemption, no stale entry).
   stateRegistryProblems(state, allow).forEach((m) => out.push(m));
   exemptionAllowlistProblems({ managed, anon, sql }, allow).forEach((m) => out.push(m));
-  // STALE is STATE-AWARE PER KIND: a source stale is a problem only if its serviceRole leg is still 'legacy'; an
-  // anon stale only if its anon leg is still 'legacy'. A migrated/exempt leg is EXPECTED to have dropped its signal.
+  // EXISTENCE is STATE-INDEPENDENT: every registered path must exist on disk. A missing registered path is ALWAYS a
+  // problem — legacy, migrated, OR exempt alike — because the registration/STATE/allowlist entry is now dangling and
+  // a file later reused at that path would silently inherit its state/exemption without review. (Reported once over
+  // the union; the per-kind STALE check below is gated on existence, so a missing file is a MISSING, not a STALE.)
+  const exists = (p) => existsSync(join(rootDir, p));
+  const allRegistered = new Set([...Object.values(managed).flat(), ...Object.values(anon).flat(), ...Object.keys(sql)]);
+  for (const p of allRegistered) if (!exists(p)) out.push(`MISSING registered path (no longer exists — remove its registration + any STATE/allowlist entry; a reused path would silently inherit its state): ${p}`);
+  // STALE is STATE-AWARE PER KIND (only for a file that STILL EXISTS but dropped its signal): a source stale is a
+  // problem only if its serviceRole leg is still 'legacy'; anon only if its anon leg is. A migrated/exempt leg is
+  // EXPECTED to have dropped its signal (this is what makes migration reachable).
   const staleAware = (found, registered, label, kind) => {
     for (const f of found) if (!registered.has(f)) out.push(`UNREGISTERED ${label}: ${f}`);
-    for (const p of registered) if (!found.has(p) && stateOf(p, kind, state, allow) === 'legacy') out.push(`STALE ${label} (state.${kind}=legacy but no signal — relabel its STATE if migrated, or retire/remove): ${p}`);
+    for (const p of registered) if (exists(p) && !found.has(p) && stateOf(p, kind, state, allow) === 'legacy') out.push(`STALE ${label} (file exists but the legacy signal disappeared while state.${kind}=legacy — relabel its STATE if migrated, or retire/remove): ${p}`);
   };
   staleAware(c.foundSource, new Set(Object.values(managed).flat()), 'source', 'serviceRole');
   staleAware(c.foundAnon, new Set(Object.values(anon).flat()), 'anon', 'anon');
   const sqlReg = new Set(Object.keys(sql));
   for (const f of c.foundSql) if (!sqlReg.has(f)) out.push(`UNREGISTERED sql: ${f}`);
-  for (const p of sqlReg) if (!c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
+  for (const p of sqlReg) if (exists(p) && !c.foundSql.has(p)) out.push(`STALE sql (immutable migration no longer sends the key?): ${p}`);
   // An unknown status (typo like 'Active'/'live') would silently escape BOTH cutover (exact startsWith('active'))
   // AND lifecycle — surface it as an inventory problem so the normal guard + cutover precheck both fail on it.
   for (const [p, meta] of Object.entries(sql)) if (!VALID_SQL_STATUS.has(meta.status)) out.push(`INVALID sql status '${meta.status}' (must be active/active-legacy/superseded): ${p}`);
@@ -923,6 +935,22 @@ function selfTest() {
     //      through to legacy (so requireMigrated pends it), AND exemptionAllowlistProblems flags it — defense-in-depth.
     ok(stateOf('p', 'serviceRole', {}, { 'p': { serviceRole: 'new-secret' } }) === 'legacy', 'ALLOWLIST: a non-exemption value in the allowlist is NOT honored by stateOf (falls through to legacy)');
     ok(exemptionAllowlistProblems({ managed: { c: ['p'] }, anon: {}, sql: {} }, { 'p': { serviceRole: 'new-secret' } }).some((m) => /INVALID ALLOWLIST/.test(m)), 'ALLOWLIST: a non-exemption value in the allowlist is a hard registry error');
+    // ── LIFECYCLE — EXISTENCE is state-INDEPENDENT: a MISSING registered file fails inventory whether legacy /
+    //    migrated / exempt (a dangling registration would let a reused path inherit its state without review). An
+    //    EXISTING file that merely dropped its legacy signal stays state-aware (valid after migration / for exempt).
+    const ghost = 'supabase/functions/ghost/index.ts'; // registered but NOT written to `cut` → simulates a deleted file
+    const ghostInv = (state, allow) => inventoryProblems(cut, { managed: { c: [ghost] }, anon: {}, sql: {}, state, allow });
+    ok(ghostInv({}, {}).some((m) => new RegExp(`MISSING registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing LEGACY registered file fails inventory');
+    ok(ghostInv({ [ghost]: { serviceRole: 'new-secret' } }, {}).some((m) => new RegExp(`MISSING registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing MIGRATED registered file fails inventory (not hidden by new-secret)');
+    ok(ghostInv({}, { [ghost]: { serviceRole: 'retired' } }).some((m) => new RegExp(`MISSING registered path.*${ghost}`).test(m)), 'EXISTENCE: a missing EXEMPT (allowlisted) registered file fails inventory (not hidden by the exemption)');
+    ok(!inventoryProblems(cut, reg).some((m) => /MISSING|STALE/.test(m)), 'EXISTENCE: an EXISTING migrated file whose legacy signal disappeared (done→SUPABASE_SECRET_KEYS) stays valid — no MISSING/STALE');
+    { // an EXISTING exempt file with no legacy signal at all is valid (isolated tree so there is no UNREGISTERED noise)
+      const ex = mkdtempSync(join(tmpdir(), 'legacy-key-ex-'));
+      try {
+        mkdirSync(join(ex, 'scripts'), { recursive: true }); writeFileSync(join(ex, 'scripts/clean_exempt.mjs'), '// tooling: names no key at all');
+        ok(inventoryProblems(ex, { managed: { 'scripts-ci': ['scripts/clean_exempt.mjs'] }, anon: {}, sql: {}, state: {}, allow: { 'scripts/clean_exempt.mjs': { serviceRole: 'tooling' } } }).length === 0, 'EXISTENCE: an EXISTING exempt file with no legacy signal remains valid');
+      } finally { rmSync(ex, { recursive: true, force: true }); }
+    }
     // (e) the REAL registry: no allowlist error (well-formed, no active-SQL, no stale) and no STATE error.
     ok(exemptionAllowlistProblems({ managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL }).length === 0, 'ALLOWLIST: the REAL EXEMPT_ALLOWLIST is well-formed (no active-SQL exemption, no stale entry)');
     ok(stateRegistryProblems().length === 0, 'the REAL STATE registry is well-formed');
