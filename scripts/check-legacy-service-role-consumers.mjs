@@ -472,6 +472,30 @@ const hardLegacyResidue = (p, s) => p.endsWith('.sql')
 // cutover gate (`startsWith('active')` is exact) and the lifecycle check — inventoryProblems() flags any unknown.
 const VALID_SQL_STATUS = new Set(['active', 'active-legacy', 'superseded']);
 
+// ── Category-aware exemptions ───────────────────────────────────────────────────────────────────────────────
+// An exemption (local-demo / tooling / retired) may ONLY sit on a reviewed NON-PRODUCTION path class. The
+// exemptable categories are the CI/test/config classes below; EVERY other registered category is production
+// runtime (fail-safe: a NEW category is production until it is explicitly added here), and an ACTIVE / active-legacy
+// SQL cron is ALWAYS production. So a live inbound/admin function marked `tooling`, or an active cron marked
+// `{sql:'retired'}`, is rejected instead of silently passing the cutover.
+const NONPROD_CATS = { serviceRole: new Set(['scripts-ci', 'tests']), anon: new Set(['scripts-ci', 'config', 'tests']) };
+const catsOf = (p, registry) => Object.keys(registry).filter((c) => registry[c].includes(p));
+const isProductionConsumer = (p, kind, reg) => {
+  if (kind === 'sql') { const m = reg.sql[p]; return !!m && VALID_SQL_STATUS.has(m.status) && m.status.startsWith('active'); }
+  const cats = catsOf(p, kind === 'serviceRole' ? reg.managed : reg.anon);
+  return cats.length > 0 && cats.some((c) => !NONPROD_CATS[kind].has(c)); // in ≥1 non-exemptable category ⇒ production
+};
+// Registered production consumers whose STATE is an exemption — a HARD registry error (both the normal guard and the
+// cutover precheck run this via inventoryProblems, and requireMigrated re-checks it as belt-and-braces).
+function productionExemptionProblems(reg) {
+  const out = [];
+  const scan = (paths, kind) => { for (const p of paths) { const st = stateOf(p, kind, reg.state); if (EXEMPT.has(st) && isProductionConsumer(p, kind, reg)) out.push(`INVALID STATE '${p}.${kind}': '${st}' exempts a PRODUCTION consumer — only non-production scripts-ci/tests/config paths may be exempt (a production consumer must be legacy or ${MIGRATED_TARGET[kind]})`); } };
+  scan(new Set(Object.values(reg.managed).flat()), 'serviceRole');
+  scan(new Set(Object.values(reg.anon).flat()), 'anon');
+  for (const [p, m] of Object.entries(reg.sql)) if (VALID_SQL_STATUS.has(m.status) && m.status.startsWith('active')) { const st = stateOf(p, 'sql', reg.state); if (EXEMPT.has(st)) out.push(`INVALID STATE '${p}.sql': '${st}' exempts an ACTIVE SQL cron — active/active-legacy SQL is never exempt (must be legacy or ${MIGRATED_TARGET.sql})`); }
+  return out;
+}
+
 // ── Filesystem walk + classification ────────────────────────────────────────────────────────────────────────
 function walk(dir, out) {
   if (!existsSync(dir)) return;
@@ -576,7 +600,11 @@ function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_
   const push = (p, kind, reason) => pending.push({ path: p, kind: KIND_LABEL[kind], reason });
   const check = (p, kind) => {
     const st = stateOf(p, kind, state);
-    if (EXEMPT.has(st)) return; // reviewed non-production exemption (local-demo / tooling / retired)
+    if (EXEMPT.has(st)) {
+      if (!isProductionConsumer(p, kind, reg)) return; // reviewed non-production exemption (local-demo / tooling / retired)
+      push(p, kind, `state.${kind}=${st} EXEMPTS a PRODUCTION ${KIND_LABEL[kind]} consumer — exemptions are only valid for non-production paths; this must be legacy or '${MIGRATED_TARGET[kind]}'`);
+      return;
+    }
     if (st === 'legacy') { push(p, kind, `state.${kind}=legacy — a production ${KIND_LABEL[kind]} consumer still on the legacy key`); return; }
     const target = MIGRATED_TARGET[kind];
     if (st !== target) { push(p, kind, `state.${kind}=${st} is not the required '${target}' for a ${KIND_LABEL[kind]} consumer`); return; }
@@ -598,8 +626,10 @@ function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAG
   const { managed, anon, sql, state } = regs;
   const c = classify(rootDir);
   const out = [];
-  // A mislabeled STATE entry must fail loudly (else a typo reads as "migrated"). Foundational — check it first.
+  // A mislabeled STATE entry must fail loudly (else a typo reads as "migrated"). Foundational — check it first:
+  // (a) SHAPE (stateRegistryProblems), then (b) CATEGORY — an exemption on a production consumer / active SQL cron.
   stateRegistryProblems(state).forEach((m) => out.push(m));
+  productionExemptionProblems({ managed, anon, sql, state }).forEach((m) => out.push(m));
   // STALE is STATE-AWARE PER KIND: a source stale is a problem only if its serviceRole leg is still 'legacy'; an
   // anon stale only if its anon leg is still 'legacy'. A migrated/exempt leg is EXPECTED to have dropped its signal.
   const staleAware = (found, registered, label, kind) => {
@@ -777,7 +807,7 @@ function selfTest() {
     w2('supabase/functions/dual/index.ts', 'Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"); Deno.env.get("SUPABASE_ANON_KEY")');
     const dualPath = 'supabase/functions/dual/index.ts';
     const reg = {
-      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts', dualPath], 'scripts-ci': ['scripts/prodtool.mjs'], 'exempt-check': ['supabase/functions/exempt_residue/index.ts'] },
+      managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts', dualPath], 'scripts-ci': ['scripts/prodtool.mjs', 'supabase/functions/exempt_residue/index.ts'] },
       anon: { 'edge-anon': [dualPath] },
       sql: { 'supabase/migrations/legacy_cron.sql': { status: 'active' }, 'supabase/migrations/new_cron.sql': { status: 'active' }, 'supabase/migrations/liar_cron.sql': { status: 'active' }, 'supabase/migrations/residue_cron.sql': { status: 'active' } },
       state: {
@@ -837,6 +867,19 @@ function selfTest() {
     // the NORMAL guard + cutover precheck (both = inventoryProblems) FAIL on a mislabeled STATE — one authoritative path.
     ok(inventoryProblems(cut, { ...reg, state: { ...reg.state, 'supabase/functions/still/index.ts': { serviceRole: 'nope' } } }).some((m) => /INVALID STATE/.test(m)), 'inventoryProblems (normal guard + cutover precheck) surfaces a mislabeled STATE');
     ok(stateRegistryProblems().length === 0, 'the REAL STATE registry is well-formed under the strict whitelist');
+
+    // ── FINDING 1 (deep-pass) — CATEGORY-AWARE exemptions: an exemption on a PRODUCTION consumer / active SQL is rejected.
+    // (a) an ACTIVE SQL cron marked retired MUST fail — active/active-legacy SQL is never exempt.
+    const sqlRetired = { ...reg, state: { ...reg.state, 'supabase/migrations/new_cron.sql': { sql: 'retired' } } };
+    ok(requireMigrated(cut, sqlRetired).some((x) => x.path === 'supabase/migrations/new_cron.sql' && x.kind === 'sql' && /EXEMPTS a PRODUCTION/.test(x.reason)), 'CATEGORY-EXEMPT: an ACTIVE SQL cron marked {sql:retired} is REJECTED by requireMigrated');
+    ok(inventoryProblems(cut, sqlRetired).some((m) => /INVALID STATE.*new_cron.*ACTIVE SQL cron/.test(m)), 'CATEGORY-EXEMPT: the ACTIVE-SQL retired exemption is also an inventory problem (fails normal guard + cutover precheck)');
+    // (b) a PRODUCTION runtime function (admin-client) marked tooling MUST fail — exemptions are non-production only.
+    const inboundTooling = { ...reg, state: { ...reg.state, 'supabase/functions/still/index.ts': 'tooling' } };
+    ok(requireMigrated(cut, inboundTooling).some((x) => x.path === 'supabase/functions/still/index.ts' && x.kind === 'service-role' && /EXEMPTS a PRODUCTION/.test(x.reason)), 'CATEGORY-EXEMPT: a PRODUCTION admin-client function marked tooling is REJECTED by requireMigrated');
+    ok(inventoryProblems(cut, inboundTooling).some((m) => /INVALID STATE.*still.*PRODUCTION consumer/.test(m)), 'CATEGORY-EXEMPT: the production tooling exemption is also an inventory problem');
+    // (c) a LEGITIMATE non-production exemption (scripts-ci tooling, and the retired exempt_residue) must PASS — not flagged.
+    ok(!requireMigrated(cut, { ...reg, state: { ...reg.state, 'scripts/prodtool.mjs': 'tooling' } }).some((x) => x.path === 'scripts/prodtool.mjs'), 'CATEGORY-EXEMPT: a scripts-ci (non-production) path marked tooling PASSES');
+    ok(!productionExemptionProblems({ managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }).length, 'CATEGORY-EXEMPT: the REAL registry has NO exemption on a production consumer / active SQL cron');
   } finally { rmSync(cut, { recursive: true, force: true }); }
 
   // ── FINDING 2 — the NEW backend-secret env family (SUPABASE_SECRET_KEYS) is browser ELEVATION, in src/ AND the

@@ -583,12 +583,24 @@ state — they are **not** blanket-excluded by category (some `scripts-ci` paths
    -- name; an unrelated third-party JWT (which may legitimately start `eyJ`) that no cron reads is not. A NULL row
    -- (empty/unset secret) is unclassifiable — inspect it. Expect FALSE for every secret an active cron reads.
 
-   -- B2 — POSITIVE check: confirm the specific secrets your active crons read ARE the new key. Fill the array from
-   -- the active-cron inventory (MANAGED_SQL notes the names — today `service_role_key`; post-migration, the new name):
-   SELECT name, starts_with(decrypted_secret, 'sb_secret_') AS value_is_new_secret
-     FROM vault.decrypted_secrets
-    WHERE name = ANY (ARRAY['service_role_key' /*, every Vault secret an active job reads */]);
-   -- expect value_is_new_secret = TRUE for every row.
+   -- B2 — POSITIVE check: confirm the specific secrets your active crons read EXIST and ARE the new key. A plain
+   -- `WHERE name = ANY(…)` filter is VACUOUSLY green if an expected secret is MISSING (it returns no row, so "every
+   -- returned row is true" passes while an active cron has no migrated credential). Drive it from an EXPECTED-name
+   -- relation LEFT JOINed to Vault, so a missing secret returns a row with both booleans FALSE (fail-closed). List
+   -- every Vault secret an active cron reads (MANAGED_SQL notes the names — today `service_role_key`; post-migration,
+   -- the renamed secret):
+   WITH expected(name) AS (
+     VALUES ('service_role_key') /*, one row per Vault secret an active job reads */
+   )
+   SELECT e.name,
+          count(v.id) = 1                                                          AS exactly_one_secret, -- 0 = missing, >1 = duplicate
+          bool_and(COALESCE(starts_with(v.decrypted_secret, 'sb_secret_'), false)) AS all_new              -- missing/legacy → FALSE
+     FROM expected e
+     LEFT JOIN vault.decrypted_secrets v USING (name)
+    GROUP BY e.name;
+   -- REQUIRE for EVERY row: exactly_one_secret = TRUE AND all_new = TRUE. The GROUP BY folds the count check into a
+   -- per-name boolean so it can't be eyeballed away: a MISSING secret → exactly_one_secret FALSE (count 0); a
+   -- DUPLICATE name → FALSE (count >1); a legacy `eyJ…` value → all_new FALSE. None can pass by omission.
    ```
 
 Then **disable the legacy keys in Settings → API Keys** — this disables the `anon` + `service_role` pair
