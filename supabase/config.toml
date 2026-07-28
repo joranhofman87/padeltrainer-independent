@@ -52,10 +52,16 @@ verify_jwt = false
 [functions.notification-email-worker]
 verify_jwt = false
 
-# Digest worker (PR 10c-a3). Same cron-driven drainer contract as the email/WhatsApp workers: pg_cron presents
-# the service-role key (an sb_secret_… key, NOT a JWT), so verify_jwt=true would 401 it at the gateway before
-# requireServiceRole runs. INERT until 10c-b (no cron scheduled + DIGEST_SEND_ENABLED off + no digest event
-# enabled), but registered now so the eventual owner-gated deploy is correct, not silently JWT-gated.
+# Digest worker (PR 10c-a3). Same self-authenticating drainer contract as the email/WhatsApp workers: the
+# function verifies the request itself in requireServiceRole with a byte-for-byte compare against
+# SUPABASE_SERVICE_ROLE_KEY (the LEGACY service-role JWT, `eyJ…`). pg_cron sends exactly that legacy JWT, read
+# from Vault (`vault.decrypted_secrets.service_role_key`) as `Authorization: Bearer` — see
+# 20260722100000_rebook_crons_use_vault.sql. verify_jwt=false so the request always reaches the function's own
+# guard rather than depending on the gateway (and stays correct if auth ever moves to a non-JWT apikey path).
+# NOTE: the new `sb_secret_` keys live in SUPABASE_SECRET_KEYS and are sent via the `apikey` header — they do
+# NOT replace SUPABASE_SERVICE_ROLE_KEY and are not what this function checks. INERT until 10c-b (no cron
+# scheduled + DIGEST_SEND_ENABLED off + no digest event enabled). Verified callable: an authenticated Vault
+# invocation returns 200 {"status":"disabled"} with zero DB writes.
 [functions.notification-digest-worker]
 verify_jwt = false
 
@@ -267,10 +273,11 @@ verify_jwt = false
 [functions.twilio-whatsapp-webhook]
 verify_jwt = false
 
-# Cron-driven outbox drainer, same shape as notification-email-worker: the caller is pg_cron
-# presenting the service-role key, which on this project is an `sb_secret_…` key and NOT a
-# JWT — so verify_jwt = true would 401 it at the gateway. It self-authenticates via
-# requireServiceRole.
+# Cron-driven outbox drainer, same shape as notification-email-worker: the caller is pg_cron presenting the
+# LEGACY service-role JWT (read from Vault as `Authorization: Bearer`, per 20260722100000_rebook_crons_use_vault
+# .sql). verify_jwt=false so the request reaches the function's own requireServiceRole guard (a byte-for-byte
+# compare against SUPABASE_SERVICE_ROLE_KEY = that legacy JWT). New `sb_secret_` keys live in SUPABASE_SECRET_KEYS
+# and go via the `apikey` header; they do NOT replace the service-role key.
 [functions.notification-whatsapp-worker]
 verify_jwt = false
 

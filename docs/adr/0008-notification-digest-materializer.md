@@ -698,3 +698,69 @@ scheduled, and no `digest_engine_enabled` event exists. Enabling is a later, sep
   materialize fallback, store, send-identity guard, destination fingerprint); `convert_to(…,'UTF8')` takes the
   text's raw UTF-8 bytes with no escape interpretation, byte-identical to the old cast for all backslash-free
   text, so every existing hash VALUE is preserved. Forward-only CREATE OR REPLACE; privileges/triggers persist.
+
+## 10c-a3 deployment runbook + credential contract
+
+**Credential contract (as verified in production).** The worker self-authenticates in `requireServiceRole` with
+a byte-for-byte compare of the request's `Authorization: Bearer <token>` (or `apikey`) against the function's
+injected `SUPABASE_SERVICE_ROLE_KEY` — which is the **LEGACY service-role JWT** (`eyJ…`), NOT a new `sb_secret_`
+key. The cron sends exactly that legacy JWT, read from Vault (`vault.decrypted_secrets.service_role_key`) at
+tick time as the Bearer, identical to `20260722100000_rebook_crons_use_vault.sql`. The NEW `sb_secret_` keys
+live in `SUPABASE_SECRET_KEYS` and are transmitted via the `apikey` header (per the Supabase new-API-keys docs);
+they do **not** replace `SUPABASE_SERVICE_ROLE_KEY` and are not what this function checks. `verify_jwt=false` so
+the request always reaches the function's own guard (and stays correct if auth is ever moved to a non-JWT
+`apikey` path). **Recommendation:** retain this verified legacy-JWT Vault path for the initial cron enablement;
+any move to a named secret-key / custom worker-secret path should be a separate, reviewed migration, not folded
+into enablement.
+
+**Authenticated "disabled" smoke test — for the INITIAL INERT rollout only** (switch off, no cron, no digest
+rows). It proves the freshly-deployed worker is callable and writes nothing, BEFORE anything is enabled. Invoke
+through the exact Vault/pg_net path — no cron, secret never leaves the server:
+
+```sql
+-- fire it (returns a pg_net request_id)
+SELECT net.http_post(
+  url := 'https://<project>.supabase.co/functions/v1/notification-digest-worker',
+  headers := jsonb_build_object(
+    'Content-Type','application/json',
+    'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name='service_role_key')
+  ),
+  body := '{}'::jsonb
+) AS request_id;
+
+-- read the response (status + body only — never select request headers)
+SELECT status_code, content FROM net._http_response WHERE id = <request_id>;
+```
+
+Acceptance (initial inert rollout) = **HTTP 200** with body exactly `{"status":"disabled","reason":"disabled"}`,
+followed by **zero** new rows in `notification_worker_runs`, `notification_digest_groups`, and
+`notification_outbox WHERE delivery_mode='digest'` — absolute-zero is valid ONLY because production has no
+digest history yet. If it returns **401**, STOP: the function's `SUPABASE_SERVICE_ROLE_KEY` and the Vault
+`service_role_key` have diverged (e.g. a key rotation) — check whether the existing Vault-backed rebook / email /
+WhatsApp crons are also 401ing, and fix the credential source; do not rotate or modify any credential without
+owner approval. Never print the secret, its hash, prefix, or length.
+
+**Future LIVE redeploys (once the cron is scheduled / an event is enabled) — do NOT use the absolute-zero test
+above.** By then the tables hold real digest history, so absolute-zero is meaningless. The 10c-b enablement
+runbook (to be written when the cron lands) must instead:
+1. **Pause the cron reversibly** with `cron.alter_job(jobid, active := false)` — **never** `cron.unschedule`,
+   which DELETES the stored Vault-backed command + schedule (this repo's established reversible mechanism is
+   `alter_job`). If sending is on, also set `DIGEST_SEND_ENABLED=false`.
+2. **Confirm quiescence of the ACTIVE invocation only:** the digest job exists exactly once with `active=false`,
+   and no `cron.job_run_details` row is currently `running`. Wait only for the active worker invocation to
+   finish, bounded by the worker/network runtime — do **NOT** wait for uncertain groups to "age out": an
+   uncertain persisted group is durable state-machine state, not a running process, and must survive the deploy
+   unchanged (it does not block deployment).
+3. **Capture baseline counts**, then deploy.
+4. **Invoke through the Vault/pg_net path** and — because `DIGEST_SEND_ENABLED` is off — require **exactly**
+   `HTTP 200 {"status":"disabled","reason":"disabled"}` with **zero count deltas** vs baseline. Do **not** call
+   `reconcile_notification_digest_run` for this disabled smoke test: a disabled invocation creates no worker
+   run, so there is no run id to reconcile. (Only after a SEPARATELY-approved re-enable / canary does reconcile
+   apply — and then against the ACTUAL run ids the enabled worker returns, never as a before/after snapshot.)
+5. **Re-enable (a separate, ordered step — not "after post-enable verification", which is circular).** With the
+   cron still **inactive**: (a) obtain explicit **owner approval**; (b) enable the switch (`DIGEST_SEND_ENABLED
+   =true`); (c) run **one controlled canary** manually (a single Vault/pg_net invocation, cron still off);
+   (d) **reconcile that canary's ACTUAL returned run id(s)** and verify the outcome; (e) resume the cron with
+   `cron.alter_job(jobid, active := true)` **only after the canary succeeds**. On any failure: set the switch
+   **off** and leave the cron **inactive**.
+Never assert absolute-zero tables against a live system, and never delete the Vault-backed job to "pause" it.

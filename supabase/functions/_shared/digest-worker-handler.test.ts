@@ -20,7 +20,10 @@ function harness(env: Record<string, string | undefined>, run: HandlerDeps["run"
   return { deps, logs, alerts, runCalls };
 }
 
-const CONFIGURED = { DIGEST_SEND_ENABLED: "true", RESEND_API_KEY: "re_x", SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_x" };
+// SUPABASE_SERVICE_ROLE_KEY is the LEGACY service-role JWT (`eyJ…`), NOT a new-style sb_secret_ key — use an
+// unmistakable JWT-shaped placeholder so this fixture can't re-teach the wrong key model.
+const SR_JWT = "eyJhbGciOiJIUzI1NiJ9.SERVICE_ROLE_TEST_PLACEHOLDER.sig";
+const CONFIGURED = { DIGEST_SEND_ENABLED: "true", RESEND_API_KEY: "re_x", SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: SR_JWT };
 
 Deno.test("disabled (switch off): 200, run never invoked (ZERO DB), disabled log", async () => {
   const h = harness({ ...CONFIGURED, DIGEST_SEND_ENABLED: "false" }, () => Promise.resolve(OK_SUMMARY));
@@ -65,7 +68,7 @@ Deno.test("configured + healthy run: 200, run invoked exactly once, NO alert", a
   assertEquals(r.http, 200);
   assertEquals(r.status, "ok");
   assertEquals(h.runCalls.length, 1);
-  assertEquals(h.runCalls[0], { resendApiKey: "re_x", supabaseUrl: "https://x.supabase.co", serviceKey: "sb_secret_x" });
+  assertEquals(h.runCalls[0], { resendApiKey: "re_x", supabaseUrl: "https://x.supabase.co", serviceKey: SR_JWT });
   assertEquals(h.alerts.length, 0);                  // a healthy run does NOT alert
 });
 
@@ -148,5 +151,5 @@ Deno.test("logs are PII-free: no email/html/token markers in any logged value", 
   const serialized = JSON.stringify(all);
   assert(!serialized.includes("@"), "no email-like value may be logged");
   assert(!serialized.includes("<"), "no html-like value may be logged");
-  assert(!serialized.includes("re_x") && !serialized.includes("sb_secret"), "no secret may be logged");
+  assert(!serialized.includes("re_x") && !serialized.includes("SERVICE_ROLE_TEST_PLACEHOLDER"), "no secret may be logged");
 });

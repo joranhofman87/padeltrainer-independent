@@ -33,6 +33,19 @@ jobs:
       - name: Edge-function config drift guard
         run: npm run check:edge-config
 
+      # Proves the guard's own detection + diff logic against fixtures (literal/alias/helper-only/
+      # extensionless consumers, SQL senders, stale registrations, escapes, and the real baseline)
+      # so a weakened regex/root-list/stale-check can't pass silently.
+      - name: Legacy service-role-key guard self-test
+        run: npm run check:legacy-key:selftest
+
+      # Inventories BOTH legacy keys (disabled as a pair): the service_role class (source + SQL/Vault +
+      # repo-escape) AND the anon class (MANAGED_ANON), plus a browser-surface elevation check (no sb_secret_/
+      # service-role key in src/) and SQL lifecycle enforcement. Keeps the Path-B migration inventory
+      # (docs/CRON_SERVICE_KEY_SETUP.md) from silently drifting — see scripts/check-legacy-service-role-consumers.mjs.
+      - name: Legacy API-key consumer guard
+        run: npm run check:legacy-key
+
   # The REAL type-check. Root `tsc` has files:[] and checks nothing; this runs
   # `tsc -p tsconfig.app.json` and — since that project is perma-red with known
   # pre-existing errors — ratchets on NEW errors only vs scripts/tsc-app.baseline.json
