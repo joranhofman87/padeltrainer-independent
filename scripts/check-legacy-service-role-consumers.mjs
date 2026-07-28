@@ -388,77 +388,103 @@ const MANAGED_ANON = {
 // key (an admin client + an anon/public client in one file). A single scalar state cannot certify them
 // independently — `new-secret` would wrongly clear the anon leg, `publishable` would wrongly clear the privileged
 // leg, and (because env NAMES are deliberately not hard residue) a file still reading both legacy env slots would
-// pass under either. So each entry is EITHER:
-//   • an exemption STRING (`local-demo` / `tooling` / `retired`) — applies to EVERY credential kind, OR
-//   • an object `{ serviceRole?, anon?, sql? }` — a per-kind migrated target (unlisted kind ⇒ 'legacy').
-// Per-kind values (strict whitelist — an unknown value like `new-secert` is a registry error, NOT "migrated"):
-//   serviceRole ∈ { legacy, new-secret, <exemption> }   (target = new-secret → sb_secret_, trusted backend)
-//   anon        ∈ { legacy, publishable, <exemption> }   (target = publishable → sb_publishable_, browser/public)
-//   sql         ∈ { legacy, new-secret, <exemption> }    (target = new-secret → the cron's Vault sb_secret_)
+// pass under either. So exemptions and migration are SEPARATE registries — and exemptions come from an EXACT
+// reviewed allowlist, NEVER from category membership (a production script under scripts-ci must not be exemptable by
+// relabeling, and the runbook itself notes some scripts-ci paths target production):
+//   • STATE = per-kind MIGRATED TARGETS only: { serviceRole?, anon?, sql? } (unlisted kind ⇒ 'legacy'). Empty today
+//     (nothing has migrated). Values: serviceRole/sql → 'new-secret', anon → 'publishable' (or 'legacy'). NO exemptions.
+//   • EXEMPT_ALLOWLIST = the EXACT reviewed set of non-production exemptions, keyed by path → { <kind>: exemption }.
+//     The ONLY way a path is exempted. Any registered (path, kind) NOT allowlisted is a production consumer by
+//     default (category is irrelevant), and an ACTIVE/active-legacy SQL cron is never exemptable at all.
 // Set a migrated target ONLY after the deployed value is verified. The cutover (`--require-migrated`) fails while
 // any non-exempt leg is 'legacy' (or set to the WRONG target), or a migrated leg still carries a HARD
 // legacy-credential residue in source (an inline legacy JWT; for SQL also service_role_key / app.settings).
 const STATE = {
-  // tooling
-  'scripts/check-legacy-service-role-consumers.mjs': 'tooling', 'scripts/check-edge-fn-config.mjs': 'tooling',
-  'vitest.config.ts': 'tooling', '.github/workflows/e2e.yml': 'tooling',
-  // wrangler.toml only NAMES SUPABASE_ANON_KEY in a comment (keep_vars=true) — the worker's real anon-key VALUE is a
-  // Cloudflare dashboard var, not in this file. So the file holds no credential to migrate; the worker's actual key
-  // is covered by the runbook's deployed-VALUE verification (CF dashboard), not a source edit. Same class as its
-  // MANAGED_ANON['config'] siblings above (both already tooling).
-  'wrangler.toml': 'tooling',
-  // local-demo (public supabase-demo / local-dev keys)
-  'scripts/db/seed-local.ts': 'local-demo', 'scripts/db/e2e-local-paid.sh': 'local-demo',
-  'e2e/invoice-health.spec.ts': 'local-demo', 'e2e/rls-health.spec.ts': 'local-demo',
-  'e2e/local/public-booking-webhook.spec.ts': 'local-demo', 'e2e/local/rebook-send-side.spec.ts': 'local-demo',
-  'e2e/local/rebook-upfront-pay.spec.ts': 'local-demo', 'e2e/local/rebook-upfront-webhook.spec.ts': 'local-demo',
-  'tests/rebooking-enforcement.spec.ts': 'local-demo',
-  'supabase/functions/_shared/auth.test.ts': 'local-demo', 'supabase/functions/_shared/digest-worker-entry.test.ts': 'local-demo',
-  'supabase/functions/_shared/digest-worker-handler.test.ts': 'local-demo', 'supabase/functions/_shared/service-role-auth.test.ts': 'local-demo',
-  'supabase/functions/backup-database/index.test.ts': 'local-demo', 'supabase/functions/create-invoice-payment/index.test.ts': 'local-demo',
-  'supabase/functions/get-booking-invoice/index.test.ts': 'local-demo', 'supabase/functions/render-page/index.test.ts': 'local-demo',
-  'supabase/functions/send-priority-claim-invitation/index.test.ts': 'local-demo', 'supabase/functions/sitemap/index.test.ts': 'local-demo',
-  // retired (one-off historical migration scripts)
-  'scripts/migration/auth_import_dry_run.py': 'retired', 'scripts/migration/auth_import_users.py': 'retired',
-  'scripts/migration/auth_verify_pre_public_import.py': 'retired', 'scripts/migration/ficwb_secrets_audit.py': 'retired',
-  'scripts/migration/storage_common.py': 'retired', 'scripts/migration/storage_copy_buckets.py': 'retired',
-  'scripts/migration/storage_copy_invoices.py': 'retired', 'scripts/migration/storage_fix_missing_from_db.py': 'retired',
-  'scripts/migration/storage_migration_dry_run.py': 'retired', 'scripts/migration/storage_regenerate_invoice_urls.py': 'retired',
-  'scripts/migration/storage_regenerate_invoices_via_edge.py': 'retired',
+  // per-kind MIGRATED TARGETS only — empty today (nothing has migrated). Exemptions live in EXEMPT_ALLOWLIST below.
+  // Once Path B starts, e.g.: '.github/workflows/e2e.yml': { anon: 'publishable' } — set only AFTER the deployed
+  // GitHub Actions VITE_SUPABASE_PUBLISHABLE_KEY value is proven to start with sb_publishable_ (see the runbook).
 };
-const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // not a production credential to migrate (any kind)
-// The single migrated target per credential kind, and the strict per-kind whitelist (target + legacy + exemptions).
+const EXEMPT = new Set(['local-demo', 'tooling', 'retired']); // reviewed NON-production exemption classes
+// The EXACT reviewed non-production exemption allowlist — path → { kind: exemption }. Category NEVER grants an
+// exemption; only an entry here does, and adding one is an explicit reviewed act (never for a production consumer).
+// Reasons by class: tooling = names the key family but is not a runtime credential consumer (guard/config machinery);
+// local-demo = uses the public supabase-demo / local-dev keys (a dummy sb_publishable_ or the well-known demo JWT);
+// retired = a one-off historical migration script that will not run against the disabled key. `.github/workflows/
+// e2e.yml` is deliberately ABSENT — it runs weekly with the DEPLOYED GitHub Actions VITE_SUPABASE_PUBLISHABLE_KEY
+// secret, so it stays a PENDING anon consumer until that deployed value is proven sb_publishable_.
+const EXEMPT_ALLOWLIST = {
+  // tooling
+  'scripts/check-legacy-service-role-consumers.mjs': { serviceRole: 'tooling', anon: 'tooling' },
+  'scripts/check-edge-fn-config.mjs': { serviceRole: 'tooling' },
+  'vitest.config.ts': { anon: 'tooling' },          // sets VITE_SUPABASE_PUBLISHABLE_KEY to a dummy sb_publishable_ literal
+  'wrangler.toml': { anon: 'tooling' },             // only NAMES SUPABASE_ANON_KEY in a comment (keep_vars=true); real value is a CF dashboard var
+  // local-demo (public supabase-demo / local-dev keys)
+  'scripts/db/seed-local.ts': { serviceRole: 'local-demo' },
+  'scripts/db/e2e-local-paid.sh': { anon: 'local-demo' },
+  'e2e/invoice-health.spec.ts': { anon: 'local-demo' },
+  'e2e/rls-health.spec.ts': { anon: 'local-demo' },
+  'e2e/local/public-booking-webhook.spec.ts': { anon: 'local-demo' },
+  'e2e/local/rebook-send-side.spec.ts': { anon: 'local-demo' },
+  'e2e/local/rebook-upfront-pay.spec.ts': { anon: 'local-demo' },
+  'e2e/local/rebook-upfront-webhook.spec.ts': { anon: 'local-demo' },
+  'tests/rebooking-enforcement.spec.ts': { anon: 'local-demo' },
+  'supabase/functions/_shared/auth.test.ts': { serviceRole: 'local-demo' },
+  'supabase/functions/_shared/digest-worker-entry.test.ts': { serviceRole: 'local-demo' },
+  'supabase/functions/_shared/digest-worker-handler.test.ts': { serviceRole: 'local-demo' },
+  'supabase/functions/_shared/service-role-auth.test.ts': { serviceRole: 'local-demo' },
+  'supabase/functions/backup-database/index.test.ts': { anon: 'local-demo' },
+  'supabase/functions/create-invoice-payment/index.test.ts': { anon: 'local-demo' },
+  'supabase/functions/get-booking-invoice/index.test.ts': { anon: 'local-demo' },
+  'supabase/functions/render-page/index.test.ts': { anon: 'local-demo' },
+  'supabase/functions/send-priority-claim-invitation/index.test.ts': { anon: 'local-demo' },
+  'supabase/functions/sitemap/index.test.ts': { anon: 'local-demo' },
+  // retired (one-off historical migration scripts)
+  'scripts/migration/auth_import_dry_run.py': { serviceRole: 'retired' },
+  'scripts/migration/auth_import_users.py': { serviceRole: 'retired' },
+  'scripts/migration/auth_verify_pre_public_import.py': { serviceRole: 'retired' },
+  'scripts/migration/ficwb_secrets_audit.py': { serviceRole: 'retired', anon: 'retired' },
+  'scripts/migration/storage_common.py': { serviceRole: 'retired', anon: 'retired' },
+  'scripts/migration/storage_copy_buckets.py': { serviceRole: 'retired' },
+  'scripts/migration/storage_copy_invoices.py': { serviceRole: 'retired' },
+  'scripts/migration/storage_fix_missing_from_db.py': { serviceRole: 'retired' },
+  'scripts/migration/storage_migration_dry_run.py': { serviceRole: 'retired' },
+  'scripts/migration/storage_regenerate_invoice_urls.py': { serviceRole: 'retired' },
+  'scripts/migration/storage_regenerate_invoices_via_edge.py': { serviceRole: 'retired' },
+};
+// The single migrated target per credential kind, and the strict per-kind whitelist (STATE holds only legacy/target;
+// exemptions are NOT valid STATE values — they belong in EXEMPT_ALLOWLIST).
 const MIGRATED_TARGET = { serviceRole: 'new-secret', anon: 'publishable', sql: 'new-secret' };
 const VALID_STATE = {
-  serviceRole: new Set(['legacy', 'new-secret', ...EXEMPT]),
-  anon: new Set(['legacy', 'publishable', ...EXEMPT]),
-  sql: new Set(['legacy', 'new-secret', ...EXEMPT]),
+  serviceRole: new Set(['legacy', 'new-secret']),
+  anon: new Set(['legacy', 'publishable']),
+  sql: new Set(['legacy', 'new-secret']),
 };
-// Resolve a path's state for ONE credential kind. A bare exemption string applies to every kind; an object gives a
-// per-kind target (unlisted kind ⇒ 'legacy'); an unlisted path ⇒ 'legacy'.
-const stateOf = (p, kind, state = STATE) => {
-  const e = state[p];
-  if (typeof e === 'string') return e;                       // exemption shorthand — same for serviceRole / anon / sql
-  if (e === null || typeof e !== 'object') return 'legacy';  // undefined / null / malformed → legacy (never throw; the
-  return e[kind] || 'legacy';                                // malformed shape is separately surfaced by stateRegistryProblems)
+// Resolve a path's state for ONE credential kind: a reviewed EXEMPT_ALLOWLIST exemption wins; else the per-kind
+// STATE migrated target; else 'legacy'. A path NOT in the allowlist for a kind is NEVER exempt (category is
+// irrelevant) — a malformed/missing STATE shape resolves to 'legacy' and never throws.
+const stateOf = (p, kind, state = STATE, allow = EXEMPT_ALLOWLIST) => {
+  const a = allow[p];
+  if (a && EXEMPT.has(a[kind])) return a[kind];              // reviewed exemption — ONLY honor a real exemption CLASS,
+  const e = state[p];                                        // so a non-exemption value mis-placed in the allowlist can
+  if (e === null || typeof e !== 'object') return 'legacy';  // never read as migrated in isolation (it falls through to
+  return e[kind] || 'legacy';                                // legacy AND is flagged by exemptionAllowlistProblems).
 };
 // STRICT registry validation — the SINGLE guard against a mislabeled state silently reading as "migrated":
 // a bare string must be an exemption; an object's keys must be known kinds and each value must be whitelisted for
 // that kind (so a typo like `new-secert`, or a wrong target like anon:'new-secret' / serviceRole:'publishable',
 // is a hard registry error surfaced by inventoryProblems — failing BOTH the normal guard and the cutover precheck).
-function stateRegistryProblems(state = STATE) {
+function stateRegistryProblems(state = STATE, allow = EXEMPT_ALLOWLIST) {
   const out = [];
   const kinds = Object.keys(VALID_STATE).join('/');
+  // STATE holds ONLY per-kind migrated targets — an exemption (or any bare string) belongs in EXEMPT_ALLOWLIST.
   for (const [p, e] of Object.entries(state)) {
-    if (typeof e === 'string') {
-      if (!EXEMPT.has(e)) out.push(`INVALID STATE '${p}': bare string '${e}' must be an exemption (${[...EXEMPT].join(' / ')}); use a { ${kinds} } object to set a migrated target`);
-      continue;
-    }
-    if (e === null || typeof e !== 'object' || Array.isArray(e)) { out.push(`INVALID STATE '${p}': must be an exemption string or a { ${kinds} } object`); continue; }
+    if (typeof e === 'string') { out.push(`INVALID STATE '${p}': bare string '${e}' — STATE holds only per-kind migrated targets; put an exemption in EXEMPT_ALLOWLIST`); continue; }
+    if (e === null || typeof e !== 'object' || Array.isArray(e)) { out.push(`INVALID STATE '${p}': must be a { ${kinds} } migrated-target object`); continue; }
     if (Object.keys(e).length === 0) { out.push(`INVALID STATE '${p}': empty object — give at least one of { ${kinds} }`); continue; }
     for (const [k, v] of Object.entries(e)) {
       if (!VALID_STATE[k]) { out.push(`INVALID STATE '${p}': unknown credential kind '${k}' (valid: ${kinds})`); continue; }
-      if (!VALID_STATE[k].has(v)) out.push(`INVALID STATE '${p}.${k}': '${v}' is not a valid ${k} state (valid: ${[...VALID_STATE[k]].join(', ')})`);
+      if (!VALID_STATE[k].has(v)) out.push(`INVALID STATE '${p}.${k}': '${v}' is not a valid ${k} migrated target (valid: ${[...VALID_STATE[k]].join(', ')})`);
+      if (allow[p] && allow[p][k]) out.push(`CONFLICT '${p}.${k}': set in BOTH STATE ('${v}') and EXEMPT_ALLOWLIST ('${allow[p][k]}') — a leg is either migrated or exempt, not both`);
     }
   }
   return out;
@@ -472,27 +498,25 @@ const hardLegacyResidue = (p, s) => p.endsWith('.sql')
 // cutover gate (`startsWith('active')` is exact) and the lifecycle check — inventoryProblems() flags any unknown.
 const VALID_SQL_STATUS = new Set(['active', 'active-legacy', 'superseded']);
 
-// ── Category-aware exemptions ───────────────────────────────────────────────────────────────────────────────
-// An exemption (local-demo / tooling / retired) may ONLY sit on a reviewed NON-PRODUCTION path class. The
-// exemptable categories are the CI/test/config classes below; EVERY other registered category is production
-// runtime (fail-safe: a NEW category is production until it is explicitly added here), and an ACTIVE / active-legacy
-// SQL cron is ALWAYS production. So a live inbound/admin function marked `tooling`, or an active cron marked
-// `{sql:'retired'}`, is rejected instead of silently passing the cutover.
-const NONPROD_CATS = { serviceRole: new Set(['scripts-ci', 'tests']), anon: new Set(['scripts-ci', 'config', 'tests']) };
-const catsOf = (p, registry) => Object.keys(registry).filter((c) => registry[c].includes(p));
-const isProductionConsumer = (p, kind, reg) => {
-  if (kind === 'sql') { const m = reg.sql[p]; return !!m && VALID_SQL_STATUS.has(m.status) && m.status.startsWith('active'); }
-  const cats = catsOf(p, kind === 'serviceRole' ? reg.managed : reg.anon);
-  return cats.length > 0 && cats.some((c) => !NONPROD_CATS[kind].has(c)); // in ≥1 non-exemptable category ⇒ production
-};
-// Registered production consumers whose STATE is an exemption — a HARD registry error (both the normal guard and the
-// cutover precheck run this via inventoryProblems, and requireMigrated re-checks it as belt-and-braces).
-function productionExemptionProblems(reg) {
+// ── Exemption allowlist validation ──────────────────────────────────────────────────────────────────────────
+// The EXEMPT_ALLOWLIST is the SOLE source of exemptions (category is never consulted). Validate it as a hard
+// registry error (surfaced by inventoryProblems, so BOTH the normal guard and the cutover precheck fail):
+//   • each entry's kind-value must be a real exemption class;
+//   • an ACTIVE / active-legacy SQL cron can NEVER be allowlisted (active SQL must migrate);
+//   • a stale entry (path not a registered consumer of that kind) is dead weight and must be removed.
+function exemptionAllowlistProblems(reg, allow = EXEMPT_ALLOWLIST) {
   const out = [];
-  const scan = (paths, kind) => { for (const p of paths) { const st = stateOf(p, kind, reg.state); if (EXEMPT.has(st) && isProductionConsumer(p, kind, reg)) out.push(`INVALID STATE '${p}.${kind}': '${st}' exempts a PRODUCTION consumer — only non-production scripts-ci/tests/config paths may be exempt (a production consumer must be legacy or ${MIGRATED_TARGET[kind]})`); } };
-  scan(new Set(Object.values(reg.managed).flat()), 'serviceRole');
-  scan(new Set(Object.values(reg.anon).flat()), 'anon');
-  for (const [p, m] of Object.entries(reg.sql)) if (VALID_SQL_STATUS.has(m.status) && m.status.startsWith('active')) { const st = stateOf(p, 'sql', reg.state); if (EXEMPT.has(st)) out.push(`INVALID STATE '${p}.sql': '${st}' exempts an ACTIVE SQL cron — active/active-legacy SQL is never exempt (must be legacy or ${MIGRATED_TARGET.sql})`); }
+  const kindReg = { serviceRole: new Set(Object.values(reg.managed).flat()), anon: new Set(Object.values(reg.anon).flat()) };
+  const activeSql = new Set(Object.entries(reg.sql).filter(([, m]) => VALID_SQL_STATUS.has(m.status) && m.status.startsWith('active')).map(([p]) => p));
+  for (const [p, ks] of Object.entries(allow)) {
+    if (ks === null || typeof ks !== 'object' || Array.isArray(ks)) { out.push(`INVALID ALLOWLIST '${p}': must be a { serviceRole/anon/sql: exemption } object`); continue; }
+    for (const [k, ex] of Object.entries(ks)) {
+      if (!VALID_STATE[k]) { out.push(`INVALID ALLOWLIST '${p}': unknown credential kind '${k}'`); continue; }
+      if (!EXEMPT.has(ex)) { out.push(`INVALID ALLOWLIST '${p}.${k}': '${ex}' is not an exemption class (${[...EXEMPT].join(' / ')})`); continue; }
+      if (k === 'sql') { if (activeSql.has(p)) out.push(`INVALID ALLOWLIST '${p}.sql': an ACTIVE/active-legacy SQL cron can NEVER be exempt (must migrate to '${MIGRATED_TARGET.sql}')`); else if (!reg.sql[p]) out.push(`STALE ALLOWLIST '${p}.sql': not a registered SQL migration — remove it`); }
+      else if (!kindReg[k].has(p)) out.push(`STALE ALLOWLIST '${p}.${k}': not a registered ${k} consumer — remove it`);
+    }
+  }
   return out;
 }
 
@@ -590,19 +614,20 @@ function diff(found, registered) {
 // disappearance — so a migrated path (which drops its legacy env-name signal) is proven by its state, not flagged.
 // Parameterized (registries + STATE) so the self-test can exercise every branch on fixtures.
 const KIND_LABEL = { serviceRole: 'service-role', anon: 'anon', sql: 'sql' };
-function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }) {
-  const { managed, anon, sql, state } = reg;
+function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE, allow: EXEMPT_ALLOWLIST }) {
+  const { managed, anon, sql, state, allow = EXEMPT_ALLOWLIST } = reg;
   const pending = []; // { path, kind, reason }
   const read = (p) => { try { return readFileSync(join(rootDir, p), 'utf8'); } catch { return ''; } };
   // `kind` is the CREDENTIAL kind (serviceRole / anon / sql). State is resolved per-kind, so a dual-role file must
   // migrate EACH leg to that leg's own target — new-secret certifies only the service-role/sql leg, publishable
-  // only the anon leg.
+  // only the anon leg. Exemptions come ONLY from the reviewed EXEMPT_ALLOWLIST (via stateOf) — category never exempts.
   const push = (p, kind, reason) => pending.push({ path: p, kind: KIND_LABEL[kind], reason });
-  const check = (p, kind) => {
-    const st = stateOf(p, kind, state);
+  const check = (p, kind, exemptForbidden = false) => {
+    const st = stateOf(p, kind, state, allow);
     if (EXEMPT.has(st)) {
-      if (!isProductionConsumer(p, kind, reg)) return; // reviewed non-production exemption (local-demo / tooling / retired)
-      push(p, kind, `state.${kind}=${st} EXEMPTS a PRODUCTION ${KIND_LABEL[kind]} consumer — exemptions are only valid for non-production paths; this must be legacy or '${MIGRATED_TARGET[kind]}'`);
+      // stateOf only returns an exemption when EXEMPT_ALLOWLIST authorized it. Active SQL is never exemptable, so an
+      // allowlisted exemption there is a hard error (belt-and-braces with exemptionAllowlistProblems).
+      if (exemptForbidden) push(p, kind, `state.${kind}=${st} EXEMPTS an active SQL cron — active/active-legacy crons are never exempt; migrate to '${MIGRATED_TARGET[kind]}'`);
       return;
     }
     if (st === 'legacy') { push(p, kind, `state.${kind}=legacy — a production ${KIND_LABEL[kind]} consumer still on the legacy key`); return; }
@@ -613,7 +638,7 @@ function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_
   };
   for (const cat in managed) for (const p of managed[cat]) check(p, 'serviceRole');
   for (const cat in anon) for (const p of anon[cat]) check(p, 'anon');
-  for (const [p, meta] of Object.entries(sql)) if (VALID_SQL_STATUS.has(meta.status) && meta.status.startsWith('active')) check(p, 'sql');
+  for (const [p, meta] of Object.entries(sql)) if (VALID_SQL_STATUS.has(meta.status) && meta.status.startsWith('active')) check(p, 'sql', true);
   return pending;
 }
 
@@ -622,19 +647,20 @@ function requireMigrated(rootDir = '.', reg = { managed: MANAGED, anon: MANAGED_
 // is a problem ONLY if its state is still 'legacy' (it migrated but wasn't relabeled) — a migrated/exempt path is
 // EXPECTED to have no legacy signal (this is what makes migration reachable). SQL migrations are immutable, so SQL
 // stale stays literal.
-function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }) {
-  const { managed, anon, sql, state } = regs;
+function inventoryProblems(rootDir = '.', regs = { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE, allow: EXEMPT_ALLOWLIST }) {
+  const { managed, anon, sql, state, allow = EXEMPT_ALLOWLIST } = regs;
   const c = classify(rootDir);
   const out = [];
-  // A mislabeled STATE entry must fail loudly (else a typo reads as "migrated"). Foundational — check it first:
-  // (a) SHAPE (stateRegistryProblems), then (b) CATEGORY — an exemption on a production consumer / active SQL cron.
-  stateRegistryProblems(state).forEach((m) => out.push(m));
-  productionExemptionProblems({ managed, anon, sql, state }).forEach((m) => out.push(m));
+  // A mislabeled STATE / illegitimate exemption must fail loudly (else it reads as "migrated"/"exempt"). Check first:
+  // (a) STATE SHAPE (targets only, no bad values, no STATE↔allowlist conflict), then (b) the exemption ALLOWLIST
+  // (well-formed, no active-SQL exemption, no stale entry).
+  stateRegistryProblems(state, allow).forEach((m) => out.push(m));
+  exemptionAllowlistProblems({ managed, anon, sql }, allow).forEach((m) => out.push(m));
   // STALE is STATE-AWARE PER KIND: a source stale is a problem only if its serviceRole leg is still 'legacy'; an
   // anon stale only if its anon leg is still 'legacy'. A migrated/exempt leg is EXPECTED to have dropped its signal.
   const staleAware = (found, registered, label, kind) => {
     for (const f of found) if (!registered.has(f)) out.push(`UNREGISTERED ${label}: ${f}`);
-    for (const p of registered) if (!found.has(p) && stateOf(p, kind, state) === 'legacy') out.push(`STALE ${label} (state.${kind}=legacy but no signal — relabel its STATE if migrated, or retire/remove): ${p}`);
+    for (const p of registered) if (!found.has(p) && stateOf(p, kind, state, allow) === 'legacy') out.push(`STALE ${label} (state.${kind}=legacy but no signal — relabel its STATE if migrated, or retire/remove): ${p}`);
   };
   staleAware(c.foundSource, new Set(Object.values(managed).flat()), 'source', 'serviceRole');
   staleAware(c.foundAnon, new Set(Object.values(anon).flat()), 'anon', 'anon');
@@ -782,7 +808,7 @@ function selfTest() {
   }
 
   // cutover contract (STATE model): fails today, and the reasons distinguish state.
-  ok(stateOf('scripts/check-legacy-service-role-consumers.mjs', 'serviceRole') === 'tooling' && stateOf('scripts/check-legacy-service-role-consumers.mjs', 'anon') === 'tooling' && EXEMPT.has('tooling'), 'STATE: a bare exemption string applies to every credential kind (guard = tooling for serviceRole + anon)');
+  ok(stateOf('scripts/check-legacy-service-role-consumers.mjs', 'serviceRole') === 'tooling' && stateOf('scripts/check-legacy-service-role-consumers.mjs', 'anon') === 'tooling' && EXEMPT.has('tooling'), 'ALLOWLIST: an allowlist entry authorizes the exemption for its listed kinds (guard = tooling for serviceRole + anon)');
   ok(stateOf('supabase/functions/health-check/index.ts', 'serviceRole') === 'legacy' && stateOf('supabase/functions/health-check/index.ts', 'anon') === 'legacy', 'STATE: an unlisted dual-role consumer defaults to legacy on BOTH legs');
   ok(requireMigrated('.').length > 0, '--require-migrated FAILS today: production consumers are still on the legacy keys');
   // Full end-to-end cutover behaviour on a fixture tree — the four Codex blockers, proven:
@@ -810,13 +836,16 @@ function selfTest() {
       managed: { 'admin-client': ['supabase/functions/still/index.ts', 'supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts', 'supabase/functions/liar/index.ts', dualPath], 'scripts-ci': ['scripts/prodtool.mjs', 'supabase/functions/exempt_residue/index.ts'] },
       anon: { 'edge-anon': [dualPath] },
       sql: { 'supabase/migrations/legacy_cron.sql': { status: 'active' }, 'supabase/migrations/new_cron.sql': { status: 'active' }, 'supabase/migrations/liar_cron.sql': { status: 'active' }, 'supabase/migrations/residue_cron.sql': { status: 'active' } },
+      // STATE holds migrated targets ONLY. Exemptions are declared in `allow` (the reviewed EXEMPT_ALLOWLIST) — NOT
+      // here, and NOT by category: `scripts/prodtool.mjs` is a scripts-ci PRODUCTION tool, so it is NOT allowlisted
+      // and stays pending; `exempt_residue` (a genuine one-off) IS allowlisted retired.
       state: {
         'supabase/functions/done/index.ts': { serviceRole: 'new-secret' }, 'supabase/functions/helperdone/index.ts': { serviceRole: 'new-secret' },
         'supabase/functions/liar/index.ts': { serviceRole: 'new-secret' }, 'supabase/migrations/new_cron.sql': { sql: 'new-secret' },
         'supabase/migrations/liar_cron.sql': { sql: 'new-secret' }, 'supabase/migrations/residue_cron.sql': { sql: 'new-secret' },
-        'supabase/functions/exempt_residue/index.ts': 'retired',
         [dualPath]: { serviceRole: 'new-secret' }, // anon leg deliberately left legacy — must still be pending
       },
+      allow: { 'supabase/functions/exempt_residue/index.ts': { serviceRole: 'retired' } },
     };
     const paths = new Set(requireMigrated(cut, reg).map((x) => x.path));
     ok(!paths.has('supabase/functions/done/index.ts'), 'F1: a migrated consumer that DROPPED its signal (state=new-secret) passes — the gate is reachable');
@@ -826,17 +855,16 @@ function selfTest() {
     ok(paths.has('scripts/prodtool.mjs'), 'F3: a scripts-ci PRODUCTION tool (state=legacy) is NOT blanket-excluded');
     ok(paths.has('supabase/functions/liar/index.ts') && paths.has('supabase/migrations/liar_cron.sql'), 'F3: state=new-secret but an inline legacy JWT residue in source/SQL is REJECTED');
     ok(paths.has('supabase/functions/still/index.ts') && paths.has('supabase/migrations/legacy_cron.sql'), 'cutover: legacy source + legacy SQL cron are flagged');
-    ok(!requireMigrated(cut, { ...reg, state: { ...reg.state, 'scripts/prodtool.mjs': 'retired' } }).some((x) => x.path === 'scripts/prodtool.mjs'), 'F3: an explicitly-exempted tool (retired) passes');
     // MUTATION-PIN 1 — hardLegacyResidue's .sql /service_role_key|app.settings/ branch, independent of the inline-JWT branch:
     // an ACTIVE, state=new-secret cron that sends via a differently-named Vault secret but still references app.settings is REJECTED.
     ok(paths.has('supabase/migrations/residue_cron.sql'), 'MUTATION-PIN: state=new-secret SQL cron with an executable app.settings.service_role_key ref (NO inline JWT) is REJECTED');
-    // MUTATION-PIN 2 — EXEMPT membership is load-bearing: a retired path with a HARD inline-JWT residue is suppressed
-    // ONLY by EXEMPT; the SAME file de-exempted to new-secret IS flagged (so dropping 'retired' from EXEMPT would break this).
-    ok(!paths.has('supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: a retired path with a HARD inline-JWT residue is suppressed by EXEMPT membership');
-    ok(requireMigrated(cut, { ...reg, state: { ...reg.state, 'supabase/functions/exempt_residue/index.ts': { serviceRole: 'new-secret' } } }).some((x) => x.path === 'supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: the SAME residue-bearing file de-exempted (new-secret) IS flagged — proves EXEMPT is what suppressed it');
+    // MUTATION-PIN 2 — the ALLOWLIST exemption is load-bearing: a retired path with a HARD inline-JWT residue is
+    // suppressed ONLY because it is allowlisted; removing the allowlist entry flags it (proving nothing else does).
+    ok(!paths.has('supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: an ALLOWLISTED retired path with a HARD inline-JWT residue is suppressed by the allowlist');
+    ok(requireMigrated(cut, { ...reg, allow: {} }).some((x) => x.path === 'supabase/functions/exempt_residue/index.ts'), 'MUTATION-PIN: removing its EXEMPT_ALLOWLIST entry flags the SAME residue-bearing file — proves the allowlist is what suppressed it');
     // MUTATION-PIN 3 — an unknown MANAGED_SQL status (typo) is an inventory problem, so the NORMAL guard (which now
     // renders inventoryProblems) fails on it too — not just self-test.
-    ok(inventoryProblems(cut, { managed: {}, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'Active' } }, state: {} }).some((m) => /INVALID sql status/.test(m)), 'MUTATION-PIN: an off-whitelist SQL status (e.g. Active) is an inventory problem (fails the normal guard too)');
+    ok(inventoryProblems(cut, { managed: {}, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'Active' } }, state: {}, allow: {} }).some((m) => /INVALID sql status/.test(m)), 'MUTATION-PIN: an off-whitelist SQL status (e.g. Active) is an inventory problem (fails the normal guard too)');
 
     // ── FINDING 1 — per-credential state for DUAL-ROLE files (a scalar state could not express these) ──────────
     const dualLegs = (st) => requireMigrated(cut, { ...reg, state: { ...reg.state, [dualPath]: st } }).filter((x) => x.path === dualPath);
@@ -857,29 +885,51 @@ function selfTest() {
 
     // ── FINDING 1 — strict STATE whitelist (stateRegistryProblems): typo / wrong-target / bad-shape are HARD errors
     ok(stateRegistryProblems({ 'x/y.ts': { serviceRole: 'new-secert' } }).length > 0, 'INVALID STATE: a typo target (new-secert) is a registry error, NOT "migrated"');
-    ok(stateRegistryProblems({ 'x/y.ts': 'new-secret' }).length > 0, 'INVALID STATE: a bare non-exemption string must be a { kind: … } object');
+    ok(stateRegistryProblems({ 'x/y.ts': 'new-secret' }).length > 0, 'INVALID STATE: a bare string must be a { kind: … } migrated-target object');
+    ok(stateRegistryProblems({ 'x/y.ts': 'tooling' }).length > 0, 'INVALID STATE: an exemption string in STATE is invalid — exemptions live in EXEMPT_ALLOWLIST');
+    ok(stateRegistryProblems({ 'p': { serviceRole: 'new-secret' } }, { 'p': { serviceRole: 'tooling' } }).length > 0, 'CONFLICT: a leg set in BOTH STATE and EXEMPT_ALLOWLIST is a registry error');
     ok(stateRegistryProblems({ 'x/y.ts': { anon: 'new-secret' } }).length > 0, 'WRONG-TARGET: anon:new-secret is not a valid anon state');
     ok(stateRegistryProblems({ 'x/y.ts': { serviceRole: 'publishable' } }).length > 0, 'WRONG-TARGET: serviceRole:publishable is not a valid serviceRole state');
     ok(stateRegistryProblems({ 'x/y.ts': { sql: 'publishable' } }).length > 0, 'WRONG-TARGET: sql:publishable is not a valid sql state');
     ok(stateRegistryProblems({ 'x/y.ts': { unknownKind: 'legacy' } }).length > 0, 'INVALID STATE: an unknown credential kind is a registry error');
     ok(stateRegistryProblems({ 'x/y.ts': [] }).length > 0 && stateRegistryProblems({ 'x/y.ts': {} }).length > 0, 'INVALID STATE: an array / empty object is a registry error');
-    ok(stateRegistryProblems({ 's.mjs': 'tooling', 'e.ts': 'local-demo', 'z/index.ts': { serviceRole: 'new-secret', anon: 'publishable' }, 'c.sql': { sql: 'new-secret' } }).length === 0, 'valid STATE shapes (exemption strings + per-kind objects) produce NO registry problems');
+    ok(stateRegistryProblems({ 'z/index.ts': { serviceRole: 'new-secret', anon: 'publishable' }, 'c.sql': { sql: 'new-secret' } }).length === 0, 'valid STATE shapes (per-kind migrated-target objects) produce NO registry problems');
     // the NORMAL guard + cutover precheck (both = inventoryProblems) FAIL on a mislabeled STATE — one authoritative path.
     ok(inventoryProblems(cut, { ...reg, state: { ...reg.state, 'supabase/functions/still/index.ts': { serviceRole: 'nope' } } }).some((m) => /INVALID STATE/.test(m)), 'inventoryProblems (normal guard + cutover precheck) surfaces a mislabeled STATE');
     ok(stateRegistryProblems().length === 0, 'the REAL STATE registry is well-formed under the strict whitelist');
 
-    // ── FINDING 1 (deep-pass) — CATEGORY-AWARE exemptions: an exemption on a PRODUCTION consumer / active SQL is rejected.
-    // (a) an ACTIVE SQL cron marked retired MUST fail — active/active-legacy SQL is never exempt.
-    const sqlRetired = { ...reg, state: { ...reg.state, 'supabase/migrations/new_cron.sql': { sql: 'retired' } } };
-    ok(requireMigrated(cut, sqlRetired).some((x) => x.path === 'supabase/migrations/new_cron.sql' && x.kind === 'sql' && /EXEMPTS a PRODUCTION/.test(x.reason)), 'CATEGORY-EXEMPT: an ACTIVE SQL cron marked {sql:retired} is REJECTED by requireMigrated');
-    ok(inventoryProblems(cut, sqlRetired).some((m) => /INVALID STATE.*new_cron.*ACTIVE SQL cron/.test(m)), 'CATEGORY-EXEMPT: the ACTIVE-SQL retired exemption is also an inventory problem (fails normal guard + cutover precheck)');
-    // (b) a PRODUCTION runtime function (admin-client) marked tooling MUST fail — exemptions are non-production only.
-    const inboundTooling = { ...reg, state: { ...reg.state, 'supabase/functions/still/index.ts': 'tooling' } };
-    ok(requireMigrated(cut, inboundTooling).some((x) => x.path === 'supabase/functions/still/index.ts' && x.kind === 'service-role' && /EXEMPTS a PRODUCTION/.test(x.reason)), 'CATEGORY-EXEMPT: a PRODUCTION admin-client function marked tooling is REJECTED by requireMigrated');
-    ok(inventoryProblems(cut, inboundTooling).some((m) => /INVALID STATE.*still.*PRODUCTION consumer/.test(m)), 'CATEGORY-EXEMPT: the production tooling exemption is also an inventory problem');
-    // (c) a LEGITIMATE non-production exemption (scripts-ci tooling, and the retired exempt_residue) must PASS — not flagged.
-    ok(!requireMigrated(cut, { ...reg, state: { ...reg.state, 'scripts/prodtool.mjs': 'tooling' } }).some((x) => x.path === 'scripts/prodtool.mjs'), 'CATEGORY-EXEMPT: a scripts-ci (non-production) path marked tooling PASSES');
-    ok(!productionExemptionProblems({ managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: STATE }).length, 'CATEGORY-EXEMPT: the REAL registry has NO exemption on a production consumer / active SQL cron');
+    // ── FINDING 1 (final) — exemptions come from the EXACT reviewed EXEMPT_ALLOWLIST, never from category ─────────
+    // (a) ACTIVE SQL is NEVER exemptable — even an explicit allowlist entry is rejected in BOTH guard paths.
+    const sqlExempt = { ...reg, allow: { ...reg.allow, 'supabase/migrations/new_cron.sql': { sql: 'retired' } } };
+    ok(requireMigrated(cut, sqlExempt).some((x) => x.path === 'supabase/migrations/new_cron.sql' && x.kind === 'sql' && /EXEMPTS an active SQL cron/.test(x.reason)), 'ALLOWLIST: an allowlisted ACTIVE SQL cron is REJECTED by requireMigrated (active SQL never exempt)');
+    ok(inventoryProblems(cut, sqlExempt).some((m) => /INVALID ALLOWLIST 'supabase\/migrations\/new_cron\.sql\.sql'/.test(m)), 'ALLOWLIST: the active-SQL allowlist entry is an inventory problem (fails normal guard + cutover precheck)');
+    // (b) MARKING a production scripts-ci path tooling/retired IN STATE fails BOTH paths — category/STATE never exempts.
+    for (const bad of ['tooling', 'retired']) {
+      const marked = { ...reg, state: { ...reg.state, 'scripts/prodtool.mjs': bad } };
+      ok(requireMigrated(cut, marked).some((x) => x.path === 'scripts/prodtool.mjs' && /state\.serviceRole=legacy/.test(x.reason)), `ALLOWLIST: a production scripts-ci path "marked ${bad}" in STATE stays PENDING (only the allowlist exempts)`);
+      ok(inventoryProblems(cut, marked).some((m) => /INVALID STATE 'scripts\/prodtool\.mjs'/.test(m)), `ALLOWLIST: "marking ${bad}" a path in STATE is an INVALID STATE inventory problem`);
+    }
+    // (c) CATEGORY is irrelevant: a non-allowlisted path is pending under scripts-ci, admin-client, OR an unknown cat.
+    const catResult = (cat) => requireMigrated(cut, { managed: { [cat]: ['scripts/newprod.ts'] }, anon: {}, sql: {}, state: {}, allow: {} });
+    const rSci = catResult('scripts-ci'), rAdm = catResult('admin-client'), rNew = catResult('brand-new-cat');
+    ok(rSci.length === 1 && rAdm.length === 1 && rNew.length === 1 && rSci[0].reason === rAdm[0].reason && rAdm[0].reason === rNew[0].reason, 'ALLOWLIST: category (scripts-ci / admin-client / unknown) does NOT change the result — a non-allowlisted path is always pending');
+    // (d) a legitimate allowlist entry approves ONLY its listed kind: dual allowlisted serviceRole:tooling → serviceRole
+    //     leg exempt, anon leg STILL pending.
+    const kindScoped = { ...reg, allow: { ...reg.allow, [dualPath]: { serviceRole: 'tooling' } }, state: { ...reg.state } };
+    delete kindScoped.state[dualPath]; // drop the migrated target so there is no STATE↔allowlist conflict
+    const ks = requireMigrated(cut, kindScoped).filter((x) => x.path === dualPath);
+    ok(ks.length === 1 && ks[0].kind === 'anon' && /state\.anon=legacy/.test(ks[0].reason), 'ALLOWLIST: an entry approves ONLY its listed kind (dual serviceRole:tooling exempts serviceRole; anon leg still pending)');
+    // (d2) a NON-exemption value mis-placed in the allowlist is NEVER read as migrated in isolation: stateOf falls
+    //      through to legacy (so requireMigrated pends it), AND exemptionAllowlistProblems flags it — defense-in-depth.
+    ok(stateOf('p', 'serviceRole', {}, { 'p': { serviceRole: 'new-secret' } }) === 'legacy', 'ALLOWLIST: a non-exemption value in the allowlist is NOT honored by stateOf (falls through to legacy)');
+    ok(exemptionAllowlistProblems({ managed: { c: ['p'] }, anon: {}, sql: {} }, { 'p': { serviceRole: 'new-secret' } }).some((m) => /INVALID ALLOWLIST/.test(m)), 'ALLOWLIST: a non-exemption value in the allowlist is a hard registry error');
+    // (e) the REAL registry: no allowlist error (well-formed, no active-SQL, no stale) and no STATE error.
+    ok(exemptionAllowlistProblems({ managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL }).length === 0, 'ALLOWLIST: the REAL EXEMPT_ALLOWLIST is well-formed (no active-SQL exemption, no stale entry)');
+    ok(stateRegistryProblems().length === 0, 'the REAL STATE registry is well-formed');
+    // (f) FINDING 2 — .github/workflows/e2e.yml runs weekly with the DEPLOYED VITE_SUPABASE_PUBLISHABLE_KEY secret, so
+    //     it stays a PENDING anon consumer until its anon leg is set to publishable (after the deployed value is proven).
+    ok(requireMigrated('.').some((x) => x.path === '.github/workflows/e2e.yml' && x.kind === 'anon' && /state\.anon=legacy/.test(x.reason)), 'FINDING-2: .github/workflows/e2e.yml is a PENDING anon consumer (not exempt) — its deployed GitHub secret must be proven sb_publishable_ first');
+    ok(!requireMigrated('.', { managed: MANAGED, anon: MANAGED_ANON, sql: MANAGED_SQL, state: { '.github/workflows/e2e.yml': { anon: 'publishable' } }, allow: EXEMPT_ALLOWLIST }).some((x) => x.path === '.github/workflows/e2e.yml'), 'FINDING-2: once its anon leg is publishable (deployed value verified), e2e.yml passes');
   } finally { rmSync(cut, { recursive: true, force: true }); }
 
   // ── FINDING 2 — the NEW backend-secret env family (SUPABASE_SECRET_KEYS) is browser ELEVATION, in src/ AND the
@@ -903,7 +953,7 @@ function selfTest() {
     w2('supabase/functions/done/index.ts', 'Deno.env.get("SUPABASE_SECRET_KEYS") // migrated');
     w2('supabase/functions/helperdone/index.ts', 'import { requireServiceRole } from "../_shared/auth.ts";');
     w2('supabase/migrations/new_cron.sql', "net.http_post(u, jsonb_build_object('apikey',(select decrypted_secret from vault.decrypted_secrets where name='edge_secret')))");
-    const clean = { managed: { 'admin-client': ['supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts'] }, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'active' } }, state: { 'supabase/functions/done/index.ts': { serviceRole: 'new-secret' }, 'supabase/functions/helperdone/index.ts': { serviceRole: 'new-secret' }, 'supabase/migrations/new_cron.sql': { sql: 'new-secret' } } };
+    const clean = { managed: { 'admin-client': ['supabase/functions/done/index.ts', 'supabase/functions/helperdone/index.ts'] }, anon: {}, sql: { 'supabase/migrations/new_cron.sql': { status: 'active' } }, state: { 'supabase/functions/done/index.ts': { serviceRole: 'new-secret' }, 'supabase/functions/helperdone/index.ts': { serviceRole: 'new-secret' }, 'supabase/migrations/new_cron.sql': { sql: 'new-secret' } }, allow: {} };
     ok(inventoryProblems(cln, clean).length === 0 && requireMigrated(cln, clean).length === 0, 'F1: full cutover PASSES (inventory clean + 0 pending) when every consumer is migrated');
   } finally { rmSync(cln, { recursive: true, force: true }); }
 

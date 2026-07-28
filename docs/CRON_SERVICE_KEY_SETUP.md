@@ -508,25 +508,26 @@ today. **The disable gate is a DIFFERENT command:**
 npm run check:legacy-key:cutover      # node … --require-migrated
 ```
 
-It **fails today** (124 pending: service-role 98, anon 22 [19 edge-function + 3 browser/worker], SQL 4) and passes only once **every
-production consumer** (edge functions, the Vercel caller, the browser bundle + public edge, and every
-`active`/`active-legacy` SQL cron) has moved off the legacy service-role/anon keys. Migration is tracked by an
-**explicit per-path `STATE` registry** (not signal-disappearance, which would wrongly flag a migrated file "stale"
-and never let the gate pass). State is **per credential kind, not scalar**: 18 paths consume BOTH legacy keys (an
-admin client + an anon/public client in one file), so an entry is EITHER a reviewed exemption **string**
-(`local-demo` / `tooling` / `retired`, applying to every kind) OR an object `{ serviceRole?, anon?, sql? }` where
-each leg is `legacy` (default) or its ONE valid migrated target — `serviceRole`/`sql` → `new-secret`, `anon` →
-`publishable`. A strict whitelist rejects a typo (`new-secert`) or a wrong target (`anon: new-secret`) as a hard
-registry error, so a mislabeled state can never read as "migrated" and it fails **both** the normal guard and the
-cutover precheck (one authoritative `inventoryProblems()` feeds both). A leg becomes a migrated target only
-**after its deployed value is verified** — the env NAME (a slot) and a shared-helper NAME (`requireServiceRole`)
-are *dependency* signals, **not** proof the credential is still legacy, so a helper importer that moves to
-`sb_secret_` under an unchanged name passes without renaming, and a dual-role file must migrate **each leg
-independently** (`new-secret` certifies only the service-role/SQL leg, `publishable` only the anon leg). A browser
-surface additionally fails if it references ANY RLS-bypassing key — the legacy service_role name, `sb_secret_`, an
-inline service_role JWT, **or the new `SUPABASE_SECRET_KEYS` backend-secret family** (a browser leak regardless of
-migration state). Non-production paths (tests, CI/guard tooling, one-off scripts) must carry an explicit exemption
-state — they are **not** blanket-excluded by category (some `scripts-ci` paths target production).
+It **fails today** (125 pending: service-role 98, anon 23 [19 edge-function + 3 browser/worker + 1 GitHub-Actions e2e], SQL 4)
+and passes only once **every production consumer** (edge functions, the Vercel caller, the browser bundle + public
+edge, the scheduled GitHub Actions e2e, and every `active`/`active-legacy` SQL cron) has moved off the legacy
+service-role/anon keys. Migration is tracked by an **explicit per-path `STATE` registry** (not signal-disappearance,
+which would wrongly flag a migrated file "stale" and never let the gate pass). State is **per credential kind, not
+scalar**: 18 paths consume BOTH legacy keys (an admin client + an anon/public client in one file), so a `STATE`
+entry is an object `{ serviceRole?, anon?, sql? }` where each leg is `legacy` (default) or its ONE valid migrated
+target — `serviceRole`/`sql` → `new-secret`, `anon` → `publishable`. A strict whitelist rejects a typo (`new-secert`)
+or a wrong target (`anon: new-secret`) as a hard registry error, so a mislabeled state can never read as "migrated";
+it fails **both** the normal guard and the cutover precheck (one authoritative `inventoryProblems()` feeds both). A
+leg becomes a migrated target only **after its deployed value is verified** — the env NAME (a slot) and a
+shared-helper NAME (`requireServiceRole`) are *dependency* signals, **not** proof the credential is still legacy, so
+a helper importer that moves to `sb_secret_` under an unchanged name passes without renaming, and a dual-role file
+must migrate **each leg independently** (`new-secret` certifies only the service-role/SQL leg, `publishable` only
+the anon leg). **Exemptions are an EXACT reviewed allowlist, NEVER category** (`EXEMPT_ALLOWLIST`, keyed by
+path → `{ kind: local-demo | tooling | retired }`): a path is exempt ONLY if it is listed there for that kind — a
+production script placed under `scripts-ci` and "marked tooling" stays **pending**, an `active`/`active-legacy` SQL
+cron can never be exempt, and category relabeling grants nothing. A browser surface additionally fails on ANY
+RLS-bypassing key — the legacy service_role name, `sb_secret_`, an inline service_role JWT, **or the new
+`SUPABASE_SECRET_KEYS` backend-secret family** (a browser leak regardless of migration state).
 
 **Disable ONLY after ALL of these hold:**
 1. `npm run check:legacy-key:cutover` → **0 pending** (exit 0). This gate **first re-runs the full inventory**
@@ -535,8 +536,21 @@ state — they are **not** blanket-excluded by category (some `scripts-ci` paths
    `npm run check:legacy-key` + `:selftest` are green.)
 2. **Deployed VALUES verified** by prefix (the env NAME does not prove the value): Vercel
    `SUPABASE_SERVICE_ROLE_KEY` → `sb_secret_`, `VITE_SUPABASE_PUBLISHABLE_KEY` → `sb_publishable_` (and **not**
-   `sb_secret_`), Supabase function secrets, and the **Cloudflare worker's `SUPABASE_ANON_KEY`** value (set in the
-   Cloudflare dashboard — `wrangler.toml` has `keep_vars = true`, so the value is **not** in git).
+   `sb_secret_`), Supabase function secrets, the **Cloudflare worker's `SUPABASE_ANON_KEY`** value (set in the
+   Cloudflare dashboard — `wrangler.toml` has `keep_vars = true`, so the value is **not** in git), and the
+   **GitHub Actions `VITE_SUPABASE_PUBLISHABLE_KEY` secret** consumed by the weekly `.github/workflows/e2e.yml`
+   (tracked as a pending anon consumer — its `anon` leg stays `legacy` until this value is proven `sb_publishable_`).
+   Verify the GitHub secret with a **no-secret-output** step (prints only a boolean, never the value), and only then
+   set `.github/workflows/e2e.yml` to `{ anon: 'publishable' }` in `STATE`:
+   ```yaml
+   - name: Assert publishable key is migrated (no secret output)
+     env: { KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }} }
+     run: |
+       case "$KEY" in
+         sb_publishable_*) echo "publishable prefix OK" ;;
+         *) echo "::error::VITE_SUPABASE_PUBLISHABLE_KEY is NOT sb_publishable_ (still legacy?)"; exit 1 ;;
+       esac
+   ```
 3. **Live `cron.job` verification** (the lifecycle check is static + best-effort — see below). Command **text alone
    is not sufficient proof**: a cron that reads a *renamed* Vault secret (e.g. `edge_secret`) whose **deployed
    value** is still a legacy `eyJ…` JWT passes a text scan, and a text scan does not enforce that the transport is
