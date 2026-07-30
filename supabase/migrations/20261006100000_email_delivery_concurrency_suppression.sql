@@ -107,16 +107,21 @@ ALTER TABLE public.email_address_state
 -- last_event_type/at/reason — by REPLAYING the state-producing history in a TOTAL deterministic order through the SAME
 -- email_state_transition() the live writer uses (so both directions self-heal: old `ok` despite a newer hard bounce →
 -- suppressed; old hard bounce despite a newer delivery → ok).
--- PARTIAL / PURGED HISTORY FAIL-SAFE: a downgrade of an existing SUPPRESSED row (hard_bounced/soft_bounced/complained)
--- is only trusted when retained history contains the MATCHING SUPPRESSING ORIGIN (a replay over it will also honor any
--- later clearing evidence). If the origin has been retention-swept, a lone surviving `delivered` must NOT silently
--- clear it → PRESERVE the existing state (fail-safe clock = updated_at). Non-suppressed rows recompute freely.
+-- PARTIAL / PURGED HISTORY, by explicit STATE SEVERITY (ok<soft_bounced<hard_bounced<complained):
+--   • The replay is trusted whenever it is AT LEAST AS SEVERE as the existing state — a retained STRONGER negative
+--     transition always wins (e.g. a retained `complained` UPGRADES an old `hard_bounced`; a retained hard bounce
+--     upgrades an old `soft_bounced`).
+--   • Missing evidence may only prevent a DOWNGRADE of an existing SUPPRESSED state (hard_bounced/complained): if the
+--     replay is WEAKER and the matching suppressing origin was retention-swept, PRESERVE the existing state
+--     (fail-safe clock). A retained origin makes the downgrade evidence-based → trust the replay.
+--   • Non-suppressed existing states (ok/soft_bounced) always recompute freely.
 DO $$
 DECLARE
   r record; e record; t record;
   v_state text; v_sca timestamptz; v_lra timestamptz;
   v_let text; v_lea timestamptz; v_reason text;      -- last_event_* accumulators (newest WINNING transition, ranked)
-  v_has_origin boolean;
+  v_has_origin boolean; v_preserve boolean;
+  sev constant jsonb := '{"ok":0,"soft_bounced":1,"hard_bounced":2,"complained":3}'::jsonb;
 BEGIN
   FOR r IN SELECT email, state AS old_state, updated_at FROM public.email_address_state WHERE state_changed_at IS NULL LOOP
     v_state := 'ok'; v_sca := NULL; v_lra := NULL; v_let := NULL; v_lea := NULL; v_reason := NULL;
@@ -143,15 +148,19 @@ BEGIN
           OR (r.old_state = 'hard_bounced' AND ev.event_type = 'bounced' AND coalesce(ev.bounce_type, 'hard') = 'hard')
           OR (r.old_state = 'soft_bounced' AND ev.event_type = 'bounced' AND coalesce(ev.bounce_type, 'hard') = 'soft')));
 
-    IF r.old_state IN ('hard_bounced', 'complained') AND NOT v_has_origin THEN
-      -- purged/partial history for a SUPPRESSED row (only hard_bounced/complained feed is_suppressed) → never
-      -- blind-downgrade; keep state + metadata, fail-safe clock. A soft_bounced row is NOT suppressed, so it recomputes
-      -- freely below — this is what lets a retained NEWER hard bounce correctly UPGRADE an old soft_bounced row.
+    -- PRESERVE only when: the existing state is SUPPRESSED, the replay is strictly WEAKER (a downgrade), AND the
+    -- matching origin was purged. A retained stronger/equal negative (e.g. complained over hard_bounced) is NOT weaker,
+    -- so it is trusted and UPGRADES the row — never erased.
+    v_preserve := r.old_state IN ('hard_bounced', 'complained')
+              AND (sev->>v_state)::int < (sev->>r.old_state)::int
+              AND NOT v_has_origin;
+    IF v_preserve THEN
+      -- purged-origin downgrade of a suppressed row → keep the stronger existing state + metadata, fail-safe clock.
       UPDATE public.email_address_state
          SET state_changed_at = updated_at, last_reset_at = v_lra
        WHERE email = r.email;
     ELSE
-      -- trustworthy: not currently suppressed, OR the suppressing origin IS retained (replay saw it + any later clear).
+      -- trust the replay: an upgrade, a same-severity/lateral, an evidence-based downgrade, or a non-suppressed state.
       UPDATE public.email_address_state
          SET state = v_state, state_changed_at = v_sca, last_reset_at = v_lra,
              last_event_type = coalesce(v_let, last_event_type),

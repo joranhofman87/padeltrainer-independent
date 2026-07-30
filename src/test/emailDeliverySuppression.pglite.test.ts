@@ -169,19 +169,37 @@ describe('complaint ↔ operator reset ordering (finding 2)', () => {
     expect((await state('c3@x.com')).state).toBe('complained');
   });
 
-  it('EQUAL-TIME reset/complaint precedence is explicit: the RESET wins, both arrival orders', async () => {
+  it('EQUAL-TIME reset/complaint precedence via the live writer: the RESET wins', async () => {
     const T = '2026-07-04T10:00:00Z';
-    // (a) reset then a same-instant complaint → reset wins → stays ok (the complaint does not re-suppress)
+    // reset then a same-instant complaint → reset wins → stays ok (the complaint does not re-suppress)
     await rec('complained', { email: 'eqr1@x.com', at: '2026-07-04T09:00:00Z' });
     await db.query(`SELECT reset_email_suppression($1)`, ['eqr1@x.com']);  // stamps last_reset_at = now() (real time)
-    // force the reset clock to exactly T, then a complaint at exactly T
     await db.query(`UPDATE email_address_state SET last_reset_at=$2, state_changed_at=$2 WHERE email=$1`, ['eqr1@x.com', T]);
     await rec('complained', { email: 'eqr1@x.com', at: T });
     expect((await state('eqr1@x.com')).state).toBe('ok');            // reset wins the tie
     expect(await suppressed('eqr1@x.com')).toBe(false);
-    // (b) a complaint strictly AFTER the reset instant does re-suppress (boundary is strict)
+    // a complaint strictly AFTER the reset instant does re-suppress (boundary is strict)
     await rec('complained', { email: 'eqr1@x.com', at: '2026-07-04T10:00:01Z' });
     expect((await state('eqr1@x.com')).state).toBe('complained');
+  });
+
+  it('EQUAL-TIME reset/complaint precedence through the PURE helper, BOTH arrival orders → reset wins', async () => {
+    const T = '2026-07-04T10:00:00Z';
+    // drive email_state_transition() directly so both equal-time orders are exercised deterministically.
+    const step = async (state: string, sca: string | null, lra: string | null, et: string, at: string) =>
+      (await db.query<{ o_state: string; o_state_changed_at: string | null; o_last_reset_at: string | null; o_changed: boolean }>(
+        `SELECT * FROM email_state_transition($1,$2::timestamptz,$3::timestamptz,$4,NULL,$5::timestamptz)`, [state, sca, lra, et, at])).rows[0];
+    // order A — complaint@T then reset@T: reset clears → ok
+    let s = await step('ok', null, null, 'complained', T);
+    expect(s.o_state).toBe('complained');
+    s = await step(s.o_state, s.o_state_changed_at, s.o_last_reset_at, 'operator_reset', T);
+    expect(s.o_state).toBe('ok');
+    // order B — reset@T then complaint@T: complaint at == reset instant does NOT re-suppress → ok
+    s = await step('ok', null, null, 'operator_reset', T);
+    expect(s.o_state).toBe('ok');
+    s = await step(s.o_state, s.o_state_changed_at, s.o_last_reset_at, 'complained', T);
+    expect(s.o_state).toBe('ok');                                    // reset wins the equal-time tie in BOTH orders
+    expect(s.o_changed).toBe(false);                                // the same-instant complaint lost
   });
 });
 
@@ -385,6 +403,28 @@ describe('round-8: backfill RECOMPUTES canonical state from history (P1, upgrade
   it('old soft_bounced with only a surviving later `delivered` recomputes to ok (soft is transient, safe to clear)', async () => {
     const r = await legacyThenMigrate('p-soft-clr@x.com', 'soft_bounced', [['delivered', '2026-07-09T12:00:00Z', null]]);
     expect(r).toMatchObject({ state: 'ok', is_suppressed: false });
+  });
+
+  // Round-10 P1: a retained STRONGER negative (complained) must UPGRADE a purged-origin hard_bounced — never be
+  // erased/preserved-as-hard — and the upgraded complaint is then sticky vs later delivery.
+  it('UPGRADE: old hard_bounced + retained complaint@12 (hard-bounce origin purged) ⇒ complained; later delivered stays complained', async () => {
+    const db2 = new PGlite();
+    await db2.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE TABLE public.invoices (id uuid PRIMARY KEY);`);
+    await db2.exec(MIG('20260615110000_email_delivery_tables.sql'));
+    await db2.exec(MIG('20260615110010_record_email_event.sql'));
+    // pre-migration: hard_bounced@updated_at=15:00, its hard-bounce event purged, but a complaint@12:00 survives
+    await db2.query(`INSERT INTO email_address_state (email, state, updated_at) VALUES ('up@x.com','hard_bounced','2026-07-09T15:00:00Z')`);
+    await db2.query(`INSERT INTO email_delivery_events (resend_event_id, event_type, recipient_email, occurred_at) VALUES ('c1','complained','up@x.com','2026-07-09T12:00:00Z')`);
+    await db2.exec(MIG('20261006100000_email_delivery_concurrency_suppression.sql'));
+    const after = (await db2.query<{ state: string; is_suppressed: boolean; state_changed_at: string }>(
+      `SELECT state, is_suppressed, state_changed_at FROM email_address_state WHERE email='up@x.com'`)).rows[0];
+    expect(after.state).toBe('complained');                        // upgraded from hard_bounced, NOT preserved
+    expect(after.is_suppressed).toBe(true);
+    expect(new Date(after.state_changed_at).toISOString()).toBe('2026-07-09T12:00:00.000Z'); // the complaint's clock
+    // a later delivery cannot clear a complaint
+    await db2.query(`SELECT record_email_event('delivered','up@x.com',NULL,'d1',NULL,NULL,NULL,NULL,NULL,'2026-07-09T16:00:00Z')`);
+    const final = (await db2.query<{ state: string; is_suppressed: boolean }>(`SELECT state, is_suppressed FROM email_address_state WHERE email='up@x.com'`)).rows[0];
+    expect(final).toMatchObject({ state: 'complained', is_suppressed: true });
   });
 
   it('PARTIAL history WITH the origin retained + later clear IS trusted (origin bounce + newer delivered ⇒ ok)', async () => {

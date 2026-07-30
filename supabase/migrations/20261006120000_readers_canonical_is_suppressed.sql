@@ -586,23 +586,26 @@ BEGIN
            p.id                                       AS m_profile_id,
            NULL::uuid                                 AS m_guest_player_id,
            coalesce(nullif(btrim(p.full_name), ''), '') AS m_full_name,
-           lower(btrim(p.email))                      AS m_email
+           -- EFFECTIVE invoice address (mirrors get_invoice_recipient_identity): the billing_email override wins over
+           -- the profile login email, so a repaired override clears the fix card.
+           lower(btrim(coalesce(nullif(btrim(m.billing_email), ''), p.email))) AS m_email
     FROM public.academy_player_metadata m
     JOIN public.profiles p ON p.id = m.profile_id
     WHERE m.academy_profile_id = p_academy_profile_id AND m.removed_at IS NULL
-      AND nullif(btrim(p.email), '') IS NOT NULL
+      AND nullif(btrim(coalesce(nullif(btrim(m.billing_email), ''), p.email)), '') IS NOT NULL
     UNION ALL
     SELECT ('g_' || g.id::text),
            'guest'::text,
            g.linked_profile_id,
            g.id,
            coalesce(nullif(btrim(g.full_name), ''), nullif(btrim(lp.full_name), ''), ''),
-           lower(btrim(coalesce(nullif(btrim(lp.email), ''), g.email)))
+           -- guest EFFECTIVE address: billing_email override → linked-profile email → guest email.
+           lower(btrim(coalesce(nullif(btrim(m.billing_email), ''), nullif(btrim(lp.email), ''), g.email)))
     FROM public.academy_player_metadata m
     JOIN public.guest_players g ON g.id = m.guest_player_id
     LEFT JOIN public.profiles lp ON lp.id = g.linked_profile_id
     WHERE m.academy_profile_id = p_academy_profile_id AND m.removed_at IS NULL
-      AND nullif(btrim(coalesce(nullif(btrim(lp.email), ''), g.email)), '') IS NOT NULL
+      AND nullif(btrim(coalesce(nullif(btrim(m.billing_email), ''), nullif(btrim(lp.email), ''), g.email)), '') IS NOT NULL
   )
   SELECT DISTINCT ON (mem.m_player_key)
          mem.m_player_key, mem.m_player_type, mem.m_profile_id, mem.m_guest_player_id,
