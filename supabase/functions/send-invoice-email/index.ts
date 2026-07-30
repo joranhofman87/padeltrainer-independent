@@ -3,6 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sanitizeEmailSubject } from "../_shared/email-subject.ts";
+import {
+  invoiceEmailMaintenanceActive, maintenanceResponseBody, MAINTENANCE_HTTP_STATUS, probeResponseBody,
+  logInvoiceEmailEvent,
+} from "../_shared/invoice-email-gate.ts";
+import { recordInvoiceEmailEvent } from "../_shared/invoice-delivery-tracking.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,10 +18,13 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[SEND-INVOICE-EMAIL] ${step}`, details ? JSON.stringify(details) : "");
 };
 
-const handler = async (req: Request): Promise<Response> => {
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // per-invocation correlation id for the PII-free lifecycle events (blocked / provider_send_started / finished)
+  const invocationId = crypto.randomUUID();
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -54,6 +62,24 @@ const handler = async (req: Request): Promise<Response> => {
       }
       authenticatedUserId = user.id;
       authenticatedUserEmail = user.email ?? null;
+    }
+
+    // MAINTENANCE GATE — authenticated, then checked BEFORE request parsing / invoice+PDF reads / generate-invoice /
+    // Resend / delivery tracking / invoice-status mutation. `?probe=1` returns the switch state without sending; an
+    // active switch returns a retryable 503 that no caller treats as success (verified across all 12 callers).
+    const maintenance = invoiceEmailMaintenanceActive(Deno.env);
+    if (new URL(req.url).searchParams.get("probe") === "1") {
+      return new Response(
+        JSON.stringify(probeResponseBody(maintenance)),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    if (maintenance) {
+      logInvoiceEmailEvent(logStep, invocationId, "blocked");
+      return new Response(
+        JSON.stringify(maintenanceResponseBody()),
+        { status: MAINTENANCE_HTTP_STATUS, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     const body = await req.json();
@@ -453,6 +479,7 @@ const handler = async (req: Request): Promise<Response> => {
       logStep("pdf_attach_error", { invoiceId, error: String(pdfErr).slice(0, 200) });
     }
 
+    logInvoiceEmailEvent(logStep, invocationId, "provider_send_started", { invoiceId });
     const { data: sendData, error: sendError } = await resend.emails.send({
       from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
       to: [sendTo],
@@ -462,24 +489,21 @@ const handler = async (req: Request): Promise<Response> => {
       attachments,
     });
 
-    // Record the outcome into delivery tracking (never the test sends). A
-    // synchronous failure surfaces at invoice level immediately; the accepted-send
-    // row stores the Resend message id so a later bounce webhook maps to this invoice.
-    const recordDelivery = async (eventType: "sent" | "send_failed", extra: Record<string, unknown>) => {
-      if (testEmail || !recipientEmail) return;
-      try {
-        await supabase.rpc("record_email_event", {
-          p_event_type: eventType,
-          p_recipient_email: recipientEmail,
-          p_invoice_id: invoice.id,
-          p_academy_profile_id: invoice.academy_profile_id ?? null,
-          p_trainer_id: invoice.trainer_id ?? null,
-          ...extra,
-        });
-      } catch (_) {
-        // tracking is best-effort — never block sending
-      }
-    };
+    // Record the outcome into delivery tracking (never the test sends). Handles BOTH supabase-js's resolved
+    // { error } result AND thrown/network faults, emitting a PII-free log + one Slack alert on failure — the send's
+    // business result is preserved either way (tracking must never break a delivery that already succeeded).
+    const recordDelivery = (eventType: "sent" | "send_failed", extra: Record<string, unknown>) =>
+      recordInvoiceEmailEvent(
+        {
+          rpc: async (name, a) => { const { error } = await supabase.rpc(name, a); return { error }; },
+          notifySlack: notifySlackEdgeError,
+          log: logStep,
+        },
+        {
+          eventType, invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, recipientEmail, testEmail,
+          rpcArgs: { p_academy_profile_id: invoice.academy_profile_id ?? null, p_trainer_id: invoice.trainer_id ?? null, ...extra },
+        },
+      );
 
     if (sendError) {
       logStep("failed", {
@@ -493,6 +517,7 @@ const handler = async (req: Request): Promise<Response> => {
         "Resend send failed",
         { invoiceId, invoiceNumber: invoice.invoice_number, error: String(sendError) },
       );
+      logInvoiceEmailEvent(logStep, invocationId, "finished", { invoiceId, outcome: "send_failed" });
       return new Response(
         JSON.stringify({ success: false, error: "send_failed", details: sendError }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -550,6 +575,7 @@ const handler = async (req: Request): Promise<Response> => {
       testSend: !!testEmail,
     });
 
+    logInvoiceEmailEvent(logStep, invocationId, "finished", { invoiceId, outcome: "sent" });
     return new Response(
       JSON.stringify({ success: true, email: recipientEmail }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -558,6 +584,7 @@ const handler = async (req: Request): Promise<Response> => {
     const message = error?.message ?? String(error);
     logStep("failed", { error: message });
     await notifySlackEdgeError("send-invoice-email", message);
+    logInvoiceEmailEvent(logStep, invocationId, "finished", { outcome: "error" });
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -565,4 +592,5 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-serve(handler);
+// Only start the server when run as the entrypoint — importing the module (for tests) must not bind a port.
+if (import.meta.main) serve(handler);
