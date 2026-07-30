@@ -1,49 +1,59 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { handler } from "../send-invoice-email/index.ts";
 
-// A DEAD backend URL is the ordering probe: if the maintenance gate were moved AFTER the invoice/PDF/Resend side
-// effects, a maintenance request would first hit this dead URL and surface a different status — never a clean 503
-// invoice_email_maintenance. So "gate ON ⇒ 503 before any network" mutation-verifies the ordering.
-function envMaintenance(on: boolean) {
-  Deno.env.set("SUPABASE_URL", "http://127.0.0.1:1");          // dead: any query/fetch fails
-  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "svc-key");
-  Deno.env.set("RESEND_API_KEY", "re_test");
-  if (on) Deno.env.set("INVOICE_EMAIL_MAINTENANCE", "true"); else Deno.env.delete("INVOICE_EMAIL_MAINTENANCE");
+// Every test snapshots + restores the env keys it touches, so nothing leaks into later tests.
+const KEYS = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "RESEND_API_KEY", "INVOICE_EMAIL_MAINTENANCE"];
+async function withEnv(overrides: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
+  const snap = Object.fromEntries(KEYS.map((k) => [k, Deno.env.get(k)]));
+  try {
+    for (const k of KEYS) { const v = overrides[k]; if (v === undefined) Deno.env.delete(k); else Deno.env.set(k, v); }
+    await fn();
+  } finally {
+    for (const k of KEYS) { const v = snap[k]; if (v === undefined) Deno.env.delete(k); else Deno.env.set(k, v); }
+  }
 }
-const svcReq = (url: string) => new Request(url, {
-  method: "POST", headers: { Authorization: "Bearer svc-key", "Content-Type": "application/json" },
-  body: JSON.stringify({ invoiceId: "11111111-1111-1111-1111-111111111111" }),
-});
+// base env with a DEAD SUPABASE_URL: proves the maintenance/probe paths short-circuit BEFORE any network.
+const BASE = { SUPABASE_URL: "http://127.0.0.1:1", SUPABASE_SERVICE_ROLE_KEY: "svc-key" } as const;
+const svcReq = (url: string, body = '{"invoiceId":"11111111-1111-1111-1111-111111111111"}') =>
+  new Request(url, { method: "POST", headers: { Authorization: "Bearer svc-key", "Content-Type": "application/json" }, body });
+const U = "https://x.test/send-invoice-email";
 
-Deno.test("gate ON ⇒ 503 invoice_email_maintenance BEFORE any side effect (service-role)", async () => {
-  envMaintenance(true);
-  const res = await handler(svcReq("https://x.test/send-invoice-email"));
-  assertEquals(res.status, 503);
-  const body = await res.json();
-  assertEquals(body, { success: false, error: "invoice_email_maintenance" });
-});
+Deno.test("gate ON ⇒ 503 BEFORE any side effect (Resend configured)", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: "re_x", INVOICE_EMAIL_MAINTENANCE: "true" }, async () => {
+    const res = await handler(svcReq(U));
+    assertEquals(res.status, 503);
+    assertEquals(await res.json(), { success: false, error: "invoice_email_maintenance" });
+  }));
 
-Deno.test("probe ⇒ 200 switch state, no send (does not require the switch to be on)", async () => {
-  envMaintenance(true);
-  const res = await handler(svcReq("https://x.test/send-invoice-email?probe=1"));
-  assertEquals(res.status, 200);
-  assertEquals(await res.json(), { status: "maintenance", maintenance: true });
-  envMaintenance(false);
-  const res2 = await handler(svcReq("https://x.test/send-invoice-email?probe=1"));
-  assertEquals(await res2.json(), { status: "active", maintenance: false });
-});
+Deno.test("gate ON ⇒ 503 even when RESEND_API_KEY is MISSING (config checked AFTER the gate)", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: undefined, INVOICE_EMAIL_MAINTENANCE: "true" }, async () => {
+    const res = await handler(svcReq(U));
+    assertEquals(res.status, 503);                                   // not 500 email_not_configured
+    assertEquals(await res.json(), { success: false, error: "invoice_email_maintenance" });
+  }));
 
-Deno.test("gate OFF/unset ⇒ does NOT short-circuit as maintenance (parity: proceeds past the gate)", async () => {
-  envMaintenance(false);
-  const res = await handler(svcReq("https://x.test/send-invoice-email"));
-  // proceeds to the real path against a dead backend → some non-maintenance outcome, never the 503 maintenance body
-  assertEquals(res.status === 503, false);
-  const body = await res.json().catch(() => ({}));
-  assertEquals(body.error === "invoice_email_maintenance", false);
-});
+Deno.test("probe ⇒ 200 switch state, works even when Resend is UNCONFIGURED", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: undefined, INVOICE_EMAIL_MAINTENANCE: "true" }, async () => {
+    const res = await handler(svcReq(U + "?probe=1"));
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { status: "maintenance", maintenance: true });
+  }));
 
-Deno.test("gate requires auth first: no Authorization ⇒ 401, never reaches the switch", async () => {
-  envMaintenance(true);
-  const res = await handler(new Request("https://x.test/send-invoice-email", { method: "POST", body: "{}" }));
-  assertEquals(res.status, 401);
-});
+Deno.test("probe ⇒ active when the switch is off (Resend configured or not)", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: "re_x", INVOICE_EMAIL_MAINTENANCE: undefined }, async () => {
+    const res = await handler(svcReq(U + "?probe=1"));
+    assertEquals(await res.json(), { status: "active", maintenance: false });
+  }));
+
+Deno.test("no Authorization ⇒ 401 regardless of Resend/maintenance config (auth is first)", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: undefined, INVOICE_EMAIL_MAINTENANCE: "true" }, async () => {
+    const res = await handler(new Request(U, { method: "POST", body: "{}" }));
+    assertEquals(res.status, 401);
+  }));
+
+Deno.test("gate OFF ⇒ fast deterministic pass-through (malformed body → 500, no network, NOT maintenance)", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: "re_x", INVOICE_EMAIL_MAINTENANCE: undefined }, async () => {
+    const res = await handler(svcReq(U, "{not valid json"));          // passes auth+gate+config → body parse throws
+    assertEquals(res.status, 500);
+    assertEquals((await res.json()).error === "invoice_email_maintenance", false);   // proves it passed the gate
+  }));

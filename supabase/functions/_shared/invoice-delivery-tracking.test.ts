@@ -62,3 +62,27 @@ Deno.test("exactly one alert per failed record (no duplicate for a single call)"
   await recordInvoiceEmailEvent(h.deps, baseArgs);
   assertEquals(h.alerts.length, 1);
 });
+
+Deno.test("PII in the RPC error is redacted before EITHER sink (log + alert)", async () => {
+  const leaky = "record failed for victim@example.com bearer eyJabc123.eyJdef456.sigGHI789 at "
+    + "https://app.padeltrainer.ai/pay/secret-token-9f8e?apikey=supersecretvalue1234567890abcd";
+  const h = harness(() => Promise.resolve({ error: { message: leaky } }));
+  const ok = await recordInvoiceEmailEvent(h.deps, baseArgs);
+  assertEquals(ok, false);
+  const logged = String(h.logs.find((l) => l.step === "record_failed")?.details?.error ?? "");
+  const alerted = String(h.alerts[0]?.context?.error ?? "");
+  for (const sink of [logged, alerted]) {
+    assertEquals(sink.includes("victim@example.com"), false);       // email
+    assertEquals(sink.includes("eyJabc123"), false);                // JWT
+    assertEquals(sink.includes("secret-token-9f8e"), false);        // URL path token
+    assertEquals(sink.includes("supersecretvalue1234567890abcd"), false); // query secret
+  }
+});
+
+Deno.test("a THROWING alert sink never breaks tracking's never-throw contract (still returns false)", async () => {
+  const h = harness(() => Promise.resolve({ error: { message: "deadlock" } }));
+  h.deps.notifySlack = () => { throw new Error("slack webhook down"); };   // sink itself throws
+  const ok = await recordInvoiceEmailEvent(h.deps, baseArgs);             // must not propagate
+  assertEquals(ok, false);
+  assertEquals(h.logs.filter((l) => l.step === "record_failed").length, 1); // the log still happened
+});

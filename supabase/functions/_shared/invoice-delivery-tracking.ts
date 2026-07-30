@@ -3,7 +3,10 @@
 // Why: supabase-js resolves an RPC error as a { error } RESULT (it does not throw); network/unexpected faults DO
 // throw. The old inline recorder only had a try/catch, so the common resolved-{error} path was silently swallowed —
 // an accepted email could lose its `sent` row with no signal. This recorder inspects both, emits a PII-free log +
-// one Slack alert on failure, and NEVER throws (tracking must not break a send that already succeeded).
+// one Slack alert on failure (the error string is run through redactDetail first — a DB error can echo an email /
+// token / URL / id), and NEVER throws (tracking must not break a send that already succeeded — so even a throwing
+// alert sink is contained).
+import { redactDetail } from "./redact-detail.ts";
 
 export interface RecordDeliveryDeps {
   // mirrors supabase.rpc(...): resolves { error } on an RPC error, may throw on network/unexpected faults.
@@ -43,13 +46,18 @@ export async function recordInvoiceEmailEvent(deps: RecordDeliveryDeps, args: Re
   }
 
   if (failure) {
-    // PII-free: invoice id/number + event type + the error text only — never the recipient address.
-    deps.log("record_failed", { invoiceId: args.invoiceId, eventType: args.eventType, error: failure.slice(0, 300) });
-    await deps.notifySlack(
-      "send-invoice-email",
-      "record_email_event failed — invoice delivery tracking lost",
-      { invoiceId: args.invoiceId, invoiceNumber: args.invoiceNumber ?? null, eventType: args.eventType, error: failure.slice(0, 300) },
-    );
+    // PII-free: redact any echoed email/JWT/token/URL/id before EITHER sink (invoice id/number are safe).
+    const safe = redactDetail(failure);
+    deps.log("record_failed", { invoiceId: args.invoiceId, eventType: args.eventType, error: safe });
+    try {
+      await deps.notifySlack(
+        "send-invoice-email",
+        "record_email_event failed — invoice delivery tracking lost",
+        { invoiceId: args.invoiceId, invoiceNumber: args.invoiceNumber ?? null, eventType: args.eventType, error: safe },
+      );
+    } catch (_) {
+      // the alert sink must NEVER break tracking's never-throw contract (the email already succeeded)
+    }
     return false;
   }
   return true;

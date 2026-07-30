@@ -27,14 +27,6 @@ export const handler = async (req: Request): Promise<Response> => {
   const invocationId = crypto.randomUUID();
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "email_not_configured" }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -79,6 +71,16 @@ export const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify(maintenanceResponseBody()),
         { status: MAINTENANCE_HTTP_STATUS, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Resend config is validated AFTER auth + probe + maintenance: the status probe must answer while Resend is
+    // unconfigured, and an unauthenticated request must 401 regardless of Resend configuration.
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "email_not_configured" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
