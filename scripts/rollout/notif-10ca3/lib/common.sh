@@ -81,16 +81,12 @@ assert_linked_ref_is() {
   local ref="$1"
   assert_ref_format "$ref"
   require_cmd supabase
-  # `supabase projects list` marks the linked project with a ● in the LINKED column;
-  # the ref column is the project reference. Extract the linked row's ref exactly.
-  local linked
-  linked="$(supabase projects list 2>/dev/null | awk -F'|' '/●|LINKED|linked/{next} $0 ~ /●/{print}')" || true
-  # Robust path: the CLI writes the linked ref to supabase/.temp/project-ref.
-  local ref_file="supabase/.temp/project-ref"
-  if [[ -f "$ref_file" ]]; then
-    linked="$(tr -d '[:space:]' < "$ref_file")"
-  fi
-  [[ -n "$linked" ]] || die "could not determine the linked Supabase project ref (run: supabase link --project-ref $ref)"
+  # The CLI records the linked project's ref in supabase/.temp/project-ref — the
+  # canonical, machine-readable source (unlike the decorated `projects list` table).
+  local ref_file="supabase/.temp/project-ref" linked=""
+  [[ -f "$ref_file" ]] || die "no linked Supabase project (run: supabase link --project-ref $ref)"
+  linked="$(tr -d '[:space:]' < "$ref_file")"
+  [[ -n "$linked" ]] || die "empty $ref_file — re-run: supabase link --project-ref $ref"
   [[ "$linked" == "$ref" ]] || die "linked project ref '$linked' != EXPECTED_REF '$ref' — refusing to push"
   ok "linked Supabase project ref verified == '$ref'"
 }
