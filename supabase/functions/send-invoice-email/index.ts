@@ -58,7 +58,7 @@ export const handler = async (req: Request): Promise<Response> => {
 
     // MAINTENANCE GATE — authenticated, then checked BEFORE request parsing / invoice+PDF reads / generate-invoice /
     // Resend / delivery tracking / invoice-status mutation. `?probe=1` returns the switch state without sending; an
-    // active switch returns a retryable 503 that no caller treats as success (verified across all 12 callers).
+    // active switch returns a retryable 503 that no caller treats as success (verified across all 13 invoke sites).
     const maintenance = invoiceEmailMaintenanceActive(Deno.env);
     if (new URL(req.url).searchParams.get("probe") === "1") {
       return new Response(

@@ -48,16 +48,18 @@ export async function recordInvoiceEmailEvent(deps: RecordDeliveryDeps, args: Re
   if (failure) {
     // PII-free: redact any echoed email/JWT/token/URL/id before EITHER sink (invoice id/number are safe).
     const safe = redactDetail(failure);
-    deps.log("record_failed", { invoiceId: args.invoiceId, eventType: args.eventType, error: safe });
+    // Both observability sinks are protected INDEPENDENTLY: a throwing log must not skip the alert, and neither may
+    // break tracking's never-throw contract (the email already succeeded).
+    try {
+      deps.log("record_failed", { invoiceId: args.invoiceId, eventType: args.eventType, error: safe });
+    } catch (_) { /* log sink must never throw up */ }
     try {
       await deps.notifySlack(
         "send-invoice-email",
         "record_email_event failed — invoice delivery tracking lost",
         { invoiceId: args.invoiceId, invoiceNumber: args.invoiceNumber ?? null, eventType: args.eventType, error: safe },
       );
-    } catch (_) {
-      // the alert sink must NEVER break tracking's never-throw contract (the email already succeeded)
-    }
+    } catch (_) { /* alert sink must never throw up */ }
     return false;
   }
   return true;

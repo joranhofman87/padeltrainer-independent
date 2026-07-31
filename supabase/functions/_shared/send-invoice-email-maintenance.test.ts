@@ -51,9 +51,10 @@ Deno.test("no Authorization ⇒ 401 regardless of Resend/maintenance config (aut
     assertEquals(res.status, 401);
   }));
 
-Deno.test("gate OFF ⇒ fast deterministic pass-through (malformed body → 500, no network, NOT maintenance)", () =>
-  withEnv({ ...BASE, RESEND_API_KEY: "re_x", INVOICE_EMAIL_MAINTENANCE: undefined }, async () => {
-    const res = await handler(svcReq(U, "{not valid json"));          // passes auth+gate+config → body parse throws
+Deno.test("gate OFF ⇒ passes auth+gate with NO network (missing Resend → 500 email_not_configured, deterministic)", () =>
+  withEnv({ ...BASE, RESEND_API_KEY: undefined, INVOICE_EMAIL_MAINTENANCE: undefined }, async () => {
+    // gate off → the AFTER-gate Resend check fires deterministically, BEFORE any body parse / DB / Slack call.
+    const res = await handler(svcReq(U));
     assertEquals(res.status, 500);
-    assertEquals((await res.json()).error === "invoice_email_maintenance", false);   // proves it passed the gate
+    assertEquals(await res.json(), { success: false, error: "email_not_configured" });   // reached past the gate, no network
   }));

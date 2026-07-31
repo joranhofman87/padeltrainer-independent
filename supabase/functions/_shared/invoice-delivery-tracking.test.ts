@@ -86,3 +86,11 @@ Deno.test("a THROWING alert sink never breaks tracking's never-throw contract (s
   assertEquals(ok, false);
   assertEquals(h.logs.filter((l) => l.step === "record_failed").length, 1); // the log still happened
 });
+
+Deno.test("a THROWING log sink never propagates AND the alert is still attempted (both sinks protected)", async () => {
+  const h = harness(() => Promise.resolve({ error: { message: "deadlock" } }));
+  h.deps.log = () => { throw new Error("log sink down"); };               // the log sink itself throws
+  const ok = await recordInvoiceEmailEvent(h.deps, baseArgs);
+  assertEquals(ok, false);                                                // never throws up
+  assertEquals(h.alerts.length, 1);                                       // the alert is STILL attempted
+});
