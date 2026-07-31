@@ -69,7 +69,7 @@ export const handler = async (req: Request): Promise<Response> => {
     if (maintenance) {
       logInvoiceEmailEvent(logStep, invocationId, "blocked");
       return new Response(
-        JSON.stringify(maintenanceResponseBody()),
+        JSON.stringify(maintenanceResponseBody(invocationId)),
         { status: MAINTENANCE_HTTP_STATUS, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }

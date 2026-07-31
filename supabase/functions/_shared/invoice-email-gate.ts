@@ -22,8 +22,11 @@ export function invoiceEmailMaintenanceActive(env: { get(key: string): string | 
 // callers keying on status see 503 (retryable). It carries no invoice/recipient side effect.
 export const MAINTENANCE_HTTP_STATUS = 503;
 export const MAINTENANCE_ERROR_CODE = "invoice_email_maintenance";
-export function maintenanceResponseBody(): { success: false; error: string } {
-  return { success: false, error: MAINTENANCE_ERROR_CODE };
+// The 503 body echoes the per-invocation id so a rollout drain-proof canary can
+// correlate its exact request to the `event:blocked` log line (not just "some"
+// blocked event). PII-free: a random uuid, never customer data.
+export function maintenanceResponseBody(invocationId: string): { success: false; error: string; invocationId: string } {
+  return { success: false, error: MAINTENANCE_ERROR_CODE, invocationId };
 }
 
 /** The authenticated status-probe body — proves the switch state WITHOUT sending. */

@@ -22,14 +22,20 @@ Deno.test("gate ON ⇒ 503 BEFORE any side effect (Resend configured)", () =>
   withEnv({ ...BASE, RESEND_API_KEY: "re_x", INVOICE_EMAIL_MAINTENANCE: "true" }, async () => {
     const res = await handler(svcReq(U));
     assertEquals(res.status, 503);
-    assertEquals(await res.json(), { success: false, error: "invoice_email_maintenance" });
+    const b = await res.json();
+    assertEquals(b.success, false);
+    assertEquals(b.error, "invoice_email_maintenance");
+    assertEquals(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(b.invocationId), true); // echoed for canary correlation
   }));
 
 Deno.test("gate ON ⇒ 503 even when RESEND_API_KEY is MISSING (config checked AFTER the gate)", () =>
   withEnv({ ...BASE, RESEND_API_KEY: undefined, INVOICE_EMAIL_MAINTENANCE: "true" }, async () => {
     const res = await handler(svcReq(U));
     assertEquals(res.status, 503);                                   // not 500 email_not_configured
-    assertEquals(await res.json(), { success: false, error: "invoice_email_maintenance" });
+    const b = await res.json();
+    assertEquals(b.success, false);
+    assertEquals(b.error, "invoice_email_maintenance");
+    assertEquals(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(b.invocationId), true);
   }));
 
 Deno.test("probe ⇒ 200 switch state, works even when Resend is UNCONFIGURED", () =>

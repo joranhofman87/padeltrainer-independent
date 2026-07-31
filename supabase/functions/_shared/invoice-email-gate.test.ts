@@ -17,12 +17,14 @@ Deno.test("invoiceEmailMaintenanceActive reads the env switch", () => {
   assertEquals(invoiceEmailMaintenanceActive(envOf("false")), false);
 });
 
-Deno.test("maintenance response is a retryable 503 that is not success", () => {
+Deno.test("maintenance response is a retryable 503 that is not success and echoes the invocationId", () => {
   assertEquals(MAINTENANCE_HTTP_STATUS, 503);
-  assertEquals(maintenanceResponseBody(), { success: false, error: "invoice_email_maintenance" });
+  assertEquals(maintenanceResponseBody("inv-9"), { success: false, error: "invoice_email_maintenance", invocationId: "inv-9" });
   assertEquals(MAINTENANCE_ERROR_CODE, "invoice_email_maintenance");
   // never a success shape — callers keying on `success` route it to failure
-  assertEquals((maintenanceResponseBody() as { success: boolean }).success, false);
+  assertEquals((maintenanceResponseBody("inv-9") as { success: boolean }).success, false);
+  // the invocationId is echoed verbatim so a drain-proof canary can correlate exactly
+  assertEquals(maintenanceResponseBody("abc-123").invocationId, "abc-123");
 });
 
 Deno.test("probe reports the switch state without sending", () => {
