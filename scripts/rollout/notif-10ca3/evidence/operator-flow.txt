@@ -1,21 +1,33 @@
 $ bash .../verify/operator-flow-test.sh
 
-== resume615: prefix1 (only V1 applied) ==
-  PASS  prefix1 resume exits 0
-  PASS  prefix1 -> pushed suffix, ledger now all
-  PASS  prefix1 gate turned OFF after verify
-  PASS  prefix1 did NOT re-merge (gh never called)
-  PASS  prefix1 original pre-baseline NOT overwritten
-== resume615: prefix2 (V1,V2 applied) ==
+== fresh-drain recovery: prefix1 with exact canary evidence ==
+  PASS  prefix1 resume (fresh drain) exits 0
+  PASS  pushed the V2,V3 suffix -> ledger all
+  PASS  gate turned OFF after verify
+  PASS  default-pin path did NOT call gh (no re-merge)
+  PASS  original pre-manifest NOT overwritten
+== fresh-drain recovery: prefix2 ==
   PASS  prefix2 resume exits 0
-  PASS  prefix2 -> pushed V3 suffix, ledger now all
-  PASS  prefix2 did NOT re-merge (gh never called)
-== resume615: refusals ==
-  PASS  refuses when the gate is OFF
-  PASS  refuses an INVALID ledger subset ({V2})
-  PASS  refuses 'none' (directs to apply615)
-== resume615: already all ==
-  PASS  all-applied resume verifies + exits 0
-  PASS  all-applied resume turns gate OFF after verify
-  PASS  all-applied resume did NOT re-merge
-================  14 passed, 0 failed  ================
+  PASS  pushed the V3 suffix -> ledger all
+== NO suffix push without exact canary evidence ==
+  PASS  empty drain evidence aborts resume
+  PASS  NO suffix push occurred (ledger still prefix1)
+  PASS  gate stays ON after aborted drain
+== gate OFF is re-enabled + drained (not merely refused) ==
+  PASS  gate-off prefix1 re-enables + drains + completes
+  PASS  suffix pushed after re-enable+drain
+== no-loss catches a lost key even after a successful push ==
+  PASS  post-push no-loss violation aborts (gate stays ON)
+  PASS  gate stays ON when no-loss fails
+== reviewed-recovery-SHA trust ==
+  PASS  merged + green + head-match RECOVERY_PR accepted
+  PASS  UNMERGED recovery PR rejected
+  PASS  head-MISMATCH recovery rejected
+  PASS  FAILING-checks recovery PR rejected
+== refusals: none / invalid ==
+  PASS  refuses 'none' (use apply615)
+  PASS  refuses INVALID subset {V2}
+== already all: verify-only, no drain ==
+  PASS  already-all verifies + exits 0
+  PASS  already-all turns gate OFF
+================  22 passed, 0 failed  ================

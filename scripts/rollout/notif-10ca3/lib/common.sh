@@ -170,42 +170,47 @@ expected_pending_suffix() { # $1 state  $2 V1  $3 V2  $4 V3 -> newline list (emp
   esac
 }
 
-# Baseline preservation: ONLY true invariants (table/event row counts) must be
-# EQUAL pre/post. State-distribution keys (eas_bad_state_rows) are recorded as
-# EVIDENCE and may legitimately change (PR #615 recomputes historical state,
-# e.g. hard_bounced/soft_bounced -> ok), so they are NOT equality-checked here.
-# Readers MUST change (they are re-emitted to is_suppressed).
-assert_baseline_preserved() { # $1 pre-file  $2 post-file
-  local pre="$1" post="$2" k vpre vpost
-  validate_baseline_keys "$pre" pre; validate_baseline_keys "$post" post
-  for k in eas_rows ede_rows; do                      # true invariants — MUST match
-    vpre="$(sed -n "s/^${k}=//p" "$pre")"; vpost="$(sed -n "s/^${k}=//p" "$post")"
-    [[ "$vpre" == "$vpost" ]] || die "baseline PRESERVE violated: $k $vpre -> $vpost (rows lost/gained)"
-    ok "baseline preserved: $k = $vpre"
-  done
-  for k in reader_academy_md5 reader_overview_md5; do # MUST change (re-emit)
-    vpre="$(sed -n "s/^${k}=//p" "$pre")"; vpost="$(sed -n "s/^${k}=//p" "$post")"
-    [[ "$vpre" != "$vpost" ]] || die "baseline CHANGE expected: $k unchanged (reader not re-emitted)"
-    ok "baseline changed as expected: $k"
-  done
-  # evidence-only: state distribution may change (recomputation is intended)
-  vpre="$(sed -n "s/^eas_bad_state_rows=//p" "$pre")"; vpost="$(sed -n "s/^eas_bad_state_rows=//p" "$post")"
-  ok "state distribution (evidence, not asserted): eas_bad_state_rows $vpre -> $vpost"
+# per-run salt for the fingerprint manifest (no raw email PII in evidence)
+gen_salt() {
+  if command -v openssl >/dev/null 2>&1; then openssl rand -hex 16
+  elif [[ -r /dev/urandom ]]; then head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  else die "no salt source (need openssl or /dev/urandom)"; fi
 }
 
-# A baseline snapshot must contain every expected key EXACTLY once and
-# well-formed; otherwise a silently-omitted key would compare "" == "".
-validate_baseline_keys() {
-  local f="$1" tag="${2:-baseline}" k n
-  [[ -f "$f" ]] || die "baseline ($tag): file not found: $f"
+# A manifest must carry each EV aggregate key EXACTLY once and well-formed. The
+# EAS/EDE lines are salted fingerprints of email_address_state addresses and
+# email_delivery_events ids (never raw PII).
+validate_manifest() {
+  local f="$1" tag="${2:-manifest}" k n
+  [[ -f "$f" ]] || die "manifest ($tag): file not found: $f"
   for k in eas_rows ede_rows eas_bad_state_rows reader_academy_md5 reader_overview_md5; do
-    n="$(grep -c "^${k}=" "$f" || true)"; [[ "$n" -eq 1 ]] || die "baseline ($tag): key '$k' present $n time(s) (want exactly 1)"
+    n="$(grep -c "^EV ${k}=" "$f" || true)"; [[ "$n" -eq 1 ]] || die "manifest ($tag): EV $k present $n time(s) (want exactly 1)"
   done
   for k in eas_rows ede_rows eas_bad_state_rows; do
-    grep -qE "^${k}=[0-9]+$" "$f" || die "baseline ($tag): $k not a non-negative integer"; done
+    grep -qE "^EV ${k}=[0-9]+$" "$f" || die "manifest ($tag): EV $k not a non-negative integer"; done
   for k in reader_academy_md5 reader_overview_md5; do
-    grep -qE "^${k}=([0-9a-f]{32}|absent)$" "$f" || die "baseline ($tag): $k not md5-or-absent"; done
-  ok "baseline ($tag): all keys present exactly once and well-formed"
+    grep -qE "^EV ${k}=([0-9a-f]{32}|absent)$" "$f" || die "manifest ($tag): EV $k not md5-or-absent"; done
+  ok "manifest ($tag): well-formed"
+}
+
+# CONCURRENCY-SAFE no-loss proof: every pre-existing address key + event id must
+# still exist post-migration; NEW rows are allowed (a pre-gate send finishing or
+# a Resend webhook inserting during the window is legitimate). Reader
+# fingerprints MUST change; counts/state distribution are EVIDENCE only.
+assert_manifest_no_loss() { # $1 pre  $2 post
+  local pre="$1" post="$2" lost k vpre vpost
+  validate_manifest "$pre" pre; validate_manifest "$post" post
+  lost="$(comm -23 <(grep '^EAS ' "$pre" | sort -u) <(grep '^EAS ' "$post" | sort -u) | head -3)"
+  [[ -z "$lost" ]] || die "NO-LOSS VIOLATED: email_address_state key(s) missing post-migration (fingerprint: $(echo "$lost" | tr '\n' ' '))"
+  lost="$(comm -23 <(grep '^EDE ' "$pre" | sort -u) <(grep '^EDE ' "$post" | sort -u) | head -3)"
+  [[ -z "$lost" ]] || die "NO-LOSS VIOLATED: email_delivery_events id(s) missing post-migration"
+  ok "no-loss: every pre-existing address key + event id still present (new rows allowed)"
+  for k in reader_academy_md5 reader_overview_md5; do   # MUST change (re-emit)
+    vpre="$(sed -n "s/^EV ${k}=//p" "$pre")"; vpost="$(sed -n "s/^EV ${k}=//p" "$post")"
+    [[ "$vpre" != "$vpost" ]] || die "reader $k unchanged (re-emit missing)"
+    ok "reader changed: $k"
+  done
+  ok "evidence: eas_rows $(sed -n 's/^EV eas_rows=//p' "$pre")->$(sed -n 's/^EV eas_rows=//p' "$post"), bad_state $(sed -n 's/^EV eas_bad_state_rows=//p' "$pre")->$(sed -n 's/^EV eas_bad_state_rows=//p' "$post") (evidence only)"
 }
 
 # The deployed commit must equal the reviewed+tested pin (no SHA drift).

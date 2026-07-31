@@ -46,12 +46,13 @@ $ bash .../verify/guard-mutation-test.sh
   PASS  classify {V2} = invalid
   PASS  classify {V1,V3} = invalid
   PASS  MUTANT count-classifier wrongly calls {V1,V3} a prefix (guard load-bearing)
-== guard 8: baseline key validation + CORRECT preserve set ==
-  PASS  validate_baseline_keys accepts a well-formed snapshot
-  PASS  validate_baseline_keys rejects a missing key
-  PASS  validate_baseline_keys rejects a duplicated key
-  PASS  validate_baseline_keys rejects a non-numeric count
-  PASS  assert_baseline_preserved accepts a legitimate bad_state recomputation
-  PASS  assert_baseline_preserved rejects row loss
-  PASS  assert_baseline_preserved rejects unchanged readers
-================  45 passed, 0 failed  ================
+== guard 8: manifest validation + CONCURRENCY-SAFE no-loss ==
+  PASS  validate_manifest accepts a well-formed manifest
+  PASS  validate_manifest rejects a missing EV key
+  PASS  validate_manifest rejects a duplicated EV key
+  PASS  no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers
+  PASS  no-loss rejects a LOST email_address_state key
+  PASS  no-loss rejects a LOST email_delivery_events id
+  PASS  no-loss rejects unchanged reader fingerprints
+  PASS  MUTANT exact-count equality wrongly fails a legitimate new-row post (rule replaced)
+================  46 passed, 0 failed  ================

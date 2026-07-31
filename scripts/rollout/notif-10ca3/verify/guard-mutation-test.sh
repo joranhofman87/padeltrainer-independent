@@ -106,25 +106,27 @@ eq "classify {V1,V3} = invalid"  "$(classify_ledger "$V1,$V3"  "$V1" "$V2" "$V3"
 mutant_count_classify(){ local n; n=$(printf '%s' "$1" | tr ',' '\n' | sed '/^$/d' | grep -c .); case "$n" in 0) echo none;; 3) echo all;; *) echo prefix;; esac; }
 eq "MUTANT count-classifier wrongly calls {V1,V3} a prefix (guard load-bearing)" "$(mutant_count_classify "$V1,$V3")" prefix
 
-echo "== guard 8: baseline key validation + CORRECT preserve set =="
+echo "== guard 8: manifest validation + CONCURRENCY-SAFE no-loss =="
 A=$(printf 'a%.0s' $(seq 32)); B=$(printf 'b%.0s' $(seq 32)); C=$(printf 'c%.0s' $(seq 32)); Dd=$(printf 'd%.0s' $(seq 32))
-mkbase(){ printf 'eas_rows=%s\nede_rows=%s\neas_bad_state_rows=%s\nreader_academy_md5=%s\nreader_overview_md5=%s\n' "$1" "$2" "$3" "$4" "$5"; }
-mkbase 5 3 1 "$A" "$B" > "$TMP/good.txt"
-accept "validate_baseline_keys accepts a well-formed snapshot" validate_baseline_keys "$TMP/good.txt" ok
-grep -v '^ede_rows=' "$TMP/good.txt" > "$TMP/missing_key.txt"
-reject "validate_baseline_keys rejects a missing key" validate_baseline_keys "$TMP/missing_key.txt" missing
-{ cat "$TMP/good.txt"; echo 'ede_rows=99'; } > "$TMP/dup_key.txt"
-reject "validate_baseline_keys rejects a duplicated key" validate_baseline_keys "$TMP/dup_key.txt" dup
-sed 's/^eas_rows=5/eas_rows=oops/' "$TMP/good.txt" > "$TMP/badval.txt"
-reject "validate_baseline_keys rejects a non-numeric count" validate_baseline_keys "$TMP/badval.txt" badval
-# CORRECT preserve set: bad_state MAY change (recompute), rows must not, readers must change
-mkbase 5 3 1 "$A" "$B" > "$TMP/pre.txt"
-mkbase 5 3 9 "$C" "$Dd" > "$TMP/post_ok.txt"            # rows same, bad_state changed, readers changed
-mkbase 4 3 1 "$C" "$Dd" > "$TMP/post_rowloss.txt"       # eas rows differ
-mkbase 5 3 9 "$A" "$B"  > "$TMP/post_readersame.txt"    # readers unchanged
-accept "assert_baseline_preserved accepts a legitimate bad_state recomputation" assert_baseline_preserved "$TMP/pre.txt" "$TMP/post_ok.txt"
-reject "assert_baseline_preserved rejects row loss"            assert_baseline_preserved "$TMP/pre.txt" "$TMP/post_rowloss.txt"
-reject "assert_baseline_preserved rejects unchanged readers"   assert_baseline_preserved "$TMP/pre.txt" "$TMP/post_readersame.txt"
+evblock(){ printf 'EV eas_rows=%s\nEV ede_rows=%s\nEV eas_bad_state_rows=%s\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' "$1" "$2" "$3" "$4" "$5"; }
+{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EDE e_1'; echo 'EDE e_2'; evblock 2 2 1 "$A" "$B"; } > "$TMP/man_pre.txt"
+accept "validate_manifest accepts a well-formed manifest" validate_manifest "$TMP/man_pre.txt" ok
+grep -v '^EV ede_rows=' "$TMP/man_pre.txt" > "$TMP/man_missing.txt"
+reject "validate_manifest rejects a missing EV key" validate_manifest "$TMP/man_missing.txt" missing
+{ cat "$TMP/man_pre.txt"; echo 'EV ede_rows=99'; } > "$TMP/man_dup.txt"
+reject "validate_manifest rejects a duplicated EV key" validate_manifest "$TMP/man_dup.txt" dup
+# no-loss: new rows + changed readers OK; a lost key/id fails; unchanged readers fail
+{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EAS f_c'; echo 'EDE e_1'; echo 'EDE e_2'; echo 'EDE e_3'; evblock 3 3 9 "$C" "$Dd"; } > "$TMP/man_ok.txt"
+{ echo 'EAS f_a';               echo 'EDE e_1'; echo 'EDE e_2';               evblock 1 2 1 "$C" "$Dd"; } > "$TMP/man_easloss.txt"
+{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EDE e_1';                             evblock 2 1 1 "$C" "$Dd"; } > "$TMP/man_edeloss.txt"
+{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EAS f_c'; echo 'EDE e_1'; echo 'EDE e_2'; echo 'EDE e_3'; evblock 3 3 9 "$A" "$B"; } > "$TMP/man_readersame.txt"
+accept "no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers" assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_ok.txt"
+reject "no-loss rejects a LOST email_address_state key"   assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_easloss.txt"
+reject "no-loss rejects a LOST email_delivery_events id"  assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_edeloss.txt"
+reject "no-loss rejects unchanged reader fingerprints"    assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_readersame.txt"
+# MUTANT: exact-count equality (the old rule) wrongly rejects legitimate new rows
+mutant_count_equal(){ [[ "$(sed -n 's/^EV eas_rows=//p' "$1")" == "$(sed -n 's/^EV eas_rows=//p' "$2")" ]]; }
+reject "MUTANT exact-count equality wrongly fails a legitimate new-row post (rule replaced)" mutant_count_equal "$TMP/man_pre.txt" "$TMP/man_ok.txt"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

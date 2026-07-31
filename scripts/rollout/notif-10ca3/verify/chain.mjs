@@ -66,7 +66,8 @@ export function prepared(name) {
   let text = readFileSync(join(SQL_DIR, name), 'utf8').replace(/^\\ir? _assert\.sql\s*$/m, () => assertBody);
   return text.replace(/^\\.*$/gm, '');
 }
-// baseline.sql is pure \pset + SELECT; strip meta lines and run the SELECTs.
+// manifest.sql is pure \set/\pset + SELECT; strip meta lines and run the SELECTs.
+// (caller substitutes :'salt' with a literal before running via node-pg).
 export function preparedPlain(name) {
   return readFileSync(join(SQL_DIR, name), 'utf8').replace(/^\\.*$/gm, '');
 }

@@ -82,11 +82,18 @@ prove_drain() {
   canary_id="$(printf '%s' "$body" | jq -r '.invocationId // empty')"
   [[ "$canary_id" =~ ^[0-9a-fA-F-]{36}$ ]] || die "canary 503 lacked a valid invocationId (deploy #616 build that echoes it)"
   ok "canary 503 with invocationId ${canary_id:0:8}… — gate active"
-  # 2) wait out the drain window (covers the 400s hosted-function wall)
+  # 2) wait out the drain window (covers the 400s hosted-function wall). The
+  #    floor is still enforced (assert_drain_window above); ROLLOUT_TEST_FAST_DRAIN
+  #    skips ONLY the wall-clock sleep for the stubbed operator-flow test — never
+  #    the proof below. It is never set in production.
   local g_epoch now_epoch elapsed
   g_epoch="$(iso_to_epoch "$t_gate")"
-  log "draining >= ${min}s before any migration"
-  while :; do now_epoch="$(date -u +%s)"; elapsed=$((now_epoch - g_epoch)); [[ "$elapsed" -ge "$min" ]] && break; sleep 15; done
+  if [[ "${ROLLOUT_TEST_FAST_DRAIN:-}" == 1 ]]; then
+    elapsed="$min"; log "TEST fast-drain: wall-clock wait skipped (proof still enforced)"
+  else
+    log "draining >= ${min}s before any migration"
+    while :; do now_epoch="$(date -u +%s)"; elapsed=$((now_epoch - g_epoch)); [[ "$elapsed" -ge "$min" ]] && break; sleep 15; done
+  fi
   # 3) ONE widened, minute-rounding-padded snapshot enforcing EVERYTHING locally:
   #    exact canary blocked present + zero POST-gate sends (local --gate-at-epoch) +
   #    no straggler + no record_failed. Empty results fail (require-invocation).
@@ -100,7 +107,7 @@ prove_drain() {
       --assert-all-finished --fail-on-record-failed || rc=$?
     case "$rc" in
       0) break;;
-      4) log "canary evidence not ingested yet — retry $attempt/6"; sleep 15;;
+      4) log "canary evidence not ingested yet — retry $attempt/6"; [[ "${ROLLOUT_TEST_FAST_DRAIN:-}" == 1 ]] || sleep 15;;
       3) die "DRAIN PROOF FAILED: gate BYPASS (post-gate provider_send_started) in [$w_start,$w_end]";;
       5) die "DRAIN PROOF FAILED: in-flight straggler in [$w_start,$w_end]";;
       6) die "DRAIN PROOF FAILED: record_failed in [$w_start,$w_end]";;
@@ -111,16 +118,45 @@ prove_drain() {
   assert_drain_proven "$elapsed" "$min" 0
 }
 
-# --- baselines (fail-closed; validate_baseline_keys lives in common.sh) -----
-capture_baseline() {
-  local url="$1" tag="$2"; local out="$EVID/baseline-${tag}.txt"; require_cmd psql
-  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline.sql" > "$out" || die "baseline capture ($tag) failed"
-  validate_baseline_keys "$out" "$tag"; ok "baseline captured + validated: $out"
+# --- no-loss manifest (concurrency-safe; validate/compare live in common.sh) --
+# ROLLOUT_SALT (a per-run secret) is set by apply615 and persisted to
+# evidence/manifest-salt.txt so resume615 can reuse the ORIGINAL manifest.
+capture_manifest() {
+  local url="$1" tag="$2"; local out="$EVID/manifest-${tag}.txt"; require_cmd psql
+  : "${ROLLOUT_SALT:?internal: manifest salt not set}"
+  psql "$url" -v ON_ERROR_STOP=1 -v salt="$ROLLOUT_SALT" --no-psqlrc -q -f "$SQL_DIR/manifest.sql" > "$out" \
+    || die "manifest capture ($tag) failed"
+  validate_manifest "$out" "$tag"; ok "manifest captured + validated: $out"
 }
-compare_baseline() {  # delegates to the corrected preserve-set in common.sh
-  local pre="$EVID/baseline-pre.txt" post="$EVID/baseline-post.txt"
-  [[ -f "$pre" && -f "$post" ]] || die "missing baseline files"
-  assert_baseline_preserved "$pre" "$post"
+
+# Resolve the commit to build a recovery worktree from. Default = the reviewed
+# pin. A DIFFERING recovery requires a fully-reviewed, MERGED RECOVERY_PR whose
+# head equals RECOVERY_SHA and whose checks are green; we then deploy from its
+# verified MERGE commit. Arbitrary local commits are rejected.
+resolve_recovery_sha() {
+  if [[ -z "${RECOVERY_PR:-}" && -z "${RECOVERY_SHA:-}" ]]; then printf '%s' "$PR615_SHA"; return 0; fi
+  require_cmd gh
+  : "${RECOVERY_PR:?a differing recovery requires RECOVERY_PR (the reviewed PR number)}"
+  : "${RECOVERY_SHA:?a differing recovery requires RECOVERY_SHA (the reviewed head SHA)}"
+  [[ "$RECOVERY_SHA" =~ ^[0-9a-f]{40}$ ]] || die "RECOVERY_SHA must be a 40-hex commit"
+  git fetch origin
+  assert_sha_matches_pin "$(pr_head_sha "$RECOVERY_PR")" "$RECOVERY_SHA" "recovery PR #$RECOVERY_PR head"
+  gh pr checks "$RECOVERY_PR" || die "recovery PR #$RECOVERY_PR checks are not all green"
+  local state; state="$(gh pr view "$RECOVERY_PR" --json state -q .state)"
+  [[ "$state" == "MERGED" ]] || die "recovery PR #$RECOVERY_PR is not MERGED (state=$state)"
+  pr_merge_sha "$RECOVERY_PR"   # deploy from the verified merge commit
+}
+
+# --- migration ledger (fail-loud, valid prefixes only) ---------------------
+ledger_status() { # $1 url ; echoes none|prefix1|prefix2|all|invalid
+  local url="$1" csv; require_cmd psql
+  csv="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT CASE WHEN to_regclass('supabase_migrations.schema_migrations') IS NULL THEN ''
+       ELSE coalesce((SELECT string_agg(version, ',' ORDER BY version)
+                      FROM supabase_migrations.schema_migrations
+                      WHERE version IN ('$V1','$V2','$V3')), '') END")" \
+    || die "ledger query failed (connection/auth?) — cannot classify migration state"
+  classify_ledger "$csv" "$V1" "$V2" "$V3"
 }
 
 # --- migration ledger (fail-loud, valid prefixes only) ---------------------
@@ -188,7 +224,6 @@ cmd_apply615() {
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
     assert_pending_is_expected "$(push_dry_run_pending)" "$EXPECTED_VERSIONS" )
 
-  capture_baseline "$prod" pre
   log "activating maintenance gate"
   supabase secrets set INVOICE_EMAIL_MAINTENANCE=1 --project-ref "$EXPECTED_REF"
   local body; body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
@@ -197,24 +232,29 @@ cmd_apply615() {
 
   prove_drain "$T_GATE"       # cannot reach db push without this
 
+  # capture the pre-migration manifest AFTER the drain (reflects the gated,
+  # drained state); a fresh per-run salt is persisted so resume615 can reuse it.
+  ROLLOUT_SALT="$(gen_salt)"; printf '%s' "$ROLLOUT_SALT" > "$EVID/manifest-salt.txt"
+  capture_manifest "$prod" pre
+
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
     assert_pending_is_expected "$(push_dry_run_pending)" "$EXPECTED_VERSIONS"
     log "db push (lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
     PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" supabase db push --linked --yes ) || {
-      die "db push failed. ledger=$(ledger_status "$prod"). Gate stays ON. Run 'rollback615 $prod'."
+      die "db push failed. ledger=$(ledger_status "$prod"). Gate stays ON. Run 'resume615 --yes' or 'rollback615 $prod'."
     }
   local st; st="$(ledger_status "$prod")"
   case "$st" in
     all) ok "all three migrations recorded";;
     invalid) die "INVALID ledger state after push — STOP, investigate. Gate stays ON.";;
-    *) die "post-push ledger='$st' (expected all). Gate stays ON; run 'rollback615 $prod'.";;
+    *) die "post-push ledger='$st' (expected all). Gate stays ON; run 'resume615 --yes'.";;
   esac
 
   run_artifact "$prod" postflight.sql
   run_artifact "$prod" acl_matrix.sql
   run_artifact "$prod" ledger_verification.sql
-  capture_baseline "$prod" post
-  compare_baseline
+  capture_manifest "$prod" post
+  assert_manifest_no_loss "$EVID/manifest-pre.txt" "$EVID/manifest-post.txt"
 
   log "deactivating maintenance gate"
   supabase secrets unset INVOICE_EMAIL_MAINTENANCE --project-ref "$EXPECTED_REF"
@@ -254,32 +294,40 @@ EOF
 }
 
 # Executable partial-migration recovery. Resumes an interrupted apply615 WITHOUT
-# re-merging #615 and WITHOUT overwriting the original pre-migration baseline.
+# re-merging #615 and WITHOUT overwriting the ORIGINAL pre-migration manifest.
+# For prefix states it re-establishes gating and runs a FRESH exact-canary drain
+# immediately before the suffix push (current maintenance state does not prove
+# uninterrupted gating).
 cmd_resume615() {
   require_yes "${1:-}"; require_cmd supabase; require_cmd curl; require_cmd jq; require_cmd psql
-  : "${MANAGER_TOKEN:?}"; : "${CAP_STMT:?set CAP_STMT (ms)}"; : "${SUPABASE_DB_PASSWORD:?}"
+  : "${MANAGER_TOKEN:?}"; : "${CAP_STMT:?set CAP_STMT (ms)}"; : "${SUPABASE_DB_PASSWORD:?}"; : "${SUPABASE_ACCESS_TOKEN:?}"
   local CAP_LOCK="${CAP_LOCK:-3000}" prod="${PROD_CONN_URL:?set PROD_CONN_URL (password via PGPASSWORD)}"
   assert_conn_url_is_ref "$EXPECTED_REF" "$prod"
   local probe="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email?probe=1" body
-  # 0) the maintenance gate MUST still be ON (recovery happens mid-window)
-  body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
-  printf '%s' "$body" | jq -e '.maintenance == true' >/dev/null \
-    || die "maintenance gate is NOT ON — refusing to resume. Re-activate the gate first."
-  # 1) the ORIGINAL pre-migration baseline from the interrupted apply615 must exist (never overwrite it)
-  local pre="$EVID/baseline-pre.txt"
-  [[ -f "$pre" ]] || die "no original pre-migration baseline ($pre) — cannot resume safely"
-  validate_baseline_keys "$pre" pre
-  # 2) classify + compute the exact pending SUFFIX to apply
+  # reuse the ORIGINAL apply615 manifest + salt (never re-capture pre)
+  local pre="$EVID/manifest-pre.txt" saltf="$EVID/manifest-salt.txt"
+  [[ -f "$pre" && -f "$saltf" ]] || die "no original pre-migration manifest+salt in $EVID — cannot resume safely"
+  validate_manifest "$pre" pre
+  ROLLOUT_SALT="$(cat "$saltf")"; [[ -n "$ROLLOUT_SALT" ]] || die "empty manifest salt"
   local st; st="$(ledger_status "$prod")"; ok "ledger state = $st"
   case "$st" in
-    all)     ok "already fully applied — verifying only";;
     none)    die "ledger=none — nothing applied. Use apply615 (not resume).";;
     invalid) die "ledger=INVALID (impossible subset) — STOP. Do NOT resume.";;
+    all)
+      # verify-only: no migration to push, so no drain needed
+      body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
+      printf '%s' "$body" | jq -e '.maintenance != null' >/dev/null || die "probe failed"
+      ;;
     prefix1|prefix2)
       local suffix resume_sha; suffix="$(expected_pending_suffix "$st" "$V1" "$V2" "$V3")"
-      # retry the reviewed pin; only a separately reviewed RECOVERY_SHA may differ
-      resume_sha="${RECOVERY_SHA:-$PR615_SHA}"
-      [[ "$resume_sha" =~ ^[0-9a-f]{40}$ ]] || die "RECOVERY_SHA must be a 40-hex reviewed commit"
+      resume_sha="$(resolve_recovery_sha)"      # reviewed pin, or a proven-merged RECOVERY_PR
+      # ALWAYS re-establish gating + a FRESH exact-canary drain before pushing
+      log "ensuring maintenance gate is ON before resume"
+      supabase secrets set INVOICE_EMAIL_MAINTENANCE=1 --project-ref "$EXPECTED_REF"
+      body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
+      printf '%s' "$body" | jq -e '.maintenance == true' >/dev/null || die "gate did not activate; ABORT resume"
+      local T_GATE; T_GATE="$(now_iso)"; ok "gate ON at $T_GATE (resume)"
+      prove_drain "$T_GATE"                      # cannot reach the suffix push without this
       git fetch origin
       mk_worktree "$resume_sha"
       ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
@@ -291,17 +339,17 @@ cmd_resume615() {
       [[ "$st2" == all ]] || die "after resume, ledger='$st2' (expected all). Gate stays ON."
       ;;
   esac
-  # 3) verify + compare against the ORIGINAL pre-baseline, then permit gate-off
+  # verify + no-loss vs the ORIGINAL pre-manifest, then permit gate-off
   run_artifact "$prod" postflight.sql
   run_artifact "$prod" acl_matrix.sql
   run_artifact "$prod" ledger_verification.sql
-  capture_baseline "$prod" post
-  assert_baseline_preserved "$pre" "$EVID/baseline-post.txt"
+  capture_manifest "$prod" post
+  assert_manifest_no_loss "$pre" "$EVID/manifest-post.txt"
   log "deactivating maintenance gate"
   supabase secrets unset INVOICE_EMAIL_MAINTENANCE --project-ref "$EXPECTED_REF"
   body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
   printf '%s' "$body" | jq -e '.maintenance == false' >/dev/null || die "gate not back to maintenance=false; investigate"
-  ok "resume complete: ledger=all, postflight passed, baseline preserved, gate OFF"
+  ok "resume complete: ledger=all, postflight passed, no-loss verified, gate OFF"
 }
 
 # --- dispatch --------------------------------------------------------------

@@ -21,8 +21,8 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | SQL artifacts execute on the real chain; every assertion mutation-pinned | `node …/verify/verify-artifacts.mjs` | [verify-run.txt](evidence/verify-run.txt) | 13/13 |
 | A/B/C/D/E rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 21/21 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
-| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 45/45 |
-| operator control flow (resume615) with stubbed gh/supabase/psql | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 14/14 |
+| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 46/46 |
+| operator control flow (resume615 fresh-drain / recovery-SHA / no-loss) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 22/22 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -45,7 +45,7 @@ run-rollout.sh              operator dispatcher (#616 then #615; per-step gated)
 lib/common.sh               logging; EXACT-identity allow-list; drain/pending guards; psql runner
 sql/_assert.sql             portable assertion helpers (pg_temp.assert / assert_eq / note)
 sql/preflight.sql           pre-migration reads + delta-absent + A_window/CAP (also post-abort check)
-sql/baseline.sql            machine-readable snapshot: preserve-keys + reader fingerprints
+sql/manifest.sql            no-loss manifest: salted address/id fingerprints + reader fingerprints
 sql/academy_fixture.sql     disposable-clone reader precedence proof (+ rollback proof)
 sql/postflight.sql          post-migration delta present + INERT + digest-disabled
 sql/acl_matrix.sql          self-contained ACL lockdown assertions
@@ -56,6 +56,7 @@ verify/verify-artifacts.mjs SQL-artifact proof (+ mutations)
 verify/rehearsals.mjs       executable A/B/C/D rehearsals
 verify/identity-selftest.sh identity allow-list proof
 verify/guard-mutation-test.sh critical-guard mutation proofs
+verify/operator-flow-test.sh  resume615 control-flow proof (stubbed gh/supabase/psql)
 evidence/                   captured run outputs
 ```
 
@@ -124,11 +125,15 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
   pushes the suffix, requires `ledger=all`, runs postflight/ACL/ledger, compares
   against the **original** pre-baseline (never overwritten), and only then turns
   the gate OFF. See the operator recovery contract below.
-- **Baselines.** `baseline.sql` is captured pre/post (`ON_ERROR_STOP`, every key
-  validated). Only **true invariants** are equality-checked — email-table row
-  counts must be preserved, reader fingerprints must change. `eas_bad_state_rows`
-  is recorded as **evidence only**: PR #615 intentionally recomputes historical
-  state (e.g. `hard_bounced`/`soft_bounced` → `ok`), so its count may change.
+- **Concurrency-safe no-loss manifest.** `manifest.sql` is captured **after the
+  drain** (pre) and post-migration, `ON_ERROR_STOP`, every EV key validated. The
+  compare is a **no-loss subset**: every pre-existing `email_address_state`
+  address key and `email_delivery_events.id` must still exist post-migration —
+  **new rows are allowed** (a pre-gate send finishing or a Resend webhook
+  inserting during the window is legitimate). Address keys/ids are written as
+  **salted fingerprints** (per-run secret salt) so no raw email PII lands in
+  evidence. Counts + `eas_bad_state_rows` are **evidence only** (PR #615
+  recomputes state); reader fingerprints **must** change.
 
 ---
 
@@ -188,16 +193,38 @@ Keep the window well under 24h (the endpoint silently returns empty near ~48h).
 
 ## Operator recovery contract (`resume615 --yes`)
 
-Preconditions: the interrupted `apply615` left the gate **ON** and its original
-`evidence/baseline-pre.txt`. `resume615`:
+Preconditions: the interrupted `apply615` left its original
+`evidence/manifest-pre.txt` + `manifest-salt.txt` (reused, never re-captured).
+`resume615`:
 
 | ledger state | action |
 |---|---|
 | `none` | refuse — use `apply615` (nothing applied) |
-| `prefix1` (`{V1}`) | push the exact suffix **`V2,V3`** |
-| `prefix2` (`{V1,V2}`) | push the exact suffix **`V3`** |
-| `all` | verify only |
+| `prefix1` (`{V1}`) | **re-enable gate + FRESH exact-canary drain**, then push the exact suffix **`V2,V3`** |
+| `prefix2` (`{V1,V2}`) | same fresh drain, then push the exact suffix **`V3`** |
+| `all` | verify only (no drain) |
 | `invalid` (`{V2}`, `{V1,V3}`, …) | refuse — stop, investigate |
+
+**Fresh drain:** current maintenance state does not prove *uninterrupted* gating,
+so for prefix states `resume615` re-activates the gate, sets a fresh `T_GATE`,
+and runs the same `prove_drain` (exact-canary correlation, 520s coverage, zero
+post-gate starts, no straggler, no `record_failed`) **before** the suffix push —
+even if the probe already reports `maintenance=true`.
+
+**Reviewed-recovery-SHA trust:** the default retries the reviewed `PR615_SHA`. A
+*differing* recovery is accepted **only** with a fully-reviewed `RECOVERY_PR` +
+`RECOVERY_SHA` where the PR head equals `RECOVERY_SHA`, its checks are green, and
+it is MERGED — then the push deploys from its **verified merge commit**. Arbitrary
+local commits, head mismatches, pending/failed CI, and unmerged PRs are rejected.
+`resume615` still never re-merges #615.
+
+## No-loss baseline contract
+
+The migration must not lose data. `resume615`/`apply615` prove, against the
+manifest captured after the drain, that **every** pre-existing address key and
+event id still exists post-migration; **new** rows (a pre-gate send finishing, a
+Resend webhook callback) are allowed. Deleting any pre-existing address/event
+fails. This replaces the earlier unsafe exact-count equality.
 
 It does **not** re-merge #615 and does **not** overwrite the pre-baseline. It
 retries the reviewed pin (`PR615_SHA`); a corrected migration requires a

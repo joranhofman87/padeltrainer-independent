@@ -139,27 +139,38 @@ async function rehearsalC(admin) {
   } finally { await c.end(); }
 }
 
-// ---- D: full rehearsal + baseline-preserve + fixture/postflight/acl/ledger --
+// ---- D: full rehearsal + CONCURRENCY-SAFE no-loss manifest + artifacts ------
 async function rehearsalD(admin) {
-  console.log('\n[D] full rehearsal + baseline preserve + artifacts:');
+  console.log('\n[D] full rehearsal + no-loss manifest (new rows allowed) + artifacts:');
   const c = await freshDb(admin, 'rehearse_d');
+  const salt = 'rehearsal-d-salt';
+  const easSet = async () => new Set((await c.query(`SELECT md5($1||'|'||email) f FROM public.email_address_state`, [salt])).rows.map((r) => r.f));
+  const edeSet = async () => new Set((await c.query(`SELECT md5($1||'|'||id::text) f FROM public.email_delivery_events`, [salt])).rows.map((r) => r.f));
+  const manifestSql = preparedPlain('manifest.sql').replace(/:'salt'/g, `'${salt}'`);
   try {
     await c.query(`INSERT INTO public.email_address_state(email,state)
       SELECT 'd'||g||'@ex.test', CASE WHEN g%7=0 THEN 'hard_bounced' ELSE 'ok' END FROM generate_series(1,500) g`);
     await c.query(`INSERT INTO public.email_delivery_events(recipient_email,event_type,occurred_at)
       SELECT 'd'||g||'@ex.test','sent', now() FROM generate_series(1,120) g`);
-    const easPre = (await c.query('SELECT count(*)::int n FROM public.email_address_state')).rows[0].n;
-    const edePre = (await c.query('SELECT count(*)::int n FROM public.email_delivery_events')).rows[0].n;
-    // baseline.sql must parse/execute (operator persists its output pre/post)
-    await c.query(preparedPlain('baseline.sql'));
+    const easPre = await easSet(); const edePre = await edeSet();
+    await c.query(manifestSql);                         // manifest.sql parses/executes (pre)
 
     await applyPr615(c);
+    // during the window: a pre-gate send FINISHES (new event row) + a Resend webhook INSERTS
+    await c.query(`INSERT INTO public.email_delivery_events(recipient_email,event_type,occurred_at) VALUES ('late@ex.test','delivered',now())`);
+    await c.query(`INSERT INTO public.email_address_state(email,state) VALUES ('webhook@ex.test','soft_bounced')`);
+    await c.query(manifestSql);                         // manifest.sql parses (post)
 
-    const easPost = (await c.query('SELECT count(*)::int n FROM public.email_address_state')).rows[0].n;
-    const edePost = (await c.query('SELECT count(*)::int n FROM public.email_delivery_events')).rows[0].n;
-    record('D: baseline preserved — email_address_state row count', easPre === easPost, `${easPre} -> ${easPost}`);
-    record('D: baseline preserved — email_delivery_events row count', edePre === edePost, `${edePre} -> ${edePost}`);
-    await c.query(preparedPlain('baseline.sql'));       // post-migration baseline parses too
+    const easPost = await easSet(); const edePost = await edeSet();
+    const easLost = [...easPre].filter((k) => !easPost.has(k));
+    const edeLost = [...edePre].filter((k) => !edePost.has(k));
+    record('D: no-loss holds while NEW rows (pre-gate finish + webhook) are added',
+      easLost.length === 0 && edeLost.length === 0, `+${easPost.size - easPre.size} eas, +${edePost.size - edePre.size} ede`);
+
+    // deleting a pre-existing address MUST be detectable as loss
+    await c.query(`DELETE FROM public.email_address_state WHERE email='d1@ex.test'`);
+    const easDel = await easSet();
+    record('D: deleting a pre-existing address is detected as loss', [...easPre].filter((k) => !easDel.has(k)).length === 1);
 
     for (const art of ['academy_fixture.sql', 'postflight.sql', 'acl_matrix.sql', 'ledger_verification.sql']) {
       let ok = true, msg = '';

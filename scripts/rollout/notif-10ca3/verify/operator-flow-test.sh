@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# operator-flow-test.sh — exercises the ACTUAL resume615 operator control flow
-# with stubbed gh/supabase/psql/curl/git (not just SQL continuation). Proves:
-#   * resume615 pushes the exact pending SUFFIX (prefix1 -> V2,V3; prefix2 -> V3)
-#     and reaches ledger=all;
-#   * it does NOT re-merge #615 (gh is never invoked) and does NOT overwrite the
-#     original pre-migration baseline;
-#   * it refuses when the gate is OFF, when the ledger is 'none' or 'invalid';
-#   * it turns the gate OFF only after verification.
+# operator-flow-test.sh — exercises the ACTUAL resume615 control flow with
+# stubbed gh/supabase/psql/curl/git (not just SQL continuation). Proves:
+#   * prefix1/prefix2 run a FRESH exact-canary drain BEFORE the suffix push
+#     (no suffix push occurs without exact canary evidence);
+#   * the exact pending suffix is pushed (prefix1->V2,V3; prefix2->V3), reaching all;
+#   * a differing RECOVERY_PR is only accepted when merged + checks-green + head
+#     matches; arbitrary/unmerged/head-mismatched recovery is rejected;
+#   * the no-loss manifest catches a lost key even after a successful push;
+#   * it never re-merges #615 (gh unused on the default-pin path) and never
+#     overwrites the ORIGINAL pre-migration manifest.
+# ROLLOUT_TEST_FAST_DRAIN=1 skips only the wall-clock wait (the proof still runs).
 # Run: bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 # ===========================================================================
 set -uo pipefail
@@ -16,21 +19,19 @@ RR="$HERE/../run-rollout.sh"
 export REF=abcdefghijklmnopqrst
 export V1=20261006100000 V2=20261006110000 V3=20261006120000
 PROD="postgresql://postgres@db.${REF}.supabase.co:5432/postgres?sslmode=require"
+CANARY=aaaaaaaa-1111-1111-1111-111111111111
 ROOT="$(mktemp -d)"; trap 'rm -rf "$ROOT"' EXIT
-BIN="$ROOT/bin"; mkdir -p "$BIN"
-export STATEDIR="$ROOT/state"
+BIN="$ROOT/bin"; mkdir -p "$BIN"; export STATEDIR="$ROOT/state"
 
 P=0; F=0
 pass(){ P=$((P+1)); echo "  PASS  $*"; }
 fail(){ F=$((F+1)); echo "  FAIL  $*"; }
 md5of(){ md5 -q "$1" 2>/dev/null || md5sum "$1" | awk '{print $1}'; }
 
-# ---- stubs ----------------------------------------------------------------
 cat > "$BIN/git" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
-  fetch|cat-file) exit 0;;
-  rev-parse) echo 0000000000000000000000000000000000000000; exit 0;;
+  fetch|cat-file) exit 0;; rev-parse) echo 0000000000000000000000000000000000000000; exit 0;;
   worktree)
     if [[ "$2" == add ]]; then wt="$4"; mkdir -p "$wt/supabase"; printf 'project_id = "%s"\n' "$REF" > "$wt/supabase/config.toml"; exit 0; fi
     if [[ "$2" == remove ]]; then for a in "$@"; do [[ -d "$a" ]] && rm -rf "$a"; done; exit 0; fi;;
@@ -49,9 +50,7 @@ if [[ "$1" == db && "$2" == push ]]; then
   printf '%s,%s,%s' "$V1" "$V2" "$V3" > "$L"; echo "Finished supabase db push."; exit 0
 fi
 if [[ "$1" == secrets ]]; then
-  [[ "$2" == unset ]] && echo off > "$STATEDIR/gate"
-  [[ "$2" == set   ]] && echo on  > "$STATEDIR/gate"
-  exit 0
+  [[ "$2" == unset ]] && echo off > "$STATEDIR/gate"; [[ "$2" == set ]] && echo on > "$STATEDIR/gate"; exit 0
 fi
 exit 0
 EOF
@@ -59,62 +58,115 @@ cat > "$BIN/psql" <<'EOF'
 #!/usr/bin/env bash
 if printf '%s ' "$@" | grep -q -- '-Atqc'; then cat "$STATEDIR/ledger" 2>/dev/null; echo; exit 0; fi
 f=""; prev=""; for a in "$@"; do [[ "$prev" == "-f" ]] && f="$a"; prev="$a"; done
-if [[ "$f" == *baseline.sql ]]; then
-  printf 'eas_rows=5\nede_rows=3\neas_bad_state_rows=7\nreader_academy_md5=%s\nreader_overview_md5=%s\n' \
+if [[ "$f" == *manifest.sql ]]; then
+  mode="$(cat "$STATEDIR/MANIFEST_MODE" 2>/dev/null || echo ok)"
+  echo 'EAS f_a'; [[ "$mode" == loss ]] || echo 'EAS f_b'; echo 'EAS f_new'
+  echo 'EDE e_1'; echo 'EDE e_2'
+  printf 'EV eas_rows=3\nEV ede_rows=2\nEV eas_bad_state_rows=7\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
     "$(printf 'b%.0s' $(seq 32))" "$(printf 'c%.0s' $(seq 32))"
 fi
 exit 0
 EOF
 cat > "$BIN/curl" <<'EOF'
 #!/usr/bin/env bash
-if printf '%s ' "$@" | grep -q 'probe=1'; then
-  [[ "$(cat "$STATEDIR/gate" 2>/dev/null)" == on ]] && echo '{"maintenance":true}' || echo '{"maintenance":false}'
+A="$*"
+if grep -q 'probe=1' <<<"$A"; then
+  [[ "$(cat "$STATEDIR/gate" 2>/dev/null)" == on ]] && echo '{"maintenance":true}' || echo '{"maintenance":false}'; exit 0
+fi
+if grep -q 'api.supabase.com' <<<"$A"; then
+  if [[ "$(cat "$STATEDIR/DRAIN_EVIDENCE" 2>/dev/null)" == ok ]]; then
+    printf '{"result":[{"timestamp":"2026-07-31T13:00:00Z","event_message":"[SEND-INVOICE-EMAIL] event:blocked {\\"invocationId\\":\\"%s\\"}"}],"error":null}' "$(cat "$STATEDIR/canary_id")"
+  else printf '{"result":[],"error":null}'; fi
   exit 0
 fi
-echo '{}'; exit 0
+if grep -q 'functions.supabase.co/send-invoice-email' <<<"$A"; then
+  echo aaaaaaaa-1111-1111-1111-111111111111 > "$STATEDIR/canary_id"
+  printf '{"success":false,"error":"invoice_email_maintenance","invocationId":"aaaaaaaa-1111-1111-1111-111111111111"}\n503'; exit 0
+fi
+echo '{}'
 EOF
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
-echo "$@" >> "$STATEDIR/gh_called"; exit 0
+echo "$@" >> "$STATEDIR/gh_called"
+if [[ "$1" == pr && "$2" == view ]]; then
+  grep -q headRefOid <<<"$*"   && { cat "$STATEDIR/rec_head"  2>/dev/null || echo 0000000000000000000000000000000000000000; exit 0; }
+  grep -q mergeCommit <<<"$*"  && { cat "$STATEDIR/rec_merge" 2>/dev/null || echo 1111111111111111111111111111111111111111; exit 0; }
+  grep -q '\.state'    <<<"$*" && { cat "$STATEDIR/rec_state" 2>/dev/null || echo MERGED; exit 0; }
+  exit 0
+fi
+if [[ "$1" == pr && "$2" == checks ]]; then [[ "$(cat "$STATEDIR/rec_checks" 2>/dev/null)" == green ]] && exit 0 || exit 1; fi
+exit 0
 EOF
 chmod +x "$BIN"/*
 
-# ---- driver ---------------------------------------------------------------
 EVID="$ROOT/evidence"
-place_pre(){ mkdir -p "$EVID"; printf 'eas_rows=5\nede_rows=3\neas_bad_state_rows=1\nreader_academy_md5=%s\nreader_overview_md5=%s\n' \
-  "$(printf 'a%.0s' $(seq 32))" "$(printf 'a%.0s' $(seq 32))" > "$EVID/baseline-pre.txt"; }
-run_resume(){ # $1 ledger  $2 gate
-  rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s' "$1" > "$STATEDIR/ledger"; printf '%s' "$2" > "$STATEDIR/gate"
-  place_pre; PRE_SUM="$(md5of "$EVID/baseline-pre.txt")"
-  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+place_pre(){ mkdir -p "$EVID"
+  { echo 'EAS f_a'; echo 'EAS f_b'; echo 'EDE e_1'; echo 'EDE e_2';
+    printf 'EV eas_rows=2\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
+      "$(printf 'a%.0s' $(seq 32))" "$(printf 'a%.0s' $(seq 32))"; } > "$EVID/manifest-pre.txt"
+  printf 'deadbeefsalt' > "$EVID/manifest-salt.txt"; }
+run(){ # $1 ledger $2 gate $3 drain-evidence $4 manifest-mode ; extra env via caller
+  rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
+  printf '%s' "$1" > "$STATEDIR/ledger"; printf '%s' "$2" > "$STATEDIR/gate"
+  printf '%s' "$3" > "$STATEDIR/DRAIN_EVIDENCE"; printf '%s' "$4" > "$STATEDIR/MANIFEST_MODE"
+  place_pre; PRE_SUM="$(md5of "$EVID/manifest-pre.txt")"
+  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" ROLLOUT_TEST_FAST_DRAIN=1 EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
     MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 \
     bash "$RR" resume615 --yes >/dev/null 2>&1
 }
 
-echo "== resume615: prefix1 (only V1 applied) =="
-run_resume "$V1" on; rc=$?
-[[ "$rc" == 0 ]] && pass "prefix1 resume exits 0" || fail "prefix1 resume exit=$rc"
-[[ "$(cat "$STATEDIR/ledger")" == "$V1,$V2,$V3" ]] && pass "prefix1 -> pushed suffix, ledger now all" || fail "ledger=$(cat "$STATEDIR/ledger")"
-[[ "$(cat "$STATEDIR/gate")" == off ]] && pass "prefix1 gate turned OFF after verify" || fail "gate=$(cat "$STATEDIR/gate")"
-[[ ! -f "$STATEDIR/gh_called" ]] && pass "prefix1 did NOT re-merge (gh never called)" || fail "gh called: $(cat "$STATEDIR/gh_called")"
-[[ "$(md5of "$EVID/baseline-pre.txt")" == "$PRE_SUM" ]] && pass "prefix1 original pre-baseline NOT overwritten" || fail "pre-baseline changed"
+echo "== fresh-drain recovery: prefix1 with exact canary evidence =="
+run "$V1" on ok ok; rc=$?
+[[ "$rc" == 0 ]] && pass "prefix1 resume (fresh drain) exits 0" || fail "exit=$rc"
+[[ "$(cat "$STATEDIR/ledger")" == "$V1,$V2,$V3" ]] && pass "pushed the V2,V3 suffix -> ledger all" || fail "ledger=$(cat "$STATEDIR/ledger")"
+[[ "$(cat "$STATEDIR/gate")" == off ]] && pass "gate turned OFF after verify" || fail "gate=$(cat "$STATEDIR/gate")"
+[[ ! -f "$STATEDIR/gh_called" ]] && pass "default-pin path did NOT call gh (no re-merge)" || fail "gh called"
+[[ "$(md5of "$EVID/manifest-pre.txt")" == "$PRE_SUM" ]] && pass "original pre-manifest NOT overwritten" || fail "pre-manifest changed"
 
-echo "== resume615: prefix2 (V1,V2 applied) =="
-run_resume "$V1,$V2" on; rc=$?
-[[ "$rc" == 0 ]] && pass "prefix2 resume exits 0" || fail "prefix2 resume exit=$rc"
-[[ "$(cat "$STATEDIR/ledger")" == "$V1,$V2,$V3" ]] && pass "prefix2 -> pushed V3 suffix, ledger now all" || fail "ledger=$(cat "$STATEDIR/ledger")"
-[[ ! -f "$STATEDIR/gh_called" ]] && pass "prefix2 did NOT re-merge (gh never called)" || fail "gh called"
+echo "== fresh-drain recovery: prefix2 =="
+run "$V1,$V2" on ok ok; rc=$?
+[[ "$rc" == 0 ]] && pass "prefix2 resume exits 0" || fail "exit=$rc"
+[[ "$(cat "$STATEDIR/ledger")" == "$V1,$V2,$V3" ]] && pass "pushed the V3 suffix -> ledger all" || fail "ledger=$(cat "$STATEDIR/ledger")"
 
-echo "== resume615: refusals =="
-run_resume "$V1" off; [[ $? -ne 0 ]] && pass "refuses when the gate is OFF" || fail "resumed with gate OFF"
-run_resume "$V2" on;  [[ $? -ne 0 ]] && pass "refuses an INVALID ledger subset ({V2})" || fail "resumed on invalid ledger"
-run_resume "" on;     [[ $? -ne 0 ]] && pass "refuses 'none' (directs to apply615)" || fail "resumed on none"
+echo "== NO suffix push without exact canary evidence =="
+run "$V1" on empty ok; rc=$?
+[[ "$rc" -ne 0 ]] && pass "empty drain evidence aborts resume" || fail "resumed without canary evidence"
+[[ "$(cat "$STATEDIR/ledger")" == "$V1" ]] && pass "NO suffix push occurred (ledger still prefix1)" || fail "ledger advanced to $(cat "$STATEDIR/ledger")"
+[[ "$(cat "$STATEDIR/gate")" == on ]] && pass "gate stays ON after aborted drain" || fail "gate=$(cat "$STATEDIR/gate")"
 
-echo "== resume615: already all =="
-run_resume "$V1,$V2,$V3" on; rc=$?
-[[ "$rc" == 0 ]] && pass "all-applied resume verifies + exits 0" || fail "all resume exit=$rc"
-[[ "$(cat "$STATEDIR/gate")" == off ]] && pass "all-applied resume turns gate OFF after verify" || fail "gate not off"
-[[ ! -f "$STATEDIR/gh_called" ]] && pass "all-applied resume did NOT re-merge" || fail "gh called"
+echo "== gate OFF is re-enabled + drained (not merely refused) =="
+run "$V1" off ok ok; rc=$?
+[[ "$rc" == 0 ]] && pass "gate-off prefix1 re-enables + drains + completes" || fail "exit=$rc"
+[[ "$(cat "$STATEDIR/ledger")" == "$V1,$V2,$V3" ]] && pass "suffix pushed after re-enable+drain" || fail "ledger=$(cat "$STATEDIR/ledger")"
+
+echo "== no-loss catches a lost key even after a successful push =="
+run "$V1" on ok loss; rc=$?
+[[ "$rc" -ne 0 ]] && pass "post-push no-loss violation aborts (gate stays ON)" || fail "no-loss not enforced"
+[[ "$(cat "$STATEDIR/gate")" == on ]] && pass "gate stays ON when no-loss fails" || fail "gate=$(cat "$STATEDIR/gate")"
+
+echo "== reviewed-recovery-SHA trust =="
+REC=cccccccccccccccccccccccccccccccccccccccc; MERGE=dddddddddddddddddddddddddddddddddddddddd
+setrec(){ printf '%s' "$1" > "$STATEDIR/rec_head"; printf '%s' "$2" > "$STATEDIR/rec_checks"; printf '%s' "$3" > "$STATEDIR/rec_state"; printf '%s' "$MERGE" > "$STATEDIR/rec_merge"; }
+run_rec(){ # $1 head $2 checks $3 state — seeds rec_* into a fresh STATEDIR then runs
+  rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s' "$V1" > "$STATEDIR/ledger"; printf 'on' > "$STATEDIR/gate"
+  printf 'ok' > "$STATEDIR/DRAIN_EVIDENCE"; printf 'ok' > "$STATEDIR/MANIFEST_MODE"; setrec "$1" "$2" "$3"; place_pre
+  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" ROLLOUT_TEST_FAST_DRAIN=1 EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+    MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 RECOVERY_PR=99 RECOVERY_SHA="$REC" \
+    bash "$RR" resume615 --yes >/dev/null 2>&1
+}
+run_rec "$REC" green MERGED; [[ $? == 0 ]] && pass "merged + green + head-match RECOVERY_PR accepted" || fail "valid recovery rejected"
+run_rec "$REC" green OPEN;   [[ $? -ne 0 ]] && pass "UNMERGED recovery PR rejected" || fail "unmerged recovery accepted"
+run_rec "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" green MERGED; [[ $? -ne 0 ]] && pass "head-MISMATCH recovery rejected" || fail "head mismatch accepted"
+run_rec "$REC" red MERGED;   [[ $? -ne 0 ]] && pass "FAILING-checks recovery PR rejected" || fail "failing-checks recovery accepted"
+
+echo "== refusals: none / invalid =="
+run "" on ok ok;   [[ $? -ne 0 ]] && pass "refuses 'none' (use apply615)" || fail "resumed on none"
+run "$V2" on ok ok;[[ $? -ne 0 ]] && pass "refuses INVALID subset {V2}" || fail "resumed on invalid"
+
+echo "== already all: verify-only, no drain =="
+run "$V1,$V2,$V3" on ok ok; rc=$?
+[[ "$rc" == 0 ]] && pass "already-all verifies + exits 0" || fail "exit=$rc"
+[[ "$(cat "$STATEDIR/gate")" == off ]] && pass "already-all turns gate OFF" || fail "gate not off"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]
