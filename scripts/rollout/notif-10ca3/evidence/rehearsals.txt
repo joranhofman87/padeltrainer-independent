@@ -1,0 +1,24 @@
+$ node scripts/rollout/notif-10ca3/verify/rehearsals.mjs
+
+rollout rehearsals A/B/C/D — PR615 migrations pinned @ 2b247f43afe8
+[A] measure A_window (ACCESS EXCLUSIVE rewrite) + CAP:
+        · A_window: rewrite of 20000 rows via migration 20261006100000 took 566.4 ms
+        · derived CAP_STMT (measured + 50% headroom) = 30850 ms; CAP_LOCK = 3000 ms
+  PASS  A: rewrite applied + measured, is_suppressed present  — 566ms for 20000 rows
+[B] lock_timeout abort under contention -> no partial delta:
+  PASS  B: bounded db push aborts on lock contention  — sqlstate=55P03 (55P03=lock_not_available)
+  PASS  B: after abort, is_suppressed column is ABSENT (atomic per-file)
+[C] ledger model none -> PREFIX -> all + recovery:
+  PASS  C: none state detected
+  PASS  C: PREFIX state after mid-push failure  — applied=[20261006100000]
+  PASS  C: prefix is consistent (file1 applied, file2 absent)
+  PASS  C: recovery (re-push pending) reaches ALL state
+  PASS  C: postflight passes after recovery
+[D] full rehearsal + baseline preserve + artifacts:
+  PASS  D: baseline preserved — email_address_state row count  — 500 -> 500
+  PASS  D: baseline preserved — email_delivery_events row count  — 120 -> 120
+  PASS  D: academy_fixture.sql passes on full clone
+  PASS  D: postflight.sql passes on full clone
+  PASS  D: acl_matrix.sql passes on full clone
+  PASS  D: ledger_verification.sql passes on full clone
+================  14 passed, 0 failed  ================

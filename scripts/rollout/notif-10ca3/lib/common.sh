@@ -18,6 +18,11 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1 ${2:+($2)}"
 }
 
+# portable ISO8601-UTC <-> epoch (BSD/macOS `date -j -f`, GNU `date -d`)
+iso_to_epoch() { date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s; }
+epoch_to_iso() { date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
 # ---------------------------------------------------------------------------
 # project-ref identity — EXACT allow-list, never a substring match
 # ---------------------------------------------------------------------------
@@ -89,6 +94,42 @@ assert_linked_ref_is() {
   [[ -n "$linked" ]] || die "empty $ref_file — re-run: supabase link --project-ref $ref"
   [[ "$linked" == "$ref" ]] || die "linked project ref '$linked' != EXPECTED_REF '$ref' — refusing to push"
   ok "linked Supabase project ref verified == '$ref'"
+}
+
+# Assert the checked-out supabase/config.toml (CWD-relative — run INSIDE the
+# rollout worktree) declares project_id == ref. Catches a worktree whose config
+# points at a different project before any db push.
+assert_config_project_ref_is() {
+  local ref="$1" f="supabase/config.toml" got
+  assert_ref_format "$ref"
+  [[ -f "$f" ]] || die "no $f in $(pwd) — run inside the rollout worktree"
+  got="$(sed -n 's/^[[:space:]]*project_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)"
+  [[ -n "$got" ]] || die "could not read project_id from $f"
+  [[ "$got" == "$ref" ]] || die "worktree config project_id '$got' != EXPECTED_REF '$ref' — refusing"
+  ok "worktree config project_id verified == '$ref'"
+}
+
+# ---------------------------------------------------------------------------
+# rollout guards (unit-tested by verify/guard-mutation-test.sh)
+# ---------------------------------------------------------------------------
+# The pending migration set MUST equal the expected set exactly (order-free).
+assert_pending_is_expected() {
+  local actual="$1" expected="$2" a e
+  a="$(printf '%s\n' "$actual"   | sed '/^[[:space:]]*$/d' | sort -u)"
+  e="$(printf '%s\n' "$expected" | sed '/^[[:space:]]*$/d' | sort -u)"
+  [[ "$a" == "$e" ]] || die "pending migrations are not exactly the expected set (got: $(echo "$a" | tr '\n' ' ')| want: $(echo "$e" | tr '\n' ' '))"
+  ok "pending migration set == expected ($(echo "$e" | tr '\n' ' '))"
+}
+
+# The maintenance drain must be PROVEN before any migration: enough time elapsed
+# AND zero sends passed the gate. Both conditions are hard.
+assert_drain_proven() {
+  local elapsed="$1" min="$2" sends="$3"
+  [[ "$elapsed" =~ ^[0-9]+$ ]] || die "drain: bad elapsed '$elapsed'"
+  [[ "$sends" =~ ^[0-9]+$ ]]  || die "drain: bad send count '$sends'"
+  [[ "$elapsed" -ge "$min" ]] || die "drain NOT proven: only ${elapsed}s elapsed (need >= ${min}s)"
+  [[ "$sends" -eq 0 ]]        || die "drain NOT proven: ${sends} provider_send_started event(s) passed the gate"
+  ok "drain proven: ${elapsed}s elapsed, 0 sends since gate ON"
 }
 
 # ---------------------------------------------------------------------------

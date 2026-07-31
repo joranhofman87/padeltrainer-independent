@@ -1,0 +1,21 @@
+$ bash scripts/rollout/notif-10ca3/verify/guard-mutation-test.sh
+
+== guard 1: EXACT identity allow-list ==
+  PASS  real assert_host_user_is_ref rejects look-alike host
+  PASS  MUTANT substring-identity wrongly accepts the look-alike (guard is load-bearing)
+  PASS  real assert_conn_url_is_ref rejects spoofed-host URL
+== guard 2: EXACT pending-migration set ==
+  PASS  real pending-guard rejects an extra 4th migration
+  PASS  real pending-guard rejects a missing migration
+  PASS  MUTANT subset-pending wrongly accepts an extra migration (guard is load-bearing)
+== guard 3: authoritative drain proof ==
+  PASS  clean window (no send past the gate) passes
+  PASS  real drain rejects a gate BYPASS (provider_send_started)
+  PASS  MUTANT --allow-sends wrongly accepts a gate bypass (guard is load-bearing)
+  PASS  real drain (--assert-all-finished) rejects an in-flight straggler
+  PASS  MUTANT without --assert-all-finished wrongly accepts a straggler (guard is load-bearing)
+  PASS  fully-drained window (started+finished) passes both checks
+  PASS  assert_drain_proven rejects elapsed < min
+  PASS  assert_drain_proven rejects sends > 0
+  PASS  assert_drain_proven accepts elapsed>=min & 0 sends
+================  15 passed, 0 failed  ================

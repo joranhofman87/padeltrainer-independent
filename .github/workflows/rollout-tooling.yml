@@ -1,0 +1,56 @@
+name: Rollout tooling (10c-a3)
+
+# Runs the executable proofs for the 10c-a3 rollout bundle. Path-filtered so it
+# only fires when the tooling changes (it does on the tooling PR). The SQL
+# artifacts + rehearsals apply the REAL migration chain, including the three
+# PR #615 migrations read at a PINNED SHA (verify/chain.mjs PR615_SHA); this job
+# fetches that branch so `git show <sha>:...` resolves.
+on:
+  push:
+    paths:
+      - 'scripts/rollout/notif-10ca3/**'
+      - '.github/workflows/rollout-tooling.yml'
+  pull_request:
+    paths:
+      - 'scripts/rollout/notif-10ca3/**'
+      - '.github/workflows/rollout-tooling.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the pinned PR-615 SHA)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch the pinned PR-615 migration source
+        run: git fetch --no-tags origin feat/notif-10ca3-pr1-email-reliability
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify rollout SQL artifacts (mutation-pinned, real chain)
+        run: node scripts/rollout/notif-10ca3/verify/verify-artifacts.mjs
+
+      - name: Rehearsals A/B/C/D (measure / lock-abort / prefix-recovery / full)
+        run: node scripts/rollout/notif-10ca3/verify/rehearsals.mjs
+
+      - name: Identity allow-list self-test
+        run: bash scripts/rollout/notif-10ca3/verify/identity-selftest.sh
+
+      - name: Critical-guard mutation tests
+        run: bash scripts/rollout/notif-10ca3/verify/guard-mutation-test.sh
+
+      - name: Shell syntax check
+        run: |
+          for f in run-rollout.sh lib/common.sh logfetch/fetch-edge-logs.sh \
+                   verify/identity-selftest.sh verify/guard-mutation-test.sh; do
+            bash -n "scripts/rollout/notif-10ca3/$f"
+          done

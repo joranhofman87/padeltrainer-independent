@@ -1,6 +1,6 @@
-### verify-artifacts.mjs — local full-chain proof (embedded Postgres; real migration chain)
 $ node scripts/rollout/notif-10ca3/verify/verify-artifacts.mjs
 
+rollout artifact proof — PR615 migrations pinned @ 2b247f43afe8
 applied base email chain + on-main digest chain (PRE state)
 [PRE] preflight (delta absent):
   PASS  preflight PASS (un-migrated)  — 9 assertions passed

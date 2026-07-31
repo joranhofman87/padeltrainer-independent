@@ -1,4 +1,5 @@
-### identity-selftest.sh (exit 0 expected)
+$ bash scripts/rollout/notif-10ca3/verify/identity-selftest.sh
+
 host/user allow-list:
   PASS  accept: call db.abcdefghijklmnopqrst.supabase.co postgres
   PASS  accept: call aws-0-eu-central-1.pooler.supabase.com postgres.abcdefghijklmnopqrst
@@ -17,4 +18,3 @@ url_add_query (safe append):
   PASS  first param uses ?
   PASS  second param uses &
 ================  14 passed, 0 failed  ================
-exit=0
