@@ -132,6 +132,56 @@ assert_drain_proven() {
   ok "drain proven: ${elapsed}s elapsed, 0 sends since gate ON"
 }
 
+# Hosted Edge Functions can run for up to 400s (paid plan); the analytics API
+# rounds query bounds to the minute. The drain wait + pre-gate lookback must
+# cover a request that began just before the gate and is still executing.
+ROLLOUT_FUNCTION_MAX_WALL=400
+ROLLOUT_INGEST_MARGIN=120          # analytics minute-rounding (both ends) + ingestion lag
+ROLLOUT_DRAIN_FLOOR=$((ROLLOUT_FUNCTION_MAX_WALL + ROLLOUT_INGEST_MARGIN))   # 520s
+assert_drain_window() {
+  local min="$1"
+  [[ "$min" =~ ^[0-9]+$ ]] || die "drain window not numeric: '$min'"
+  [[ "$min" -ge "$ROLLOUT_DRAIN_FLOOR" ]] \
+    || die "MIN_DRAIN_SECONDS=${min}s < floor ${ROLLOUT_DRAIN_FLOOR}s (400s max function wall + ${ROLLOUT_INGEST_MARGIN}s margin)"
+  ok "drain window ${min}s >= floor ${ROLLOUT_DRAIN_FLOOR}s"
+}
+
+# Classify the migration ledger. Accepts ONLY the legitimate ordered prefixes.
+# Any other subset ({V2}, {V1,V3}, ...) is 'invalid' and must stop recovery.
+classify_ledger() { # $1 sorted-csv  $2 V1  $3 V2  $4 V3 -> none|prefix1|prefix2|all|invalid
+  case "$1" in
+    "")            echo none;;
+    "$2")          echo prefix1;;
+    "$2,$3")       echo prefix2;;
+    "$2,$3,$4")    echo all;;
+    *)             echo invalid;;
+  esac
+}
+
+# A baseline snapshot must contain every expected key EXACTLY once and
+# well-formed; otherwise a silently-omitted key would compare "" == "".
+validate_baseline_keys() {
+  local f="$1" tag="${2:-baseline}" k n
+  [[ -f "$f" ]] || die "baseline ($tag): file not found: $f"
+  for k in eas_rows ede_rows eas_bad_state_rows reader_academy_md5 reader_overview_md5; do
+    n="$(grep -c "^${k}=" "$f" || true)"; [[ "$n" -eq 1 ]] || die "baseline ($tag): key '$k' present $n time(s) (want exactly 1)"
+  done
+  for k in eas_rows ede_rows eas_bad_state_rows; do
+    grep -qE "^${k}=[0-9]+$" "$f" || die "baseline ($tag): $k not a non-negative integer"; done
+  for k in reader_academy_md5 reader_overview_md5; do
+    grep -qE "^${k}=([0-9a-f]{32}|absent)$" "$f" || die "baseline ($tag): $k not md5-or-absent"; done
+  ok "baseline ($tag): all keys present exactly once and well-formed"
+}
+
+# The deployed commit must equal the reviewed+tested pin (no SHA drift).
+assert_sha_matches_pin() {
+  local actual="$1" pin="$2" label="${3:-head}"
+  [[ "$actual" =~ ^[0-9a-f]{40}$ ]] || die "$label sha is not 40-hex: '$actual'"
+  [[ "$pin"    =~ ^[0-9a-f]{40}$ ]] || die "pin sha is not 40-hex: '$pin'"
+  [[ "$actual" == "$pin" ]] || die "$label SHA ${actual:0:12} != reviewed pin ${pin:0:12} — refusing (SHA drift)"
+  ok "$label SHA matches reviewed pin ${pin:0:12}"
+}
+
 # ---------------------------------------------------------------------------
 # safe URL query construction (handles a base URL that already has ?params)
 # ---------------------------------------------------------------------------

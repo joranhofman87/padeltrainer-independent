@@ -17,10 +17,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 export const SQL_DIR = join(__dirname, '..', 'sql');
 
-// SHA-PINNED source of the three PR #615 migrations (origin/feat/notif-10ca3-pr1-email-reliability
-// head). Pinning a SHA (not the branch name) makes the harness deterministic and
-// lets CI fetch exactly this commit.
-export const PR615_SHA = '2b247f43afe8ff73d32f44f4f58c3d9918471c77';
+// SHA-PINNED source of the three PR #615 migrations. The pin lives in PINS.env
+// (single source shared with run-rollout.sh) so CI evidence and the deployed
+// commit cannot drift. Pinning a SHA (not the branch) makes the harness
+// deterministic and lets CI fetch exactly this commit.
+function readPin(key) {
+  const txt = readFileSync(join(__dirname, '..', 'PINS.env'), 'utf8');
+  const m = txt.match(new RegExp(`^${key}=([0-9a-f]{40})\\s*$`, 'm'));
+  if (!m) throw new Error(`PINS.env is missing a valid ${key}`);
+  return m[1];
+}
+export const PR615_SHA = readPin('PR615_SHA');
 export const PR615_BRANCH = 'feat/notif-10ca3-pr1-email-reliability';
 export const PR615_MIGS = [
   '20261006100000_email_delivery_concurrency_suppression.sql',

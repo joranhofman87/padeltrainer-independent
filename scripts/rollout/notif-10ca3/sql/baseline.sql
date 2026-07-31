@@ -9,6 +9,7 @@
 -- Output: one `key=value` line per invariant on stdout (tuples-only, unaligned)
 -- so it can be diffed/grepped. Runs on prod, a clone, or the local harness.
 -- ===========================================================================
+\set ON_ERROR_STOP on
 \pset tuples_only on
 \pset format unaligned
 \pset pager off

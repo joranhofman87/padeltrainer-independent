@@ -2,20 +2,51 @@ $ bash scripts/rollout/notif-10ca3/verify/guard-mutation-test.sh
 
 == guard 1: EXACT identity allow-list ==
   PASS  real assert_host_user_is_ref rejects look-alike host
-  PASS  MUTANT substring-identity wrongly accepts the look-alike (guard is load-bearing)
+  PASS  MUTANT substring-identity wrongly accepts look-alike (guard load-bearing)
   PASS  real assert_conn_url_is_ref rejects spoofed-host URL
 == guard 2: EXACT pending-migration set ==
   PASS  real pending-guard rejects an extra 4th migration
   PASS  real pending-guard rejects a missing migration
-  PASS  MUTANT subset-pending wrongly accepts an extra migration (guard is load-bearing)
-== guard 3: authoritative drain proof ==
+  PASS  MUTANT subset-pending wrongly accepts a superset (guard load-bearing)
+== guard 3: authoritative drain proof (bypass / straggler) ==
   PASS  clean window (no send past the gate) passes
-  PASS  real drain rejects a gate BYPASS (provider_send_started)
-  PASS  MUTANT --allow-sends wrongly accepts a gate bypass (guard is load-bearing)
-  PASS  real drain (--assert-all-finished) rejects an in-flight straggler
-  PASS  MUTANT without --assert-all-finished wrongly accepts a straggler (guard is load-bearing)
-  PASS  fully-drained window (started+finished) passes both checks
+  PASS  real drain rejects a gate BYPASS
+  PASS  MUTANT --allow-sends wrongly accepts a bypass (guard load-bearing)
+  PASS  real drain (--assert-all-finished) rejects a straggler
+  PASS  MUTANT without --assert-all-finished wrongly accepts a straggler (guard load-bearing)
+  PASS  fully-drained window passes both checks
   PASS  assert_drain_proven rejects elapsed < min
   PASS  assert_drain_proven rejects sends > 0
   PASS  assert_drain_proven accepts elapsed>=min & 0 sends
-================  15 passed, 0 failed  ================
+== guard 3b: FAIL-CLOSED log validation (empty/missing/truncated/delayed/record_failed) ==
+  PASS  empty .result fails drain (require-blocked)
+  PASS  missing .result fails closed
+  PASS  truncated page (== LIMIT) fails closed
+  PASS  delayed canary (no event:blocked) fails require-blocked
+  PASS  record_failed fails when --fail-on-record-failed
+  PASS  MUTANT without --fail-on-record-failed ignores record_failed (guard load-bearing)
+  PASS  valid response with event:blocked passes
+== guard 4: 400s drain-window floor ==
+  PASS  assert_drain_window rejects 180s (< 400s function wall)
+  PASS  assert_drain_window rejects 120s default of prior version
+  PASS  assert_drain_window accepts 520s floor
+== guard 5: --project-ref scoping on deploy/secret ==
+  PASS  run-rollout.sh has no unscoped secrets/deploy commands
+  PASS  MUTANT (project-ref stripped) is caught by the scoping check
+== guard 6: SHA-pin drift ==
+  PASS  assert_sha_matches_pin rejects a drifted head
+  PASS  assert_sha_matches_pin accepts the exact pin
+== guard 7: ledger classification (only ordered prefixes) ==
+  PASS  classify none
+  PASS  classify prefix1 {V1}
+  PASS  classify prefix2 {V1,V2}
+  PASS  classify all
+  PASS  classify {V2} = invalid
+  PASS  classify {V1,V3} = invalid
+  PASS  MUTANT count-classifier wrongly calls {V1,V3} a prefix (guard load-bearing)
+== guard 8: baseline key validation ==
+  PASS  validate_baseline_keys accepts a well-formed snapshot
+  PASS  validate_baseline_keys rejects a missing key
+  PASS  validate_baseline_keys rejects a duplicated key
+  PASS  validate_baseline_keys rejects a non-numeric count
+================  40 passed, 0 failed  ================

@@ -21,7 +21,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | SQL artifacts execute on the real chain; every assertion mutation-pinned | `node …/verify/verify-artifacts.mjs` | [verify-run.txt](evidence/verify-run.txt) | 13/13 |
 | A/B/C/D rehearsals (measure / lock-abort / prefix-recovery / full) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 14/14 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
-| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 15/15 |
+| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 40/40 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -65,43 +65,58 @@ evidence/                   captured run outputs
 ```bash
 export EXPECTED_REF=<20-char-project-ref>
 export SUPABASE_ACCESS_TOKEN=<PAT>          # Dashboard -> Account -> Access Tokens
-export SUPABASE_DB_PASSWORD=<db password>   # never echoed
-export MANAGER_TOKEN=<academy-manager JWT>  # for the gate probe (NOT service_role)
+export SUPABASE_DB_PASSWORD=<db password>   # consumed by the CLI; never echoed
+export MANAGER_TOKEN=<academy-manager JWT>  # for the gate probe/canary (NOT service_role)
+# psql auth via PGPASSWORD — keep the password OUT of argv and the connection URL
+export PGPASSWORD="$SUPABASE_DB_PASSWORD"
+PROD="postgresql://postgres@db.$EXPECTED_REF.supabase.co:5432/postgres?sslmode=require"
 
 # 0. identity — refuse to run against the wrong project
 run-rollout.sh check-identity
 
-# 1. #616: merge + deploy FROM ITS MERGE-SHA WORKTREE + verify gate OFF
+# 1. #616: pin-checked merge (--match-head-commit) + deploy from the merge-SHA
+#    worktree (--project-ref) + verify gate OFF
 run-rollout.sh phase616 --yes
 #    then production-verify #616: send a real invoice email and confirm delivery.
 
-# 2. #615 dry run: PRE-MERGE head-SHA worktree + real `supabase db push --dry-run`;
+# 2. #615 dry run: pinned head-SHA worktree + real `supabase db push --dry-run`;
 #    asserts EXACTLY 20261006100000/110000/120000 pending
 run-rollout.sh dryrun615
 
 # 3. preflight on prod (read-only): row counts, delta absent, CAP_STMT
-PROD="postgresql://postgres:$SUPABASE_DB_PASSWORD@db.$EXPECTED_REF.supabase.co:5432/postgres?sslmode=require"
 run-rollout.sh preflight "$PROD"
 
 # 4. #615 maintenance window (gate ON -> AUTHORITATIVE DRAIN PROOF -> dry-run==3 ->
 #    bounded db push from the worktree -> postflight/acl/ledger + baseline compare -> gate OFF)
-CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" MIN_DRAIN_SECONDS=180 \
-  run-rollout.sh apply615 --yes
+CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
+  run-rollout.sh apply615 --yes         # MIN_DRAIN_SECONDS defaults to the 520s floor
 ```
 
-- **The push cannot be reached without the drain proof.** `apply615` flips the
-  gate ON, then `prove_drain` waits `MIN_DRAIN_SECONDS` and calls
-  `fetch-edge-logs.sh` twice: **zero** `provider_send_started` in `[T_GATE, now]`
-  (no bypass) **and** every send started in `[T_GATE-MIN, now]` reached
-  `event:finished` (no straggler). Any failure aborts before `db push`.
-- **Worktree targeting.** `db push`/`deploy` run from a detached worktree at the
-  verified SHA with `SUPABASE_PROJECT_ID=$EXPECTED_REF` (beats the absent
-  `.temp/project-ref`); the worktree's own `supabase/config.toml` `project_id`
-  is asserted to equal `EXPECTED_REF` before any operation.
-- **Recovery (none/prefix/all).** `supabase db push` applies each migration file
-  in its own transaction + ledger row, so a mid-way failure leaves a PREFIX.
-  On failure `apply615` reports `ledger-status`; `rollback615 <url>` prints the
-  matrix. Re-running `apply615` resumes from the first un-recorded version. The
+- **The push cannot be reached without the drain proof.** After the gate is ON,
+  `prove_drain`: (a) fires a **safe authenticated non-probe canary that must
+  return 503** (proving the gate is live and emitting `event:blocked`); (b) waits
+  `MIN_DRAIN_SECONDS` (default **520s** — the 400s hosted-function wall + margin;
+  a value below the floor is rejected); (c) requires **positive `event:blocked`
+  ingestion evidence + zero `provider_send_started`** in `[T_GATE,now]`; (d)
+  requires **no in-flight straggler and no `record_failed`** over
+  `[T_GATE-MIN-60s, now+60s]` (padded for the analytics minute-rounding). Log
+  reads are **fail-closed**: an empty/missing `.result`, a truncated page, or
+  absent ingestion evidence all abort before `db push`.
+- **No SHA drift.** #615/#616 heads are pinned in `PINS.env`; `apply615`/`phase616`
+  assert the live head equals the reviewed pin and merge with
+  `gh pr merge --match-head-commit`, so only the CI-tested commit ships.
+- **Explicit targeting.** every `supabase functions deploy` / `secrets set|unset`
+  carries `--project-ref $EXPECTED_REF`; `db push` runs from a detached worktree
+  with `SUPABASE_PROJECT_ID=$EXPECTED_REF` and the worktree's own
+  `config.toml project_id` asserted to equal `EXPECTED_REF`.
+- **Recovery (none/prefix/all/invalid).** `supabase db push` applies each
+  migration file in its own transaction + ledger row, so a mid-way failure
+  leaves an ordered PREFIX. `ledger_status` queries
+  `supabase_migrations.schema_migrations` (fail-loud on a connection error) and
+  accepts **only** `none`, `{V1}`, `{V1,V2}`, or `all`; any impossible subset
+  (`{V2}`, `{V1,V3}`, …) is `invalid` and **stops** recovery. `rollback615 <url>`
+  prints the matrix; re-running `apply615` resumes from the first un-recorded
+  version. The
   gate stays ON until `postflight` passes.
 - **Baselines.** `apply615` captures `baseline.sql` pre/post to
   `evidence/baseline-{pre,post}.txt` and asserts the email-table row counts are
