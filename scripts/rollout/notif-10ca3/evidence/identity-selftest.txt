@@ -1,0 +1,20 @@
+### identity-selftest.sh (exit 0 expected)
+host/user allow-list:
+  PASS  accept: call db.abcdefghijklmnopqrst.supabase.co postgres
+  PASS  accept: call aws-0-eu-central-1.pooler.supabase.com postgres.abcdefghijklmnopqrst
+  PASS  reject: call db.abcdefghijklmnopqrst.supabase.co.evil.com postgres
+  PASS  reject: call db.abcdefghijklmnopqrst.supabase.co postgres.evil
+  PASS  reject: call db.wrongwrongwrongwrong.supabase.co postgres
+  PASS  reject: call aws-0-eu.pooler.supabase.com postgres.wrongwrongwrongwrong
+  PASS  reject: call aws-0-eu.pooler.supabase.com.evil.io postgres.abcdefghijklmnopqrst
+  PASS  reject: call evil.pooler.supabase.com.attacker.net postgres.abcdefghijklmnopqrst
+connection-URL parsing:
+  PASS  accept: callurl postgresql://postgres:secret@db.abcdefghijklmnopqrst.supabase.co:5432/postgres?sslmode=require
+  PASS  accept: callurl postgres://postgres.abcdefghijklmnopqrst:pw@aws-0-eu.pooler.supabase.com:6543/postgres
+  PASS  reject: callurl postgresql://postgres:pw@db.abcdefghijklmnopqrst.supabase.co.evil.com/postgres
+  PASS  reject: callurl postgresql://postgres.otherotherotherother:pw@aws-0.pooler.supabase.com/postgres
+url_add_query (safe append):
+  PASS  first param uses ?
+  PASS  second param uses &
+================  14 passed, 0 failed  ================
+exit=0
