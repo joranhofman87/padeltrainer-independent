@@ -1,0 +1,21 @@
+$ bash .../verify/operator-flow-test.sh
+
+== resume615: prefix1 (only V1 applied) ==
+  PASS  prefix1 resume exits 0
+  PASS  prefix1 -> pushed suffix, ledger now all
+  PASS  prefix1 gate turned OFF after verify
+  PASS  prefix1 did NOT re-merge (gh never called)
+  PASS  prefix1 original pre-baseline NOT overwritten
+== resume615: prefix2 (V1,V2 applied) ==
+  PASS  prefix2 resume exits 0
+  PASS  prefix2 -> pushed V3 suffix, ledger now all
+  PASS  prefix2 did NOT re-merge (gh never called)
+== resume615: refusals ==
+  PASS  refuses when the gate is OFF
+  PASS  refuses an INVALID ledger subset ({V2})
+  PASS  refuses 'none' (directs to apply615)
+== resume615: already all ==
+  PASS  all-applied resume verifies + exits 0
+  PASS  all-applied resume turns gate OFF after verify
+  PASS  all-applied resume did NOT re-merge
+================  14 passed, 0 failed  ================

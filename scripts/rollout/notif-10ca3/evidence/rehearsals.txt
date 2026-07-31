@@ -1,10 +1,10 @@
-$ node scripts/rollout/notif-10ca3/verify/rehearsals.mjs
+$ node .../verify/rehearsals.mjs
 
-rollout rehearsals A/B/C/D — PR615 migrations pinned @ 2b247f43afe8
+rollout rehearsals A/B/C/D/E — PR615 migrations pinned @ 2b247f43afe8
 [A] measure A_window (ACCESS EXCLUSIVE rewrite) + CAP:
-        · A_window: rewrite of 20000 rows via migration 20261006100000 took 596.4 ms
-        · derived CAP_STMT (measured + 50% headroom) = 30895 ms; CAP_LOCK = 3000 ms
-  PASS  A: rewrite applied + measured, is_suppressed present  — 596ms for 20000 rows
+        · A_window: rewrite of 20000 rows via migration 20261006100000 took 574.8 ms
+        · derived CAP_STMT (measured + 50% headroom) = 30862 ms; CAP_LOCK = 3000 ms
+  PASS  A: rewrite applied + measured, is_suppressed present  — 575ms for 20000 rows
 [B] lock_timeout abort under contention -> no partial delta:
   PASS  B: bounded db push aborts on lock contention  — sqlstate=55P03 (55P03=lock_not_available)
   PASS  B: after abort, is_suppressed column is ABSENT (atomic per-file)
@@ -21,4 +21,13 @@ rollout rehearsals A/B/C/D — PR615 migrations pinned @ 2b247f43afe8
   PASS  D: postflight.sql passes on full clone
   PASS  D: acl_matrix.sql passes on full clone
   PASS  D: ledger_verification.sql passes on full clone
-================  14 passed, 0 failed  ================
+[E] state recomputation OK; row loss / bad suppression / unchanged readers FAIL:
+  PASS  E: true invariant preserved — email_address_state rows  — 200 -> 200
+  PASS  E: true invariant preserved — email_delivery_events rows  — 200 -> 200
+  PASS  E: readers re-emitted (fingerprints changed)
+        · E: state distribution is EVIDENCE, not asserted: bad_state 150 -> 100
+  PASS  E: postflight + ledger consistency pass despite state recomputation
+  PASS  E1: row loss is detected (eas rows differ)  — 200 -> 199
+  PASS  E2: invalid canonical suppression is detected (ledger_verification fails)  — ASSERT FAILED: email_address_state.is_suppressed matches its generation rule for
+  PASS  E3: unchanged readers are detected (fingerprints did NOT change)
+================  21 passed, 0 failed  ================

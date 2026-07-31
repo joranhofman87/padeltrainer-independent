@@ -169,8 +169,75 @@ async function rehearsalD(admin) {
   } finally { await c.end(); }
 }
 
+// ---- E: legitimate state recomputation is OK; row loss / bad is_suppressed /
+//        unchanged readers must still fail --------------------------------
+async function snapshot(c) {
+  const q1 = async (s) => (await c.query(s)).rows[0].n;
+  const m = async (s) => (await c.query(s)).rows[0].m;
+  return {
+    eas: await q1('SELECT count(*)::int n FROM public.email_address_state'),
+    ede: await q1('SELECT count(*)::int n FROM public.email_delivery_events'),
+    bad: await q1("SELECT count(*)::int n FROM public.email_address_state WHERE state <> 'ok'"),
+    rA: await m("SELECT coalesce(md5(pg_get_functiondef(to_regprocedure('public.get_academy_undeliverable_recipients(uuid)'))),'absent') m"),
+    rO: await m("SELECT coalesce(md5(pg_get_functiondef(to_regprocedure('public.get_players_overview(text,uuid,text,jsonb,text,text,integer,integer)'))),'absent') m"),
+  };
+}
+async function seedBadStates(c) {
+  // pre-migration shape: provider_suppressed_active is added by 20261006100000
+  await c.query(`INSERT INTO public.email_address_state(email,state)
+    SELECT 'e'||g||'@ex.test', (ARRAY['hard_bounced','soft_bounced','complained','ok'])[1+g%4] FROM generate_series(1,200) g`);
+  await c.query(`INSERT INTO public.email_delivery_events(recipient_email,event_type,occurred_at)
+    SELECT 'e'||g||'@ex.test','delivered', now() FROM generate_series(1,200) g`);
+}
+async function rehearsalE(admin) {
+  console.log('\n[E] state recomputation OK; row loss / bad suppression / unchanged readers FAIL:');
+  // happy path: recomputation may change the bad-state count, but true invariants hold
+  { const c = await freshDb(admin, 'rehearse_e'); try {
+      await seedBadStates(c);
+      const pre = await snapshot(c);
+      await applyPr615(c);
+      const post = await snapshot(c);
+      record('E: true invariant preserved — email_address_state rows', pre.eas === post.eas, `${pre.eas} -> ${post.eas}`);
+      record('E: true invariant preserved — email_delivery_events rows', pre.ede === post.ede, `${pre.ede} -> ${post.ede}`);
+      record('E: readers re-emitted (fingerprints changed)', pre.rA !== post.rA && pre.rO !== post.rO);
+      note(`E: state distribution is EVIDENCE, not asserted: bad_state ${pre.bad} -> ${post.bad}`);
+      let ok = true, msg = '';
+      try { await c.query(prepared('postflight.sql')); await c.query(prepared('ledger_verification.sql')); }
+      catch (e) { ok = false; msg = e.message.split('\n')[0]; }
+      record('E: postflight + ledger consistency pass despite state recomputation', ok, ok ? '' : msg);
+    } finally { await c.end(); } }
+  // E1 row loss must be caught by the row-count preserve check
+  { const c = await freshDb(admin, 'rehearse_e1'); try {
+      await seedBadStates(c); const pre = await snapshot(c); await applyPr615(c);
+      await c.query(`DELETE FROM public.email_address_state WHERE email='e1@ex.test'`);
+      const post = await snapshot(c);
+      record('E1: row loss is detected (eas rows differ)', pre.eas !== post.eas, `${pre.eas} -> ${post.eas}`);
+    } finally { await c.end(); } }
+  // E2 corrupted is_suppressed must fail ledger_verification
+  { const c = await freshDb(admin, 'rehearse_e2'); try {
+      await seedBadStates(c); await applyPr615(c);
+      await c.query('BEGIN');
+      let failed = false, msg = '';
+      try {
+        await c.query(`ALTER TABLE public.email_address_state DROP COLUMN is_suppressed`);
+        await c.query(`ALTER TABLE public.email_address_state ADD COLUMN is_suppressed boolean NOT NULL DEFAULT false`);
+        await c.query(`UPDATE public.email_address_state SET is_suppressed = true WHERE state = 'ok'`); // now violates the rule
+        await c.query(prepared('ledger_verification.sql'));
+      } catch (e) { failed = true; msg = e.message.split('\n')[0]; }
+      await c.query('ROLLBACK').catch(() => {});
+      record('E2: invalid canonical suppression is detected (ledger_verification fails)', failed, failed ? msg.slice(0, 80) : 'passed despite corruption');
+    } finally { await c.end(); } }
+  // E3 unchanged reader definitions must be caught (apply only the non-reader migrations)
+  { const c = await freshDb(admin, 'rehearse_e3'); try {
+      await seedBadStates(c); const pre = await snapshot(c);
+      await c.query(migPR615(PR615_MIGS[0])); await c.query(migPR615(PR615_MIGS[1])); // skip the reader migration
+      const post = await snapshot(c);
+      record('E3: unchanged readers are detected (fingerprints did NOT change)', pre.rA === post.rA && pre.rO === post.rO);
+    } finally { await c.end(); } }
+}
+
 async function main() {
-  console.log(`rollout rehearsals A/B/C/D — PR615 migrations pinned @ ${PR615_SHA.slice(0, 12)}`);
+  console.log(`rollout rehearsals A/B/C/D/E — PR615 migrations pinned @ ${PR615_SHA.slice(0, 12)}`);
   const { epg, url, conn } = await boot(PORT);
   BASE_URL = url;
   const admin = conn(); await admin.connect();
@@ -179,6 +246,7 @@ async function main() {
     await rehearsalB(admin);
     await rehearsalC(admin);
     await rehearsalD(admin);
+    await rehearsalE(admin);
     console.log(`\n================  ${PASS} passed, ${FAIL} failed  ================`);
   } finally {
     await admin.end().catch(() => {});

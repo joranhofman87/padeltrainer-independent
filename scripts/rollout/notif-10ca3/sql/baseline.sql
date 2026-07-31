@@ -16,7 +16,10 @@
 
 SELECT 'eas_rows=' || count(*) FROM public.email_address_state;
 SELECT 'ede_rows=' || count(*) FROM public.email_delivery_events;
--- state distribution (a rewrite that silently corrupts state would shift this)
+-- state distribution — EVIDENCE ONLY, not a preserve invariant: PR #615
+-- intentionally recomputes historical state (e.g. hard_bounced/soft_bounced -> ok),
+-- so this count may legitimately change. Recorded for the audit trail; the
+-- compare step does NOT require equality on it.
 SELECT 'eas_bad_state_rows=' || count(*) FROM public.email_address_state WHERE state <> 'ok';
 -- reader body fingerprints — EXPECTED to differ pre vs post (re-emit to is_suppressed).
 -- to_regprocedure(...) yields NULL (no error) when the function is absent, so the

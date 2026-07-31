@@ -158,6 +158,41 @@ classify_ledger() { # $1 sorted-csv  $2 V1  $3 V2  $4 V3 -> none|prefix1|prefix2
   esac
 }
 
+# The exact pending SUFFIX that must remain for a given ledger state — what a
+# resume push should apply. Anything else means a corrupt/unexpected state.
+expected_pending_suffix() { # $1 state  $2 V1  $3 V2  $4 V3 -> newline list (empty for 'all')
+  case "$1" in
+    none)    printf '%s\n%s\n%s\n' "$2" "$3" "$4";;
+    prefix1) printf '%s\n%s\n' "$3" "$4";;
+    prefix2) printf '%s\n' "$4";;
+    all)     printf '';;
+    *)       die "no defined pending suffix for ledger state '$1'";;
+  esac
+}
+
+# Baseline preservation: ONLY true invariants (table/event row counts) must be
+# EQUAL pre/post. State-distribution keys (eas_bad_state_rows) are recorded as
+# EVIDENCE and may legitimately change (PR #615 recomputes historical state,
+# e.g. hard_bounced/soft_bounced -> ok), so they are NOT equality-checked here.
+# Readers MUST change (they are re-emitted to is_suppressed).
+assert_baseline_preserved() { # $1 pre-file  $2 post-file
+  local pre="$1" post="$2" k vpre vpost
+  validate_baseline_keys "$pre" pre; validate_baseline_keys "$post" post
+  for k in eas_rows ede_rows; do                      # true invariants — MUST match
+    vpre="$(sed -n "s/^${k}=//p" "$pre")"; vpost="$(sed -n "s/^${k}=//p" "$post")"
+    [[ "$vpre" == "$vpost" ]] || die "baseline PRESERVE violated: $k $vpre -> $vpost (rows lost/gained)"
+    ok "baseline preserved: $k = $vpre"
+  done
+  for k in reader_academy_md5 reader_overview_md5; do # MUST change (re-emit)
+    vpre="$(sed -n "s/^${k}=//p" "$pre")"; vpost="$(sed -n "s/^${k}=//p" "$post")"
+    [[ "$vpre" != "$vpost" ]] || die "baseline CHANGE expected: $k unchanged (reader not re-emitted)"
+    ok "baseline changed as expected: $k"
+  done
+  # evidence-only: state distribution may change (recomputation is intended)
+  vpre="$(sed -n "s/^eas_bad_state_rows=//p" "$pre")"; vpost="$(sed -n "s/^eas_bad_state_rows=//p" "$post")"
+  ok "state distribution (evidence, not asserted): eas_bad_state_rows $vpre -> $vpost"
+}
+
 # A baseline snapshot must contain every expected key EXACTLY once and
 # well-formed; otherwise a silently-omitted key would compare "" == "".
 validate_baseline_keys() {

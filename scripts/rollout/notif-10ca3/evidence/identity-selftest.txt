@@ -1,4 +1,4 @@
-$ bash scripts/rollout/notif-10ca3/verify/identity-selftest.sh
+$ bash .../verify/identity-selftest.sh
 
 host/user allow-list:
   PASS  accept: call db.abcdefghijklmnopqrst.supabase.co postgres

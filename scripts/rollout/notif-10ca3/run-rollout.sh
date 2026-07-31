@@ -26,7 +26,7 @@
 # ===========================================================================
 set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SQL_DIR="$HERE/sql"; EVID="$HERE/evidence"
+SQL_DIR="$HERE/sql"; EVID="${ROLLOUT_EVIDENCE_DIR:-$HERE/evidence}"
 # shellcheck source=lib/common.sh
 source "$HERE/lib/common.sh"
 # shellcheck source=PINS.env
@@ -41,7 +41,10 @@ V1=20261006100000; V2=20261006110000; V3=20261006120000
 EXPECTED_VERSIONS="$(printf '%s\n%s\n%s\n' "$V1" "$V2" "$V3")"
 
 WT=""
-cleanup() { [[ -n "$WT" && -d "$WT" ]] && { git worktree remove --force "$WT" 2>/dev/null || true; }; }
+# NB: must return 0 — an EXIT trap whose last command is non-zero overrides the
+# script's exit status, which would make a successful no-worktree path (e.g.
+# resume615 on an already-'all' ledger) exit non-zero.
+cleanup() { [[ -n "$WT" && -d "$WT" ]] && git worktree remove --force "$WT" 2>/dev/null; return 0; }
 trap cleanup EXIT
 require_yes() { [[ "${1:-}" == "--yes" ]] || die "refusing prod-mutating step without --yes"; }
 run_artifact() { run_sql "$1" "$SQL_DIR/$2"; }
@@ -69,61 +72,55 @@ prove_drain() {
   local t_gate="$1" min="$MIN_DRAIN_SECONDS"
   : "${SUPABASE_ACCESS_TOKEN:?PAT required}"; : "${MANAGER_TOKEN:?manager JWT required}"
   assert_drain_window "$min"
-  local fn="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email" code
-  # 1) safe authenticated NON-probe canary MUST 503 (proves the gate is active + emits event:blocked)
-  code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$fn" \
-    -H "Authorization: Bearer ${MANAGER_TOKEN}" -H 'Content-Type: application/json' \
-    --data "{\"invoiceId\":\"canary-$(now_iso)\",\"previewOnly\":true}")" || die "canary request failed"
+  local fn="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email" resp code body canary_id
+  # 1) safe authenticated NON-probe canary MUST 503; capture the EXACT invocationId
+  #    the maintenance response echoes, so we can correlate its precise blocked event.
+  resp="$(curl -sS -X POST "$fn" -H "Authorization: Bearer ${MANAGER_TOKEN}" -H 'Content-Type: application/json' \
+    -w $'\n%{http_code}' --data '{"invoiceId":"drain-canary","previewOnly":true}')" || die "canary request failed"
+  code="$(printf '%s' "$resp" | tail -n1)"; body="$(printf '%s' "$resp" | sed '$d')"
   [[ "$code" == 503 ]] || die "canary did not return 503 (gate not active? http=$code)"
-  ok "canary returned 503 — gate active"
-  # 2) wait out the drain window (covers the 400s function wall)
+  canary_id="$(printf '%s' "$body" | jq -r '.invocationId // empty')"
+  [[ "$canary_id" =~ ^[0-9a-fA-F-]{36}$ ]] || die "canary 503 lacked a valid invocationId (deploy #616 build that echoes it)"
+  ok "canary 503 with invocationId ${canary_id:0:8}… — gate active"
+  # 2) wait out the drain window (covers the 400s hosted-function wall)
   local g_epoch now_epoch elapsed
   g_epoch="$(iso_to_epoch "$t_gate")"
   log "draining >= ${min}s before any migration"
   while :; do now_epoch="$(date -u +%s)"; elapsed=$((now_epoch - g_epoch)); [[ "$elapsed" -ge "$min" ]] && break; sleep 15; done
-  # windows padded ±60s for the analytics minute-rounding
-  local wA_start wB_start w_end rc attempt
-  wA_start="$t_gate"; wB_start="$(epoch_to_iso $(( g_epoch - min - 60 )))"
-  # 3) ingestion evidence + zero-send in [t_gate, now]; retry ingestion lag (4), abort on bypass (3)
+  # 3) ONE widened, minute-rounding-padded snapshot enforcing EVERYTHING locally:
+  #    exact canary blocked present + zero POST-gate sends (local --gate-at-epoch) +
+  #    no straggler + no record_failed. Empty results fail (require-invocation).
+  #    Retry ONLY ingestion lag of the canary (rc 4).
+  local w_start w_end rc attempt
+  w_start="$(epoch_to_iso $(( g_epoch - min - 60 )))"
   for attempt in 1 2 3 4 5 6; do
     w_end="$(epoch_to_iso $(( $(date -u +%s) + 60 )))"; rc=0
-    "$HERE/logfetch/fetch-edge-logs.sh" --ref "$EXPECTED_REF" --start "$wA_start" --end "$w_end" --require-blocked || rc=$?
+    "$HERE/logfetch/fetch-edge-logs.sh" --ref "$EXPECTED_REF" --start "$w_start" --end "$w_end" \
+      --gate-at-epoch "$g_epoch" --require-invocation "$canary_id" \
+      --assert-all-finished --fail-on-record-failed || rc=$?
     case "$rc" in
       0) break;;
-      4) log "ingestion lag (no event:blocked yet) — retry $attempt/6"; sleep 15;;
-      3) die "DRAIN PROOF FAILED: gate BYPASS in [$wA_start,$w_end]";;
+      4) log "canary evidence not ingested yet — retry $attempt/6"; sleep 15;;
+      3) die "DRAIN PROOF FAILED: gate BYPASS (post-gate provider_send_started) in [$w_start,$w_end]";;
+      5) die "DRAIN PROOF FAILED: in-flight straggler in [$w_start,$w_end]";;
+      6) die "DRAIN PROOF FAILED: record_failed in [$w_start,$w_end]";;
       *) die "drain fetch failed (rc=$rc)";;
     esac
   done
-  [[ "$rc" == 0 ]] || die "DRAIN PROOF FAILED: no ingestion evidence (event:blocked) after retries"
-  # 4) no straggler + no record_failed over [t_gate-min-60, now]
-  rc=0
-  "$HERE/logfetch/fetch-edge-logs.sh" --ref "$EXPECTED_REF" --start "$wB_start" --end "$w_end" \
-    --allow-sends --assert-all-finished --fail-on-record-failed || rc=$?
-  [[ "$rc" == 0 ]] || die "DRAIN PROOF FAILED: straggler/record_failed in [$wB_start,$w_end] (rc=$rc)"
+  [[ "$rc" == 0 ]] || die "DRAIN PROOF FAILED: canary evidence ${canary_id:0:8}… absent after retries"
   assert_drain_proven "$elapsed" "$min" 0
 }
 
 # --- baselines (fail-closed; validate_baseline_keys lives in common.sh) -----
 capture_baseline() {
-  local url="$1" tag="$2" out="$EVID/baseline-${tag}.txt"; require_cmd psql
+  local url="$1" tag="$2"; local out="$EVID/baseline-${tag}.txt"; require_cmd psql
   psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline.sql" > "$out" || die "baseline capture ($tag) failed"
   validate_baseline_keys "$out" "$tag"; ok "baseline captured + validated: $out"
 }
-compare_baseline() {
-  local pre="$EVID/baseline-pre.txt" post="$EVID/baseline-post.txt" k vpre vpost
+compare_baseline() {  # delegates to the corrected preserve-set in common.sh
+  local pre="$EVID/baseline-pre.txt" post="$EVID/baseline-post.txt"
   [[ -f "$pre" && -f "$post" ]] || die "missing baseline files"
-  validate_baseline_keys "$pre" pre; validate_baseline_keys "$post" post
-  for k in eas_rows ede_rows eas_bad_state_rows; do            # MUST be preserved
-    vpre="$(sed -n "s/^${k}=//p" "$pre")"; vpost="$(sed -n "s/^${k}=//p" "$post")"
-    [[ "$vpre" == "$vpost" ]] || die "baseline PRESERVE violated: $k $vpre -> $vpost (data corrupted/lost)"
-    ok "baseline preserved: $k = $vpre"
-  done
-  for k in reader_academy_md5 reader_overview_md5; do          # MUST change (re-emit)
-    vpre="$(sed -n "s/^${k}=//p" "$pre")"; vpost="$(sed -n "s/^${k}=//p" "$post")"
-    [[ "$vpre" != "$vpost" ]] || die "baseline CHANGE expected: $k unchanged (reader not re-emitted)"
-    ok "baseline changed as expected: $k"
-  done
+  assert_baseline_preserved "$pre" "$post"
 }
 
 # --- migration ledger (fail-loud, valid prefixes only) ---------------------
@@ -245,16 +242,66 @@ each file in its own transaction + ledger row, so a mid-way failure leaves an
 ordered PREFIX (only none, {$V1}, {$V1,$V2}, or all are legitimate).
 
   none     -> nothing applied. Fix the migration; re-run dryrun615 then apply615.
-  prefix1  -> only $V1 applied. Fix the failing later file; re-run apply615 (push
-              resumes from $V2). Keep the gate ON.
-  prefix2  -> $V1,$V2 applied. Re-run apply615 (push resumes from $V3).
+  prefix1  -> only $V1 applied. Run 'resume615 --yes' (pushes the $V2,$V3 suffix).
+  prefix2  -> $V1,$V2 applied. Run 'resume615 --yes' (pushes the $V3 suffix).
   all      -> every file applied. Run 'postflight $url'; gate may go OFF once it passes.
   invalid  -> the ledger holds an IMPOSSIBLE subset (e.g. {$V2} or {$V1,$V3}).
-              STOP. This is not a normal prefix — investigate manually; do NOT
-              re-run apply615 and do NOT turn the gate OFF.
+              STOP. Investigate manually; do NOT resume and do NOT turn the gate OFF.
 
-Never turn the maintenance gate OFF until 'postflight $url' passes.
+resume615 does NOT re-merge #615 and does NOT overwrite the original
+pre-migration baseline. Never turn the gate OFF until 'postflight $url' passes.
 EOF
+}
+
+# Executable partial-migration recovery. Resumes an interrupted apply615 WITHOUT
+# re-merging #615 and WITHOUT overwriting the original pre-migration baseline.
+cmd_resume615() {
+  require_yes "${1:-}"; require_cmd supabase; require_cmd curl; require_cmd jq; require_cmd psql
+  : "${MANAGER_TOKEN:?}"; : "${CAP_STMT:?set CAP_STMT (ms)}"; : "${SUPABASE_DB_PASSWORD:?}"
+  local CAP_LOCK="${CAP_LOCK:-3000}" prod="${PROD_CONN_URL:?set PROD_CONN_URL (password via PGPASSWORD)}"
+  assert_conn_url_is_ref "$EXPECTED_REF" "$prod"
+  local probe="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email?probe=1" body
+  # 0) the maintenance gate MUST still be ON (recovery happens mid-window)
+  body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
+  printf '%s' "$body" | jq -e '.maintenance == true' >/dev/null \
+    || die "maintenance gate is NOT ON — refusing to resume. Re-activate the gate first."
+  # 1) the ORIGINAL pre-migration baseline from the interrupted apply615 must exist (never overwrite it)
+  local pre="$EVID/baseline-pre.txt"
+  [[ -f "$pre" ]] || die "no original pre-migration baseline ($pre) — cannot resume safely"
+  validate_baseline_keys "$pre" pre
+  # 2) classify + compute the exact pending SUFFIX to apply
+  local st; st="$(ledger_status "$prod")"; ok "ledger state = $st"
+  case "$st" in
+    all)     ok "already fully applied — verifying only";;
+    none)    die "ledger=none — nothing applied. Use apply615 (not resume).";;
+    invalid) die "ledger=INVALID (impossible subset) — STOP. Do NOT resume.";;
+    prefix1|prefix2)
+      local suffix resume_sha; suffix="$(expected_pending_suffix "$st" "$V1" "$V2" "$V3")"
+      # retry the reviewed pin; only a separately reviewed RECOVERY_SHA may differ
+      resume_sha="${RECOVERY_SHA:-$PR615_SHA}"
+      [[ "$resume_sha" =~ ^[0-9a-f]{40}$ ]] || die "RECOVERY_SHA must be a 40-hex reviewed commit"
+      git fetch origin
+      mk_worktree "$resume_sha"
+      ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
+        assert_pending_is_expected "$(push_dry_run_pending)" "$suffix"
+        log "resume db push (suffix; lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
+        PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" supabase db push --linked --yes ) \
+        || die "resume db push failed. ledger=$(ledger_status "$prod"). Gate stays ON."
+      local st2; st2="$(ledger_status "$prod")"
+      [[ "$st2" == all ]] || die "after resume, ledger='$st2' (expected all). Gate stays ON."
+      ;;
+  esac
+  # 3) verify + compare against the ORIGINAL pre-baseline, then permit gate-off
+  run_artifact "$prod" postflight.sql
+  run_artifact "$prod" acl_matrix.sql
+  run_artifact "$prod" ledger_verification.sql
+  capture_baseline "$prod" post
+  assert_baseline_preserved "$pre" "$EVID/baseline-post.txt"
+  log "deactivating maintenance gate"
+  supabase secrets unset INVOICE_EMAIL_MAINTENANCE --project-ref "$EXPECTED_REF"
+  body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
+  printf '%s' "$body" | jq -e '.maintenance == false' >/dev/null || die "gate not back to maintenance=false; investigate"
+  ok "resume complete: ledger=all, postflight passed, baseline preserved, gate OFF"
 }
 
 # --- dispatch --------------------------------------------------------------
@@ -265,14 +312,15 @@ case "$sub" in
   dryrun615)      cmd_dryrun615 "$@";;
   preflight)      cmd_preflight "$@";;
   apply615)       cmd_apply615 "$@";;
+  resume615)      cmd_resume615 "$@";;
   verify-clone)   cmd_verify_clone "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
   rollback615)    cmd_rollback615 "$@";;
   *) cat >&2 <<EOF
 usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
-  check-identity [url] | phase616 --yes | dryrun615 | preflight <url> |
-  apply615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> | rollback615 <url>
+  check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
+  resume615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> | rollback615 <url>
 EOF
      exit 2;;
 esac

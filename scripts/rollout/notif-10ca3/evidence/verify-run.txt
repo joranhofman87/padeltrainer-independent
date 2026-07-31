@@ -1,4 +1,4 @@
-$ node scripts/rollout/notif-10ca3/verify/verify-artifacts.mjs
+$ node .../verify/verify-artifacts.mjs
 
 rollout artifact proof — PR615 migrations pinned @ 2b247f43afe8
 applied base email chain + on-main digest chain (PRE state)
