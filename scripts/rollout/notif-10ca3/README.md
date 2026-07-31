@@ -125,15 +125,21 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
   pushes the suffix, requires `ledger=all`, runs postflight/ACL/ledger, compares
   against the **original** pre-baseline (never overwritten), and only then turns
   the gate OFF. See the operator recovery contract below.
-- **Concurrency-safe no-loss manifest.** `manifest.sql` is captured **after the
-  drain** (pre) and post-migration, `ON_ERROR_STOP`, every EV key validated. The
-  compare is a **no-loss subset**: every pre-existing `email_address_state`
-  address key and `email_delivery_events.id` must still exist post-migration —
-  **new rows are allowed** (a pre-gate send finishing or a Resend webhook
-  inserting during the window is legitimate). Address keys/ids are written as
-  **salted fingerprints** (per-run secret salt) so no raw email PII lands in
-  evidence. Counts + `eas_bad_state_rows` are **evidence only** (PR #615
-  recomputes state); reader fingerprints **must** change.
+- **Concurrency-safe no-loss manifest.** `manifest.sql` runs all queries in ONE
+  `REPEATABLE READ READ ONLY` transaction (so the fingerprint enumeration and the
+  `count(*)` share one snapshot), captured **after the drain** (pre) and
+  post-migration. `validate_manifest` enforces internal **completeness**: exact
+  line grammar, no unknown/duplicate/malformed lines, and unique `EAS`/`EDE`
+  fingerprint counts equal to `eas_rows`/`ede_rows` — a vacuous/incomplete
+  capture fails. The compare is a **no-loss subset**: every pre-existing address
+  key + `email_delivery_events.id` must still exist post-migration; **new rows
+  are allowed**. Counts + `eas_bad_state_rows` are **evidence only**; reader
+  fingerprints **must** change.
+- **Evidence privacy.** Address keys/ids are **salted SHA-256** fingerprints
+  (pseudonymous personal data, not anonymous). The manifests + the per-run secret
+  salt are written `0600` under `umask 077`; the salt is passed to psql via the
+  environment (`\getenv`, psql ≥ 16) so it never appears in process arguments.
+  Delete them after the rollout with `run-rollout.sh clean-evidence` (`shred`).
 
 ---
 

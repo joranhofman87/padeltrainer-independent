@@ -2,9 +2,9 @@ $ node .../verify/rehearsals.mjs
 
 rollout rehearsals A/B/C/D/E — PR615 migrations pinned @ 2b247f43afe8
 [A] measure A_window (ACCESS EXCLUSIVE rewrite) + CAP:
-        · A_window: rewrite of 20000 rows via migration 20261006100000 took 564.5 ms
-        · derived CAP_STMT (measured + 50% headroom) = 30847 ms; CAP_LOCK = 3000 ms
-  PASS  A: rewrite applied + measured, is_suppressed present  — 565ms for 20000 rows
+        · A_window: rewrite of 20000 rows via migration 20261006100000 took 580.4 ms
+        · derived CAP_STMT (measured + 50% headroom) = 30871 ms; CAP_LOCK = 3000 ms
+  PASS  A: rewrite applied + measured, is_suppressed present  — 580ms for 20000 rows
 [B] lock_timeout abort under contention -> no partial delta:
   PASS  B: bounded db push aborts on lock contention  — sqlstate=55P03 (55P03=lock_not_available)
   PASS  B: after abort, is_suppressed column is ABSENT (atomic per-file)

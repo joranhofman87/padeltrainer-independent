@@ -10,7 +10,8 @@
 #   * the no-loss manifest catches a lost key even after a successful push;
 #   * it never re-merges #615 (gh unused on the default-pin path) and never
 #     overwrites the ORIGINAL pre-migration manifest.
-# ROLLOUT_TEST_FAST_DRAIN=1 skips only the wall-clock wait (the proof still runs).
+# The FULL drain runs (no env backdoor); date/sleep are stubbed so the real wait
+# loop completes instantly under the fake clock.
 # Run: bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 # ===========================================================================
 set -uo pipefail
@@ -20,6 +21,9 @@ export REF=abcdefghijklmnopqrst
 export V1=20261006100000 V2=20261006110000 V3=20261006120000
 PROD="postgresql://postgres@db.${REF}.supabase.co:5432/postgres?sslmode=require"
 CANARY=aaaaaaaa-1111-1111-1111-111111111111
+# 64-hex manifest fingerprints (SHA-256 grammar) shared with the psql stub via env
+export FA="$(printf 'a%.0s' $(seq 64))" FB="$(printf 'b%.0s' $(seq 64))" FN="$(printf 'f%.0s' $(seq 64))"
+export E1="$(printf '1%.0s' $(seq 64))" E2="$(printf '2%.0s' $(seq 64))"
 ROOT="$(mktemp -d)"; trap 'rm -rf "$ROOT"' EXIT
 BIN="$ROOT/bin"; mkdir -p "$BIN"; export STATEDIR="$ROOT/state"
 
@@ -60,12 +64,33 @@ if printf '%s ' "$@" | grep -q -- '-Atqc'; then cat "$STATEDIR/ledger" 2>/dev/nu
 f=""; prev=""; for a in "$@"; do [[ "$prev" == "-f" ]] && f="$a"; prev="$a"; done
 if [[ "$f" == *manifest.sql ]]; then
   mode="$(cat "$STATEDIR/MANIFEST_MODE" 2>/dev/null || echo ok)"
-  echo 'EAS f_a'; [[ "$mode" == loss ]] || echo 'EAS f_b'; echo 'EAS f_new'
-  echo 'EDE e_1'; echo 'EDE e_2'
-  printf 'EV eas_rows=3\nEV ede_rows=2\nEV eas_bad_state_rows=7\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
-    "$(printf 'b%.0s' $(seq 32))" "$(printf 'c%.0s' $(seq 32))"
+  echo "EAS $FA"; if [[ "$mode" == loss ]]; then er=2; else echo "EAS $FB"; er=3; fi; echo "EAS $FN"
+  echo "EDE $E1"; echo "EDE $E2"
+  printf 'EV eas_rows=%s\nEV ede_rows=2\nEV eas_bad_state_rows=7\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
+    "$er" "$(printf 'b%.0s' $(seq 32))" "$(printf 'c%.0s' $(seq 32))"
 fi
 exit 0
+EOF
+# clock stubs: the wait loop advances via date/sleep — exercise it fast without any
+# production backdoor. base=1000000; "now" (+%s, no -f/-d) advances +600 per call;
+# parsing a time (-f/-d + %s) returns base; epoch_to_iso (+%Y with -r/-d @N) maps
+# N<base -> 13:00:00Z, else 13:30:00Z, so the log window is start<end.
+cat > "$BIN/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$BIN/date" <<'EOF'
+#!/usr/bin/env bash
+args="$*"; base=1000000; cf="$STATEDIR/date_cnt"
+if [[ "$args" == *"+%Y"* ]]; then
+  n=""; prev=""; for tok in $args; do [[ "$prev" == "-r" ]] && n="$tok"; [[ "$tok" == @* ]] && n="${tok#@}"; prev="$tok"; done
+  if [[ -n "$n" && "$n" -ge "$base" ]]; then echo "2026-07-31T13:30:00Z"; else echo "2026-07-31T13:00:00Z"; fi; exit 0
+fi
+if [[ "$args" == *"+%s"* ]]; then
+  if [[ "$args" == *" -f "* || "$args" == *" -d "* ]]; then echo "$base"; exit 0; fi
+  c=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$cf"; echo $(( base + c*600 )); exit 0
+fi
+echo "2026-07-31T13:00:00Z"
 EOF
 cat > "$BIN/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -101,7 +126,7 @@ chmod +x "$BIN"/*
 
 EVID="$ROOT/evidence"
 place_pre(){ mkdir -p "$EVID"
-  { echo 'EAS f_a'; echo 'EAS f_b'; echo 'EDE e_1'; echo 'EDE e_2';
+  { echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E2";
     printf 'EV eas_rows=2\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
       "$(printf 'a%.0s' $(seq 32))" "$(printf 'a%.0s' $(seq 32))"; } > "$EVID/manifest-pre.txt"
   printf 'deadbeefsalt' > "$EVID/manifest-salt.txt"; }
@@ -110,7 +135,7 @@ run(){ # $1 ledger $2 gate $3 drain-evidence $4 manifest-mode ; extra env via ca
   printf '%s' "$1" > "$STATEDIR/ledger"; printf '%s' "$2" > "$STATEDIR/gate"
   printf '%s' "$3" > "$STATEDIR/DRAIN_EVIDENCE"; printf '%s' "$4" > "$STATEDIR/MANIFEST_MODE"
   place_pre; PRE_SUM="$(md5of "$EVID/manifest-pre.txt")"
-  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" ROLLOUT_TEST_FAST_DRAIN=1 EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
     MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 \
     bash "$RR" resume615 --yes >/dev/null 2>&1
 }
@@ -150,7 +175,7 @@ setrec(){ printf '%s' "$1" > "$STATEDIR/rec_head"; printf '%s' "$2" > "$STATEDIR
 run_rec(){ # $1 head $2 checks $3 state — seeds rec_* into a fresh STATEDIR then runs
   rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s' "$V1" > "$STATEDIR/ledger"; printf 'on' > "$STATEDIR/gate"
   printf 'ok' > "$STATEDIR/DRAIN_EVIDENCE"; printf 'ok' > "$STATEDIR/MANIFEST_MODE"; setrec "$1" "$2" "$3"; place_pre
-  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" ROLLOUT_TEST_FAST_DRAIN=1 EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
     MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 RECOVERY_PR=99 RECOVERY_SHA="$REC" \
     bash "$RR" resume615 --yes >/dev/null 2>&1
 }

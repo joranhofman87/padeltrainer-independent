@@ -144,8 +144,8 @@ async function rehearsalD(admin) {
   console.log('\n[D] full rehearsal + no-loss manifest (new rows allowed) + artifacts:');
   const c = await freshDb(admin, 'rehearse_d');
   const salt = 'rehearsal-d-salt';
-  const easSet = async () => new Set((await c.query(`SELECT md5($1||'|'||email) f FROM public.email_address_state`, [salt])).rows.map((r) => r.f));
-  const edeSet = async () => new Set((await c.query(`SELECT md5($1||'|'||id::text) f FROM public.email_delivery_events`, [salt])).rows.map((r) => r.f));
+  const easSet = async () => new Set((await c.query(`SELECT encode(sha256(($1||'|'||email)::bytea),'hex') f FROM public.email_address_state`, [salt])).rows.map((r) => r.f));
+  const edeSet = async () => new Set((await c.query(`SELECT encode(sha256(($1||'|'||id::text)::bytea),'hex') f FROM public.email_delivery_events`, [salt])).rows.map((r) => r.f));
   const manifestSql = preparedPlain('manifest.sql').replace(/:'salt'/g, `'${salt}'`);
   try {
     await c.query(`INSERT INTO public.email_address_state(email,state)

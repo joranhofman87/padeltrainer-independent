@@ -82,18 +82,15 @@ prove_drain() {
   canary_id="$(printf '%s' "$body" | jq -r '.invocationId // empty')"
   [[ "$canary_id" =~ ^[0-9a-fA-F-]{36}$ ]] || die "canary 503 lacked a valid invocationId (deploy #616 build that echoes it)"
   ok "canary 503 with invocationId ${canary_id:0:8}… — gate active"
-  # 2) wait out the drain window (covers the 400s hosted-function wall). The
-  #    floor is still enforced (assert_drain_window above); ROLLOUT_TEST_FAST_DRAIN
-  #    skips ONLY the wall-clock sleep for the stubbed operator-flow test — never
-  #    the proof below. It is never set in production.
+  # 2) wait out the drain window (covers the 400s hosted-function wall). There is
+  #    NO way to shorten this: the loop advances only via the real clock (date)
+  #    and only breaks once (now - T_GATE) >= min, where min is floored at 520s by
+  #    assert_drain_window. Tests exercise it by stubbing date/sleep, not by any
+  #    env flag. (mutation-pinned: verify/guard-mutation-test.sh)
   local g_epoch now_epoch elapsed
   g_epoch="$(iso_to_epoch "$t_gate")"
-  if [[ "${ROLLOUT_TEST_FAST_DRAIN:-}" == 1 ]]; then
-    elapsed="$min"; log "TEST fast-drain: wall-clock wait skipped (proof still enforced)"
-  else
-    log "draining >= ${min}s before any migration"
-    while :; do now_epoch="$(date -u +%s)"; elapsed=$((now_epoch - g_epoch)); [[ "$elapsed" -ge "$min" ]] && break; sleep 15; done
-  fi
+  log "draining >= ${min}s before any migration"
+  while :; do now_epoch="$(date -u +%s)"; elapsed=$((now_epoch - g_epoch)); [[ "$elapsed" -ge "$min" ]] && break; sleep 15; done
   # 3) ONE widened, minute-rounding-padded snapshot enforcing EVERYTHING locally:
   #    exact canary blocked present + zero POST-gate sends (local --gate-at-epoch) +
   #    no straggler + no record_failed. Empty results fail (require-invocation).
@@ -107,7 +104,7 @@ prove_drain() {
       --assert-all-finished --fail-on-record-failed || rc=$?
     case "$rc" in
       0) break;;
-      4) log "canary evidence not ingested yet — retry $attempt/6"; [[ "${ROLLOUT_TEST_FAST_DRAIN:-}" == 1 ]] || sleep 15;;
+      4) log "canary evidence not ingested yet — retry $attempt/6"; sleep 15;;
       3) die "DRAIN PROOF FAILED: gate BYPASS (post-gate provider_send_started) in [$w_start,$w_end]";;
       5) die "DRAIN PROOF FAILED: in-flight straggler in [$w_start,$w_end]";;
       6) die "DRAIN PROOF FAILED: record_failed in [$w_start,$w_end]";;
@@ -119,13 +116,21 @@ prove_drain() {
 }
 
 # --- no-loss manifest (concurrency-safe; validate/compare live in common.sh) --
-# ROLLOUT_SALT (a per-run secret) is set by apply615 and persisted to
-# evidence/manifest-salt.txt so resume615 can reuse the ORIGINAL manifest.
+# The manifest + salt are PSEUDONYMOUS PERSONAL DATA (salted SHA-256 of emails):
+# written 0600 under umask 077, salt passed via env (never argv). Delete after
+# the rollout with `run-rollout.sh clean-evidence`. ROLLOUT_SALT is set by
+# apply615 and persisted so resume615 can reuse the ORIGINAL manifest.
+persist_salt() {  # write the per-run secret salt 0600
+  ( umask 077; printf '%s' "$ROLLOUT_SALT" > "$EVID/manifest-salt.txt" )
+  chmod 600 "$EVID/manifest-salt.txt" 2>/dev/null || true
+}
 capture_manifest() {
   local url="$1" tag="$2"; local out="$EVID/manifest-${tag}.txt"; require_cmd psql
   : "${ROLLOUT_SALT:?internal: manifest salt not set}"
-  psql "$url" -v ON_ERROR_STOP=1 -v salt="$ROLLOUT_SALT" --no-psqlrc -q -f "$SQL_DIR/manifest.sql" > "$out" \
+  # salt via env (\getenv in manifest.sql) so it never appears in process args; 0600 output
+  ( umask 077; ROLLOUT_SALT="$ROLLOUT_SALT" psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/manifest.sql" | sed '/^$/d' > "$out" ) \
     || die "manifest capture ($tag) failed"
+  chmod 600 "$out" 2>/dev/null || true
   validate_manifest "$out" "$tag"; ok "manifest captured + validated: $out"
 }
 
@@ -145,18 +150,6 @@ resolve_recovery_sha() {
   local state; state="$(gh pr view "$RECOVERY_PR" --json state -q .state)"
   [[ "$state" == "MERGED" ]] || die "recovery PR #$RECOVERY_PR is not MERGED (state=$state)"
   pr_merge_sha "$RECOVERY_PR"   # deploy from the verified merge commit
-}
-
-# --- migration ledger (fail-loud, valid prefixes only) ---------------------
-ledger_status() { # $1 url ; echoes none|prefix1|prefix2|all|invalid
-  local url="$1" csv; require_cmd psql
-  csv="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc \
-    "SELECT CASE WHEN to_regclass('supabase_migrations.schema_migrations') IS NULL THEN ''
-       ELSE coalesce((SELECT string_agg(version, ',' ORDER BY version)
-                      FROM supabase_migrations.schema_migrations
-                      WHERE version IN ('$V1','$V2','$V3')), '') END")" \
-    || die "ledger query failed (connection/auth?) — cannot classify migration state"
-  classify_ledger "$csv" "$V1" "$V2" "$V3"
 }
 
 # --- migration ledger (fail-loud, valid prefixes only) ---------------------
@@ -233,8 +226,9 @@ cmd_apply615() {
   prove_drain "$T_GATE"       # cannot reach db push without this
 
   # capture the pre-migration manifest AFTER the drain (reflects the gated,
-  # drained state); a fresh per-run salt is persisted so resume615 can reuse it.
-  ROLLOUT_SALT="$(gen_salt)"; printf '%s' "$ROLLOUT_SALT" > "$EVID/manifest-salt.txt"
+  # drained state); a fresh per-run secret salt is persisted 0600 so resume615
+  # can reuse it.
+  ROLLOUT_SALT="$(gen_salt)"; persist_salt
   capture_manifest "$prod" pre
 
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
@@ -271,6 +265,15 @@ cmd_preflight()  { run_artifact "${1:?usage: preflight <conn_url>}"  preflight.s
 cmd_postflight() { local url="${1:?usage: postflight <conn_url>}"
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql; }
 cmd_ledger_status() { local url="${1:?usage: ledger-status <conn_url>}"; echo "ledger state: $(ledger_status "$url")"; }
+
+# Delete the pseudonymous manifests + secret salt once the rollout is done.
+cmd_clean_evidence() {
+  local f n=0
+  for f in "$EVID"/manifest-pre.txt "$EVID"/manifest-post.txt "$EVID"/manifest-salt.txt "$EVID"/edge-log-lines.txt; do
+    if [[ -f "$f" ]]; then command -v shred >/dev/null 2>&1 && shred -u "$f" 2>/dev/null || rm -f "$f"; n=$((n+1)); fi
+  done
+  ok "cleaned ${n} pseudonymous evidence file(s) (manifests + salt + edge-log lines)"
+}
 
 cmd_rollback615() {
   local url="${1:?usage: rollback615 <conn_url>}" st; st="$(ledger_status "$url")"
@@ -364,11 +367,13 @@ case "$sub" in
   verify-clone)   cmd_verify_clone "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
+  clean-evidence) cmd_clean_evidence "$@";;
   rollback615)    cmd_rollback615 "$@";;
   *) cat >&2 <<EOF
 usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
-  resume615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> | rollback615 <url>
+  resume615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> |
+  rollback615 <url> | clean-evidence
 EOF
      exit 2;;
 esac

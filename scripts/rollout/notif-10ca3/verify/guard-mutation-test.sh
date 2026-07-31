@@ -106,27 +106,42 @@ eq "classify {V1,V3} = invalid"  "$(classify_ledger "$V1,$V3"  "$V1" "$V2" "$V3"
 mutant_count_classify(){ local n; n=$(printf '%s' "$1" | tr ',' '\n' | sed '/^$/d' | grep -c .); case "$n" in 0) echo none;; 3) echo all;; *) echo prefix;; esac; }
 eq "MUTANT count-classifier wrongly calls {V1,V3} a prefix (guard load-bearing)" "$(mutant_count_classify "$V1,$V3")" prefix
 
-echo "== guard 8: manifest validation + CONCURRENCY-SAFE no-loss =="
-A=$(printf 'a%.0s' $(seq 32)); B=$(printf 'b%.0s' $(seq 32)); C=$(printf 'c%.0s' $(seq 32)); Dd=$(printf 'd%.0s' $(seq 32))
+echo "== guard 8: manifest COMPLETENESS + snapshot-consistency + no-loss =="
+h(){ printf "%0.s$1" $(seq 64); }         # a 64-hex fingerprint of the given nibble
+FA=$(h a); FB=$(h b); FC=$(h c); E1=$(h 1); E2=$(h 3); E3=$(h e)
+R32A=$(printf 'a%.0s' $(seq 32)); R32B=$(printf 'b%.0s' $(seq 32)); R32C=$(printf 'c%.0s' $(seq 32)); R32D=$(printf 'd%.0s' $(seq 32))
 evblock(){ printf 'EV eas_rows=%s\nEV ede_rows=%s\nEV eas_bad_state_rows=%s\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' "$1" "$2" "$3" "$4" "$5"; }
-{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EDE e_1'; echo 'EDE e_2'; evblock 2 2 1 "$A" "$B"; } > "$TMP/man_pre.txt"
-accept "validate_manifest accepts a well-formed manifest" validate_manifest "$TMP/man_pre.txt" ok
-grep -v '^EV ede_rows=' "$TMP/man_pre.txt" > "$TMP/man_missing.txt"
-reject "validate_manifest rejects a missing EV key" validate_manifest "$TMP/man_missing.txt" missing
-{ cat "$TMP/man_pre.txt"; echo 'EV ede_rows=99'; } > "$TMP/man_dup.txt"
-reject "validate_manifest rejects a duplicated EV key" validate_manifest "$TMP/man_dup.txt" dup
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_pre.txt"
+accept "validate_manifest accepts a complete, consistent manifest" validate_manifest "$TMP/man_pre.txt" ok
+# COMPLETENESS mutations (the vacuous-manifest class Codex reproduced)
+{ evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_zero.txt"                                   # counts say 2/2 but ZERO fingerprints
+reject "validate_manifest rejects zero fingerprints with positive counts" validate_manifest "$TMP/man_zero.txt" zero
+{ echo "EAS $FA"; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_omit.txt"  # one EAS omitted
+reject "validate_manifest rejects an omitted fingerprint (count mismatch)" validate_manifest "$TMP/man_omit.txt" omit
+{ echo "EAS $FA"; echo "EAS $FA"; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_dupfp.txt"  # duplicate EAS
+reject "validate_manifest rejects duplicate fingerprints" validate_manifest "$TMP/man_dupfp.txt" dupfp
+{ echo 'EAS deadbeef'; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_malformed.txt"  # short hex
+reject "validate_manifest rejects a malformed fingerprint line" validate_manifest "$TMP/man_malformed.txt" malformed
+{ echo "EAS $FA"; echo "EAS $FB"; echo 'WAT something'; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_unknown.txt"
+reject "validate_manifest rejects an unknown line" validate_manifest "$TMP/man_unknown.txt" unknown
+grep -v '^EV ede_rows=' "$TMP/man_pre.txt" > "$TMP/man_evmiss.txt"
+reject "validate_manifest rejects a missing EV key" validate_manifest "$TMP/man_evmiss.txt" evmiss
 # no-loss: new rows + changed readers OK; a lost key/id fails; unchanged readers fail
-{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EAS f_c'; echo 'EDE e_1'; echo 'EDE e_2'; echo 'EDE e_3'; evblock 3 3 9 "$C" "$Dd"; } > "$TMP/man_ok.txt"
-{ echo 'EAS f_a';               echo 'EDE e_1'; echo 'EDE e_2';               evblock 1 2 1 "$C" "$Dd"; } > "$TMP/man_easloss.txt"
-{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EDE e_1';                             evblock 2 1 1 "$C" "$Dd"; } > "$TMP/man_edeloss.txt"
-{ echo 'EAS f_a'; echo 'EAS f_b'; echo 'EAS f_c'; echo 'EDE e_1'; echo 'EDE e_2'; echo 'EDE e_3'; evblock 3 3 9 "$A" "$B"; } > "$TMP/man_readersame.txt"
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2"; echo "EDE $E3"; evblock 3 3 9 "$R32C" "$R32D"; } > "$TMP/man_ok.txt"
+{ echo "EAS $FA";               echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2";  evblock 2 2 1 "$R32C" "$R32D"; } > "$TMP/man_easloss.txt"   # FB lost, FC new
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E3";                evblock 2 2 1 "$R32C" "$R32D"; } > "$TMP/man_edeloss.txt"   # E2 lost, E3 new
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2"; echo "EDE $E3"; evblock 3 3 9 "$R32A" "$R32B"; } > "$TMP/man_readersame.txt"
 accept "no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers" assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_ok.txt"
 reject "no-loss rejects a LOST email_address_state key"   assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_easloss.txt"
 reject "no-loss rejects a LOST email_delivery_events id"  assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_edeloss.txt"
 reject "no-loss rejects unchanged reader fingerprints"    assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_readersame.txt"
-# MUTANT: exact-count equality (the old rule) wrongly rejects legitimate new rows
-mutant_count_equal(){ [[ "$(sed -n 's/^EV eas_rows=//p' "$1")" == "$(sed -n 's/^EV eas_rows=//p' "$2")" ]]; }
-reject "MUTANT exact-count equality wrongly fails a legitimate new-row post (rule replaced)" mutant_count_equal "$TMP/man_pre.txt" "$TMP/man_ok.txt"
+
+echo "== guard 9: the production drain wait has no env backdoor =="
+no_wait_backdoor(){ ! grep -qE 'ROLLOUT_TEST_FAST_DRAIN|elapsed=("?\$min"?|"?\$\{min)' "$1"; }
+accept "run-rollout.sh has NO env-based drain-wait shortcut" no_wait_backdoor "$RR"
+grep -q 'while :; do now_epoch="\$(date -u +%s)"' "$RR" && pass "the wait advances only via the real clock (date/sleep)" || fail "wait loop not found"
+{ cat "$RR"; printf '%s\n' '  [[ "${ROLLOUT_TEST_FAST_DRAIN:-}" == 1 ]] && elapsed="$min"'; } > "$TMP/mutant-drain.sh"
+reject "MUTANT re-introducing a fast-drain env flag is caught" no_wait_backdoor "$TMP/mutant-drain.sh"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

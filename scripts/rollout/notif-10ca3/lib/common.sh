@@ -177,12 +177,15 @@ gen_salt() {
   else die "no salt source (need openssl or /dev/urandom)"; fi
 }
 
-# A manifest must carry each EV aggregate key EXACTLY once and well-formed. The
-# EAS/EDE lines are salted fingerprints of email_address_state addresses and
-# email_delivery_events ids (never raw PII).
+# A manifest must be INTERNALLY COMPLETE + snapshot-consistent, not just carry
+# the EV keys: every line matches the exact grammar (no unknown/malformed),
+# EAS/EDE fingerprints are unique, and their counts equal the declared
+# eas_rows/ede_rows (guaranteed by the REPEATABLE READ snapshot in manifest.sql).
+# EAS/EDE are salted SHA-256 (64 hex) fingerprints — never raw PII.
 validate_manifest() {
-  local f="$1" tag="${2:-manifest}" k n
+  local f="$1" tag="${2:-manifest}" k n easN edeN easU edeU easRows edeRows
   [[ -f "$f" ]] || die "manifest ($tag): file not found: $f"
+  # EV keys exactly once + well-formed
   for k in eas_rows ede_rows eas_bad_state_rows reader_academy_md5 reader_overview_md5; do
     n="$(grep -c "^EV ${k}=" "$f" || true)"; [[ "$n" -eq 1 ]] || die "manifest ($tag): EV $k present $n time(s) (want exactly 1)"
   done
@@ -190,7 +193,18 @@ validate_manifest() {
     grep -qE "^EV ${k}=[0-9]+$" "$f" || die "manifest ($tag): EV $k not a non-negative integer"; done
   for k in reader_academy_md5 reader_overview_md5; do
     grep -qE "^EV ${k}=([0-9a-f]{32}|absent)$" "$f" || die "manifest ($tag): EV $k not md5-or-absent"; done
-  ok "manifest ($tag): well-formed"
+  # EVERY line must be a known, well-formed EV / EAS / EDE line (reject unknown/malformed)
+  if grep -qvE '^(EV [a-z0-9_]+=.*|EAS [0-9a-f]{64}|EDE [0-9a-f]{64})$' "$f"; then
+    die "manifest ($tag): contains an unknown or malformed line"; fi
+  # fingerprints unique + cardinality equals the declared counts (snapshot-consistent)
+  easN="$(grep -c '^EAS ' "$f" || true)"; edeN="$(grep -c '^EDE ' "$f" || true)"
+  easU="$(grep '^EAS ' "$f" | sort -u | grep -c . || true)"; edeU="$(grep '^EDE ' "$f" | sort -u | grep -c . || true)"
+  easRows="$(sed -n 's/^EV eas_rows=//p' "$f")"; edeRows="$(sed -n 's/^EV ede_rows=//p' "$f")"
+  [[ "$easN" -eq "$easU" ]] || die "manifest ($tag): duplicate EAS fingerprints ($easN lines, $easU unique)"
+  [[ "$edeN" -eq "$edeU" ]] || die "manifest ($tag): duplicate EDE fingerprints ($edeN lines, $edeU unique)"
+  [[ "$easN" -eq "$easRows" ]] || die "manifest ($tag): EAS fingerprint count $easN != eas_rows $easRows (incomplete capture)"
+  [[ "$edeN" -eq "$edeRows" ]] || die "manifest ($tag): EDE fingerprint count $edeN != ede_rows $edeRows (incomplete capture)"
+  ok "manifest ($tag): complete + snapshot-consistent ($easN EAS, $edeN EDE)"
 }
 
 # CONCURRENCY-SAFE no-loss proof: every pre-existing address key + event id must

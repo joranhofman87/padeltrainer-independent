@@ -46,13 +46,20 @@ $ bash .../verify/guard-mutation-test.sh
   PASS  classify {V2} = invalid
   PASS  classify {V1,V3} = invalid
   PASS  MUTANT count-classifier wrongly calls {V1,V3} a prefix (guard load-bearing)
-== guard 8: manifest validation + CONCURRENCY-SAFE no-loss ==
-  PASS  validate_manifest accepts a well-formed manifest
+== guard 8: manifest COMPLETENESS + snapshot-consistency + no-loss ==
+  PASS  validate_manifest accepts a complete, consistent manifest
+  PASS  validate_manifest rejects zero fingerprints with positive counts
+  PASS  validate_manifest rejects an omitted fingerprint (count mismatch)
+  PASS  validate_manifest rejects duplicate fingerprints
+  PASS  validate_manifest rejects a malformed fingerprint line
+  PASS  validate_manifest rejects an unknown line
   PASS  validate_manifest rejects a missing EV key
-  PASS  validate_manifest rejects a duplicated EV key
   PASS  no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers
   PASS  no-loss rejects a LOST email_address_state key
   PASS  no-loss rejects a LOST email_delivery_events id
   PASS  no-loss rejects unchanged reader fingerprints
-  PASS  MUTANT exact-count equality wrongly fails a legitimate new-row post (rule replaced)
-================  46 passed, 0 failed  ================
+== guard 9: the production drain wait has no env backdoor ==
+  PASS  run-rollout.sh has NO env-based drain-wait shortcut
+  PASS  the wait advances only via the real clock (date/sleep)
+  PASS  MUTANT re-introducing a fast-drain env flag is caught
+================  52 passed, 0 failed  ================
