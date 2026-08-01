@@ -27,6 +27,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 41/41 |
 | step-6 fetch+verify is atomic; stale evidence unusable; live terminal-newline shape | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 63/63 |
 | a failed `db push --dry-run` surfaces the CLI reason (secrets redacted) and never yields a pending set | `bash …/verify/dryrun-diagnostics-test.sh` | [dryrun-diagnostics.txt](evidence/dryrun-diagnostics.txt) | 101/101 |
+| every linked-db path links its OWN worktree to the pooler and verifies it before pushing | `bash …/verify/worktree-link-test.sh` | [worktree-link.txt](evidence/worktree-link.txt) | 59/59 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -66,6 +67,7 @@ verify/exit-status-test.sh    exit-status integrity proof (masked-failure regres
 verify/step6-verifier-test.sh executable fixtures + mutants for the step-6 verifier
 verify/logfetch-integration-test.sh fresh-evidence contract: fetch+verify is atomic
 verify/dryrun-diagnostics-test.sh   the dry run must surface the CLI failure reason (redacted)
+verify/worktree-link-test.sh       the rollout worktree links its OWN pooler before any push
 evidence/                   captured run outputs
 ```
 
@@ -132,6 +134,22 @@ run-rollout.sh clean-evidence --yes "$PROD"
 - **No SHA drift.** #615/#616 heads are pinned in `PINS.env`; `apply615`/`phase616`
   assert the live head equals the reviewed pin and merge with
   `gh pr merge --match-head-commit`, so only the CI-tested commit ships.
+- **Each rollout worktree links itself to the pooler.** `supabase/.temp/` is
+  gitignored, so `git worktree add` never carries it into the detached worktree
+  that `dryrun615`/`apply615`/`resume615` build. The CLI there finds no pooler
+  metadata and falls back to the DIRECT host `db.<ref>.supabase.co`, which
+  resolves **IPv6-only** — step 7 failed with *"IPv6 is not supported on your
+  current network"* even though the ordinary checkout was correctly linked.
+  **Running `supabase link` in your normal checkout does NOT fix this**: every
+  one of those commands builds a fresh worktree that inherits none of it, so
+  `apply615` would hit the same wall *after* entering its rollout sequence. Each
+  worktree therefore runs `supabase link --project-ref "$EXPECTED_REF"` itself
+  (password from the environment; never `--password`, never `--skip-pooler`) and
+  then fails closed unless its own `.temp` names `EXPECTED_REF` and a
+  regular-file, password-free `postgres(ql)://postgres.<ref>@….pooler.supabase.com:5432|6543`
+  URL — never the direct host — with the tracked tree still clean. The ambient
+  `.temp` is never copied: it is mutable, unversioned and could point anywhere.
+  `phase616` and the `--db-url` clone paths do not link.
 - **The caps must actually cap.** PostgreSQL reads `statement_timeout=0` and
   `lock_timeout=0` as **disabled**, so a cap of `0` would unbound the migration
   while every log line still said "bounded"; and both values are interpolated

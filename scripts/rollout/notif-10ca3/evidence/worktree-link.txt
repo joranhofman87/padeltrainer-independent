@@ -1,0 +1,74 @@
+$ bash scripts/rollout/notif-10ca3/verify/worktree-link-test.sh
+
+== the detached worktree starts WITHOUT .temp (the root cause) ==
+  PASS  a fresh detached worktree has NO supabase/.temp (so the CLI would use the direct IPv6 host)
+  PASS  supabase/.temp is gitignored — it can never be inherited by a worktree
+== dryrun615 links the worktree, then pushes ==
+  PASS  dryrun615 succeeds once the worktree is linked (exit 0)
+  PASS  supabase link ran exactly once
+  PASS  the link ran INSIDE the rollout worktree, not the ambient checkout
+  PASS  link used --project-ref EXPECTED_REF
+  PASS  link argv has no --password and no --skip-pooler
+  PASS  the password never appears in argv
+  PASS  the verified pooler target is reported (host/port/user, password-free)
+  PASS  db push ran after the link
+== the push stub REFUSES without pooler metadata (ordering is real) ==
+  PASS  mutant built: the link stage removed from dryrun615
+  PASS  MUTANT (no link) FAILS — this is the observed step-7 failure
+  PASS  MUTANT reproduces the exact IPv6/direct-host diagnostic
+  PASS  MUTANT never linked
+== link failure stops BEFORE any db push ==
+  PASS  link failure -> dryrun615 exits nonzero (1)
+  PASS  link failure -> db push was NEVER invoked
+  PASS  the link failure diagnostic is surfaced (bounded/redacted)
+  PASS  no password in the link diagnostic
+  PASS  the link capture was cleaned up
+== every pooler-metadata defect fails closed ==
+  PASS  pooler metadata 'nopooler' -> refused (exit 1)
+  PASS  pooler metadata 'nopooler' -> db push never invoked
+  PASS  pooler metadata 'symlink' -> refused (exit 1)
+  PASS  pooler metadata 'symlink' -> db push never invoked
+  PASS  pooler metadata 'direct' -> refused (exit 1)
+  PASS  pooler metadata 'direct' -> db push never invoked
+  PASS  pooler metadata 'credential' -> refused (exit 1)
+  PASS  pooler metadata 'credential' -> db push never invoked
+  PASS  pooler metadata 'wronguser' -> refused (exit 1)
+  PASS  pooler metadata 'wronguser' -> db push never invoked
+  PASS  pooler metadata 'badport' -> refused (exit 1)
+  PASS  pooler metadata 'badport' -> db push never invoked
+  PASS  pooler metadata 'badhost' -> refused (exit 1)
+  PASS  pooler metadata 'badhost' -> db push never invoked
+  PASS  pooler metadata 'wrongref' -> refused (exit 1)
+  PASS  pooler metadata 'wrongref' -> db push never invoked
+  PASS  pooler metadata 'noref' -> refused (exit 1)
+  PASS  pooler metadata 'noref' -> db push never invoked
+  PASS  port 6543 (transaction pooler) is accepted
+== a link that dirties TRACKED files is refused ==
+  PASS  link mutating tracked worktree files -> refused
+  PASS  tracked mutation -> db push never invoked
+== the ambient checkout's .temp is never trusted ==
+  PASS  mutant built: copies the ambient .temp instead of linking
+  PASS  MUTANT (ambient copy) performs NO link — the fresh-link requirement is load-bearing
+== the link must come BEFORE the dry run ==
+  PASS  mutant built: link moved AFTER the dry run
+  PASS  MUTANT (link after the dry run) FAILS — ordering is load-bearing
+  PASS  MUTANT (link after) hits the direct-host failure
+== resume615 links its recovery worktree ==
+  PASS  resume615 completes with a linked recovery worktree
+  PASS  resume615 linked its recovery worktree exactly once
+  PASS  resume615 linked INSIDE its worktree
+== apply615 links ONCE and reuses it for both dry runs and the push ==
+  PASS  apply615 completes with a linked merge-SHA worktree
+  PASS  apply615 linked exactly ONCE (not per dry run)
+  PASS  apply615 reused that one link for both dry runs and the real push (3 CLI pushes)
+  PASS  every apply615 push ran in the SAME linked worktree
+  PASS  the link cwd is exactly the push cwd
+== phase616 and the clone paths do NOT link ==
+  PASS  phase616 never links (it deploys functions; no linked db push)
+  PASS  clone-push never links (it targets --db-url, not the linked project)
+  PASS  clone-make-prefix never links
+== static: exactly the three linked paths carry the stage ==
+  PASS  exactly 3 call sites (dryrun615, apply615, resume615)
+  PASS  --skip-pooler is never passed to the CLI (only named in the explanatory comment)
+  PASS  link never uses --password
+================  59 passed, 0 failed  ================

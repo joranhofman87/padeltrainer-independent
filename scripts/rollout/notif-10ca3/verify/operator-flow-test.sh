@@ -37,7 +37,10 @@ md5of(){ md5 -q "$1" 2>/dev/null || md5sum "$1" | awk '{print $1}'; }
 # a RUNTIME property of the stubs rather than a grep over the script.
 cat > "$BIN/git" <<'EOF'
 #!/usr/bin/env bash
+# the link validator calls `git -C "$WT" status ...`; skip a leading -C <path>
+if [[ "${1:-}" == "-C" ]]; then shift 2; fi
 case "$1" in
+  status) exit 0;;
   fetch|cat-file) exit 0;; rev-parse) echo 0000000000000000000000000000000000000000; exit 0;;
   worktree)
     if [[ "$2" == add ]]; then wt="$4"; mkdir -p "$wt/supabase/migrations"
@@ -57,6 +60,15 @@ EOF
 cat > "$BIN/supabase" <<'EOF'
 #!/usr/bin/env bash
 L="$STATEDIR/ledger"
+if [[ "$1" == link ]]; then
+  # the rollout worktree links itself before any linked push; write the pooler
+  # metadata the validator requires
+  t="$PWD/supabase/.temp"; mkdir -p "$t"
+  printf '%s' "$REF" > "$t/project-ref"
+  printf 'postgresql://postgres.%s@aws-1-eu-central-1.pooler.supabase.com:5432/postgres' "$REF" > "$t/pooler-url"
+  echo "$PWD" >> "$STATEDIR/link_cwd"
+  exit 0
+fi
 if [[ "$1" == db && "$2" == push ]]; then
   src=""
   for f in supabase/migrations/*.sql; do
