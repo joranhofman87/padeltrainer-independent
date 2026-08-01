@@ -53,6 +53,8 @@ $ bash .../verify/guard-mutation-test.sh
   PASS  validate_manifest rejects duplicate fingerprints
   PASS  validate_manifest rejects a malformed fingerprint line
   PASS  validate_manifest rejects an unknown line
+  PASS  validate_manifest rejects an unknown EV key (explicit allow-list)
+  PASS  validate_manifest rejects eas_bad_state_rows > eas_rows (impossible)
   PASS  validate_manifest rejects a missing EV key
   PASS  no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers
   PASS  no-loss rejects a LOST email_address_state key
@@ -62,4 +64,4 @@ $ bash .../verify/guard-mutation-test.sh
   PASS  run-rollout.sh has NO env-based drain-wait shortcut
   PASS  the wait advances only via the real clock (date/sleep)
   PASS  MUTANT re-introducing a fast-drain env flag is caught
-================  52 passed, 0 failed  ================
+================  54 passed, 0 failed  ================

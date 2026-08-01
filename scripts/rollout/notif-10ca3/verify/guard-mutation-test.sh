@@ -124,13 +124,17 @@ reject "validate_manifest rejects duplicate fingerprints" validate_manifest "$TM
 reject "validate_manifest rejects a malformed fingerprint line" validate_manifest "$TMP/man_malformed.txt" malformed
 { echo "EAS $FA"; echo "EAS $FB"; echo 'WAT something'; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 1 "$R32A" "$R32B"; } > "$TMP/man_unknown.txt"
 reject "validate_manifest rejects an unknown line" validate_manifest "$TMP/man_unknown.txt" unknown
+{ cat "$TMP/man_pre.txt"; echo 'EV unexpected=accepted'; } > "$TMP/man_unknown_ev.txt"
+reject "validate_manifest rejects an unknown EV key (explicit allow-list)" validate_manifest "$TMP/man_unknown_ev.txt" unknown_ev
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E2"; evblock 2 2 5 "$R32A" "$R32B"; } > "$TMP/man_badgt.txt"
+reject "validate_manifest rejects eas_bad_state_rows > eas_rows (impossible)" validate_manifest "$TMP/man_badgt.txt" badgt
 grep -v '^EV ede_rows=' "$TMP/man_pre.txt" > "$TMP/man_evmiss.txt"
 reject "validate_manifest rejects a missing EV key" validate_manifest "$TMP/man_evmiss.txt" evmiss
 # no-loss: new rows + changed readers OK; a lost key/id fails; unchanged readers fail
-{ echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2"; echo "EDE $E3"; evblock 3 3 9 "$R32C" "$R32D"; } > "$TMP/man_ok.txt"
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2"; echo "EDE $E3"; evblock 3 3 3 "$R32C" "$R32D"; } > "$TMP/man_ok.txt"
 { echo "EAS $FA";               echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2";  evblock 2 2 1 "$R32C" "$R32D"; } > "$TMP/man_easloss.txt"   # FB lost, FC new
 { echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E3";                evblock 2 2 1 "$R32C" "$R32D"; } > "$TMP/man_edeloss.txt"   # E2 lost, E3 new
-{ echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2"; echo "EDE $E3"; evblock 3 3 9 "$R32A" "$R32B"; } > "$TMP/man_readersame.txt"
+{ echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FC"; echo "EDE $E1"; echo "EDE $E2"; echo "EDE $E3"; evblock 3 3 3 "$R32A" "$R32B"; } > "$TMP/man_readersame.txt"
 accept "no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers" assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_ok.txt"
 reject "no-loss rejects a LOST email_address_state key"   assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_easloss.txt"
 reject "no-loss rejects a LOST email_delivery_events id"  assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_edeloss.txt"

@@ -30,4 +30,19 @@ $ bash .../verify/operator-flow-test.sh
 == already all: verify-only, no drain ==
   PASS  already-all verifies + exits 0
   PASS  already-all turns gate OFF
-================  22 passed, 0 failed  ================
+== clean-evidence: guarded destruction of recovery material ==
+  PASS  REFUSED on ledger=prefix1 (recovery material)
+  PASS  prefix1 refusal preserved all files
+  PASS  REFUSED on ledger=prefix2
+  PASS  prefix2 refusal preserved all files
+  PASS  REFUSED on missing post-manifest
+  PASS  REFUSED on corrupt pre-manifest
+  PASS  corrupt-manifest refusal preserved all files
+  PASS  REFUSED on failed no-loss comparison
+  PASS  no-loss refusal preserved all files
+  PASS  REFUSED while the maintenance gate is ON
+  PASS  gate-ON refusal preserved all files
+  PASS  REFUSED without --yes
+  PASS  all + gate-OFF + valid manifests + no-loss -> cleanup succeeds
+  PASS  manifests + salt deleted only after all prerequisites
+================  36 passed, 0 failed  ================

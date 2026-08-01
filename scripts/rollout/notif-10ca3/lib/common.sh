@@ -193,8 +193,10 @@ validate_manifest() {
     grep -qE "^EV ${k}=[0-9]+$" "$f" || die "manifest ($tag): EV $k not a non-negative integer"; done
   for k in reader_academy_md5 reader_overview_md5; do
     grep -qE "^EV ${k}=([0-9a-f]{32}|absent)$" "$f" || die "manifest ($tag): EV $k not md5-or-absent"; done
-  # EVERY line must be a known, well-formed EV / EAS / EDE line (reject unknown/malformed)
-  if grep -qvE '^(EV [a-z0-9_]+=.*|EAS [0-9a-f]{64}|EDE [0-9a-f]{64})$' "$f"; then
+  # EVERY line must be a known, well-formed line: an EV record from the EXPLICIT
+  # five-key allow-list, or an EAS/EDE 64-hex fingerprint. Anything else —
+  # including an unknown EV key — is rejected.
+  if grep -qvE '^(EV (eas_rows|ede_rows|eas_bad_state_rows|reader_academy_md5|reader_overview_md5)=.*|EAS [0-9a-f]{64}|EDE [0-9a-f]{64})$' "$f"; then
     die "manifest ($tag): contains an unknown or malformed line"; fi
   # fingerprints unique + cardinality equals the declared counts (snapshot-consistent)
   easN="$(grep -c '^EAS ' "$f" || true)"; edeN="$(grep -c '^EDE ' "$f" || true)"
@@ -204,6 +206,8 @@ validate_manifest() {
   [[ "$edeN" -eq "$edeU" ]] || die "manifest ($tag): duplicate EDE fingerprints ($edeN lines, $edeU unique)"
   [[ "$easN" -eq "$easRows" ]] || die "manifest ($tag): EAS fingerprint count $easN != eas_rows $easRows (incomplete capture)"
   [[ "$edeN" -eq "$edeRows" ]] || die "manifest ($tag): EDE fingerprint count $edeN != ede_rows $edeRows (incomplete capture)"
+  local badRows; badRows="$(sed -n 's/^EV eas_bad_state_rows=//p' "$f")"
+  [[ "$badRows" -le "$easRows" ]] || die "manifest ($tag): eas_bad_state_rows $badRows > eas_rows $easRows (impossible)"
   ok "manifest ($tag): complete + snapshot-consistent ($easN EAS, $edeN EDE)"
 }
 

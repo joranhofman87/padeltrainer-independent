@@ -66,7 +66,7 @@ if [[ "$f" == *manifest.sql ]]; then
   mode="$(cat "$STATEDIR/MANIFEST_MODE" 2>/dev/null || echo ok)"
   echo "EAS $FA"; if [[ "$mode" == loss ]]; then er=2; else echo "EAS $FB"; er=3; fi; echo "EAS $FN"
   echo "EDE $E1"; echo "EDE $E2"
-  printf 'EV eas_rows=%s\nEV ede_rows=2\nEV eas_bad_state_rows=7\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
+  printf 'EV eas_rows=%s\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
     "$er" "$(printf 'b%.0s' $(seq 32))" "$(printf 'c%.0s' $(seq 32))"
 fi
 exit 0
@@ -192,6 +192,51 @@ echo "== already all: verify-only, no drain =="
 run "$V1,$V2,$V3" on ok ok; rc=$?
 [[ "$rc" == 0 ]] && pass "already-all verifies + exits 0" || fail "exit=$rc"
 [[ "$(cat "$STATEDIR/gate")" == off ]] && pass "already-all turns gate OFF" || fail "gate not off"
+
+echo "== clean-evidence: guarded destruction of recovery material =="
+place_post(){ # $1 = ok|loss : post-manifest superset (new row FN, changed readers) or FB lost
+  if [[ "$1" == loss ]]; then
+    { echo "EAS $FA"; echo "EAS $FN"; echo "EDE $E1"; echo "EDE $E2";
+      printf 'EV eas_rows=2\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
+        "$(printf 'b%.0s' $(seq 32))" "$(printf 'c%.0s' $(seq 32))"; } > "$EVID/manifest-post.txt"
+  else
+    { echo "EAS $FA"; echo "EAS $FB"; echo "EAS $FN"; echo "EDE $E1"; echo "EDE $E2";
+      printf 'EV eas_rows=3\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
+        "$(printf 'b%.0s' $(seq 32))" "$(printf 'c%.0s' $(seq 32))"; } > "$EVID/manifest-post.txt"
+  fi
+}
+files_intact(){ [[ -f "$EVID/manifest-pre.txt" && -f "$EVID/manifest-post.txt" && -f "$EVID/manifest-salt.txt" ]]; }
+run_clean(){ # $1 ledger $2 gate $3 post-mode(ok|loss|missing|corruptpre)
+  rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
+  printf '%s' "$1" > "$STATEDIR/ledger"; printf '%s' "$2" > "$STATEDIR/gate"
+  place_pre
+  case "$3" in
+    missing)    rm -f "$EVID/manifest-post.txt";;
+    corruptpre) place_post ok; echo 'GARBAGE line' >> "$EVID/manifest-pre.txt";;
+    *)          place_post "$3";;
+  esac
+  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+    MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 \
+    bash "$RR" clean-evidence --yes "$PROD" >/dev/null 2>&1
+}
+run_clean "$V1" off ok;         [[ $? -ne 0 ]] && pass "REFUSED on ledger=prefix1 (recovery material)" || fail "cleaned during prefix1"
+files_intact && pass "prefix1 refusal preserved all files" || fail "files lost on prefix1 refusal"
+run_clean "$V1,$V2" off ok;     [[ $? -ne 0 ]] && pass "REFUSED on ledger=prefix2" || fail "cleaned during prefix2"
+files_intact && pass "prefix2 refusal preserved all files" || fail "files lost on prefix2 refusal"
+run_clean "$V1,$V2,$V3" off missing;    [[ $? -ne 0 ]] && pass "REFUSED on missing post-manifest" || fail "cleaned with missing manifest"
+run_clean "$V1,$V2,$V3" off corruptpre; [[ $? -ne 0 ]] && pass "REFUSED on corrupt pre-manifest" || fail "cleaned with corrupt manifest"
+files_intact && pass "corrupt-manifest refusal preserved all files" || fail "files lost on corrupt refusal"
+run_clean "$V1,$V2,$V3" off loss; [[ $? -ne 0 ]] && pass "REFUSED on failed no-loss comparison" || fail "cleaned despite no-loss failure"
+files_intact && pass "no-loss refusal preserved all files" || fail "files lost on no-loss refusal"
+run_clean "$V1,$V2,$V3" on ok;  [[ $? -ne 0 ]] && pass "REFUSED while the maintenance gate is ON" || fail "cleaned with gate ON"
+files_intact && pass "gate-ON refusal preserved all files" || fail "files lost on gate-ON refusal"
+# missing --yes / missing url refusals
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" MANAGER_TOKEN=x bash "$RR" clean-evidence "$PROD" ) >/dev/null 2>&1 \
+  && fail "cleaned without --yes" || pass "REFUSED without --yes"
+run_clean "$V1,$V2,$V3" off ok; rc=$?
+[[ "$rc" == 0 ]] && pass "all + gate-OFF + valid manifests + no-loss -> cleanup succeeds" || fail "valid cleanup exit=$rc"
+[[ ! -f "$EVID/manifest-pre.txt" && ! -f "$EVID/manifest-post.txt" && ! -f "$EVID/manifest-salt.txt" ]] \
+  && pass "manifests + salt deleted only after all prerequisites" || fail "files not deleted on valid cleanup"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

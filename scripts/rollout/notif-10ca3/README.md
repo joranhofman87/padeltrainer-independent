@@ -119,12 +119,13 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
   `supabase_migrations.schema_migrations` (fail-loud on a connection error) and
   accepts **only** `none`, `{V1}`, `{V1,V2}`, or `all`; any impossible subset is
   `invalid` and **stops**. Do **not** re-run `apply615` (it would re-merge and
-  re-capture the pre-baseline). Instead `resume615 --yes` asserts the gate is
-  still ON, requires the **exact pending suffix** (prefix1→`V2,V3`, prefix2→`V3`),
-  retries only the reviewed pin (or an explicitly-reviewed `RECOVERY_SHA`),
-  pushes the suffix, requires `ledger=all`, runs postflight/ACL/ledger, compares
-  against the **original** pre-baseline (never overwritten), and only then turns
-  the gate OFF. See the operator recovery contract below.
+  re-capture the pre-baseline). Instead `resume615 --yes` **re-enables the gate
+  (also when it was found OFF) and runs a fresh exact-canary drain**, requires
+  the **exact pending suffix** (prefix1→`V2,V3`, prefix2→`V3`), retries only the
+  reviewed pin (or a proven-merged `RECOVERY_PR`), pushes the suffix, requires
+  `ledger=all`, runs postflight/ACL/ledger, compares against the **original**
+  pre-manifest (never overwritten), and only then turns the gate OFF. See the
+  operator recovery contract below.
 - **Concurrency-safe no-loss manifest.** `manifest.sql` runs all queries in ONE
   `REPEATABLE READ READ ONLY` transaction (so the fingerprint enumeration and the
   `count(*)` share one snapshot), captured **after the drain** (pre) and
@@ -139,7 +140,12 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
   (pseudonymous personal data, not anonymous). The manifests + the per-run secret
   salt are written `0600` under `umask 077`; the salt is passed to psql via the
   environment (`\getenv`, psql ≥ 16) so it never appears in process arguments.
-  Delete them after the rollout with `run-rollout.sh clean-evidence` (`shred`).
+  Delete them after the rollout with `run-rollout.sh clean-evidence --yes <url>`
+  (`shred`) — the pre-manifest + salt are the ONLY recovery material for
+  `resume615`, so cleanup refuses (preserving every file) unless ALL of:
+  exact project identity, `ledger=all`, valid pre/post manifests, a passing
+  no-loss comparison, passing postflight/ACL/ledger verification, and the
+  maintenance gate confirmed OFF. `edge-log-lines.txt` is not deleted.
 
 ---
 
@@ -237,7 +243,9 @@ retries the reviewed pin (`PR615_SHA`); a corrected migration requires a
 separately reviewed `RECOVERY_SHA`. After push it requires `ledger=all`, runs
 postflight/ACL/ledger, compares against the original pre-baseline, then turns the
 gate OFF. The whole control flow is proven by `verify/operator-flow-test.sh` with
-stubbed `gh`/`supabase`/`psql` (gh is asserted **never** called).
+stubbed `gh`/`supabase`/`psql` (`gh` is asserted unused on the **default
+reviewed-pin path**; the `RECOVERY_PR` path does call `gh` to prove the recovery
+PR is merged, checks-green, and head-matched).
 
 ---
 

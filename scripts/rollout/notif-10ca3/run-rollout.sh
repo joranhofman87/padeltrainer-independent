@@ -266,13 +266,40 @@ cmd_postflight() { local url="${1:?usage: postflight <conn_url>}"
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql; }
 cmd_ledger_status() { local url="${1:?usage: ledger-status <conn_url>}"; echo "ledger state: $(ledger_status "$url")"; }
 
-# Delete the pseudonymous manifests + secret salt once the rollout is done.
+# Delete the pseudonymous manifests + secret salt — ONLY once the rollout is
+# provably COMPLETE. The pre-manifest + salt are the only recovery material for
+# resume615, so every prerequisite below must pass BEFORE anything is deleted;
+# any failure preserves all files. (mutation-tested by operator-flow-test.sh)
 cmd_clean_evidence() {
+  require_yes "${1:-}"
+  local url="${2:?usage: clean-evidence --yes <prod_conn_url>}"
+  require_cmd psql; require_cmd curl; require_cmd jq
+  : "${MANAGER_TOKEN:?set MANAGER_TOKEN (academy manager JWT) for the gate probe}"
+  # 1) exact project identity
+  assert_conn_url_is_ref "$EXPECTED_REF" "$url"
+  # 2) rollout complete: all three migrations in the ledger
+  local st; st="$(ledger_status "$url")"
+  [[ "$st" == all ]] || die "clean-evidence REFUSED: ledger='$st' (need all) — the pre-manifest is recovery material for resume615"
+  # 3) both manifests present, internally valid, and the no-loss proof passes
+  local pre="$EVID/manifest-pre.txt" post="$EVID/manifest-post.txt"
+  [[ -f "$pre" && -f "$post" ]] || die "clean-evidence REFUSED: missing pre/post manifest"
+  assert_manifest_no_loss "$pre" "$post"
+  # 4) postflight / ACL / ledger verification still pass on prod
+  run_artifact "$url" postflight.sql
+  run_artifact "$url" acl_matrix.sql
+  run_artifact "$url" ledger_verification.sql
+  # 5) maintenance gate confirmed OFF (sends restored)
+  local probe="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email?probe=1" body
+  body="$(curl -sS "$probe" -H "Authorization: Bearer ${MANAGER_TOKEN}")"
+  printf '%s' "$body" | jq -e '.maintenance == false' >/dev/null \
+    || die "clean-evidence REFUSED: maintenance gate is not OFF"
+  # ALL prerequisites passed — deletion happens strictly last. edge-log-lines.txt
+  # is deliberately NOT deleted here (drain evidence; PII-free by design).
   local f n=0
-  for f in "$EVID"/manifest-pre.txt "$EVID"/manifest-post.txt "$EVID"/manifest-salt.txt "$EVID"/edge-log-lines.txt; do
+  for f in "$pre" "$post" "$EVID/manifest-salt.txt"; do
     if [[ -f "$f" ]]; then command -v shred >/dev/null 2>&1 && shred -u "$f" 2>/dev/null || rm -f "$f"; n=$((n+1)); fi
   done
-  ok "cleaned ${n} pseudonymous evidence file(s) (manifests + salt + edge-log lines)"
+  ok "rollout complete + verified — cleaned ${n} pseudonymous file(s) (manifests + salt)"
 }
 
 cmd_rollback615() {
@@ -373,7 +400,7 @@ case "$sub" in
 usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
   resume615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> |
-  rollback615 <url> | clean-evidence
+  rollback615 <url> | clean-evidence --yes <url>
 EOF
      exit 2;;
 esac
