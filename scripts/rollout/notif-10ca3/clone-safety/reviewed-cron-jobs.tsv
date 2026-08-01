@@ -1,0 +1,27 @@
+# Reviewed production pg_cron inventory for the clone-source quiesce.
+# Captured read-only from production on 2026-08-01; every entry reconciled against
+# supabase/migrations and docs/CRON_SERVICE_KEY_SETUP.md.
+#
+# outbound=yes  -> the job issues net.http_* and WOULD CONTACT REAL CUSTOMERS from a
+#                  restored clone (production secrets are copied with the snapshot).
+# outbound=no   -> SQL-only maintenance; still paused, because a clone must be inert.
+#
+# HAZARD — THE JOB SET IS NOT STATIC. public.schedule_enrichment_job,
+# public.schedule_logo_fetch_job and public.schedule_invoice_health_check_job create
+# cron jobs at RUNTIME (enrich-locations-background, fetch-location-logos-background,
+# invoice-health-check-daily). They are declared in migrations but absent from the live
+# set right now. A job may therefore appear between two reads, so the inventory is
+# re-verified immediately before the snapshot timestamp is taken and ANY job outside
+# this list stops the procedure.
+#
+# jobname	outbound	note
+release-expired-rebook-holds	no	SQL-only: releases expired rebook holds
+release-expired-guest-slot-holds	no	SQL-only: releases expired guest slot holds
+expire-lapsed-priority-claims	no	SQL-only: expires lapsed priority claims
+notify-rebook-member-open	yes	invokes the notify-followers edge function
+auto-rebook-reminder	yes	invokes the rebook reminder edge function
+notification-email-worker	yes	EVERY 2 MINUTES: drives real invoice/notification email sends
+notification-whatsapp-worker	yes	EVERY 2 MINUTES: drives real WhatsApp sends
+enrich-locations-background	yes	RUNTIME-SCHEDULED by public.schedule_enrichment_job
+fetch-location-logos-background	yes	RUNTIME-SCHEDULED by public.schedule_logo_fetch_job
+invoice-health-check-daily	yes	RUNTIME-SCHEDULED by public.schedule_invoice_health_check_job

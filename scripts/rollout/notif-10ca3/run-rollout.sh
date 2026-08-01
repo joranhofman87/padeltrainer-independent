@@ -513,9 +513,175 @@ cmd_verify_clone() {
   local url="${1:-}"; require_arg "$url" "usage: CLONE_REF=<ref> verify-clone <clone_conn_url> --clone   # AFTER db push to the clone"
   [[ "${2:-}" == "--clone" ]] || die "verify-clone REQUIRES explicit --clone (it writes a fixture; never run it against production)"
   assert_clone_url "$url"
+  assert_clone_isolated "$url"          # no rehearsal touches a clone that is not provably inert
   run_artifact "$url" academy_fixture.sql
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql
   ok "clone verification battery passed (post-migration)"; }
+
+
+# ===========================================================================
+# CLONE SAFETY — a restored project is NOT inert by default
+# ===========================================================================
+# A Supabase restore copies pg_cron jobs, the pg_net queue, database webhooks,
+# Auth data and Vault-readable secrets. The clone therefore boots with REAL
+# credentials and resumes cron immediately. On this project
+# notification-email-worker and notification-whatsapp-worker run every 2 minutes
+# and issue outbound HTTP: a naive clone would send real email/WhatsApp to real
+# customers within minutes. Nothing may be cloned from a source that has not
+# been proven quiescent, and no rehearsal may touch a clone that is not proven
+# inert. (mutation-pinned: verify/clone-safety-test.sh)
+REVIEWED_JOBS="$HERE/clone-safety/reviewed-cron-jobs.tsv"
+SRC_MANIFEST="$EVID/clone-source-manifest.txt"
+
+# Parse the inventory artifact into safe fields. Never echoes a command, URL,
+# header, body or secret — the SQL only ever emits names, counts and md5s.
+read_source_inventory() {   # $1 = prod url -> writes $2 (raw safe lines)
+  run_sql "$1" "$SQL_DIR/clone_source_inventory.sql" > "$2" 2>&1 \
+    || die "clone-source inventory FAILED to read (connection/permissions?) — refusing to classify blind"
+  grep -qE '^(NETQUEUE|RUNNING) ' "$2" || die "clone-source inventory produced no counts — refusing to proceed on a partial read"
+}
+
+# FAIL CLOSED on anything not in the reviewed set, and on any outbound mechanism
+# the review did not classify.
+assert_inventory_is_reviewed() {   # $1 = inventory file
+  local inv="$1" name unknown=0 n
+  [[ -f "$REVIEWED_JOBS" ]] || die "missing reviewed job list: $REVIEWED_JOBS"
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    awk -F'\t' -v j="$name" '!/^#/ && $1==j {found=1} END{exit !found}' "$REVIEWED_JOBS" \
+      || { warn "UNREVIEWED cron job present: ${name}"; unknown=$((unknown+1)); }
+  done < <(awk '$1=="CRONJOB"{print $2}' "$inv")
+  [[ "$unknown" -eq 0 ]] \
+    || die "${unknown} cron job(s) are not in the reviewed inventory — a job may have been added at runtime (schedule_*_job); review it before quiescing"
+  for n in HOOKTRIG OUTTRIG FDWSRV; do
+    local v; v="$(awk -v k="$n" '$1==k{print $2}' "$inv")"
+    [[ -n "$v" ]] || die "inventory is missing the ${n} count — refusing to proceed on an incomplete read"
+    [[ "$v" -eq 0 ]] || die "${v} unclassified outbound mechanism(s) of type ${n} — a clone would fire them; classify before cloning"
+  done
+  ok "inventory reviewed: $(awk '$1=="CRONJOB"{n++} END{print n+0}' "$inv") cron job(s), all known; no webhooks/outbound triggers/FDWs"
+}
+
+cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
+  local url="${1:-}"; require_arg "$url" "usage: clone-source-inventory <prod_conn_url>"
+  require_cmd psql; assert_conn_url_is_ref "$EXPECTED_REF" "$url"
+  mkdir -p "$EVID"
+  local inv="$EVID/clone-source-inventory.txt"
+  read_source_inventory "$url" "$inv"
+  assert_inventory_is_reviewed "$inv"
+  awk '$1=="CRONJOB"{printf "  %-38s active=%-5s outbound=%s\n",$2,$3,$4}
+       $1=="RUNNING"{printf "  running cron executions: %s\n",$2}
+       $1=="NETQUEUE"{printf "  pg_net queued requests : %s\n",$2}
+       $1=="VAULTCOUNT"{printf "  vault secrets (count)  : %s\n",$2}
+       $1=="OUTFN"{printf "  outbound-capable fn    : %s\n",$2}' "$inv" >&2
+  ok "clone-source inventory complete (read-only, no commands/URLs/secrets displayed) -> ${inv##*/}"
+}
+
+# Pause every reviewed job, prove the source is inert, then record the PITR
+# instant. Reversible by construction: cron.alter_job(active := false) only —
+# NEVER cron.unschedule, which would destroy the schedule.
+cmd_clone_source_quiesce() {
+  require_yes "${1:-}"
+  local url="${2:-}"; require_arg "$url" "usage: clone-source-quiesce --yes <prod_conn_url>"
+  require_cmd psql; assert_conn_url_is_ref "$EXPECTED_REF" "$url"
+  mkdir -p "$EVID"
+  local inv="$EVID/clone-source-inventory.txt"
+  read_source_inventory "$url" "$inv"
+  assert_inventory_is_reviewed "$inv"
+
+  # 1) capture the EXACT prior active state first: this manifest is the only way
+  #    back, so it is written before anything is paused.
+  psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT format('JOB\t%s\t%s\t%s', jobid, jobname, active) FROM cron.job ORDER BY jobid" > "$SRC_MANIFEST" \
+    || die "could not capture the prior cron active-state manifest — nothing was paused"
+  [[ -s "$SRC_MANIFEST" ]] || die "prior-state manifest is empty — refusing to pause without a way back"
+  chmod 600 "$SRC_MANIFEST" 2>/dev/null || true
+  ok "prior cron active-state manifest captured ($(wc -l < "$SRC_MANIFEST" | tr -d ' ') job(s))"
+
+  # 2) pause. Any failure from here on MUST restore, never leave prod paused.
+  local paused_ok=1
+  psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT cron.alter_job(jobid, active := false) FROM cron.job WHERE active" >/dev/null || paused_ok=0
+  if [[ "$paused_ok" -ne 1 ]]; then
+    warn "pausing FAILED part-way — restoring the prior state now"
+    clone_source_restore "$url" || warn "AUTOMATIC RESTORE ALSO FAILED — run 'clone-source-resume --yes <url>' IMMEDIATELY"
+    die "clone-source quiesce aborted during pause (production state restored, or restore attempted and reported above)"
+  fi
+
+  # 3..5) prove inert: zero active, zero running, empty pg_net queue.
+  local guard_rc=0
+  quiesce_guards "$url" || guard_rc=$?
+  if [[ "$guard_rc" -ne 0 ]]; then
+    warn "the source did not reach a quiescent state — restoring production now"
+    clone_source_restore "$url" || warn "AUTOMATIC RESTORE ALSO FAILED — run 'clone-source-resume --yes <url>' IMMEDIATELY"
+    die "clone-source quiesce aborted (production state restored, or restore attempted and reported above)"
+  fi
+
+  # 6) only now is a snapshot instant meaningful
+  local ts; ts="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')")" \
+    || { warn "could not read the snapshot instant — restoring"; clone_source_restore "$url" || true; die "quiesce aborted"; }
+  printf '%s\n' "$ts" > "$EVID/clone-source-timestamp.txt"
+  ok "SOURCE IS INERT. Approved PITR restore point (UTC): ${ts}"
+  warn "PRODUCTION CRON IS NOW PAUSED. Take the PITR restore at/after that instant, then run:"
+  warn "    run-rollout.sh clone-source-resume --yes <prod_conn_url>"
+}
+
+quiesce_guards() {   # $1 url ; 0 = inert
+  local url="$1" n i
+  n="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM cron.job WHERE active")" || return 1
+  [[ "$n" == 0 ]] || { warn "still ${n} ACTIVE cron job(s) after the pause"; return 1; }
+  ok "every cron job is inactive"
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    n="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM cron.job_run_details WHERE status = 'running'")" || return 1
+    [[ "$n" == 0 ]] && break
+    log "waiting for ${n} running cron execution(s) to finish (${i}/10)"; sleep 15
+  done
+  [[ "$n" == 0 ]] || { warn "cron executions still running after the wait"; return 1; }
+  ok "zero running cron executions"
+  n="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM net.http_request_queue")" || return 1
+  [[ "$n" == 0 ]] || { warn "pg_net request queue is NOT empty (${n} queued) — a restore would fire them"; return 1; }
+  ok "pg_net request queue is empty"
+  return 0
+}
+
+# Restore EXACTLY the recorded prior active states, then verify each one.
+clone_source_restore() {   # $1 url
+  local url="$1" jobid name prior bad=0
+  [[ -f "$SRC_MANIFEST" ]] || { warn "no prior-state manifest at $SRC_MANIFEST — cannot restore automatically"; return 1; }
+  while IFS=$'\t' read -r tag jobid name prior; do
+    [[ "$tag" == JOB ]] || continue
+    psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+      "SELECT cron.alter_job(${jobid}, active := ${prior})" >/dev/null || { warn "restore FAILED for job ${name}"; bad=$((bad+1)); }
+  done < "$SRC_MANIFEST"
+  local drift
+  drift="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT count(*) FROM cron.job j JOIN (VALUES $(awk -F'\t' '$1=="JOB"{printf "%s(%s,%s)", sep, $2, $4; sep=","}' "$SRC_MANIFEST")) AS m(jobid, want) ON m.jobid = j.jobid WHERE j.active IS DISTINCT FROM m.want")" \
+    || { warn "could not VERIFY the restored state"; return 1; }
+  [[ "$drift" == 0 ]] || { warn "${drift} job(s) do not match their recorded prior state"; bad=$((bad+1)); }
+  [[ "$bad" -eq 0 ]] || return 1
+  ok "production cron restored to its exact recorded prior state and verified"
+}
+
+cmd_clone_source_resume() {
+  require_yes "${1:-}"
+  local url="${2:-}"; require_arg "$url" "usage: clone-source-resume --yes <prod_conn_url>"
+  require_cmd psql; assert_conn_url_is_ref "$EXPECTED_REF" "$url"
+  clone_source_restore "$url" || die "RESTORE FAILED — production cron may still be paused; investigate immediately"
+}
+
+# CLONE-SIDE GATE. No rehearsal command may touch a clone until this passes.
+# CLONE_SOURCE_TS ties the clone to the approved inert snapshot: without it we
+# cannot tell a quiesced restore from a live one.
+assert_clone_isolated() {   # $1 = clone url
+  local url="$1" approved
+  [[ -f "$EVID/clone-source-timestamp.txt" ]] \
+    || die "no approved inert-snapshot timestamp on file — run clone-source-quiesce first; a clone from a live snapshot would contact real customers"
+  approved="$(cat "$EVID/clone-source-timestamp.txt")"
+  require_env CLONE_SOURCE_TS "set CLONE_SOURCE_TS to the PITR instant this clone was restored from"
+  [[ "$CLONE_SOURCE_TS" == "$approved" ]] \
+    || die "CLONE_SOURCE_TS '${CLONE_SOURCE_TS}' != the approved inert snapshot '${approved}' — refusing: this clone may carry live cron state"
+  run_artifact "$url" clone_isolation.sql
+  ok "clone verified INERT and restored from the approved inert snapshot"
+}
 
 # Shared preamble for the two clone-migrating commands: clone identity (provably
 # NOT production), a green + head-pinned #615, and a detached worktree at that pin.
@@ -543,6 +709,7 @@ cmd_clone_push() {
   require_yes "${1:-}"
   local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> CAP_STMT=<ms> clone-push --yes <clone_conn_url>"
   require_cmd psql; assert_clone_url "$url"
+  assert_clone_isolated "$url"          # no rehearsal touches a clone that is not provably inert
   local CAP_LOCK="${CAP_LOCK:-3000}" st suffix
   st="$(ledger_status "$url")"; ok "clone ledger state = $st"
   case "$st" in
@@ -578,6 +745,7 @@ cmd_clone_make_prefix() {
   require_arg "$depth" "$usage"; require_arg "$url" "$usage"
   [[ "$depth" == 1 || "$depth" == 2 ]] || die "prefix depth must be 1 or 2 (got '$depth') — those are the only legitimate prefixes"
   require_cmd psql; assert_clone_url "$url"
+  assert_clone_isolated "$url"          # no rehearsal touches a clone that is not provably inert
   local CAP_LOCK="${CAP_LOCK:-3000}" st want prune
   st="$(ledger_status "$url")"
   [[ "$st" == none ]] || die "clone-make-prefix needs a PRISTINE clone (ledger=none); this clone is '$st' — restore the snapshot first"
@@ -611,7 +779,11 @@ target_guard() {   # $1 url, $2 = "--clone" | ""
   fi
 }
 cmd_preflight()  { local url="${1:-}"; require_arg "$url" "usage: preflight <conn_url> [--clone]"
-  target_guard "$url" "${2:-}"; run_artifact "$url" preflight.sql; }
+  target_guard "$url" "${2:-}"
+  # NB: `[[ cond ]] && cmd` as a non-final statement returns 1 when cond is false
+  # and aborts under `set -e` — production preflight must not depend on that.
+  if [[ "${2:-}" == "--clone" ]]; then assert_clone_isolated "$url"; fi
+  run_artifact "$url" preflight.sql; }
 cmd_postflight() { local url="${1:-}"; require_arg "$url" "usage: postflight <conn_url> [--clone]"
   target_guard "$url" "${2:-}"
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql; }
@@ -760,6 +932,9 @@ case "$sub" in
   verify-clone)   cmd_verify_clone "$@";;
   clone-push)     cmd_clone_push "$@";;
   clone-make-prefix) cmd_clone_make_prefix "$@";;
+  clone-source-inventory) cmd_clone_source_inventory "$@";;
+  clone-source-quiesce)   cmd_clone_source_quiesce "$@";;
+  clone-source-resume)    cmd_clone_source_resume "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
   clean-evidence) cmd_clean_evidence "$@";;
@@ -769,7 +944,11 @@ usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
   resume615 --yes | postflight <url> | ledger-status <url> |
   rollback615 <url> [--clone] | clean-evidence --yes <url>
-clone-only (CLONE_REF=<ref> != EXPECTED_REF, CAP_STMT=<ms>):
+clone SAFETY (production, before any clone exists):
+  clone-source-inventory <prod_url>          # READ-ONLY outbound inventory
+  clone-source-quiesce --yes <prod_url>      # pause cron, prove inert, record the PITR instant
+  clone-source-resume  --yes <prod_url>      # restore the exact prior cron state
+clone-only (CLONE_REF=<ref> != EXPECTED_REF, CLONE_SOURCE_TS=<approved instant>, CAP_STMT=<ms>):
   clone-push --yes <clone_url>                 # push the MISSING suffix from PR615_SHA
   clone-make-prefix --yes <1|2> <clone_url>    # rehearsal C: real partial apply
   verify-clone <clone_url> --clone             # post-migration battery

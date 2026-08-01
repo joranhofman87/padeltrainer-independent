@@ -28,6 +28,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | step-6 fetch+verify is atomic; stale evidence unusable; live terminal-newline shape | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 63/63 |
 | a failed `db push --dry-run` surfaces the CLI reason (secrets redacted) and never yields a pending set | `bash …/verify/dryrun-diagnostics-test.sh` | [dryrun-diagnostics.txt](evidence/dryrun-diagnostics.txt) | 101/101 |
 | every linked-db path links its OWN worktree to the pooler and verifies it before pushing | `bash …/verify/worktree-link-test.sh` | [worktree-link.txt](evidence/worktree-link.txt) | 81/81 |
+| a clone can never be touched unless its source was quiesced and it is provably inert | `bash …/verify/clone-safety-test.sh` | [clone-safety.txt](evidence/clone-safety.txt) | 53/53 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -55,6 +56,9 @@ sql/academy_fixture.sql     disposable-clone reader precedence proof (+ rollback
 sql/postflight.sql          post-migration delta present + INERT + digest-disabled
 sql/acl_matrix.sql          self-contained ACL lockdown assertions
 sql/ledger_verification.sql append-only ledger + email-table consistency invariants
+sql/clone_source_inventory.sql READ-ONLY outbound inventory (names/counts/md5 only)
+sql/clone_isolation.sql     clone-side inertness assertion (no live cron/pg_net/webhooks)
+clone-safety/reviewed-cron-jobs.tsv  the reviewed job allow-list + outbound classification
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
 logfetch/verify-step6-send.sh  step-6 send verifier (explicit --from-file only; no default)
 verify/chain.mjs            shared embedded-PG setup + SHA-pinned migration source
@@ -68,6 +72,7 @@ verify/step6-verifier-test.sh executable fixtures + mutants for the step-6 verif
 verify/logfetch-integration-test.sh fresh-evidence contract: fetch+verify is atomic
 verify/dryrun-diagnostics-test.sh   the dry run must surface the CLI failure reason (redacted)
 verify/worktree-link-test.sh       the rollout worktree links its OWN pooler before any push
+verify/clone-safety-test.sh        quiesce/restore + clone inertness gate proofs
 evidence/                   captured run outputs
 ```
 
@@ -226,6 +231,103 @@ run-rollout.sh clean-evidence --yes "$PROD"
   `{file1}`; re-pushing the pending files reaches `all` and postflight passes.
 - **D — full.** Applies all three, asserts the baseline row counts are preserved,
   and runs academy_fixture + postflight + acl + ledger on the full clone.
+
+### Clone safety — a restored project is NOT inert (do this FIRST)
+
+A Supabase restore copies **pg_cron jobs, the pg_net queue, database webhooks,
+Auth data and Vault-readable secrets**. The clone therefore boots with **real
+credentials** and resumes cron immediately. The read-only production inventory
+(2026-08-01) found:
+
+| job | schedule | outbound |
+|---|---|---|
+| `notification-email-worker` | `*/2 * * * *` | **yes — real invoice/notification email** |
+| `notification-whatsapp-worker` | `*/2 * * * *` | **yes — real WhatsApp** |
+| `notify-rebook-member-open` | `*/15 * * * *` | yes |
+| `auto-rebook-reminder` | `0 6-19 * * *` | yes |
+| `release-expired-rebook-holds` | `*/5 * * * *` | no |
+| `release-expired-guest-slot-holds` | `*/5 * * * *` | no |
+| `expire-lapsed-priority-claims` | `*/15 * * * *` | no |
+
+**A naive clone would contact real customers within two minutes of booting.**
+No webhooks, outbound triggers or FDWs exist; pg_net queue was empty; one Vault
+secret (count only — contents are never read).
+
+**The job set is not static.** `public.schedule_enrichment_job`,
+`public.schedule_logo_fetch_job` and `public.schedule_invoice_health_check_job`
+create cron jobs at runtime (`enrich-locations-background`,
+`fetch-location-logos-background`, `invoice-health-check-daily` — declared in
+migrations, absent from the live set today). The inventory therefore **fails
+closed on any job outside `clone-safety/reviewed-cron-jobs.tsv`**, and is
+re-verified immediately before the snapshot instant is taken.
+
+```bash
+# 1. READ-ONLY. Safe against production; displays names/counts only — never a
+#    cron command, pg_net URL/header/body, Vault secret or customer row.
+run-rollout.sh clone-source-inventory "$PROD"
+
+# 2. Pause every reviewed job, PROVE the source is inert, then record the PITR
+#    instant. Reversible by construction: cron.alter_job(active := false) only —
+#    never cron.unschedule. Writes evidence/clone-source-manifest.txt (the exact
+#    prior active state of every job) BEFORE pausing anything.
+run-rollout.sh clone-source-quiesce --yes "$PROD"
+#    -> prints the approved UTC instant; take every PITR restore at/after it.
+
+# 3. Restore production the moment the snapshots are taken. Restores each job to
+#    its EXACT recorded prior state (a job that was already inactive stays
+#    inactive) and verifies there is no drift.
+run-rollout.sh clone-source-resume --yes "$PROD"
+```
+
+`clone-source-quiesce` stops on: an unreviewed job, a failed status read, a
+partial pause, running executions, a non-empty pg_net queue, or a failed
+timestamp read — and on **every** one of those it restores production first. It
+never leaves production paused silently. If the automatic restore also fails it
+says so loudly; run `clone-source-resume --yes` immediately.
+
+**Production cron is paused between steps 2 and 3.** Keep that window short:
+`notification-email-worker` is the invoice-email pump, so queued sends simply
+wait — nothing is lost, but nothing goes out either.
+
+### Clone-side isolation — enforced, not assumed
+
+Every clone-touching command (`preflight --clone`, `clone-push`,
+`clone-make-prefix`, `verify-clone`) refuses to run until `assert_clone_isolated`
+passes. It requires `CLONE_SOURCE_TS` to equal the approved instant from step 2
+— proving the clone came from the **quiesced** snapshot and not a live one — and
+then asserts on the clone itself: zero active cron jobs, zero running executions,
+an empty pg_net queue, no database-webhook triggers, no other outbound triggers,
+no foreign servers. Nothing is printed but names and counts.
+
+### Four-clone execution model (A/B/C/D)
+
+Rehearsals **B and C deliberately leave the clone broken**, so each rehearsal
+needs its own pristine start. Restore **four independent disposable projects
+directly from the same approved production instant** — A, B, C and D:
+
+```bash
+export EXPECTED_REF=ficwbdrzefmblkbkomzw
+export CLONE_SOURCE_TS='<the instant printed by clone-source-quiesce>'
+export CLONE_REF=<this rehearsal's clone ref>        # must differ from EXPECTED_REF
+CLONE="postgresql://postgres@db.$CLONE_REF.supabase.co:5432/postgres?sslmode=require"
+```
+
+- **Never clone from another clone.** Each restore comes from the same approved
+  production instant, so all four start identical and A's migrations cannot leak
+  into B/C/D.
+- Each clone has **its own `CLONE_REF` and its own password**; identity is proven
+  independently per rehearsal (`CLONE_REF != EXPECTED_REF`, URL addresses
+  `CLONE_REF` exactly).
+- **Destroy each clone as soon as its evidence is captured.**
+- **Cost and sensitivity:** four projects run in parallel for the duration, each
+  billed as a full project at production scale — and **each contains a complete
+  copy of real customer data**. That is the reason for the isolation gate and for
+  destroying them promptly.
+
+**Sequential single-clone option** (one project, restored between rehearsals) is
+still supported and costs less: run A, restore, run B, restore, run C, restore,
+run D. It needs no extra handoffs beyond the restore itself, but every restore
+must come from the same approved instant.
 
 ### Reproducing A–D on a PRODUCTION-SCALE clone (step 8, owner-only)
 

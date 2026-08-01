@@ -1,0 +1,61 @@
+$ bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
+
+== read-only inventory: safe metadata only, fail closed on the unknown ==
+  PASS  inventory of a reviewed job set succeeds
+  PASS  the inventory artifact carries no command, URL, header or secret text
+  PASS  job names and outbound flags are reported
+  PASS  inventory is READ-ONLY: nothing was paused
+  PASS  an UNREVIEWED job (e.g. added at runtime by schedule_*_job) stops the procedure
+  PASS  an enabled database webhook stops the procedure
+  PASS  an unclassified outbound trigger stops the procedure
+  PASS  a foreign server / FDW stops the procedure
+  PASS  a FAILED inventory read stops the procedure (never classifies blind)
+  PASS  inventory refuses a non-production URL (exact identity)
+== quiesce: reversible pause, proof of inertness, then the PITR instant ==
+  PASS  quiesce succeeds on a reviewed, quiescent source
+  PASS  every cron job is paused
+  PASS  the pause uses cron.alter_job (reversible)
+  PASS  cron.unschedule is never called (only named in the comment that forbids it)
+  PASS  a prior-state manifest was written before pausing
+  PASS  the manifest records each job's exact prior active state
+  PASS  the manifest is non-secret (id/name/active only)
+  PASS  the PITR instant is recorded only after inertness
+  PASS  quiesce refuses with running cron executions
+  PASS  …and production was RESTORED, never left paused (running cron executions)
+  PASS  quiesce refuses with queued pg_net requests
+  PASS  …and production was RESTORED, never left paused (queued pg_net requests)
+  PASS  a PARTIAL pause is detected and refused
+  PASS  …and production was restored after the partial pause
+  PASS  a failed prior-state capture stops BEFORE anything is paused
+  PASS  …and nothing was paused
+  PASS  a failed snapshot-instant read aborts and restores
+== resume: restores the EXACT prior states and verifies them ==
+  PASS  resume succeeds
+  PASS  a job that was ALREADY inactive is restored to inactive (not blanket-enabled)
+  PASS  the two previously-active jobs are active again
+  PASS  a FAILED restore is loud and non-zero (production may still be paused)
+  PASS  post-restore STATE DRIFT is detected and refused
+== clone-side isolation gates every rehearsal command ==
+  PASS  an inert clone from the approved snapshot passes the gate
+  PASS  a clone from a DIFFERENT snapshot instant is refused
+  PASS  a missing CLONE_SOURCE_TS is refused (cannot prove the source was inert)
+  PASS  clone with non-zero C_ACTIVE is refused
+  PASS  clone with non-zero C_RUNNING is refused
+  PASS  clone with non-zero C_NETQ is refused
+  PASS  clone with non-zero C_HOOK is refused
+  PASS  clone with non-zero C_OUTTRIG is refused
+  PASS  clone with non-zero C_FDW is refused
+  PASS  with NO approved snapshot on file, no clone command may run
+  PASS  clone-push is gated on the isolation assertion
+  PASS  clone-make-prefix is gated on the isolation assertion
+  PASS  verify-clone is gated on the isolation assertion
+== MUTANTS ==
+  PASS  mutant built: clone-push isolation gate removed
+  PASS  MUTANT (no gate) proceeds against a clone with LIVE cron — the gate is load-bearing
+  PASS  mutant built: reviewed-inventory check removed from quiesce
+  PASS  MUTANT (no completeness check) quiesces with an UNKNOWN job — the check is load-bearing
+  PASS  mutant built: pg_net queue check removed
+  PASS  MUTANT (no queue check) snapshots with 5 QUEUED outbound requests — the check is load-bearing
+  PASS  mutant built: automatic restore removed from the failure path
+  PASS  MUTANT (no auto-restore) LEAVES PRODUCTION PAUSED — the restore path is load-bearing
+================  53 passed, 0 failed  ================
