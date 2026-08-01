@@ -785,8 +785,13 @@ quiesce_drain() {   # $1 url
   local streak=0 i out rc inflight queued logrun
   for (( i = 1; i <= tries; i++ )); do
     rc=0
-    out="$(psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/cron_quiet_sample.sql" 2>/dev/null | sed -n 's/^SAMPLE //p' | tail -1)" || rc=$?
-    [[ "$rc" -eq 0 && -n "$out" ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return 1; }
+    out="$(set -o pipefail
+           psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/cron_quiet_sample.sql" 2>/dev/null | sed -n 's/^SAMPLE //p' | tail -1)" || rc=$?
+    # a failing subprocess keeps ITS status all the way out to the caller
+    [[ "$rc" -eq 0 ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return "$rc"; }
+    # exit 0 with no output has no subprocess status to preserve; 1 is the
+    # tooling's own refusal, and the README says so rather than claiming more
+    [[ -n "$out" ]] || { warn "the quiescence sample produced no SAMPLE record"; return 1; }
     read -r inflight queued logrun <<<"$out"
     case "$(printf '%s' "$logrun" | tr 'A-Z' 'a-z')" in
       on|true|yes|1) ;;
@@ -801,8 +806,11 @@ quiesce_drain() {   # $1 url
       streak=0
       log "waiting: ${inflight} cron run(s) in flight, ${queued} queued (sample ${i}/${tries})"
     fi
-    # an interrupted or failed sleep must NOT be read as "the interval elapsed"
-    sleep "$gap" || { warn "the scheduler-observation sleep failed or was interrupted — the interval did not elapse, so the samples are not separated"; return 1; }
+    # an interrupted or failed sleep must NOT be read as "the interval elapsed",
+    # and it keeps its own status too (SIGINT surfaces as 130, not a flat 1)
+    sleep "$gap" || { rc=$?
+      warn "the scheduler-observation sleep failed or was interrupted (exit ${rc}) — the interval did not elapse, so the samples are not separated"
+      return "$rc"; }
   done
   warn "cron did not stay quiet for ${need} consecutive samples within ${tries} tries"
   return 1
@@ -811,8 +819,16 @@ quiesce_drain() {   # $1 url
 # The ONE atomic transition out of the window: verify -> unfence -> restore ->
 # prove -> drop the marker, in a single server-side transaction under ACCESS
 # EXCLUSIVE. No committed state ever carries a valid marker beside active cron.
+# Best-effort removal of a FALLBACK capture. Never changes the resume's status:
+# a leaked temp file is a nuisance, a lost exit code is a wrong decision.
+discard_temp_capture() {   # $1 path, $2 is_temp(0|1)
+  [[ "${2:-0}" -eq 1 && -n "${1:-}" && -e "$1" ]] || return 0
+  secure_delete "$1" || warn "could not remove the temporary resume capture ${1} — remove it manually"
+  return 0
+}
+
 clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
-  local url="$1" nonce="$2" unarmed="$3" rc=0 cap=""
+  local url="$1" nonce="$2" unarmed="$3" rc=0 cap="" cap_tmp=0
   # DIAGNOSTIC CAPTURE IS BEST EFFORT AND MUST NEVER GATE THE RESUME. The failure
   # that triggered recovery may BE an unwritable or full evidence directory, and
   # a redirection that cannot open its target would stop the SQL from running at
@@ -820,7 +836,13 @@ clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
   # Preference order: evidence dir -> a temp file -> no capture, straight to stderr.
   if : > "$EVID/clone-source-resume.txt" 2>/dev/null; then
     cap="$EVID/clone-source-resume.txt"
-  elif cap="$(mktemp -t rollout-resume-XXXXXX 2>/dev/null)"; then
+  # An explicit template, NOT `mktemp -t`: on macOS the -t form ignores $TMPDIR
+  # and always uses the system temp directory, so the fallback would land
+  # somewhere the caller never chose — and a cleanup contract for a file whose
+  # location you do not control is not a contract. (Found while pinning that
+  # cleanup: the assertion was passing vacuously.)
+  elif cap="$(mktemp "${TMPDIR:-/tmp}/rollout-resume-XXXXXX" 2>/dev/null)"; then
+    cap_tmp=1                    # transient: removed below on BOTH exit paths
     warn "the evidence directory is not writable — resume diagnostics go to ${cap}"
   else
     cap=""
@@ -836,8 +858,11 @@ clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
   if [[ "$rc" -ne 0 ]]; then
     warn "resume transaction FAILED and rolled back — production remains paused and fenced with its marker intact"
     [[ -n "$cap" ]] && sed -n 's/^\(ERROR\|psql\).*/&/p' "$cap" 2>/dev/null | head -6 >&2
+    [[ "$cap_tmp" -eq 1 ]] && warn "the diagnostics above came from a temporary capture, which is now removed"
+    discard_temp_capture "$cap" "$cap_tmp"
     return "$rc"
   fi
+  discard_temp_capture "$cap" "$cap_tmp"
   ok "production cron restored to its EXACT recorded set, configuration and active state; fences and marker removed"
   return 0
 }

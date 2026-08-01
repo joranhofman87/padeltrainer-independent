@@ -50,7 +50,9 @@ export QUIESCE_SETTLE_SECS=15
 export QUIESCE_MAX_SAMPLES=6
 cat > "$BIN/sleep" <<'SEOF'
 #!/usr/bin/env bash
-[[ "$(cat "$STATEDIR/SLEEP_FAIL" 2>/dev/null)" == 1 ]] && exit 1   # EINTR / killed
+src="$(cat "$STATEDIR/SLEEP_RC" 2>/dev/null || echo 0)"
+[[ "$src" != 0 ]] && exit "$src"                                   # EINTR / killed
+[[ "$(cat "$STATEDIR/SLEEP_FAIL" 2>/dev/null)" == 1 ]] && exit 1
 exit 0
 SEOF
 chmod +x "$BIN/sleep"
@@ -105,6 +107,7 @@ if [[ "$f" == *clone_source_inventory.sql ]]; then
 fi
 
 if [[ "$f" == *cron_quiet_sample.sql ]]; then
+  src="$(sfile SAMPLE_RC 0)"; [[ "$src" != 0 ]] && { echo "psql: could not connect" >&2; exit "$src"; }
   # a LATE START: the scheduler had not yet observed active=false when the first
   # sample was taken, so a run appears after a zero reading
   n="$(( $(sfile SAMPLE_N 0) + 1 ))"; echo "$n" > "$S/SAMPLE_N"
@@ -253,7 +256,11 @@ PRODJOBS=$'1\trelease-expired-rebook-holds\ttrue\tno\tcfg-1\n9\tnotification-ema
 # silently mask exactly the failure mode under test.
 seed(){ rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s\n' "$PRODJOBS" > "$STATEDIR/jobs"
   chmod u+w "$EVID" 2>/dev/null; rm -rf "$EVID"/*; }
-run(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" "$@" ) >"$ROOT/out.txt" 2>&1; }
+CAPTMP="$ROOT/captmp"; mkdir -p "$CAPTMP"
+run(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" TMPDIR="$CAPTMP" "$@" ) >"$ROOT/out.txt" 2>&1; }
+# counted in the directory the tooling was TOLD to use — the point of the
+# explicit mktemp template is that this is knowable
+stray_captures(){ ls "$CAPTMP" 2>/dev/null | grep -c '^rollout-resume-' || true; }
 actives(){ awk -F'\t' '$3=="true"' "$STATEDIR/jobs" | grep -c . || true; }
 nonce_file="$EVID/clone-source-nonce.txt"
 # a runtime schedule_*_job / direct cron.schedule attempt against the source
@@ -431,6 +438,27 @@ seed; echo 7 > "$STATEDIR/ARM_FAIL_RC"
 run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
 [[ "$rc" -eq 7 ]] && pass "an underlying psql exit 7 is preserved through the automatic resume (not flattened to 1)" || fail "exit status flattened to ${rc}"
 [[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and production was still restored" || fail "production left paused"
+
+for c in "a sampling psql exit 7:SAMPLE_RC:7" "an interrupted sleep exit 9:SLEEP_RC:9"; do
+  desc="${c%%:*}"; rest="${c#*:}"; knob="${rest%%:*}"; want="${rest##*:}"
+  seed; echo "$want" > "$STATEDIR/$knob"
+  run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
+  [[ "$rc" -eq "$want" ]] && pass "${desc} survives the automatic recovery (exit ${rc}, not a flattened 1)" || fail "${desc} flattened to ${rc}"
+  [[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" && ! -e "$STATEDIR/FENCE" ]] \
+    && pass "…and production was still fully restored after ${desc}" || fail "production left paused after ${desc}"
+done
+
+echo "-- the fallback capture never outlives the recovery --"
+seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
+run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; chmod u+w "$EVID" 2>/dev/null
+[[ "$(actives)" == 3 ]] && pass "recovery succeeded via the temp-file fallback" || fail "recovery did not run"
+grep -q 'resume diagnostics go to '"$CAPTMP" "$ROOT/out.txt" \
+  && pass "the fallback capture is created where the caller's TMPDIR points (not a fixed system path)" || fail "fallback capture ignored TMPDIR"
+[[ "$(stray_captures)" == 0 ]] && pass "…and no rollout-resume-* temp capture was left behind (success path)" || fail "$(stray_captures) stray capture(s) after a successful resume"
+seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"; echo 1 > "$STATEDIR/RESUME_FAIL"
+run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; chmod u+w "$EVID" 2>/dev/null
+grep -q 'PRODUCTION REMAINS PAUSED AND FENCED' "$ROOT/out.txt" && pass "a failed resume via the fallback is still reported loudly" || fail "failed fallback resume not reported"
+[[ "$(stray_captures)" == 0 ]] && pass "…and no temp capture was left behind (failure path either)" || fail "$(stray_captures) stray capture(s) after a failed resume"
 
 seed; echo 1 > "$STATEDIR/ARM_FAIL"; echo 1 > "$STATEDIR/RESUME_FAIL"
 run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
@@ -646,13 +674,37 @@ sealed_rc=$?; attempt_enqueue; enq_rc=$?
   && pass "…and that request would be copied into every clone taken from this window" || fail "no request queued under the mutant"
 unsqlmut clone_source_seal.sql
 
+M="$(mut nocleanup '  discard_temp_capture "$cap" "$cap_tmp"
+  ok "production cron restored to its EXACT recorded set, configuration and active state; fences and marker removed"||=||  ok "production cron restored to its EXACT recorded set, configuration and active state; fences and marker removed"' clone_source_leave_window)"
+seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" EVIDDIR="$EVID" TMPDIR="$CAPTMP" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >"$ROOT/m.txt" 2>&1
+chmod u+w "$EVID" 2>/dev/null
+[[ "$(stray_captures)" -ge 1 ]] && pass "MUTANT (cleanup omitted on the success path) STRANDS a rollout-resume-* temp file — the cleanup is load-bearing" || fail "nocleanup mutant not distinguishable"
+rm -f "$CAPTMP"/rollout-resume-* "$M"
+
+M="$(mut nostatus '    [[ "$rc" -eq 0 ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return "$rc"; }||=||    [[ "$rc" -eq 0 ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return 1; }' quiesce_drain)"
+seed; echo 7 > "$STATEDIR/SAMPLE_RC"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" TMPDIR="$CAPTMP" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
+[[ $? -eq 1 ]] && pass "MUTANT (sampling status normalised) reports exit 1 for an underlying psql exit 7 — propagating the real status is load-bearing" || fail "nostatus mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut nosleepstatus '    sleep "$gap" || { rc=$?
+      warn "the scheduler-observation sleep failed or was interrupted (exit ${rc}) — the interval did not elapse, so the samples are not separated"
+      return "$rc"; }||=||    sleep "$gap" || { warn "sleep failed"; return 1; }' quiesce_drain)"
+seed; echo 9 > "$STATEDIR/SLEEP_RC"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" TMPDIR="$CAPTMP" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
+[[ $? -eq 1 ]] && pass "MUTANT (sleep status normalised) reports exit 1 for an interrupted sleep — an interrupt exit such as 130 would be indistinguishable from a refusal" || fail "nosleepstatus mutant not distinguishable"
+rm -f "$M"
+
 M="$(mut nofloor '  [[ "$gap"  =~ ^[0-9]+$ && "$gap" -ge "$QUIESCE_MIN_SETTLE_SECS" ]] \
     || { warn "QUIESCE_SETTLE_SECS must be an integer >= ${QUIESCE_MIN_SETTLE_SECS}s (the scheduler needs a cycle to observe active=false); got '"'"'${gap}'"'"'"; return 1; }||=||  :' quiesce_drain)"
 seed; ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" QUIESCE_SETTLE_SECS=0 bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
 [[ $? -eq 0 ]] && pass "MUTANT (interval floor removed) accepts a ZERO interval, so the two 'stable' samples are back-to-back — the floor is load-bearing" || fail "nofloor mutant not distinguishable"
 rm -f "$M"
 
-M="$(mut nosleepcheck '    sleep "$gap" || { warn "the scheduler-observation sleep failed or was interrupted — the interval did not elapse, so the samples are not separated"; return 1; }||=||    sleep "$gap" || true' quiesce_drain)"
+M="$(mut nosleepcheck '    sleep "$gap" || { rc=$?
+      warn "the scheduler-observation sleep failed or was interrupted (exit ${rc}) — the interval did not elapse, so the samples are not separated"
+      return "$rc"; }||=||    sleep "$gap" || true' quiesce_drain)"
 seed; echo 1 > "$STATEDIR/SLEEP_FAIL"
 ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
 [[ $? -eq 0 ]] && pass "MUTANT (unchecked sleep) treats an INTERRUPTED sleep as an elapsed interval — checking it is load-bearing" || fail "nosleepcheck mutant not distinguishable"

@@ -410,10 +410,17 @@ acts on. Every non-zero status routes through the atomic exit from the window
 (`allow_unarmed = 1`), the original exit code is preserved, and if the automatic
 resume *also* fails the tooling says so unmistakably and prints the exact
 `clone-source-abandon` command including the nonce. The **actual** failure status
-is preserved end to end — a `psql` exit 7 leaves quiesce with exit 7, not a
-flattened 1 — and the resume's diagnostic capture is **best effort**: it falls
-back to a temp file and then to stderr, so an unwritable evidence directory can
-never be the reason the database resume does not run — because the failure may have
+of a failing **subprocess** is preserved end to end — a `psql` exit 7 or an
+interrupted `sleep`'s exit 9 leaves quiesce with that same status, not a
+flattened 1. (The tooling's *own* refusals — a bad `QUIESCE_*` value, `log_run`
+off, the streak never completing, an empty sample — have no subprocess status
+behind them and exit 1; the claim is deliberately no broader than that.)
+
+The resume's diagnostic capture is **best effort**: evidence directory → a temp
+file under `$TMPDIR` → stderr, so an unwritable evidence directory can never be
+the reason the database resume does not run. A fallback temp capture is removed
+on **both** the success and failure paths, and a cleanup failure warns without
+replacing the resume's status — because the failure may have
 been the very write of `evidence/clone-source-nonce.txt`. A full disk must never
 translate into email and WhatsApp being down.
 
