@@ -1,4 +1,4 @@
-$ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh
+$ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh   # macOS bash 3.2 (operator shell)
 
 == 1. missing required env returns nonzero (the reported blocker) ==
   PASS  phase616 --yes with MANAGER_TOKEN unset (exit=1)
@@ -24,7 +24,8 @@ $ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh
 == 6. cleanup failure does not hide the original failure ==
   PASS  original failure survives a no-op/failing cleanup
 == MUTATION (1): ${VAR:?} POST-TRAP reintroduces the reported bug ==
-  PASS  MUTANT post-trap ${VAR:?} exits 0 on a fatal error — require_env is load-bearing
+  note  this bash (3.2.57(1)-release) DESTROYS $? before the EXIT trap (the hazard is live here)
+  PASS  MUTANT post-trap ${VAR:?} exits 0 here — require_env is load-bearing on this shell
   PASS  run-rollout.sh contains no ${VAR:?} guards (all via require_env/require_arg)
 == MUTATION (2): a fixed-status EXIT trap corrupts the result ==
   PASS  MUTANT bare-status trap corrupts SUCCESS -> exit$rc is load-bearing

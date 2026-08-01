@@ -124,13 +124,37 @@ MUT="$HERE/../.mutant-exit-status.sh"
 cleanup_mutant() { rm -f "$MUT"; }
 trap 'rm -rf "$TMP"; cleanup_mutant' EXIT
 sed 's|^  require_env MANAGER_TOKEN "set MANAGER_TOKEN (academy manager JWT)"$|  : "${MANAGER_TOKEN:?set MANAGER_TOKEN}"|' "$RR" > "$MUT"
+# The quirk is SHELL-VERSION DEPENDENT: bash 3.2 (the macOS system bash, i.e. what
+# the operator actually runs) destroys $? before the EXIT trap; bash 5.x (CI's
+# ubuntu runner) preserves it. So we do not hard-code either outcome — we PROBE
+# this shell's behaviour with the bare primitive, then require the mutant to match
+# it. Either way require_env is correct: section 1 proves the real script exits
+# non-zero on BOTH shells, which is the invariant that actually matters.
+cat > "$TMP/probe.sh" <<'EOS'
+set -Eeuo pipefail
+cleanup() { local rc=$?; exit "$rc"; }
+trap cleanup EXIT
+guard() { : "${NOPE:?missing}"; }
+guard
+EOS
+bash "$TMP/probe.sh" >/dev/null 2>&1; probe_rc=$?
+if [[ "$probe_rc" -eq 0 ]]; then
+  quirk="yes"; echo "  note  this bash ($BASH_VERSION) DESTROYS \$? before the EXIT trap (the hazard is live here)"
+else
+  quirk="no";  echo "  note  this bash ($BASH_VERSION) preserves \$? before the EXIT trap (hazard not reproducible here)"
+fi
 if ! grep -q ':?set MANAGER_TOKEN' "$MUT"; then
   fail "mutant not constructed (phase616 MANAGER_TOKEN guard not found)"
 else
   env -u MANAGER_TOKEN EXPECTED_REF="$REF" bash "$MUT" phase616 --yes >/dev/null 2>&1
   erc=$?
-  [[ "$erc" -eq 0 ]] && pass "MUTANT post-trap \${VAR:?} exits 0 on a fatal error — require_env is load-bearing" \
-                     || fail "MUTANT \${VAR:?} exited $erc — expected the masking bug to reproduce"
+  if [[ "$quirk" == "yes" ]]; then
+    [[ "$erc" -eq 0 ]] && pass "MUTANT post-trap \${VAR:?} exits 0 here — require_env is load-bearing on this shell" \
+                       || fail "MUTANT \${VAR:?} exited $erc — expected the masking bug to reproduce on this shell"
+  else
+    [[ "$erc" -ne 0 ]] && pass "MUTANT \${VAR:?} exits $erc on this shell (no quirk); require_env retained for bash-3.2 operators" \
+                       || fail "MUTANT exited 0 on a shell that preserves \$? — unexpected"
+  fi
 fi
 cleanup_mutant
 # the real script must contain NO ${VAR:?} guards at all
