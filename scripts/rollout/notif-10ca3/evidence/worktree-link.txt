@@ -48,11 +48,36 @@ $ bash scripts/rollout/notif-10ca3/verify/worktree-link-test.sh
   PASS  tracked mutation -> db push never invoked
 == the ambient checkout's .temp is never trusted ==
   PASS  mutant built: copies the ambient .temp instead of linking
-  PASS  MUTANT (ambient copy) performs NO link — the fresh-link requirement is load-bearing
+  PASS  MUTANT (ambient copy) performs NO link
+  PASS  MUTANT (ambient copy) FAILS end to end (exit 1) — a copy is not a link
+  PASS  MUTANT (ambient copy) never reached a db push
 == the link must come BEFORE the dry run ==
   PASS  mutant built: link moved AFTER the dry run
   PASS  MUTANT (link after the dry run) FAILS — ordering is load-bearing
   PASS  MUTANT (link after) hits the direct-host failure
+== a FAILED git status is not 'clean' ==
+  PASS  git status exit 17 with empty output -> refused (exit 1)
+  PASS  git status failure -> db push never invoked
+  PASS  the git failure is named explicitly
+  PASS  mutant built: git status exit code ignored
+  PASS  MUTANT (ignores git status) ACCEPTS an undetermined tree — the status check is load-bearing
+== metadata reached through a SYMLINKED PARENT is refused ==
+  PASS  .temp symlinked to a VALID-looking ambient dir -> refused (exit 1)
+  PASS  symlinked .temp -> db push never invoked
+  PASS  the symlinked parent is named in the refusal
+  PASS  mutant built: parent-symlink guard removed
+  PASS  MUTANT (no parent-symlink guard) ACCEPTS aliased ambient metadata — the guard is load-bearing
+== a capture that cannot be destroyed stops the run ==
+  PASS  successful link + cleanup failure -> refused (exit 1)
+  PASS  cleanup failure -> validation and db push never reached
+  PASS  the cleanup failure is reported clearly
+  PASS  validation was NOT reached
+  PASS  failed link (7) + cleanup failure: the LINK's code is preserved
+  PASS  the link diagnostic survives a cleanup failure
+  PASS  the cleanup failure is ALSO reported
+  PASS  link failure + cleanup failure -> no push
+  PASS  mutant built: warn-and-continue cleanup restored
+  PASS  MUTANT (warn and continue) proceeds to the push after a failed cleanup — stopping is load-bearing
 == resume615 links its recovery worktree ==
   PASS  resume615 completes with a linked recovery worktree
   PASS  resume615 linked its recovery worktree exactly once
@@ -71,4 +96,4 @@ $ bash scripts/rollout/notif-10ca3/verify/worktree-link-test.sh
   PASS  exactly 3 call sites (dryrun615, apply615, resume615)
   PASS  --skip-pooler is never passed to the CLI (only named in the explanatory comment)
   PASS  link never uses --password
-================  59 passed, 0 failed  ================
+================  81 passed, 0 failed  ================

@@ -234,10 +234,17 @@ link_worktree_pooler() {
     else
       warn "the CLI produced NO output; operation: supabase link against the rollout worktree (exit ${rc})"
     fi
-    secure_delete "$cap" || warn "could not securely delete the link capture — remove it by hand"
+    secure_delete "$cap" \
+      || warn "additionally, the link capture could not be securely deleted — remove it by hand"
     return "$rc"                      # the CLI's own code, never a cleanup code
   fi
-  secure_delete "$cap" || warn "could not securely delete the link capture — remove it by hand"
+  # A SUCCESSFUL link whose capture cannot be destroyed must not continue: the
+  # capture may hold connection detail, and "we could not clean up" is not a
+  # state in which to proceed to validation, a dry run or a push.
+  if ! secure_delete "$cap"; then
+    warn "the link SUCCEEDED but its capture could not be securely deleted — refusing to continue to validation or any push; remove it by hand"
+    return 1
+  fi
   assert_worktree_pooler_link
 }
 
@@ -246,6 +253,13 @@ link_worktree_pooler() {
 # which is the failure this whole stage exists to prevent.
 assert_worktree_pooler_link() {
   local t="$WT/supabase/.temp" ref pu host user port scheme
+  # Metadata reached through a SYMLINKED PARENT is not worktree-owned: `.temp`
+  # (or `supabase/`) could point at the ambient checkout or anywhere else, and
+  # the children would still look like perfectly ordinary regular files. That
+  # defeats the whole "this worktree established its own fresh link" contract.
+  [[ ! -L "$WT/supabase" ]] || die "worktree link: supabase/ is a SYMLINK — refusing metadata reached through a symlinked parent"
+  [[ ! -L "$t" ]] || die "worktree link: .temp is a SYMLINK — refusing metadata reached through a symlinked parent"
+  [[ -d "$t" ]] || die "worktree link: .temp is not a directory — the link did not write worktree-owned metadata"
   [[ ! -L "$t/project-ref" && -f "$t/project-ref" ]] \
     || die "worktree link: .temp/project-ref is missing or not a regular file"
   ref="$(cat "$t/project-ref")"
@@ -268,7 +282,13 @@ assert_worktree_pooler_link() {
     || die "worktree link: pooler-url points at the DIRECT host (IPv6-only) — refusing"
   [[ "$port" == 5432 || "$port" == 6543 ]] \
     || die "worktree link: pooler port '${port}' is neither 5432 nor 6543"
-  local dirty; dirty="$(git -C "$WT" status --porcelain --untracked-files=no)"
+  # errexit is disabled through this function (it is called on the left of `||`),
+  # so a FAILED `git status` would leave dirty="" and read as a clean tree.
+  # Capture the status explicitly and only interpret emptiness after exit 0.
+  local dirty grc=0
+  dirty="$(git -C "$WT" status --porcelain --untracked-files=no)" || grc=$?
+  [[ "$grc" -eq 0 ]] \
+    || die "worktree link: could not determine tracked-file status (git exit ${grc}) — refusing to proceed to any push"
   [[ -z "$dirty" ]] \
     || die "worktree link: supabase link modified TRACKED files in the rollout worktree — refusing"
   ok "worktree linked: ${scheme}://postgres.${EXPECTED_REF}@${host}:${port} (pooler, password-free, tracked tree clean)"

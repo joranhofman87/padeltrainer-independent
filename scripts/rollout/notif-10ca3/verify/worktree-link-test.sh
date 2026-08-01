@@ -50,7 +50,7 @@ case "$1" in
   status)
     # tracked-file dirtiness is simulated per-run
     [[ "$(cat "$STATEDIR/TRACKED_DIRTY" 2>/dev/null)" == 1 ]] && echo " M supabase/config.toml"
-    exit 0;;
+    exit "$(cat "$STATEDIR/GIT_STATUS_RC" 2>/dev/null || echo 0)";;
 esac
 exit 0
 EOF
@@ -66,7 +66,14 @@ if [[ "$1" == link ]]; then
   [[ -n "${LINK_STDERR:-}" ]] && printf '%s\n' "$LINK_STDERR" >&2
   [[ "$rc" != 0 ]] && exit "$rc"
   m="$(cat "$STATEDIR/LINK_MODE" 2>/dev/null || echo good)"
-  t="$PWD/supabase/.temp"; mkdir -p "$t"
+  t="$PWD/supabase/.temp"
+  if [[ "$m" == tempsymlink ]]; then
+    a="$STATEDIR/ambient-temp"; mkdir -p "$a"
+    printf '%s' "$REF" > "$a/project-ref"
+    printf 'postgresql://postgres.%s@aws-1-eu-central-1.pooler.supabase.com:5432/postgres' "$REF" > "$a/pooler-url"
+    rm -rf "$t"; mkdir -p "$(dirname "$t")"; ln -s "$a" "$t"; exit 0
+  fi
+  mkdir -p "$t"
   printf '%s' "$REF" > "$t/project-ref"
   case "$m" in
     good)        printf 'postgresql://postgres.%s@aws-1-eu-central-1.pooler.supabase.com:5432/postgres' "$REF" > "$t/pooler-url";;
@@ -128,7 +135,8 @@ chmod +x "$BIN"/*
 source "$HERE/../PINS.env"
 printf '%s' "$PR615_SHA" > "$STATEDIR/pin"
 
-reset_state(){ rm -f "$STATEDIR"/{link_calls,link_cwd,link_argv,push_cwd,worktrees,TRACKED_DIRTY,LINK_RC,LINK_DIRTIES_TRACKED,manifest_n}
+reset_state(){ rm -f "$STATEDIR"/{link_calls,link_cwd,link_argv,push_cwd,worktrees,TRACKED_DIRTY,LINK_RC,LINK_DIRTIES_TRACKED,manifest_n,GIT_STATUS_RC}
+  rm -rf "$STATEDIR/ambient-temp"
   printf 'good' > "$STATEDIR/LINK_MODE"; printf '' > "$STATEDIR/ledger"; }
 run_dryrun(){ ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' \
     bash "$RR" dryrun615 ) >"$ROOT/out.txt" 2>&1; }
@@ -213,8 +221,13 @@ assert s.count(old)==1
 open(dst,"w").write(s.replace(old,new,1))
 PYX
 grep -q 'cp -R supabase/.temp' "$MUTAMB" && pass "mutant built: copies the ambient .temp instead of linking" || fail "ambient mutant not applied"
-( PATH="$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' bash "$MUTAMB" dryrun615 ) >/dev/null 2>&1
-[[ "$(links)" == 0 ]] && pass "MUTANT (ambient copy) performs NO link — the fresh-link requirement is load-bearing" || fail "ambient mutant still linked"
+# run it from a decoy checkout with NO ambient .temp to copy: a copy is not a
+# link, and asserting only "link count 0" would not prove the run is blocked.
+DECOY="$ROOT/decoy"; mkdir -p "$DECOY/supabase"
+( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' bash "$MUTAMB" dryrun615 ) >"$ROOT/amb.txt" 2>&1; ambrc=$?
+[[ "$(links)" == 0 ]] && pass "MUTANT (ambient copy) performs NO link" || fail "ambient mutant still linked"
+[[ "$ambrc" -ne 0 ]] && pass "MUTANT (ambient copy) FAILS end to end (exit $ambrc) — a copy is not a link" || fail "ambient mutant succeeded"
+[[ "$(pushes)" == 0 ]] && pass "MUTANT (ambient copy) never reached a db push" || fail "ambient mutant pushed"
 rm -f "$MUTAMB"
 
 echo "== the link must come BEFORE the dry run =="
@@ -240,6 +253,92 @@ grep -q 'link_worktree_pooler || die "worktree link failed"' "$MUTORD" && pass "
 [[ "$morc" -ne 0 ]] && pass "MUTANT (link after the dry run) FAILS — ordering is load-bearing" || fail "order mutant succeeded"
 grep -q 'IPv6 is not supported' "$ROOT/mo.txt" && pass "MUTANT (link after) hits the direct-host failure" || fail "no IPv6 failure in the order mutant"
 rm -f "$MUTORD"
+
+echo "== a FAILED git status is not 'clean' =="
+reset_state; echo 17 > "$STATEDIR/GIT_STATUS_RC"
+run_dryrun; rc=$?
+[[ "$rc" -ne 0 ]] && pass "git status exit 17 with empty output -> refused (exit $rc)" || fail "a failed git status read as a clean tree"
+[[ "$(pushes)" == 0 ]] && pass "git status failure -> db push never invoked" || fail "pushed after an undetermined tracked-file status"
+grep -q 'could not determine tracked-file status' "$ROOT/out.txt" && pass "the git failure is named explicitly" || fail "no diagnostic for the git failure"
+MUTGS="$HERE/../.mutant-gitstatus.sh"
+python3 - "$RR" "$MUTGS" <<'PYX'
+import sys
+src,dst=sys.argv[1],sys.argv[2]
+s=open(src).read()
+old='  dirty="$(git -C "$WT" status --porcelain --untracked-files=no)" || grc=$?'
+new='  dirty="$(git -C "$WT" status --porcelain --untracked-files=no)" || true'
+assert s.count(old)==1
+open(dst,"w").write(s.replace(old,new,1))
+PYX
+grep -q 'untracked-files=no)" || true' "$MUTGS" && pass "mutant built: git status exit code ignored" || fail "git-status mutant not applied"
+reset_state; echo 17 > "$STATEDIR/GIT_STATUS_RC"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' bash "$MUTGS" dryrun615 ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (ignores git status) ACCEPTS an undetermined tree — the status check is load-bearing" || fail "git-status mutant not distinguishable"
+rm -f "$MUTGS"
+
+echo "== metadata reached through a SYMLINKED PARENT is refused =="
+reset_state; printf 'tempsymlink' > "$STATEDIR/LINK_MODE"
+run_dryrun; rc=$?
+[[ "$rc" -ne 0 ]] && pass ".temp symlinked to a VALID-looking ambient dir -> refused (exit $rc)" || fail "aliased ambient metadata accepted"
+[[ "$(pushes)" == 0 ]] && pass "symlinked .temp -> db push never invoked" || fail "pushed through a symlinked .temp"
+grep -q 'symlinked parent' "$ROOT/out.txt" && pass "the symlinked parent is named in the refusal" || fail "no symlinked-parent diagnostic"
+MUTSL="$HERE/../.mutant-parentlink.sh"
+python3 - "$RR" "$MUTSL" <<'PYX'
+import sys
+src,dst=sys.argv[1],sys.argv[2]
+s=open(src).read()
+old='  [[ ! -L "$t" ]] || die "worktree link: .temp is a SYMLINK — refusing metadata reached through a symlinked parent"\n'
+assert s.count(old)==1, s.count(old)
+open(dst,"w").write(s.replace(old,"",1))
+PYX
+grep -q '.temp is a SYMLINK' "$MUTSL" && fail "parent-symlink mutant not applied" || pass "mutant built: parent-symlink guard removed"
+reset_state; printf 'tempsymlink' > "$STATEDIR/LINK_MODE"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' bash "$MUTSL" dryrun615 ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (no parent-symlink guard) ACCEPTS aliased ambient metadata — the guard is load-bearing" || fail "parent-symlink mutant not distinguishable"
+rm -f "$MUTSL"
+
+echo "== a capture that cannot be destroyed stops the run =="
+NOSHRED="$ROOT/noshred"; mkdir -p "$NOSHRED"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$NOSHRED/shred"; printf '#!/usr/bin/env bash\nexit 1\n' > "$NOSHRED/gshred"
+RMFAIL="$ROOT/rmfail"; mkdir -p "$RMFAIL"
+cat > "$RMFAIL/rm" <<'RMEOF'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in *rollout-link-*) echo "rm: Operation not permitted" >&2; exit 1;; esac; done
+exec /bin/rm "$@"
+RMEOF
+chmod +x "$NOSHRED"/shred "$NOSHRED"/gshred "$RMFAIL"/rm
+reset_state
+( PATH="$RMFAIL:$NOSHRED:$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' \
+  bash "$RR" dryrun615 ) >"$ROOT/cf.txt" 2>&1; cfrc=$?
+[[ "$cfrc" -ne 0 ]] && pass "successful link + cleanup failure -> refused (exit $cfrc)" || fail "continued after a failed capture cleanup"
+[[ "$(pushes)" == 0 ]] && pass "cleanup failure -> validation and db push never reached" || fail "pushed after a failed cleanup"
+grep -q 'refusing to continue to validation or any push' "$ROOT/cf.txt" && pass "the cleanup failure is reported clearly" || fail "no cleanup diagnostic"
+grep -q 'worktree linked:' "$ROOT/cf.txt" && fail "validation ran despite the cleanup failure" || pass "validation was NOT reached"
+reset_state; echo 7 > "$STATEDIR/LINK_RC"
+( PATH="$RMFAIL:$NOSHRED:$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' \
+  LINK_STDERR='failed to link: unauthorized' bash "$RR" dryrun615 ) >"$ROOT/cf2.txt" 2>&1
+grep -q 'exit 7' "$ROOT/cf2.txt" && pass "failed link (7) + cleanup failure: the LINK's code is preserved" || fail "link code lost"
+grep -q 'failed to link: unauthorized' "$ROOT/cf2.txt" && pass "the link diagnostic survives a cleanup failure" || fail "link diagnostic lost"
+grep -q 'could not be securely deleted' "$ROOT/cf2.txt" && pass "the cleanup failure is ALSO reported" || fail "cleanup failure silent"
+[[ "$(pushes)" == 0 ]] && pass "link failure + cleanup failure -> no push" || fail "pushed anyway"
+MUTCU="$HERE/../.mutant-cleanupwarn.sh"
+python3 - "$RR" "$MUTCU" <<'PYX'
+import sys
+src,dst=sys.argv[1],sys.argv[2]
+s=open(src).read()
+old = '  if ! secure_delete "$cap"; then\n'
+old += '    warn "the link SUCCEEDED but its capture could not be securely deleted — refusing to continue to validation or any push; remove it by hand"\n'
+old += '    return 1\n  fi'
+new = '  secure_delete "$cap" || warn "could not securely delete the link capture"'
+assert s.count(old)==1, s.count(old)
+open(dst,"w").write(s.replace(old,new,1))
+PYX
+grep -q 'refusing to continue to validation' "$MUTCU" && fail "cleanup mutant not applied" || pass "mutant built: warn-and-continue cleanup restored"
+reset_state
+( PATH="$RMFAIL:$NOSHRED:$BIN:$PATH" EXPECTED_REF="$REF" SUPABASE_DB_PASSWORD='stub-not-real' bash "$MUTCU" dryrun615 ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (warn and continue) proceeds to the push after a failed cleanup — stopping is load-bearing" || fail "cleanup mutant not distinguishable"
+rm -f "$MUTCU"
+/bin/rm -f "${TMPDIR:-/tmp}"/rollout-link-* 2>/dev/null || true
 
 echo "== resume615 links its recovery worktree =="
 cat > "$BIN/curl" <<'EOF'
