@@ -59,9 +59,9 @@ sql/ledger_verification.sql append-only ledger + email-table consistency invaria
 sql/clone_source_inventory.sql READ-ONLY outbound inventory (names/counts/md5 only)
 sql/_cron_fp.sql            THE cron configuration fingerprint, defined once
 sql/_cron_inflight.sql      THE in-flight definition (complement of terminal)
+sql/_fence.sql              prove both outbound fences are installed AND effective
 sql/_acl.sql                the marker/fence ACL matrix, both sides
 sql/cron_quiet_sample.sql   one quiescence sample for the drain loop
-sql/_fence.sql              assert the cron.job fence is installed AND effective
 sql/clone_source_seal.sql   capture + pause + FENCE + mark, in ONE transaction
 sql/clone_source_arm.sql    promote 'sealing' -> 'sealed' once drained
 sql/clone_source_resume.sql ONE atomic transition out of the window
@@ -319,8 +319,20 @@ A clone restored after that point boots with an **active** job. Detecting it at
 clone startup is too late — a copied worker may already have sent. **This bundle
 therefore never claims the commit lock protects the window.**
 
-The fence is a **statement-level `BEFORE INSERT OR UPDATE OR DELETE` trigger (plus
-a `BEFORE TRUNCATE` trigger) on `cron.job`**:
+**Two tables must be frozen, not one.** `cron.job` is the obvious one. The pg_net
+request queue is the other: observing that `net.http_request_queue` is empty at
+the boundary proves nothing, because a privileged `net.http_post()` after the arm
+enqueues a row that the restore copies into the clone, where the clone's own
+pg_net worker can dispatch it **before clone isolation ever runs**.
+
+The fence is therefore a set of statement-level `BEFORE` triggers:
+
+| table | verbs fenced | why |
+| --- | --- | --- |
+| `cron.job` | `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` | a new or re-activated job would run in the clone |
+| `net.http_request_queue` | `INSERT` only | `INSERT` is the only way a request is created; pg_net's own worker retires rows with `UPDATE`/`DELETE` and must keep working |
+
+and it satisfies:
 
 | requirement | how the trigger satisfies it |
 | --- | --- |
@@ -329,6 +341,9 @@ a `BEFORE TRUNCATE` trigger) on `cron.job`**:
 | survives the sealing session | ordinary database state — no long-lived shell |
 | present in the clone | a restore copies triggers and functions |
 | fires even for a zero-row write | statement-level, so it does not depend on matching a row |
+
+Both tables must therefore be owned by the connecting role; the read-only
+inventory's `FENCEABLE` reports the conjunction.
 
 Presence is not effectiveness, so **every artifact probes it**: `INSERT`, `UPDATE`
 and `DELETE` against `cron.job` are attempted in a subtransaction and each must be
@@ -351,7 +366,11 @@ Two ways a drain check reads zero while a job is about to send:
   therefore requires **N consecutive quiet samples separated by a
   scheduler-observation interval** (`QUIESCE_QUIET_SAMPLES`, minimum and default
   2; `QUIESCE_SETTLE_SECS`, default 60). Any non-quiet sample resets the streak,
-  and each sample checks the pg_net queue as well.
+  and each sample checks the pg_net queue as well. The interval has a **reviewed
+  floor of 15s that is not overridable** — zero would make the two "stable"
+  samples back-to-back, which is the false green the loop exists to prevent — and
+  an interrupted or failed `sleep` is never read as an elapsed interval. Tests
+  stub `sleep`; they do not lower the interval.
 
 `cron.job_run_details` is only populated when **`cron.log_run` is on**, so a zero
 count means nothing without it. The read-only inventory reports `LOGRUN`, and the
@@ -390,7 +409,11 @@ arming — runs in a subshell, so even a fatal error becomes a status the caller
 acts on. Every non-zero status routes through the atomic exit from the window
 (`allow_unarmed = 1`), the original exit code is preserved, and if the automatic
 resume *also* fails the tooling says so unmistakably and prints the exact
-`clone-source-abandon` command including the nonce — because the failure may have
+`clone-source-abandon` command including the nonce. The **actual** failure status
+is preserved end to end — a `psql` exit 7 leaves quiesce with exit 7, not a
+flattened 1 — and the resume's diagnostic capture is **best effort**: it falls
+back to a temp file and then to stderr, so an unwritable evidence directory can
+never be the reason the database resume does not run — because the failure may have
 been the very write of `evidence/clone-source-nonce.txt`. A full disk must never
 translate into email and WhatsApp being down.
 

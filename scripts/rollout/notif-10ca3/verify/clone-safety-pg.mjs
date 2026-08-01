@@ -98,6 +98,10 @@ async function installCron(c) {
         WHERE j.jobid = job_id;
       END $f$;
     CREATE TABLE net.http_request_queue (id bigserial PRIMARY KEY, url text);
+    -- pg_net's own enqueue path: http_post INSERTs into the queue and returns the id
+    CREATE FUNCTION net.http_post(url text) RETURNS bigint LANGUAGE plpgsql AS $h$
+      DECLARE i bigint;
+      BEGIN INSERT INTO net.http_request_queue (url) VALUES (url) RETURNING id INTO i; RETURN i; END $h$;
     -- pg_cron registers cron.log_run; a placeholder GUC gives pg_settings the
     -- same visible shape, so both the on and off branches are exercised for real.
     SET cron.log_run = 'on';`);
@@ -109,7 +113,8 @@ async function installCron(c) {
 const NONCE = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
 const cfgFp = (c) => scalar(c, `SELECT md5(string_agg(jobid::text||chr(31)||jobname||chr(31)||schedule||chr(31)||database||chr(31)||username||chr(31)||md5(command)||chr(31)||coalesce(nodename,'')||chr(31)||nodeport::text, E'\\n' ORDER BY jobid)) AS v FROM cron.job`);
 const activeCount = (c) => scalar(c, `SELECT count(*)::int AS v FROM cron.job WHERE active`);
-const fenceCount  = (c) => scalar(c, `SELECT count(*)::int AS v FROM pg_trigger WHERE tgrelid='cron.job'::regclass AND NOT tgisinternal AND tgname LIKE 'rollout\\_clone\\_fence%'`);
+const fenceCount  = (c) => scalar(c, `SELECT count(*)::int AS v FROM pg_trigger WHERE tgrelid IN ('cron.job'::regclass,'net.http_request_queue'::regclass) AND NOT tgisinternal AND tgname LIKE 'rollout\\_clone\\_fence%'`);
+const queueLen    = (c) => scalar(c, `SELECT count(*)::int AS v FROM net.http_request_queue`);
 const markerCount = (c) => scalar(c, `SELECT count(*)::int AS v FROM information_schema.tables WHERE table_schema='rollout_clone' AND table_name='snapshot_marker'`);
 async function seal(c) { await installCron(c); return tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: await cfgFp(c) }); }
 
@@ -121,7 +126,7 @@ try {
   console.log('\n[1] the fence really blocks every write path to cron.job');
   let err = await seal(c);
   rec('the seal artifact runs clean on a real Postgres', err === null, err?.message);
-  rec('two fence triggers exist on cron.job', await fenceCount(c) === 2);
+  rec('three fence triggers exist (two on cron.job, one on the pg_net queue)', await fenceCount(c) === 3);
   for (const [label, stmt] of [
     ['direct INSERT (what cron.schedule does)', `INSERT INTO cron.job (jobid,jobname,schedule,command) VALUES (77,'sneak','* * * * *','SELECT 1')`],
     ['direct UPDATE',                           `UPDATE cron.job SET active = true WHERE jobid = 9`],
@@ -129,12 +134,15 @@ try {
     ['TRUNCATE',                                `TRUNCATE cron.job`],
     ['cron.alter_job (SECURITY DEFINER path)',  `SELECT cron.alter_job(9, active := true)`],
     ['a zero-row UPDATE',                       `UPDATE cron.job SET active = active WHERE false`],
+    ['a direct pg_net queue INSERT',            `INSERT INTO net.http_request_queue (url) VALUES ('https://sneak.test')`],
+    ['net.http_post() (the pg_net enqueue path)',`SELECT net.http_post('https://sneak.test')`],
   ]) {
     let e = null; try { await c.query(stmt); } catch (x) { e = x; }
     rec(`fence rejects ${label}`, e !== null && /clone-safety fence/.test(e.message) && e.code === '42501',
         e ? `${e.code}` : 'NOT REJECTED');
   }
-  rec('no row was created by any blocked attempt', await scalar(c, `SELECT count(*)::int AS v FROM cron.job`) === 3);
+  rec('no cron row was created by any blocked attempt', await scalar(c, `SELECT count(*)::int AS v FROM cron.job`) === 3);
+  rec('no outbound request was queued by any blocked attempt', await queueLen(c) === 0);
 
   console.log('\n[2] the seal is atomic: a failure leaves nothing behind');
   await installCron(c);
@@ -142,7 +150,7 @@ try {
   err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: await cfgFp(c) });
   rec('seal REFUSES with a non-empty pg_net queue', err !== null, err?.message.slice(0, 60));
   rec('…no rollout_clone schema was left behind', await markerCount(c) === 0);
-  rec('…no fence trigger was left behind', await fenceCount(c) === 0);
+  rec('…no fence trigger was left behind on either table', await fenceCount(c) === 0);
   rec('…every job is still ACTIVE (nothing was paused)', await activeCount(c) === 2);
   await installCron(c);
   err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: 'deadbeefdeadbeefdeadbeefdeadbeef' });
@@ -163,10 +171,15 @@ try {
     err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
     rec(`arm proceeds with only terminal '${st}' runs`, err === null, err?.message.slice(0, 60));
   }
+  // A request cannot legitimately appear between seal and arm any more — the
+  // queue fence prevents it. Disable the trigger to simulate a bypass and prove
+  // the arm's own queue assertion is still load-bearing behind the fence.
   await seal(c);
+  await c.query(`ALTER TABLE net.http_request_queue DISABLE TRIGGER rollout_clone_fence_netq`);
   await c.query(`INSERT INTO net.http_request_queue (url) VALUES ('https://late.test')`);
+  await c.query(`ALTER TABLE net.http_request_queue ENABLE TRIGGER rollout_clone_fence_netq`);
   err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  rec('arm REFUSES with a queued pg_net request', err !== null);
+  rec('arm REFUSES with a queued pg_net request (defence behind the fence)', err !== null);
 
   console.log('\n[4] cron.log_run must be on, or quiescence is unprovable');
   await seal(c);
@@ -200,7 +213,7 @@ try {
   await c.query(`ALTER TABLE cron.job ENABLE TRIGGER rollout_clone_fence_dml`);
   err = await tryArtifact(c, 'clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '0' });
   rec('resume REFUSES when a command changed under the same id and name', err !== null, err?.message.slice(0, 70));
-  rec('…and rolled back completely: fence still installed', await fenceCount(c) === 2);
+  rec('…and rolled back completely: all three fences still installed', await fenceCount(c) === 3);
   rec('…marker still present', await markerCount(c) === 1);
   rec('…every job still inactive', await activeCount(c) === 0);
 
@@ -239,6 +252,27 @@ try {
   rec('so no committed state carries a valid marker beside active cron',
       midMarker === 1 && !(postMarker === 1 && postActive > 0));
 
+  console.log('\n[7b] pg_net is FROZEN across the armed window, from another session');
+  await seal(c);
+  await runArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
+  // a second, fully independent connection — a background worker, an edge
+  // function, an admin session: anything that could enqueue after the arm
+  for (const [label, stmt] of [
+    ['a direct INSERT',   `INSERT INTO net.http_request_queue (url) VALUES ('https://after-arm.test')`],
+    ['net.http_post()',   `SELECT net.http_post('https://after-arm.test')`],
+  ]) {
+    let e = null; try { await b.query(stmt); } catch (x) { e = x; await b.query('ROLLBACK').catch(() => {}); }
+    rec(`another session cannot enqueue via ${label} after the arm`,
+        e !== null && /clone-safety fence/.test(e.message) && e.code === '42501', e ? e.code : 'ENQUEUED');
+  }
+  rec('the queue is still empty, so nothing can cross into a clone', await queueLen(b) === 0);
+  let ce = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
+  rec('the clone gate re-proves the queue fence inside the clone', ce === null, ce?.message.slice(0, 70));
+  await runArtifact(c, 'clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '0' });
+  rec('resume drops the queue fence atomically with everything else', await fenceCount(c) === 0);
+  const after = await b.query(`SELECT net.http_post('https://after-resume.test') AS v`);
+  rec('…and pg_net can enqueue again once the window is closed', Number(after.rows[0].v) > 0);
+
   console.log('\n[8] lifecycle: no implicit reuse, and real run-level exclusion');
   await seal(c);
   err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: 'ffffffffffffffffffffffffffffffff', expect_fp: await cfgFp(c) });
@@ -263,9 +297,12 @@ try {
   err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
   rec("a clone with a run in 'sending' is refused (not just 'running')", err !== null);
   await c.query(`DELETE FROM cron.job_run_details`);
+  await c.query(`DROP TRIGGER rollout_clone_fence_netq ON net.http_request_queue`);
+  err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
+  rec('a clone missing ONLY the pg_net queue fence is refused', err !== null);
   await c.query(`DROP TRIGGER rollout_clone_fence_dml ON cron.job; DROP TRIGGER rollout_clone_fence_truncate ON cron.job`);
   err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
-  rec('a clone whose fence is gone is refused (restore point outside the window)', err !== null);
+  rec('a clone whose fences are gone is refused (restore point outside the window)', err !== null);
 } finally {
   await c.end().catch(() => {}); await b.end().catch(() => {});
   await epg.stop().catch(() => {});

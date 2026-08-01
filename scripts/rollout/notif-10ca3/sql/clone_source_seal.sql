@@ -91,12 +91,12 @@ FROM cron.job;
 -- (6) pause. Reversible by construction: never cron.unschedule.
 SELECT cron.alter_job(jobid, active := false) FROM cron.job WHERE active;
 
--- (7) the fence. Installed AFTER the pause because it blocks our own writes too.
+-- (7) the fences. Installed AFTER the pause because they block our own writes too.
 CREATE OR REPLACE FUNCTION rollout_clone.fence_cron_job() RETURNS trigger
 LANGUAGE plpgsql AS $fence$
 BEGIN
   RAISE EXCEPTION
-    'clone-safety fence: cron.job is FROZEN for the sealed snapshot window (nonce %). No cron job may be created, altered, removed or truncated until clone-source-resume runs.',
+    'clone-safety fence: cron.job and the pg_net request queue are FROZEN for the sealed snapshot window (nonce %). No cron job may be created, altered, removed or truncated, and no outbound request may be enqueued, until clone-source-resume runs.',
     coalesce((SELECT nonce FROM rollout_clone.snapshot_marker LIMIT 1), '<pending>')
     USING ERRCODE = '42501';
 END $fence$;
@@ -109,6 +109,16 @@ CREATE TRIGGER rollout_clone_fence_dml
   FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone.fence_cron_job();
 CREATE TRIGGER rollout_clone_fence_truncate
   BEFORE TRUNCATE ON cron.job
+  FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone.fence_cron_job();
+
+-- The pg_net request queue is the SECOND outbound path. An empty queue at the
+-- boundary proves nothing on its own: a privileged net.http_post() after the arm
+-- enqueues a row that the restore copies into the clone, where the clone's own
+-- pg_net worker can dispatch it before clone isolation ever runs. INSERT is the
+-- only way a request is created, and it is the only verb fenced here — pg_net's
+-- worker retires rows with UPDATE/DELETE and must keep working.
+CREATE TRIGGER rollout_clone_fence_netq
+  BEFORE INSERT ON net.http_request_queue
   FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone.fence_cron_job();
 
 -- (8) PROVE the fence — presence is not effectiveness

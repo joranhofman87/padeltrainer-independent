@@ -17,5 +17,6 @@ SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job WHERE active)::bigint, 0
   'the clone is still inert (no active cron) before the fence is lifted');
 DROP TRIGGER IF EXISTS rollout_clone_fence_dml ON cron.job;
 DROP TRIGGER IF EXISTS rollout_clone_fence_truncate ON cron.job;
+DROP TRIGGER IF EXISTS rollout_clone_fence_netq ON net.http_request_queue;
 COMMIT;
 SELECT pg_temp.note('clone unfenced (marker retained; cron remains inactive)');

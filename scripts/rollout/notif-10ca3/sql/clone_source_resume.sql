@@ -51,6 +51,7 @@ SELECT pg_temp.assert_eq(pg_temp.cron_config_fp(),
 --     an unfenced cron.job while the marker is still present
 DROP TRIGGER rollout_clone_fence_dml ON cron.job;
 DROP TRIGGER rollout_clone_fence_truncate ON cron.job;
+DROP TRIGGER rollout_clone_fence_netq ON net.http_request_queue;
 
 -- (d) restore EXACTLY the recorded prior state, driven by the captured relation
 SELECT cron.alter_job(s.jobid, active := s.prior_active)
@@ -85,9 +86,10 @@ SELECT pg_temp.assert(
   (SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'rollout_clone') = 0,
   'the sealed window is fully removed from production');
 SELECT pg_temp.assert(
-  (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'cron.job'::regclass
-     AND NOT tgisinternal AND tgname LIKE 'rollout\_clone\_fence%') = 0,
-  'the fence is gone from cron.job');
+  (SELECT count(*) FROM pg_trigger
+    WHERE tgrelid IN ('cron.job'::regclass, 'net.http_request_queue'::regclass)
+      AND NOT tgisinternal AND tgname LIKE 'rollout\_clone\_fence%') = 0,
+  'every fence is gone from cron.job and the pg_net queue');
 
 COMMIT;
 

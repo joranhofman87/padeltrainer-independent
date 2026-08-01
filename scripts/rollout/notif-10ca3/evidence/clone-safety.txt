@@ -5,6 +5,8 @@ stub syntax OK
   PASS  inventory of a reviewed, sealable source succeeds
   PASS  the inventory artifact carries no command, URL, header or secret text
   PASS  inventory is READ-ONLY: nothing was paused
+  PASS  the human-readable inventory shows the IN-FLIGHT count (the formatter tracks the emitted record)
+  PASS  …and whether cron.log_run makes that count meaningful
   PASS  a role that CANNOT create the fence trigger stops the procedure in the READ-ONLY step
   PASS  …and says so, rather than degrading to a weaker guarantee
   PASS  an EXISTING sealed window stops a new one (never overwritten implicitly)
@@ -34,6 +36,9 @@ stub syntax OK
   PASS  the fence is STATEMENT-level, so it fires even for a zero-row write
   PASS  TRUNCATE on cron.job is fenced too
   PASS  the seal PROVES the fence by probing it, not by asserting its presence
+  PASS  a privileged net.http_post() INSIDE the window is rejected — the pg_net queue is fenced, not merely sampled
+  PASS  …and nothing was queued, so nothing can cross into a clone
+  PASS  only the queue's INSERT path is fenced (pg_net's worker still retires rows with UPDATE/DELETE)
 -- the seal is one transaction: a failure changes NOTHING --
   PASS  quiesce refuses with queued pg_net requests
   PASS  …and NOTHING was paused, fenced or marked (queued pg_net requests)
@@ -59,6 +64,12 @@ stub syntax OK
   PASS  …and the drain refuses to certify quiescence it cannot observe
   PASS  a ZERO sample followed by a late start RESETS the streak (the scheduler had not yet observed the pause)
   PASS  a single quiet sample is refused by configuration (>= 2 required)
+-- the scheduler-observation interval cannot be configured away --
+  PASS  a ZERO settle interval is REFUSED (two 'stable' samples would be back-to-back)
+  PASS  …and the window was left, so production runs normally
+  PASS  an interval below the reviewed floor is REFUSED
+  PASS  an INTERRUPTED sleep is refused (the interval did not elapse, so the samples are not separated)
+  PASS  …and production was restored after the failed sleep
 -- after the seal, NO local failure may leave production paused --
   PASS  quiesce fails (non-zero) on a failed nonce write (full or read-only disk)
   PASS  …every prior active state was RESTORED after a failed nonce write (full or read-only disk)
@@ -80,13 +91,21 @@ stub syntax OK
   PASS  …every prior active state was RESTORED after a failed arm transaction
   PASS  …no fence was left behind after a failed arm transaction
   PASS  …no marker was left behind after a failed arm transaction
+  PASS  quiesce fails when the ENTIRE evidence directory becomes unwritable after the seal
+  PASS  …and the resume STILL EXECUTED: every prior active state is restored
+  PASS  …the fences are gone
+  PASS  …the marker is gone
+-- the ORIGINAL failure status survives the recovery --
+  PASS  an underlying psql exit 7 is preserved through the automatic resume (not flattened to 1)
+  PASS  …and production was still restored
   PASS  if the automatic resume ALSO fails, it says so unmistakably
   PASS  …and prints the exact recovery command including the nonce (the failure may have been the nonce write itself)
 == resume: ONE atomic transition, and the whole-history invariant ==
   PASS  resume succeeds
   PASS  a job that was ALREADY inactive is restored to inactive (not blanket-enabled)
   PASS  the two previously-active jobs are active again
-  PASS  resume removes BOTH the marker and the fence
+  PASS  resume removes the marker and BOTH fences
+  PASS  after resume, pg_net can enqueue again (the queue fence is not sticky)
   PASS  the nonce file is RETAINED (clones are verified after production resumes)
   PASS  after resume, cron.job is writable again (the fence is not sticky)
 -- no COMMITTED state ever carries a valid marker beside active cron --
@@ -141,6 +160,11 @@ stub syntax OK
   PASS  MUTANT (trigger deleted, probe kept) is REFUSED at the seal — probing is what turns 'the artifact says it fences' into 'the fence works'
   PASS  …and no marker was committed, so no restore point looks valid
   PASS  MUTANT (no sealability check) proceeds on a source where the fence cannot be installed — the read-only check is load-bearing
+  PASS  MUTANT (pg_net queue fence removed) SEALS a window in which an outbound request can still be ENQUEUED — sampling the queue is not the same as freezing it
+  PASS  …and that request would be copied into every clone taken from this window
+  PASS  MUTANT (interval floor removed) accepts a ZERO interval, so the two 'stable' samples are back-to-back — the floor is load-bearing
+  PASS  MUTANT (unchecked sleep) treats an INTERRUPTED sleep as an elapsed interval — checking it is load-bearing
+  PASS  MUTANT (recovery redirects into the evidence dir) never runs the resume when that dir is unwritable — production LEFT PAUSED; the best-effort capture is load-bearing
 -- (2) the atomic transition --
   PASS  MUTANT (unfence removed from resume) leaves production FENCED after resume — the unfence must be inside the same transaction
   PASS  MUTANT (no fence check at resume) resumes a window whose fence had already been dropped — the check is load-bearing
@@ -165,4 +189,4 @@ stub syntax OK
   PASS  the seal artifact states plainly that its lock ends at COMMIT
   PASS  the runbook states plainly that the lock ends at COMMIT
   PASS  no surviving AFFIRMATIVE claim that the lock protects the window after commit
-================  146 passed, 0 failed  ================
+================  168 passed, 0 failed  ================

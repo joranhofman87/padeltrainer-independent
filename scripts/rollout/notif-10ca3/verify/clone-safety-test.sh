@@ -29,7 +29,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RR="$HERE/../run-rollout.sh"; SQLD="$HERE/../sql"; export SQLD
 ROOT="$(mktemp -d)"
 restore_sql(){ local f; for f in "$ROOT"/sqlbak/*; do [[ -e "$f" ]] || continue; cp "$f" "$SQLD/$(basename "$f")"; done; }
-trap 'restore_sql; rm -rf "$ROOT"; rm -f "$HERE/../.mutant-"*.sh' EXIT
+trap 'restore_sql; chmod -R u+w "$ROOT" 2>/dev/null; rm -rf "$ROOT"; rm -f "$HERE/../.mutant-"*.sh' EXIT
 mkdir -p "$ROOT/sqlbak"
 
 P=0; F=0
@@ -41,9 +41,19 @@ CLONE=zzzzzzzzzzzzzzzzzzzz
 PROD_URL="postgresql://postgres@db.${REF}.supabase.co:5432/postgres"
 CLONE_URL="postgresql://postgres@db.${CLONE}.supabase.co:5432/postgres"
 BIN="$ROOT/bin"; mkdir -p "$BIN"; export STATEDIR="$ROOT/state"; mkdir -p "$STATEDIR"
-EVID="$ROOT/evidence"; mkdir -p "$EVID"
-export QUIESCE_SETTLE_SECS=0   # no wall-clock sleep; the >=2-consecutive-sample rule still applies
+EVID="$ROOT/evidence"; mkdir -p "$EVID"; export EVIDDIR="$EVID"
+# The scheduler-observation interval is NOT disabled here: the tooling refuses an
+# interval below its reviewed floor, and doing so in tests would exercise a
+# configuration production can never have. `sleep` is stubbed instead, so the
+# real value is used and only the wall clock is skipped.
+export QUIESCE_SETTLE_SECS=15
 export QUIESCE_MAX_SAMPLES=6
+cat > "$BIN/sleep" <<'SEOF'
+#!/usr/bin/env bash
+[[ "$(cat "$STATEDIR/SLEEP_FAIL" 2>/dev/null)" == 1 ]] && exit 1   # EINTR / killed
+exit 0
+SEOF
+chmod +x "$BIN/sleep"
 
 # --- psql stub --------------------------------------------------------------
 # $STATEDIR/jobs rows:  id <TAB> name <TAB> active <TAB> outbound <TAB> cfg
@@ -114,10 +124,16 @@ if [[ "$f" == *clone_source_seal.sql ]]; then
     && awk -F'\t' '{printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $5}' "$S/jobs" > "$S/SNAP"
   has "SELECT cron.alter_job(jobid, active := false) FROM cron.job WHERE active" \
     && { awk -F'\t' '{print $1"\t"$2"\tfalse\t"$4"\t"$5}' "$S/jobs" > "$S/j.n"; mv "$S/j.n" "$S/jobs"; }
-  has "CREATE TRIGGER rollout_clone_fence_dml" && : > "$S/FENCE"
-  has "assert_fence_effective('seal')" && { [[ -e "$S/FENCE" ]] || boom "fence probe FAILED: cron.job still writable"; }
+  has "CREATE TRIGGER rollout_clone_fence_dml"  && : > "$S/FENCE"
+  has "CREATE TRIGGER rollout_clone_fence_netq" && : > "$S/NETQ_FENCE"
+  if has "assert_fence_effective('seal')"; then
+    [[ -e "$S/FENCE" ]]      || boom "fence probe FAILED: cron.job still writable"
+    [[ -e "$S/NETQ_FENCE" ]] || boom "fence probe FAILED: the pg_net queue is still writable"
+  fi
   has "FROM cron.job WHERE active" && { [[ "$(actives)" == 0 ]] || boom "active jobs at the boundary"; }
   printf '%s\n' "$nonce" > "$S/MARKER"; echo sealing > "$S/MSTATE"; cfgfp > "$S/MFP"
+  # the disk fills / the volume goes read-only the instant after the seal commits
+  [[ "$(sfile EVID_LOCK_AFTER_SEAL 0)" == 1 && -n "${EVIDDIR:-}" ]] && chmod 500 "$EVIDDIR"
   has "lock_down_marker_objects" && : > "$S/ACL_LOCKED"
   has "assert_marker_acls('seal')" && { [[ -e "$S/ACL_LOCKED" ]] || boom "marker ACLs are not locked down at the seal"; }
   commit_log seal
@@ -126,6 +142,7 @@ fi
 
 if [[ "$f" == *clone_source_arm.sql ]]; then
   [[ "$(sfile ARM_FAIL 0)" == 1 ]] && boom "arm refused (injected)"
+  arc="$(sfile ARM_FAIL_RC 0)"; [[ "$arc" != 0 ]] && { echo "psql: connection failure" >&2; exit "$arc"; }
   has "state = 'sealing'" && { [[ "$(cat "$S/MARKER" 2>/dev/null)" == "$nonce" && "$(sfile MSTATE -)" == sealing ]] || boom "no un-armed marker for this nonce"; }
   has "assert_fence_effective('arm')" && { [[ -e "$S/FENCE" ]] || boom "fence not effective at arm"; }
   has "snapshot_config_fp" && { [[ "$(cfgfp)" == "$(snapfp)" ]] || boom "cron configuration changed since the seal"; }
@@ -149,6 +166,7 @@ if [[ "$f" == *clone_source_resume.sql ]]; then
   has "snapshot_config_fp" && { [[ "$(cfgfp)" == "$(snapfp)" ]] || boom "configuration drifted while the window was open"; }
   # effects — all of them, or none: this whole block is ONE transaction
   cp "$S/jobs" "$S/jobs.tx"
+  has "DROP TRIGGER rollout_clone_fence_netq" && touch "$S/UNFENCED_NETQ.tx"
   has "DROP TRIGGER rollout_clone_fence_dml" && rm -f "$S/FENCE.tx" && touch "$S/UNFENCED.tx"
   if has "SELECT cron.alter_job(s.jobid, active := s.prior_active)"; then
     awk -F'\t' 'NR==FNR{p[$1"|"$2]=$3; next}
@@ -168,6 +186,7 @@ if [[ "$f" == *clone_source_resume.sql ]]; then
   # COMMIT: apply every effect at once
   mv "$S/jobs.tx" "$S/jobs"
   [[ -e "$S/UNFENCED.tx" ]] && { rm -f "$S/FENCE" "$S/UNFENCED.tx"; }
+  [[ -e "$S/UNFENCED_NETQ.tx" ]] && { rm -f "$S/NETQ_FENCE" "$S/UNFENCED_NETQ.tx"; }
   has "DROP TABLE rollout_clone.snapshot_marker" && rm -f "$S/MARKER" "$S/MSTATE" "$S/MFP" "$S/SNAP" "$S/ACL_LOCKED"
   commit_log resume
   echo "RESUME_OBSERVED_AFTER_COMMIT 2026-08-01T18:40:00.111222Z"; exit 0
@@ -181,7 +200,10 @@ if [[ "$f" == *clone_isolation.sql ]]; then
   has "table_name = 'snapshot_marker'" && { [[ -s "$C/MARKER" ]] || boom "clone carries no snapshot marker"; }
   has "WHERE nonce = :'nonce'" && { [[ "$(cl MARKER)" == "$nonce" ]] || boom "clone marker nonce mismatch"; }
   has "'sealed'," && { [[ "$(cl MSTATE -)" == sealed ]] || boom "clone marker is not ARMED"; }
-  has "assert_fence_effective('clone')" && { [[ -e "$C/FENCE" ]] || boom "the clone's fence is gone — restore point is outside the window"; }
+  if has "assert_fence_effective('clone')"; then
+    [[ -e "$C/FENCE" ]]      || boom "the clone's cron fence is gone — restore point is outside the window"
+    [[ -e "$C/NETQ_FENCE" ]] || boom "the clone's pg_net queue fence is gone — restore point is outside the window"
+  fi
   has "snapshot_config_fp" && { [[ "$(clcfg)" == "$(clsnap)" ]] || boom "clone cron configuration differs from the sealed one"; }
   has "assert_marker_acls('clone')" && { [[ -e "$C/ACL_LOCKED" ]] || boom "clone marker objects are not owner-only"; }
   has "FROM cron.job WHERE active" && { [[ "$(awk -F'\t' '$3=="true"' "$C/jobs" 2>/dev/null | grep -c . || true)" == 0 ]] || boom "clone active cron"; }
@@ -209,6 +231,9 @@ if [[ "$args" == *-Atqc* ]]; then
       [[ "$(sfile EXPORT_TRUNC 0)" == 1 ]] && printf 'JOB\t77\ttruncated-tail\tfalse'   # no newline
       exit 0;;
     # a runtime schedule_*_job / direct cron.schedule attempt
+    *"ENQUEUE_ATTEMPT"*)
+      [[ -e "$S/NETQ_FENCE" ]] && { echo "ERROR:  clone-safety fence: the pg_net request queue is FROZEN" >&2; exit 3; }
+      echo "$(( $(sfile NETQUEUE 0) + 1 ))" > "$S/NETQUEUE"; echo ok; exit 0;;
     *"SCHEDULE_ATTEMPT"*)
       [[ -e "$S/FENCE" ]] && { echo "ERROR:  clone-safety fence: cron.job is FROZEN" >&2; exit 3; }
       printf '%s\tsneaked-in-job\ttrue\tyes\tcfg-new\n' "$(( $(wc -l < "$S/jobs") + 90 ))" >> "$S/jobs"
@@ -222,16 +247,23 @@ EOF
 chmod +x "$BIN/psql"
 bash -n "$BIN/psql" && echo "stub syntax OK"
 PRODJOBS=$'1\trelease-expired-rebook-holds\ttrue\tno\tcfg-1\n9\tnotification-email-worker\ttrue\tyes\tcfg-9\n10\tnotification-whatsapp-worker\ttrue\tyes\tcfg-10'
-seed(){ rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s\n' "$PRODJOBS" > "$STATEDIR/jobs"; rm -f "$EVID/clone-source-nonce.txt"; }
+# The evidence directory is cleared too: a capture file left by an earlier case
+# would let a redirection succeed into an "unwritable" directory (a new file
+# cannot be created there, but an existing one can still be opened), which would
+# silently mask exactly the failure mode under test.
+seed(){ rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s\n' "$PRODJOBS" > "$STATEDIR/jobs"
+  chmod u+w "$EVID" 2>/dev/null; rm -rf "$EVID"/*; }
 run(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" "$@" ) >"$ROOT/out.txt" 2>&1; }
 actives(){ awk -F'\t' '$3=="true"' "$STATEDIR/jobs" | grep -c . || true; }
 nonce_file="$EVID/clone-source-nonce.txt"
 # a runtime schedule_*_job / direct cron.schedule attempt against the source
 attempt_schedule(){ ( PATH="$BIN:$PATH" psql "$PROD_URL" -Atqc "SELECT SCHEDULE_ATTEMPT" ) >/dev/null 2>&1; }
+# a privileged net.http_post() during the window
+attempt_enqueue(){ ( PATH="$BIN:$PATH" psql "$PROD_URL" -Atqc "SELECT ENQUEUE_ATTEMPT" ) >/dev/null 2>&1; }
 # take a restore point: a Supabase restore copies the whole database state
 take_restore_point(){ rm -rf "$STATEDIR/clone"; mkdir -p "$STATEDIR/clone"
   cp "$STATEDIR"/jobs "$STATEDIR/clone/" 2>/dev/null
-  for k in MARKER MSTATE MFP SNAP FENCE ACL_LOCKED runs; do [[ -e "$STATEDIR/$k" ]] && cp "$STATEDIR/$k" "$STATEDIR/clone/$k"; done; true; }
+  for k in MARKER MSTATE MFP SNAP FENCE NETQ_FENCE ACL_LOCKED runs; do [[ -e "$STATEDIR/$k" ]] && cp "$STATEDIR/$k" "$STATEDIR/clone/$k"; done; true; }
 clone_gate(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" \
   CAP_STMT=30000 SUPABASE_DB_PASSWORD=x bash "$RR" "$@" ) >"$ROOT/c.txt" 2>&1; }
 # Drive ONE artifact directly. Downstream guards in later artifacts would
@@ -248,6 +280,8 @@ seed; run bash "$RR" clone-source-inventory "$PROD_URL"; rc=$?
 grep -qE 'md5|command|http|Bearer|apikey|token' "$EVID/clone-source-inventory.txt" && fail "the inventory artifact contains command/secret-shaped text" \
   || pass "the inventory artifact carries no command, URL, header or secret text"
 [[ "$(actives)" == 3 ]] && pass "inventory is READ-ONLY: nothing was paused" || fail "inventory mutated state"
+grep -q 'cron runs in flight' "$ROOT/out.txt" && pass "the human-readable inventory shows the IN-FLIGHT count (the formatter tracks the emitted record)" || fail "inventory display omits the in-flight count"
+grep -q 'cron.log_run *:' "$ROOT/out.txt" && pass "…and whether cron.log_run makes that count meaningful" || fail "inventory display omits cron.log_run"
 seed; echo no > "$STATEDIR/FENCEABLE"
 run bash "$RR" clone-source-inventory "$PROD_URL"
 [[ $? -ne 0 ]] && pass "a role that CANNOT create the fence trigger stops the procedure in the READ-ONLY step" || fail "unfenceable source accepted"
@@ -301,6 +335,12 @@ grep -q 'BEFORE TRUNCATE ON cron.job' "$SQLD/clone_source_seal.sql" \
   && pass "TRUNCATE on cron.job is fenced too" || fail "TRUNCATE is not fenced"
 grep -q 'assert_fence_effective' "$SQLD/clone_source_seal.sql" \
   && pass "the seal PROVES the fence by probing it, not by asserting its presence" || fail "fence is not probed"
+attempt_enqueue
+[[ $? -ne 0 ]] && pass "a privileged net.http_post() INSIDE the window is rejected — the pg_net queue is fenced, not merely sampled" || fail "an outbound request was enqueued inside the window"
+[[ "$(cat "$STATEDIR/NETQUEUE" 2>/dev/null || echo 0)" == 0 ]] \
+  && pass "…and nothing was queued, so nothing can cross into a clone" || fail "a request was queued inside the window"
+grep -q 'BEFORE INSERT ON net.http_request_queue' "$SQLD/clone_source_seal.sql" \
+  && pass "only the queue's INSERT path is fenced (pg_net's worker still retires rows with UPDATE/DELETE)" || fail "queue fence is missing or over-broad"
 
 echo "-- the seal is one transaction: a failure changes NOTHING --"
 for cond in "NETQUEUE 5 queued pg_net requests" "ADVLOCK held a concurrent quiesce"; do
@@ -349,6 +389,20 @@ run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
 [[ $? -ne 0 ]] && pass "a single quiet sample is refused by configuration (>= 2 required)" || fail "one sample accepted"
 unset QUIESCE_QUIET_SAMPLES
 
+echo "-- the scheduler-observation interval cannot be configured away --"
+seed; export QUIESCE_SETTLE_SECS=0
+run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
+[[ $? -ne 0 ]] && pass "a ZERO settle interval is REFUSED (two 'stable' samples would be back-to-back)" || fail "zero interval accepted"
+[[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and the window was left, so production runs normally" || fail "production left paused"
+export QUIESCE_SETTLE_SECS=5
+seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
+[[ $? -ne 0 ]] && pass "an interval below the reviewed floor is REFUSED" || fail "sub-floor interval accepted"
+export QUIESCE_SETTLE_SECS=15
+seed; echo 1 > "$STATEDIR/SLEEP_FAIL"
+run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
+[[ $? -ne 0 ]] && pass "an INTERRUPTED sleep is refused (the interval did not elapse, so the samples are not separated)" || fail "failed sleep treated as elapsed"
+[[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and production was restored after the failed sleep" || fail "production left paused after a failed sleep"
+
 echo "-- after the seal, NO local failure may leave production paused --"
 post_seal_failure(){ # $1 description, $2 setup
   seed; eval "$2"
@@ -364,6 +418,20 @@ post_seal_failure "a failed manifest export" 'echo 1 > "$STATEDIR/EXPORT_FAIL"'
 post_seal_failure "a manifest whose final record is truncated" 'echo 1 > "$STATEDIR/EXPORT_TRUNC"'
 post_seal_failure "a source that never goes quiet" 'printf "running\n" > "$STATEDIR/runs"'
 post_seal_failure "a failed arm transaction" 'echo 1 > "$STATEDIR/ARM_FAIL"'
+seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
+run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
+chmod u+w "$EVID" 2>/dev/null
+[[ "$rc" -ne 0 ]] && pass "quiesce fails when the ENTIRE evidence directory becomes unwritable after the seal" || fail "unwritable evidence dir reported success"
+[[ "$(actives)" == 3 ]] && pass "…and the resume STILL EXECUTED: every prior active state is restored" || fail "resume did not run when evidence was unwritable (actives=$(actives))"
+[[ ! -e "$STATEDIR/FENCE" ]] && pass "…the fences are gone" || fail "fence left behind"
+[[ ! -s "$STATEDIR/MARKER" ]] && pass "…the marker is gone" || fail "marker left behind"
+
+echo "-- the ORIGINAL failure status survives the recovery --"
+seed; echo 7 > "$STATEDIR/ARM_FAIL_RC"
+run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
+[[ "$rc" -eq 7 ]] && pass "an underlying psql exit 7 is preserved through the automatic resume (not flattened to 1)" || fail "exit status flattened to ${rc}"
+[[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and production was still restored" || fail "production left paused"
+
 seed; echo 1 > "$STATEDIR/ARM_FAIL"; echo 1 > "$STATEDIR/RESUME_FAIL"
 run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
 grep -q 'PRODUCTION REMAINS PAUSED AND FENCED' "$ROOT/out.txt" \
@@ -379,7 +447,10 @@ run bash "$RR" clone-source-resume --yes "$PROD_URL"; rc=$?
 [[ "$(awk -F'\t' '$1==1{print $3}' "$STATEDIR/jobs")" == false ]] \
   && pass "a job that was ALREADY inactive is restored to inactive (not blanket-enabled)" || fail "prior-inactive job was wrongly enabled"
 [[ "$(actives)" == 2 ]] && pass "the two previously-active jobs are active again" || fail "actives=$(actives)"
-[[ ! -s "$STATEDIR/MARKER" && ! -e "$STATEDIR/FENCE" ]] && pass "resume removes BOTH the marker and the fence" || fail "marker or fence left behind"
+[[ ! -s "$STATEDIR/MARKER" && ! -e "$STATEDIR/FENCE" && ! -e "$STATEDIR/NETQ_FENCE" ]] \
+  && pass "resume removes the marker and BOTH fences" || fail "marker or a fence left behind"
+attempt_enqueue
+[[ $? -eq 0 ]] && pass "after resume, pg_net can enqueue again (the queue fence is not sticky)" || fail "queue left fenced after resume"
 [[ -s "$nonce_file" ]] && pass "the nonce file is RETAINED (clones are verified after production resumes)" || fail "nonce discarded at resume"
 attempt_schedule
 [[ $? -eq 0 ]] && pass "after resume, cron.job is writable again (the fence is not sticky)" || fail "production left fenced after resume"
@@ -561,6 +632,44 @@ M="$(mut nofenceable 'assert_source_is_sealable "$inv"||=||:' cmd_clone_source_q
 seed; echo no > "$STATEDIR/FENCEABLE"
 ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
 [[ $? -eq 0 ]] && pass "MUTANT (no sealability check) proceeds on a source where the fence cannot be installed — the read-only check is load-bearing" || fail "nofenceable mutant not distinguishable"
+rm -f "$M"
+
+NETQ_TRIG="^CREATE TRIGGER rollout_clone_fence_netq\n  BEFORE INSERT ON net\\.http_request_queue\n  FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone\\.fence_cron_job\\(\\);$"
+sqlmut clone_source_seal.sql "$NETQ_TRIG"
+sqlmut clone_source_seal.sql "^SELECT pg_temp\\.assert_fence_effective\\('seal'\\);$"
+seed; artifact clone_source_seal.sql -v "nonce=$NONCE_FIX" -v "expect_fp=$(fp_of_jobs)"
+sealed_rc=$?; attempt_enqueue; enq_rc=$?
+[[ "$sealed_rc" -eq 0 && "$enq_rc" -eq 0 ]] \
+  && pass "MUTANT (pg_net queue fence removed) SEALS a window in which an outbound request can still be ENQUEUED — sampling the queue is not the same as freezing it" \
+  || fail "netq fence mutant not distinguishable (seal=$sealed_rc enqueue=$enq_rc)"
+[[ "$(cat "$STATEDIR/NETQUEUE" 2>/dev/null || echo 0)" != 0 ]] \
+  && pass "…and that request would be copied into every clone taken from this window" || fail "no request queued under the mutant"
+unsqlmut clone_source_seal.sql
+
+M="$(mut nofloor '  [[ "$gap"  =~ ^[0-9]+$ && "$gap" -ge "$QUIESCE_MIN_SETTLE_SECS" ]] \
+    || { warn "QUIESCE_SETTLE_SECS must be an integer >= ${QUIESCE_MIN_SETTLE_SECS}s (the scheduler needs a cycle to observe active=false); got '"'"'${gap}'"'"'"; return 1; }||=||  :' quiesce_drain)"
+seed; ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" QUIESCE_SETTLE_SECS=0 bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (interval floor removed) accepts a ZERO interval, so the two 'stable' samples are back-to-back — the floor is load-bearing" || fail "nofloor mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut nosleepcheck '    sleep "$gap" || { warn "the scheduler-observation sleep failed or was interrupted — the interval did not elapse, so the samples are not separated"; return 1; }||=||    sleep "$gap" || true' quiesce_drain)"
+seed; echo 1 > "$STATEDIR/SLEEP_FAIL"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (unchecked sleep) treats an INTERRUPTED sleep as an elapsed interval — checking it is load-bearing" || fail "nosleepcheck mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut hardredirect '  if [[ -n "$cap" ]]; then
+    run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" \
+      > "$cap" 2>&1 || rc=$?
+  else
+    run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" \
+      >&2 || rc=$?
+  fi||=||  run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" > "$EVID/clone-source-resume.txt" 2>&1 || rc=$?' clone_source_leave_window)"
+seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" EVIDDIR="$EVID" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
+chmod u+w "$EVID" 2>/dev/null
+[[ "$(actives)" == 0 ]] \
+  && pass "MUTANT (recovery redirects into the evidence dir) never runs the resume when that dir is unwritable — production LEFT PAUSED; the best-effort capture is load-bearing" || fail "hardredirect mutant not distinguishable"
 rm -f "$M"
 
 echo "-- (2) the atomic transition --"

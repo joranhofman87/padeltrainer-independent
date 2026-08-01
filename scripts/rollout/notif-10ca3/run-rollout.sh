@@ -530,6 +530,9 @@ cmd_verify_clone() {
 # customers within minutes. Nothing may be cloned from a source that has not
 # been proven quiescent, and no rehearsal may touch a clone that is not proven
 # inert. (mutation-pinned: verify/clone-safety-test.sh)
+# Reviewed floor for the scheduler-observation interval between quiet samples.
+# Deliberately not overridable: see quiesce_drain.
+QUIESCE_MIN_SETTLE_SECS=15
 REVIEWED_JOBS="$HERE/clone-safety/reviewed-cron-jobs.tsv"
 SRC_MANIFEST="$EVID/clone-source-manifest.txt"
 
@@ -655,7 +658,8 @@ cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
   assert_inventory_is_reviewed "$inv"
   assert_source_is_sealable "$inv"
   awk '$1=="CRONJOB"{printf "  %-38s active=%-5s outbound=%s\n",$2,$3,$4}
-       $1=="RUNNING"{printf "  running cron executions: %s\n",$2}
+       $1=="INFLIGHT"{printf "  cron runs in flight    : %s\n",$2}
+       $1=="LOGRUN"{printf "  cron.log_run           : %s\n",$2}
        $1=="NETQUEUE"{printf "  pg_net queued requests : %s\n",$2}
        $1=="VAULTCOUNT"{printf "  vault secrets (count)  : %s\n",$2}
        $1=="CFGFP"{printf "  cron configuration fp  : %s\n",$2}
@@ -732,26 +736,28 @@ cmd_clone_source_quiesce() {
 # Runs in a subshell (see the caller): any failure, including a `die`, becomes a
 # non-zero status rather than an exit that would strand production paused.
 post_seal_steps() {   # $1 url, $2 nonce
-  local url="$1" nonce="$2"
+  local url="$1" nonce="$2" rc=0
   printf '%s\n' "$nonce" > "$EVID/clone-source-nonce.txt" \
-    || die "could not persist the snapshot nonce to evidence/"
+    || die_rc "$?" "could not persist the snapshot nonce to evidence/"
   chmod 600 "$EVID/clone-source-nonce.txt" 2>/dev/null || true
   [[ "$(cat "$EVID/clone-source-nonce.txt" 2>/dev/null)" == "$nonce" ]] \
     || die "the persisted nonce does not read back correctly"
   export_source_manifest "$url"
-  quiesce_drain "$url" || die "the source did not reach a stable quiet state"
+  quiesce_drain "$url" || die_rc "$?" "the source did not reach a stable quiet state"
+  rc=0
   run_sql_soft "$url" "$SQL_DIR/clone_source_arm.sql" -v "nonce=$nonce" \
-    > "$EVID/clone-source-arm.txt" 2>&1 || {
-      sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-arm.txt" | head -5 >&2
-      die "the window could not be ARMED"
-    }
+    > "$EVID/clone-source-arm.txt" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-arm.txt" 2>/dev/null | head -5 >&2
+    die_rc "$rc" "the window could not be ARMED"
+  fi
 }
 
 # The captured relation is the authority; this is its human-readable shadow.
 export_source_manifest() {   # $1 url
   psql "$1" -v ON_ERROR_STOP=1 -Atqc \
     "SELECT format('JOB\t%s\t%s\t%s', jobid, jobname, prior_active) FROM rollout_clone.snapshot_job_state ORDER BY jobid" \
-    > "$SRC_MANIFEST" || die "could not export the captured prior-state manifest"
+    > "$SRC_MANIFEST" || die_rc "$?" "could not export the captured prior-state manifest"
   chmod 600 "$SRC_MANIFEST" 2>/dev/null || true
   validate_source_manifest "$SRC_MANIFEST"
 }
@@ -769,7 +775,12 @@ quiesce_drain() {   # $1 url
   local url="$1"
   local need="${QUIESCE_QUIET_SAMPLES:-2}" gap="${QUIESCE_SETTLE_SECS:-60}" tries="${QUIESCE_MAX_SAMPLES:-20}"
   [[ "$need" =~ ^[0-9]+$ && "$need" -ge 2 ]] || { warn "QUIESCE_QUIET_SAMPLES must be >= 2 (a single zero sample proves nothing)"; return 1; }
-  [[ "$gap"  =~ ^[0-9]+$ ]] || { warn "QUIESCE_SETTLE_SECS must be a non-negative integer"; return 1; }
+  # A zero or tiny interval collapses "two stable samples" into two back-to-back
+  # reads, which is the very false green this loop exists to prevent. The floor
+  # is a reviewed constant, not a knob: tests stub `sleep`, they do not disable
+  # the safety interval. (mutation-pinned: verify/clone-safety-test.sh)
+  [[ "$gap"  =~ ^[0-9]+$ && "$gap" -ge "$QUIESCE_MIN_SETTLE_SECS" ]] \
+    || { warn "QUIESCE_SETTLE_SECS must be an integer >= ${QUIESCE_MIN_SETTLE_SECS}s (the scheduler needs a cycle to observe active=false); got '${gap}'"; return 1; }
   [[ "$tries" =~ ^[0-9]+$ && "$tries" -ge "$need" ]] || { warn "QUIESCE_MAX_SAMPLES must be >= QUIESCE_QUIET_SAMPLES"; return 1; }
   local streak=0 i out rc inflight queued logrun
   for (( i = 1; i <= tries; i++ )); do
@@ -790,7 +801,8 @@ quiesce_drain() {   # $1 url
       streak=0
       log "waiting: ${inflight} cron run(s) in flight, ${queued} queued (sample ${i}/${tries})"
     fi
-    sleep "$gap"                        # one scheduler-observation interval
+    # an interrupted or failed sleep must NOT be read as "the interval elapsed"
+    sleep "$gap" || { warn "the scheduler-observation sleep failed or was interrupted — the interval did not elapse, so the samples are not separated"; return 1; }
   done
   warn "cron did not stay quiet for ${need} consecutive samples within ${tries} tries"
   return 1
@@ -800,15 +812,33 @@ quiesce_drain() {   # $1 url
 # prove -> drop the marker, in a single server-side transaction under ACCESS
 # EXCLUSIVE. No committed state ever carries a valid marker beside active cron.
 clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
-  local rc=0
-  run_sql_soft "$1" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$2" -v "allow_unarmed=$3" \
-    > "$EVID/clone-source-resume.txt" 2>&1 || rc=$?
+  local url="$1" nonce="$2" unarmed="$3" rc=0 cap=""
+  # DIAGNOSTIC CAPTURE IS BEST EFFORT AND MUST NEVER GATE THE RESUME. The failure
+  # that triggered recovery may BE an unwritable or full evidence directory, and
+  # a redirection that cannot open its target would stop the SQL from running at
+  # all — leaving production paused and fenced for the sake of a log file.
+  # Preference order: evidence dir -> a temp file -> no capture, straight to stderr.
+  if : > "$EVID/clone-source-resume.txt" 2>/dev/null; then
+    cap="$EVID/clone-source-resume.txt"
+  elif cap="$(mktemp -t rollout-resume-XXXXXX 2>/dev/null)"; then
+    warn "the evidence directory is not writable — resume diagnostics go to ${cap}"
+  else
+    cap=""
+    warn "no writable location for resume diagnostics — running the resume anyway, output to stderr"
+  fi
+  if [[ -n "$cap" ]]; then
+    run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" \
+      > "$cap" 2>&1 || rc=$?
+  else
+    run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" \
+      >&2 || rc=$?
+  fi
   if [[ "$rc" -ne 0 ]]; then
     warn "resume transaction FAILED and rolled back — production remains paused and fenced with its marker intact"
-    sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-resume.txt" | head -6 >&2
+    [[ -n "$cap" ]] && sed -n 's/^\(ERROR\|psql\).*/&/p' "$cap" 2>/dev/null | head -6 >&2
     return "$rc"
   fi
-  ok "production cron restored to its EXACT recorded set, configuration and active state; fence and marker removed"
+  ok "production cron restored to its EXACT recorded set, configuration and active state; fences and marker removed"
   return 0
 }
 

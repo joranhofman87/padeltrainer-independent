@@ -38,8 +38,10 @@ SELECT format('CFGFP %s', pg_temp.cron_config_fp());
 -- The fence is a trigger on cron.job, so it needs ownership of that table.
 -- Report it HERE, in the read-only step, so the operator learns before anything
 -- is paused rather than mid-window.
+-- BOTH outbound tables must be fenceable, so both owners are checked.
 SELECT format('FENCEABLE %s',
   CASE WHEN pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = 'cron.job'::regclass), 'USAGE')
+        AND pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = 'net.http_request_queue'::regclass), 'USAGE')
        THEN 'yes' ELSE 'no' END);
 
 SELECT format('PRIORWINDOW %s', count(*)) FROM information_schema.schemata WHERE schema_name = 'rollout_clone';
