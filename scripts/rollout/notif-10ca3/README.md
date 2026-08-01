@@ -24,8 +24,8 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 78/78 |
 | operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 145/145 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
-| step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 37/37 |
-| step-6 fetch+verify is atomic; a failed fetch can never leave verifiable stale evidence | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 43/43 |
+| step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 41/41 |
+| step-6 fetch+verify is atomic; stale evidence unusable; live terminal-newline shape | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 63/63 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -510,7 +510,17 @@ your invoice id, and fails unless all six hold:
 
 Exit codes: `0` pass · `1` usage/setup · `2` malformed input (fail closed) · `3`
 verification FAILED. An empty, truncated or unparseable window is a **failure**,
-never a vacuous pass. Output is counts plus the two correlation uuids only — no
+never a vacuous pass — and "unparseable" means *any* record: the verifier
+requires exactly one parsed record per input line, so a single bad line cannot be
+skipped while the rest of the window quietly verifies. (`jq -R` reports a
+per-input error on stderr and then continues to the next input, exiting 0, so its
+exit status alone was not enough.)
+
+Live `event_message` values arrive with the console.log terminator attached, so
+the normaliser strips **exactly one** trailing LF or CRLF (`sub("\r?\n$"; "")`)
+to keep one log record on one physical line. Embedded newlines are untouched and
+two trailing terminators still leave one, so a genuinely malformed record still
+fails closed. Output is counts plus the two correlation uuids only — no
 address, body, or token. Checks 1–5 key on the invocation; check 6 keys on the
 invoice, because `record_failed` and `status_update_failed` log an **`invoiceId`
 and not an `invocationId`** (`_shared/invoice-delivery-tracking.ts`,

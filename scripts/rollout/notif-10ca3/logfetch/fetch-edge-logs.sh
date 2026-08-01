@@ -80,11 +80,24 @@ extract_response() { # $1 response.json  $2 out
   n="$(jq '.result | length' "$resp")"
   [[ "$n" -lt "$LIMIT" ]] || die "TRUNCATION: got ${n} rows (== LIMIT ${LIMIT}); narrow the window"
   # normalise timestamp -> epoch seconds (number=microseconds; string=ISO, drop fractional)
+  #
+  # TERMINAL-NEWLINE NORMALISATION: live `event_message` values arrive with the
+  # console.log line terminator still attached, so emitting them verbatim wrote
+  # `epoch<TAB>msg` FOLLOWED BY A BLANK LINE — a real 5-record window became 10
+  # physical lines and the (correctly fail-closed) parser rejected the blanks.
+  # Every fixture had been synthetic and terminator-free, so live shape was never
+  # represented. `sub("\r?\n$"; "")` removes EXACTLY ONE terminal LF or CRLF:
+  #   * `sub` (not `gsub`) and the `$` anchor mean one terminator, at the end;
+  #   * an EMBEDDED newline is untouched, so a genuinely multi-line record still
+  #     spans lines and still fails closed;
+  #   * TWO trailing newlines leave one behind, which also still fails closed.
+  # This reframes records; it never edits, drops, or filters any of them.
+  # (mutation-pinned: verify/logfetch-integration-test.sh)
   jq -r '.result[]
     | ((.timestamp) as $t
        | (if ($t|type)=="number" then ($t/1000000 | floor)
           else ($t|tostring|sub("\\.[0-9]+";"")|sub("Z$";"")|(.+"Z")|fromdateiso8601) end)) as $e
-    | "\($e)\t\(.event_message // "")"' "$resp" > "$out" \
+    | "\($e)\t\((.event_message // "") | sub("\r?\n$"; ""))"' "$resp" > "$out" \
     || die "could not normalise a log timestamp (unexpected format) — fail closed"
 }
 

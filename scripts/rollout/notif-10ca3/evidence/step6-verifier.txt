@@ -20,7 +20,7 @@ $ bash scripts/rollout/notif-10ca3/verify/step6-verifier-test.sh
   PASS  status_update_failed for the invoice -> nonzero (UI/DB disagree)
   PASS  another invoice's record/status failures do NOT fail ours (exact invoice binding)
 == fail closed on malformed input ==
-  PASS  EMPTY log file -> nonzero (3), never a vacuous pass
+  PASS  EMPTY log file -> nonzero (2), never a vacuous pass
   PASS  line without epoch<TAB> -> fail closed (exit 2)
   PASS  non-JSON payload -> fail closed (exit 2)
   PASS  malformed invocationId -> fail closed (exit 2)
@@ -29,6 +29,11 @@ $ bash scripts/rollout/notif-10ca3/verify/step6-verifier-test.sh
   PASS  foreign log prefix -> fail closed (input did not come from the documented fetch)
   PASS  non-uuid --invoice -> usage error (exit 1)
   PASS  missing log file -> setup error (exit 1)
+== a malformed record MID-WINDOW cannot be silently skipped ==
+  PASS  a malformed record mid-window -> fail closed (exit 2), not skipped
+  PASS  a BLANK line mid-window -> fail closed (exit 2)
+  PASS  mutant built: back to trusting jq's exit status alone (the pre-fix state)
+  PASS  MUTANT (jq exit status alone) verifies a window with a SKIPPED record — the parse-completeness guard is load-bearing
 == output carries no PII ==
   PASS  verifier output is counts + uuids only (no address/token shapes)
   PASS  the bound invocation id is reported as evidence
@@ -44,4 +49,4 @@ $ bash scripts/rollout/notif-10ca3/verify/step6-verifier-test.sh
   PASS  mutant (e) built: every finished count matched by window, not by id
   PASS  MUTANT (window-only) ACCEPTS another invocation's finish — exact id binding is load-bearing
   PASS  the REAL verifier still passes the clean fixture (not vacuously strict)
-================  37 passed, 0 failed  ================
+================  41 passed, 0 failed  ================

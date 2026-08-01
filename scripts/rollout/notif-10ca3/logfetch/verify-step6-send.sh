@@ -105,7 +105,19 @@ if ! jq -R -r '
 ' "$LINES" > "$TSV" 2>"$TSV.err"; then
   fail_closed "$(head -c 400 "$TSV.err" | tr '\n' ' ')"
 fi
+# A NON-ZERO STATUS IS NOT ENOUGH. `jq -R` reports a per-input `error()` on stderr
+# and then CONTINUES to the next input, exiting 0 — so a malformed record in the
+# MIDDLE of a window was silently skipped and the verification proceeded on the
+# survivors (observed: a blank line, "2 parsed records", RESULT: PASS). Fail closed
+# on any diagnostic, and require exactly one parsed record per input line, so no
+# line can ever be dropped without being noticed. `awk END{NR}` also counts a final
+# line that lacks a terminator, which `wc -l` would miss.
+if [[ -s "$TSV.err" ]]; then fail_closed "$(head -c 400 "$TSV.err" | tr '\n' ' ')"; fi
 rm -f "$TSV.err"
+in_n="$(awk 'END{print NR}' "$LINES")"; out_n="$(awk 'END{print NR}' "$TSV")"
+[[ "${in_n:-0}" -gt 0 ]] || fail_closed "the window is empty — nothing to verify"
+[[ "$in_n" -eq "$out_n" ]] \
+  || fail_closed "parsed ${out_n} of ${in_n} input lines — ${in_n}-${out_n} record(s) could not be parsed and were skipped"
 
 cnt() { awk -F'\t' -v s="$1" -v inv="${2-}" -v ic="${3-}" -v oc="${4-}" '
   $1==s && (inv=="" || $2==inv) && (ic=="" || $3==ic) && (oc=="" || $4==oc) {n++}

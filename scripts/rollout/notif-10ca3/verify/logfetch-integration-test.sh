@@ -276,5 +276,118 @@ EV="$ROOT/m5"; seed_stale "$EV"
 [[ -f "$EV/edge-log-lines.txt" ]] && pass "MUTANT (no invalidation) leaves a stale window looking current — invalidation is load-bearing" \
                                   || fail "mutant (v) still removed the file"
 
+echo "== TERMINAL-NEWLINE NORMALISATION (live log shape) =="
+# Live `event_message` values arrive with the console.log terminator attached, so
+# emitting them verbatim produced `epoch<TAB>msg` FOLLOWED BY A BLANK LINE — a real
+# 5-record window became 10 physical lines and the fail-closed parser rejected the
+# blanks. The normaliser now removes EXACTLY ONE terminal LF or CRLF. It must not
+# touch embedded newlines, and must not collapse two terminators into none.
+#
+# Fixtures are generated in python: passing them through the shell would let
+# command substitution silently eat the very terminators under test.
+python3 - "$ROOT" "$INV" "$IC" <<'PYX'
+import sys, json, os
+R, inv, ic = sys.argv[1], sys.argv[2], sys.argv[3]
+START = '[SEND-INVOICE-EMAIL] event:provider_send_started {"invocationId":"%s","invoiceId":"%s"}' % (inv, ic)
+FIN   = '[SEND-INVOICE-EMAIL] event:finished {"invocationId":"%s","invoiceId":"%s","outcome":"sent"}' % (inv, ic)
+STARTED = '[SEND-INVOICE-EMAIL] started {"invoiceId":"%s","previewOnly":false,"testSend":false}' % ic
+PDF     = '[SEND-INVOICE-EMAIL] pdf_attached {"invoiceId":"%s","bytes":1234}' % ic
+SENT    = '[SEND-INVOICE-EMAIL] sent {"invoiceId":"%s","invoiceNumber":"INV-2026-0001","testSend":false}' % ic
+def w(name, msgs):
+    rows = [{"timestamp": "2026-08-01T12:38:%02dZ" % (38 + i), "event_message": m} for i, m in enumerate(msgs)]
+    json.dump({"error": None, "result": rows}, open(os.path.join(R, name), "w"))
+w("n_plain.json",  [START])                              # no terminator at all
+w("n_lf.json",     [START + "\n",   FIN + "\n"])         # one trailing LF
+w("n_crlf.json",   [START + "\r\n", FIN + "\r\n"])       # one trailing CRLF
+w("n_embed.json",  [FIN.replace('","outcome', '",\n"outcome') + "\n", START + "\n"])   # EMBEDDED newline
+w("n_double.json", [START + "\n\n", FIN + "\n"])         # two trailing terminators
+w("n_prod.json",   [STARTED + "\n", PDF + "\n", START + "\n", SENT + "\n", FIN + "\n"])
+open(os.path.join(R, "expect_start.txt"), "w").write(START)
+PYX
+MSG_PLAIN="$(cat "$ROOT/expect_start.txt")"
+# normalised bytes are observable through the live path's diagnosis copy
+norm(){ # $1 evidence dir, $2 response file -> writes $1/edge-log-lines.txt
+  local ev="$1" resp="$2"; mkdir -p "$ev"
+  ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$ev" STUB_RESPONSE="$resp" \
+      SUPABASE_ACCESS_TOKEN=stub-not-a-real-token bash "$FEL" \
+      --ref "$REF" --start 2026-08-01T12:37:00Z --end 2026-08-01T12:41:00Z --allow-sends ) >/dev/null 2>&1; }
+
+# (1) a message with NO terminator must survive byte-identical
+norm "$ROOT/n1" "$ROOT/n_plain.json"
+[[ "$(wc -l < "$ROOT/n1/edge-log-lines.txt" | tr -d ' ')" == 1 ]] && pass "(1) terminator-free message -> exactly 1 physical record" || fail "(1) record count wrong"
+[[ "$(cut -f2- < "$ROOT/n1/edge-log-lines.txt")" == "$MSG_PLAIN" ]] && pass "(1) terminator-free message is byte-identical after normalisation" || fail "(1) message bytes changed"
+
+# (2) exactly one trailing LF is removed, and the window verifies
+norm "$ROOT/n2" "$ROOT/n_lf.json"
+[[ "$(wc -l < "$ROOT/n2/edge-log-lines.txt" | tr -d ' ')" == 2 ]] && pass "(2) one trailing LF -> 2 records, no blank lines" || fail "(2) blank lines remain"
+[[ "$(head -1 "$ROOT/n2/edge-log-lines.txt" | cut -f2-)" == "$MSG_PLAIN" ]] && pass "(2) the LF is the ONLY byte removed" || fail "(2) more than the terminator was stripped"
+offline "$ROOT/n2b" "$FEL" "$ROOT/n_lf.json" --verify-step6-invoice "$IC"
+[[ $? -eq 0 ]] && pass "(2) a trailing-LF window verifies end to end" || fail "(2) trailing-LF window rejected"
+
+# (3) exactly one trailing CRLF is removed, and the window verifies
+norm "$ROOT/n3" "$ROOT/n_crlf.json"
+[[ "$(wc -l < "$ROOT/n3/edge-log-lines.txt" | tr -d ' ')" == 2 ]] && pass "(3) one trailing CRLF -> 2 records, no blank lines" || fail "(3) CRLF not handled"
+[[ "$(head -1 "$ROOT/n3/edge-log-lines.txt" | cut -f2-)" == "$MSG_PLAIN" ]] && pass "(3) the CR and LF are the ONLY bytes removed" || fail "(3) CRLF stripping altered the message"
+offline "$ROOT/n3b" "$FEL" "$ROOT/n_crlf.json" --verify-step6-invoice "$IC"
+[[ $? -eq 0 ]] && pass "(3) a trailing-CRLF window verifies end to end" || fail "(3) trailing-CRLF window rejected"
+
+# (4) an EMBEDDED newline is untouched -> the record spans lines -> fail closed
+offline "$ROOT/n4" "$FEL" "$ROOT/n_embed.json" --verify-step6-invoice "$IC"
+[[ $? -eq 2 ]] && pass "(4) an embedded newline still fails closed (exit 2)" || fail "(4) embedded newline was swallowed"
+
+# (5) TWO trailing newlines leave one behind -> still fail closed
+offline "$ROOT/n5" "$FEL" "$ROOT/n_double.json" --verify-step6-invoice "$IC"
+[[ $? -eq 2 ]] && pass "(5) two trailing newlines leave one -> fail closed (exit 2)" || fail "(5) multiple terminators were collapsed"
+
+# (6) a genuinely tab-less record is still rejected
+printf 'no-epoch-no-tab\n' > "$ROOT/n6.txt"
+( ROLLOUT_EVIDENCE_DIR="$ROOT/n6" bash "$FEL" --from-file "$ROOT/n6.txt" --allow-sends --verify-step6-invoice "$IC" ) >/dev/null 2>&1
+[[ $? -eq 2 ]] && pass "(6) a tab-less record is still rejected (exit 2)" || fail "(6) malformed record accepted"
+
+# (7) the PRODUCTION-SHAPED window: 5 events, each with one trailing newline
+norm "$ROOT/n7" "$ROOT/n_prod.json"
+[[ "$(wc -l < "$ROOT/n7/edge-log-lines.txt" | tr -d ' ')" == 5 ]] && pass "(7) production shape: 5 events -> exactly 5 physical records" || fail "(7) got $(wc -l < "$ROOT/n7/edge-log-lines.txt" | tr -d ' ') records"
+[[ "$(grep -c $'\t' "$ROOT/n7/edge-log-lines.txt")" == 5 ]] && pass "(7) every record carries the epoch<TAB> separator" || fail "(7) some records lack the separator"
+offline "$ROOT/n7b" "$FEL" "$ROOT/n_prod.json" --verify-step6-invoice "$IC"
+[[ $? -eq 0 ]] && pass "(7) production-shaped window passes the step-6 cardinalities" || fail "(7) production-shaped window rejected"
+
+echo "== MUTANTS: the rule is EXACTLY ONE terminator, nothing more =="
+# anchored on the jq expression, not on the prose comment that quotes it
+mutant_jq(){ # $1 name, $2 replacement for the sub() call
+  local name="$1"; local repl="$2"; local m="$HERE/../logfetch/.mutant-$name.sh"
+  python3 - "$FEL" "$m" "$repl" <<'PYX'
+import sys
+src, dst, repl = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(src).read()
+old = '(.event_message // "") | sub("\\r?\\n$"; "")'
+assert s.count(old) == 1, "normaliser anchor not unique (%d)" % s.count(old)
+open(dst, "w").write(s.replace(old, '(.event_message // "") | ' + repl, 1))
+PYX
+  printf '%s' "$m"; }
+
+# (a) normalisation removed entirely -> the production shape breaks again
+M="$(mutant_jq nonorm '.')"
+grep -q '(.event_message // "") | \.' "$M" && pass "mutant (a) built: terminal-newline normalisation removed" || fail "mutant (a) not applied"
+offline "$ROOT/ma" "$M" "$ROOT/n_prod.json" --verify-step6-invoice "$IC"
+[[ $? -ne 0 ]] && pass "MUTANT (no normalisation) FAILS the production-shaped window — the rule is load-bearing" || fail "mutant (a) still passed"
+
+# (b) widened to delete ALL newlines -> a malformed record is silently repaired
+M="$(mutant_jq allnl 'gsub("[\r\n]"; "")')"
+grep -q 'gsub' "$M" && pass "mutant (b) built: every newline deleted" || fail "mutant (b) not applied"
+offline "$ROOT/mb"  "$FEL" "$ROOT/n_embed.json" --verify-step6-invoice "$IC"; brc=$?
+offline "$ROOT/mb2" "$M"   "$ROOT/n_embed.json" --verify-step6-invoice "$IC"; mrc=$?
+[[ "$brc" -eq 2 && "$mrc" -eq 0 ]] \
+  && pass "MUTANT (deletes embedded newlines) repairs a malformed record the baseline rejects — killed" \
+  || fail "mutant (b) not distinguishable (baseline=$brc mutant=$mrc)"
+
+# (c) widened to multiple terminators -> the double-terminated record wrongly passes
+M="$(mutant_jq multinl 'sub("[\r\n]+$"; "")')"
+grep -q 'sub("\[' "$M" && pass "mutant (c) built: all trailing newlines removed" || fail "mutant (c) not applied"
+offline "$ROOT/mc"  "$FEL" "$ROOT/n_double.json" --verify-step6-invoice "$IC"; brc=$?
+offline "$ROOT/mc2" "$M"   "$ROOT/n_double.json" --verify-step6-invoice "$IC"; mrc=$?
+[[ "$brc" -eq 2 && "$mrc" -eq 0 ]] \
+  && pass "MUTANT (collapses multiple terminators) accepts a double-terminated record the baseline rejects — killed" \
+  || fail "mutant (c) not distinguishable (baseline=$brc mutant=$mrc)"
+
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

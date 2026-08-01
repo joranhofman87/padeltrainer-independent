@@ -49,4 +49,26 @@ $ bash scripts/rollout/notif-10ca3/verify/logfetch-integration-test.sh
   PASS  MUTANT (implicit default) silently verifies a STALE file — requiring --from-file is load-bearing
   PASS  mutant (v) built: the invalidation block is skipped
   PASS  MUTANT (no invalidation) leaves a stale window looking current — invalidation is load-bearing
-================  43 passed, 0 failed  ================
+== TERMINAL-NEWLINE NORMALISATION (live log shape) ==
+  PASS  (1) terminator-free message -> exactly 1 physical record
+  PASS  (1) terminator-free message is byte-identical after normalisation
+  PASS  (2) one trailing LF -> 2 records, no blank lines
+  PASS  (2) the LF is the ONLY byte removed
+  PASS  (2) a trailing-LF window verifies end to end
+  PASS  (3) one trailing CRLF -> 2 records, no blank lines
+  PASS  (3) the CR and LF are the ONLY bytes removed
+  PASS  (3) a trailing-CRLF window verifies end to end
+  PASS  (4) an embedded newline still fails closed (exit 2)
+  PASS  (5) two trailing newlines leave one -> fail closed (exit 2)
+  PASS  (6) a tab-less record is still rejected (exit 2)
+  PASS  (7) production shape: 5 events -> exactly 5 physical records
+  PASS  (7) every record carries the epoch<TAB> separator
+  PASS  (7) production-shaped window passes the step-6 cardinalities
+== MUTANTS: the rule is EXACTLY ONE terminator, nothing more ==
+  PASS  mutant (a) built: terminal-newline normalisation removed
+  PASS  MUTANT (no normalisation) FAILS the production-shaped window — the rule is load-bearing
+  PASS  mutant (b) built: every newline deleted
+  PASS  MUTANT (deletes embedded newlines) repairs a malformed record the baseline rejects — killed
+  PASS  mutant (c) built: all trailing newlines removed
+  PASS  MUTANT (collapses multiple terminators) accepts a double-terminated record the baseline rejects — killed
+================  63 passed, 0 failed  ================
