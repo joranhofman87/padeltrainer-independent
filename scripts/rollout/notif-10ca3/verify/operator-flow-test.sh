@@ -32,26 +32,50 @@ pass(){ P=$((P+1)); echo "  PASS  $*"; }
 fail(){ F=$((F+1)); echo "  FAIL  $*"; }
 md5of(){ md5 -q "$1" 2>/dev/null || md5sum "$1" | awk '{print $1}'; }
 
+# `git worktree add` materialises what the PINNED commit actually contains: the
+# three 20261006* migration files. That makes "which tree did the push read from"
+# a RUNTIME property of the stubs rather than a grep over the script.
 cat > "$BIN/git" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   fetch|cat-file) exit 0;; rev-parse) echo 0000000000000000000000000000000000000000; exit 0;;
   worktree)
-    if [[ "$2" == add ]]; then wt="$4"; mkdir -p "$wt/supabase"; printf 'project_id = "%s"\n' "$REF" > "$wt/supabase/config.toml"; exit 0; fi
-    if [[ "$2" == remove ]]; then for a in "$@"; do [[ -d "$a" ]] && rm -rf "$a"; done; exit 0; fi;;
+    if [[ "$2" == add ]]; then wt="$4"; mkdir -p "$wt/supabase/migrations"
+      printf 'project_id = "%s"\n' "$REF" > "$wt/supabase/config.toml"
+      for v in "$V1" "$V2" "$V3"; do printf -- '-- migration %s (pinned tree)\n' "$v" > "$wt/supabase/migrations/${v}_name.sql"; done
+      exit 0; fi
+    # real `git worktree remove` refuses a path that is not a worktree; the stub
+    # must not be able to delete an arbitrary directory (e.g. a mutant's CWD).
+    if [[ "$2" == remove ]]; then for a in "$@"; do [[ -d "$a" && "$a" == *rollout-wt-* ]] && rm -rf "$a"; done; exit 0; fi;;
 esac
 exit 0
 EOF
+# The CLI reads migrations from the CURRENT DIRECTORY's supabase/migrations, so the
+# stub does too: pending = (files visible here) - (ledger). A command that pushes
+# from the wrong tree therefore produces the WRONG pending set and dies on
+# assert_pending_is_expected — exactly as the real CLI would.
 cat > "$BIN/supabase" <<'EOF'
 #!/usr/bin/env bash
 L="$STATEDIR/ledger"
 if [[ "$1" == db && "$2" == push ]]; then
+  src=""
+  for f in supabase/migrations/*.sql; do
+    [[ -e "$f" ]] || continue; b="${f##*/}"; src="$src ${b%%_*}"
+  done
+  cur=",$(cat "$L" 2>/dev/null),"; pend=""
+  for v in $src; do case "$cur" in *",$v,"*) : ;; *) pend="$pend $v";; esac; done
   if printf '%s ' "$@" | grep -q -- '--dry-run'; then
-    cur=",$(cat "$L" 2>/dev/null),"
-    for v in "$V1" "$V2" "$V3"; do case "$cur" in *",$v,"*) : ;; *) printf '  %s_name.sql\n' "$v" >&2;; esac; done
+    for v in $pend; do printf '  %s_name.sql\n' "$v" >&2; done
     exit 0
   fi
-  printf '%s,%s,%s' "$V1" "$V2" "$V3" > "$L"; echo "Finished supabase db push."; exit 0
+  echo "$PWD"           >> "$STATEDIR/push_cwd"
+  echo "${src# }"       >> "$STATEDIR/push_src"
+  echo "${pend# }"      >> "$STATEDIR/push_pending"
+  [[ "$(cat "$STATEDIR/PUSH_FAILS" 2>/dev/null)" == 1 ]] && exit 1
+  all=""
+  for v in $(cat "$L" 2>/dev/null | tr ',' ' ') $pend; do all="$all$v\n"; done
+  printf "$all" | sed '/^$/d' | sort -u | tr '\n' ',' | sed 's/,$//' > "$L"
+  echo "Finished supabase db push."; exit 0
 fi
 if [[ "$1" == secrets ]]; then
   [[ "$2" == unset ]] && echo off > "$STATEDIR/gate"; [[ "$2" == set ]] && echo on > "$STATEDIR/gate"; exit 0
@@ -281,27 +305,25 @@ grep -q "SUPER-SECRET-SALT" "$SD2" 2>/dev/null \
   && fail "overwrite step left the plaintext readable" || pass "overwrite step destroys the plaintext in place"
 rm -f "$SD2"
 
-echo "== clone migration SOURCE: the migrations exist ONLY at the pinned SHA =="
-# Step 8 happens BEFORE #615 merges. Pushing from main would push nothing — the
-# rehearsal hid this by calling applyPr615() (pinned source) directly.
+echo "== clone migration SOURCE: always the reviewed pin, never the current checkout =="
+# DURABLE INVARIANT ONLY. "the migrations are absent on origin/main" is a
+# TEMPORARY rollout fact — it stops being true the moment apply615 merges #615,
+# and asserting it would make this suite fail forever afterwards. What must hold
+# for all time is that the clone commands read the REVIEWED PIN and never
+# whatever the working checkout happens to contain; that is asserted at RUNTIME
+# further down, from a decoy checkout carrying a migration of its own.
 source "$HERE/../PINS.env"
 MIGS="20261006100000_email_delivery_concurrency_suppression.sql 20261006110000_reconcile_orphan_provider_events.sql 20261006120000_readers_canonical_is_suppressed.sql"
-absent_on_main=0; present_at_pin=0
+present_at_pin=0
 for m in $MIGS; do
-  git -C "$HERE/../../../.." cat-file -e "origin/main:supabase/migrations/$m" 2>/dev/null || absent_on_main=$((absent_on_main+1))
   git -C "$HERE/../../../.." cat-file -e "$PR615_SHA:supabase/migrations/$m" 2>/dev/null && present_at_pin=$((present_at_pin+1))
 done
-[[ "$absent_on_main" -eq 3 ]] && pass "all 3 migrations are ABSENT on origin/main (a push from main would apply none)" \
-                             || fail "expected 3 migrations absent on main, got $absent_on_main"
-[[ "$present_at_pin" -eq 3 ]] && pass "all 3 migrations are PRESENT at PR615_SHA (${PR615_SHA:0:12})" \
+[[ "$present_at_pin" -eq 3 ]] && pass "all 3 migrations are PRESENT at the immutable pin ${PR615_SHA:0:12} (true before AND after #615 merges)" \
                               || fail "expected 3 migrations at the pin, got $present_at_pin"
-grep -q 'mk_worktree "\$PR615_SHA"' "$RR" && pass "clone-push builds its worktree at PR615_SHA (not main)" \
-                                          || fail "clone-push does not use PR615_SHA"
-sed -n '/^cmd_clone_push/,/^}/p' "$RR" | grep -q -- '--db-url "\$url"' \
-  && pass "clone-push targets the clone via --db-url (never the ambient linked project)" \
-  || fail "clone-push does not use --db-url"
 sed -n '/^cmd_clone_push/,/^}/p' "$RR" | grep -q 'gh pr merge' \
   && fail "clone-push must NEVER merge #615" || pass "clone-push never merges #615"
+sed -n '/^cmd_clone_make_prefix/,/^}/p' "$RR" | grep -q 'gh pr merge' \
+  && fail "clone-make-prefix must NEVER merge #615" || pass "clone-make-prefix never merges #615"
 
 echo "== clone identity (CLONE_REF) on clone-only commands =="
 CLONE_REF_OK=zzzzzzzzzzzzzzzzzzzz
@@ -331,6 +353,112 @@ sed 's|    assert_clone_url "\$1"          # NOT a skip.*|    true|' "$RR" > "$H
   && pass "MUTANT (--clone skips identity) accepts a wrong-ref URL — assert_clone_url is load-bearing" \
   || fail "MUTANT still rejected — clone guard may not be load-bearing"
 rm -f "$HERE/../.mutant-clone.sh"
+
+echo "== clone command matrix (RUNTIME: real subcommands, stubbed gh/git/supabase/psql) =="
+# Every case below RUNS run-rollout.sh. The supabase stub derives the pending set
+# from the migration files visible in ITS CWD, exactly like the real CLI, so
+# "which tree was pushed" and "which suffix was applied" are OBSERVED, not
+# grepped — the class of bug a static grep missed.
+DECOY="$ROOT/decoy"; mkdir -p "$DECOY/supabase/migrations"
+printf -- '-- decoy: must never be applied to a clone\n' > "$DECOY/supabase/migrations/29991231235959_decoy_from_checkout.sql"
+seed_clone(){ # $1 ledger  $2 #615 head sha  $3 checks(green|red)
+  rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
+  printf '%s' "$1" > "$STATEDIR/ledger"
+  printf '%s' "$2" > "$STATEDIR/rec_head"; printf '%s' "$3" > "$STATEDIR/rec_checks"; }
+clone_run(){ # run a clone subcommand FROM THE DECOY CHECKOUT
+  ( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 \
+      bash "$RR" "$@" ) >/dev/null 2>&1; }
+ledger_now(){ cat "$STATEDIR/ledger" 2>/dev/null; }
+pushed_from(){ cat "$STATEDIR/push_cwd" 2>/dev/null; }
+pushed_pending(){ cat "$STATEDIR/push_pending" 2>/dev/null; }
+no_push(){ [[ ! -f "$STATEDIR/push_cwd" ]]; }
+
+seed_clone "" "$PR615_SHA" green; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" == 0 ]] && pass "clone-push[none]: pristine clone migrates (exit 0)" || fail "clone-push[none] exit=$rc"
+[[ "$(ledger_now)" == "$V1,$V2,$V3" ]] && pass "clone-push[none]: ledger -> all" || fail "ledger=$(ledger_now)"
+[[ "$(pushed_pending)" == "$V1 $V2 $V3" ]] && pass "clone-push[none]: applied exactly V1,V2,V3" || fail "pending=$(pushed_pending)"
+[[ "$(pushed_from)" == *rollout-wt-* ]] && pass "clone-push sources the PINNED WORKTREE, not the checkout it was launched from" || fail "pushed from $(pushed_from)"
+[[ "$(cat "$STATEDIR/push_src" 2>/dev/null)" == "$V1 $V2 $V3" ]] \
+  && pass "clone-push saw only the 3 pinned files (the decoy migration in the checkout was ignored)" \
+  || fail "source set = $(cat "$STATEDIR/push_src" 2>/dev/null)"
+
+seed_clone "$V1" "$PR615_SHA" green; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" == 0 ]] && pass "clone-push[prefix1]: RESUMES a legitimately partial clone (the rehearsal-C blocker)" || fail "clone-push[prefix1] exit=$rc"
+[[ "$(pushed_pending)" == "$V2 $V3" ]] && pass "clone-push[prefix1]: applied exactly the V2,V3 suffix" || fail "pending=$(pushed_pending)"
+[[ "$(ledger_now)" == "$V1,$V2,$V3" ]] && pass "clone-push[prefix1]: ledger -> all" || fail "ledger=$(ledger_now)"
+
+seed_clone "$V1,$V2" "$PR615_SHA" green; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" == 0 ]] && pass "clone-push[prefix2]: resumes (exit 0)" || fail "clone-push[prefix2] exit=$rc"
+[[ "$(pushed_pending)" == "$V3" ]] && pass "clone-push[prefix2]: applied exactly the V3 suffix" || fail "pending=$(pushed_pending)"
+
+seed_clone "$V1,$V2,$V3" "$PR615_SHA" green; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" == 0 ]] && pass "clone-push[all]: no-op exits 0" || fail "clone-push[all] exit=$rc"
+no_push && pass "clone-push[all]: pushed nothing" || fail "clone-push[all] pushed anyway"
+
+seed_clone "$V2" "$PR615_SHA" green; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-push[invalid {V2}]: REFUSES a corrupt ledger" || fail "clone-push accepted an invalid ledger"
+no_push && pass "clone-push[invalid]: pushed nothing" || fail "clone-push pushed onto a corrupt ledger"
+
+seed_clone "" cccccccccccccccccccccccccccccccccccccccc green; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-push[pin drift]: refuses when the #615 head != PR615_SHA" || fail "pin drift accepted"
+no_push && pass "clone-push[pin drift]: pushed nothing" || fail "pushed despite pin drift"
+
+seed_clone "" "$PR615_SHA" red; clone_run clone-push --yes "$CLONE_URL"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-push[checks red]: refuses an unreviewed migration set" || fail "failing checks accepted"
+no_push && pass "clone-push[checks red]: pushed nothing" || fail "pushed with failing checks"
+
+seed_clone "" "$PR615_SHA" green
+( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1
+[[ $? -ne 0 ]] && pass "clone-push[no CAP_STMT]: refuses an unbounded push" || fail "pushed without CAP_STMT"
+no_push && pass "clone-push[no CAP_STMT]: pushed nothing" || fail "pushed without a statement cap"
+
+echo "== clone-make-prefix: rehearsal C's prefix is created by the REAL CLI =="
+seed_clone "" "$PR615_SHA" green; clone_run clone-make-prefix --yes 1 "$CLONE_URL"; rc=$?
+[[ "$rc" == 0 ]] && pass "clone-make-prefix 1: exits 0 on a pristine clone" || fail "exit=$rc"
+[[ "$(pushed_pending)" == "$V1" ]] && pass "clone-make-prefix 1: the CLI applied exactly V1 (later files pruned in the worktree)" || fail "pending=$(pushed_pending)"
+[[ "$(ledger_now)" == "$V1" ]] && pass "clone-make-prefix 1: ledger == prefix1 (a real ledger row, not a hand-written INSERT)" || fail "ledger=$(ledger_now)"
+[[ "$(pushed_from)" == *rollout-wt-* ]] && pass "clone-make-prefix sources the pinned worktree" || fail "pushed from $(pushed_from)"
+
+seed_clone "" "$PR615_SHA" green; clone_run clone-make-prefix --yes 2 "$CLONE_URL"; rc=$?
+[[ "$rc" == 0 && "$(ledger_now)" == "$V1,$V2" ]] && pass "clone-make-prefix 2: ledger == prefix2" || fail "exit=$rc ledger=$(ledger_now)"
+
+seed_clone "$V1" "$PR615_SHA" green; clone_run clone-make-prefix --yes 1 "$CLONE_URL"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-make-prefix: REFUSES a clone that is not pristine" || fail "manufactured a prefix over existing state"
+[[ "$(ledger_now)" == "$V1" ]] && pass "clone-make-prefix: the refusal left the ledger untouched" || fail "ledger=$(ledger_now)"
+
+seed_clone "" "$PR615_SHA" green; clone_run clone-make-prefix --yes 3 "$CLONE_URL"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-make-prefix: rejects a depth that is not a legitimate prefix (3)" || fail "depth 3 accepted"
+seed_clone "" "$PR615_SHA" green; clone_run clone-make-prefix --yes 1 "$PROD_URL"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-make-prefix: rejects the PRODUCTION url" || fail "clone-make-prefix accepted production"
+
+echo "== REHEARSAL C end to end (pristine -> prefix1 -> resumed suffix -> all) =="
+seed_clone "" "$PR615_SHA" green
+clone_run clone-make-prefix --yes 1 "$CLONE_URL"; rcA=$?; stA="$(ledger_now)"
+clone_run clone-push --yes "$CLONE_URL"; rcB=$?; stB="$(ledger_now)"
+[[ "$rcA" == 0 && "$stA" == "$V1" ]] && pass "rehearsal C step 1: the clone parks at prefix1" || fail "step1 exit=$rcA ledger=$stA"
+[[ "$rcB" == 0 && "$stB" == "$V1,$V2,$V3" ]] && pass "rehearsal C step 2: the suffix applies and the clone reaches all" || fail "step2 exit=$rcB ledger=$stB"
+
+echo "== MUTANTS: the clone source + suffix classification are load-bearing =="
+# (i) the pre-fix behaviour — clone-push demanding all three — must FAIL on prefix1
+MUTP="$HERE/../.mutant-clone-allthree.sh"
+sed 's|assert_pending_is_expected "\$pending" "\$suffix"|assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS"|' "$RR" > "$MUTP"
+grep -q 'assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS"' "$MUTP" \
+  && pass "mutant (i) built: clone-push demands the full set again" || fail "mutant (i) sed did not apply"
+seed_clone "$V1" "$PR615_SHA" green
+( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 bash "$MUTP" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1 \
+  && fail "MUTANT (demand all three) still accepted a prefix1 clone" \
+  || pass "MUTANT (demand all three) CANNOT resume prefix1 — suffix classification is load-bearing"
+rm -f "$MUTP"
+# (ii) sourcing the CURRENT CHECKOUT instead of the pinned worktree must be caught
+MUTS="$HERE/../.mutant-clone-source.sh"
+sed 's|^  mk_worktree "\$PR615_SHA".*|  WT="$PWD"|' "$RR" > "$MUTS"
+grep -q '^  WT="\$PWD"' "$MUTS" && pass "mutant (ii) built: pinned worktree replaced by the current checkout" || fail "mutant (ii) sed did not apply"
+seed_clone "" "$PR615_SHA" green
+( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 bash "$MUTS" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1 \
+  && fail "MUTANT pushed the checkout's migrations to the clone undetected" \
+  || pass "MUTANT (checkout instead of pin) is REJECTED — the decoy set != the pinned set"
+no_push && pass "MUTANT never reached a push (nothing from the wrong tree was applied)" || fail "MUTANT applied $(pushed_pending)"
+rm -f "$MUTS"
 
 echo "== secure_delete FAILS CLOSED (production helper, not a stand-in) =="
 SDIR="$ROOT/sd"; mkdir -p "$SDIR"
@@ -365,6 +493,51 @@ F3="$SDIR/mut.txt"; printf 'SECRET-SALT-0123456789' > "$F3"; chmod 444 "$F3"
 ( secure_delete_mutant "$F3" ) >/dev/null 2>&1; rc3=$?
 [[ "$rc3" -eq 0 && ! -f "$F3" ]] && pass "MUTANT (dd||true + unconditional rm) deletes despite overwrite failure — fail-closed is load-bearing" \
                                  || fail "MUTANT did not exhibit the fail-open behaviour (exit=$rc3)"
+
+# (d) UNLINK failure. Forced deterministically with a failing `rm` on PATH so the
+# result does not depend on the uid or the filesystem: the overwrite succeeds, the
+# unlink does not, and the file therefore STILL EXISTS. That must be reported as a
+# failure — an evidence file that is still on disk was not cleaned.
+RMBIN="$ROOT/rmfail"; mkdir -p "$RMBIN"
+printf '#!/usr/bin/env bash\necho "rm: Operation not permitted" >&2\nexit 1\n' > "$RMBIN/rm"; chmod +x "$RMBIN/rm"
+F4="$SDIR/unlinkfail.txt"; printf 'SECRET-SALT-0123456789' > "$F4"
+( PATH="$RMBIN:$PATH"; secure_delete "$F4" ) >/dev/null 2>&1; rc4=$?
+[[ "$rc4" -ne 0 ]] && pass "secure_delete: UNLINK failure returns non-zero ($rc4)" || fail "unlink failure reported success"
+[[ -f "$F4" ]] && pass "secure_delete: the file that could not be unlinked still EXISTS (honest state)" || fail "file vanished under a failing rm"
+grep -q "SECRET-SALT" "$F4" 2>/dev/null && fail "plaintext survived the overwrite" || pass "secure_delete: the plaintext was destroyed before the failed unlink"
+rm -f "$F4"
+
+# (e) the CALLER must not report a clean rollout when a file could not be deleted
+rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
+printf '%s,%s,%s' "$V1" "$V2" "$V3" > "$STATEDIR/ledger"; printf 'off' > "$STATEDIR/gate"
+place_pre; place_post ok
+CE_OUT="$( PATH="$RMBIN:$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+  MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 \
+  bash "$RR" clean-evidence --yes "$PROD" 2>&1 )"; rc5=$?
+[[ "$rc5" -ne 0 ]] && pass "clean-evidence: exits non-zero when the evidence could not be deleted" || fail "clean-evidence exited 0 with undeleted evidence"
+grep -q "rollout complete + verified" <<<"$CE_OUT" && fail "clean-evidence printed a FALSE 'cleaned' success" \
+  || pass "clean-evidence: no false 'cleaned' success line"
+grep -q "could NOT be securely deleted" <<<"$CE_OUT" && pass "clean-evidence: names the failure explicitly" || fail "no diagnostic about the undeleted files"
+files_intact && pass "clean-evidence: the undeleted evidence is still on disk (as reported)" || fail "files gone despite the reported failure"
+
+# (f) SYMLINK: never shred a link target (and never report it as cleaned)
+LTARGET="$SDIR/real-target.txt"; printf 'REAL-TARGET-CONTENT-KEEPME' > "$LTARGET"
+LNK="$SDIR/link.txt"; ln -s "$LTARGET" "$LNK"
+( secure_delete "$LNK" ) >/dev/null 2>&1; rc6=$?
+[[ "$rc6" -ne 0 ]] && pass "secure_delete: REFUSES a symlink (non-zero)" || fail "secure_delete followed a symlink"
+grep -q "REAL-TARGET-CONTENT-KEEPME" "$LTARGET" && pass "secure_delete: the link TARGET was not overwritten" || fail "the symlink target was shredded"
+[[ -L "$LNK" ]] && pass "secure_delete: the symlink itself was left in place for the operator" || fail "the symlink was removed"
+rm -f "$LNK" "$LTARGET"
+
+# (g) MUTANT: remove the unlink guard -> a failed unlink is reported as success
+MUTC="$ROOT/mutant-common-unlink.sh"
+sed 's|^  if ! rm -f "$f"; then.*|  rm -f "$f"; if false; then|' "$HERE/../lib/common.sh" > "$MUTC"
+grep -q 'rm -f "$f"; if false; then' "$MUTC" && pass "mutant (g) built: unlink guard removed from the real helper" || fail "mutant (g) sed did not apply"
+F7="$SDIR/mut-unlink.txt"; printf 'SECRET-SALT-0123456789' > "$F7"
+( PATH="$RMBIN:$PATH"; source "$MUTC"; secure_delete "$F7" ) >/dev/null 2>&1; rc7=$?
+[[ "$rc7" -eq 0 && -f "$F7" ]] && pass "MUTANT (no unlink guard) reports SUCCESS while the file still exists — the guard is load-bearing" \
+                               || fail "MUTANT did not exhibit the fail-open behaviour (exit=$rc7)"
+rm -f "$F7" "$MUTC"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

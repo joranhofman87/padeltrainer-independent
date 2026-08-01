@@ -62,12 +62,10 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 == secure_delete overwrites before unlinking (shred absent on darwin) ==
   PASS  secure_delete removed the file (34 bytes)
   PASS  overwrite step destroys the plaintext in place
-== clone migration SOURCE: the migrations exist ONLY at the pinned SHA ==
-  PASS  all 3 migrations are ABSENT on origin/main (a push from main would apply none)
-  PASS  all 3 migrations are PRESENT at PR615_SHA (2b247f43afe8)
-  PASS  clone-push builds its worktree at PR615_SHA (not main)
-  PASS  clone-push targets the clone via --db-url (never the ambient linked project)
+== clone migration SOURCE: always the reviewed pin, never the current checkout ==
+  PASS  all 3 migrations are PRESENT at the immutable pin 2b247f43afe8 (true before AND after #615 merges)
   PASS  clone-push never merges #615
+  PASS  clone-make-prefix never merges #615
 == clone identity (CLONE_REF) on clone-only commands ==
   PASS  verify-clone requires explicit --clone
   PASS  verify-clone requires CLONE_REF
@@ -80,8 +78,60 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  ledger-status rejects a wrong-ref URL (identity-guarded)
   PASS  rollback615 rejects a wrong-ref URL (identity-guarded)
   PASS  MUTANT (--clone skips identity) accepts a wrong-ref URL — assert_clone_url is load-bearing
+== clone command matrix (RUNTIME: real subcommands, stubbed gh/git/supabase/psql) ==
+  PASS  clone-push[none]: pristine clone migrates (exit 0)
+  PASS  clone-push[none]: ledger -> all
+  PASS  clone-push[none]: applied exactly V1,V2,V3
+  PASS  clone-push sources the PINNED WORKTREE, not the checkout it was launched from
+  PASS  clone-push saw only the 3 pinned files (the decoy migration in the checkout was ignored)
+  PASS  clone-push[prefix1]: RESUMES a legitimately partial clone (the rehearsal-C blocker)
+  PASS  clone-push[prefix1]: applied exactly the V2,V3 suffix
+  PASS  clone-push[prefix1]: ledger -> all
+  PASS  clone-push[prefix2]: resumes (exit 0)
+  PASS  clone-push[prefix2]: applied exactly the V3 suffix
+  PASS  clone-push[all]: no-op exits 0
+  PASS  clone-push[all]: pushed nothing
+  PASS  clone-push[invalid {V2}]: REFUSES a corrupt ledger
+  PASS  clone-push[invalid]: pushed nothing
+  PASS  clone-push[pin drift]: refuses when the #615 head != PR615_SHA
+  PASS  clone-push[pin drift]: pushed nothing
+  PASS  clone-push[checks red]: refuses an unreviewed migration set
+  PASS  clone-push[checks red]: pushed nothing
+  PASS  clone-push[no CAP_STMT]: refuses an unbounded push
+  PASS  clone-push[no CAP_STMT]: pushed nothing
+== clone-make-prefix: rehearsal C's prefix is created by the REAL CLI ==
+  PASS  clone-make-prefix 1: exits 0 on a pristine clone
+  PASS  clone-make-prefix 1: the CLI applied exactly V1 (later files pruned in the worktree)
+  PASS  clone-make-prefix 1: ledger == prefix1 (a real ledger row, not a hand-written INSERT)
+  PASS  clone-make-prefix sources the pinned worktree
+  PASS  clone-make-prefix 2: ledger == prefix2
+  PASS  clone-make-prefix: REFUSES a clone that is not pristine
+  PASS  clone-make-prefix: the refusal left the ledger untouched
+  PASS  clone-make-prefix: rejects a depth that is not a legitimate prefix (3)
+  PASS  clone-make-prefix: rejects the PRODUCTION url
+== REHEARSAL C end to end (pristine -> prefix1 -> resumed suffix -> all) ==
+  PASS  rehearsal C step 1: the clone parks at prefix1
+  PASS  rehearsal C step 2: the suffix applies and the clone reaches all
+== MUTANTS: the clone source + suffix classification are load-bearing ==
+  PASS  mutant (i) built: clone-push demands the full set again
+  PASS  MUTANT (demand all three) CANNOT resume prefix1 — suffix classification is load-bearing
+  PASS  mutant (ii) built: pinned worktree replaced by the current checkout
+  PASS  MUTANT (checkout instead of pin) is REJECTED — the decoy set != the pinned set
+  PASS  MUTANT never reached a push (nothing from the wrong tree was applied)
 == secure_delete FAILS CLOSED (production helper, not a stand-in) ==
   PASS  secure_delete: success path removes the file (exit 0)
   PASS  secure_delete: overwrite failure PRESERVES the file and returns 1
   PASS  MUTANT (dd||true + unconditional rm) deletes despite overwrite failure — fail-closed is load-bearing
-================  70 passed, 0 failed  ================
+  PASS  secure_delete: UNLINK failure returns non-zero (1)
+  PASS  secure_delete: the file that could not be unlinked still EXISTS (honest state)
+  PASS  secure_delete: the plaintext was destroyed before the failed unlink
+  PASS  clean-evidence: exits non-zero when the evidence could not be deleted
+  PASS  clean-evidence: no false 'cleaned' success line
+  PASS  clean-evidence: names the failure explicitly
+  PASS  clean-evidence: the undeleted evidence is still on disk (as reported)
+  PASS  secure_delete: REFUSES a symlink (non-zero)
+  PASS  secure_delete: the link TARGET was not overwritten
+  PASS  secure_delete: the symlink itself was left in place for the operator
+  PASS  mutant (g) built: unlink guard removed from the real helper
+  PASS  MUTANT (no unlink guard) reports SUCCESS while the file still exists — the guard is load-bearing
+================  116 passed, 0 failed  ================

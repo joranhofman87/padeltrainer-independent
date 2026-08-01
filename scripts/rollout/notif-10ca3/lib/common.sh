@@ -198,11 +198,19 @@ expected_pending_suffix() { # $1 state  $2 V1  $3 V2  $4 V3 -> newline list (emp
 # HONEST LIMIT: on SSDs, APFS/btrfs/ZFS copy-on-write, or any journalling
 # filesystem, an in-place overwrite does NOT guarantee the old blocks are gone.
 # The real controls remain the 0600 permissions and the short retention window.
-# FAILS CLOSED: if the overwrite cannot be performed, the file is PRESERVED and a
-# non-zero status returned — never unlink-and-claim-overwritten. Overwrite is
-# block-sized (not bs=1) so it stays bounded on large manifests.
+# FAILS CLOSED: if the overwrite OR the unlink cannot be performed, a non-zero
+# status is returned and the caller must not report the evidence as cleaned —
+# never unlink-and-claim-overwritten, never claim-deleted-when-still-present.
+# Overwrite is block-sized (not bs=1) so it stays bounded on large manifests.
+# SYMLINKS ARE REFUSED: `-f` follows links, so a symlinked evidence path would
+# shred whatever it points at (and leave the link) — that is never what the
+# operator meant, so it stops instead.
 secure_delete() {
   local f="$1" size blocks
+  if [[ -L "$f" ]]; then
+    warn "REFUSING to secure-delete '$(basename "$f")': it is a SYMLINK — overwriting would destroy the link target, not the evidence file. Resolve it by hand."
+    return 1
+  fi
   [[ -f "$f" ]] || return 0
   if command -v shred >/dev/null 2>&1; then
     shred -u "$f" 2>/dev/null && { ok "securely deleted (shred): $(basename "$f")"; return 0; }
@@ -217,8 +225,8 @@ secure_delete() {
     warn "OVERWRITE FAILED for $(basename "$f") — file PRESERVED, not deleted (delete it manually once you can overwrite it)"
     return 1
   fi
-  if ! rm -f "$f"; then
-    warn "overwrote $(basename "$f") but UNLINK FAILED — the plaintext is destroyed; remove the file manually"
+  if ! rm -f "$f"; then   # UNLINK-GUARD (mutation-pinned: verify/operator-flow-test.sh)
+    warn "overwrote $(basename "$f") but UNLINK FAILED — the plaintext is destroyed, but the file still EXISTS; remove it manually. NOT reported as cleaned."
     return 1
   fi
   warn "shred unavailable — overwrote $(basename "$f") ($size bytes) then unlinked (not guaranteed on SSD/CoW)"

@@ -19,7 +19,8 @@
 # Subcommands: check-identity [url] | phase616 --yes | dryrun615 |
 #   preflight <url> | apply615 --yes | resume615 --yes | postflight <url> |
 #   ledger-status <url> | rollback615 <url> | clean-evidence --yes <url> |
-#   clone-push --yes <clone_url> | verify-clone <clone_url> --clone
+#   clone-push --yes <clone_url> | clone-make-prefix --yes <1|2> <clone_url> |
+#   verify-clone <clone_url> --clone
 #
 # Env: EXPECTED_REF. Clone commands also need CLONE_REF (!= EXPECTED_REF).
 #   Prod steps also need SUPABASE_ACCESS_TOKEN (PAT),
@@ -74,6 +75,10 @@ mk_worktree() {
 }
 push_dry_run_pending() {   # inside worktree; parse the CLI bullets
   NO_COLOR=1 supabase db push --linked --dry-run 2>&1 1>/dev/null \
+    | sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' | sort -u
+}
+clone_dry_run_pending() {  # inside worktree; explicit --db-url variant (clone only)
+  NO_COLOR=1 supabase db push --db-url "$1" --dry-run 2>&1 1>/dev/null \
     | sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' | sort -u
 }
 
@@ -293,31 +298,82 @@ cmd_verify_clone() {
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql
   ok "clone verification battery passed (post-migration)"; }
 
-# STEP 8 clone push. #615 is NOT merged at step 8, so its three migrations exist
-# ONLY at PR615_SHA — pushing from main/#620 would push nothing. This applies them
-# to the CLONE from a detached worktree at the reviewed pin. It never merges #615
-# and never uses the ambient linked project (--db-url targets the clone directly).
-cmd_clone_push() {
-  require_yes "${1:-}"
-  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-push --yes <clone_conn_url>"
-  require_cmd gh; require_cmd supabase
-  assert_clone_url "$url"                       # clone identity, and provably not production
+# Shared preamble for the two clone-migrating commands: clone identity (provably
+# NOT production), a green + head-pinned #615, and a detached worktree at that pin.
+# #615 is NOT merged at step 8, so its three migrations exist ONLY at PR615_SHA —
+# a push from main/#620 would apply NOTHING. Never merges #615; never uses the
+# ambient linked project (--db-url addresses the clone directly).
+clone_push_preamble() {   # $1 = clone url
+  require_cmd gh; require_cmd supabase; require_cmd psql
+  assert_clone_url "$1"                         # clone identity, and provably not production
   require_env CAP_STMT "set CAP_STMT (ms) — clone expectation from the clone preflight"
-  local CAP_LOCK="${CAP_LOCK:-3000}"
   git fetch origin
   assert_sha_matches_pin "$(pr_head_sha 615)" "$PR615_SHA" "#615 head"
   gh pr checks 615 || die "#615 checks are not green — refusing to rehearse an unreviewed migration set"
   mk_worktree "$PR615_SHA"                      # the migrations live HERE, not on main
+}
+
+# STEP 8 clone push — applies the migrations still MISSING from the clone.
+# It must NOT demand all three: rehearsal C deliberately leaves the clone at a
+# legitimate ordered PREFIX, and the whole point of that rehearsal is to push the
+# remaining suffix. So it classifies the clone ledger exactly like production
+# recovery does (none/prefix1/prefix2/all/invalid) and requires the matching
+# pending suffix — none->V1,V2,V3  prefix1->V2,V3  prefix2->V3  all->no-op
+# invalid->refuse. (runtime + mutation pinned: verify/operator-flow-test.sh)
+cmd_clone_push() {
+  require_yes "${1:-}"
+  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> CAP_STMT=<ms> clone-push --yes <clone_conn_url>"
+  require_cmd psql; assert_clone_url "$url"
+  local CAP_LOCK="${CAP_LOCK:-3000}" st suffix
+  st="$(ledger_status "$url")"; ok "clone ledger state = $st"
+  case "$st" in
+    invalid) die "clone ledger holds an IMPOSSIBLE subset — refusing to push onto a corrupt state; restore the snapshot";;
+    all)     ok "clone already at 'all' — nothing to push. Next: CLONE_REF=$CLONE_REF $0 verify-clone <url> --clone"; return 0;;
+  esac
+  suffix="$(expected_pending_suffix "$st" "$V1" "$V2" "$V3")"
+  clone_push_preamble "$url"
   ( cd "$WT"
-    local pending
-    pending="$(NO_COLOR=1 supabase db push --db-url "$url" --dry-run 2>&1 1>/dev/null \
-      | sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' | sort -u)"
+    local pending; pending="$(clone_dry_run_pending "$url")"
     log "clone db push --dry-run pending:"; printf '%s\n' "$pending" >&2
-    assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS"
+    assert_pending_is_expected "$pending" "$suffix"
     log "clone db push (lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
     PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" \
-      supabase db push --db-url "$url" --yes ) || die "clone db push failed"
-  ok "clone migrated from the reviewed pin ${PR615_SHA:0:12} (#615 NOT merged)"
+      supabase db push --db-url "$url" --yes ) || die "clone db push failed (ledger=$(ledger_status "$url"))"
+  local st2; st2="$(ledger_status "$url")"
+  [[ "$st2" == all ]] || die "after the clone push, ledger='$st2' (expected all)"
+  ok "clone migrated ${st} -> all from the reviewed pin ${PR615_SHA:0:12} (#615 NOT merged)"
+}
+
+# REHEARSAL C setup: put the clone into a LEGITIMATE prefix state on purpose.
+# `supabase db push` has no "apply only the first file" flag, so the prefix is
+# produced the way a real interrupted push produces it: the CLI applies whole
+# migration files, one transaction + one ledger row each. We hand it a detached
+# worktree at the reviewed pin with the LATER files PRUNED, so it applies exactly
+# the prefix and writes exactly those ledger rows — real CLI, real ledger, no
+# hand-written INSERT into supabase_migrations. The prune touches ONLY the
+# disposable worktree; the checkout and the pinned commit are untouched.
+# Requires a PRISTINE clone: you cannot manufacture a prefix over existing state.
+cmd_clone_make_prefix() {
+  require_yes "${1:-}"
+  local depth="${2:-}" url="${3:-}" usage="usage: CLONE_REF=<ref> CAP_STMT=<ms> clone-make-prefix --yes <1|2> <clone_conn_url>"
+  require_arg "$depth" "$usage"; require_arg "$url" "$usage"
+  [[ "$depth" == 1 || "$depth" == 2 ]] || die "prefix depth must be 1 or 2 (got '$depth') — those are the only legitimate prefixes"
+  require_cmd psql; assert_clone_url "$url"
+  local CAP_LOCK="${CAP_LOCK:-3000}" st want prune
+  st="$(ledger_status "$url")"
+  [[ "$st" == none ]] || die "clone-make-prefix needs a PRISTINE clone (ledger=none); this clone is '$st' — restore the snapshot first"
+  if [[ "$depth" == 1 ]]; then want="$(printf '%s\n' "$V1")";        prune="$V2 $V3"
+  else                        want="$(printf '%s\n%s\n' "$V1" "$V2")"; prune="$V3"; fi
+  clone_push_preamble "$url"
+  ( cd "$WT"
+    local v; for v in $prune; do rm -f supabase/migrations/"${v}"_*.sql; done
+    log "worktree pruned to the first ${depth} migration(s); dry-run:"
+    assert_pending_is_expected "$(clone_dry_run_pending "$url")" "$want"
+    PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" \
+      supabase db push --db-url "$url" --yes ) || die "partial (prefix) push failed"
+  local st2; st2="$(ledger_status "$url")"
+  [[ "$st2" == "prefix${depth}" ]] || die "expected ledger 'prefix${depth}' after the partial push, got '$st2'"
+  ok "clone is now at ${st2} — created by the real CLI writing real ledger rows"
 }
 # These three take a <conn_url> and are DECISION-CRITICAL: preflight's CAP_STMT is
 # what bounds the production push, postflight is the documented gate-OFF
@@ -371,10 +427,17 @@ cmd_clean_evidence() {
     || die "clean-evidence REFUSED: maintenance gate is not OFF"
   # ALL prerequisites passed — deletion happens strictly last. edge-log-lines.txt
   # is deliberately NOT deleted here (drain evidence; PII-free by design).
-  local f n=0
+  # A file that could not be securely deleted must NEVER be counted as cleaned:
+  # secure_delete fails closed (symlink / failed overwrite / failed unlink), and
+  # that failure is propagated instead of being absorbed by the loop.
+  # (mutation-pinned: verify/operator-flow-test.sh)
+  local f n=0 bad=0
   for f in "$pre" "$post" "$EVID/manifest-salt.txt"; do
-    if [[ -f "$f" ]]; then secure_delete "$f"; n=$((n+1)); fi
+    if [[ -f "$f" || -L "$f" ]]; then
+      if secure_delete "$f"; then n=$((n+1)); else bad=$((bad+1)); fi
+    fi
   done
+  [[ "$bad" -eq 0 ]] || die "rollout is verified BUT ${bad} evidence file(s) could NOT be securely deleted (${n} were) — they still hold pseudonymous data; delete them by hand. NOT reporting the evidence as cleaned."
   ok "rollout complete + verified — cleaned ${n} pseudonymous file(s) (manifests + salt)"
 }
 
@@ -474,6 +537,7 @@ case "$sub" in
   resume615)      cmd_resume615 "$@";;
   verify-clone)   cmd_verify_clone "$@";;
   clone-push)     cmd_clone_push "$@";;
+  clone-make-prefix) cmd_clone_make_prefix "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
   clean-evidence) cmd_clean_evidence "$@";;
@@ -481,9 +545,12 @@ case "$sub" in
   *) cat >&2 <<EOF
 usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
-  resume615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> |
-  rollback615 <url> [--clone] | clean-evidence --yes <url> |
-  CLONE_REF=<ref> clone-push --yes <clone_url> | CLONE_REF=<ref> verify-clone <clone_url> --clone
+  resume615 --yes | postflight <url> | ledger-status <url> |
+  rollback615 <url> [--clone] | clean-evidence --yes <url>
+clone-only (CLONE_REF=<ref> != EXPECTED_REF, CAP_STMT=<ms>):
+  clone-push --yes <clone_url>                 # push the MISSING suffix from PR615_SHA
+  clone-make-prefix --yes <1|2> <clone_url>    # rehearsal C: real partial apply
+  verify-clone <clone_url> --clone             # post-migration battery
 EOF
      exit 2;;
 esac

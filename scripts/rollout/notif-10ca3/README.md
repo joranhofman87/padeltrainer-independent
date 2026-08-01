@@ -22,7 +22,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
-| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / clone+prod identity / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 70/70 |
+| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 116/116 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
@@ -57,7 +57,7 @@ verify/verify-artifacts.mjs SQL-artifact proof (+ mutations)
 verify/rehearsals.mjs       executable A–F rehearsals (incl. step-8 clone battery)
 verify/identity-selftest.sh identity allow-list proof
 verify/guard-mutation-test.sh critical-guard mutation proofs
-verify/operator-flow-test.sh  resume615 control-flow proof (stubbed gh/supabase/psql)
+verify/operator-flow-test.sh  resume615 + clone-command runtime proof (stubbed gh/git/supabase/psql)
 verify/exit-status-test.sh    exit-status integrity proof (masked-failure regression)
 evidence/                   captured run outputs
 ```
@@ -95,7 +95,7 @@ run-rollout.sh phase616 --yes
 run-rollout.sh dryrun615
 
 # 8. rehearsals A–D on a production-scale disposable clone (see "Reproducing A–D on a PRODUCTION-SCALE clone") —
-#    clone-push + verify-clone, never against prod
+#    clone-make-prefix + clone-push + verify-clone, never against prod
 
 # 9. preflight on prod (read-only): row counts, delta absent, CAP_STMT
 #    (this production value is authoritative; the clone's is only an expectation)
@@ -127,13 +127,16 @@ run-rollout.sh clean-evidence --yes "$PROD"
   `gh pr merge --match-head-commit`, so only the CI-tested commit ships.
 - **Target identity on every URL-taking command.** `preflight`, `postflight`,
   `ledger-status` and `rollback615` assert the connection URL is `EXPECTED_REF`
-  by default — preflight's `CAP_STMT` bounds the production push, postflight
-  authorizes gate-OFF, ledger-status decides resume-vs-apply, and `rollback615`
-  drops objects — so a wrong URL must never report green. `--clone` is **not an
-  identity bypass**: it swaps the assertion to `CLONE_REF`, which must be set,
-  well-formed, **different from `EXPECTED_REF`**, and matched exactly by the URL.
-  The write-bearing clone commands (`clone-push`, `verify-clone`) *require*
-  `--clone` and refuse to run without it.
+  by default. All four are **decision** commands: preflight's `CAP_STMT` bounds
+  the production push, postflight authorizes gate-OFF, and ledger-status /
+  `rollback615` decide resume-vs-stop. (`rollback615` mutates nothing — it reads
+  the ledger and prints the recovery guidance for that state; the guard matters
+  because guidance derived from the *wrong* database would be acted on.) So a
+  wrong URL must never report green. `--clone` is **not an identity bypass**: it
+  swaps the assertion to `CLONE_REF`, which must be set, well-formed,
+  **different from `EXPECTED_REF`**, and matched exactly by the URL. The
+  write-bearing clone commands (`clone-push`, `clone-make-prefix`,
+  `verify-clone`) *require* an explicit clone target and refuse without it.
 - **Explicit targeting.** every `supabase functions deploy` / `secrets set|unset`
   carries `--project-ref $EXPECTED_REF`; `db push` runs from a detached worktree
   with `SUPABASE_PROJECT_ID=$EXPECTED_REF` and the worktree's own
@@ -204,6 +207,11 @@ Two things make this non-obvious, and both are enforced by the tooling:
   `clone-push` applies migrations. So every clone command demands `CLONE_REF`,
   proves `CLONE_REF != EXPECTED_REF`, and proves the URL addresses `CLONE_REF`
   exactly. `--clone` alone is not accepted.
+- **`clone-push` applies the MISSING suffix, not "all three".** It classifies the
+  clone's ledger exactly as production recovery does and requires the matching
+  pending set — `none`→V1,V2,V3 · `prefix1`→V2,V3 · `prefix2`→V3 · `all`→no-op ·
+  `invalid`→refuse. Demanding all three would make rehearsal C impossible to run,
+  which is why that behaviour is now mutation-pinned as a failure.
 
 ```bash
 export EXPECTED_REF=<prod ref>     # never the clone
@@ -232,15 +240,25 @@ Then, in session 2, run the same `clone-push`. *Pass:* it aborts on `lock_timeou
 — i.e. the delta is **absent**, nothing partial landed. Release the lock
 (`ROLLBACK`). *Fail:* the push blocks past `CAP_LOCK`, or preflight now fails.
 
-**C — prefix recovery.** Fresh snapshot. Apply only the first migration from the
-pinned worktree, then confirm the ledger reports a prefix and the suffix applies:
+**C — prefix recovery.** Fresh snapshot. The prefix is *created on purpose*, by
+the real CLI: `clone-make-prefix` hands `supabase db push` a detached worktree at
+`PR615_SHA` with the later migration files **pruned**, so the CLI applies exactly
+the first file and writes exactly that ledger row. No hand-written INSERT into
+`supabase_migrations`, and the prune touches only the disposable worktree.
+
 ```bash
-run-rollout.sh ledger-status "$CLONE" --clone      # expect prefix1 after one file
-CAP_STMT=<...> run-rollout.sh clone-push --yes "$CLONE"   # pushes the remaining suffix
-run-rollout.sh ledger-status "$CLONE" --clone      # expect all
+run-rollout.sh ledger-status "$CLONE" --clone                          # expect: none
+CAP_STMT=<from A> run-rollout.sh clone-make-prefix --yes 1 "$CLONE"    # apply V1 only
+run-rollout.sh ledger-status "$CLONE" --clone                          # expect: prefix1
+CAP_STMT=<from A> run-rollout.sh clone-push --yes "$CLONE"             # applies the V2,V3 suffix
+run-rollout.sh ledger-status "$CLONE" --clone                          # expect: all
+run-rollout.sh verify-clone "$CLONE" --clone
 ```
-*Pass:* `prefix1` → `all`, and `verify-clone` then passes. *Fail:* any `invalid`
-ledger state — stop and investigate; do not carry that state into step 9.
+`clone-make-prefix` needs a **pristine** clone (`ledger=none`) — you cannot
+manufacture a prefix over existing state — and accepts depth `1` or `2` only.
+*Pass:* `none` → `prefix1` → `all`, and `verify-clone` passes. *Fail:* any
+`invalid` ledger state — stop and investigate; do not carry it into step 9.
+*Evidence:* the three `ledger-status` lines → `evidence/cloneC-<date>.txt`.
 
 **D — clean full apply + verification.** Fresh snapshot:
 ```bash
@@ -358,20 +376,52 @@ so no delivery tracking) and the invoice-status stamp is skipped. A test send
 proves only that the provider accepted a message — useful as an optional
 provider smoke check, **never** as step-6 evidence.
 
-*Setup:* pick a real invoice whose **resolved recipient is an address you
-control** (the resolution order is the academy `billing_email` override → linked
-profile email → guest email, so set the academy billing-email override on a test
-player if needed). Confirm the probe reads
-`{"status":"active","maintenance":false}` first.
+*Setup.* Pick a real invoice whose **resolved recipient is an address you
+control**. `get_invoice_recipient_identity` resolves the recipient as: the
+academy-scoped override `academy_player_metadata.billing_email` → the linked
+profile's email → the guest's own email. Redirecting one to yourself means
+temporarily changing **production routing**, so capture the old value first and
+restore it afterwards — an "ephemeral" override that is never put back keeps
+sending that player's invoices to the wrong inbox forever:
 
-*Action:* send that one invoice from the academy/trainer invoice UI. Not a
-preview, not a test send.
+```sql
+-- BEFORE: record the current value verbatim (NULL and 'absent row' are different states)
+SELECT academy_profile_id, profile_id, guest_player_id, billing_email
+  FROM public.academy_player_metadata
+ WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
+   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
+-- redirect for the test (same WHERE clause)
+UPDATE public.academy_player_metadata SET billing_email = '<address you control>'
+ WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
+   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
+```
+Confirm the gate probe reads `{"status":"active","maintenance":false}` first.
+
+*Action.* Send that one invoice from the academy/trainer invoice UI. Not a
+preview, not a test send. Note the **invoice id** and the wall-clock minute.
+
+*Retrieving the `invocationId` (it is NOT in the response or the UI).* The 200
+response body is `{"success":true,"email":"<recipient>"}` — no correlation id,
+and it contains the recipient address, so do not paste it anywhere. The id lives
+only in the function log line, alongside the invoice id:
+
+```bash
+scripts/rollout/notif-10ca3/logfetch/fetch-edge-logs.sh --ref "$EXPECTED_REF" \
+  --start <ISO minute before the send> --end <ISO minute after> \
+  --allow-sends --assert-all-finished --fail-on-record-failed
+grep '<invoice uuid>' scripts/rollout/notif-10ca3/evidence/edge-log-lines.txt
+```
+The matching `event:provider_send_started` line carries
+`{"invocationId":"…","invoiceId":"…"}` — that uuid is your correlation id for
+everything below. (`--allow-sends` is required here: unlike the drain proof, a
+send in this window is the expected outcome. The fetch overwrites the checked-in
+sample `evidence/edge-log-lines.txt`; do not commit the production copy.)
 
 *Pass — all four:*
 1. the email **arrives** at the controlled recipient, correct branding/reply-to;
 2. logs for that one `invocationId` show `event:provider_send_started` →
    `event:finished {"outcome":"sent"}`, with **no** `event:blocked` and **no**
-   `record_failed`;
+   `record_failed` (the `--fail-on-record-failed` run above exits 6 if there is);
 3. **delivery tracking** recorded it: `get_invoices_delivery_status` reports
    `sent` for that invoice (later `delivered` when the Resend webhook lands), and
    the invoice shows as sent in the UI;
@@ -384,9 +434,25 @@ unexpectedly ON); `500 email_not_configured`; `{"success":false,"error":"no_emai
 
 *Evidence to retain (PII-safe):* the `invocationId`, event names + timestamps,
 the invoice id, and the resulting delivery status. **Never** paste recipient
-addresses, message bodies, or any token.
+addresses, response bodies, message bodies, or any token.
 
-*Cleanup:* none — a successful send is a normal business email.
+*Cleanup.* The send itself needs none — it is a normal business email. But if you
+changed `billing_email` (or any other routing field) for the test, **restore the
+captured value and verify the restore**, pass or fail:
+
+```sql
+UPDATE public.academy_player_metadata SET billing_email = <the BEFORE value, or NULL>
+ WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
+   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
+-- verify: this must return exactly the BEFORE row
+SELECT academy_profile_id, profile_id, guest_player_id, billing_email
+  FROM public.academy_player_metadata
+ WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
+   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
+```
+Step 6 is not complete until that SELECT matches what you recorded. If you
+created a metadata row that did not exist before, delete it rather than leaving
+it with a NULL override.
 
 Then:
 1. Provide `EXPECTED_REF`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`,
