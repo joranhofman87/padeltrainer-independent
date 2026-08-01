@@ -1,0 +1,119 @@
+$ bash scripts/rollout/notif-10ca3/verify/dryrun-diagnostics-test.sh
+
+  PASS  shim carries the real dry_run_pending / clone_dry_run_pending text
+== push helper ==
+  PASS  (push 1) success exits 0
+  PASS  (push 1) emits the exact normalised version list
+  PASS  (push 2) informational noise is discarded; only versions returned
+  PASS  (push 3) the CLI's real exit code (7) is returned
+  PASS  (push 3) the CLI diagnostic is visible
+  PASS  (push 4) silent CLI failure still returns its code
+  PASS  (push 4) fallback names the command and the exit code
+  PASS  (push 5) all four secret values redacted (literal match, regex metachars intact)
+  PASS  (push 5) redaction markers present (the line is still shown)
+  PASS  (push 6) plain and percent-encoded URI passwords redacted
+  PASS  (push 6) the non-secret part of the URL is preserved (still diagnosable)
+  PASS  (push 7) failure stays nonzero (never an empty success)
+  PASS  (push 8) the parser was NOT run: stdout is empty despite version text in the error
+  PASS  (push 9) capture removed on success
+  PASS  (push 9) capture removed on failure
+  PASS  (push 10) cleanup failure does NOT replace the CLI's exit code
+  PASS  (push 10) cleanup failure does NOT mask the CLI diagnostic
+  PASS  (push 10) the cleanup failure is itself reported
+== clone helper ==
+  PASS  (clone 1) success exits 0
+  PASS  (clone 1) emits the exact normalised version list
+  PASS  (clone 2) informational noise is discarded; only versions returned
+  PASS  (clone 3) the CLI's real exit code (7) is returned
+  PASS  (clone 3) the CLI diagnostic is visible
+  PASS  (clone 4) silent CLI failure still returns its code
+  PASS  (clone 4) fallback names the command and the exit code
+  PASS  (clone 5) all four secret values redacted (literal match, regex metachars intact)
+  PASS  (clone 5) redaction markers present (the line is still shown)
+  PASS  (clone 6) plain and percent-encoded URI passwords redacted
+  PASS  (clone 6) the non-secret part of the URL is preserved (still diagnosable)
+  PASS  (clone 7) failure stays nonzero (never an empty success)
+  PASS  (clone 8) the parser was NOT run: stdout is empty despite version text in the error
+  PASS  (clone 9) capture removed on success
+  PASS  (clone 9) capture removed on failure
+  PASS  (clone 10) cleanup failure does NOT replace the CLI's exit code
+  PASS  (clone 10) cleanup failure does NOT mask the CLI diagnostic
+  PASS  (clone 10) the cleanup failure is itself reported
+== NO credential may reach a diagnostic (clone target argv) ==
+  PASS  no-output fallback: plain clone password ABSENT from the diagnostic
+  PASS  no-output fallback still returns the CLI's code
+  PASS  the fallback names the target CLASS, not the connection string
+  PASS  no-output fallback: percent-encoded clone password ABSENT
+  PASS  a credential inside the CLI's own output is redacted too
+  PASS  no diagnostic line interpolates the argv (only the CLI invocation uses "$@")
+== diagnostic prerequisites exist BEFORE the CLI runs ==
+  PASS  jq missing: the supabase CLI was NEVER invoked
+  PASS  jq missing: no capture file was created
+  PASS  0600 hardening failure: the supabase CLI was NEVER invoked
+  PASS  0600 hardening failure is reported explicitly
+  PASS  0600 hardening failure: the empty capture was cleaned up
+== a runtime sanitiser failure is safe, bounded and non-masking ==
+  PASS  sanitiser failure: the raw diagnostic is WITHHELD, not printed
+  PASS  sanitiser failure: a generic safe message is emitted
+  PASS  sanitiser failure: the CLI's original exit code (8) is preserved
+  PASS  sanitiser failure: the capture was still securely deleted
+  PASS  an empty sanitiser result is not described as a displayed diagnostic
+== callers observe the helper's status (no discarded command substitution) ==
+  PASS  no caller passes the helper's output straight into an argument
+  PASS  cmd_dryrun615 fails closed on a dry-run failure
+  PASS  cmd_apply615 fails closed on a dry-run failure
+  PASS  cmd_resume615 fails closed on a dry-run failure
+  PASS  cmd_clone_push fails closed on a dry-run failure
+  PASS  cmd_clone_make_prefix fails closed on a dry-run failure
+  PASS  diagnostic output is bounded by line and column caps
+  PASS  the old 2>&1 1>/dev/null parser pipeline is gone (only referenced in the explanatory comment)
+  PASS  no set -x
+  PASS  the exact-pending-set assertion is unchanged and still shared
+== end to end: dryrun615 surfaces the reason and fails closed ==
+  PASS  dryrun615 fails closed when the CLI fails (exit 1)
+  PASS  dryrun615 SURFACES the CLI reason (the original defect)
+  PASS  dryrun615 output is redacted
+  PASS  dryrun615 makes no verification claim after a failure
+== MUTANTS ==
+  PASS  MUTANT (old 2>&1|sed pipeline) LOSES the CLI reason — capturing to a file is load-bearing
+  PASS  MUTANT (ignores the CLI status) reports SUCCESS on a failed dry run — the status check is load-bearing
+  PASS  MUTANT (parses after failure) emits a pending set from an ERROR message — the ordering is load-bearing
+  PASS  MUTANT (raw diagnostic) LEAKS the password — redaction is load-bearing
+  PASS  MUTANT (returns 0 on failure) yields an EMPTY successful pending set — returning the CLI code is load-bearing
+  PASS  MUTANT (clone left on the old pipeline) LOSES the reason — both helpers must share the contract
+  PASS  ...while the linked helper in the same mutant still reports it (the two are independently covered)
+== the PENDING PARSER's own failure must not be discarded ==
+  PASS  (P1) sort rc=42: the helper returns the PARSER's code (42), not 0
+  PASS  (P1) sort rc=42: stdout stays EMPTY (never a phantom pending set)
+  PASS  (P1) sort rc=42: a bounded generic parser-failure diagnostic is emitted
+  PASS  (P1) sort rc=42: the capture was securely deleted
+  PASS  (P2) sed rc=9: the helper returns the parser's code (9)
+  PASS  (P2) sed rc=9: stdout stays EMPTY
+  PASS  (P2) sed rc=9: the capture was securely deleted
+  PASS  (P2) no raw captured output is parsed or printed on parser failure
+== parser dependencies are preflighted BEFORE the CLI runs ==
+  PASS  (P3) missing sed: the supabase CLI was NEVER invoked
+  PASS  (P3) missing sed: no capture was created
+  PASS  (P3) missing sort: the supabase CLI was NEVER invoked
+  PASS  (P3) missing sort: no capture was created
+== parser failure + cleanup failure: both reported, parser code wins ==
+  PASS  (P4) cleanup failure does NOT replace the parser's code (42)
+  PASS  (P4) BOTH the parser failure and the cleanup failure are reported
+== a BOUNDING-stage failure in redact_diag withholds the diagnostic ==
+  PASS  (P5) bounding-stage failure: the raw secret is ABSENT
+  PASS  (P5) bounding-stage failure uses the generic withholding message
+  PASS  (P5) bounding-stage failure preserves the CLI's original code (8)
+  PASS  (P5) bounding-stage failure: cleanup was still attempted
+== end to end: the CLONE path leaks nothing and fails closed ==
+  PASS  clone-push fails closed when the CLI fails (exit 1)
+  PASS  clone-push END TO END: the clone password never appears in its output
+  PASS  clone-push names the target class in the fallback
+  PASS  clone-push makes no pending-set claim after a CLI failure
+  PASS  clone-push END TO END: a credential in the CLI's output is redacted
+== MUTANT: restoring the bare parse/cleanup/return-0 flow ==
+  PASS  mutant (h) built: bare parse -> cleanup -> return 0 restored
+  PASS  MUTANT (bare parse flow) reports SUCCESS with an EMPTY set on a crashed parser — capturing the parser status is load-bearing
+== MUTANT: restoring $* in the fallback must be caught ==
+  PASS  mutant (g) built: $* restored in the no-output fallback
+  PASS  MUTANT ($* in the fallback) LEAKS the clone password — the label/argv separation is load-bearing
+================  101 passed, 0 failed  ================

@@ -26,6 +26,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 41/41 |
 | step-6 fetch+verify is atomic; stale evidence unusable; live terminal-newline shape | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 63/63 |
+| a failed `db push --dry-run` surfaces the CLI reason (secrets redacted) and never yields a pending set | `bash …/verify/dryrun-diagnostics-test.sh` | [dryrun-diagnostics.txt](evidence/dryrun-diagnostics.txt) | 101/101 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -64,6 +65,7 @@ verify/operator-flow-test.sh  resume615 + clone-command runtime proof (stubbed g
 verify/exit-status-test.sh    exit-status integrity proof (masked-failure regression)
 verify/step6-verifier-test.sh executable fixtures + mutants for the step-6 verifier
 verify/logfetch-integration-test.sh fresh-evidence contract: fetch+verify is atomic
+verify/dryrun-diagnostics-test.sh   the dry run must surface the CLI failure reason (redacted)
 evidence/                   captured run outputs
 ```
 
