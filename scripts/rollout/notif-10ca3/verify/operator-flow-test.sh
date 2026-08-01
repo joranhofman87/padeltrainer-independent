@@ -622,5 +622,57 @@ grep -v '0 rows → ABORT' "$S6" > "$ROOT/s6-noabort.md"
 s6_row_exact "$ROOT/s6-noabort.md" && fail "MUTANT without the zero-match abort accepted" \
                                    || pass "MUTANT (no zero-match ABORT) is REJECTED"
 
+echo "== README step-6 false-green STOPs, screening booleans + exact correlation =="
+# Three failure modes return HTTP 200 with NO provider_send_started, so "the UI
+# said sent" is not evidence. The candidate query must screen for them up front,
+# the STOP table must name them, and every log assertion must bind to THIS
+# invocation / THIS invoice — a busy window contains other people's sends.
+s6_hardened(){ local f="$1"
+  # (a) the three HTTP-200 false greens are named as STOP conditions
+  grep -q '"skipped":"recently_sent"'      "$f" || return 1
+  grep -q '"error":"email_suppressed"'     "$f" || return 1
+  grep -q 'status_update_failed'           "$f" || return 1
+  # (b) the read-only candidate query returns all three screening booleans
+  grep -q 'AS resolves_to_me'              "$f" || return 1
+  grep -q 'AS recent_guard_clear'          "$f" || return 1
+  grep -q 'AS recipient_not_suppressed'    "$f" || return 1
+  # ...computed with the SAME canonical resolver + suppression function the edge fn uses
+  grep -q 'public.is_email_suppressed'     "$f" || return 1
+  grep -q 'public.get_invoice_recipient_email' "$f" || return 1
+  # ...and never selecting the address itself
+  grep -q 'SELECT public.get_invoice_recipient_email(' "$f" && return 1
+  # (c) correlation is delegated to the EXECUTABLE verifier, not to prose counts.
+  #     A block of `grep -c` calls with "must be exactly 1" written beside them
+  #     enforces nothing, so its return is a regression.
+  grep -q 'verify-step6-send.sh --invoice' "$f" || return 1
+  grep -q 'exits \*\*0\*\*'                "$f" || return 1
+  grep -qE '^ *grep +-c' "$f" && return 1        # a COMMAND, not a prose mention of one
+  grep -q "INVOCATION='<invocationId from that line>'" "$f" && return 1   # hand transcription
+  grep -q 'record_failed'        "$f" || return 1
+  grep -q 'status_update_failed' "$f" || return 1
+  # (d) delivery status read via the PII-free singular RPC
+  grep -q 'get_invoice_delivery_status'    "$f" || return 1
+  return 0; }
+s6_hardened "$S6" && pass "step 6 names the 3 HTTP-200 false greens, screens all 3 booleans, and correlates by exact invocation+invoice" \
+                  || fail "step-6 hardening contract violated"
+s6_row_exact "$S6" && pass "the row-exact override + restoration procedure is still intact" \
+                   || fail "the row-exact override procedure regressed"
+# MUTANTS — each omission Codex asked to pin must be REJECTED
+for pat in '"skipped":"recently_sent"' '"error":"email_suppressed"' 'AS recent_guard_clear' 'AS recipient_not_suppressed' 'AS resolves_to_me'; do
+  grep -v -F "$pat" "$S6" > "$ROOT/s6-drop.md"
+  s6_hardened "$ROOT/s6-drop.md" && fail "MUTANT dropping '$pat' accepted" \
+                                 || pass "MUTANT (drops '$pat') is REJECTED"
+done
+# reverting to the unenforced grep/count prose must not pass
+{ grep -v 'verify-step6-send.sh --invoice' "$S6"
+  printf '%s\n' "INVOCATION='<invocationId from that line>'" \
+    'grep -c "event:provider_send_started.*$INVOCATION" "$LINES"   # must be exactly 1'; } > "$ROOT/s6-greps.md"
+s6_hardened "$ROOT/s6-greps.md" && fail "MUTANT reverting to unenforced grep counts accepted" \
+                                || pass "MUTANT (manual grep counts + hand-transcribed INVOCATION) is REJECTED"
+# re-exposing the raw recipient address in the candidate query must not pass
+{ cat "$S6"; echo "SELECT public.get_invoice_recipient_email('<invoice uuid>');"; } > "$ROOT/s6-pii.md"
+s6_hardened "$ROOT/s6-pii.md" && fail "MUTANT selecting the raw recipient address accepted" \
+                              || pass "MUTANT (bare address SELECT) is REJECTED"
+
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]
