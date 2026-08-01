@@ -1,7 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithCycles } from './renderWithCycles';
+
+// Freeze ONLY Date (real timers keep running for waitFor) to a month where the
+// calendar provably renders DUPLICATE day numbers: August 2026 starts on a
+// Saturday, so with showOutsideDays the grid contains July 28 (outside) AND
+// August 28. The picker below must disambiguate under exactly that condition;
+// an unfrozen clock made this suite fail only in months with a duplicate "28".
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-08-15T12:00:00Z') });
+});
+afterAll(() => vi.useRealTimers());
+
+// Click day `name` in the CURRENT month: never by array index — the one
+// gridcell that is not an outside-day cell (shadcn marks those `day-outside`).
+// Asserts the duplicate actually rendered so this disambiguation stays proven.
+const pickCurrentMonthDay = (name: string) => {
+  const cells = screen.getAllByRole('gridcell', { name });
+  expect(cells.length).toBe(2); // July 28 (outside) + August 28 — duplicate proven
+  const inMonth = cells.filter((c) => !c.classList.contains('day-outside'));
+  expect(inMonth.length).toBe(1);
+  fireEvent.click(inMonth[0]);
+};
 
 const navigateSpy = vi.fn();
 vi.mock('react-router-dom', async (orig) => {
@@ -80,7 +101,7 @@ describe('SlotGeneratorWizard', () => {
     fireEvent.change(screen.getByLabelText('Prijs per sessie (€)'), { target: { value: '20' } });
     fireEvent.change(screen.getByLabelText('Startdatum'), { target: { value: '2026-06-01' } });
     fireEvent.click(screen.getByRole('button', { name: 'Einddatum' }));
-    fireEvent.click(screen.getByRole('gridcell', { name: '28' }));
+    pickCurrentMonthDay('28'); // 2026-08-28 (frozen clock), after the 2026-06-01 start
     fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
     fireEvent.click(screen.getByRole('button', { name: 'Voorbeeld' }));
     // Blocked by the location requirement — never reaches the preview step.
@@ -104,10 +125,10 @@ describe('SlotGeneratorWizard', () => {
     fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Summer training' } });
     fireEvent.change(screen.getByLabelText('Prijs per sessie (€)'), { target: { value: '20' } });
     fireEvent.change(screen.getByLabelText('Startdatum'), { target: { value: '2026-06-01' } });
-    // End date via the shared calendar popover: pick day 28 of the shown (current) month —
-    // always after the fixed 2026-06-01 start in this suite's unfrozen clock.
+    // End date via the shared calendar popover: day 28 of the frozen current
+    // month (2026-08-28), disambiguated from the outside July 28 cell.
     fireEvent.click(screen.getByRole('button', { name: 'Einddatum' }));
-    fireEvent.click(screen.getByRole('gridcell', { name: '28' }));
+    pickCurrentMonthDay('28');
     fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Voorbeeld' }));
