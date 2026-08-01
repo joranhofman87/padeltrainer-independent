@@ -190,6 +190,110 @@ dry_run_pending() {   # $1 label, $2.. selector (--linked | --db-url URL)
 push_dry_run_pending()  { dry_run_pending "linked project"          --linked; }
 clone_dry_run_pending() { dry_run_pending "explicit clone target"  --db-url "$1"; }
 
+
+# ---------------------------------------------------------------------------
+# WORKTREE POOLER LINK  (linked-database paths only)
+# ---------------------------------------------------------------------------
+# `supabase/.temp/` is GITIGNORED, so `git worktree add` never carries it into the
+# detached rollout worktree. The CLI there finds no pooler metadata and falls back
+# to the DIRECT host db.<ref>.supabase.co, which resolves IPv6-only — observed as
+# "IPv6 is not supported on your current network" during step 7, even though the
+# ordinary checkout was correctly linked with a pooler URL.
+#
+# Linking the ORDINARY CHECKOUT does not fix this: dryrun615 / apply615 /
+# resume615 each build a fresh detached worktree, and none of them inherit that
+# metadata. Each rollout worktree must establish and VERIFY its own link.
+#
+# We deliberately never copy the ambient `.temp`: it is mutable, unversioned and
+# could point at any project — exactly the sort of thing the identity guards
+# exist to refuse.
+#
+# The password is taken ONLY from the environment: never `--password`, never in
+# argv. `--skip-pooler` is never used — the pooler is the entire point.
+# (mutation-pinned: verify/worktree-link-test.sh)
+link_worktree_pooler() {
+  require_cmd supabase; require_cmd git
+  require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD (the CLI reads it from the environment)"
+  [[ -n "${WT:-}" && -d "$WT" ]] || die "link_worktree_pooler called without a rollout worktree"
+  local cap rc=0 prev_umask
+  prev_umask="$(umask)"; umask 077
+  cap="$(mktemp -t rollout-link-XXXXXX)" || { umask "$prev_umask"; die "cannot create a temp file for the link output"; }
+  umask "$prev_umask"
+  chmod 600 "$cap" || { rm -f "$cap"; die "cannot restrict the link capture to 0600 — refusing to link"; }
+  log "linking the rollout worktree to project ${EXPECTED_REF} (pooler metadata)"
+  ( cd "$WT" && NO_COLOR=1 supabase link --project-ref "$EXPECTED_REF" ) >"$cap" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    warn "supabase link FAILED in the rollout worktree (exit ${rc}) — refusing to reach any db push"
+    local safe=""
+    if [[ -s "$cap" ]]; then safe="$(redact_diag "$cap")" || safe=""; fi
+    if [[ -n "$safe" ]]; then
+      warn "CLI output (secrets redacted, first ${ROLLOUT_DIAG_MAX_LINES} lines):"
+      printf '%s\n' "$safe" >&2
+    elif [[ -s "$cap" ]]; then
+      warn "the CLI produced output but it could NOT be sanitised — WITHHOLDING it; raw output is never printed"
+    else
+      warn "the CLI produced NO output; operation: supabase link against the rollout worktree (exit ${rc})"
+    fi
+    secure_delete "$cap" \
+      || warn "additionally, the link capture could not be securely deleted — remove it by hand"
+    return "$rc"                      # the CLI's own code, never a cleanup code
+  fi
+  # A SUCCESSFUL link whose capture cannot be destroyed must not continue: the
+  # capture may hold connection detail, and "we could not clean up" is not a
+  # state in which to proceed to validation, a dry run or a push.
+  if ! secure_delete "$cap"; then
+    warn "the link SUCCEEDED but its capture could not be securely deleted — refusing to continue to validation or any push; remove it by hand"
+    return 1
+  fi
+  assert_worktree_pooler_link
+}
+
+# Fail closed unless the worktree's OWN freshly written metadata is exactly right.
+# A wrong or absent pooler URL silently reverts the CLI to the direct IPv6 host,
+# which is the failure this whole stage exists to prevent.
+assert_worktree_pooler_link() {
+  local t="$WT/supabase/.temp" ref pu host user port scheme
+  # Metadata reached through a SYMLINKED PARENT is not worktree-owned: `.temp`
+  # (or `supabase/`) could point at the ambient checkout or anywhere else, and
+  # the children would still look like perfectly ordinary regular files. That
+  # defeats the whole "this worktree established its own fresh link" contract.
+  [[ ! -L "$WT/supabase" ]] || die "worktree link: supabase/ is a SYMLINK — refusing metadata reached through a symlinked parent"
+  [[ ! -L "$t" ]] || die "worktree link: .temp is a SYMLINK — refusing metadata reached through a symlinked parent"
+  [[ -d "$t" ]] || die "worktree link: .temp is not a directory — the link did not write worktree-owned metadata"
+  [[ ! -L "$t/project-ref" && -f "$t/project-ref" ]] \
+    || die "worktree link: .temp/project-ref is missing or not a regular file"
+  ref="$(cat "$t/project-ref")"
+  [[ "$ref" == "$EXPECTED_REF" ]] \
+    || die "worktree link: .temp/project-ref '${ref}' != EXPECTED_REF '${EXPECTED_REF}'"
+  [[ ! -L "$t/pooler-url" ]] || die "worktree link: .temp/pooler-url is a SYMLINK — refusing"
+  [[ -f "$t/pooler-url" ]] \
+    || die "worktree link: .temp/pooler-url is missing or not a regular file — the CLI would fall back to the DIRECT IPv6 host"
+  pu="$(cat "$t/pooler-url")"
+  # This single pattern also rejects any password: a credential-bearing URL has
+  # `user:secret@`, which cannot match a userinfo field that forbids ':'.
+  [[ "$pu" =~ ^(postgres|postgresql)://([^:@/]+)@([^:@/]+):([0-9]+)(/.*)?$ ]] \
+    || die "worktree link: pooler-url is not a password-free postgres URL of the expected shape"
+  scheme="${BASH_REMATCH[1]}"; user="${BASH_REMATCH[2]}"; host="${BASH_REMATCH[3]}"; port="${BASH_REMATCH[4]}"
+  [[ "$user" == "postgres.${EXPECTED_REF}" ]] \
+    || die "worktree link: pooler user is not 'postgres.${EXPECTED_REF}'"
+  [[ "$host" == *.pooler.supabase.com ]] \
+    || die "worktree link: pooler host does not end in .pooler.supabase.com"
+  [[ "$host" != "db.${EXPECTED_REF}.supabase.co" ]] \
+    || die "worktree link: pooler-url points at the DIRECT host (IPv6-only) — refusing"
+  [[ "$port" == 5432 || "$port" == 6543 ]] \
+    || die "worktree link: pooler port '${port}' is neither 5432 nor 6543"
+  # errexit is disabled through this function (it is called on the left of `||`),
+  # so a FAILED `git status` would leave dirty="" and read as a clean tree.
+  # Capture the status explicitly and only interpret emptiness after exit 0.
+  local dirty grc=0
+  dirty="$(git -C "$WT" status --porcelain --untracked-files=no)" || grc=$?
+  [[ "$grc" -eq 0 ]] \
+    || die "worktree link: could not determine tracked-file status (git exit ${grc}) — refusing to proceed to any push"
+  [[ -z "$dirty" ]] \
+    || die "worktree link: supabase link modified TRACKED files in the rollout worktree — refusing"
+  ok "worktree linked: ${scheme}://postgres.${EXPECTED_REF}@${host}:${port} (pooler, password-free, tracked tree clean)"
+}
+
 # --- authoritative, blocking drain proof -----------------------------------
 prove_drain() {
   local t_gate="$1" min="$MIN_DRAIN_SECONDS"
@@ -316,8 +420,9 @@ cmd_dryrun615() {
   require_cmd gh; require_cmd supabase; git fetch origin
   assert_sha_matches_pin "$(pr_head_sha 615)" "$PR615_SHA" "#615 head"
   mk_worktree "$PR615_SHA"
+  require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD for the dry-run connection"
+  link_worktree_pooler || die "worktree link failed — the dry run was NOT attempted"
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
-    require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD for the dry-run connection"
     local pending; pending="$(push_dry_run_pending)" || die "dry run failed (see the CLI diagnostic above)"
     log "db push --dry-run pending:"; printf '%s\n' "$pending" >&2
     assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS" )
@@ -343,6 +448,8 @@ cmd_apply615() {
   gh pr merge 615 --squash --match-head-commit "$PR615_SHA" --delete-branch=false
   git fetch origin
   mk_worktree "$(pr_merge_sha 615)"
+  # linked ONCE here; the same worktree serves both dry runs and the real push
+  link_worktree_pooler || die "worktree link failed — no dry run or push was attempted"
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
     local p2; p2="$(push_dry_run_pending)" || die "dry run failed before the #615 merge push"
     assert_pending_is_expected "$p2" "$EXPECTED_VERSIONS" )
@@ -617,6 +724,7 @@ cmd_resume615() {
       prove_drain "$T_GATE"                      # cannot reach the suffix push without this
       git fetch origin
       mk_worktree "$resume_sha"
+      link_worktree_pooler || die "worktree link failed — the suffix push was NOT attempted; gate stays ON"
       ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
         local pr; pr="$(push_dry_run_pending)" || die "resume dry run failed — gate stays ON"
         assert_pending_is_expected "$pr" "$suffix"

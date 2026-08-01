@@ -263,14 +263,25 @@ grep -q 'e2e-not-a-real-password' <<<"$E2E" && fail "the password leaked into dr
 grep -q 'dry run verified' <<<"$E2E" && fail "dryrun615 claimed verification after a failure" || pass "dryrun615 makes no verification claim after a failure"
 
 echo "== MUTANTS =="
-mut(){ local name="$1"; local pyexpr="$2"; local m="$HERE/../.mutant-$name.sh"
-  python3 - "$RR" "$m" "$pyexpr" <<'PYX'
-import sys
-src, dst, expr = sys.argv[1], sys.argv[2], sys.argv[3]
+# $3 (optional) scopes the replacement to one function body, so an anchor that
+# also appears in a SIBLING function (e.g. link_worktree_pooler reuses the same
+# capture/redaction shape) cannot make the mutation ambiguous.
+mut(){ local name="$1"; local pyexpr="$2"; local scope="${3:-}"; local m="$HERE/../.mutant-$name.sh"
+  python3 - "$RR" "$m" "$pyexpr" "$scope" <<'PYX'
+import sys, re
+src, dst, expr, scope = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 s = open(src).read()
 old, new = expr.split("||=||")
-assert s.count(old) == 1, "anchor %r not unique (%d)" % (old[:40], s.count(old))
-open(dst, "w").write(s.replace(old, new, 1))
+if scope:
+    m = re.search(r"^%s\(\) \{.*?^\}$" % re.escape(scope), s, re.S | re.M)
+    assert m, "scope function %s not found" % scope
+    body = m.group(0)
+    assert body.count(old) == 1, "anchor %r not unique in %s (%d)" % (old[:40], scope, body.count(old))
+    s = s[:m.start()] + body.replace(old, new, 1) + s[m.end():]
+else:
+    assert s.count(old) == 1, "anchor %r not unique (%d)" % (old[:40], s.count(old))
+    s = s.replace(old, new, 1)
+open(dst, "w").write(s)
 PYX
   printf '%s' "$m"; }
 run_mut(){ # $1 mutant, $2 which(push|clone) ; runs the mutant's helper text
@@ -287,7 +298,7 @@ OUT="$(STUB_RC=7 STUB_OUT="connection refused" run_mut "$M" push)"
 grep -q 'connection refused' <<<"$OUT" && fail "mutant (a) still shows the reason" || pass "MUTANT (old 2>&1|sed pipeline) LOSES the CLI reason — capturing to a file is load-bearing"
 rm -f "$M"
 # (b) ignore the CLI status
-M="$(mut ignorerc 'if [[ "$rc" -ne 0 ]]; then||=||if false; then')"
+M="$(mut ignorerc 'if [[ "$rc" -ne 0 ]]; then||=||if false; then' dry_run_pending)"
 OUT="$(STUB_RC=7 STUB_OUT=" • ${V1}_a.sql" run_mut "$M" push)"
 grep -q 'RC=0' <<<"$OUT" && pass "MUTANT (ignores the CLI status) reports SUCCESS on a failed dry run — the status check is load-bearing" || fail "mutant (b) not distinguishable"
 rm -f "$M"
@@ -297,7 +308,7 @@ OUT="$(STUB_RC=1 STUB_OUT="fatal: could not apply ${V1}_a.sql" run_mut "$M" push
 grep -q "STDOUT<<${V1}>>" <<<"$OUT" && pass "MUTANT (parses after failure) emits a pending set from an ERROR message — the ordering is load-bearing" || fail "mutant (c) not distinguishable"
 rm -f "$M"
 # (d) raw unredacted diagnostics
-M="$(mut raw 'safe="$(redact_diag "$cap")" || safe=""||=||safe="$(cat "$cap")"')"
+M="$(mut raw 'safe="$(redact_diag "$cap")" || safe=""||=||safe="$(cat "$cap")"' dry_run_pending)"
 OUT="$(STUB_RC=9 SUPABASE_DB_PASSWORD='p@ss.w*rd[1]' STUB_OUT="db=p@ss.w*rd[1]" run_mut "$M" push)"
 grep -q 'p@ss\.w\*rd\[1\]' <<<"$OUT" && pass "MUTANT (raw diagnostic) LEAKS the password — redaction is load-bearing" || fail "mutant (d) not distinguishable"
 rm -f "$M"
