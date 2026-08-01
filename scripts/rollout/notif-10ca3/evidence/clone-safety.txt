@@ -1,98 +1,128 @@
 $ bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
 
-== read-only inventory: safe metadata only, fail closed on the unknown ==
-  PASS  inventory of a reviewed job set succeeds
+stub syntax OK
+== read-only inventory: safe metadata, fail closed, and SEALABILITY ==
+  PASS  inventory of a reviewed, sealable source succeeds
   PASS  the inventory artifact carries no command, URL, header or secret text
-  PASS  job names and outbound flags are reported
   PASS  inventory is READ-ONLY: nothing was paused
-  PASS  an UNREVIEWED job (e.g. added at runtime by schedule_*_job) stops the procedure
+  PASS  a role that CANNOT create the fence trigger stops the procedure in the READ-ONLY step
+  PASS  …and says so, rather than degrading to a weaker guarantee
+  PASS  an EXISTING sealed window stops a new one (never overwritten implicitly)
+  PASS  …and names the explicit, reviewed recovery path
+  PASS  an UNREVIEWED job (added at runtime by schedule_*_job) stops the procedure
   PASS  OUTBOUND CLASSIFICATION DRIFT on a reviewed job stops the procedure
   PASS  an UNREVIEWED outbound-capable function (incl. nested paths) stops the procedure
-  PASS  an unreviewed function name is refused even when it looks benign
-  PASS  an UNREVIEWED extension with external capability (http) stops the procedure
-  PASS  the reviewed extension set is accepted
-  PASS  an enabled database webhook stops the procedure
-  PASS  an unclassified outbound trigger stops the procedure
-  PASS  a foreign server / FDW stops the procedure
+  PASS  an UNREVIEWED extension with external capability stops the procedure
+  PASS  a non-zero HOOKTRIG count stops the procedure
+  PASS  a non-zero OUTTRIG count stops the procedure
+  PASS  a non-zero FDWSRV count stops the procedure
   PASS  a FAILED inventory read stops the procedure (never classifies blind)
   PASS  inventory refuses a non-production URL (exact identity)
-== quiesce: reversible pause, then a SEALED snapshot boundary ==
-  PASS  quiesce succeeds on a reviewed, quiescent source
+== quiesce: one transaction, then a DURABLE fence, then ARM ==
+  PASS  quiesce succeeds on a reviewed, sealable source
   PASS  every cron job is paused
+  PASS  the fence is installed on cron.job
+  PASS  the window is ARMED after the drain
+  PASS  the marker/fence objects are revoked from PUBLIC/anon/authenticated/service_role
+  PASS  a high-entropy snapshot NONCE was recorded
+  PASS  the marker COMMITTED IN THE DATABASE carries exactly the recorded nonce
   PASS  the pause uses cron.alter_job (reversible)
   PASS  cron.unschedule is never called (only named in the comment that forbids it)
-  PASS  a prior-state manifest was written before pausing
-  PASS  the manifest records each job's exact prior active state
-  PASS  the manifest is non-secret (id/name/active only)
-  PASS  a snapshot NONCE was recorded (database-resident provenance, not a caller timestamp)
-  PASS  the nonce is high-entropy hex
-  PASS  the marker COMMITTED IN THE DATABASE carries exactly the recorded nonce
-  PASS  the boundary instant is reported for the restore UI
--- the seal is the linearization point --
-  PASS  a job ARRIVING AFTER THE PAUSE but before the marker is caught at the seal
-  PASS  …and NO marker was committed (no snapshot may be taken)
-  PASS  the seal takes ACCESS EXCLUSIVE on cron.job (serialises cron.schedule/alter_job)
-  PASS  lock, the exact-set assertion and the marker share ONE transaction
-  PASS  quiesce refuses with running cron executions
-  PASS  …and production was RESTORED, never left paused (running cron executions)
-  PASS  …and no marker was committed (running cron executions)
+-- THE POST-SEAL RACE: a job attempted after the seal must be REJECTED --
+  PASS  a schedule_*_job / cron.schedule attempt INSIDE the armed window is rejected AT THE SOURCE
+  PASS  …and no job row was created (the fence rejects, it does not merely detect)
+  PASS  the fence is STATEMENT-level, so it fires even for a zero-row write
+  PASS  TRUNCATE on cron.job is fenced too
+  PASS  the seal PROVES the fence by probing it, not by asserting its presence
+-- the seal is one transaction: a failure changes NOTHING --
   PASS  quiesce refuses with queued pg_net requests
-  PASS  …and production was RESTORED, never left paused (queued pg_net requests)
-  PASS  …and no marker was committed (queued pg_net requests)
-  PASS  a PARTIAL pause is detected and refused
-  PASS  …and production was restored after the partial pause
-  PASS  a failed prior-state capture stops BEFORE anything is paused
-  PASS  …and nothing was paused
-== resume: EXACT set equality, then unseal ==
+  PASS  …and NOTHING was paused, fenced or marked (queued pg_net requests)
+  PASS  quiesce refuses with a concurrent quiesce
+  PASS  …and NOTHING was paused, fenced or marked (a concurrent quiesce)
+  PASS  quiesce refuses when in-flight executions never drain
+  PASS  …and it LEFT THE WINDOW atomically: unpaused, unfenced, unmarked
+  PASS  an exported manifest with a TRUNCATED final record is refused (never silently dropped)
+  PASS  a failed manifest export is refused
+== resume: ONE atomic transition, and the whole-history invariant ==
   PASS  resume succeeds
   PASS  a job that was ALREADY inactive is restored to inactive (not blanket-enabled)
   PASS  the two previously-active jobs are active again
-  PASS  resume UNSEALS: the marker no longer exists in production
+  PASS  resume removes BOTH the marker and the fence
   PASS  the nonce file is RETAINED (clones are verified after production resumes)
--- restoration is exact: extras, missing, renamed, drifted, malformed --
-  PASS  a job ADDED AFTER CAPTURE makes resume fail loudly (extras are never ignored)
-  PASS  a job MISSING at resume makes resume fail loudly
-  PASS  a job RECREATED/RENAMED under the same id makes resume fail (id+name binding)
-  PASS  a job whose ID CHANGED makes resume fail
-  PASS  a FAILED restore is loud and non-zero (production may still be paused)
-  PASS  a malformed/duplicated manifest record is refused BEFORE any SQL interpolation (JOB	9	name	maybe…)
-  PASS  a malformed/duplicated manifest record is refused BEFORE any SQL interpolation (JOB	nine	name	true…)
-  PASS  a malformed/duplicated manifest record is refused BEFORE any SQL interpolation (JOB	9	na;me--	true…)
-  PASS  a malformed/duplicated manifest record is refused BEFORE any SQL interpolation (NOPE	9	name	true…)
-  PASS  a malformed/duplicated manifest record is refused BEFORE any SQL interpolation (JOB	9	a	true JOB	9	b	false…)
-  PASS  a malformed/duplicated manifest record is refused BEFORE any SQL interpolation (JOB	9	a	true JOB	8	a	false…)
-  PASS  a quote-bearing job name never reaches psql (grammar validated first)
-== clone-side: provenance PROVEN by the clone's own marker ==
-  PASS  a clone carrying THIS run's marker and no active cron passes the gate
-  PASS  a clone with NO marker is refused (restore point before the seal, or after the unseal)
+  PASS  after resume, cron.job is writable again (the fence is not sticky)
+-- no COMMITTED state ever carries a valid marker beside active cron --
+  PASS  across all 3 committed states, marker-present ALWAYS implies zero active cron
+-- a hypothetical restore on each side of every commit --
+  PASS  restore point INSIDE the armed window: accepted
+  PASS  restore point BEFORE the arm commit (marker still 'sealing'): refused
+  PASS  restore point BEFORE the seal commit (no marker, no fence): refused
+  PASS  restore point AFTER the resume commit (marker gone, cron live): refused
+  PASS  a clone whose FENCE is missing is refused (its restore point is outside the window)
   PASS  a clone carrying a DIFFERENT run's marker is refused (exact nonce)
-  PASS  a clone whose cron set differs from the one sealed at the boundary is refused
-  PASS  clone with non-zero C_ACTIVE is refused
+  PASS  a clone whose marker objects are reachable by anon/authenticated/service_role is refused
+  PASS  a clone whose cron CONFIGURATION drifted from the sealed one is refused
   PASS  clone with non-zero C_RUNNING is refused
   PASS  clone with non-zero C_NETQ is refused
   PASS  clone with non-zero C_HOOK is refused
   PASS  clone with non-zero C_OUTTRIG is refused
   PASS  clone with non-zero C_FDW is refused
+  PASS  a clone with an ACTIVE cron job is refused
   PASS  with NO sealed snapshot on file, no clone command may run
   PASS  a malformed recorded nonce is refused
   PASS  clone-push is gated on the isolation assertion
   PASS  clone-make-prefix is gated on the isolation assertion
   PASS  verify-clone is gated on the isolation assertion
+  PASS  clone-unfence is gated on the isolation assertion
+-- restoration is exact over EVERY behaviour-bearing field --
+  PASS  a job ADDED after capture makes resume fail loudly
+  PASS  a job MISSING at resume makes resume fail loudly
+  PASS  a job RENAMED under the same id makes resume fail loudly
+  PASS  a job whose ID CHANGED makes resume fail loudly
+  PASS  a same-id/same-name job whose SCHEDULE, COMMAND, USER, DATABASE or NODE changed makes resume fail loudly
+  PASS  …and a failed resume restores NOTHING (one transaction: all or none)
+  PASS  …and says production is still paused and fenced, so the operator retries
+-- explicit, reviewed stale-window recovery --
+  PASS  an UN-ARMED window is not resumable by the ordinary path
+  PASS  clone-source-abandon recovers it when the operator names the nonce
+  PASS  …restoring prior state and removing the fence and marker
+  PASS  abandon with the WRONG nonce is refused (no window is cleared by accident)
+  PASS  abandon without --nonce is refused
+-- clone-unfence is clone-only and gated --
+  PASS  clone-unfence refuses a production URL
+  PASS  clone-unfence lifts the barrier on a proven clone
+  PASS  …removing only the fence; the marker stays so provenance remains provable
+  PASS  …and production's own fence is untouched
 == MUTANTS ==
-  PASS  mutant built: clone-push isolation gate removed
-  PASS  MUTANT (no gate) proceeds against an UNSEALED clone with LIVE cron — the gate is load-bearing
-  PASS  mutant built: reviewed-inventory check removed from quiesce
-  PASS  MUTANT (no completeness check) quiesces with an UNKNOWN job — the check is load-bearing
-  PASS  MUTANT (no drift compare) accepts a job whose outbound class CHANGED — the compare is load-bearing
-  PASS  MUTANT (no OUTFN review) accepts an unknown outbound function — the OUTFN check is load-bearing
-  PASS  MUTANT (no EXT review) accepts an unknown external-capability extension — the EXT check is load-bearing
-  PASS  MUTANT (fingerprint read LIVE instead of from the capture) SEALS a snapshot containing a job that arrived after the pause — binding the seal to the pre-pause manifest is load-bearing
-  PASS  MUTANT (no set-equality verify) resumes with an EXTRA job unnoticed — exact set equality is load-bearing
-  PASS  MUTANT (no grammar validation) interpolates an unvalidated state into SQL — validation-before-interpolation is load-bearing
-  PASS  MUTANT (queue assertion deleted from the seal) SEALS with 5 QUEUED outbound requests — the assertion is load-bearing
-  PASS  MUTANT (exact-set assertion deleted from the seal) SEALS around a job that arrived after the pause — the assertion is load-bearing
-  PASS  MUTANT (exact-nonce assertion deleted) accepts a clone carrying a FOREIGN marker — exact nonce matching is load-bearing
-  PASS  MUTANT (the whole marker proof deleted) accepts a clone with NO marker at all — database-resident provenance is load-bearing
-  PASS  mutant built: automatic restore removed from the seal-failure path
-  PASS  MUTANT (no auto-restore) LEAVES PRODUCTION PAUSED when the seal fails — the restore path is load-bearing
-================  88 passed, 0 failed  ================
+-- (1) the durable fence --
+  PASS  baseline: the seal artifact alone installs the fence
+  PASS  baseline: a cron.schedule attempt after that seal is rejected
+  PASS  MUTANT (fence mechanism removed) SEALS a window in which a job can still be CREATED — the fence, not the commit lock, is what makes the window durable
+  PASS  …and that job is a real, ACTIVE row a clone would boot and run
+  PASS  MUTANT (trigger deleted, probe kept) is REFUSED at the seal — probing is what turns 'the artifact says it fences' into 'the fence works'
+  PASS  …and no marker was committed, so no restore point looks valid
+  PASS  MUTANT (no sealability check) proceeds on a source where the fence cannot be installed — the read-only check is load-bearing
+-- (2) the atomic transition --
+  PASS  MUTANT (unfence removed from resume) leaves production FENCED after resume — the unfence must be inside the same transaction
+  PASS  MUTANT (no fence check at resume) resumes a window whose fence had already been dropped — the check is load-bearing
+  PASS  baseline: the arm artifact refuses to arm with 3 executions still running
+  PASS  MUTANT (drain assertion deleted from arm) ARMS a window with 3 executions still running — the SQL assertion, not just the shell wait, is load-bearing
+  PASS  MUTANT (armed check deleted) accepts a clone restored BEFORE the arm commit — the state check bounds the window's near edge
+  PASS  MUTANT (clone fence check deleted) accepts a clone from OUTSIDE the fenced window — the fence bounds the window's far edge
+-- (3) exact restoration --
+  PASS  MUTANT (every configuration comparison deleted) re-enables a job whose COMMAND changed under the same id and name — a same-id/same-name drift is otherwise invisible
+  PASS  MUTANT (set-equality proof and the fingerprint compare deleted) resumes with an EXTRA job unnoticed — exact set equality is load-bearing
+  PASS  MUTANT (no manifest validation) accepts an evidence manifest whose final record is truncated — the fail-closed check is load-bearing
+-- (4) marker ownership and lifecycle --
+  PASS  MUTANT (both prior-window guards deleted) OVERWRITES another run's marker — refusing to reuse a window is load-bearing
+  PASS  MUTANT (advisory lock deleted) seals while another quiesce is running — run-level exclusion is load-bearing
+  PASS  MUTANT (REVOKE deleted) leaves the marker objects on ambient default grants — the explicit lockdown is load-bearing
+  PASS  MUTANT (clone ACL check deleted) accepts a clone whose marker objects are world-readable — verifying ACLs in the CLONE is load-bearing
+-- (5) timing honesty --
+  PASS  now() is stored as sealed_tx_start and labelled transaction-start, not the commit instant
+  PASS  the informational instant is clock_timestamp() read AFTER the commit
+  PASS  it is rendered to microseconds, not truncated to seconds
+  PASS  the operator is told only the nonce establishes provenance
+  PASS  the seal artifact states plainly that its lock ends at COMMIT
+  PASS  the runbook states plainly that the lock ends at COMMIT
+  PASS  no surviving AFFIRMATIVE claim that the lock protects the window after commit
+================  108 passed, 0 failed  ================

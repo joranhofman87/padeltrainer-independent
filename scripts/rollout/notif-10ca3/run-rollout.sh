@@ -590,11 +590,40 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   ok "inventory reviewed: $(awk '$1=="CRONJOB"{n++} END{print n+0}' "$inv") cron job(s), all known; no webhooks/outbound triggers/FDWs"
 }
 
-# STRICT grammar + uniqueness. Every field is validated BEFORE it can be
-# interpolated into SQL, so no unvalidated manifest text ever reaches psql.
+# The fence is a TRIGGER on cron.job, so it requires ownership of that table.
+# Learn that in the READ-ONLY step, never mid-window. Also refuse to start a new
+# window while an old one is still open.
+assert_source_is_sealable() {   # $1 = inventory file
+  local inv="$1" fenceable prior
+  fenceable="$(awk '$1=="FENCEABLE"{print $2}' "$inv")"
+  prior="$(awk '$1=="PRIORWINDOW"{print $2}' "$inv")"
+  [[ -n "$fenceable" ]] || die "inventory is missing FENCEABLE — refusing to proceed on an incomplete read"
+  [[ -n "$prior"     ]] || die "inventory is missing PRIORWINDOW — refusing to proceed on an incomplete read"
+  [[ "$fenceable" == yes ]] \
+    || die "this role cannot create a trigger on cron.job, so the durable fence CANNOT be installed. Without the fence a job created after the seal would reach a clone. Connect as the owner of cron.job (or have it granted) and retry — the procedure fails closed rather than sealing an unprotected window."
+  [[ "$prior" -eq 0 ]] \
+    || die "a sealed window ALREADY exists in this database (rollout_clone). Resume it with 'clone-source-resume --yes <url>', or recover an abandoned one explicitly with 'clone-source-abandon --yes --nonce <its nonce> <url>'. Nothing is ever overwritten implicitly."
+  ok "source is sealable: this role owns cron.job (fence installable) and no prior window is open"
+}
+
+source_config_fp() {   # $1 = inventory file -> the cron CONFIGURATION fingerprint
+  local fp; fp="$(awk '$1=="CFGFP"{print $2}' "$1")"
+  [[ "$fp" =~ ^[0-9a-f]{32}$ ]] || die "inventory did not report a well-formed cron configuration fingerprint"
+  printf '%s' "$fp"
+}
+
+# STRICT grammar + uniqueness for the EXPORTED evidence manifest. This file is a
+# human-readable record and a cross-check; it is NEVER the input to restoration
+# (that is rollout_clone.snapshot_job_state, captured by the seal from cron.job
+# itself), so no manifest text is ever interpolated into SQL. It is still
+# validated fail-closed, including a truncated final line: `read` returns false
+# on an unterminated last record and would otherwise DROP it silently.
 validate_source_manifest() {   # $1 = manifest
-  local f="$1" tag id name act n=0
+  local f="$1" tag id name act n=0 last
   local -a ids=() names=()
+  [[ -s "$f" ]] || die "manifest is empty"
+  last="$(tail -c 1 "$f" | od -An -c | tr -d ' ')"
+  [[ "$last" == '\n' ]] || die "manifest does not end in a newline — its final record is truncated and would be silently dropped"
   while IFS=$'\t' read -r tag id name act; do
     n=$((n+1))
     [[ "$tag" == JOB ]] || die "manifest line ${n}: unknown record tag '${tag}' (expected JOB)"
@@ -603,10 +632,10 @@ validate_source_manifest() {   # $1 = manifest
     [[ "$act" == true || "$act" == false ]] || die "manifest line ${n}: active state '${act}' is neither true nor false"
     ids+=("$id"); names+=("$name")
   done < "$f"
-  [[ "$n" -gt 0 ]] || die "manifest is empty"
+  [[ "$n" -gt 0 ]] || die "manifest has no records"
   [[ "$(printf '%s\n' "${ids[@]}"   | sort | uniq -d | wc -l | tr -d ' ')" == 0 ]] || die "manifest has DUPLICATE job ids"
   [[ "$(printf '%s\n' "${names[@]}" | sort | uniq -d | wc -l | tr -d ' ')" == 0 ]] || die "manifest has DUPLICATE job names"
-  ok "prior-state manifest validated: ${n} job(s), unique ids and names, well-formed states"
+  ok "exported prior-state manifest validated: ${n} job(s), unique ids and names, well-formed states, complete final record"
 }
 
 cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
@@ -616,17 +645,22 @@ cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
   local inv="$EVID/clone-source-inventory.txt"
   read_source_inventory "$url" "$inv"
   assert_inventory_is_reviewed "$inv"
+  assert_source_is_sealable "$inv"
   awk '$1=="CRONJOB"{printf "  %-38s active=%-5s outbound=%s\n",$2,$3,$4}
        $1=="RUNNING"{printf "  running cron executions: %s\n",$2}
        $1=="NETQUEUE"{printf "  pg_net queued requests : %s\n",$2}
        $1=="VAULTCOUNT"{printf "  vault secrets (count)  : %s\n",$2}
+       $1=="CFGFP"{printf "  cron configuration fp  : %s\n",$2}
        $1=="OUTFN"{printf "  outbound-capable fn    : %s\n",$2}' "$inv" >&2
   ok "clone-source inventory complete (read-only, no commands/URLs/secrets displayed) -> ${inv##*/}"
 }
 
-# Pause every reviewed job, prove the source is inert, then record the PITR
-# instant. Reversible by construction: cron.alter_job(active := false) only —
-# NEVER cron.unschedule, which would destroy the schedule.
+# Capture, pause, FENCE and mark — all inside ONE server-side transaction, then
+# drain in-flight executions and ARM the window.
+#
+# A seal failure changes NOTHING (single transaction, rolled back), so there is
+# no compensating restore to get wrong. Only an ARM failure needs one, and that
+# is the same atomic resume the operator would run by hand.
 cmd_clone_source_quiesce() {
   require_yes "${1:-}"
   local url="${2:-}"; require_arg "$url" "usage: clone-source-quiesce --yes <prod_conn_url>"
@@ -635,142 +669,155 @@ cmd_clone_source_quiesce() {
   local inv="$EVID/clone-source-inventory.txt"
   read_source_inventory "$url" "$inv"
   assert_inventory_is_reviewed "$inv"
+  assert_source_is_sealable "$inv"
 
-  # 1) capture the EXACT prior active state first: this manifest is the only way
-  #    back, so it is written before anything is paused.
-  psql "$url" -v ON_ERROR_STOP=1 -Atqc \
-    "SELECT format('JOB\t%s\t%s\t%s', jobid, jobname, active) FROM cron.job ORDER BY jobid" > "$SRC_MANIFEST" \
-    || die "could not capture the prior cron active-state manifest — nothing was paused"
-  [[ -s "$SRC_MANIFEST" ]] || die "prior-state manifest is empty — refusing to pause without a way back"
+  local nonce fp seal_rc=0
+  nonce="$(gen_salt)$(gen_salt)"                 # 32 hex chars of per-run entropy
+  fp="$(source_config_fp "$inv")"
+
+  # run_sql_soft, NOT run_sql: `die` would exit before the diagnostics below
+  run_sql_soft "$url" "$SQL_DIR/clone_source_seal.sql" -v "nonce=$nonce" -v "expect_fp=$fp" \
+    > "$EVID/clone-source-seal.txt" 2>&1 || seal_rc=$?
+  if [[ "$seal_rc" -ne 0 ]]; then
+    warn "SEAL FAILED — the transaction rolled back, so NOTHING was paused, fenced or marked"
+    sed -n 's/^\(ERROR\|psql\|NOTICE\).*/&/p' "$EVID/clone-source-seal.txt" | head -6 >&2
+    die "clone-source quiesce aborted at the seal (production is untouched)"
+  fi
+  printf '%s\n' "$nonce" > "$EVID/clone-source-nonce.txt"
+  chmod 600 "$EVID/clone-source-nonce.txt" 2>/dev/null || true
+  ok "SEALED: prior state captured, every job paused, cron.job FENCED (fence proven effective), marker committed"
+
+  # export the captured prior state as human-readable evidence + cross-check
+  export_source_manifest "$url"
+
+  # drain: the fence guarantees nothing can be added or re-activated meanwhile
+  local drain_rc=0 arm_rc=0
+  quiesce_drain "$url" || drain_rc=$?
+  if [[ "$drain_rc" -eq 0 ]]; then
+    run_sql_soft "$url" "$SQL_DIR/clone_source_arm.sql" -v "nonce=$nonce" \
+      > "$EVID/clone-source-arm.txt" 2>&1 || arm_rc=$?
+  fi
+  if [[ "$drain_rc" -ne 0 || "$arm_rc" -ne 0 ]]; then
+    warn "the window could not be ARMED — leaving the sealed window is the ONLY safe exit; resuming now"
+    [[ "$arm_rc" -eq 0 ]] || sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-arm.txt" | head -5 >&2
+    # allow_unarmed=1: by definition this window never reached 'sealed', and the
+    # atomic resume is the only safe way out of it
+    clone_source_leave_window "$url" "$nonce" 1 \
+      || warn "AUTOMATIC RESUME ALSO FAILED — production is still PAUSED and FENCED. Run 'clone-source-abandon --yes --nonce <the nonce in evidence/clone-source-nonce.txt> <url>' IMMEDIATELY"
+    die "clone-source quiesce aborted before arming"
+  fi
+
+  ok "WINDOW ARMED — $(sed -n 's/^ARM_OBSERVED_AFTER_COMMIT //p' "$EVID/clone-source-arm.txt" | tail -1) (observed after commit; INFORMATIONAL ONLY)"
+  warn "Provenance is established by the marker nonce in the database, never by a timestamp."
+  warn "PRODUCTION CRON IS PAUSED AND FENCED. Restore every clone now; each clone must"
+  warn "carry this run's ARMED marker and a still-effective fence, which only holds for"
+  warn "restore points inside this window. Then run:"
+  warn "  run-rollout.sh clone-source-resume --yes <prod_conn_url>"
+}
+
+# The captured relation is the authority; this is its human-readable shadow.
+export_source_manifest() {   # $1 url
+  psql "$1" -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT format('JOB\t%s\t%s\t%s', jobid, jobname, prior_active) FROM rollout_clone.snapshot_job_state ORDER BY jobid" \
+    > "$SRC_MANIFEST" || die "could not export the captured prior-state manifest"
   chmod 600 "$SRC_MANIFEST" 2>/dev/null || true
   validate_source_manifest "$SRC_MANIFEST"
-  ok "prior cron active-state manifest captured ($(wc -l < "$SRC_MANIFEST" | tr -d ' ') job(s))"
-
-  # 2) pause. Any failure from here on MUST restore, never leave prod paused.
-  local paused_ok=1
-  psql "$url" -v ON_ERROR_STOP=1 -Atqc \
-    "SELECT cron.alter_job(jobid, active := false) FROM cron.job WHERE active" >/dev/null || paused_ok=0
-  if [[ "$paused_ok" -ne 1 ]]; then
-    warn "pausing FAILED part-way — restoring the prior state now"
-    clone_source_restore "$url" || warn "AUTOMATIC RESTORE ALSO FAILED — run 'clone-source-resume --yes <url>' IMMEDIATELY"
-    die "clone-source quiesce aborted during pause (production state restored, or restore attempted and reported above)"
-  fi
-
-  # 3..5) settle: wait out running executions, then SEAL. The seal transaction is
-  # the snapshot boundary — it locks cron.job and re-verifies the EXACT job set,
-  # zero-active, zero-running and an empty pg_net queue in one atomic step, so a
-  # runtime schedule_*_job cannot slip a job in between the checks and the mark.
-  local guard_rc=0
-  quiesce_settle "$url" || guard_rc=$?
-  if [[ "$guard_rc" -ne 0 ]]; then
-    warn "the source did not settle — restoring production now"
-    clone_source_restore "$url" || warn "AUTOMATIC RESTORE ALSO FAILED — run 'clone-source-resume --yes <url>' IMMEDIATELY"
-    die "clone-source quiesce aborted (production state restored, or restore attempted and reported above)"
-  fi
-
-  # 6) the marker: provenance a clone can prove about itself.
-  local nonce fp seal_rc=0
-  nonce="$(gen_salt)$(gen_salt)"           # 32 hex chars of per-run entropy
-  fp="$(manifest_fingerprint "$SRC_MANIFEST")"
-  [[ -n "$fp" ]] || { clone_source_restore "$url" || true; die "could not fingerprint the manifest"; }
-  # run_sql_soft, NOT run_sql: a fatal `die` here would exit before the restore below
-  run_sql_soft "$url" "$SQL_DIR/clone_source_seal.sql" -v "nonce=$nonce" -v "expect_fp=$fp" > "$EVID/clone-source-seal.txt" 2>&1 || seal_rc=$?
-  if [[ "$seal_rc" -ne 0 ]]; then
-    warn "SEAL FAILED (the boundary could not be established) — restoring production now"
-    sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-seal.txt" | head -5 >&2
-    clone_source_restore "$url" || warn "AUTOMATIC RESTORE ALSO FAILED — run 'clone-source-resume --yes <url>' IMMEDIATELY"
-    die "clone-source quiesce aborted at the seal (production state restored, or restore attempted and reported above)"
-  fi
-  printf '%s\n' "$nonce" > "$EVID/clone-source-nonce.txt"; chmod 600 "$EVID/clone-source-nonce.txt" 2>/dev/null || true
-  local sealed; sealed="$(sed -n 's/^SEALED_AT //p' "$EVID/clone-source-seal.txt" | tail -1)"
-  ok "SNAPSHOT BOUNDARY SEALED at ${sealed:-<see evidence>} (nonce recorded in evidence/clone-source-nonce.txt)"
-  warn "PRODUCTION CRON IS PAUSED and the marker is live. Restore every clone from a point"
-  warn "INSIDE this sealed window — the clone must carry the marker AND have no active cron."
-  warn "Then run:  run-rollout.sh clone-source-resume --yes <prod_conn_url>"
 }
 
-# md5 over the newline-joined "jobid:jobname" set, ordered numerically by id —
-# byte-identical to the SQL side's
-#   md5(string_agg(jobid::text || ':' || jobname, E'\n' ORDER BY jobid))
-# so the seal transaction can assert the live set EQUALS the captured manifest.
-manifest_fingerprint() {   # $1 manifest path
-  awk -F'\t' '$1=="JOB"{print $2"\t"$3}' "$1" | sort -n -k1,1 \
-    | awk -F'\t' '{ if (n++) printf "\n"; printf "%s:%s", $1, $2 }' | md5_stdin
-}
-
-quiesce_settle() {   # $1 url ; wait for in-flight executions to drain
+quiesce_drain() {   # $1 url ; wait for in-flight executions to finish
   local url="$1" n i
-  n="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM cron.job WHERE active")" || return 1
-  [[ "$n" == 0 ]] || { warn "still ${n} ACTIVE cron job(s) after the pause"; return 1; }
-  ok "every cron job is inactive"
   for i in 1 2 3 4 5 6 7 8 9 10; do
     n="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM cron.job_run_details WHERE status = 'running'")" || return 1
-    [[ "$n" == 0 ]] && break
+    [[ "$n" == 0 ]] && { ok "zero running cron executions (drained)"; return 0; }
     log "waiting for ${n} running cron execution(s) to finish (${i}/10)"
     sleep "${QUIESCE_WAIT_SECS:-15}"    # test suites set 0; production always waits
   done
-  [[ "$n" == 0 ]] || { warn "cron executions still running after the wait"; return 1; }
-  ok "zero running cron executions"
-  return 0
+  warn "cron executions still running after the wait"
+  return 1
 }
 
-# Restore EXACTLY the recorded prior active states, bound by BOTH job id AND job
-# name, then prove EXACT SET EQUALITY: a job added, removed, recreated with a new
-# id, or renamed since the manifest was captured makes this fail loudly. An inner
-# join would silently ignore extras — it must not.
-clone_source_restore() {   # $1 url
-  local url="$1" tag jobid name prior bad=0
-  [[ -f "$SRC_MANIFEST" ]] || { warn "no prior-state manifest at $SRC_MANIFEST — cannot restore automatically"; return 1; }
-  validate_source_manifest "$SRC_MANIFEST" || return 1
-  while IFS=$'\t' read -r tag jobid name prior; do
-    [[ "$tag" == JOB ]] || continue
-    # bound by id AND name: a recreated job with the same id but a different name
-    # must not silently receive the old state
-    psql "$url" -v ON_ERROR_STOP=1 -Atqc \
-      "SELECT cron.alter_job(${jobid}, active := ${prior}) FROM cron.job WHERE jobid = ${jobid} AND jobname = '${name}'" >/dev/null \
-      || { warn "restore FAILED for job ${name}"; bad=$((bad+1)); }
-  done < "$SRC_MANIFEST"
-  local values mism
-  values="$(awk -F'\t' '$1=="JOB"{printf "%s(%s,%s,%s)", sep, $2, "'"'"'" $3 "'"'"'", $4; sep=","}' "$SRC_MANIFEST")"
-  [[ -n "$values" ]] || { warn "could not build the expected-state set"; return 1; }
-  # FULL OUTER JOIN: counts missing, extra, renamed and drifted in one number
-  mism="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc \
-    "SELECT count(*) FROM cron.job j FULL OUTER JOIN (VALUES ${values}) AS m(jobid, jobname, want) ON m.jobid = j.jobid AND m.jobname = j.jobname
-      WHERE j.jobid IS NULL OR m.jobid IS NULL OR j.active IS DISTINCT FROM m.want")" \
-    || { warn "could not VERIFY the restored state"; return 1; }
-  [[ "$mism" == 0 ]] \
-    || { warn "${mism} cron job(s) differ from the recorded set (missing, ADDED SINCE CAPTURE, recreated/renamed, or wrong active state)"; bad=$((bad+1)); }
-  [[ "$bad" -eq 0 ]] || return 1
-  ok "production cron restored to its EXACT recorded set and state (no missing, extra, renamed or drifted job)"
+# The ONE atomic transition out of the window: verify -> unfence -> restore ->
+# prove -> drop the marker, in a single server-side transaction under ACCESS
+# EXCLUSIVE. No committed state ever carries a valid marker beside active cron.
+clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
+  local rc=0
+  run_sql_soft "$1" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$2" -v "allow_unarmed=$3" \
+    > "$EVID/clone-source-resume.txt" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    warn "resume transaction FAILED and rolled back — production remains paused and fenced with its marker intact"
+    sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-resume.txt" | head -6 >&2
+    return "$rc"
+  fi
+  ok "production cron restored to its EXACT recorded set, configuration and active state; fence and marker removed"
+  return 0
 }
 
 cmd_clone_source_resume() {
   require_yes "${1:-}"
   local url="${2:-}"; require_arg "$url" "usage: clone-source-resume --yes <prod_conn_url>"
   require_cmd psql; assert_conn_url_is_ref "$EXPECTED_REF" "$url"
-  clone_source_restore "$url" || die "RESTORE FAILED — production cron may still be paused; investigate immediately"
-  # the marker must not outlive the cloning window; clones keep their own copy
-  run_artifact "$url" clone_source_unseal.sql
+  local nonce; nonce="$(read_recorded_nonce)"
+  clone_source_leave_window "$url" "$nonce" 0 \
+    || die "RESUME FAILED — production is still PAUSED and FENCED; investigate and retry immediately"
   # the nonce FILE is retained deliberately: clones are verified after production
   # resumes, and each clone must still prove it carries this exact marker.
-  ok "snapshot marker removed from production; normal operation restored"
-  ok "restore-point contract: only a clone restored between the SEAL commit and this"
-  ok "unseal carries the marker — anything earlier or later fails clone verification"
+  ok "restore-point contract: only a clone restored between the ARM commit and this"
+  ok "resume commit carries an armed marker AND a live fence — anything outside fails"
 }
 
-# CLONE-SIDE GATE. No rehearsal command may touch a clone until this passes.
-# Provenance is proven BY THE CLONE'S OWN DATABASE: it must carry the sealed
-# marker row for this run's nonce. No caller-supplied timestamp is trusted.
+# EXPLICIT, reviewed recovery for a window whose run was abandoned (e.g. the
+# operator's session died between seal and arm). Requires the operator to read
+# the nonce out of the database and pass it back, so no stale window is ever
+# cleared implicitly or by accident.
+cmd_clone_source_abandon() {
+  require_yes "${1:-}"; shift
+  local nonce="" url=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --nonce) nonce="${2:-}"; shift 2;;
+      *) url="$1"; shift;;
+    esac
+  done
+  require_arg "$url"   "usage: clone-source-abandon --yes --nonce <nonce> <prod_conn_url>"
+  require_arg "$nonce" "clone-source-abandon REQUIRES --nonce <the nonce recorded in rollout_clone.snapshot_marker>"
+  [[ "$nonce" =~ ^[0-9a-f]{32,}$ ]] || die "the supplied nonce is malformed"
+  require_cmd psql; assert_conn_url_is_ref "$EXPECTED_REF" "$url"
+  warn "ABANDON: leaving an un-armed or foreign sealed window. This restores prior"
+  warn "cron state and removes the fence and marker — the same atomic transition as"
+  warn "resume, with the arm requirement waived because you named the nonce."
+  clone_source_leave_window "$url" "$nonce" 1 \
+    || die "ABANDON FAILED — production is still PAUSED and FENCED; investigate immediately"
+}
+
+read_recorded_nonce() {
+  [[ -f "$EVID/clone-source-nonce.txt" ]] \
+    || die "no sealed snapshot on file — run clone-source-quiesce first (or, for an abandoned window, clone-source-abandon --nonce <n>)"
+  local n; n="$(cat "$EVID/clone-source-nonce.txt")"
+  [[ "$n" =~ ^[0-9a-f]{32,}$ ]] || die "recorded snapshot nonce is malformed"
+  printf '%s' "$n"
+}
+
+# CLONE-ONLY. Lift the write barrier on a disposable clone when a rehearsal's
+# migrations must create cron jobs. The marker is kept, so provenance stays
+# provable; only the fence goes. Never valid against production.
+cmd_clone_unfence() {
+  require_yes "${1:-}"
+  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-unfence --yes <clone_conn_url>"
+  require_cmd psql; assert_clone_url "$url"
+  assert_clone_isolated "$url"          # prove provenance + inertness BEFORE lifting anything
+  run_artifact "$url" clone_unfence.sql
+  warn "this clone is no longer fenced: cron.job is writable here. It remains inert"
+  warn "(no active jobs) and it is disposable — destroy it as soon as evidence is captured."
+}
+
 assert_clone_isolated() {   # $1 = clone url
   local url="$1" nonce
-  [[ -f "$EVID/clone-source-nonce.txt" ]] \
-    || die "no sealed snapshot on file — run clone-source-quiesce first; without a marker a clone's provenance cannot be PROVEN"
-  nonce="$(cat "$EVID/clone-source-nonce.txt")"
-  [[ "$nonce" =~ ^[0-9a-f]{32,}$ ]] || die "recorded snapshot nonce is malformed"
-  # The proof is inside the clone: it must carry this exact marker AND have no
-  # active cron. An environment variable never establishes provenance.
+  nonce="$(read_recorded_nonce)"
+  # The proof is inside the clone: an ARMED marker with this exact nonce, a fence
+  # that is still EFFECTIVE, the sealed configuration, and no active cron. An
+  # environment variable never establishes provenance.
   run_sql "$url" "$SQL_DIR/clone_isolation.sql" -v "nonce=$nonce"
-  ok "clone provenance PROVEN by its own marker; clone verified inert"
+  ok "clone provenance PROVEN by its own armed marker inside a still-fenced window; clone verified inert"
 }
 
 # Shared preamble for the two clone-migrating commands: clone identity (provably
@@ -1025,6 +1072,8 @@ case "$sub" in
   clone-source-inventory) cmd_clone_source_inventory "$@";;
   clone-source-quiesce)   cmd_clone_source_quiesce "$@";;
   clone-source-resume)    cmd_clone_source_resume "$@";;
+  clone-source-abandon)   cmd_clone_source_abandon "$@";;
+  clone-unfence)          cmd_clone_unfence "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
   clean-evidence) cmd_clean_evidence "$@";;
@@ -1036,12 +1085,14 @@ usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   rollback615 <url> [--clone] | clean-evidence --yes <url>
 clone SAFETY (production, before any clone exists):
   clone-source-inventory <prod_url>          # READ-ONLY outbound inventory
-  clone-source-quiesce --yes <prod_url>      # pause cron + SEAL the snapshot boundary (marker)
-  clone-source-resume  --yes <prod_url>      # restore the exact cron set/state + unseal
+  clone-source-quiesce --yes <prod_url>      # capture+pause+FENCE+mark (1 tx), drain, ARM
+  clone-source-resume  --yes <prod_url>      # ONE atomic tx: unfence + exact restore + unmark
+  clone-source-abandon --yes --nonce <n> <prod_url>   # explicit stale-window recovery
 clone-only (CLONE_REF=<ref> != EXPECTED_REF, CAP_STMT=<ms>; provenance = the sealed marker):
   clone-push --yes <clone_url>                 # push the MISSING suffix from PR615_SHA
   clone-make-prefix --yes <1|2> <clone_url>    # rehearsal C: real partial apply
   verify-clone <clone_url> --clone             # post-migration battery
+  clone-unfence --yes <clone_url>              # clone-only: lift the write barrier
 EOF
      exit 2;;
 esac

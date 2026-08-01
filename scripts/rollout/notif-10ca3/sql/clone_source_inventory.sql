@@ -13,9 +13,15 @@
 --
 -- Emits stable machine-readable lines for the caller to classify:
 --   CRONJOB <name> <active> <outbound>
+--   CFGFP <md5>      the cron CONFIGURATION fingerprint the seal will require
+--   FENCEABLE <yes|no>  can this role create the fence trigger on cron.job?
+--   PRIORWINDOW <n>  a sealed window already exists (must be 0 before sealing)
 --   RUNNING <n> | NETQUEUE <n> | HOOKTRIG <n> | FDWSRV <n> | OUTFN <schema.name>
 --   EXT <name> | VAULTCOUNT <n>
 -- ===========================================================================
+\ir _assert.sql
+\ir _cron_fp.sql
+
 \pset tuples_only on
 \pset format unaligned
 \pset footer off
@@ -24,6 +30,18 @@ SELECT format('CRONJOB %s %s %s', jobname, active,
               CASE WHEN command ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
                    THEN 'yes' ELSE 'no' END)
 FROM cron.job ORDER BY jobid;
+
+-- the exact configuration the seal will pin, computed identically there
+SELECT format('CFGFP %s', pg_temp.cron_config_fp());
+
+-- The fence is a trigger on cron.job, so it needs ownership of that table.
+-- Report it HERE, in the read-only step, so the operator learns before anything
+-- is paused rather than mid-window.
+SELECT format('FENCEABLE %s',
+  CASE WHEN pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = 'cron.job'::regclass), 'USAGE')
+       THEN 'yes' ELSE 'no' END);
+
+SELECT format('PRIORWINDOW %s', count(*)) FROM information_schema.schemata WHERE schema_name = 'rollout_clone';
 
 SELECT format('RUNNING %s', count(*)) FROM cron.job_run_details WHERE status = 'running';
 SELECT format('NETQUEUE %s', count(*)) FROM net.http_request_queue;

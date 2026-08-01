@@ -383,5 +383,3 @@ run_sql_soft() {
   return "$rc"
 }
 
-# portable md5 of stdin (md5sum on linux, md5 -q on darwin)
-md5_stdin() { if command -v md5sum >/dev/null 2>&1; then md5sum | awk '{print $1}'; else md5 -q; fi; }

@@ -2,21 +2,26 @@
 -- clone_isolation.sql — CLONE-SIDE provenance + inertness. Fails loudly.
 --
 -- PROVENANCE IS PROVEN BY THE CLONE'S OWN DATABASE, not asserted by the caller.
--- An environment variable cannot establish which restore point produced a clone;
--- the marker committed at the snapshot boundary can, because a Supabase restore
--- copies database state. The clone must carry the exact nonce.
+-- No environment variable can establish which restore point produced a clone;
+-- the objects committed at the seal can, because a Supabase restore copies
+-- database state.
 --
--- The two marker checks together give an EXACT restore-point contract, replacing
--- the old ambiguous "at/after the timestamp":
---   * the marker with this nonce EXISTS  -> the restore point is at/after the seal
---   * zero cron jobs are ACTIVE          -> the restore point is before the resume
--- Only points inside the sealed window satisfy both.
+-- THE EXACT RESTORE-POINT CONTRACT. Four checks bound the window from both ends:
+--   marker present with this nonce   -> at or after the SEAL commit
+--   marker state = 'sealed'          -> at or after the ARM commit (drained)
+--   the FENCE is present + effective -> before the RESUME commit (which drops it)
+--   zero ACTIVE cron jobs            -> before the RESUME commit (which restores them)
+-- Only a restore point inside the armed, fenced window satisfies all four. The
+-- resume performs the unfence, the restore and the marker drop in ONE
+-- transaction, so no committed state carries a valid marker beside active cron.
 --
--- :nonce  the run nonce recorded by clone-source-seal
+-- :nonce  the run nonce recorded by clone-source-quiesce
 -- Reads only. Never selects a cron command, pg_net URL/header/body, Vault secret
 -- or customer row.
 -- ===========================================================================
 \ir _assert.sql
+\ir _cron_fp.sql
+\ir _fence.sql
 
 SELECT pg_temp.assert(
   (SELECT count(*) FROM information_schema.tables
@@ -27,15 +32,38 @@ SELECT pg_temp.assert_eq(
   (SELECT count(*) FROM rollout_clone.snapshot_marker WHERE nonce = :'nonce')::bigint, 1::bigint,
   'clone carries THIS run''s exact snapshot nonce (provenance proven by the clone itself)');
 
-SELECT pg_temp.assert_eq((SELECT count(*) FROM rollout_clone.snapshot_marker)::bigint, 1::bigint,
-  'clone carries exactly one marker (no stale marker from an earlier run)');
+SELECT pg_temp.assert_eq((SELECT state FROM rollout_clone.snapshot_marker), 'sealed',
+  'the clone''s marker is ARMED (restore point is at/after the arm commit, so in-flight executions had drained)');
 
--- the marker's own fingerprint must still describe this clone's cron set: a
--- restore that picked up jobs created after the seal is rejected here.
-SELECT pg_temp.assert_eq(
-  (SELECT cron_fingerprint FROM rollout_clone.snapshot_marker LIMIT 1),
-  (SELECT md5(string_agg(jobid::text || ':' || jobname, E'\n' ORDER BY jobid)) FROM cron.job),
-  'the clone''s cron set matches the set sealed at the snapshot boundary');
+-- the fence proves the restore point PRECEDES the resume, and that no job could
+-- have been created in the source between the seal and this restore point
+SELECT pg_temp.assert_fence_effective('clone');
+
+-- configuration identity: the clone's cron set is exactly the sealed one
+SELECT pg_temp.assert_eq(pg_temp.cron_config_fp(), pg_temp.snapshot_config_fp(),
+  'the clone''s cron configuration is EXACTLY the one captured at the seal');
+SELECT pg_temp.assert_eq(pg_temp.cron_config_fp(),
+  (SELECT cron_config_fp FROM rollout_clone.snapshot_marker),
+  'the clone''s cron configuration matches the fingerprint recorded in the marker');
+
+-- the marker/fence objects are owner-only in the clone too
+DO $acl$
+DECLARE r text;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      IF has_schema_privilege(r, 'rollout_clone', 'USAGE') THEN
+        RAISE EXCEPTION 'clone ACL: role % can USE the rollout_clone schema', r;
+      END IF;
+      IF has_function_privilege(r, 'rollout_clone.fence_cron_job()', 'EXECUTE') THEN
+        RAISE EXCEPTION 'clone ACL: role % can EXECUTE the fence function', r;
+      END IF;
+    END IF;
+  END LOOP;
+  IF has_schema_privilege('public', 'rollout_clone', 'USAGE') THEN
+    RAISE EXCEPTION 'clone ACL: PUBLIC can USE the rollout_clone schema';
+  END IF;
+END $acl$;
 
 SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job WHERE active)::bigint, 0::bigint,
   'clone has ZERO ACTIVE cron jobs (also proves the restore point precedes the production resume)');
@@ -68,4 +96,4 @@ SELECT pg_temp.assert_eq(
 SELECT pg_temp.assert_eq((SELECT count(*) FROM pg_foreign_server)::bigint, 0::bigint,
   'clone has ZERO foreign servers / FDW wrappers');
 
-SELECT pg_temp.note('clone isolation: provenance proven by marker nonce; inert (no active cron, no running jobs, empty pg_net queue, no outbound triggers/FDWs)');
+SELECT pg_temp.note('clone isolation: provenance proven by an ARMED marker nonce inside a still-fenced window; inert (no active cron, no running jobs, empty pg_net queue, no outbound triggers/FDWs); marker objects owner-only');
