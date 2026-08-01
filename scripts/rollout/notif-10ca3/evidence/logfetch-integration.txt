@@ -1,0 +1,40 @@
+$ bash scripts/rollout/notif-10ca3/verify/logfetch-integration-test.sh
+
+== THE REGRESSION: a failed fetch must not let a stale window be verified ==
+  PASS  seeded a VALID successful stale window for the same invoice
+  PASS  live fetch without a PAT -> nonzero (1)
+  PASS  the stale window was INVALIDATED before the attempt (not left looking current)
+  PASS  live fetch with a failing transport -> nonzero (1)
+  PASS  stale window invalidated on transport failure too
+== a fresh, current window verifies ==
+  PASS  fresh live window + integrated verification -> exit 0
+  PASS  a fresh PII-safe evidence copy is retained for diagnosis
+  PASS  the retained copy is the window just fetched
+== isolation, wrong invoice, and analysis failures block verification ==
+  PASS  unrelated concurrent sends in the same window stay isolated
+  PASS  the other party's invoice verifies on its own record
+  PASS  an invoice absent from the window -> nonzero
+  PASS  record_failed -> analysis fails, verification never runs
+  PASS  unfinished send -> analysis fails, verification never runs
+  PASS  record_failed for ANOTHER invoice still blocks verification (window-level analysis is conservative)
+  PASS  empty result -> nonzero (no vacuous pass)
+  PASS  malformed response -> nonzero (fail closed)
+  PASS  truncated page (== LIMIT) -> nonzero (window may be incomplete)
+  PASS  a verifier failure propagates nonzero through the fetch wrapper
+== the verifier has no implicit input ==
+  PASS  standalone verifier without --from-file -> usage error (exit 1)
+  PASS  explicit --from-file still supported for fixtures/offline use
+  PASS  --dry-run + --verify-step6-invoice is refused (a dry run proves nothing)
+  PASS  a non-uuid invoice is rejected BEFORE any network access
+== MUTANTS: each reopens the stale-evidence path and must be killed ==
+  PASS  mutant (i) built: verifier reads the persistent file
+  PASS  MUTANT (persistent file) verifies the WRONG window — fresh-temp binding is load-bearing
+  PASS  mutant (ii) built: analysis status ignored
+  PASS  MUTANT (ignores fetch/analysis status) reports success on a window with an untracked send — propagation is load-bearing
+  PASS  mutant (iii) built: verifier invoked after a failed analysis
+  PASS  MUTANT (verify after failed analysis) reports success despite a failed analysis — the gate is load-bearing
+  PASS  mutant (iv) built: verifier default input restored
+  PASS  MUTANT (implicit default) silently verifies a STALE file — requiring --from-file is load-bearing
+  PASS  mutant (v) built: invalidation removed
+  PASS  MUTANT (no invalidation) leaves a stale window looking current — invalidation is load-bearing
+================  32 passed, 0 failed  ================

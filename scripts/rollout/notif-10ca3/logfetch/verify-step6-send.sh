@@ -38,10 +38,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../lib/common.sh"
 
 UUID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-INVOICE=""; LINES="$HERE/../evidence/edge-log-lines.txt"
+INVOICE=""; LINES=""
+# --from-file is REQUIRED and has NO default. It used to default to the fixed
+# evidence/edge-log-lines.txt that fetch-edge-logs.sh writes, which meant a FAILED
+# fetch left the previous run's window on disk for this script to verify — a
+# stale pass waiting to happen. The caller must now name the file it just
+# produced; for production that is done for it by
+# `fetch-edge-logs.sh --verify-step6-invoice`, which passes its own fresh temp.
 usage() { cat >&2 <<'EOF'
-usage: verify-step6-send.sh --invoice <invoice-uuid> [--from-file <epoch\tmessage file>]
-  default --from-file: <bundle>/evidence/edge-log-lines.txt (written by fetch-edge-logs.sh)
+usage: verify-step6-send.sh --invoice <invoice-uuid> --from-file <epoch\tmessage file>
+  --from-file is REQUIRED (no implicit default): only a window the caller just
+  fetched may be verified. Production entry point:
+    fetch-edge-logs.sh --ref R --start S --end E [...] --verify-step6-invoice <uuid>
 EOF
   exit 1; }
 while [[ $# -gt 0 ]]; do
@@ -53,6 +61,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$INVOICE" ]] || usage
+[[ -n "$LINES" ]] || { printf '[step6] SETUP: --from-file is required (no implicit evidence-file default)\n' >&2; exit 1; }
 [[ "$INVOICE" =~ $UUID_RE ]] || { printf '[step6] SETUP: --invoice is not a uuid\n' >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { printf '[step6] SETUP: jq is required\n' >&2; exit 1; }
 [[ -f "$LINES" ]] || { printf '[step6] SETUP: log file not found: %s\n' "$LINES" >&2; exit 1; }

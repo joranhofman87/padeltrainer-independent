@@ -25,6 +25,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 145/145 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 37/37 |
+| step-6 fetch+verify is atomic; a failed fetch can never leave verifiable stale evidence | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 32/32 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -53,7 +54,7 @@ sql/postflight.sql          post-migration delta present + INERT + digest-disabl
 sql/acl_matrix.sql          self-contained ACL lockdown assertions
 sql/ledger_verification.sql append-only ledger + email-table consistency invariants
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
-logfetch/verify-step6-send.sh  step-6 send verifier: exact invocation/invoice cardinalities
+logfetch/verify-step6-send.sh  step-6 send verifier (explicit --from-file only; no default)
 verify/chain.mjs            shared embedded-PG setup + SHA-pinned migration source
 verify/verify-artifacts.mjs SQL-artifact proof (+ mutations)
 verify/rehearsals.mjs       executable A–F rehearsals (incl. step-8 clone battery)
@@ -62,6 +63,7 @@ verify/guard-mutation-test.sh critical-guard mutation proofs
 verify/operator-flow-test.sh  resume615 + clone-command runtime proof (stubbed gh/git/supabase/psql)
 verify/exit-status-test.sh    exit-status integrity proof (masked-failure regression)
 verify/step6-verifier-test.sh executable fixtures + mutants for the step-6 verifier
+verify/logfetch-integration-test.sh fresh-evidence contract: fetch+verify is atomic
 evidence/                   captured run outputs
 ```
 
@@ -463,39 +465,39 @@ before sending. Then confirm the gate probe reads
 *Action.* Send that one invoice from the academy/trainer invoice UI. Not a
 preview, not a test send. Note the **invoice id** and the wall-clock minute.
 
-*Retrieving the `invocationId` (it is NOT in the response or the UI).* The 200
-response body is `{"success":true,"email":"<recipient>"}` — no correlation id,
-and it contains the recipient address, so do not paste it anywhere. The id lives
-only in the function log line, alongside the invoice id:
+*Fetch AND verify in ONE command.* The `invocationId` is not in the 200 response
+(`{"success":true,"email":"<recipient>"}` — no correlation id, and it carries the
+recipient address, so do not paste it anywhere) and not in the UI. It exists only
+in the function log line. You do not retrieve it by hand: the fetch derives it
+from the window it just normalised.
 
 ```bash
-scripts/rollout/notif-10ca3/logfetch/fetch-edge-logs.sh --ref "$EXPECTED_REF" \
+scripts/rollout/notif-10ca3/logfetch/fetch-edge-logs.sh \
+  --ref "$EXPECTED_REF" \
   --start <ISO minute before the send> --end <ISO minute after> \
-  --allow-sends --assert-all-finished --fail-on-record-failed
-grep '<invoice uuid>' scripts/rollout/notif-10ca3/evidence/edge-log-lines.txt
-```
-The matching `event:provider_send_started` line carries
-`{"invocationId":"…","invoiceId":"…"}` — that uuid is your correlation id for
-everything below. (`--allow-sends` is required here: unlike the drain proof, a
-send in this window is the expected outcome. `evidence/edge-log-lines.txt` is a
-local working file, **gitignored** via `evidence/.gitignore` — the fetch writes it
-and it is never committed, so treat what you find there as ephemeral.)
-
-*Correlate EXACTLY — and let the tool do it.* A busy window contains other
-people's sends, so "there is a `finished sent` in the window" is not evidence.
-This used to be a block of `grep -c` calls with "must be exactly 1" written next
-to them in prose — nothing enforced those numbers, so a mis-read, or an empty
-result, looked exactly like a pass. It is now **executable and fails loudly**:
-
-```bash
-scripts/rollout/notif-10ca3/logfetch/verify-step6-send.sh --invoice '<invoice uuid>'
+  --allow-sends --assert-all-finished --fail-on-record-failed \
+  --verify-step6-invoice '<invoice uuid>'
 ```
 
-It reads the file the fetch just wrote (`evidence/edge-log-lines.txt` by default,
-override with `--from-file`), parses every record **structurally** with `jq`
-rather than grepping free text, derives the invocation itself from the single
-`provider_send_started` carrying your invoice id — **you never transcribe an
-invocation id** — and exits non-zero unless all six hold:
+That is the whole step. One atomic operation: fetch the window → normalise it →
+run the drain/record-failure analysis → and only then verify the invoice against
+**that same freshly normalised window**. `--allow-sends` is required here — unlike
+the drain proof, a send in this window is the expected outcome.
+
+**If the fetch fails, NO verification happened.** The command exits non-zero and
+says so; there is no partial credit and nothing to interpret. This is enforced,
+not merely documented: the verifier only ever receives the temp file produced by
+this run (passed explicitly with `--from-file`), a live attempt **deletes** the
+previous `evidence/edge-log-lines.txt` before it starts, and `verify-step6-send.sh`
+has **no default input** — run standalone without `--from-file` it refuses.
+(Earlier the fetch wrote that fixed path and the verifier defaulted to reading it
+independently, so a failed fetch left the previous run's window on disk for the
+next verification to consume. `evidence/edge-log-lines.txt` is a **gitignored**
+local diagnosis copy of the last *successful* fetch; nothing reads it back.)
+
+The verifier parses every record **structurally** with `jq` rather than grepping
+free text, binds the invocation from the single `provider_send_started` carrying
+your invoice id, and fails unless all six hold:
 
 | # | enforced |
 |---|---|
@@ -507,11 +509,11 @@ invocation id** — and exits non-zero unless all six hold:
 | 6 | ZERO `record_failed` and ZERO `status_update_failed` for the invoice |
 
 Exit codes: `0` pass · `1` usage/setup · `2` malformed input (fail closed) · `3`
-verification FAILED. An empty or unparseable log file is a **failure**, never a
-vacuous pass. Output is counts plus the two correlation uuids only — no address,
-body, or token. Checks 1–5 key on the invocation; check 6 keys on the invoice,
-because `record_failed` and `status_update_failed` log an **`invoiceId` and not
-an `invocationId`** (`_shared/invoice-delivery-tracking.ts`,
+verification FAILED. An empty, truncated or unparseable window is a **failure**,
+never a vacuous pass. Output is counts plus the two correlation uuids only — no
+address, body, or token. Checks 1–5 key on the invocation; check 6 keys on the
+invoice, because `record_failed` and `status_update_failed` log an **`invoiceId`
+and not an `invocationId`** (`_shared/invoice-delivery-tracking.ts`,
 `send-invoice-email/index.ts`) — exact for a single send of a single invoice.
 (`record_failed` also exists in `resend-webhook`, but that logs under the
 `[RESEND-WEBHOOK]` prefix, which this `[SEND-INVOICE-EMAIL]`-filtered fetch never
@@ -519,7 +521,8 @@ returns.)
 
 *Pass — all four:*
 1. the email **arrives** at the controlled recipient, correct branding/reply-to;
-2. `verify-step6-send.sh --invoice '<invoice uuid>'` exits **0**;
+2. the integrated `fetch-edge-logs.sh … --verify-step6-invoice '<invoice uuid>'`
+   exits **0** (a fetch failure means nothing was verified — re-run it, do not resend);
 3. **delivery tracking** recorded it: `SELECT public.get_invoice_delivery_status('<invoice uuid>')`
    reports `sent` (later `delivered` when the Resend webhook lands), and the
    invoice shows as sent in the UI. Use the singular RPC — the plural
