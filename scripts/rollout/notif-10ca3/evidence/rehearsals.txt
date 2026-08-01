@@ -1,10 +1,9 @@
-$ node .../verify/rehearsals.mjs
+$ node scripts/rollout/notif-10ca3/verify/rehearsals.mjs
 
-rollout rehearsals A/B/C/D/E — PR615 migrations pinned @ 2b247f43afe8
 [A] measure A_window (ACCESS EXCLUSIVE rewrite) + CAP:
-        · A_window: rewrite of 20000 rows via migration 20261006100000 took 580.4 ms
-        · derived CAP_STMT (measured + 50% headroom) = 30871 ms; CAP_LOCK = 3000 ms
-  PASS  A: rewrite applied + measured, is_suppressed present  — 580ms for 20000 rows
+        · A_window: rewrite of 20000 rows via migration 20261006100000 took 581.4 ms
+        · derived CAP_STMT (measured + 50% headroom) = 30872 ms; CAP_LOCK = 3000 ms
+  PASS  A: rewrite applied + measured, is_suppressed present  — 581ms for 20000 rows
 [B] lock_timeout abort under contention -> no partial delta:
   PASS  B: bounded db push aborts on lock contention  — sqlstate=55P03 (55P03=lock_not_available)
   PASS  B: after abort, is_suppressed column is ABSENT (atomic per-file)
@@ -30,4 +29,13 @@ rollout rehearsals A/B/C/D/E — PR615 migrations pinned @ 2b247f43afe8
   PASS  E1: row loss is detected (eas rows differ)  — 200 -> 199
   PASS  E2: invalid canonical suppression is detected (ledger_verification fails)  — ASSERT FAILED: email_address_state.is_suppressed matches its generation rule for
   PASS  E3: unchanged readers are detected (fingerprints did NOT change)
-================  21 passed, 0 failed  ================
+[F] step-8 verify-clone battery is runnable on a migrated clone:
+        · F: verify-clone artifacts (read from run-rollout.sh): academy_fixture.sql, postflight.sql, acl_matrix.sql, ledger_verification.sql
+  PASS  F: verify-clone does NOT include preflight.sql (delta-absent vs delta-present)
+  PASS  F: phase 1 — preflight passes on the un-migrated clone
+  PASS  F: phase 2 — academy_fixture.sql passes on the migrated clone
+  PASS  F: phase 2 — postflight.sql passes on the migrated clone
+  PASS  F: phase 2 — acl_matrix.sql passes on the migrated clone
+  PASS  F: phase 2 — ledger_verification.sql passes on the migrated clone
+  PASS  F: MUTATION — preflight.sql in the post-battery would fail (guard is load-bearing)
+================  28 passed, 0 failed  ================

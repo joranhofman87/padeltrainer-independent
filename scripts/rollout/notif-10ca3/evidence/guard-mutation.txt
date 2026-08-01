@@ -1,4 +1,4 @@
-$ bash .../verify/guard-mutation-test.sh
+$ bash scripts/rollout/notif-10ca3/verify/guard-mutation-test.sh
 
 == guard 1: EXACT identity allow-list ==
   PASS  real assert_host_user_is_ref rejects look-alike host
@@ -60,8 +60,33 @@ $ bash .../verify/guard-mutation-test.sh
   PASS  no-loss rejects a LOST email_address_state key
   PASS  no-loss rejects a LOST email_delivery_events id
   PASS  no-loss rejects unchanged reader fingerprints
-== guard 9: the production drain wait has no env backdoor ==
+== guard 9: timeout caps must be POSITIVE integers (0 disables them in PG) ==
+  PASS  real cap-guard accepts a positive integer
+  PASS  real cap-guard accepts the CAP_LOCK default 3000
+  PASS  real cap-guard rejects 0 (PostgreSQL: DISABLED)
+  PASS  real cap-guard rejects 000
+  PASS  real cap-guard rejects a negative value
+  PASS  real cap-guard rejects an explicit +
+  PASS  real cap-guard rejects a non-numeric value
+  PASS  real cap-guard rejects a unit suffix (30s)
+  PASS  real cap-guard rejects a float
+  PASS  real cap-guard rejects an empty value
+  PASS  real cap-guard rejects whitespace
+  PASS  real cap-guard rejects a trailing newline
+  PASS  real cap-guard rejects a smuggled second -c option
+  PASS  assert_caps accepts both positive
+  PASS  assert_caps accepts an unset CAP_LOCK (default 3000)
+  PASS  assert_caps rejects CAP_STMT=0
+  PASS  assert_caps rejects CAP_LOCK=0 (lock wait unbounded)
+  PASS  assert_caps rejects an exported junk CAP_LOCK
+  PASS  MUTANT presence-only cap check wrongly accepts 0 (guard is load-bearing)
+  PASS  MUTANT presence-only cap check wrongly accepts '3000 -c statement_timeout=0'
+  PASS  cmd_apply615 validates the caps before it can push
+  PASS  cmd_resume615 validates the caps before it can push
+  PASS  clone_push_preamble validates the caps before it can push
+  PASS  no presence-only CAP_STMT check remains
+== guard 10: the production drain wait has no env backdoor ==
   PASS  run-rollout.sh has NO env-based drain-wait shortcut
   PASS  the wait advances only via the real clock (date/sleep)
   PASS  MUTANT re-introducing a fast-drain env flag is caught
-================  54 passed, 0 failed  ================
+================  78 passed, 0 failed  ================

@@ -1,19 +1,23 @@
 // ===========================================================================
-// rehearsals.mjs — EXECUTABLE, evidence-producing A/B/C/D rehearsals on a real
+// rehearsals.mjs — EXECUTABLE, evidence-producing A-F rehearsals on a real
 // (embedded) Postgres, each on its own fresh database. These execute the
 // behaviours the owner's prod-snapshot db-push rehearsals depend on:
 //   A  measure the ACCESS EXCLUSIVE rewrite window (A_window) + derive CAP
 //   B  bounded lock_timeout aborts under contention -> delta ABSENT (no partial)
 //   C  the real per-file ledger model: none -> PREFIX -> all, and recovery
 //      (re-push) resumes from the failed file
-//   D  full apply + baseline-preserve + academy_fixture + postflight + acl + ledger
+//   D  full apply + no-loss manifest + academy_fixture + postflight + acl + ledger
+//   E  legitimate state recomputation OK; row loss / bad suppression / stale readers FAIL
+//   F  the step-8 `verify-clone` battery is actually runnable on a migrated clone
 // The real `supabase db push` against prod-scale snapshots stays owner-only;
 // these prove the SQL/atomicity/lock/recovery behaviour deterministically.
 //
 // Run:  node scripts/rollout/notif-10ca3/verify/rehearsals.mjs
 // ===========================================================================
 import pg from 'pg';
-import { boot, installPreState, applyPr615, migPR615, prepared, preparedPlain, PR615_MIGS, PR615_SHA } from './chain.mjs';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { boot, installPreState, applyPr615, migPR615, prepared, preparedPlain, PR615_MIGS, PR615_SHA, REPO } from './chain.mjs';
 
 const PORT = 54358;
 const VERSIONS = PR615_MIGS.map((f) => f.slice(0, 14));
@@ -247,8 +251,51 @@ async function rehearsalE(admin) {
     } finally { await c.end(); } }
 }
 
+// ---- F: the step-8 clone battery must actually be runnable ------------------
+// `verify-clone` is what the operator runs against a PRODUCTION-SCALE clone, so a
+// battery that cannot pass wastes a whole clone cycle. The artifact list is read
+// OUT OF run-rollout.sh (not hard-coded) so it stays coupled: adding an artifact
+// with contradictory preconditions fails here first.
+function verifyCloneArtifacts() {
+  const src = readFileSync(join(REPO, 'scripts/rollout/notif-10ca3/run-rollout.sh'), 'utf8');
+  const body = src.match(/^cmd_verify_clone\(\)[\s\S]*?\n\s*ok "clone verification battery/m);
+  if (!body) throw new Error('could not locate cmd_verify_clone in run-rollout.sh');
+  return [...body[0].matchAll(/run_artifact "\$url" ([A-Za-z0-9_]+\.sql)/g)].map((m) => m[1]);
+}
+async function rehearsalF(admin) {
+  console.log('\n[F] step-8 verify-clone battery is runnable on a migrated clone:');
+  const arts = verifyCloneArtifacts();
+  note(`F: verify-clone artifacts (read from run-rollout.sh): ${arts.join(', ')}`);
+  // preflight asserts the delta is ABSENT; postflight asserts it PRESENT. Both in
+  // one battery = unpassable in either clone state (the reproduced blocker).
+  record('F: verify-clone does NOT include preflight.sql (delta-absent vs delta-present)',
+    !arts.includes('preflight.sql'),
+    arts.includes('preflight.sql') ? 'preflight.sql present — battery is unpassable' : '');
+  // stage a clone exactly as the operator would: pre-migration, then db push
+  const c = await freshDb(admin, 'rehearse_f');
+  try {
+    await c.query(`INSERT INTO public.email_address_state(email,state)
+      SELECT 'f'||g||'@ex.test','ok' FROM generate_series(1,50) g`);
+    // phase 1 — preflight on the UN-migrated clone must pass
+    let ok1 = true, m1 = '';
+    try { await c.query(prepared('preflight.sql')); } catch (e) { ok1 = false; m1 = e.message.split('\n')[0]; }
+    record('F: phase 1 — preflight passes on the un-migrated clone', ok1, ok1 ? '' : m1);
+    await applyPr615(c);                       // the operator's `supabase db push --db-url "$CLONE"`
+    // phase 2 — every verify-clone artifact must pass on the migrated clone
+    for (const art of arts) {
+      let ok2 = true, m2 = '';
+      try { await c.query(prepared(art)); } catch (e) { ok2 = false; m2 = e.message.split('\n')[0]; }
+      record(`F: phase 2 — ${art} passes on the migrated clone`, ok2, ok2 ? '' : m2);
+    }
+    // MUTATION: re-adding preflight.sql to the post-battery breaks it
+    let mutFailed = false;
+    try { await c.query(prepared('preflight.sql')); } catch { mutFailed = true; }
+    record('F: MUTATION — preflight.sql in the post-battery would fail (guard is load-bearing)', mutFailed);
+  } finally { await c.end(); }
+}
+
 async function main() {
-  console.log(`rollout rehearsals A/B/C/D/E — PR615 migrations pinned @ ${PR615_SHA.slice(0, 12)}`);
+  console.log(`rollout rehearsals A/B/C/D/E/F — PR615 migrations pinned @ ${PR615_SHA.slice(0, 12)}`);
   const { epg, url, conn } = await boot(PORT);
   BASE_URL = url;
   const admin = conn(); await admin.connect();
@@ -258,6 +305,7 @@ async function main() {
     await rehearsalC(admin);
     await rehearsalD(admin);
     await rehearsalE(admin);
+    await rehearsalF(admin);
     console.log(`\n================  ${PASS} passed, ${FAIL} failed  ================`);
   } finally {
     await admin.end().catch(() => {});

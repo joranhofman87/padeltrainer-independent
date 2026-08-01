@@ -163,6 +163,30 @@ assert_drain_window() {
   ok "drain window ${min}s >= floor ${ROLLOUT_DRAIN_FLOOR}s"
 }
 
+# The whole rollout is "bounded": every migration runs under an explicit
+# statement_timeout + lock_timeout so a runaway rewrite or a lock wait can never
+# hold the gate open indefinitely. PostgreSQL treats **0 as DISABLED**, so a cap
+# of `0` silently removes exactly the bound the plan depends on while every log
+# line still says "bounded". The values are also interpolated into `PGOPTIONS`
+# unquoted, so a value like `3000 -c statement_timeout=0` would smuggle in a
+# second option. Both caps must therefore be a POSITIVE DECIMAL INTEGER, nothing
+# else — no 0, no sign, no units, no whitespace, no extra `-c`.
+# (mutation-pinned: verify/guard-mutation-test.sh + verify/operator-flow-test.sh)
+assert_timeout_ms() {   # $1 = name  $2 = value
+  local n="$1" v="${2-}"
+  [[ -n "$v" ]] || die "$n is unset/empty — set it to a positive integer in milliseconds"
+  [[ "$v" =~ ^[0-9]+$ ]] \
+    || die "$n='$v' is not a plain decimal integer — no signs, spaces, units or extra '-c' options are accepted (it goes straight into PGOPTIONS)"
+  [[ "$v" -gt 0 ]] || die "$n='$v' — PostgreSQL treats 0 as DISABLED; the rollout must stay bounded"
+  ok "$n = ${v}ms (positive, bounded)"
+}
+# Validate BOTH caps before anything irreversible. CAP_LOCK's 3000ms default is
+# validated too, so a bad exported value can never slip through the default path.
+assert_caps() {
+  assert_timeout_ms CAP_STMT "${CAP_STMT:-}"
+  assert_timeout_ms CAP_LOCK "${CAP_LOCK:-3000}"
+}
+
 # Classify the migration ledger. Accepts ONLY the legitimate ordered prefixes.
 # Any other subset ({V2}, {V1,V3}, ...) is 'invalid' and must stop recovery.
 classify_ledger() { # $1 sorted-csv  $2 V1  $3 V2  $4 V3 -> none|prefix1|prefix2|all|invalid
@@ -185,6 +209,70 @@ expected_pending_suffix() { # $1 state  $2 V1  $3 V2  $4 V3 -> newline list (emp
     all)     printf '';;
     *)       die "no defined pending suffix for ledger state '$1'";;
   esac
+}
+
+# Delete a file holding pseudonymous personal data, overwriting first.
+#
+# `shred` is a GNU coreutils tool and is ABSENT on macOS (and `gshred` is only
+# present with coreutils installed) — the operator machine for this rollout is
+# darwin. The previous `shred -u ... || rm -f` therefore silently degraded to a
+# plain unlink while the runbook promised secure erasure. We now overwrite the
+# bytes ourselves when shred is unavailable, and say plainly what happened.
+#
+# HONEST LIMIT: on SSDs, APFS/btrfs/ZFS copy-on-write, or any journalling
+# filesystem, an in-place overwrite does NOT guarantee the old blocks are gone.
+# The real controls remain the 0600 permissions and the short retention window.
+# FAILS CLOSED: if the overwrite OR the unlink cannot be performed, a non-zero
+# status is returned and the caller must not report the evidence as cleaned —
+# never unlink-and-claim-overwritten, never claim-deleted-when-still-present.
+# Overwrite is block-sized (not bs=1) so it stays bounded on large manifests.
+# SYMLINKS ARE REFUSED: `-f` follows links, so a symlinked evidence path would
+# shred whatever it points at (and leave the link) — that is never what the
+# operator meant, so it stops instead.
+secure_delete() {
+  local f="$1" size blocks
+  if [[ -L "$f" ]]; then
+    warn "REFUSING to secure-delete '$(basename "$f")': it is a SYMLINK — overwriting would destroy the link target, not the evidence file. Resolve it by hand."
+    return 1
+  fi
+  [[ -f "$f" ]] || return 0
+  if command -v shred >/dev/null 2>&1; then
+    shred -u "$f" 2>/dev/null && { ok "securely deleted (shred): $(basename "$f")"; return 0; }
+    warn "shred failed on $(basename "$f") — falling back to overwrite"
+  elif command -v gshred >/dev/null 2>&1; then
+    gshred -u "$f" 2>/dev/null && { ok "securely deleted (gshred): $(basename "$f")"; return 0; }
+    warn "gshred failed on $(basename "$f") — falling back to overwrite"
+  fi
+  size="$(wc -c < "$f" 2>/dev/null | tr -d ' ')" || { warn "cannot size $(basename "$f") — PRESERVED"; return 1; }
+  blocks=$(( (size + 65535) / 65536 ))
+  if ! dd if=/dev/urandom of="$f" bs=65536 count="$blocks" conv=notrunc 2>/dev/null; then
+    warn "OVERWRITE FAILED for $(basename "$f") — file PRESERVED, not deleted (delete it manually once you can overwrite it)"
+    return 1
+  fi
+  if ! rm -f "$f"; then   # UNLINK-GUARD (mutation-pinned: verify/operator-flow-test.sh)
+    warn "overwrote $(basename "$f") but UNLINK FAILED — the plaintext is destroyed, but the file still EXISTS; remove it manually. NOT reported as cleaned."
+    return 1
+  fi
+  warn "shred unavailable — overwrote $(basename "$f") ($size bytes) then unlinked (not guaranteed on SSD/CoW)"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# clone identity — a clone is named EXPLICITLY and must NOT be production
+# ---------------------------------------------------------------------------
+# Clone-only commands (verify-clone, clone-push, the A-D rehearsals) write to the
+# target: academy_fixture.sql INSERTs before it ROLLBACKs, and clone-push applies
+# migrations. Running any of them against production would be a production write.
+# So a clone must be named by CLONE_REF, CLONE_REF must differ from EXPECTED_REF,
+# and the URL must address CLONE_REF exactly. "--clone" alone is not enough.
+assert_clone_url() {   # $1 = url ; uses CLONE_REF + EXPECTED_REF
+  local url="$1"
+  [[ -n "${CLONE_REF:-}" ]] || die "clone commands require CLONE_REF (the disposable clone's project ref)"
+  assert_ref_format "$CLONE_REF"
+  [[ "$CLONE_REF" != "${EXPECTED_REF:-}" ]] \
+    || die "CLONE_REF equals EXPECTED_REF ($EXPECTED_REF) — refusing: this is PRODUCTION, not a clone"
+  assert_conn_url_is_ref "$CLONE_REF" "$url"
+  ok "clone target verified as CLONE_REF '$CLONE_REF' (and != production '$EXPECTED_REF')"
 }
 
 # per-run salt for the fingerprint manifest (no raw email PII in evidence)
